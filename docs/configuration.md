@@ -1471,10 +1471,12 @@ test run (`SAMAGOTCHI_ENV`, `RACK_ENV`, `CI`). The day is stamped in `$XDG_STATE
 If an AGENTS.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
 The project root is the top of the git work tree chi runs in (a linked
-worktree's own checkout), or the current directory outside a repository.
+worktree's own checkout), or of the folder marked by `chi project init` it runs
+in (see [Projects without git](memory.md#projects-without-git)); outside both,
+the current directory.
 
-Started in a subdirectory, chi loads the chain: every AGENTS.md from the work
-tree top down to the current directory, outermost first. The first keeps the
+Started in a subdirectory, chi loads the chain: every AGENTS.md from the
+project's top down to the current directory, outermost first. The first keeps the
 plain header; each further one is headed with its directory, e.g. "Project
 specific description for pkg/:". Outside a repository only the current
 directory's AGENTS.md is read. Edits are picked up by a new process or a
@@ -2125,7 +2127,7 @@ are never sent to; `chi web push rm ID` removes them. From the Mac: `chi web pus
 shows a recent delivery (Apple keeps accepting pushes for it): if one stops getting notifications, switch it off and on
 there; the new subscription replaces the dead one.
 
-- **What a tap opens**: the session, in its own project's view (the all view for a session in no repo), whichever
+- **What a tap opens**: the session, in its own project's view (the all view for a session in no project: no repository or marked folder), whichever
   project the app was showing; an open app window moves there.
 - **What is sent**: the session's name and the reason ("needs approval", "needs an answer", "hit its step limit",
   "needs you", "turn failed", "done in N s"), never the question or the command, as the tab's notification on the
@@ -2370,7 +2372,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `web.reload_check` | `false` | yes | Opt-in: once each finished turn has moved into the history, the page reads the session again (one full read per turn end), draws that turn as a reload would and compares the two, strictly: a known divergence counts as a mismatch too. `chi web` logs one `reload_checked` line per check and a `reload_mismatch` line naming the kinds that differed, `excused` (the known divergences, `history_shape.js` `ACCEPTED`, that would explain them) and `explained` (all of them had one), with `turn_id`, `drawn` (the turn came back from its drawing, so a mismatch with `drawn: true` is a drawing bug) and the worker's version: counts only, never content. The count is `grep -c reload_mismatch` over `grep -c reload_checked` in chi web's log, split by `excused`. Cards are left out: a reload places them after the render, which the check doesn't run (the e2e reload checks compare them). Every open owner tab runs the check; `chi web` logs a turn's first report only, and starts over when it restarts. |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `web.editor` | `vscode` | yes | What a file ref in `chi web` (a file tool row's title, a diff line) opens, for a viewer on this machine: a preset (`vscode`, `vscode-insiders`, `cursor`, `zed`) or a URL template with `{path}` and an optional `{line}`; `none` turns refs off. See [Opening files from chi web](#opening-files-from-chi-web). |
-| `web.start_dir` | the folder `chi web` runs in | | The folder `chi web` starts in (`chi web --start-dir DIR` for one run): its page (the printed link, a bare `/`, the LAN link and QR code, the Home Screen app) opens on that folder's project, outside a repo on every session, and a new session from the all view starts there; the header's project picker switches projects. `~` and a relative path (resolved from your home folder) work; one that isn't a folder stops `chi web` from starting. `chi web` never changes its own folder. See [CLI](cli.md). |
+| `web.start_dir` | the folder `chi web` runs in | | The folder `chi web` starts in (`chi web --start-dir DIR` for one run): its page (the printed link, a bare `/`, the LAN link and QR code, the Home Screen app) opens on that folder's project, outside a project (no repository or marked folder) on every session, and a new session from the all view starts there; the header's project picker switches projects. `~` and a relative path (resolved from your home folder) work; one that isn't a folder stops `chi web` from starting. `chi web` never changes its own folder. See [CLI](cli.md). |
 | `web.participants.expires` | `7d` | | How long a participant's link lasts unless `chi share --expires` says otherwise: `Nh` or `Nd`, 1h to 30d. See [participants](internals/participants.md). |
 | `web.participants.cap` | `2.0` | | What a participant's turns, and the side calls they cause, may cost you in dollars unless `chi share --cap` says otherwise ($0 to $1000); at the cap their next comment is refused (429 `cap_reached`) and you get a notice. `chi share cap ID P DOLLARS` changes one grant's. |
 | `web.participants.queue` | `3` | | How many of a participant's turns may wait behind their running one (0 to 20); one more is refused (429 `too_many_turns`). |

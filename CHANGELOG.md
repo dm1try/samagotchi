@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A folder in no git repository can be a chi project: `chi project init [DIR]` writes `DIR/.chi/project.yml`, and DIR and every subfolder share one project memories folder, group their sessions (`chi sessions list`, chi web's projects) and take `chi context --project`. `chi project` shows which project a folder is in. A git repository stays the project wherever there is one (init writes nothing there), and `$HOME` or a folder above it can't be marked. A folder chi already ran in at its top keeps its memories. A session in a subfolder of a marked project reads the AGENTS.md chain from the project's top, and `delegate`'s `cwd:` takes any folder of it (not a nested repository or marked project); sessions already running in a folder when it is marked keep the old project until `chi sessions restart`.
+
 ### Fixed
 
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.

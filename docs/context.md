@@ -71,10 +71,12 @@ A source belongs to one session, or to a project:
 
 - A **session** source (`chi context add NAME … <id>`) is that session's
   alone and runs in the session's folder (the worktree it started in).
-- A **project** source (`--project`, inside a git repository) has **one
-  snapshot shared by every session of the project**: all worktrees of a repo
+- A **project** source (`--project`, inside a git repository or a folder
+  marked by `chi project init`) has **one snapshot shared by every session of
+  the project**: all worktrees of a repo (or subfolders of a marked folder)
   share the project, and the command runs in the project root (the main
-  checkout; the session's folder when the root is a bare git dir). Whichever
+  checkout, or the marked folder; the session's folder when the root is a bare
+  git dir). Whichever
   worker is due runs it; the others read the snapshot.
 
 So anything that depends on the branch or the checkout (a PR, `git status`,
