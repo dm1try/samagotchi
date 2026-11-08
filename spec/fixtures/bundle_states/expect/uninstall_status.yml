@@ -330,6 +330,10 @@ missing_wrong_sha:
   uninstall: {do: none, save_first: false, next_base: none, checksum: none, mark: dropped, word: null, label: not installed, warns: []}
   uninstall_force: {do: none, save_first: false, next_base: none, checksum: none, mark: dropped, word: null, label: not installed, warns: []}
   status: {label: "missing,no-index", list: null}
+pristine_wrong_sha:
+  uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
+  uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
+  status: {label: ok, list: null}
 new_no_sha:
   uninstall: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: null, label: not installed, warns: []}
   uninstall_force: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: null, label: not installed, warns: []}

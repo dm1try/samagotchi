@@ -27,7 +27,7 @@
 #   fix         "<tsv id> <spec file>: <example description>": the example
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
-#               wrong today (one tag or a list): D4, U4 (the plan's), dry-noop
+#               wrong today (one tag or a list): D4, U4, U7 (the plan's), dry-noop
 #               (P1.9), dry-trash, edited-rule, restore-unchecked; note says which
 #   note        why, for a tagged case
 #
@@ -538,6 +538,17 @@ cases:
     disk: null
     incoming: abC
     sha: wrong
+  - id: pristine_wrong_sha
+    kind: pristine
+    base: abc
+    disk: abc
+    incoming: abC
+    sha: wrong
+    divergent: [U7, D4]
+    note: >-
+      U7: upgrade fast-forwards it (Updated) with no checksum warning: the integrity check skips a fast-forward, where
+      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skips the
+      never-edited file as already exists, as pristine
   - id: new_no_sha
     kind: new
     owned: false

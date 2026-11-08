@@ -10,7 +10,7 @@ module BundleStateCorpus
     # The file-machinery fixes a state model closes (the research's class B):
     # each is at least one case, its start lifted from the example that fixed it.
     B_FIXES = [705, 703, 704, 633, 634, 587, 424, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
-    DIVERGENT = %w[D4 U4 dry-noop dry-trash edited-rule restore-unchecked].freeze
+    DIVERGENT = %w[D4 U4 U7 dry-noop dry-trash edited-rule restore-unchecked].freeze
     ASSET_DIVERGENT = %w[dry-checksum dry-dropped hook-stray-left hook-sha-dropped hook-status new-updated uninstall-unnamed].freeze
     # What a cell's do says when the file's bytes changed or went.
     WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze

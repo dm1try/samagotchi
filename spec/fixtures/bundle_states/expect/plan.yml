@@ -134,6 +134,8 @@ source_moved_marked:
     "0.149": {do: kept, word: "would_update, behind", warns: ["a.md stays behind 1.1.0: chi can't tell whether it holds edits of yours (an older chi may have taken your text as the base, and the merge would remove lines from your file)"]}
 missing_wrong_sha:
   plan: {do: none, word: would_update, warns: []}
+pristine_wrong_sha:
+  plan: {do: kept, word: would_update, warns: []}
 new_no_sha:
   plan: {do: none, word: would_update, warns: []}
 overlay_pristine:
