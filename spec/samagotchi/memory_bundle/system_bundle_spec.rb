@@ -357,10 +357,32 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
                                                  version: "0.1.6", scope: "system",
                                                  files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
 
+        expect(described_class.sync(dry_run: true)).to have_attributes(
+          status: :restored,
+          warnings: ["Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("old\n")[0..7]}..."]
+        )
+        expect(File.exist?(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))).to be(false)
+
         expect(described_class.sync).to have_attributes(
           status: :restored,
           warnings: ["Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("old\n")[0..7]}..."]
         )
+        expect(installed_identity).to eq("old\n")
+      end
+
+      it "shows a checksum mismatch in a dry plan for a system bundle update" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        ship("0.1.10", "new\n")
+        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                                 version: "0.1.10", scope: "system",
+                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+
+        expect(described_class.sync(dry_run: true)).to have_attributes(
+          status: :updated,
+          warnings: ["Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("new\n")[0..7]}..."]
+        )
+        expect(installed_version).to eq("0.1.6")
         expect(installed_identity).to eq("old\n")
       end
     end

@@ -4,6 +4,7 @@ require_relative "index_updater"
 require_relative "manifest"
 require_relative "memory_files"
 require_relative "file_actions"
+require_relative "file_digest"
 require_relative "merger"
 require_relative "provenance"
 require_relative "trash"
@@ -77,7 +78,8 @@ module Samagotchi
         @behind = []
         @warnings = []
         @trash = Trash.new(@name)
-        shipped = MemoryFiles.select(@source_dir, Manifest.read(dir: @source_dir))
+        @manifest = Manifest.read(dir: @source_dir)
+        shipped = MemoryFiles.select(@source_dir, @manifest)
         marked.each { |key, entry| retry_file(key, entry, shipped) }
         settle unless dry_run
         Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line)
@@ -111,7 +113,7 @@ module Samagotchi
       def retry_row(key, entry, state, action)
         decision = view.decision(key, state) if action.do == :decide || action.behind?
         action = FileActions.decided(decision.outcome, :remerge) if action.do == :decide
-        if action.do == :merge then merge_file(key, entry, decision.outcome)
+        if action.do == :merge then merge_file(key, entry, state, decision.outcome)
         elsif action.behind?
           waits = decision.outcome.status == :fast_forward
           mark(key, entry, waits ? behind_for(key, FileStanding::WAITS_FOR_UPGRADE) : view.behind(key, decision.outcome, @record.version))
@@ -141,7 +143,9 @@ module Samagotchi
         @stamped << behind unless entry[:incoming_sha] && @record.behind_entry(key, entry) == behind && File.exist?(@provenance.incoming_path(key))
       end
 
-      def merge_file(key, entry, outcome)
+      def merge_file(key, entry, state, outcome)
+        warning = FileDigest.mismatch(key, state.paths[:incoming], @manifest.checksum_for(key))
+        @warnings << warning if warning
         return @merged << key if @dry_run
         return @merged << key if Merger.write_merged(view.paths(key)[:current], outcome, @trash)
 

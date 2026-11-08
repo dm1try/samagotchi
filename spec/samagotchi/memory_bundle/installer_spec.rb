@@ -384,6 +384,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(installer.warnings.any? { |w| w.include?("Checksum mismatch") }).to be true
         end
 
+        it "skips memory checksum warnings for a dev install, but not a regular install" do
+          dev_source = write_bundle(File.join(tmpdir, "dev"), { "identity.md" => "# Identity\n" }, name: "dev-check")
+          regular_source = write_bundle(File.join(tmpdir, "regular"), { "regular.md" => "# Regular\n" }, name: "regular-check")
+          dev = described_class.new(source: dev_source, name: "dev-check", scope: "system", strict: true, dev: true).tap(&:run)
+          regular = described_class.new(source: regular_source, name: "regular-check", scope: "system", strict: true).tap(&:run)
+
+          expect(dev.warnings.grep(/Checksum mismatch/)).to be_empty
+          expect(regular.warnings.grep(/Checksum mismatch/)).to include("Checksum mismatch for regular.md: expected fake..., got #{Digest::SHA256.hexdigest("# Regular\n")[0..7]}...")
+        end
+
         it "checks a --force install over a file that already has the bundle's text, and its dry run" do
           bundle_dir = File.join(tmpdir, "bundle_checksum_forced")
           FileUtils.mkdir_p(bundle_dir)

@@ -125,8 +125,9 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
 
 ## Pitfalls
 
+- **Sandbox and ENV.** A standalone `Testing::Bundle` snapshots `ENV` when built and restores it at shutdown; see [Testing a bundle](plugins.md#testing-a-bundle-experimental).
 - **Shas.** Every file the manifest names has a sha256 line, and an edit makes it stale: the install then warns
-  of a checksum mismatch, and a line with no sha installs unchecked. `chi bundle check --fix` rewrites them; run it
+  of a checksum mismatch (not for `install --dev`; `chi bundle check` does), and a line with no sha installs unchecked. `chi bundle check --fix` rewrites them; run it
   after the last edit.
 - **requires_chi.** Use the chi the user runs (`chi --version`): a bundle whose `requires_chi` that chi doesn't
   meet is now **refused at install** (`--force` is the only way past it), not just unloaded. `check` warns when the plugin calls something newer than the floor (`ctx.http` 0.80.0, `ctx.cost` 0.83.0, `ctx.usage` 0.100.0, `ctx.sessions.children` 0.34.0),

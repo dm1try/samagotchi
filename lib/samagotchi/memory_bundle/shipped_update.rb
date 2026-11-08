@@ -119,10 +119,7 @@ module Samagotchi
           r.merged = installer.merged_files
           r.behind = installer.behind
           r.trash_copy = installer.trash_copy_line
-          # The integrity check's warnings; the rest of the Installer's say
-          # what the row's merged and behind already do.
-          mismatches = installer.warnings.grep(/\AChecksum mismatch/)
-          r.note = mismatches.join("; ") unless mismatches.empty?
+          r.note = mismatch_note(installer)
         end
       rescue StandardError => e
         row.dup.tap do |r|
@@ -214,6 +211,7 @@ module Samagotchi
         row.behind = forecast.behind
         row.replaced = trash_bound(name, bundle, manifest, row.source_dir)
         row.status = :would_update
+        row.note = planned_mismatch_note(row)
         row
       rescue SystemCallError => e
         # A file it can't read: the upgrade would fail on it, so this is that
@@ -245,6 +243,20 @@ module Samagotchi
       end
 
       def note_of(remerged) = remerged.warnings.empty? ? nil : remerged.warnings.join("; ")
+
+      def mismatch_note(installer)
+        mismatches = installer.warnings.grep(/\AChecksum mismatch/)
+        mismatches.join("; ") unless mismatches.empty?
+      end
+
+      def planned_mismatch_note(row)
+        installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true, dry_run: true,
+                                  shipped_dir: File.dirname(row.source_dir))
+        installer.run
+        mismatch_note(installer)
+      rescue Installer::InstallError
+        nil
+      end
 
       def profile_row(row, bundle, shipped_dir, chi_version)
         manifest = Manifest.read(dir: row.source_dir)

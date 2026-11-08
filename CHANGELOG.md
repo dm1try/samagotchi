@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi bundle install --dev` no longer warns of a checksum mismatch for the bundle's memories (stale shas while you edit); `chi bundle check` still flags them.
+- `chi update --dry-run` now shows the same memory Checksum mismatch warnings as the update itself.
+- A conflicted memory that chi retries at the same version (at start, or in `chi update`) now warns when the bundle's file doesn't match its manifest's sha256, as an install or an upgrade does.
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.
 - A damaged turn-drawings file no longer stops a terminal from joining a session or chi web from showing it; the turn is drawn from the saved messages instead.
 - `chi bundle try --json` no longer crashes when the answer or the trace holds non-ASCII text.

@@ -118,6 +118,22 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(row.note).to start_with("Checksum mismatch for #{key}: expected 00000000...")
   end
 
+  it "shows a memory checksum mismatch in a plan for a shipped bundle" do
+    root = ship_hooked(also: ["known-names"])
+    install(old_copy("known-names", md: "old words\n", from: root), "known-names")
+    source = File.join(root, "known-names")
+    manifest_path = File.join(source, "manifest.yml")
+    data = YAML.load_file(manifest_path)
+    key = data["files"].keys.first
+    data["files"][key] = "sha256:#{"0" * 64}"
+    File.write(manifest_path, YAML.dump(data))
+
+    row = described_class.plan(shipped_dir: root).find { |item| item.name == "known-names" }
+
+    expect(row).to have_attributes(status: :would_update)
+    expect(row.note).to start_with("Checksum mismatch for #{key}: expected 00000000...")
+  end
+
   it "keeps an edited .md that conflicts, and retires the record's hook" do
     root = ship_hooked
     names = install_old_hooked(root, md: "old words\n")
