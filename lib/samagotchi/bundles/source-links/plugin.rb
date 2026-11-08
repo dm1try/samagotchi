@@ -59,10 +59,10 @@ require "samagotchi/ref"
 # action, "Open in <name>", the ref's URL. A URL that isn't http(s) stays a
 # markdown link only. The web's ref menu shows the action.
 #
-# The hook is on :question_asked too (the manifest's events:, chi newer than
-# 0.97.0): while a question of the model's (or an approval of its call)
-# waits, the refs in the reply that asks it, and in the question's text and
-# options, are refs on that reply, the same as an answer's. The web pairs
+# The hook is on :question_asked too (Plugin below hooks both events): while
+# a question of the model's (or an approval of its call) waits, the refs in
+# the reply that asks it, and in the question's text and options, are refs
+# on that reply, the same as an answer's. The web pairs
 # them in the stage's asking slot, on the question's card and on that step
 # in the history (a ref only in the question's text pairs there alone). No
 # links in the text and no note line for it: the turn's end has those.
@@ -655,5 +655,24 @@ class SourceLinks
   # A capture group is free-form, so escape what goes into the URL path.
   def escape_url(value)
     value.to_s.gsub(/[^A-Za-z0-9\-._~]/) { |c| c.bytes.map { |b| format("%%%02X", b) }.join }
+  end
+end
+
+# What chi loads: one SourceLinks, built once from config.yml
+# `bundles: source-links:` when the plugin loads, on after_turn and
+# question_asked at priority 90 (its state, the remotes it asked git for,
+# is shared). A raise in the handler is logged and the turn goes on
+# (chi.on's log policy).
+class Plugin
+  PRIORITY = 90
+
+  def initialize(settings = {})
+    @links = SourceLinks.new(settings)
+  end
+
+  def register(chi)
+    %i[after_turn question_asked].each do |event|
+      chi.on(event, priority: PRIORITY) { |payload, _ctx| @links.call(payload) }
+    end
   end
 end

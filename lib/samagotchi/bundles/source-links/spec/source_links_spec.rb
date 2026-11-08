@@ -2,7 +2,7 @@
 
 require "samagotchi/testing/rspec"
 
-# The source-links hook through the bundle test kit, on :question_asked: the
+# The source-links plugin's hook through the bundle test kit, on :question_asked: the
 # refs in the reply that asks a question (and in the question itself) as
 # refs on that reply. Its after_turn side is spec/samagotchi/bundles/
 # source_links_spec.rb's.
@@ -22,8 +22,9 @@ RSpec.describe "The source-links bundle on a question", :bundle do
 
   it "is one hook on both events" do
     bundle = hook
-    expect(bundle.hook_names(:after_turn)).to eq([["source-links", "source_links.rb", 90]])
-    expect(bundle.hook_names(:question_asked)).to eq([["source-links", "source_links.rb", 90]])
+    expect(bundle.hook_names(:after_turn)).to eq([["source-links", "plugin.rb", 90]])
+    expect(bundle.hook_names(:question_asked)).to eq([["source-links", "plugin.rb", 90]])
+    expect(bundle.declarations.map { |d| [d.name, d.args, d.options] }).to eq([[:on, [:after_turn], { priority: 90 }], [:on, [:question_asked], { priority: 90 }]])
   end
 
   it "makes each ref in the reply that asks a ref on it, with its Open in action, once" do

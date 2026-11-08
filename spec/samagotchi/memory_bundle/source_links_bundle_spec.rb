@@ -7,10 +7,10 @@ require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/hooks/registry"
-require "samagotchi/hooks/bundle_loader"
+require "samagotchi/plugin/loader"
 
 # The shipped source-links bundle, end to end: install it into an isolated
-# bundles dir, load its hook, fire a synthetic :after_turn and see the
+# bundles dir, load its plugin as chi does, fire a synthetic :after_turn and see the
 # sources line, then uninstall cleanly.
 RSpec.describe "Source-links bundle E2E" do
   let(:tmpdir) { Dir.mktmpdir("source-links-e2e-") }
@@ -28,23 +28,27 @@ RSpec.describe "Source-links bundle E2E" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  it "installs, loads the hook, announces the refs, and uninstalls cleanly" do
+  it "installs, loads the plugin's hook, announces the refs, and uninstalls cleanly" do
     installer = Samagotchi::MemoryBundle::Installer.new(source: fixture_path, name: "source-links", scope: "system",
                                                         force: false, strict: true)
     installer.run
-    expect(File.exist?(File.join(bundles_dir, "source-links", "hooks", "source_links.rb"))).to be true
+    expect(File.exist?(File.join(bundles_dir, "source-links", "plugin", "plugin.rb"))).to be true
+    expect(Dir.exist?(File.join(bundles_dir, "source-links", "hooks"))).to be false
     expect(File.exist?(File.join(system_dir, "source_links.md"))).to be true
 
     prov = Samagotchi::MemoryBundle::Provenance.new(name: "source-links")
     data = prov.read
-    expect(data[:hooks]).to include(:"source_links.rb")
+    expect(data[:hooks].to_h).to eq({})
+    expect(data[:plugin]).to include(file: "plugin.rb")
     expect(data[:trust_level]).to eq("reviewed")
 
     settings = { "sources" => [{ "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }] }
     registry = Samagotchi::Hooks::Registry.new
-    loaded = Samagotchi::Hooks::BundleLoader.load(bundle_name: "source-links", hooks_dir: prov.hooks_dir,
-                                                  metadata: data[:hooks], registry: registry, settings: settings)
-    expect(loaded).to eq(1)
+    failures = Samagotchi::Guardrails::LoadFailures.new
+    loaded = Samagotchi::Plugin::Loader.load_bundle("source-links", prov.record, Samagotchi::Plugin::Registries.new(hooks: registry),
+                                                    failures: failures, settings: settings)
+    expect([loaded, failures.list]).to eq([true, []])
+    expect(registry.bundle_hook_names(:after_turn)).to eq([["source-links", "plugin.rb", 90]])
 
     notices = []
     registry.runtime = Samagotchi::Hooks::Runtime.new(
@@ -59,6 +63,6 @@ RSpec.describe "Source-links bundle E2E" do
     uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: "source-links", force: false)
     uninstaller.run
     expect(Dir.exist?(File.join(bundles_dir, "source-links"))).to be false
-    expect(uninstaller.removed_files).to include("hooks/source_links.rb")
+    expect(uninstaller.removed_files).to include("plugin/plugin.rb")
   end
 end

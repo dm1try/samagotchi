@@ -7,6 +7,7 @@ require "tmpdir"
 require "fileutils"
 require "digest"
 require "samagotchi/hooks"
+require "samagotchi/testing"
 require "samagotchi/answer_display"
 require "samagotchi/answer_refs"
 
@@ -24,11 +25,10 @@ RSpec.describe "The source-links bundle" do
     }
   end
   let(:notices) { [] }
+  let(:bundle) { @bundle = Samagotchi::Testing::Bundle.shipped("source-links", settings: settings) }
   let(:registry) do
-    registry = Samagotchi::Hooks::Registry.new
-    loaded = Samagotchi::Hooks::BundleLoader.load(bundle_name: "source-links", hooks_dir: File.join(bundle_dir, "hooks"),
-                                                  metadata: manifest["hooks"], registry: registry, settings: settings)
-    raise "the hook did not load" unless loaded == 1
+    registry = bundle.hooks
+    raise "the hook did not load" unless bundle.hook_names(:after_turn) == [["source-links", "plugin.rb", 90]]
 
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
@@ -37,6 +37,13 @@ RSpec.describe "The source-links bundle" do
     )
     registry
   end
+
+  # The shipped plugin through the bundle test kit (Testing::Bundle), its
+  # hooks given this spec's runtime, in a sandbox entered before anything
+  # else an example sets in ENV (it puts back the ENV it found).
+  around { |example| Samagotchi::Testing::Sandbox.with { example.run } }
+
+  after { @bundle&.shutdown }
 
   # Fire :after_turn with the given messages and return the notices.
   def fire(messages, status: "completed")
@@ -51,7 +58,7 @@ RSpec.describe "The source-links bundle" do
     fire([user("hi"), model("See JIRA-123 and JIRA-10, then JIRA-123 again.")])
     expect(notices).to eq([{ text: "sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, " \
                                    "JIRA JIRA-10 → https://myjira.com/browse/JIRA-10",
-                             level: :info, hook: "source_links.rb (bundle source-links)" }])
+                             level: :info, hook: "plugin.rb (bundle source-links)" }])
   end
 
   it "scans only the last model message" do
@@ -195,7 +202,7 @@ RSpec.describe "The source-links bundle" do
   describe "the shared URL-end cases" do
     it "keeps the source-links URL spans from the shared fixture" do
       registry
-      klass = Samagotchi::Hooks::BundleLoader.namespace_for("source-links").const_get(:SourceLinks, false)
+      klass = bundle.namespace.const_get(:SourceLinks, false)
       source_links = klass.allocate
       fixture = JSON.parse(File.read(File.expand_path("../../fixtures/url_ends.json", __dir__)))
 
@@ -338,7 +345,7 @@ RSpec.describe "The source-links bundle" do
   describe "parsing a git remote URL" do
     def parse(url)
       registry # loads the hook's class
-      Samagotchi::Hooks::BundleLoader.send(:namespace_for, "source-links")::SourceLinks.parse_remote_url(url)
+      bundle.namespace::SourceLinks.parse_remote_url(url)
     end
 
     {
@@ -817,13 +824,13 @@ RSpec.describe "The source-links bundle" do
     end
   end
 
-  it "has a manifest whose file and hook checksums match" do
+  it "has a manifest whose file and plugin checksums match, and no class-file hooks" do
     manifest["files"].each do |file, sha|
       expect(sha).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, file)))}")
     end
-    manifest["hooks"].each do |file, meta|
-      expect(meta["sha256"]).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, "hooks", file)))}")
-      expect(meta).to include("events" => %w[after_turn question_asked], "on_error" => "log", "priority" => 90)
-    end
+    plugin = manifest.fetch("plugin")
+    expect(plugin["sha256"]).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, plugin["file"])))}")
+    expect(manifest).not_to have_key("hooks")
+    expect(Dir.glob(File.join(bundle_dir, "hooks", "*.rb"))).to eq([])
   end
 end
