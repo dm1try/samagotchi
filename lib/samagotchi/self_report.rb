@@ -4,6 +4,7 @@ require_relative "version"
 require_relative "config"
 require_relative "context_window"
 require_relative "degrade"
+require_relative "effective_model"
 require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
@@ -397,11 +398,8 @@ module Samagotchi
     # The model's thinking level and where it came from (Thinking.resolve);
     # in a session's commands its own level first (SAMAGOTCHI_SESSION_THINKING).
     def thinking_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
       session = session_model(env) ? Thinking.session_level(env[SESSION_THINKING_ENV]) : nil
-      Thinking.explain(target, names: registry.lookup_names(model, target: target),
-                               models: ModelSettings.all(env: env), session: session).label
+      Thinking.explain(effective_model(model, env).lookup, session: session).label
     rescue StandardError => e
       "(unknown: #{e.message})"
     end
@@ -421,6 +419,13 @@ module Samagotchi
       ReasoningHistory.label(level, source)
     rescue StandardError => e
       "(unknown: #{e.message})"
+    end
+
+    # +model+ as chi self reads its settings (EffectiveModel: every layer
+    # through its ModelLookup, with +env+). Raises as HostRegistry#resolve does.
+    # @return [EffectiveModel]
+    def effective_model(model, env)
+      EffectiveModel.of(HostRegistry.new(env: env), ModelChoice.new(name: model, typed: model))
     end
 
     def host_for(model, env)

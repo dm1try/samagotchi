@@ -2979,6 +2979,8 @@ RSpec.describe Samagotchi::Web::App do
 
     def default_entry = Struct.new(:name).new(@default_host)
     def cached_results = @cached
+    # What an EffectiveModel reads its layers with.
+    def env = ENV
   end
 
   def model_info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
@@ -3049,7 +3051,7 @@ RSpec.describe Samagotchi::Web::App do
         host, bare = name.include?(":") ? name.split(":", 2) : ["default", name]
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entries.fetch(host), bare_model: bare, client: nil)
       end
-      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      registry.define_singleton_method(:lookup_names) { |typed, target:, **| [typed, target.bare_model].uniq }
       allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
 
       payload = models_payload(registry)
@@ -3066,7 +3068,7 @@ RSpec.describe Samagotchi::Web::App do
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
       end
-      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      registry.define_singleton_method(:lookup_names) { |typed, target:, **| [typed, target.bare_model].uniq }
       allow(Samagotchi::ModelSettings).to receive(:all).and_return({ "qwen" => Samagotchi::ModelSettings.new(llm_context_strategy: %i[stale]) })
 
       models = models_payload(registry)["models"].to_h { |m| [m["name"], m["llm_context"]] }
@@ -3084,7 +3086,7 @@ RSpec.describe Samagotchi::Web::App do
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
       end
-      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      registry.define_singleton_method(:lookup_names) { |typed, target:, **| [typed, target.bare_model].uniq }
       allow(Samagotchi::ModelSettings).to receive(:all).and_return({ "qwen" => Samagotchi::ModelSettings.new(thinking: :off) })
 
       models = models_payload(registry)["models"].to_h { |m| [m["name"], m["thinking"]] }
@@ -3099,7 +3101,7 @@ RSpec.describe Samagotchi::Web::App do
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
       end
-      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      registry.define_singleton_method(:lookup_names) { |typed, target:, **| [typed, target.bare_model].uniq }
       allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
       allow(Samagotchi::LLMContextStrategy).to receive(:explain).and_call_original
       allow(Samagotchi::LLMContextStrategy).to receive(:explain).with(having_attributes(model: "Gemma-4B-it"), any_args)

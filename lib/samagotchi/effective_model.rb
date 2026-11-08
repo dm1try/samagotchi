@@ -4,6 +4,7 @@ require_relative "host_registry"
 require_relative "log"
 require_relative "context_window"
 require_relative "llm_context_strategy"
+require_relative "model_lookup"
 require_relative "model_profile"
 require_relative "reasoning_history"
 require_relative "sampling_settings"
@@ -22,7 +23,8 @@ module Samagotchi
 
   # The effective model resolved once (HostRegistry#resolve: its host and
   # client, the id sent) with the names its models: entry may be under
-  # (HostRegistry#lookup_names), and its settings read from them. An
+  # (HostRegistry#lookup_names), and its settings read from them through
+  # one ModelLookup (every layer's input, with the registry's env). An
   # immutable snapshot built per read, never kept across reads: config.yml,
   # a model listing (which may move a bare id to another host) and another
   # process's saved lists all change what a resolve gives without any
@@ -32,14 +34,17 @@ module Samagotchi
   # Engine has always given (Unresolved); building one raises as
   # HostRegistry#resolve does (SessionModelSettings#model_setting gives the
   # fallback then).
-  EffectiveModel = Data.define(:registry, :name, :typed, :target, :names) do
+  EffectiveModel = Data.define(:registry, :name, :typed, :target, :names, :lookup) do
     # @param registry [HostRegistry]
     # @param choice [ModelChoice]
+    # @param models [Hash{String => ModelSettings}, nil] one models: map for
+    #   many models (a picker); ModelSettings.all at each read by default
     # @raise what HostRegistry#resolve raises
-    def self.of(registry, choice)
+    def self.of(registry, choice, models: nil)
       target = registry.resolve(choice.name)
-      new(registry: registry, name: choice.name, typed: choice.typed, target: target,
-          names: registry.lookup_names(choice.typed, resolved: choice.name, target: target))
+      names = registry.lookup_names(choice.typed, resolved: choice.name, target: target)
+      new(registry: registry, name: choice.name, typed: choice.typed, target: target, names: names,
+          lookup: ModelLookup.for(target, names: names, models: models, env: registry.env))
     end
 
     # A saved session's model (no worker): its model name, the default when
@@ -77,7 +82,7 @@ module Samagotchi
 
     # The thinking level (Thinking.resolve), the session's +own+ first.
     def thinking(own:)
-      Thinking.resolve(target, names: names, session: own).first
+      Thinking.resolve(lookup, session: own).first
     rescue StandardError => e
       unresolved(:thinking_unresolved, e, Thinking::DEFAULT)
     end
@@ -85,7 +90,7 @@ module Samagotchi
     # The thinking level with where it came from (SettingExplained), nil
     # when it can't be resolved.
     def thinking_explained(own:)
-      Thinking.explain(target, names: names, session: own)
+      Thinking.explain(lookup, session: own)
     rescue StandardError => e
       unresolved(:thinking_unresolved, e, nil)
     end

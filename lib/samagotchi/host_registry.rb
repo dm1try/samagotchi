@@ -155,6 +155,10 @@ module Samagotchi
 
     attr_reader :entries
 
+    # The env its hosts, aliases and saved lists are read with (ENV, or chi
+    # self's): what an EffectiveModel's ModelLookup reads every layer with.
+    attr_reader :env
+
     # Loopback, private (RFC 1918, IPv6 unique local) and link-local nets.
     LOCAL_NETS = %w[127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10
                     ::1/128 fc00::/7 fe80::/10].map { |net| IPAddr.new(net) }.freeze

@@ -27,6 +27,7 @@ require_relative "../session_metrics"
 require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
+require_relative "../effective_model"
 require_relative "../llm_context_override"
 require_relative "../working_set"
 require_relative "../model_catalog"
@@ -1157,12 +1158,13 @@ module Samagotchi
 
           settings = ModelSettings.all
           models.each do |model|
-            target = registry.resolve(model[:name])
-            names = registry.lookup_names(model[:name], target: target)
+            effective = EffectiveModel.of(registry, ModelChoice.new(name: model[:name], typed: model[:name]), models: settings)
+            target = effective.target
+            names = effective.names
             summary = SamplingSettings.summary(target, names: names, models: settings)
             model[:sampling] = summary if summary
             add_llm_context(model, target, names, settings)
-            add_thinking(model, target, names, settings)
+            add_thinking(model, effective)
           end
         end
       end
@@ -1176,11 +1178,11 @@ module Samagotchi
       end
 
       # The thinking level +model+ starts at, with where it came from (the
-      # start page's ⚙ panel; SettingExplained#summary, no session).
-      def add_thinking(model, target, names, settings)
-        Degrade.call(:web, "model_thinking_unreadable") do
-          model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
-        end
+      # start page's ⚙ panel; SettingExplained#summary, no session); one
+      # that can't be read leaves this model without (the key absent).
+      def add_thinking(model, effective)
+        explained = effective.thinking_explained(own: nil)
+        model[:thinking] = explained.summary if explained
       end
 
       # The served model a session's last generation reported (analytics.json,

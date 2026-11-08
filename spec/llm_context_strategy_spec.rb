@@ -275,6 +275,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         registry = Object.new
         def registry.resolve(name) = (puts "resolve \#{name}"; nil)
         def registry.lookup_names(*, **) = []
+        def registry.env = ENV
         session = Samagotchi::Session.new_session(mode: "assist", model_name: nil, working_directory: "/w")
         p Samagotchi::LLMContextStrategy.for_session(session, registry: registry)&.fetch(:strategy)
       RUBY
