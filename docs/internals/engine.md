@@ -753,6 +753,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `thinking_notices.rb`, `level_setting_command.rb`, `thinking_command.rb`, `reasoning_history_command.rb`, `reasoning_history.rb` | Thinking notices; `/thinking`, `/reasoning-history`; `ReasoningHistory` (`.resolve`, `.run_start`) |
 | `steer.rb`, `steer_cut.rb`, `generation_phase.rb`, `waiting_steer.rb`, `steer_cut_after.rb`, `cut_policy.rb` | Steers at boundaries; the cut seam and its parts; the cut wait; the loops' cut path |
 | `kernel_loop.rb` | The native loop |
+| `reprefill_meter.rb` | `ReprefillMeter`: the Engine's one re-prefill baseline, given to both loops (prompt-caching.md, "Reading the numbers") |
 | `llm/chat_loop.rb`, `llm/adapters.rb`, `llm/openai_chat.rb`, `llm/adapter_common.rb`, `llm/refusal_memo.rb` | The chat loop; `BY_API`; the OpenAI adapter; what both adapters share; refusals remembered |
 | `llm/anthropic_messages.rb`, `llm/anthropic_wire.rb`, `llm/anthropic_assembly.rb`, `llm/dialect.rb`, `llm/prompt_cache.rb` | The Messages adapter ([anthropic.md](anthropic.md)); cache breakpoints |
 | `llm/backend.rb`, `llm/native_backend.rb`, `llm/model_result.rb`, `llm/turn_settings.rb` | `ModelBackend`; `NativeBackend`; `ModelResult`; `TurnSettings` |

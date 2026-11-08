@@ -7,7 +7,7 @@ require_relative "token_usage"
 module Samagotchi
   # The ✂ row a turn gets for a batch of LLM context edits the apply rule
   # let through (LLMContextApply::Outcome#applied?): the :llm_context_edited
-  # event both loops emit (KernelLoop#apply_llm_context!, its +emit+), at a
+  # event both loops emit (LLMContextApply.apply!, its +emit+), at a
   # request (+moment+ :request; a forget_outputs call's batch too) or at the
   # end of a turn (:turn_end); never for the warm-up, a held or a staged
   # batch, or a restore (the forget_outputs row says it). The web and the
