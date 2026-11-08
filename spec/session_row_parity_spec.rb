@@ -25,8 +25,10 @@ RSpec.describe "SessionRow parity" do
     FileUtils.rm_rf(tmpdir)
   end
 
+  # test_run: false pinned: under CI the default marks every new session a
+  # test run, and list_sessions leaves test runs out.
   def make_session(prompt:, parent_id: nil, status: nil, pending: nil, scratch: false)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app", test_run: false,
                                     parent_id: parent_id, delegate: !parent_id.nil?).tap do |s|
       s.last_prompt = prompt
       s.status = status if status
