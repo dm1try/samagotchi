@@ -32,7 +32,8 @@ The value objects (`Data.define`, no hashes across files) are `NewSession` (what
 `Session` itself, which has the same fields but `owner`: both backends answer `#owner(id)`), `Created` (`Remote#create`; Local returns the `Session`), `WaitStart` (the
 pre-send state for a wait), `ContextEntry` and `ContextPush`. `Remote` also returns the existing callee types
 (`SessionManager::DeliverResult`, `NoteDelivery::Result`, `ReplyWait::Result`, `BridgeClient::Response`,
-`SessionManager::Restarted`) so that the commands can't tell the backends apart. A command checks `@access.remote?` where the backends must
+`SessionManager::Restarted`, and `SessionRow` from `#summaries`: chi web's `GET /api/sessions/summaries` rows read back
+with `SessionRow.from_summary_h`, so `chi sessions list` prints the same `#cli_line` on both) so that the commands can't tell the backends apart. A command checks `@access.remote?` where the backends must
 differ.
 
 ### Dispatch: choosing the backend

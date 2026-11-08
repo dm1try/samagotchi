@@ -31,9 +31,9 @@ module Samagotchi
         folder = cwd.to_s.strip.empty? ? nil : File.expand_path(cwd.to_s.strip)
         own = own_session(peers)
         project = folder ? nil : own_project(peers, own)
-        summaries = SessionManager.session_summaries(cwd: folder, limit: LIMIT, include_tests: false,
-                                                     exclude: peers.session_id, state_dir: peers.state_dir,
-                                                     project_root: project)
+        summaries = SessionManager.session_rows(cwd: folder, limit: LIMIT, include_tests: false,
+                                                exclude: peers.session_id, state_dir: peers.state_dir,
+                                                project_root: project)
         if summaries.empty?
           return "No other chi sessions in this project (#{File.basename(project)}); cwd \"/\" lists every project's." if project
 
@@ -41,12 +41,12 @@ module Samagotchi
         end
 
         lines = summaries.map do |s|
-          state = s[:live] ? "live" : "not live"
-          relation = if s[:parent_id] == peers.session_id then "  child"
-                     elsif own&.parent_id && s[:id] == own.parent_id then "  parent"
+          state = s.live ? "live" : "not live"
+          relation = if s.parent_id == peers.session_id then "  child"
+                     elsif own&.parent_id && s.id == own.parent_id then "  parent"
                      else ""
                      end
-          "#{s[:short_id]}  #{state}  #{s[:busy] ? "running" : "idle"}#{relation}  #{Paths.tilde(s[:cwd])}  #{s[:preview].inspect}"
+          "#{s.short_id}  #{state}  #{s.busy ? "running" : "idle"}#{relation}  #{Paths.tilde(s.cwd)}  #{s.preview.inspect}"
         end
         scope = project ? " in this project (#{File.basename(project)}; cwd \"/\" for every project)" : ""
         <<~TEXT.chomp

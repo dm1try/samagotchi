@@ -138,7 +138,8 @@ module Samagotchi
       end
       # Answered here, or no longer open (answered elsewhere, or a newer
       # question): what comes next either way.
-      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout], turn: start.own_turn)
+      wait_for_reply(id, target: ReplyWait::Target.answer(start),
+                         timeout: options[:timeout])
     end
 
     # The labels to send. A number is an option's place (1-based); an

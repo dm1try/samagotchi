@@ -6,6 +6,7 @@ require_relative "session_inbox"
 require_relative "turn_checkpoint"
 require_relative "worker_link"
 require_relative "reply_wait/poll"
+require_relative "reply_wait/target"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -21,6 +22,12 @@ module Samagotchi
   # The delegate tools and `chi send --wait` wrap it in their own words.
   module ReplyWait
     POLL_INTERVAL = 0.5
+    # The one dead-worker rule: no owner of any kind this long while
+    # waiting (a Target's owner_grace) and the worker is gone (it died
+    # before it could mark the session). A caller that just spawned or woke
+    # a worker awaits it first (Tools::Delegate.await_worker,
+    # SendCommand#deliver_new), so a booting worker isn't read as gone.
+    GONE_AFTER = 5
     # A worker's sidecar feature (Bridge::FEATURES): its running turn's
     # checkpoint mark (InterruptedTurn#enqueued_id), a continue turn and a
     # Stop's last_turn carry the turn's enqueued_id (#own_turn).

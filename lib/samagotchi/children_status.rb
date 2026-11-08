@@ -5,7 +5,8 @@ require_relative "session"
 require_relative "archive_store"
 require_relative "git_head"
 require_relative "reply_wait"
-require_relative "worker_link"
+require_relative "owner_lock"
+require_relative "session_row"
 require_relative "tools/delegate"
 require_relative "tools/delegate_cursor"
 
@@ -50,44 +51,47 @@ module Samagotchi
     def of(parent_id, state_dir:, include_archived: false)
       cursors = Tools::DelegateCursors.read(parent_id, state_dir: state_dir)
       SessionManager.children_of(parent_id, state_dir: state_dir).filter_map do |row|
-        next if row[:archived] && !include_archived
+        next if row.archived && !include_archived
 
-        session = load(row[:id], state_dir: state_dir)
+        session = load(row.id, state_dir: state_dir)
         session && child(session, row, cursors, state_dir: state_dir)
       end
     end
 
     # The cheap path for the glance views: only the children in the
-    # parent's delegates.json (one Session.load and an owner check each, no
+    # parent's delegates.json (one Session.load and a SessionRow each, no
     # scan). Its keys can also name a fork the model passed to delegate
     # session: or a deleted child: only live delegates of this parent count,
     # archived ones don't.
     # @return [Counts]
     def counts(parent_id, state_dir:)
       cursors = Tools::DelegateCursors.read(parent_id, state_dir: state_dir)
+      budgets = SessionRow.budgets
       children = cursors.keys.filter_map do |id|
         session = load(id, state_dir: state_dir)
         next unless session&.delegate? && session.parent_id == parent_id
         next if ArchiveStore.archived?(Session.session_dir(id, state_dir: state_dir))
 
-        child(session, summary_of(session, state_dir: state_dir), cursors, state_dir: state_dir)
+        dir = Session.session_dir(id, state_dir: state_dir)
+        child(session, SessionRow.build(session, session_dir: dir, owner: OwnerLock.owner(dir), budgets: budgets), cursors,
+              state_dir: state_dir)
       end
       Counts.new(running: children.count { |c| c.state == "running" },
                  waiting: children.count { |c| c.state == "waiting" },
                  unreported: children.count { |c| c.last_reply && !c.reported })
     end
 
-    # @param row [Hash] a children_of row, or summary_of's keys
+    # @param row [SessionRow] the child's row
     # @param cursors [Hash] the parent's delegates.json
     def child(session, row, cursors, state_dir:)
       reply = ReplyWait.newest_reply(session.id, state_dir: state_dir)
       cursor = Tools::DelegateCursors.get_from(cursors, session.id)
-      Child.new(id: session.id, short_id: session.id[0, 8], title: (session.title || row[:preview]).to_s,
-                state: state_of(session, row, reply), waiting: row[:waiting], live: !!row[:live],
+      Child.new(id: session.id, short_id: session.id[0, 8], title: (session.title || row.preview).to_s,
+                state: state_of(session, row, reply), waiting: row.waiting, live: !!row.live,
                 delegate: session.delegate?, cwd: session.working_directory, branch: GitHead.branch(session.working_directory),
                 last_reply: reply && first_line(session.id, reply, state_dir: state_dir),
                 last_reply_at: reply && reply_time(reply), reported: !reply.nil? && reported?(session, cursor, reply),
-                updated_at: session.updated_at, archived: !!row[:archived])
+                updated_at: session.updated_at, archived: !!row.archived)
     end
     private_class_method :child
 
@@ -97,8 +101,8 @@ module Samagotchi
     private_class_method :reported?
 
     def state_of(session, row, reply)
-      return "waiting" if row[:waiting]
-      return "running" if Tools::Delegate.running?(row)
+      return "waiting" if row.waiting
+      return "running" if row.running_or_starting?
       return "stopped" if session.status == Session::STATUS_STOPPED
 
       outcome = session.last_turn&.outcome
@@ -108,16 +112,6 @@ module Samagotchi
       "idle"
     end
     private_class_method :state_of
-
-    # The keys of a children_of row that state_of and child read, for a
-    # session counts loaded itself.
-    def summary_of(session, state_dir:)
-      live = WorkerLink.resolve(Session.session_dir(session.id, state_dir: state_dir), unlink: false).worker_owned?
-      { live: live, busy: live && session.status == Session::STATUS_RUNNING, saved_status: session.status,
-        updated_at: session.updated_at, waiting: session.waiting_question(live: live)&.dig(:kind),
-        preview: session.last_prompt.to_s }
-    end
-    private_class_method :summary_of
 
     def first_line(id, file, state_dir:)
       text = File.read(File.join(ReplyWait.reply_dir(id, state_dir: state_dir), file), 4096)

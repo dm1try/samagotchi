@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../session"
+require_relative "../session_row"
 require_relative "../session_access"
 require_relative "../remotes"
 require_relative "../reply_wait"
@@ -158,8 +159,9 @@ module Samagotchi
       # @return [OwnerLock::Owner, nil]
       def owner(id) = show(id).owner
 
-      # The rows chi sessions list prints, as SessionManager.session_summaries
-      # gives them (symbol keys).
+      # The rows chi sessions list prints: chi web's summaries
+      # (SessionRow#to_summary_h) read back as SessionRows.
+      # @return [Array<SessionRow>]
       def summaries(live: false, cwd: nil, limit: nil, include_tests: true, project_root: nil, include_archived: false,
                     sort: nil, order: nil)
         query = { live: (1 if live), cwd: cwd, limit: limit, tests: (0 unless include_tests), dir: project_root,
@@ -167,7 +169,7 @@ module Samagotchi
         reply = request(:get, "/api/sessions/summaries", query: query)
         raise_refusal(reply) unless reply.status == 200
 
-        Array(reply.json).map { |row| symbolize(row) }
+        Array(reply.json).map { |row| SessionRow.from_summary_h(symbolize(row)) }
       end
 
       # --- create and send

@@ -7,6 +7,8 @@ require_relative "atomic_file"
 require_relative "log"
 require_relative "session"
 require_relative "session_metrics"
+require_relative "session_row"
+require_relative "worker_link"
 require_relative "steer"
 require_relative "verify_anchor"
 require_relative "verify_fresh_origin"
@@ -37,10 +39,6 @@ module Samagotchi
     # The child's first message, after the claim.
     ASK = "Verify this claim against the files here. You have none of the original session's context. " \
           "End with a line `Verdict: confirmed|refuted|unclear — <one-line reason>`."
-    # How long a child whose worker hasn't come up yet counts as running
-    # (Tools::Delegate::STARTING_GRACE_SECONDS).
-    STARTING_GRACE_SECONDS = 15
-
     # A start refused: the HTTP +status+, the error +code+ and its words.
     class Refused < StandardError
       attr_reader :status, :code
@@ -257,15 +255,13 @@ module Samagotchi
     private_class_method :locked
 
     # A child runs while its worker runs a turn, or while it is marked
-    # running and its worker is on its way (Tools::Delegate.running?).
+    # running and its worker is on its way (SessionRow.running_or_starting?,
+    # the delegates' rule).
     def child_running?(child_id, state_dir)
       child = Session.summary_from_file(Session.session_file(child_id, state_dir: state_dir)) or return false
-      return false unless child.status == Session::STATUS_RUNNING
-      return true if SessionManager.session_owner(child_id, state_dir: state_dir)&.worker?
-
-      Time.now - Time.iso8601(child.updated_at.to_s) < STARTING_GRACE_SECONDS
-    rescue ArgumentError
-      false
+      live = WorkerLink.resolve(Session.session_dir(child_id, state_dir: state_dir), unlink: false).worker_owned?
+      SessionRow.running_or_starting?(saved_status: child.status, live: live,
+                                      busy: live && child.status == Session::STATUS_RUNNING, updated_at: child.updated_at)
     end
     private_class_method :child_running?
 

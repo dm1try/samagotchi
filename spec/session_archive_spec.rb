@@ -84,7 +84,7 @@ RSpec.describe "Session archive" do
       child = make(parent: parent)
       archive!(child)
 
-      expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map { |s| s[:id] }).to eq([child.id])
+      expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map(&:id)).to eq([child.id])
     end
   end
 

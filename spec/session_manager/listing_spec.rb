@@ -42,21 +42,6 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
-  describe ".summary_text" do
-    let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w") }
-
-    it "is the title when set, else the last prompt, else the first message" do
-      session.first_preview = "hey chi"
-      expect(described_class.summary_text(session)).to eq("hey chi")
-      session.last_prompt = "> quoted\n\nfix   it"
-      expect(described_class.summary_text(session)).to eq("quoted fix it")
-      session.title = "  Coordinator \n of the day "
-      expect(described_class.summary_text(session)).to eq("Coordinator of the day")
-      session.title = " "
-      expect(described_class.summary_text(session)).to eq("quoted fix it")
-    end
-  end
-
   describe ".session_summaries" do
     let(:locks) { [] }
 
@@ -117,8 +102,8 @@ RSpec.describe Samagotchi::SessionManager do
       expect(rows[older.id]).to include(parent_id: parent.id, parent_short_id: parent.id[0, 8])
 
       children = described_class.children_of(parent.id, state_dir: tmpdir)
-      expect(children.map { |s| s[:id] }).to eq([newer.id, older.id])
-      expect(children.count { |s| s[:busy] }).to eq(1)
+      expect(children.map(&:id)).to eq([newer.id, older.id])
+      expect(children.count(&:busy)).to eq(1)
       expect(described_class.children_of(nil, state_dir: tmpdir)).to eq([])
       expect(described_class.children_of(older.id, state_dir: tmpdir)).to eq([])
     end

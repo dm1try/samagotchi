@@ -10,6 +10,7 @@ require_relative "../guardrails/context"
 require_relative "peers"
 require_relative "delegate_wait"
 require_relative "../child_reports"
+require_relative "../worker_link"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -32,11 +33,6 @@ module Samagotchi
       # A path in a task: absolute, ~/ or ../, not glued to a word (a URL's
       # /api is not one) and stopping at quotes, backticks or punctuation.
       PATH_TOKEN = %r{(?<![\w./~-])(?:~/|\.\./|/(?!/))[^\s`'"<>()\[\]{},;&|]*}
-      # A child spawned this many seconds ago counts as running even before
-      # its worker holds the owner lock: two delegate calls in one model
-      # message come milliseconds apart, and the first child's worker is
-      # still starting when the second call counts.
-      STARTING_GRACE_SECONDS = 15
       # The memory every child starts with, scoped so a project memory of
       # the same name cannot shadow it.
       CHILD_MEMORIES = [Session::DELEGATE_MEMORY].freeze
@@ -79,7 +75,11 @@ module Samagotchi
 
         note = Array(warnings).map { |warning| "Warning: #{warning}\n" }.join
         if wait
-          result = DelegateWait.call(child_id, peers: peers, timeout: timeout)
+          started = monotonic
+          boot = await_worker(child_id, state_dir: sd, timeout: timeout, cancelled: -> { peers.cancelled? })
+          return note + DelegateWait.boot_result(child_id, boot, timeout: timeout, peers: peers) unless boot == :up
+
+          result = DelegateWait.call(child_id, peers: peers, timeout: timeout, waited: monotonic - started)
           return RefText.wrap(note + result, result.respond_to?(:ref_path) ? result.ref_path : nil)
         end
 
@@ -89,6 +89,32 @@ module Samagotchi
       rescue ArgumentError, Toolkit::Refused => e
         "Error: #{e.message}"
       end
+
+      # Before a wait on a child this call started or woke: its worker
+      # takes the owner lock only once it has booted, so the wait's one
+      # dead-worker rule (ReplyWait::GONE_AFTER) runs from there. A child a
+      # worker (or a one-turn run) owns already goes straight on; else its
+      # worker gets WorkerLink::START_LIMIT, the boot limit, to come up,
+      # within the call's +timeout+ (its time counts against it) and
+      # until the parent's turn is canceled.
+      # @param cancelled [#call] the parent's cancel (Peers#cancelled?)
+      # @return [Symbol] :up (a worker owns it), :gone (none came up within
+      #   the boot limit), :timeout (+timeout+ ran out first) or :canceled
+      def self.await_worker(child_id, state_dir:, timeout:, cancelled: -> { false })
+        dir = Session.session_dir(child_id, state_dir: state_dir)
+        return :up if OwnerLock.owner(dir)
+
+        limit = [WorkerLink::START_LIMIT, timeout.to_f].min
+        link = WorkerLink.await(child_id, session_dir: dir, timeout: limit, unlink: false,
+                                          give_up: ->(found) { found.worker_owned? || cancelled.call })
+        return :up if link&.worker_owned?
+        return :canceled if cancelled.call
+
+        limit < WorkerLink::START_LIMIT ? :timeout : :gone
+      end
+
+      def self.monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      private_class_method :monotonic
 
       # How the reply of a child left running comes back: a report only
       # reaches a parent that can get one (DelegateWait.reports_mode).
@@ -135,7 +161,7 @@ module Samagotchi
         running = running_children(parent.id, state_dir: state_dir)
         max = max_children
         if running.size >= max
-          ids = running.map { |s| s[:short_id] }.join(", ")
+          ids = running.map(&:short_id).join(", ")
           return "Error: #{running.size} delegate#{"s" if running.size != 1} of this session #{running.size == 1 ? "is" : "are"} running " \
                  "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. #{full_hint(peers)}"
         end
@@ -350,12 +376,12 @@ module Samagotchi
       private_class_method :follow_up
 
       # The child's turn a delivered follow-up joins, for the wait
-      # (DelegateCursor#turn): the running turn's (its checkpoint mark), the
-      # follow-up merging into it; else the delivery's +enqueued_id+, the
-      # follow-up running as a turn of its own. Only
-      # from a worker that names turn_ids; nil otherwise, or when the
-      # running turn has no id (a delegate's first turn): the wait takes the
-      # next reply.
+      # (DelegateCursor#turn): the running turn's (its checkpoint mark; a
+      # delegate's first turn carries its first_turn_id), the follow-up
+      # merging into it; else the delivery's +enqueued_id+, the follow-up
+      # running as a turn of its own. Only from a worker that names
+      # turn_ids; nil otherwise, or when the running turn has no id: the
+      # wait takes the next reply.
       # A follow-up steered into a turn that ended before it merged runs as
       # its own turn, yet the wait is on the ended one (LOW, as before).
       # One the child's idle look missed being merged into a turn starting
@@ -388,23 +414,13 @@ module Samagotchi
 
       # The children of +parent_id+ that count against session.max_children
       # (a plugin's ctx.sessions.fork counts them too).
-      # @return [Array<Hash>] SessionManager.children_of rows
+      # A child spawned moments ago counts as running even before its worker
+      # holds the owner lock (SessionRow#running_or_starting?): two delegate
+      # calls in one model message come milliseconds apart, and the first
+      # child's worker is still starting when the second call counts.
+      # @return [Array<SessionRow>] SessionManager.children_of rows
       def self.running_children(parent_id, state_dir:)
-        SessionManager.children_of(parent_id, state_dir: state_dir).select { |s| running?(s) }
-      end
-
-      # busy (a worker runs its turn), or running with a worker on its way
-      # (ChildrenStatus asks it too).
-      # @param summary [Hash] a children_of row, or the same keys: busy,
-      #   saved_status (the file's: the displayed status shows a worker on
-      #   its way as idle), live, updated_at
-      def self.running?(summary)
-        return true if summary[:busy]
-        return false unless summary[:saved_status] == Session::STATUS_RUNNING && !summary[:live]
-
-        Time.now - Time.iso8601(summary[:updated_at].to_s) < STARTING_GRACE_SECONDS
-      rescue ArgumentError
-        false
+        SessionManager.children_of(parent_id, state_dir: state_dir).select(&:running_or_starting?)
       end
 
       def self.max_children

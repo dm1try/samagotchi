@@ -428,14 +428,15 @@ each `<id>/` folder (recap.json, bridge.json, the stopped and archived markers),
 moved through `Session.summary_from_file`. Liveness is probed, since a killed owner leaves no
 file trace: the owner lock every tick for the sessions the projection believes owned, and every
 session every 10 s, so a `kill -9` shows within a second. The summary (`Web::SessionSummary`,
-shared with `/api/sessions` and the session view) carries `owner`, `project_root` and
+shared with `/api/sessions` and the session view; built on the session's `SessionRow`, the one row every list
+reads, so the page, `chi sessions list` and `/children` agree on status, liveness and a waiting question) carries `owner`, `project_root` and
 `bridge_up` (`WorkerLink` answers Live: a worker holds the lock and its sidecar names its pid; the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
 (`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`,
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no
-message and `delegate_result` rely on through `ReplyWait.own_turn`). A worker's Bridge snapshot
+message and `delegate_result` rely on through `ReplyWait.own_turn`; every wait's binding is one `ReplyWait::Target`, built by its caller's constructor). A worker's Bridge snapshot
 names its `chi_version` too.
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
@@ -457,7 +458,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | Route | Permission | Body / params | Answer | Refusals |
 |---|---|---|---|---|
 | `GET /api/sessions/resolve?id=` | owner | an id or a unique prefix | 200 `{id}` | 404 `not_found`; 400 `ambiguous_id` with `ids` |
-| `GET /api/sessions/summaries` | owner | `dir` (a folder: its project; none: every project), `cwd`, `live=1`, `archived=1`, `tests=0`, `sort`, `order`, `limit` | 200: the rows `chi sessions list` prints (`SessionManager.session_summaries`: `status`, `live`, `busy`, `owner`, `recap`, `ctx_pct`, `waiting`, `waiting_id`, `title`, `preview`, …) | 400 `invalid_dir`, `invalid_cwd` |
+| `GET /api/sessions/summaries` | owner | `dir` (a folder: its project; none: every project), `cwd`, `live=1`, `archived=1`, `tests=0`, `sort`, `order`, `limit` | 200: the rows `chi sessions list` prints (`SessionRow#to_summary_h`, 28 keys in a fixed order: `status`, `live`, `busy`, `owner`, `recap`, `ctx_pct`, `waiting`, `waiting_id`, `title`, `preview`, …) | 400 `invalid_dir`, `invalid_cwd` |
 | `GET /api/projects?dir=` | owner | optional page-scope folder | 200: project rows (`Web::ProjectList`: the hub's projects plus the start project) with counts, roots, default/current marks; no `dir`: no current project | 400 `invalid_dir`; 503 `no_hub` |
 | `POST /api/sessions` (more fields) | owner | `toolkit`, `tools`, `no_tools`, `parent_answers`; `client_id` (`cli:send`/`cli:answer`: the first line is checked as chi send checks it); `check_vision: true` (images follow) | 201 adds `model_warning`, `parent_answers_warning` (a level looser than config.yml's, capped) and `first_turn_id` (the id the prompt it starts with gets for its turn; null for an `idle` create) | 400 `invalid_toolkit`, `invalid_parent_answers`, `invalid_continues` (beside `continues`); 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
 | `POST /api/sessions/:id/turn` (more fields) | owner | `client_id` as above; `check_vision: true` with `images` | as before | 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
@@ -652,6 +653,8 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Dialects | `llm/dialect.rb` (`LLM::Dialect`) | What an `api: anthropic` provider's `/v1/messages` does differently (`dialect: fireworks`) ([internals/anthropic.md](internals/anthropic.md)). |
 | Logging | `log.rb` (`Log`), `log_subscriber.rb` (`LogSubscriber`), `log_path.rb` (`LogPath`), `log_line.rb` | The debug log: tagged records, a session's event trail, where the file goes ([configuration.md](configuration.md#debug-log-file)). |
 | Stores | `reminder_store.rb` (`ReminderStore`), `recap_store.rb` (`RecapStore`) | A session's reminders, and its idle recap (`recap.json`). |
+| Reply waits | `reply_wait.rb` (`ReplyWait`, `GONE_AFTER`: the one dead-worker rule), `reply_wait/poll.rb` (`ReplyWait::Poll`, one look per poll), `reply_wait/target.rb` (`ReplyWait::Target`: which turn a wait binds, cursor, baseline, `owner_grace`; `first_message`, `message`, `wait_only`, `answer`, `participant`, `from_cursor`), `reply_wait/liveness.rb` (`ReplyWait::Liveness`: one owner and link read per look; `#owner?` for gone, `#worker_owned?` for an open question) | `chi send --wait`, `chi answer`, a participant's wait, the delegate tools and delegate reports wait through `ReplyWait.call(id, **target.to_h, …)` ([sub-agent.md](sub-agent.md)). |
+| Session rows | `session_row.rb` (`SessionRow`) | A session as the lists see it: scalar facts only, built by `SessionManager.session_rows` (one owner, link, recap and analytics read each), `#to_summary_h` the summaries route's body and `.from_summary_h` a remote's rows read back, `#cli_line` the one `chi sessions list` line, `.running_or_starting?` the delegates' and Verify fresh's "running" (a 15 s grace for a worker on its way). A leaf: never session_manager or web. |
 | Setup and update | `bootstrap_command.rb`, `bootstrap/`, `update_command.rb`, `gem_update.rb` | `chi bootstrap` (first config.yml, system bundle, core profile) and `chi update` (the gem, shipped bundles, the macOS helper). |
 | Process groups | `process_group.rb` (`ProcessGroup`) | A command in a process group of its own, stopped as a group (TERM, grace, KILL): execute, tasks, context fetches, the mcp bundle's servers. |
 | Desktop | `desktop.rb`, `desktop/macos.rb`, `desktop_command.rb`, `desktop/macos/*.swift` | `chi desktop`, the macOS "Send to chi" helper ([desktop.md](desktop.md)). The helper's Swift side: the panel (`Panel.swift`), the chi CLI runner (`ChiRunner.swift`), the session rows and the chi calls a send makes (`Sessions.swift`: `SendPlan`; `ChiHelper --sessions` and `--send-plan` are their CLI seams), agent terminals behind `AgentTerminal` (`AgentTerminal.swift`, `Kitty.swift`, `Tmux.swift`; `ChiHelper --agents` is their CLI seam). |

@@ -198,6 +198,14 @@ answers from any local process.
 - If the worker dies while a question waits, the question goes with it.
   `chi answer` then exits 1 and says to send the task again
   (`chi send --wait -m "…" ID`); a wait ends with `worker_gone` (exit 1).
+- `worker_gone` follows one rule everywhere (`ReplyWait::GONE_AFTER`): no
+  worker has owned the session for 5 s while the wait runs (it died without
+  marking the session). A worker chi just started is awaited first (`chi send
+  --new`, a `delegate` child), so a slow boot isn't read as a death; a
+  delegate child whose worker never starts is reported `worker_gone` ("its
+  worker did not start") once the boot limit (30 s) passes. That await is
+  part of the `delegate` call's wait: the call's `timeout` bounds it (the
+  child then reads `running`) and the parent's Stop ends it.
 - A follow-up (`chi send --wait -m "…" ID`) to a session waiting for an answer
   isn't sent: it exits 1 with the `chi answer` command for the question. The
   step-limit question is the exception: it waits between turns, so a message

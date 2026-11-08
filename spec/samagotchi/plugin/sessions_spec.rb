@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(child).to have_attributes(parent_id: parent.id, first_preview: "q", status: "idle",
                                        model_name: "gemma4", working_directory: tmpdir, toolkit_origin: "inherited")
       expect(child.messages.map { |m| m[:content] }).to eq(%w[hello hi q a])
-      expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map { |s| s[:id] }).to eq([id])
+      expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map(&:id)).to eq([id])
     end
 
     it "copies this session's own llm_context values, thinking and reasoning_history levels, appended prompt files, " \
@@ -112,7 +112,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       id = sessions.fork(messages: [], prompt: "go on")
       expect(Samagotchi::Session.load(id, state_dir: tmpdir)).to have_attributes(status: "running", last_prompt: "go on")
 
-      allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([{ short_id: id[0, 8] }])
+      allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([Samagotchi::SessionRow.from_summary_h({ id: id })])
       expect { sessions.fork(messages: [], prompt: "more") }
         .to raise_error(described_class::Error, /1 child sessions of this session are running \(the most is 1/)
       # An idle fork doesn't count.

@@ -11,6 +11,7 @@ require_relative "../effective_model"
 require_relative "../host_registry"
 require_relative "../bridge_client"
 require_relative "../worker_link"
+require_relative "../session_row"
 require_relative "../bridge/pending_card"
 
 module Samagotchi
@@ -20,6 +21,14 @@ module Samagotchi
     # session is answered (GET /api/sessions, the session view, the session
     # hub's events), so every path agrees on status, owner and bridge_up.
     module SessionSummary
+      # The page's keys, in the order it has always had them (a hub event
+      # compares with ==, a 0.156 page reads them by name).
+      WEB_KEYS = %i[id status mode model_name working_directory created_at updated_at last_prompt short_id test_run
+                    used_memory_names preloaded_memory_names muted_memory_names prompt_notes parent_id delegate
+                    continues review first_preview title owner recap auto_title ctx_pct tokens memory_index side
+                    archived project_root bridge_up worker_version worker_features pending_question pending_card
+                    last_turn verdicts verify_fresh last_verdict].freeze
+
       module_function
 
       # @param session [Session] a saved session (messages may be empty)
@@ -39,64 +48,66 @@ module Samagotchi
       # @return [Hash] symbol keys
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil,
                 registry: nil)
-        used = Array(session.used_memory_names)
         link = WorkerLink.resolve(session_dir, unlink: false, owner: owner)
         up = link.live?
         sidecar = up ? link.sidecar : nil
         saved = SessionMetrics.saved_summary(session_dir, budget_tokens: budget_resolver(session, registry))
-        recap_card = RecapStore.card(session_dir)
-        {
-          id: session.id,
+        # The facts every list shares (SessionRow), from this one link,
+        # analytics and recap read.
+        row = SessionRow.build(session, session_dir: session_dir, owner: owner, link: link, roots: root_cache || {},
+                                        saved: saved, card: RecapStore.card(session_dir))
+        values = {
+          id: row.id,
           status: status,
           mode: session.mode,
           model_name: session.model_name,
-          working_directory: session.working_directory,
+          working_directory: row.cwd,
           created_at: session.created_at,
-          updated_at: session.updated_at,
+          updated_at: row.updated_at,
           last_prompt: session.last_prompt,
-          short_id: session.id.to_s[0, 8],
-          test_run: !!session.test_run,
-          used_memory_names: used,
+          short_id: row.short_id,
+          test_run: !!row.test_run,
+          used_memory_names: Array(session.used_memory_names),
           # The session's --memory and --mute lists (info-bar tooltip).
           preloaded_memory_names: Array(session.preloaded_memory_names),
           muted_memory_names: Array(session.muted_memory_names),
           # The model notes its prompt carried (the info bar's notes chip).
           prompt_notes: Array(session.prompt_notes).map(&:to_h),
           # The session that delegated this one (the `delegate` tool), else nil.
-          parent_id: session.parent_id,
+          parent_id: row.parent_id,
           # Started by the delegate tool (Session#delegate?); a fork has a
           # parent_id too but isn't one. The parent's children chip counts
           # delegates only, as the TUI's segment and /children do.
-          delegate: session.delegate?,
+          delegate: row.delegate,
           # The session this one continues (the previous link of its
           # chain), else nil: the lists draw chains from it.
-          continues: session.continues,
+          continues: row.continues,
           # A review session's {subjects, from} (SessionReview), else nil:
           # the session bar offers Start review on the others.
           review: session.review&.to_file,
           first_preview: first_preview_for(session),
           # The session's own name (/title), else nil: the pages show it in
           # place of the first message.
-          title: session.title,
-          owner: owner&.kind,
+          title: row.title,
+          owner: row.owner,
           # The saved recap's first sentence, for the session card, and the
           # auto title its reply led with (RecapTitle), else nil: an untitled
           # session's name on the pages and its pushes (never in a model
           # request).
-          recap: recap_card.preview,
-          auto_title: recap_card.title,
+          recap: row.recap,
+          auto_title: row.auto_title,
           # How full the context was after the last turn (%), or nil, and
           # the session's token sums and cost (the card's ctx tooltip), from
           # one read of analytics.json.
-          ctx_pct: saved&.ctx_pct&.round(1),
+          ctx_pct: row.ctx_pct,
           tokens: saved&.tokens,
           # The memory indexes its prompt held (the card's ctx tooltip).
           memory_index: saved&.memory_index,
           # Its side requests, apart from the tokens (the tooltip's own line).
           side: saved&.side,
           # Hidden from the strip and the list unless the all view's "archived" toggle is on.
-          archived: ArchiveStore.archived?(session_dir),
-          project_root: session.project_root(cache: root_cache),
+          archived: row.archived,
+          project_root: row.project,
           # A worker is reachable: WorkerLink answers Live (the lock held by
           # a worker whose sidecar names its pid). A sidecar a dead worker
           # left is not up.
@@ -108,8 +119,8 @@ module Samagotchi
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a
-          # one-turn chi run's (only a worker shares it).
-          pending_question: session.waiting_question(live: !!owner&.worker?),
+          # one-turn chi run's (only a worker shares it): the row's live.
+          pending_question: session.waiting_question(live: row.live),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file,
           # Its Verify verdicts, the fresh ones its worker hasn't taken yet
@@ -117,9 +128,10 @@ module Samagotchi
           # ({of, child_id}: the card's "verifying fresh" and its link).
           verdicts: VerifyFresh.verdicts_of(session, session_dir),
           verify_fresh: VerifyFresh.running(session.id, state_dir: File.dirname(session_dir))
-                                   .map { |row| { of: row[:of], child_id: row[:child_id] } },
+                                   .map { |entry| { of: entry[:of], child_id: entry[:child_id] } },
           last_verdict: last_verdict(session, session_dir)
         }
+        WEB_KEYS.to_h { |key| [key, values.fetch(key)] }
       end
 
       def last_verdict(session, session_dir)

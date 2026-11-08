@@ -109,8 +109,8 @@ module Samagotchi
       end
 
       # GET /api/sessions/summaries: the rows chi sessions list prints
-      # (SessionManager.session_summaries: status, live, busy, owner, recap,
-      # ctx_pct, waiting, …), filtered as its flags filter. Params: dir (a
+      # (SessionRow#to_summary_h, its 28 keys: status, live, busy, owner,
+      # recap, ctx_pct, waiting, …), filtered as its flags filter. Params: dir (a
       # folder: its project's sessions; none: every project's), cwd (in that
       # folder or below), live=1, archived=1, tests=0 (leave test runs out),
       # sort, order, limit. An array, newest first by default.
@@ -128,7 +128,7 @@ module Samagotchi
           project_root: dir && ProjectScope.root_for(dir), include_archived: truthy_param?(req.params["archived"]),
           sort: sanitize_sort(req.params["sort"]), order: sanitize_order(req.params["order"])
         )
-        json_response(200, rows)
+        json_response(200, rows.map(&:to_summary_h))
       end
 
       # POST /api/sessions/:id/wait/prepare: what chi send --wait and chi

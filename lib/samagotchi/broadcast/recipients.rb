@@ -29,12 +29,12 @@ module Samagotchi
       # @return [Array<Recipient>] newest first
       def list(state_dir:, active_hours:, include_tests: Session.test_session_env?, now: Time.now)
         cutoff = now - (active_hours.to_f * 3600)
-        SessionManager.session_summaries(include_tests: include_tests, state_dir: state_dir).filter_map do |row|
-          next if row[:delegate] || row[:scratch]
-          next unless row[:live] || row[:owner] == "tui" || active_since?(row, cutoff, state_dir)
+        SessionManager.session_rows(include_tests: include_tests, state_dir: state_dir).filter_map do |row|
+          next if row.delegate || row.scratch
+          next unless row.live || row.owner == "tui" || active_since?(row, cutoff, state_dir)
 
-          Recipient.new(id: row[:id], short_id: row[:short_id], project: row[:project], cwd: row[:cwd],
-                        desc: row[:desc], live: row[:live], owner: row[:owner])
+          Recipient.new(id: row.id, short_id: row.short_id, project: row.project, cwd: row.cwd,
+                        desc: row.desc, live: row.live, owner: row.owner)
         end
       end
 
@@ -43,11 +43,11 @@ module Samagotchi
       # session with no turn recorded; it is never older than the last
       # turn's end, so an older one rules the session out unread.
       def active_since?(row, cutoff, state_dir)
-        return false unless (time(row[:updated_at]) || Time.at(0)) >= cutoff
+        return false unless (time(row.updated_at) || Time.at(0)) >= cutoff
 
-        session = Session.summary_from_file(Session.session_file(row[:id], state_dir: state_dir))
+        session = Session.summary_from_file(Session.session_file(row.id, state_dir: state_dir))
         ended = time(session&.last_turn&.ended_at)
-        (ended || time(row[:updated_at])) >= cutoff
+        (ended || time(row.updated_at)) >= cutoff
       end
       private_class_method :active_since?
 
