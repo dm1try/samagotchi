@@ -266,6 +266,12 @@ RSpec.describe Samagotchi::Steer do
     expect(described_class.turn_opening?(described_class.message(text: "x", source: "s"))).to be(false)
   end
 
+  it ".opening_stamp is an opening's turn_id, else its opening_id; nil for neither (an older chi's line)" do
+    expect(described_class.opening_stamp({ role: "user", content: "hi", turn_id: "t1", opening_id: "o1" })).to eq("t1")
+    expect(described_class.opening_stamp({ "role" => "user", "opening_id" => "o1" })).to eq("o1")
+    expect(described_class.opening_stamp({ role: "user", content: "hi", turn_id: "" })).to be_nil
+  end
+
   it ".recovery? is KernelLoop's mid-turn line: a user line that opens no turn" do
     line = { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND, content: "Continue the previous assistant message" }
     expect(described_class.recovery?(line)).to be(true)
