@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "config"
-require_relative "model_profile"
 require_relative "setting_explained"
 
 module Samagotchi
@@ -139,13 +138,15 @@ module Samagotchi
     #              only the tail changes (llama.cpp and Splash keep the rest).
     # @param target [HostRegistry::ModelTarget]
     # @param profile [String, nil] the native prompt profile's name
+    # @param inferred [String, nil] the profile a local chat host's model
+    #   name says (ModelProfile.inferred_profile_name of its bare id)
     # @return [Symbol]
-    def cache_cost(target, profile: nil)
+    def cache_cost(target, profile: nil, inferred: nil)
       entry = target.entry
       if entry&.chat?
         return :provider if entry.remote?
 
-        return ModelProfile.inferred_profile_name(target.bare_model) == "gemma4" ? :full : :tail
+        return inferred == "gemma4" ? :full : :tail
       end
 
       profile == "gemma4" ? :full : :tail

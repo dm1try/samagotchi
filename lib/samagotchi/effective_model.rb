@@ -92,10 +92,12 @@ module Samagotchi
 
     # What a thinking level change costs the prompt cache
     # (Thinking.cache_cost); the block gives the prompt profile, asked only
-    # on a native host. Raises.
+    # on a native host; a local chat host's is the one its name says. Raises.
     # @return [Symbol]
     def thinking_cache_cost(&)
-      Thinking.cache_cost(target, profile: entry&.chat? ? nil : yield&.name)
+      return Thinking.cache_cost(target, inferred: ModelProfile.inferred_profile_name(bare)) if entry&.chat?
+
+      Thinking.cache_cost(target, profile: yield&.name)
     end
 
     # The reasoning_history level (ReasoningHistory.resolve), the session's

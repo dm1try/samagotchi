@@ -194,8 +194,8 @@ RSpec.describe Samagotchi::Thinking do
     it "is the whole prompt on Gemma (native, or a local chat server), the provider's on a remote chat host, the tail otherwise" do
       expect(described_class.cache_cost(target(chat: false), profile: "qwen36")).to eq(:tail)
       expect(described_class.cache_cost(target(chat: false), profile: "gemma4")).to eq(:full)
-      expect(described_class.cache_cost(target(chat: true, model: "google/Gemma-4-26B"), profile: nil)).to eq(:full)
-      expect(described_class.cache_cost(target(chat: true, model: "incoai/Qwen3.6-35B-A3B-Splash"))).to eq(:tail)
+      expect(described_class.cache_cost(target(chat: true, model: "google/Gemma-4-26B"), inferred: "gemma4")).to eq(:full)
+      expect(described_class.cache_cost(target(chat: true, model: "incoai/Qwen3.6-35B-A3B-Splash"), inferred: "qwen36")).to eq(:tail)
       expect(described_class.cache_cost(target(chat: true, remote: true, model: "google/gemma-4"))).to eq(:provider)
     end
   end
