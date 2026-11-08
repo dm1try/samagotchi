@@ -562,16 +562,8 @@ module Samagotchi
           next unless action&.from_source?
           next if @dry_run && action.word != :installed
 
-          target_path = File.join(@target_dir, file_key)
-          next unless File.exist?(target_path)
-
-          expected = @manifest.checksum_for(file_key)
-          next unless expected
-
-          actual = FileDigest.hex(target_path)
-          if actual != expected
-            @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
+          warning = FileDigest.mismatch(file_key, File.join(@target_dir, file_key), @manifest.checksum_for(file_key))
+          @warnings << warning if warning
         end
       end
 
