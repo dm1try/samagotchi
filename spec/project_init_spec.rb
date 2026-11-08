@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::ProjectInit do
     [home, @tmp, "/"].each do |target|
       outcome = described_class.call(target, home: home)
 
-      expect([outcome.kind, outcome.reason]).to eq([:refused, :above_home])
+      expect([outcome.kind, outcome.reason]).to eq(%i[refused above_home])
       expect(outcome.message).to include("is $HOME, a folder above it or /")
     end
   end
@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::ProjectInit do
 
     outcome = described_class.call(File.join(target, "child"), home: home)
 
-    expect([outcome.kind, outcome.reason]).to eq([:refused, :write_failed])
+    expect([outcome.kind, outcome.reason]).to eq(%i[refused write_failed])
     expect(outcome.message).to include("couldn't write #{marker(File.join(target, "child"))}")
   end
 end
