@@ -5,7 +5,7 @@ require_relative "../session_inbox"
 require_relative "../turn_checkpoint"
 require_relative "../continue_offer"
 require_relative "../steer"
-require_relative "../worker_link"
+require_relative "liveness"
 
 module Samagotchi
   module ReplyWait
@@ -73,6 +73,8 @@ module Samagotchi
       def look
         look_at_input
         session = Session.load(@id, state_dir: @state_dir)
+        # Who runs it, read once for this look's checks.
+        @live = Liveness.new(@id, state_dir: @state_dir)
         if (result = removed(session))
           return result
         end
@@ -172,9 +174,7 @@ module Samagotchi
       end
 
       # A worker holds the session's lock (a one-turn chi run's question is its own).
-      def worker_owned?
-        WorkerLink.resolve(Session.session_dir(@id, state_dir: @state_dir), unlink: false).worker_owned?
-      end
+      def worker_owned? = @live.worker_owned?
 
       # A participant's turn its worker holds while the owner's Continue
       # offer stands (Worker#run_input_files): it waits for the owner's
@@ -307,7 +307,7 @@ module Samagotchi
       def owner_gone(session)
         return nil unless @owner_grace
 
-        if SessionManager.session_owner(@id, state_dir: @state_dir)
+        if @live.owner?
           @gone_since = nil
         elsif ReplyWait.monotonic - (@gone_since ||= ReplyWait.monotonic) > @owner_grace
           return Result.new(status: :worker_gone, session: session)
