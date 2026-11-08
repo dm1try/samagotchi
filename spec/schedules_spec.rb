@@ -450,6 +450,11 @@ RSpec.describe Samagotchi::Schedules do
 
       ids = Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)
       expect(ids).to include(root, middle, schedules.lookup(entry.id).head)
+
+      # The head still walks its own chain: the pruned links are behind it,
+      # never in front of it.
+      head = schedules.lookup(entry.id).head
+      expect(Samagotchi::SessionChain.latest(head, state_dir: dir)).to eq(head)
     end
   end
 

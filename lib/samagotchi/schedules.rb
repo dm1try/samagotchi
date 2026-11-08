@@ -212,7 +212,7 @@ module Samagotchi
         id: SecureRandom.hex(8), title: title.to_s.strip.empty? ? nil : title.to_s.strip,
         anchor: anchor, head: anchor, mode: mode, prompt: prompt, recurrence: recurrence, busy: "skip",
         catch_up: given_catch_up,
-        keep_links: int_or_default(keep_links, "schedule.default_keep_links", 5, min: 0),
+        keep_links: int_or_default(keep_links, "schedule.default_keep_links", 5, min: 0, name: "keep_links"),
         max_failures: int_or_default(max_failures, "schedule.default_max_failures", 3, min: 1),
         max_skips: int_or_default(max_skips, "schedule.default_max_skips", 12, min: 1),
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
@@ -524,8 +524,13 @@ module Samagotchi
       entry
     end
 
-    def int_or_default(value, key, fallback, min:)
-      return [value.to_i, min].max if value.to_s.strip.match?(/\A-?\d+\z/)
+    # +name+ is what the caller's flag is called, so a bad value says which one.
+    def int_or_default(value, key, fallback, min:, name: key.split(".").last)
+      unless value.nil? || value.to_s.strip.empty?
+        raise Usage, "#{name} must be a number, got #{value.inspect}" unless value.to_s.strip.match?(/\A-?\d+\z/)
+
+        return [value.to_i, min].max
+      end
 
       configured = Config.get(key)
       configured.to_s.strip.match?(/\A-?\d+\z/) ? [configured.to_i, min].max : fallback

@@ -99,7 +99,8 @@ RSpec.describe Samagotchi::ScheduleCommand do
         ["--every", "0m"] => "every must be at least 1s, got 0m",
         ["--every", "1h", "--time", "09:00"] => "time is only for a weekday schedule",
         ["--weekday", "9", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)",
-        ["--weekday", "1abc", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)"
+        ["--weekday", "1abc", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)",
+        ["--every", "1h", "--keep-links", "abc"] => "keep_links must be a number"
       }.each do |argv, reason|
         status, _, error = run("add", "--session", id, *argv, "-m", "x")
         expect(status).to eq(2), argv.join(" ")
