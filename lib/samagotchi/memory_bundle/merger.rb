@@ -77,9 +77,9 @@ module Samagotchi
         # What the upgrade does to the file, with what it was read from: its
         # FileState, the UPGRADE action (a :decide cell answered by #outcome's
         # merge or legacy guard, through FileActions.decided) and the Outcome.
+        # @param state [FileState] the file's, when the caller has read it
         # @return [Decision]
-        def decision(file_key)
-          state = state(file_key)
+        def decision(file_key, state = state(file_key))
           action = FileActions.for(:upgrade, state)
           outcome = outcome_of(file_key, state, action)
           Decision.new(state: state, action: action.do == :decide ? FileActions.decided(outcome) : action, outcome: outcome)
@@ -169,7 +169,7 @@ module Samagotchi
 
           # The guard's own case at its plainest: the file is the base, which
           # may be the user's text. One that only gains lines loses nothing, and
-          # save_marked_file keeps a copy.
+          # its save_first keeps a copy (Installer#save_first).
           sides = paths(file_key)
           return FAST_FORWARD unless Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
 

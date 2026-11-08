@@ -32,7 +32,7 @@ module Samagotchi
     #     to miss, so the mark goes;
     #   - conflict: behind, and the mark records why, only when that changed;
     #   - fast_forward (one Merger::Upgrade#outcome lets go ahead): the next
-    #     upgrade's (save_marked_file), behind until then;
+    #     upgrade's (its save_first), behind until then;
     #   - install: a missing file, which isn't behind (FileStanding.behind?): the
     #     next upgrade or a restore puts it back, and a warning says so;
     #   - one it can't read or replace: left as it is, behind, saying why.

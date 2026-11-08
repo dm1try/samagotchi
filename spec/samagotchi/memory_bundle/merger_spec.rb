@@ -131,11 +131,11 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
       allow(Samagotchi::MemoryBundle::FileActions).to receive(:for).with(:upgrade, anything).and_return(action)
     end
 
-    it "refuses an action merge_memory has no step for, with nothing moved" do
+    it "refuses an action the Installer has no step for, with nothing moved" do
       File.write(File.join(memories, "a.md"), "edit\n")
       act_as(Samagotchi::MemoryBundle::FileActions::Action.new(do: :restore, word: :kept, next_base: :on_disk))
 
-      expect { install("2.0.0", "v2\n", upgrade: true) }.to raise_error(ArgumentError, "no outcome for :restore (a.md)")
+      expect { install("2.0.0", "v2\n", upgrade: true) }.to raise_error(ArgumentError, "no install step for :restore (a.md)")
       expect(base_text).to eq("v1\n")
       expect(provenance.record.version).to eq("1.0.0")
       expect(File.read(File.join(memories, "a.md"))).to eq("edit\n")

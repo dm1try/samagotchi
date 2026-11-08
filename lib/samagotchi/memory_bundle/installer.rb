@@ -47,10 +47,6 @@ module Samagotchi
         def initialize(word:, state: nil, action: nil, note: nil) = super
       end
 
-      # An upgrade dry run's word for each UPGRADE action's word (the real
-      # run's). A conflict is a conflict in both.
-      UPGRADE_DRY_WORDS = { updated: :fast_forward, kept: :keep, up_to_date: :noop, merged: :would_merge }.freeze
-
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
       # Each file this run left behind (FileStanding::Behind).
@@ -224,7 +220,7 @@ module Samagotchi
         line = "#{@name} was already installed from #{@source}: its hooks, rules, plugin and scripts " \
                "now match it and its record was rewritten"
         # :kept_own is the only way a memory is left out of a plain install
-        # (skip_existing): its bytes differ from the bundle's.
+        # (its KEPT_OWN or HELD row): its bytes differ from the bundle's.
         if @results.any? { |_, r| r.word == :kept_own }
           line << "; your own copies of its memories were kept (chi bundle upgrade #{@name} " \
                  "merges the bundle's changes into them)"
@@ -392,47 +388,38 @@ module Samagotchi
 
       # Copies the bundle's memories (MemoryFiles: the files: list, else
       # every *.md but README and the like) into the target dir and refreshes
-      # their index lines: an upgrade merges (merge_memory), a dry run only
-      # classifies (preview_memory), a plain install writes the new ones.
-      # Sets @bundle_md (every file the bundle ships) and @owned: the bundle
-      # owns (records, upgrades, removes) only the files it wrote, these
-      # from an earlier install and the ones written now. A same-name file
-      # that was already there is the user's: skipped and never recorded.
+      # their index lines. Each file's FileState and its command's row
+      # (FileActions: INSTALL, FORCE, UPGRADE) say what happens: a dry run
+      # only reads the row (preview_memory), a real run does it
+      # (write_memory). Sets @bundle_md (every file the bundle ships) and
+      # @owned: the bundle owns (records, upgrades, removes) only the files it
+      # wrote, these from an earlier install and the ones written now. A
+      # same-name file that was already there is the user's: skipped and never
+      # recorded (the not-owned rows).
       def install_memories
-        owned_before = @existing ? @existing.files.keys : []
         @bundle_md = []
         @owned = []
         warn_unshipped_files
         warn_symlinked_files
         memory_files.each do |file_key|
-          file_path = File.join(@bundle_dir, file_key)
           @bundle_md << file_key
           note_overlay(file_key, @target_dir)
-          target_path = File.join(@target_dir, file_key)
-          merging = @upgrade && @existing && !@force
+          state = FileState.of(file_key, record: @existing, provenance: @provenance, target_dir: @target_dir,
+                                         source_dir: @bundle_dir)
+          action = FileActions.for(memory_command, state)
+          next preview_memory(file_key, state, action) if @dry_run
 
-          if merging && File.exist?(target_path) && !owned_before.include?(file_key)
-            # Not the bundle's (the user's, or another bundle's): no merge.
-            skip_existing(file_key, file_path, target_path, @target_scope)
-          elsif merging && !@dry_run
-            @owned << file_key
-            merge_memory(file_key, file_path, target_path)
-          elsif @dry_run
-            preview_memory(file_key, file_path, target_path)
-          elsif File.exist?(target_path) && !@force
-            # A re-install keeps what an earlier install wrote.
-            @owned << file_key if owned_before.include?(file_key)
-            skip_existing(file_key, file_path, target_path, @target_scope, owned: owned_before.include?(file_key))
-          else
-            # Only --force gets here with a file in place: a copy keeps it.
-            @replaced << file_key if File.exist?(target_path)
-            @trash.copy(target_path) if File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
-            FileUtils.cp(file_path, target_path)
-            @owned << file_key
-            @actions[file_key] = FileActions::WRITE
-            @results[file_key] = FileResult.new(word: :installed)
-            update_target_index(@target_scope, target_path, file_key)
-          end
+          @owned << file_key unless action.record == :not_owned
+          write_memory(file_key, state, action)
+        end
+      end
+
+      # The table a memory's row is read from: --force (install or upgrade:
+      # one code path), an upgrade over a record, else a plain install.
+      def memory_command
+        if @force then :force
+        elsif @upgrade && @existing then :upgrade
+        else :install
         end
       end
 
@@ -452,18 +439,23 @@ module Samagotchi
         MemoryFiles.symlinks(@bundle_dir, @manifest).each { |name| @warnings << "#{name} is a symlink (not installed)" }
       end
 
-      # An upgrade's 3-way merge of one file: its FileState's UPGRADE action
-      # (Merger::Upgrade#decision, a :decide cell answered by the text merge
-      # against the base the last install recorded). A clean merge replaces
-      # the file; a conflict leaves it and is recorded in @conflicts for the
-      # agent step.
-      def merge_memory(file_key, file_path, target_path)
-        decision = upgrade_view.decision(file_key)
-        action = @actions[file_key] = decision.action
-        result = FileResult.new(word: action.word, state: decision.state, action: action)
+      # One memory's row, done: the bundle's text written (a copy of other
+      # bytes in the trash first), the text merge's result written, the file
+      # kept or left behind (a conflict, recorded in @conflicts for the agent
+      # step), or skipped as the user's; its index line refreshed. A :decide
+      # cell is the upgrade's (Merger::Upgrade#decision: the text merge or the
+      # legacy guard, against the base the last install recorded).
+      def write_memory(file_key, state, action)
+        file_path = state.paths[:incoming]
+        target_path = state.paths[:current]
+        decision = upgrade_view.decision(file_key, state) if action.do == :decide
+        action = decision.action if decision
+        @actions[file_key] = action
+        @replaced << file_key if @force && state.digests.disk
+        result = FileResult.new(word: action.word, state: state, action: action)
         case action.do
         when :write_incoming
-          save_marked_file(file_key, target_path) if action.save_first
+          save_first(file_key, file_path, target_path) if action.save_first
           FileUtils.cp(file_path, target_path)
           @results[file_key] = action.word == :updated ? result.with(note: "auto-merged (not edited)") : result
         when :merge
@@ -471,19 +463,31 @@ module Samagotchi
             @results[file_key] = result.with(note: "the bundle's changes joined to local edits")
           else
             @actions[file_key] = FileActions::BEHIND
-            note_conflict(file_key, Merger::CONFLICT.with(merge: TextMerge.failed(TextMerge::RACED)), decision.state)
+            note_conflict(file_key, Merger::CONFLICT.with(merge: TextMerge.failed(TextMerge::RACED)), state)
           end
         when :keep
           if action.behind?
-            note_conflict(file_key, decision.outcome, decision.state)
+            note_conflict(file_key, (decision || upgrade_view.decision(file_key, state)).outcome, state)
           elsif action.word == :kept
-            @results[file_key] = result.with(note: decision.outcome == Merger::KEEP ? "bundle unchanged, local edits preserved" : "local edits already hold the bundle's changes")
+            @results[file_key] = result.with(note: decision.nil? || decision.outcome == Merger::KEEP ? "bundle unchanged, local edits preserved" : "local edits already hold the bundle's changes")
           else
             @results[file_key] = result
           end
-        else raise ArgumentError, "no upgrade step for #{action.do.inspect} (#{file_key})" # the base would move with nothing written
+        when :skip
+          @results[file_key] = result.with(note: "already exists")
+          @warnings << "Skipped #{file_key} (already exists; #{FileStanding::FORCE_TAKES})"
+        when :refuse then refuse_unreadable(file_key, target_path)
+        else raise ArgumentError, "no install step for #{action.do.inspect} (#{file_key})" # the base would move with nothing written
         end
-        update_target_index(@target_scope, target_path, file_key)
+        update_target_index(@target_scope, target_path, file_key, owned: action.record != :not_owned)
+      end
+
+      # A file chi can't read: whether it was edited can't be told, so the
+      # run stops (the read raises; Trash.failure_message says nothing was
+      # lost).
+      def refuse_unreadable(file_key, target_path)
+        FileDigest.hex(target_path)
+        raise InstallError, "#{file_key} can't be read"
       end
 
       # The file stays as it is, with the old base and the mark, in FileStanding's
@@ -511,34 +515,41 @@ module Samagotchi
         @upgrade_view ||= Merger::Upgrade.new(provenance: @provenance, target_dir: @target_dir, source_dir: @bundle_dir)
       end
 
-      # A marked file that equals its base, and the update goes ahead: the base
-      # is known to be real (this chi's mark, or ShippedHistory), or no line of the
-      # file goes. A copy is kept, and it says so. (Merger::Upgrade#outcome stops
-      # an older chi's mark otherwise.)
-      def save_marked_file(file_key, target_path)
+      # A save_first cell: the file's other bytes go to the trash before the
+      # bundle's text replaces them. Under an upgrade that is a marked file
+      # that equals its base, and the update goes ahead: the base is known to
+      # be real (this chi's mark, or ShippedHistory), or no line of the file
+      # goes (Merger::Upgrade's legacy guard stops an older chi's mark
+      # otherwise), and it says so.
+      def save_first(file_key, file_path, target_path)
+        return unless File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
+
         @trash.copy(target_path)
+        return if @force
+
         @warnings << "#{file_key} was marked as kept but matched its recorded base, so it took the update; your copy is in the trash"
       end
 
-      # A dry run's verdict for one file, nothing written: an upgrade
-      # classifies as merge_memory would (its status is the classification).
-      def preview_memory(file_key, file_path, target_path)
-        unless File.exist?(target_path) && !@force
-          @results[file_key] = FileResult.new(word: :would_install)
-          return
-        end
+      # A dry run's word for an action's (the real run's): what would happen,
+      # nothing written. A conflict is reported as the real run would.
+      DRY_WORDS = { installed: :would_install, updated: :fast_forward, kept: :keep, merged: :would_merge,
+                    kept_own: :would_skip, up_to_date: :up_to_date }.freeze
 
-        if @upgrade && @existing
-          decision = upgrade_view.decision(file_key)
-          return note_conflict(file_key, decision.outcome, decision.state) if decision.action.behind?
+      # A dry run's verdict for one file: its row read, not done (a :decide
+      # cell's text merge runs on temp copies). --force would install every
+      # file, unread.
+      def preview_memory(file_key, state, action)
+        return @results[file_key] = FileResult.new(word: :would_install, state: state, action: action) if @force
+        return refuse_unreadable(file_key, state.paths[:current]) if action.do == :refuse
 
-          @results[file_key] = FileResult.new(word: UPGRADE_DRY_WORDS.fetch(decision.action.word), state: decision.state,
-                                              action: decision.action)
-        elsif FileUtils.identical?(file_path, target_path)
-          @results[file_key] = FileResult.new(word: :up_to_date)
-        else
-          @results[file_key] = FileResult.new(word: :would_skip)
-        end
+        decision = upgrade_view.decision(file_key, state) if action.do == :decide || action.behind?
+        action = decision.action if decision
+        return note_conflict(file_key, decision.outcome, state) if action.behind?
+
+        word = DRY_WORDS.fetch(action.word)
+        # An upgrade's dry run calls a file already the bundle's a noop (Skipped).
+        word = :noop if action.word == :up_to_date && action.record != :not_owned && memory_command == :upgrade
+        @results[file_key] = FileResult.new(word: word, state: state, action: action)
       end
 
       # Strict mode: a memory written from the bundle whose sha256 differs
@@ -621,7 +632,7 @@ module Samagotchi
       def held_conflict_marks
         return [] if @upgrade || @existing.nil?
 
-        kept = @owned.select { |key| @results[key]&.word == :kept_own && @existing.files.dig(key, :conflict) }
+        kept = @owned.select { |key| @actions[key].record == :hold_mark }
         kept.map { |key| held_mark(key) }
       end
 
@@ -677,11 +688,9 @@ module Samagotchi
       # sees the edit (not a fast-forward over it).
       def install_provenance_files
         files = @owned.each_with_object({}) do |file_key, map|
-          target_path = File.join(@target_dir, file_key)
-          next unless File.exist?(target_path)
+          next unless File.exist?(File.join(@target_dir, file_key))
 
-          kept = @existing && @results[file_key]&.word == :kept_own
-          map[file_key] = kept ? recorded_base(@provenance.base_path(file_key)) : target_path
+          map[file_key] = next_base(file_key, @actions.fetch(file_key))
         end
         files.merge(dropped_owned_files)
       end
@@ -701,23 +710,6 @@ module Samagotchi
 
           files[file_key] = recorded_base(@provenance.base_path(file_key))
         end
-      end
-
-      # A file already in the target dir that the install doesn't write: the
-      # same bytes are "already up to date", others are skipped with a
-      # --force hint (a dry run: would_skip). Its index line is refreshed
-      # (not on a dry run).
-      def skip_existing(file_key, file_path, target_path, scope, owned: false)
-        if FileUtils.identical?(file_path, target_path)
-          @results[file_key] = FileResult.new(word: :up_to_date)
-        elsif @dry_run
-          @results[file_key] = FileResult.new(word: :would_skip)
-          return
-        else
-          @results[file_key] = FileResult.new(word: :kept_own, note: "already exists")
-          @warnings << "Skipped #{file_key} (already exists; #{FileStanding::FORCE_TAKES})"
-        end
-        update_target_index(scope, target_path, file_key, owned: owned) unless @dry_run
       end
 
       # A file the previous version installed that this one doesn't ship:

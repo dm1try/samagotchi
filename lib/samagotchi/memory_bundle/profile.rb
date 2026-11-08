@@ -27,7 +27,7 @@ module Samagotchi
       # installed: members installed now; already: members found installed
       # (recorded, not reinstalled); skipped and failed: name => why;
       # kept_own: member installed now => its memory files the user already
-      # had, left as they are and not owned (Installer#skip_existing);
+      # had, left as they are and not owned (the INSTALL rows of a file not owned);
       # trash_copies: "member: line" for what --force copied to the trash
       # (Installer#trash_copy_line).
       InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, :kept_own, :trash_copies, keyword_init: true) do
