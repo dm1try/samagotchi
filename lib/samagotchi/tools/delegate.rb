@@ -345,12 +345,12 @@ module Samagotchi
       private_class_method :follow_up
 
       # The child's turn a delivered follow-up joins, for the wait
-      # (DelegateCursor#turn): the running turn's (its checkpoint mark), the
-      # follow-up merging into it; else the delivery's +enqueued_id+, the
-      # follow-up running as a turn of its own. Only
-      # from a worker that names turn_ids; nil otherwise, or when the
-      # running turn has no id (a delegate's first turn): the wait takes the
-      # next reply.
+      # (DelegateCursor#turn): the running turn's (its checkpoint mark; a
+      # delegate's first turn carries its first_turn_id), the follow-up
+      # merging into it; else the delivery's +enqueued_id+, the follow-up
+      # running as a turn of its own. Only from a worker that names
+      # turn_ids; nil otherwise, or when the running turn has no id: the
+      # wait takes the next reply.
       # A follow-up steered into a turn that ended before it merged runs as
       # its own turn, yet the wait is on the ended one (LOW, as before).
       # One the child's idle look missed being merged into a turn starting

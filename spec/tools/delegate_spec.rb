@@ -83,15 +83,18 @@ RSpec.describe "delegate tools" do
     s.save(state_dir: tmpdir)
   end
 
-  def write_reply(session, text)
-    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
+  # +turn+: the turn's id, as a worker names its reply (a new child's
+  # first turn: its first_turn_id, the turn its parent's wait is on).
+  def write_reply(session, text, turn: nil)
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text,
+                                          enqueued_id: turn)
   end
 
   # A turn that failed as its worker records it: idle, no reply, last_turn moved on.
-  def fail_turn(session, at:)
+  def fail_turn(session, at:, turn: nil)
     s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
     s.status = "idle"
-    s.last_turn = { "outcome" => "failed", "ended_at" => at }
+    s.last_turn = { "outcome" => "failed", "ended_at" => at, "enqueued_id" => turn }.compact
     s.save(state_dir: tmpdir)
   end
 
@@ -322,7 +325,7 @@ RSpec.describe "delegate tools" do
       parent
       later do
         child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
-        write_reply(child, "42 specs\n")
+        write_reply(child, "42 specs\n", turn: child.first_turn_id)
         set_status(child, "idle")
       end
 
@@ -337,8 +340,8 @@ RSpec.describe "delegate tools" do
       later do
         child_id = (session_files - [parent.id]).first
         # Every turn's end records last_turn as it goes idle (Engine#end_turn); no outcome: the generic line.
-        set_status(Samagotchi::Session.load(child_id, state_dir: tmpdir), "idle",
-                   last_turn: { "ended_at" => Time.now.iso8601(3) })
+        child = Samagotchi::Session.load(child_id, state_dir: tmpdir)
+        set_status(child, "idle", last_turn: { "ended_at" => Time.now.iso8601(3), "enqueued_id" => child.first_turn_id })
       end
 
       out = described_class.call("count the specs", peers: peers)
@@ -346,10 +349,33 @@ RSpec.describe "delegate tools" do
       expect(out).to end_with("status: no_answer\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
     end
 
+    # Between the child's worker going live (its sidecar names turn_ids)
+    # and its first turn's mark, the child reads running with no mark: a
+    # wait bound to that turn without queued would read it as merged into
+    # another turn and take whichever reply came next.
+    it "reports the child's first turn by that turn when it ends before its mark is saved, not by the next reply" do
+      parent
+      later do
+        child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+        live_sidecar_fixture(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), port: 1,
+                                                                                           features: %w[delivery turn_ids])
+        write_reply(child, "another turn's reply\n", turn: "wake-1")
+        looked(2)
+        write_reply(child, "the first turn's reply\n", turn: child.first_turn_id)
+        set_status(child, "idle", last_turn: { "ended_at" => Time.now.iso8601(3), "enqueued_id" => child.first_turn_id })
+      end
+
+      out = described_class.call("count the specs", timeout: 5, peers: peers)
+
+      expect(out).to end_with("status: answered\n---\nthe first turn's reply\n")
+    end
+
     it "reports a first turn that failed before the wait's first look, not a timeout" do
       parent
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_wrap_original do |original, **kwargs|
-        original.call(**kwargs).tap { |child| fail_turn(child, at: "2026-09-30T10:00:01.000+02:00") }
+        original.call(**kwargs).tap do |child|
+          fail_turn(child, at: "2026-09-30T10:00:01.000+02:00", turn: child.first_turn_id)
+        end
       end
 
       out = described_class.call("count the specs", timeout: 2, peers: peers)

@@ -280,11 +280,15 @@ module Samagotchi
         DelegateCursors.update(parent_id, child_id, state_dir: state_dir) { |cursor| cursor.with(turn: turn) }
       end
 
-      # A new child's baseline: as spawned, before its first turn ran.
+      # A new child's baseline: as spawned, before its first turn ran, and
+      # its first turn (Session#first_turn_id, the prompt's turn) as the
+      # one waited for: queued (ReplyWait::Target.from_cursor), so the
+      # window between its worker going live and that turn's mark doesn't
+      # read as a merge into another turn.
       # @param child [Session] the session spawn_session returned
       def mark_started(parent_id, child, state_dir:)
         DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
-          cursor.with(turn: nil).with_baseline(ReplyWait.baseline_of(child, question_id: nil))
+          cursor.with(turn: child.first_turn_id).with_baseline(ReplyWait.baseline_of(child, question_id: nil))
         end
       end
 
