@@ -68,10 +68,23 @@ RSpec.describe Samagotchi::ContextCommand do
         expect(out.string).to eq("project app  attached notes\n")
       end
 
-      it "refuses --project outside a git repository", local_only: "--project (Contract)" do
+      it "refuses --project outside a project", local_only: "--project (Contract)" do
         plain = File.join(tmpdir, "plain").tap { |d| FileUtils.mkdir_p(d) }
         expect(run("add", "notes", "--push", "--project", cwd: plain)).to eq(1)
-        expect(err.string).to include("--project needs a git repository")
+        expect(err.string).to include("--project needs a project (a git repository, or a folder marked with " \
+                                      "`chi project init`), and #{plain} is in none")
+      end
+
+      it "stores --project's source for a marked folder, from a subfolder of it", local_only: "--project (Contract)" do
+        marked = File.join(tmpdir, "notes")
+        FileUtils.mkdir_p(File.join(marked, "sub"))
+        FileUtils.mkdir_p(File.join(marked, ".chi"))
+        File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+
+        expect(run("add", "todo", "--push", "--project", cwd: File.join(marked, "sub"))).to eq(0), err.string
+        location = Samagotchi::ContextSources.project_location_for(File.realpath(marked), state_dir: state_dir)
+        expect(location.source("todo")).to have_attributes(scope: "project")
+        expect(out.string).to eq("project notes  attached todo\n")
       end
 
       it "defaults to the session it runs in (SAMAGOTCHI_PARENT_SESSION) and marks it the agent's",

@@ -342,14 +342,21 @@ RSpec.describe Samagotchi::ContextSources do
     end
   end
 
-  it ".project_cwd: the root when it is a checkout (.git a dir or a file), else the fallback" do
+  it ".project_cwd: the root when it is a checkout (.git a dir or a file) or a marked folder, else the fallback" do
     checkout = File.join(tmpdir, "app").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) }
+    marked = File.join(tmpdir, "notes").tap do |d|
+      FileUtils.mkdir_p(File.join(d, ".chi"))
+      File.write(File.join(d, Samagotchi::MemoryPaths::MARKER), "")
+    end
+    bare_chi = File.join(tmpdir, "dotchi").tap { |d| FileUtils.mkdir_p(File.join(d, ".chi")) }
     linked = File.join(tmpdir, "wt").tap { |d| FileUtils.mkdir_p(d) && File.write(File.join(d, ".git"), "gitdir: x\n") }
     bare = File.join(tmpdir, "proj", ".bare").tap { |d| FileUtils.mkdir_p(d) }
 
     expect(described_class.project_cwd(checkout, "/fallback")).to eq(checkout)
     expect(described_class.project_cwd(linked, "/fallback")).to eq(linked)
     expect(described_class.project_cwd(bare, "/fallback")).to eq("/fallback")
+    expect(described_class.project_cwd(marked, "/fallback")).to eq(marked)
+    expect(described_class.project_cwd(bare_chi, "/fallback")).to eq("/fallback")
     expect(described_class.project_cwd(nil, "/fallback")).to eq("/fallback")
   end
 

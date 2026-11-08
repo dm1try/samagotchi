@@ -72,7 +72,16 @@ RSpec.describe Samagotchi::MemoryOrphans do
       expect([found.candidates, found.computed_exists]).to eq([[orphan], true])
     end
 
-    it "is nil outside a git repository" do
+    it "names a candidate for a folder marked by chi project init, from a subfolder of it" do
+      root = File.join(tmp, "src", "notes")
+      FileUtils.mkdir_p(File.join(root, ".chi"))
+      FileUtils.mkdir_p(File.join(root, "sub"))
+      File.write(File.join(root, Samagotchi::MemoryPaths::MARKER), "")
+      orphan = folder("notes_0123abcd")
+      expect(described_class.find(env: env, cwd: File.join(root, "sub")).candidates).to eq([orphan])
+    end
+
+    it "is nil outside a project" do
       cwd = File.join(tmp, "plain", "app")
       FileUtils.mkdir_p(cwd)
       folder("app_0123abcd")

@@ -47,6 +47,16 @@ RSpec.describe Samagotchi::Web::ProjectList do
     expect(rows.first).to include(name: "alpha", dir: folder, sessions: 2, default: true, current: true)
   end
 
+  it "lists a folder marked by chi project init with its sessions" do
+    marked = File.join(@tmp, "notes")
+    FileUtils.mkdir_p(File.join(marked, ".chi"))
+    File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+
+    rows = described_class.build([summary(marked), summary(marked)], start_dir: @tmp, current_root: nil)
+
+    expect(rows).to contain_exactly(include(root: marked, name: "notes", sessions: 2))
+  end
+
   it "adds the start project with no sessions, using the start folder as its dir" do
     rows = described_class.build([], start_dir: folder, current_root: nil)
 

@@ -57,6 +57,20 @@ RSpec.describe Samagotchi::ProjectScope do
       expect(described_class.root_for(File.join(@tmp, "gone"))).to be_nil
     end
 
+    it "is the marked folder's realpath for it and a subfolder (git wins over a marker)" do
+      marked = File.join(@tmp, "notes")
+      FileUtils.mkdir_p(File.join(marked, ".chi"))
+      FileUtils.mkdir_p(File.join(marked, "sub"))
+      File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+      FileUtils.mkdir_p(File.join(repo, ".chi"))
+      File.write(File.join(repo, Samagotchi::MemoryPaths::MARKER), "")
+
+      expect(described_class.root_for(marked)).to eq(File.join(real_tmp, "notes"))
+      expect(described_class.root_for(File.join(marked, "sub"))).to eq(File.join(real_tmp, "notes"))
+      expect(described_class.root_for(File.join(real_tmp, "notes", "sub"))).to eq(File.join(real_tmp, "notes"))
+      expect(described_class.root_for(repo)).to eq(repo_root)
+    end
+
     it "reuses a cache across calls" do
       cache = {}
       described_class.root_for(repo, cache: cache)
@@ -92,6 +106,18 @@ RSpec.describe Samagotchi::ProjectScope do
 
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).project_root).to eq(repo_root)
       expect(Samagotchi::Session.list(state_dir: state_dir, project_root: repo_root).map(&:id)).to eq([session.id])
+    end
+
+    it "joins a folder marked after the session was saved: a stored nil is looked up again" do
+      session = session_in(plain)
+      expect(JSON.parse(File.read(File.join(state_dir, "#{session.id}.json")))["project_root"]).to be_nil
+
+      FileUtils.mkdir_p(File.join(plain, ".chi"))
+      File.write(File.join(plain, Samagotchi::MemoryPaths::MARKER), "")
+      marked_root = File.join(real_tmp, "plain")
+
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).project_root).to eq(marked_root)
+      expect(Samagotchi::Session.list(state_dir: state_dir, project_root: marked_root).map(&:id)).to eq([session.id])
     end
 
     it "keeps the stored project when the worktree folder is gone" do

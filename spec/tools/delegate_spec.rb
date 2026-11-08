@@ -526,7 +526,7 @@ RSpec.describe "delegate tools" do
         child = make(parent_id: parent.id, prompt: "first", status: "idle")
 
         expect(described_class.call("x", cwd: other, wait: false, peers: worker_peers))
-          .to eq("Error: cwd must be a folder of this session's repository (a worktree or subfolder of it), not #{other}")
+          .to eq("Error: cwd must be a folder of this session's project (a worktree or subfolder of it), not #{other}")
         expect(described_class.call("x", cwd: "../nope", wait: false, peers: worker_peers))
           .to eq("Error: cwd #{File.join(File.dirname(repo), "nope")} is not a folder (create the worktree first)")
         expect(described_class.call("x", session: child.id, cwd: repo, wait: false, peers: worker_peers))
@@ -581,8 +581,32 @@ RSpec.describe "delegate tools" do
         loose_peers = Samagotchi::Tools::Peers.new(session_id: loose.id, cwd: plain, state_dir: tmpdir)
 
         expect(described_class.call("x", cwd: "../plain-sibling", wait: false, peers: loose_peers))
-          .to start_with("Error: cwd must be a folder of this session's repository")
+          .to start_with("Error: cwd must be a folder of this session's project")
         expect(described_class.call("x", cwd: "sub", wait: false, peers: loose_peers)).to include("status: running")
+      end
+
+      it "in a marked project takes any folder of it, but not a nested repository, a nested marked project or outside" do
+        marked = File.join(File.realpath(tmpdir), "notes")
+        mark = lambda do |dir|
+          FileUtils.mkdir_p(File.join(dir, ".chi"))
+          File.write(File.join(dir, Samagotchi::MemoryPaths::MARKER), "")
+        end
+        mark.call(marked)
+        %w[a/deep b].each { |sub| FileUtils.mkdir_p(File.join(marked, sub)) }
+        git("init", "-q", File.join(marked, "repo"))
+        mark.call(File.join(marked, "inner"))
+        FileUtils.mkdir_p(File.join(File.realpath(tmpdir), "elsewhere"))
+        session = make(cwd: File.join(marked, "a"), prompt: "plan")
+        peers = Samagotchi::Tools::Peers.new(session_id: session.id, cwd: File.join(marked, "a"), state_dir: tmpdir)
+        refusal = ->(folder) { "Error: cwd must be a folder of this session's project (a worktree or subfolder of it), not #{folder}" }
+
+        expect(described_class.call("x", cwd: "../repo", wait: false, peers: peers)).to eq(refusal.call(File.join(marked, "repo")))
+        expect(described_class.call("x", cwd: "../inner", wait: false, peers: peers)).to eq(refusal.call(File.join(marked, "inner")))
+        expect(described_class.call("x", cwd: "../../elsewhere", wait: false, peers: peers))
+          .to eq(refusal.call(File.join(File.realpath(tmpdir), "elsewhere")))
+        expect(described_class.call("x", cwd: "../b", wait: false, peers: peers)).to include("status: running")
+        child = (session_files - [parent.id, session.id]).first
+        expect(Samagotchi::Session.load(child, state_dir: tmpdir).working_directory).to eq(File.join(marked, "b"))
       end
     end
 
