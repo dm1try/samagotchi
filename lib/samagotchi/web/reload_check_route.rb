@@ -25,6 +25,30 @@ module Samagotchi
       # dropped.
       TURN_ID = /\A[0-9A-Za-z_-]{1,64}\z/
 
+      # The turns already checked, by session and turn id: every open owner
+      # tab runs the check, and only the first one's report is logged (a
+      # second tab's is answered 204 and dropped). Bounded: the oldest go
+      # first past LIMIT; a restarted chi web starts over.
+      class Seen
+        LIMIT = 2000
+
+        def initialize
+          @mutex = Mutex.new
+          @keys = {}
+        end
+
+        # Whether +key+ is new (and now seen).
+        def first?(key)
+          @mutex.synchronize do
+            next false if @keys.key?(key)
+
+            @keys[key] = true
+            @keys.shift while @keys.size > LIMIT
+            true
+          end
+        end
+      end
+
       private
 
       # {turn_id, same, kinds, excused, explained, drawn} from the page: 204,
@@ -37,6 +61,9 @@ module Samagotchi
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
         turn_id = body["turn_id"].to_s.match?(TURN_ID) ? body["turn_id"] : nil
+        # Another tab's report of a turn already counted.
+        return [204, { "Cache-Control" => "no-store" }, []] if turn_id && !@reload_checks.first?([id, turn_id])
+
         same = body["same"] == true
         drawn = body["drawn"] == true
         fields = { sid: id, turn_id: turn_id, same: same, drawn: drawn, worker_version: checked_worker_version(id) }

@@ -69,6 +69,22 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
     expect(lines.last.last).to include(worker_version: "0.157.0")
   end
 
+  it "logs a turn once: another tab's report of it is answered and dropped" do
+    report = { turn_id: "T1", same: false, kinds: ["row"], drawn: false }
+    expect(post(report)).to eq([204, ""])
+    expect(post(report)).to eq([204, ""])
+    post(report.merge(turn_id: "T2"))
+
+    expect(lines.map { |event, fields| [event, fields[:turn_id]] })
+      .to eq([%w[reload_checked T1], %w[reload_mismatch T1], %w[reload_checked T2], %w[reload_mismatch T2]])
+  end
+
+  it "keeps a bounded memory of the turns it logged" do
+    seen = Samagotchi::Web::ReloadCheckRoute::Seen.new
+    stub_const("Samagotchi::Web::ReloadCheckRoute::Seen::LIMIT", 2)
+    expect(%w[a b a c a].map { |key| seen.first?(key) }).to eq([true, true, false, true, true])
+  end
+
   it "refuses a body that isn't a JSON object" do
     expect(post("nope").first).to eq(400)
     expect(lines).to eq([])

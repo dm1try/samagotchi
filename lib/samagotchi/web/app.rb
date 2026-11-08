@@ -207,6 +207,7 @@ module Samagotchi
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @working_set = working_set
         @reload_check = reload_check
+        @reload_checks = ReloadCheckRoute::Seen.new
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @editor_url = Editor.template(editor)
         @hub = hub
