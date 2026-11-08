@@ -72,8 +72,9 @@ module Samagotchi
 
     # One schedule as the file stores it. `anchor` never changes (the chain's
     # root and the provenance of the schedule); `head` is the chain's current
-    # link, re-anchored after every successful chain firing — that is what
-    # makes keep_links pruning provably safe: everything deleted is behind it.
+    # link, re-anchored after every firing — the link a chain continue made, or
+    # the session a same-mode turn was queued into. That is what makes
+    # keep_links pruning provably safe: everything deleted is behind it.
     # `due_was` is the occurrence the last tick attempted: a skip or a failure
     # puts the clock back to it.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
@@ -635,22 +636,25 @@ module Samagotchi
       busy_reason(entry, index, target)
     end
 
-    # The session the entry would act on: for a chain, the head followed
-    # through a human continue (SessionChain.latest, the same walk
-    # SessionContinue.run does for `last:`); for same, the anchor itself.
+    # The session the entry would act on: its head, followed through every
+    # continue made since it was last written — a chain firing's new link or a
+    # human `chi send --continues`/`chi resume` (SessionChain.latest, the same
+    # walk SessionContinue.run does for `last:`). Both modes use the walk: a
+    # chain continues that link, a same-mode entry queues a turn in it. The
+    # anchor alone is not enough for either: the first continue archives it, so
+    # a same-mode entry read literally would fail "archived" from then on, and
+    # the chain would continue a link that is no longer the end. The anchor is
+    # the fallback when the head is gone (pruned or deleted by hand): the walk
+    # from it still finds the chain's end.
     def target_of(entry, index)
-      if entry.mode == CHAIN
-        head = index.latest(index.gone?(entry.head) ? entry.anchor : entry.head)
-        return [nil, "the chain is gone"] if index.gone?(head)
-        return [nil, "archived"] if index.archived?(head)
-
-        [head, nil]
-      else
-        return [nil, "the session it was made against is gone"] if index.gone?(entry.anchor)
-        return [nil, "archived"] if index.archived?(entry.anchor)
-
-        [entry.anchor, nil]
+      head = index.latest(index.gone?(entry.head) ? entry.anchor : entry.head)
+      if index.gone?(head)
+        return [nil, entry.mode == CHAIN ? "the chain is gone" : "the session it was made against is gone"]
       end
+
+      return [nil, "archived"] if index.archived?(head)
+
+      [head, nil]
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no
@@ -731,7 +735,7 @@ module Samagotchi
     end
 
     def fire(entry, index)
-      entry.mode == CHAIN ? fire_chain(entry, index) : fire_same(entry)
+      entry.mode == CHAIN ? fire_chain(entry, index) : fire_same(entry, index)
     rescue StandardError => e
       # run_locked re-raises whatever spawn_continuation throws after undoing
       # the move: a spawn failure or an ENOSPC is a failure, not a skip.
@@ -754,15 +758,22 @@ module Samagotchi
       classify(entry, e.reason, e.message)
     end
 
-    def fire_same(entry)
-      dir = Session.session_dir(entry.anchor, state_dir: @state_dir)
+    def fire_same(entry, index)
+      target, reason = target_of(entry, index)
+      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: reason, entry: entry) if target.nil?
+
+      # Checked again, against the files: a continue made between the tick's
+      # listing and this moment archives the target it just resolved to.
+      dir = Session.session_dir(target, state_dir: @state_dir)
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "archived", entry: entry) if ArchiveStore.archived?(dir)
 
-      result = SessionManager.deliver_turn(entry.anchor, prompt: entry.prompt,
+      result = SessionManager.deliver_turn(target, prompt: entry.prompt,
                                           client_id: ClientId.schedule(entry.id),
                                           delivery: Delivery::QUEUE, state_dir: @state_dir)
       if result.accepted?
-        Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "queued a turn", entry: entry)
+        # The head follows the turn: the next tick resolves from the link this
+        # one fired into, so the walk survives a link deleted in between.
+        Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "queued a turn", entry: entry.with(head: target))
       else
         Outcome.new(id: entry.id, title: entry.title, status: "failed",
                     detail: "the turn was not accepted (#{result.status}: #{result.error || result.detail})", entry: entry)

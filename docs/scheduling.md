@@ -10,7 +10,8 @@ walks the entries whose `next_due` has passed and runs the ones that are not bus
 
 Each entry carries `id`, an optional `title`, `anchor` (the session it was made
 against, never rewritten: the chain's root and the id you remember), `head` (the
-chain's current link, re-anchored after every successful chain firing), `mode`,
+chain's current link, re-anchored after every firing: the link a chain continue
+made, or the session a `same` turn was queued into), `mode`,
 `prompt`, `recurrence`, `catch_up`, `keep_links`, `max_failures`, `max_skips`,
 `next_due` (UTC ISO), `last_fired`, `last_result`, `failures`, `skips` and
 `enabled`.
@@ -43,7 +44,10 @@ a participant's review or pair turn is denied them ([guardrails.md](guardrails.m
   day with the recap of the last one instead of a 40-link transcript.
 - **same** queues the prompt as a turn **in the session itself**
   (`SessionManager.deliver_turn`, `Delivery::QUEUE`), waking a worker when none runs.
-  It prunes nothing, and it never archives anything.
+  It prunes nothing, and it never archives anything. Like chain mode, it follows
+  `head` through the chain: once the session is continued — by a chain schedule or
+  by a `chi send --continues` — the turn goes to the new link, not to the archived
+  anchor the schedule was made against.
 
 A `scratch` session is refused at `add`: it is deleted when its terminal leaves.
 A prompt is checked at `add` too — non-empty and at most 16 KiB

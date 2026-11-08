@@ -664,6 +664,57 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "queues a same-mode turn into the chain's latest link after a human continue" do
+    Dir.mktmpdir("schedules-same-continue") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      schedules.add(target: anchor, prompt: "Check the queue", recurrence: every("1m"), mode: described_class::SAME)
+      # A person continues the session: the anchor is archived, the schedule's
+      # head is still it. Reading the anchor literally would fail "archived"
+      # every tick and disable the schedule after three of them.
+      link = Samagotchi::SessionContinue.run(anchor, prompt: "carried on by hand", state_dir: dir)
+      set_idle(dir, link.id) # the link is still marked running from its spawn
+      delivered = []
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **kwargs|
+        delivered << { id: id, prompt: prompt, delivery: kwargs[:delivery] }
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+      end
+
+      outcome = schedules.tick(now: Time.now + 120).outcomes.first
+      expect([outcome.status, outcome.detail]).to eq(["fired", "queued a turn"])
+      expect(delivered).to eq([{ id: link.id, prompt: "Check the queue", delivery: Samagotchi::Delivery::QUEUE }])
+      expect(archived?(dir, anchor)).to be(true)
+    end
+  end
+
+  it "keeps a same-mode entry's head at the link it last fired into" do
+    Dir.mktmpdir("schedules-same-head") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, _prompt, **_kwargs|
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+      end
+
+      schedules.tick(now: Time.now + 120)
+      expect(schedules.lookup(entry.id).head).to eq(anchor)
+
+      link = Samagotchi::SessionContinue.run(anchor, prompt: "by hand", state_dir: dir)
+      set_idle(dir, link.id)
+      expect(schedules.run_now(entry.id).status).to eq("fired")
+      stored = schedules.lookup(entry.id)
+      expect([stored.anchor, stored.head]).to eq([anchor, link.id])
+
+      # The head, not the archived anchor, is what the next tick resolves from.
+      set_idle(dir, link.id)
+      expect(schedules.tick(now: Time.now + 240).outcomes.first.status).to eq("fired")
+    end
+  end
+
   it "does not fire an `every 30m` schedule at every tick" do
     Dir.mktmpdir("schedules-every") do |root|
       dir = File.join(root, "sessions")
