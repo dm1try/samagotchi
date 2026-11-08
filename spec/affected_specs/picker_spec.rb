@@ -189,7 +189,8 @@ RSpec.describe AffectedSpecs::Picker do
 
   it "picks the bundle-state corpus for the bundle code, chi bundle, the paths and overlays it reads, its fixtures and helpers, by a rule" do
     corpus = %w[spec/samagotchi/memory_bundle/file_state_corpus/cases_spec.rb
-                spec/samagotchi/memory_bundle/file_state_corpus/upgrade_spec.rb]
+                spec/samagotchi/memory_bundle/file_state_corpus/upgrade_spec.rb
+                spec/samagotchi/memory_bundle/file_actions_spec.rb]
     corpus.each { |path| files[path] = "" }
 
     %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/memory_bundle.rb lib/samagotchi/bundle_command.rb

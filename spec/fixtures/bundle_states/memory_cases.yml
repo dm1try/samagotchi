@@ -482,15 +482,16 @@ cases:
 
   # A record whose base isn't its checksum's text: the checksum answers first.
   - id: recorded_other
-    kind: edited
+    kind: pristine
     base: abc
     disk: abc
     incoming: abC
     recorded: other
     divergent: edited-rule
     note: >-
-      kind edited: Provenance.unchanged? reads the checksum first, so status says modified and uninstall asks for
-      --force, while Merger.classify reads the base: upgrade fast-forwards it with no trash copy A plain install
+      kind pristine while upgrades read the base (D == B); source-less it is edited: Provenance.unchanged? reads the
+      checksum first, so status says modified and uninstall asks for --force, while the upgrade reads the base and
+      fast-forwards it with no trash copy. A plain install
       rewrites its checksum to the file's, so status turns from modified to ok and uninstall stops refusing, with no
       user action. Its upgrade cell is invariant 1's allowlist entry.
 
