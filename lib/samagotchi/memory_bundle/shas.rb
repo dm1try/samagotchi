@@ -14,7 +14,7 @@ module Samagotchi
 
       # A sha line that doesn't match its file: +old+ is the hex the line
       # holds ("" for a placeholder `sha256: sha256:`), nil when the entry
-      # has no sha line at all (a plugin:, hooks: or scripts: entry the
+      # has no sha line at all (a plugin: or scripts: entry the
       # installer then takes unchecked; .refresh can't write one).
       Stale = Data.define(:file, :old, :new)
 
@@ -30,7 +30,6 @@ module Samagotchi
       # names, the layout otherwise untouched. The shapes:
       #   files:            a.md: sha256:<hex>             (dir/a.md)
       #                     a.md:\n    sha256: sha256:<hex> (dir/a.md, with description:)
-      #   hooks:            h.rb:\n    sha256: sha256:<hex> (dir/hooks/h.rb)
       #   plugin:           file: p.rb\n  sha256: sha256:<hex> (dir/p.rb)
       #   scripts:          s.rb: sha256:<hex>             (dir/scripts/s.rb)
       # Returns [text, [[relative file, old sha, new sha], ...]] for the lines
@@ -43,8 +42,9 @@ module Samagotchi
         [text, changes]
       end
 
-      # The stale sha lines of the bundle at +dir+, then the plugin:, hooks:
-      # and scripts: entries with no sha line, as [Stale].
+      # The stale sha lines of the bundle at +dir+, then the plugin: and
+      # scripts: entries with no sha line, as [Stale]. (A hooks: key, which
+      # chi refuses, has no sha lines here.)
       def stale(dir, text = File.read(File.join(dir, "manifest.yml")))
         _, changes, unlined = scan(dir, text)
         changes.map { |file, old, new| Stale.new(file, old, new) } +
@@ -86,11 +86,10 @@ module Samagotchi
       # take a placeholder (`chi bundle check`) parse this text.
       def parseable(text) = text.gsub(/^(\s*(?:["']?[^"':\s][^"':]*["']?: )?)sha256:(?=[ \t]*(?:#[^\r\n]*)?\r?$)/, "\\1sha256:0")
 
-      # The code files the manifest names (plugin, hooks, scripts), as paths
+      # The code files the manifest names (plugin, scripts), as paths
       # relative to the bundle dir.
       def coded(parsed, plugin_file)
         (plugin_file.is_a?(String) ? [plugin_file] : []) +
-          keys(parsed["hooks"]).map { |h| File.join("hooks", h) } +
           keys(parsed["scripts"]).map { |s| File.join("scripts", s) }
       end
       private_class_method :coded
@@ -114,8 +113,6 @@ module Samagotchi
         when "files"
           m = line.match(/\A(    sha256: )sha256:\h*#{TAIL}/) and return sub && [sub.delete("\"'"), m[1]]
           m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*#{TAIL}/) and [m[2], m[1]]
-        when "hooks"
-          m = line.match(/\A(    sha256: )sha256:\h*#{TAIL}/) and sub and [File.join("hooks", sub.delete("\"'")), m[1]]
         when "plugin"
           m = line.match(/\A(  sha256: )sha256:\h*#{TAIL}/) and plugin_file and [plugin_file, m[1]]
         when "scripts"

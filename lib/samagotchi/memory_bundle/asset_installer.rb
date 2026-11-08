@@ -21,7 +21,7 @@ module Samagotchi
     # A dev install (+dev+, `chi bundle install --dev`) links each file to
     # the source instead of copying it, and warns of no checksum mismatch.
     # An edited file it replaces or removes is copied to the trash first,
-    # under its subfolder (Trash#copy_edit); a link never is.
+    # under its subfolder (Trash#copy_edits); a link never is.
     class AssetInstaller
       # What was installed: the paths Provenance#write records (each
       # empty / nil on a dry run).

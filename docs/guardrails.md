@@ -1393,7 +1393,7 @@ chi bundle install known-names    # or chi bundle install dev
 ```
 
 installs a plugin with one `before_tool_call` hook (`chi.on`, priority 50; a
-`hooks/known_names.rb` file before known-names 0.2.0) and a short memory. A local model that
+`hooks/known_names.rb` file before known-names 0.2.0, which chi no longer loads) and a short memory. A local model that
 once misspells a name inside a path (`jonathandoe` → `jonathndoe`)
 keeps copying the wrong spelling from its context, and every call after
 that fails. The hook knows the right names and compares strings: the
@@ -1433,7 +1433,7 @@ run*, *Run as is*, *Deny*; with no one to ask (`--non-interactive`) or a
 dismissed question it rejects. A real near name (a folder `jondoe` next to
 user `johndoe`, a login one letter from another) is caught too: list it under
 `ignore:`. The hook is `on_error: log`: a bug in it warns and lets the call
-through. As with every bundle hook, a running worker picks it up after its
+through. As with every plugin, a running worker picks it up after its
 next start.
 
 The system prompt names the home directory once, with the advice to write
@@ -1442,7 +1442,8 @@ it as `~` or `$HOME`, so the model rarely has to spell it.
 ## An external guard: chi-nah
 
 [chi-nah](https://github.com/dm1try/chi-nah) is a bundle kept in its own repo (`chi bundle install
-https://github.com/dm1try/chi-nah`). Its `before_tool_call` hook asks
+https://github.com/dm1try/chi-nah`). Its plugin's `before_tool_call` hook (`chi.on`, chi-nah 0.2.0;
+0.1.x shipped it as a class-file hook, which chi no longer loads: `chi bundle upgrade chi-nah`) asks
 [nah](https://github.com/manuelschipper/nah)'s deterministic guards about every `execute`, `task_create`,
 `read`, `write` and `edit`: a call nah blocks (secret exfiltration, `rm -rf ~`, `git reset --hard`,
 `curl | sh`…) is denied with the guard's name and how the user pauses it (`nah nap <guard>`); everything
@@ -1450,13 +1451,13 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
 
 ## Failing closed
 
-- A config hook with `required: true`, a bundle `before_tool_call` hook with
-  `on_error: fail_closed`, or a bundle plugin its manifest marks `required: true`
+- A config hook with `required: true`, or a bundle plugin its manifest marks `required: true`
   (`plugin:` `required: true`, for a `chi.on(:before_tool_call, on_error:
   :fail_closed)` guard, chi 0.157.0 or newer, [plugins.md](plugins.md#a-guard-that-fails-closed-on_error-fail_closed)),
   that fails to load (missing, syntax error, an unmet `requires_chi`, or for a
-  bundle's file a sha256 that differs from the installed one) makes chi deny
-  every tool call. A fail-closed hook that raises when called denies that call.
+  plugin a sha256 that differs from the installed one) makes chi deny
+  every tool call. (An older chi's class-file bundle hooks don't load at all,
+  `fail_closed` or not: a not-required failure, [hooks.md](hooks.md#class-file-hooks-are-retired).) A fail-closed hook that raises when called denies that call.
 - Other hooks stay fail-open; a load failure is a warning.
 - Every load failure is shown once, at the start of the first turn
   (`guardrails> …` in the terminal, a red line on the web).

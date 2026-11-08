@@ -100,7 +100,7 @@ change, then read the diff.
 The bundle-state corpus (`spec/samagotchi/memory_bundle/file_state_corpus/`, `spec/fixtures/bundle_states/`) pins what
 every bundle file state does under every command that reads or writes it. Each case in `memory_cases.yml` (a memory:
 owned, edited, behind, missing, dropped, the user's own, another bundle's too…) and `asset_cases.yml` (a rule, the
-plugin, a script, a hook) is written directly as a starting tree, in the 0.155 and the 0.149 record shape, and run
+plugin, a script, an older install's class-file hook) is written directly as a starting tree, in the 0.155 and the 0.149 record shape, and run
 through install, `--force`, `--dry-run`, upgrade and its flags, chi update's plan, Remerge, the system bundle's restore,
 uninstall and status. A cell holds only what a user or the next command sees (the bytes, the trash, base and checksum,
 the mark, the summary's word, status's label, the warnings), never the Installer's result strings. `expect/*.yml` are
@@ -321,7 +321,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 
 ## Bundle specs: the test kit
 
-A shipped bundle's plugin and hook files are tested through the bundle test kit (`samagotchi/testing`,
+A shipped bundle's plugin is tested through the bundle test kit (`samagotchi/testing`,
 [plugins.md](plugins.md#testing-a-bundle-experimental)): `shipped_bundle("check-in", settings: …)` loads it through
 chi's own loaders, registries, `ctx` and guardrail Gate, with the session, the hook helpers and `ctx.sessions`
 recorded. No fake `chi` or `ctx`: what the kit can't express is a kit change (with a kit spec), not a local fake.
@@ -340,13 +340,13 @@ The kit's own specs, in `spec/samagotchi/testing/`, keep it and the bundles hone
 - `spec/samagotchi/testing/contract_spec.rb`: the kit sets every `Plugin::Host` and `Hooks::Runtime` member,
   `Testing::Sessions` has `Plugin::Sessions`' methods and parameters, and each `ctx` helper lands in its recorder. A
   member added to the Host fails it until the kit has it.
-- `spec/samagotchi/testing/shipped_bundles_spec.rb`: each shipped bundle with a plugin or hooks registers the same
+- `spec/samagotchi/testing/shipped_bundles_spec.rb`: each shipped bundle with a plugin registers the same
   commands, tools, hooks, inits, toolkits and sources loaded by the kit as installed and loaded by chi
   (`Testing::Install`).
 - `spec/samagotchi/bundle_command/check_spec.rb`: `chi bundle check` passes every shipped bundle with no errors (one
   example per bundle), so a shipped bundle that wouldn't install or load cleanly for a user fails here too. Run it
   by hand on one with `ruby -Ilib bin/chi bundle check lib/samagotchi/bundles/NAME`.
-- `spec/samagotchi/testing/boundary_spec.rb`, the boundary lint: each bundle's Ruby (plugin, hooks, scripts, specs)
+- `spec/samagotchi/testing/boundary_spec.rb`, the boundary lint: each bundle's Ruby (plugin, scripts, specs)
   reaches chi only through `Samagotchi::Testing::Boundary::ALLOWED` (the "Stable for bundles" list) and that
   bundle's `Boundary::EXCEPTIONS` entry, each with why. A new internal reference fails it, and so does an exception
   no longer used. Fix the reference (the kit or a stable API), or add the exception with its why.

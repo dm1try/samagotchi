@@ -21,7 +21,7 @@ module Samagotchi
     # How much of a failed hook's error #plugin_hook_failed shows.
     HOOK_FAILURE_CHARS = 300
     # What the notice says the hook now does, by the policy Hooks.wrap gave it
-    # (a chi.on handler is always :log; a bundle's hook file any of the three).
+    # (a chi.on handler :log, or :deny for an on_error: :fail_closed one).
     HOOK_FAILURE_EFFECTS = {
       log: "it's skipped, and only the log has its next failures",
       skip: "it's skipped, and its next failures are silent",
@@ -98,7 +98,7 @@ module Samagotchi
       nil
     end
 
-    # A bundle hook file or a chi.on handler raised (Hooks.wrap; the log has
+    # A chi.on handler raised (Hooks.wrap; the log has
     # every firing of a :log one). Its first failure on this Engine, so in
     # this worker, tells the user, as a plugin that failed to load does; then
     # only the log. One line per label — file, bundle and event — so a

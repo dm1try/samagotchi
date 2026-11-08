@@ -99,24 +99,19 @@ module Samagotchi
         dest
       end
 
-      # Copies the file at +path+ as +as+ before it is replaced or removed, when
-      # that would lose something: its bytes are neither what the record says
-      # was installed (no sha recorded: unknown, so it counts as edited) nor
-      # +incoming+'s. A link (a dev install's) points at its source, which
-      # nothing here touches.
-      def copy_edit(path, as:, recorded: nil, incoming: nil)
-        copy(path, as: as) if self.class.edit?(path, recorded: recorded, incoming: incoming)
-      end
-
-      # copy_edit for every file under +dir+, which is about to go, at any depth
-      # (kept as <label>/<its path in dir>). A linked dir isn't followed.
+      # Copies every file under +dir+, which is about to be replaced or
+      # removed, when that would lose something: its bytes are neither what
+      # the record says was installed (no sha recorded: unknown, so it counts
+      # as edited) nor the incoming source's, at any depth (kept as
+      # <label>/<its path in dir>). A link (a dev install's) points at its
+      # source, which nothing here touches; a linked dir isn't followed.
       # @param recorded [Hash, nil] path in dir => its recorded sha256
       # @param incoming [Hash] path in dir => the source replacing it
       def copy_edits(dir, label, recorded = nil, incoming = {})
         self.class.edited_in(dir, recorded, incoming).each { |file| copy(File.join(dir, file), as: "#{label}/#{file}") }
       end
 
-      # Whether #copy_edit would copy the file at +path+ (read-only): the rule
+      # Whether #copy_edits would copy the file at +path+ (read-only): the rule
       # ShippedUpdate's plan names its replaced files by.
       def self.edit?(path, recorded: nil, incoming: nil)
         return false if File.symlink?(path) || !File.file?(path)

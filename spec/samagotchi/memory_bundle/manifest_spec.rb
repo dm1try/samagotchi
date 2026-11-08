@@ -202,13 +202,13 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
     it "reads one that keeps the key empty, with no hooks and no unknown key" do
       [{}, [], nil].each do |hooks|
         m = described_class.new(path: write_manifest({ "hooks" => hooks }))
-        expect([m.hooks, m.unknown_keys]).to eq([{}, []]), hooks.inspect
+        expect(m.unknown_keys).to eq([]), hooks.inspect
       end
     end
 
     it "is no problem for a tolerant read (an older install's kept manifest.yml): the key is ignored" do
       manifest, problems = described_class.tolerant(path: write_manifest({ "hooks" => { "h.rb" => { "events" => "not a list" } } }))
-      expect([manifest.hooks, problems, manifest.unknown_keys]).to eq([{}, {}, []])
+      expect([problems, manifest.unknown_keys]).to eq([{}, []])
     end
 
     it "words a source's hooks/*.rb with the same words" do

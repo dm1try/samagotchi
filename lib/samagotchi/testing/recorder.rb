@@ -9,7 +9,7 @@ require_relative "judgments"
 module Samagotchi
   module Testing
     # A line to the user (ctx.notify, event[:notify]); +hook+ is the
-    # plugin's or hook file's label ("plugin.rb (bundle x)").
+    # plugin's label ("plugin.rb (bundle x)").
     Notice = Data.define(:text, :level, :hook, :fallback_for)
     # Text put into the running turn (ctx.steer, event[:steer]).
     Steer = Data.define(:text, :hook)

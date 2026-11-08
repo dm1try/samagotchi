@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # The bundle test kit (docs/plugins.md, "Testing a bundle"): load a bundle's
-# plugin and hook files through chi's own loaders, registries, Context and
+# plugin through chi's own loaders, registries, Context and
 # guardrail Gate, with only the edges recorded (the session's Host, the hook
 # runtime, ctx.sessions, init tasks), in a sandboxed environment.
 #

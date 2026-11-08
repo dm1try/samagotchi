@@ -590,7 +590,7 @@ cache is dropped at the turn's end, not its start, so one turn doesn't ask twice
 
 ## Hooks
 
-Plugins and hook files register hooks on hook points (docs/hooks.md). Every fire puts the hook runtime on the
+Plugins (`chi.on`) and config hook files register hooks on hook points (docs/hooks.md). Every fire puts the hook runtime on the
 event: `event[:hook]` (the label) and five helpers, which call the Engine's `Hooks::Runtime` (built by `HookRoutes`,
 `hook_routes.rb`). A plugin's `ctx` has the same ones. A question takes keywords only at that plugin-facing edge;
 from there it is one `HookQuestion` value through `Engine#hook_ask_user` and `HookRoutes#ask_user` to
@@ -639,10 +639,12 @@ re-validates them ([architecture.md](../architecture.md), the `display_refs` par
   `clear_all` leaves them.
 - **Turn-scoped hooks** (`Engine#register_hook`) are cleared by `clear_hooks` in `release_turn`.
 - Fire order: bundle hooks (by priority, bundle, hook name), then config hooks, then turn-scoped hooks.
-- **A hook that raises is logged; it never breaks the turn.** A plugin's `chi.on` handler and a bundle's
-  `hooks/*.rb` also tell the user once per label (`Hooks.wrap(on_failure:)` → `HookRoutes#plugin_hook_failed`: a
-  `:guardrail_warning` labelled `plugins`); the callback reaches the hook files through
-  `ExtensionLoad.new(hook_failed:)`. A config hook has none, nor the test kit's sandbox.
+- **A hook that raises is logged; it never breaks the turn.** A plugin's `chi.on` handler also tells the user once
+  per label (`Hooks.wrap(on_failure:)` → `HookRoutes#plugin_hook_failed`: a `:guardrail_warning` labelled
+  `plugins`, through `Plugin::Registries#hook_failed`). A config hook has none, nor the test kit's sandbox.
+- `ExtensionLoad#hooks` loads config.yml's hooks only; an installed record that still has class-file bundle hooks
+  (an older chi's install) adds a not-required load failure instead, announced at the first turn
+  ([hooks.md](../hooks.md#class-file-hooks-are-retired)).
 - A notice goes to the running turn's sink and the observers; outside a turn it is announced with
   `between_turns: true`; while the plugins load it is held. `EventRoutes#route` decides it, the same routes as a card's
   (`Engine#show_card`); a guardrails line after load takes only the turn / between-turns routes (`#route_by_turn`).

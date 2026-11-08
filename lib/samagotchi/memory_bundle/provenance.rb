@@ -428,7 +428,7 @@ module Samagotchi
       # wrote it, or the file is gone), when +dir+ is the source of what's
       # installed: its manifest names this bundle at the recorded version and
       # says what the record keeps (#manifest_difference), and every sha the
-      # record has for a memory, plugin, hook, script or rule is the source
+      # record has for a memory, plugin, script or rule is the source
       # file's. Then the file is copied to #kept_manifest_path and the
       # record gains its manifest_sha, and nothing else changes (installed_at,
       # the mirror, installed_by). A dev record is never adopted: its next

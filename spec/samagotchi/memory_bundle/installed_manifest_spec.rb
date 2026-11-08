@@ -10,7 +10,6 @@ require "samagotchi/memory_bundle/installed_manifest"
 
 RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
   let(:installed) { Samagotchi::MemoryBundle::InstalledBundle }
-  let(:hook) { Samagotchi::MemoryBundle::BundleHook }
 
   def record(raw) = installed.parse("b", JSON.parse(JSON.generate(raw)))
 
@@ -29,7 +28,6 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       ).manifest
       expect(manifest).to have_attributes(
         name: "b", version: "1.2.0", requires_chi: ">= 0.50", trust_level: "reviewed", description: nil,
-        hooks: { "g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call") },
         needs: [{ command: "gh", why: "reads PRs", hint: nil }, { command: "jq", why: nil, hint: nil }],
         script_names: %w[s.rb draw.js], session_settings: ["cap"], session_setting_types: { "cap" => "number" },
         settings: %w[limit], setting_types: { "limit" => "number" }, file_descriptions: { "a.md" => "A" },
@@ -43,7 +41,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
 
     it "reads a minimal record as empty: experimental, no settings, nothing declared" do
       manifest = record({}).manifest
-      expect(manifest).to have_attributes(requires_chi: nil, trust_level: nil, hooks: {}, needs: [], script_names: [],
+      expect(manifest).to have_attributes(requires_chi: nil, trust_level: nil, needs: [], script_names: [],
                                           context_providers: [], block_renderers: [], session_settings: [],
                                           session_setting_types: {}, settings: nil, setting_types: {},
                                           file_descriptions: {}, includes: nil, problems: {})
@@ -89,7 +87,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     it "reads a record with no dir (one parsed alone) and an unreadable one from what they hold" do
       expect(record("requires_chi" => ">= 9").dir).to be_nil
       expect(record("requires_chi" => ">= 9").manifest.requires_chi).to eq(">= 9")
-      expect(installed.unreadable("x", "why").manifest).to have_attributes(requires_chi: nil, hooks: {}, problems: {})
+      expect(installed.unreadable("x", "why").manifest).to have_attributes(requires_chi: nil, problems: {})
     end
   end
 
@@ -157,9 +155,8 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     end
 
     it "hands out a frozen value, all the way down (callers share the cached one)" do
-      manifest = kept_bundle(recorded.merge("hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "x" } },
-                                            "needs" => ["jq"]), kept_yml + "needs: [gh]\n").manifest
-      expect([manifest.hooks, manifest.needs, manifest.needs.first, manifest.needs.first[:command], manifest.script_names,
+      manifest = kept_bundle(recorded.merge("needs" => ["jq"]), kept_yml + "needs: [gh]\n").manifest
+      expect([manifest.needs, manifest.needs.first, manifest.needs.first[:command], manifest.script_names,
               manifest.unknown_keys, manifest.problems, manifest.file_descriptions, manifest.description]).to all(be_frozen)
     end
 

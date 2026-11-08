@@ -17,7 +17,7 @@ loop, the event shapes, the kit, the pitfalls.
 my-bundle/
   manifest.yml
   plugin.rb
-  identity.md        # optional, like any bundle's memories, hooks/ and guardrails/
+  identity.md        # optional, like any bundle's memories and guardrails/
   README.md          # never a memory (nor CHANGELOG, LICENSE, ...): see memory.md#what-a-bundle-owns
 ```
 
@@ -30,7 +30,7 @@ plugin:
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
   # required: true           # optional: a guardrail plugin; if it fails to load, every tool call is
                              # denied (see chi.on's on_error: :fail_closed; chi 0.157.0 or newer)
-requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
+requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's rules check it too
                              # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
                              # to the chi being released (docs/releasing.md)
@@ -473,7 +473,8 @@ end
 
 ### `chi.on(event, priority: 100, on_error: :log) { |event, ctx| … }`
 
-This is a bundle hook, the same as a `hooks/*.rb` file. See
+This is a bundle hook: the one way a bundle hooks an event (class-file
+`hooks/*.rb` hooks are retired, [hooks.md](hooks.md#class-file-hooks-are-retired)). See
 [hooks.md](hooks.md#hook-events) for the events; on `:after_turn`,
 `event[:present]` sets how the answer is shown in the web
 ([Presenting the answer](hooks.md#presenting-the-answer-display-only)) and `event[:refs]`
@@ -1546,7 +1547,7 @@ bundle.shutdown
 ```
 
 - **Real seams.** The plugin loads through `Plugin::Loader.register_file` (the real `chi` API and a real `ctx`),
-  the hook files through `Hooks::BundleLoader.load_hook_file`, into registries that already hold chi's own
+  into registries that already hold chi's own
   commands and tools: a name chi has fails the load as it would in chi. `tool_call` runs a real
   `Guardrails::Gate` (context and targets computed for the call; `verdict:` starts from one with a vote in it).
   Only the edges are recorded: the session (`Testing::Host`), the hook helpers (`Testing::Runtime`),
@@ -1634,14 +1635,14 @@ When a session's worker exits (an idle exit, `/exit`, a crash, TERM), or a
 ## Loading, and when it fails
 
 Plugins load when a session starts (`Engine.new`, in a worker or a
-`--non-interactive` one-shot), after the bundle hooks. The steps are:
+`--non-interactive` one-shot), after the config hooks. The steps are:
 
 1. The file must match the sha256 recorded at install (not checked for a bundle installed with `--dev`).
 2. chi must meet `requires_chi`. A bundle whose `requires_chi` this chi doesn't
    meet is refused at install, so this step is reached only by one installed
    with `--force` or by a chi that has since been downgraded.
 3. The file is `module_eval`'d into a new module in the bundle's namespace
-   (`Samagotchi::Bundles::<bundle>`).
+   (`Samagotchi::Bundles::<bundle>`, `Plugin::Loader.namespace_for`).
 4. The class is built, and `register(chi)` runs.
 
 What `register` adds takes effect only when it returns. A plugin that raises
@@ -1663,8 +1664,8 @@ starts again (`chi sessions stop`, or the idle exit).
 
 ## Trust
 
-A plugin is Ruby code that runs inside chi with your permissions, just like
-a bundle's hooks. **Installing a bundle means trusting it**, as you would a
+A plugin is Ruby code that runs inside chi with your permissions.
+**Installing a bundle means trusting it**, as you would a
 gem.
 
 - The sha256 is an integrity check, not proof of who wrote the file. A file

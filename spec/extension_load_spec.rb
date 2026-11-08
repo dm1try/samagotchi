@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::ExtensionLoad do
       expect(failures.list).to eq([])
     end
 
-    it "leaves a manifest.json that doesn't read to the plugin loader and the rules" do
+    it "is silent for a hooks-only record whose manifest.json doesn't read (the plugin loader and the rules report theirs)" do
       dir = File.join(Samagotchi::MemoryPaths.bundles_dir, "broken")
       FileUtils.mkdir_p(File.join(dir, "hooks"))
       File.write(File.join(dir, "manifest.json"), "{ not json")

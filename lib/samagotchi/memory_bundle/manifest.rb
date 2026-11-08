@@ -5,7 +5,6 @@ require "digest"
 require "fileutils"
 require_relative "../context_providers"
 require_relative "../version"
-require_relative "bundle_hook"
 
 module Samagotchi
   autoload :BlockRenderers, File.expand_path("../block_renderers", __dir__)
@@ -126,9 +125,8 @@ module Samagotchi
       }.freeze
 
       # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
-      # the description a mapping gave, for the files that have one; hooks:
-      # always {} (HooksRetired).
-      attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
+      # the description a mapping gave, for the files that have one.
+      attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :trust_level, :plugin, :requires_chi, :needs, :includes,
                   :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
 
       def initialize(path:)
@@ -152,7 +150,6 @@ module Samagotchi
         @files    = parse_files(raw["files"] || {})
         raise HooksRetired.for_key if self.class.lists_hooks?(raw["hooks"])
 
-        @hooks = {}
         @file_descriptions = parse_file_descriptions(raw["files"])
         @trust_level = (raw["trust_level"] || "experimental").to_s
         @plugin = parse_plugin(raw["plugin"])
@@ -229,13 +226,6 @@ module Samagotchi
         hex unless hex.nil? || hex.empty?
       end
 
-      # Returns sha256 hex for a hook basename (e.g. "guardrails.rb"), nil
-      # when it declares none (nothing to verify).
-      def checksum_for_hook(basename)
-        hex = @hooks[basename]&.hex
-        hex unless hex.nil? || hex.empty?
-      end
-
       # @return [String, nil] the plugin's sha256 hex, "sha256:" stripped
       def checksum_for_plugin
         sha = @plugin && @plugin[:sha256].to_s
@@ -288,7 +278,7 @@ module Samagotchi
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       # +file_descriptions+ (name → text) writes those files as mappings.
-      def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
+      def self.write(dir:, name:, version:, files:, scope: nil, description: "", trust_level: nil,
                      plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], block_renderers: [], file_descriptions: {},
                      session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
         FileUtils.mkdir_p(dir)
@@ -302,7 +292,6 @@ module Samagotchi
           text = file_descriptions[key].to_s.strip
           [key, text.empty? ? sha : { "sha256" => sha, "description" => text }]
         end
-        manifest["hooks"] = hooks.to_h { |k, v| [k.to_s, BundleHook.parse(v).to_record] } if hooks && !hooks.empty?
         manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         if plugin
           sha = plugin[:sha256].to_s
@@ -411,7 +400,7 @@ module Samagotchi
         end
         @scripts = tolerate(problems, "scripts", {}) { parse_scripts(raw["scripts"]) }
         @plugin = tolerate(problems, "plugin", nil) { parse_plugin(raw["plugin"]) }
-        @hooks = {} # an old kept manifest's hooks: is no problem: it isn't read (HooksRetired)
+        # An old kept manifest's hooks: is no problem: it isn't read (HooksRetired).
         @needs = tolerate(problems, "needs", []) { self.class.parse_needs(raw["needs"]) }
         @context_providers = tolerate(problems, "context_providers", []) { parse_context_providers(raw["context_providers"]) }
         script_names = problems.key?("scripts") ? fallback_scripts.map(&:to_s) : @scripts.keys

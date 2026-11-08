@@ -146,7 +146,7 @@ they must never spend or permit. See
 chi newer than 0.85.0 (an older one raises on the keyword).
 
 `event[:hook]` is the label the notices carry: `plugin.rb (bundle
-known-names)` for a plugin's `chi.on` hook (`<file> (bundle <name>)` for a bundle's `hooks/*.rb`),
+known-names)` for a plugin's `chi.on` hook,
 `audit.rb (config)` for a config hook,
 `turn hook` for one registered at runtime.
 
@@ -438,13 +438,13 @@ sources' refs in the reply that asks, and in the question's text and options).
 
 ## Settings
 
-A hook class whose `initialize` takes an argument gets its settings: **one
+A hook class (a config hook's; a plugin's class the same way, [plugins.md](plugins.md)) whose `initialize` takes an argument gets its settings: **one
 positional Hash with string keys** (`def initialize(settings = {})`;
 `initialize(**kw)` is not supported). A class whose `initialize` takes none
 is built bare. Defaults belong in the hook.
 
 ```yaml
-bundles:                 # per bundle, by name, for its hooks
+bundles:                 # per bundle, by name, for its plugin
   known-names:
     names: [jonathandoe]
     mode: reject
@@ -477,22 +477,10 @@ once in the UI.
 Hook failures never break the engine loop — each hook is wrapped in its own
 try/catch.
 
-A bundle's `hooks/*.rb` file that **raises** tells you once per hook in a
-worker, on the plugins' surface, whatever its `on_error` (the same notice a
-`chi.on` handler gets):
-
-```
-plugins> guardrail guardrails.rb (bundle my-guard) before_tool_call hook failed (RuntimeError: boom):
-         it denies every tool call it guards, and its next failures are in each denial's reason
-```
-
-The label names the file, the bundle and the event, so one line per hook: a
-hook on a stream can't nag. `on_error` still decides what happens at every
-firing — `skip` logs nothing, `log` warns each time (a stream hook at most
-once a minute), a fail_closed `before_tool_call` hook denies the call — the
-notice is only added on top. A config hook (config.yml's own files) keeps its
-behaviour: no notice, just the log. A UI that joins later reads the same lines
-from `Engine#plugin_warning`.
+A plugin's `chi.on` handler that **raises** tells you once per hook in a
+worker, on the plugins' surface ([plugins.md](plugins.md)). A config hook
+(config.yml's own files) keeps its behaviour: no notice, just the log. A UI
+that joins later reads the same lines from `Engine#plugin_warning`.
 
 In the [bundle test kit](plugins.md#testing-a-bundle-experimental) a hook that raises raises
 `Testing::HookFailed` out of the call that fired it, under every `on_error`.
@@ -660,70 +648,46 @@ declared tool's call, with no `via:`; a direct `mcp_fs_read` fires as the `call_
 stands for (`tool: "call_tool"`, `args: {"tool" => "fs/read", "args" => {…}}`), as if the model
 had called `call_tool`.
 
-## Bundle Hooks (unified workflow bundle)
+## Bundle hooks
 
-Bundles can ship executable guardrails alongside memories. A bundle with hooks lives as a directory with a `hooks/` subdirectory (flat, basename-keyed):
+A bundle hooks events from its `plugin.rb` with `chi.on` (next to its
+commands and tools): see [Plugins](plugins.md). There `ctx.notify`,
+`ctx.steer` and the other `ctx` helpers act as this page's `event[:notify]`…
+do for the event the block runs for, and `chi.on(:before_tool_call,
+on_error: :fail_closed)` makes a guard that fails closed.
 
-```
-my-bundle/
-  manifest.yml
-  identity.md
-  hooks/
-    guardrails.rb   # class Guardrails; def call(event); ...; end; end
-    audit.rb
-```
-
-`manifest.yml` may carry an optional `hooks:` map (both `files:` and `hooks:` are optional; a bundle may carry only one):
-
-```yaml
-name: code-review-workflow
-version: 1.0.0
-scope: project
-files:
-  identity.md: sha256:abc...
-hooks:
-  guardrails.rb:
-    sha256: 1234...
-    event: before_tool_call
-    on_error: fail_closed   # skip (default) | log | fail_closed (before_tool_call only)
-    priority: 10
-  audit.rb:
-    sha256: 5678...
-    event: after_tool_call
-    on_error: log
-    priority: 100
-trust_level: reviewed        # reviewed | trusted | experimental (default)
-requires_chi: ">= 0.12.0"    # optional: a gem-style requirement, as for plugins
-needs: [gh]                  # optional: outside commands the memories use (docs/memory.md#bundles-that-need-outside-commands)
-```
-
-Notes:
-
-- Hook key = basename (flat under `hooks/`). No subdirs in v1.
-- `event` is required for auto-registration; a hook with no event is skipped.
-- `events: [after_turn, question_asked]` (a list, in place of `event:`) registers the hook for each event it
-  names: **one** instance serves them all (its state is shared), and `#call` tells them apart by
-  `event[:type]`. `event:` and `events:` together, or an `events:` that isn't a non-empty list of event names,
-  is refused at install (`hooks: <file>: …`). `on_error: fail_closed` applies to its `before_tool_call`
-  registration only. Needs chi newer than 0.97.0 (an older chi installs the hook with no event and never loads
-  it): set `requires_chi`.
-- `sha256` is integrity (not authenticity). No signing in v1. Install records the sha256 of the copied file; at `Engine.new` a hook whose file differs is not loaded (reinstall the bundle after editing one by hand).
-- Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
-- `on_error` defaults to `skip` for every event, `:before_tool_call` included: a raising hook is silent and the call goes ahead. `log` warns. `fail_closed` (only on `:before_tool_call`; on any other event it acts as `skip`) denies the call the hook raised on. Choose `fail_closed` for a hook that is a guardrail, whose failure should stop tool calls rather than let them through.
-- `requires_chi`: when this chi doesn't meet it, none of the bundle's hooks load (each is reported, `not loaded: it requires chi …`), as for a [plugin](plugins.md#loading-and-when-it-fails).
-- A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load, its sha256 differs or chi doesn't meet the bundle's `requires_chi`, chi denies every tool call until it is fixed.
+- Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order. Bundle hooks are process-scoped: they survive the per-turn `clear_hooks` (only plain hooks are cleared).
+- Settings: the plugin's class gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
 - A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
-- Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
-- Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
-- A bundle can also ship a `plugin.rb` whose `chi.on(event)` blocks are bundle hooks too, next to commands and tools; see [Plugins](plugins.md). There `ctx.notify`, `ctx.steer` and the other `ctx` helpers act as this page's `event[:notify]`… do for the event the block runs for.
 - Shipped bundles (each but web-search in a profile: `core` or `dev`, see [Bundle profiles](memory.md#bundle-profiles-core-and-dev)): `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a plugin's `before_tool_call` hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install source-links` (a plugin's `after_turn` and `question_asked` hook: links source refs, see [The source-links bundle](#the-source-links-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Bundles](bundles.md#the-btw-bundle)), `chi bundle install mcp` (a plugin: tools from MCP servers, see [Bundles](bundles.md#the-mcp-bundle)) `chi bundle install loop-guard` (a plugin: breaks tool-call loops, see [Bundles](bundles.md#the-loop-guard-bundle)), `chi bundle install check-in` (a plugin: checks on a long turn, see [Bundles](bundles.md#the-check-in-bundle)), `chi bundle install slow-commands` (a plugin: commands that ran past the execute limit are run as tasks next time, see [Bundles](bundles.md#the-slow-commands-bundle)), `chi bundle install agents-md` (a plugin: a nested AGENTS.md is steered into the conversation on the first touch under its directory, see [Bundles](bundles.md#the-agents-md-bundle)), `chi bundle install cost-cap` (a plugin: a per-session $ cap, `/cap`, see [Bundles](bundles.md#the-cost-cap-bundle)), `chi bundle install work-cap` (a plugin: a per-session cap on tool calls and active minutes, `/workcap`, see [Bundles](bundles.md#the-work-cap-bundle)), `chi bundle install ruby` (a plugin: an RSpec run with no examples at all, a hint, see [Bundles](bundles.md#the-ruby-bundle)) `chi bundle install skills` (a plugin: `/skill`, versions of skills, see [Bundles](bundles.md#the-skills-bundle)), `chi bundle install github-pr` (attached context: the branch's open PR, see [Bundles](bundles.md#the-github-pr-bundle)), `chi bundle install coordinator` (a plugin: parallel work in worktrees and child sessions, see [Bundles](bundles.md#the-coordinator-bundle)), `chi bundle install claude-peer` / `codex-peer` (a plugin: talk to a Claude Code or Codex session, see [Bundles](bundles.md#the-claude-peer-bundle)), `chi bundle install model-notes` (memories: reviewed model notes, see [Bundles](bundles.md#the-model-notes-bundle)), `chi bundle install decision-card` (a plugin: a long answer's question as a card, see [Bundles](bundles.md#the-decision-card-bundle)), `chi bundle install inline-widgets` (a plugin: prompt sections that teach the `chi-ui` blocks chi web draws, see [Bundles](bundles.md#the-inline-widgets-bundle)) and `chi bundle install web-search` (a plugin: a `web_search` tool through your SearXNG, in no profile, see [Bundles](bundles.md#the-web-search-bundle)).
-- Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
+- Installing a bundle runs its plugin at `Engine` startup. Only install bundles you trust, as you would a gem.
 
-Lifecycle:
+### Class-file hooks are retired
 
-- `chi bundle install <source>` copies the hook files its manifest's `hooks:` map lists (only those; with no `hooks:` map, every `hooks/*.rb`) to `$XDG_CONFIG_HOME/samagotchi/memories/.bundles/<name>/hooks/` (`$XDG_CONFIG_HOME` defaults to `~/.config`) and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance. `install --dev <dir>` links them to `<dir>`'s files instead, with no sha256 check ([cli.md](cli.md#writing-a-bundle-new-test-check)).
-- `Engine.new` loads `config.yml` hooks first, then bundle hooks via `MemoryBundle::Provenance.each_installed(holding: :hooks)` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
-- `chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).
+Bundles used to ship hooks as class files: `hooks/*.rb` with a `hooks:` map in
+`manifest.yml` (`event:`, `on_error:`, `priority:`, `sha256:`). chi no longer
+installs or loads them:
+
+- Installing or upgrading a source that has a `hooks:` entry or a `hooks/*.rb`
+  file is refused (`hooks: class-file bundle hooks are retired: …`), its
+  `--dry-run` too; `chi bundle check` reports it as `hooks-retired`. An empty
+  `hooks: {}` is fine.
+- A bundle an older chi installed with hooks keeps its memories, rules, plugin
+  and scripts. Its hooks don't load: the first turn says so (`hooks (bundle X)
+  failed to load (class-file bundle hooks are retired: …)`, not a required
+  failure, so tool calls still run), `chi bundle status X` lists them under
+  `Hooks (N): not loaded`, and `chi update` adds a `hooks-retired` row for a
+  bundle chi doesn't ship.
+- The next install or upgrade from a source without hooks removes the old
+  `hooks/` (an edited hook, or a file the record doesn't know, is copied to
+  the trash first; a dev link never): `Removed (chi no longer loads
+  class-file bundle hooks): hooks/x.rb`, and the dry run and `chi update`'s
+  plan say so. `chi bundle uninstall` still removes them the same way.
+- To port one, move the class's `#call` into a `chi.on(event)` block of the
+  bundle's `plugin.rb` (one block per event; `on_error: :fail_closed` for a
+  fail_closed guard, with `plugin: required: true` in the manifest), then drop
+  `hooks/` and `hooks:`. known-names 0.2.0, source-links 0.7.0 and chi-nah 0.2.0
+  are ported examples.
 
 ## The source-links bundle
 
@@ -807,7 +771,7 @@ source is skipped whole (its partial matches are discarded) with a warning,
 and the others still report. An entry with neither `prefix:` nor `pattern:`,
 or a pattern that does not compile, is skipped with a warning at load. The
 hook is `on_error: log`: a bug in it warns and the turn is unaffected. As with
-every bundle hook, a running worker picks it up after its next start.
+every plugin, a running worker picks it up after its next start.
 
 ### Placeholders, and the project's own repo
 

@@ -2,8 +2,9 @@
 
 module Samagotchi
   module Guardrails
-    # What failed to load at Engine start: hooks, bundle hook checksums,
-    # rule files. A required one makes the gate deny every tool call (a
+    # What failed to load at Engine start: config hooks, a required
+    # plugin, rule files, an older chi's class-file bundle hooks (which no
+    # longer load). A required one makes the gate deny every tool call (a
     # guardrail that silently vanished is the failure this guards against);
     # the rest are only announced.
     class LoadFailures

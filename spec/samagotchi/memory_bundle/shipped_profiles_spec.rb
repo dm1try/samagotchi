@@ -46,10 +46,10 @@ RSpec.describe "The shipped bundle profiles" do
     end
   end
 
-  it "keeps a profile's dir to its manifest.yml: no files, hooks or plugin" do
+  it "keeps a profile's dir to its manifest.yml: no files or plugin" do
     metas.each do |dir, meta|
       expect(Dir.children(File.join(shipped_dir, dir))).to eq(["manifest.yml"])
-      expect([meta.files, meta.hooks, meta.plugin]).to eq([{}, {}, nil])
+      expect([meta.files, meta.plugin]).to eq([{}, nil])
       expect(meta.scope).to eq("system")
     end
   end

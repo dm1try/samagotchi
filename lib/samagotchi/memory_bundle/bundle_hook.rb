@@ -1,16 +1,15 @@
 # frozen_string_literal: true
 
-require_relative "file_digest"
-
 module Samagotchi
   module MemoryBundle
-    # One hook's metadata, as a bundle's manifest.yml declares it and its
-    # installed record (manifest.json) keeps it: the file's sha256
+    # One class-file hook's metadata, as an older chi's installed record
+    # (manifest.json) keeps it (chi no longer installs or loads them:
+    # Manifest::HooksRetired; it reads them to retire, uninstall and name
+    # them, and the trash selection takes #sha256): the file's sha256
     # ("sha256:<hex>", "" when none is recorded), the events it registers
     # for (manifest `event:` for one, `events:` a list; none: it isn't
-    # loaded), on_error (skip, log or fail_closed) and priority. One
-    # instance of the hook serves every event it lists. The one place the
-    # defaults live.
+    # loaded), on_error (skip, log or fail_closed) and priority. The one
+    # place the defaults live.
     class BundleHook < Data.define(:sha256, :events, :on_error, :priority)
       DEFAULT_ON_ERROR = "skip"
       DEFAULT_PRIORITY = 100
@@ -37,34 +36,10 @@ module Samagotchi
             priority: (h["priority"] || DEFAULT_PRIORITY).to_i)
       end
 
-      # A hook known only by its file (no declared event): its sha, the defaults.
-      # Callers pass a file that is there (FileDigest is nil for one that isn't).
-      def self.of_file(path)
-        new(sha256: FileDigest.sha256(path))
-      end
-
       # "sha256:<hex>" from either form, "" for none.
       def self.prefixed(sha)
         sha = sha.to_s.strip
         sha.empty? || sha.start_with?("sha256:") ? sha : "sha256:#{sha}"
-      end
-
-      # The sha's hex, "" when none is recorded.
-      def hex = sha256.delete_prefix("sha256:")
-
-      # Whether the hook fails closed: on_error fail_closed applies to its
-      # before_tool_call registration only.
-      def fail_closed?(event) = on_error == "fail_closed" && event.to_s == "before_tool_call"
-
-      # How `chi bundle status` / `diff` name its events: `event=x`, or
-      # `events=x,y` for more than one.
-      def events_field = events.size > 1 ? "events=#{events.join(",")}" : "event=#{events.first}"
-
-      # The string-keyed form manifest.yml and manifest.json hold: `event`
-      # for one event (as an older chi reads it), `events` for more.
-      def to_record
-        listed = events.size > 1 ? { "events" => events.dup } : { "event" => events.first.to_s }
-        { "sha256" => sha256, **listed, "on_error" => on_error, "priority" => priority }
       end
     end
   end

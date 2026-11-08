@@ -6,7 +6,8 @@ the plugin API ([plugins.md](plugins.md)); install, upgrade and the `chi bundle`
 feature they belong to: **source-links** in [hooks.md](hooks.md#the-source-links-bundle) and **known-names** in
 [guardrails.md](guardrails.md#the-known-names-bundle). Both hook events from their `plugin.rb` with `chi.on`
 (known-names on `before_tool_call`, priority 50; source-links on `after_turn` and `question_asked`, priority 90), as
-every shipped bundle with code does; before known-names 0.2.0 and source-links 0.7.0 they shipped a `hooks/*.rb` file.
+every shipped bundle with code does; before known-names 0.2.0 and source-links 0.7.0 they shipped a `hooks/*.rb` file
+(chi no longer loads one: [hooks.md](hooks.md#class-file-hooks-are-retired); `chi update` removes the old file).
 
 ## The btw bundle
 

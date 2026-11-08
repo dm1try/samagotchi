@@ -73,7 +73,9 @@ module Samagotchi
 
     # One failure per record whose hooks: map isn't empty; an empty
     # hooks/ dir is not one, nor a manifest.json that doesn't read (the
-    # plugin loader and the rules report that).
+    # plugin loader and the rules report that: a record holding only hooks/
+    # with an unreadable manifest.json is silent at start, as its hooks
+    # wouldn't load anyway; `chi bundle status` lists it unreadable).
     def tell_retired_hooks
       require_relative "memory_bundle/provenance"
       MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, bundle|

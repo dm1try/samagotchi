@@ -217,7 +217,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [chi as a sub-agent](docs/sub-agent.md): `chi send --wait --format json`, `chi answer`, instructions for a parent agent
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
-- [Hooks](docs/hooks.md): plugin hooks and bundle hooks
+- [Hooks](docs/hooks.md): config hooks and a bundle plugin's hooks
 - [Plugins](docs/plugins.md): bundle plugins (commands, tools, hooks)
 - [Bundles](docs/bundles.md): what each shipped bundle does (btw, mcp, cost-cap, claude-peer, skills…), its commands and settings
 - [Writing a bundle](docs/bundle-authoring.md): `chi bundle new`, `test`, `check`, `try`, `install --dev`
