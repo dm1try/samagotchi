@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed (no content).
+
 ### Changed
 
 - `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).

@@ -100,6 +100,7 @@ module Samagotchi
                       annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
                       working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil, start_dir_from: :flag,
+                      reload_check: Config::BY_KEY["web.reload_check"].default,
                       restarted: false, restart_argv: ["web"], exec: nil)
         handed_on = false # a :restart leaves Serve to the next process, a run turns it off itself
         start_given = !start_dir.to_s.strip.empty?
@@ -159,7 +160,7 @@ module Samagotchi
           Push.preflight!(public_url)
           options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown,
                       annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
-                      public_url: public_url, start_dir: start_dir }
+                      reload_check: reload_check, public_url: public_url, start_dir: start_dir }
           started = if plan
                       with_tunnel(provider, plan) do |up|
                         start(**options, public_notes: provider.start_lines(plan, restarted: restarted), on_bound: up)
@@ -388,6 +389,7 @@ module Samagotchi
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
                      working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
+                     reload_check: Config::BY_KEY["web.reload_check"].default,
                      on_bound: nil, start_dir: Dir.pwd, update_check: nil, auto_update: nil)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
@@ -404,7 +406,7 @@ module Samagotchi
         push = push_runtime(public_url, state_dir)
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
-                      public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
+                      reload_check: reload_check, public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
         # update.auto: install; a stand-in app (a spec's) has no operations to run.
         auto_update ||= AutoUpdate.new(hub: hub, ops: app.update_ops, check: update_check, preflight: method(:restart_preflight)) if app.respond_to?(:update_ops)
         webrick = nil

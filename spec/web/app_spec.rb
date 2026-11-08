@@ -3327,6 +3327,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call("/?working_set=yes")).to include(' data-working-set="1"')
     end
 
+    # web.reload_check (off by default): the page's reload check
+    # (reload_check.js) runs only when the body says so.
+    it "tells the page the reload check is on only when it is" do
+      page = ->(**opts) { build_app(**opts).call(env_for("/"))[2].first }
+
+      expect(page.call).not_to include("data-reload-check")
+      expect(page.call(reload_check: true)).to include(' data-reload-check="1"')
+    end
+
     # The page parses them (annotate_presets.js); an empty one is kept so
     # it means "none", not the default.
     it "hands the page the annotate presets, escaped, empty kept, a list joined" do

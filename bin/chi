@@ -263,6 +263,7 @@ if options[:web]
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
                                       markdown: markdown, new_token: options[:new_token], tunnel: options[:tunnel],
                                       working_set: Samagotchi::Config.get("web.working_set"),
+                                      reload_check: Samagotchi::Config.get("web.reload_check"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"),
                                       start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"),
