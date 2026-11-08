@@ -47,6 +47,8 @@ module Samagotchi
         "web_fetch" => { content: "url", fallback: :prefix_or_raw },
         "register_reminder" => { content: "name", fallback: :prefix_or_raw },
         "cancel_reminder" => { content: "name", fallback: :prefix_or_raw },
+        "schedule_task" => { content: "prompt", fallback: :prefix_or_raw },
+        "cancel_schedule" => { content: "name", fallback: :prefix_or_raw },
         "list_sessions" => { fallback: :prefix, fallback_key: "cwd" },
         "send_note" => { content: "text" },
         "context_read" => { content: "name", fallback: :prefix_or_raw },

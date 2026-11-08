@@ -18,6 +18,9 @@ require_relative "web_fetch"
 require_relative "register_reminder"
 require_relative "cancel_reminder"
 require_relative "list_reminders"
+require_relative "schedule_task"
+require_relative "list_schedules"
+require_relative "cancel_schedule"
 require_relative "list_sessions"
 require_relative "send_note"
 require_relative "context_read"
@@ -54,6 +57,9 @@ module Samagotchi
         RegisterReminder,
         CancelReminder,
         ListReminders,
+        ScheduleTask,
+        ListSchedules,
+        CancelSchedule,
         ListSessions,
         SendNote,
         ContextRead,
@@ -103,6 +109,15 @@ module Samagotchi
         end,
         CancelReminder::NAME => ->(call, kctx) { CancelReminder.call(call[:content], reminder_store: kctx.reminder_store) },
         ListReminders::NAME => ->(call, kctx) { ListReminders.call(call[:content], reminder_store: kctx.reminder_store) },
+        ScheduleTask::NAME => lambda do |call, kctx|
+          ScheduleTask.call(call[:content], title: call[:title], prompt: call[:prompt], every: call[:every],
+                            weekday: call[:weekday], time: call[:time], date: call[:date], mode: call[:mode],
+                            keep_links: call[:keep_links], peers: kctx.peers)
+        end,
+        ListSchedules::NAME => lambda do |call, kctx|
+          ListSchedules.call(call[:content], include_disabled: call[:include_disabled], peers: kctx.peers)
+        end,
+        CancelSchedule::NAME => ->(call, kctx) { CancelSchedule.call(call[:content], peers: kctx.peers) },
         ListSessions::NAME => ->(call, kctx) { ListSessions.call(call[:content], peers: kctx.peers, cwd: call[:cwd]) },
         SendNote::NAME => ->(call, kctx) { SendNote.call(call[:content], session: call[:session], peers: kctx.peers) },
         ContextRead::NAME => lambda do |call, kctx|

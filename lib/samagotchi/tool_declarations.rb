@@ -304,6 +304,47 @@ module Samagotchi
         }
       },
       {
+        name: "schedule_task",
+        description: "Register a durable schedule for this session: a prompt that runs on a clock outside the worker " \
+                     "(chi schedule tick, run by cron, systemd or chi web's hub). Unlike register_reminder it needs no " \
+                     "live worker and never holds one up. Give exactly one of every, weekday+time or date.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "A short name for the schedule" },
+            prompt: { type: "string", description: "What each firing does (non-empty, at most 16 KiB)" },
+            every: { type: "string", description: "Interval: \"30m\", \"2h\", \"1d\" (UTC math: drifts an hour across a DST change)" },
+            weekday: { type: "integer", description: "1=Mon … 7=Sun, used with time" },
+            time: { type: "string", description: "HH:MM in the machine's local zone (with weekday)" },
+            date: { type: "string", description: "One local moment: 2026-11-20T09:00" },
+            mode: { type: "string", description: "chain (default): the next link of this session's chain. same: a queued turn in this session" },
+            keep_links: { type: "integer", description: "Chain links to keep (default 5; 0 keeps all)" }
+          },
+          required: ["prompt"]
+        }
+      },
+      {
+        name: "list_schedules",
+        description: "List this machine's durable schedules: id, mode, recurrence, next due and target.",
+        parameters: {
+          type: "object",
+          properties: {
+            include_disabled: { type: "boolean", description: "Include the disabled schedules and the fired one-offs" }
+          }
+        }
+      },
+      {
+        name: "cancel_schedule",
+        description: "Cancel a durable schedule by its id, a unique prefix of it, or its title.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "The schedule's id or title" }
+          },
+          required: ["name"]
+        }
+      },
+      {
         name: "list_sessions",
         description: "List the other chi sessions of this project (newest first, up to 20): id, whether a worker runs it, its folder and last prompt; other projects: cwd \"/\". Use it to find the session send_note should go to.",
         parameters: {
