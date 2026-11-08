@@ -143,6 +143,7 @@ module Samagotchi
 
     # @param id_or_name [String] an id, a unique prefix of one, or a title
     # @return [Entry, nil]
+    # @raise [Usage] the prefix or the title names more than one schedule
     def lookup(id_or_name)
       given = id_or_name.to_s.strip
       return nil if given.empty?
@@ -151,10 +152,18 @@ module Samagotchi
       exact = list.find { |entry| entry.id == given }
       return exact if exact
 
-      prefixes = list.select { |entry| entry.id.start_with?(given) }
-      return prefixes.first if prefixes.size == 1
+      matches = ambiguous(list.select { |entry| entry.id.start_with?(given) }, given)
+      return matches.first unless matches.empty?
 
-      list.find { |entry| entry.title.to_s.casecmp?(given) }
+      ambiguous(list.select { |entry| entry.title.to_s.casecmp?(given) }, given).first
+    end
+
+    # One match is the answer; several are a usage error naming them, the way
+    # Session::AmbiguousId does for session prefixes.
+    def ambiguous(entries, given)
+      return entries if entries.size < 2
+
+      raise Usage, "#{given} matches #{entries.size} schedules: #{entries.map(&:id).join(", ")} — use the full id"
     end
 
     # Add a schedule. +target+ is the session it runs against (an id or a
@@ -424,17 +433,16 @@ module Samagotchi
       end
     end
 
+    # The same resolution as #lookup — an id, a unique prefix, or a title, and
+    # an ambiguous one raises Usage rather than taking the first match.
     def change(id_or_name, enabled: nil, delete: false)
-      entry = nil
-      given = id_or_name.to_s.strip
+      entry = lookup(id_or_name)
+      return nil if entry.nil?
+
       write_under_lock do |list|
-        # An id, a unique prefix of one, or the title — the same ways `lookup`
-        # and `chi schedule cancel` find an entry.
-        position = list.index { |candidate| candidate.id == given || candidate.id.start_with?(given) } ||
-                   list.index { |candidate| candidate.title.to_s.casecmp?(given) }
+        position = list.index { |candidate| candidate.id == entry.id }
         next if position.nil?
 
-        entry = list[position]
         if delete
           list[position] = nil
           list.compact!

@@ -256,6 +256,33 @@ RSpec.describe Samagotchi::ScheduleCommand do
   end
 
   describe "run-now, enable, disable and cancel" do
+    it "refuses an ambiguous prefix or title with exit 2, naming the matches" do
+      fixed = ["a1b2c3d4e5f6a7b8", "a1b2c3d4e5f6a7c9"]
+      allow(SecureRandom).to receive(:hex).and_wrap_original do |original, length|
+        length == 8 ? fixed.shift : original.call(length)
+      end
+      id = session
+      schedules.add(target: id, prompt: "One", recurrence: hourly, title: "Audit")
+      schedules.add(target: id, prompt: "Two", recurrence: hourly, title: "Audit")
+
+      status, _, error = run("cancel", "a1b2c3")
+      expect(status).to eq(2), error
+      expect(error).to include("a1b2c3 matches 2 schedules: a1b2c3d4e5f6a7b8, a1b2c3d4e5f6a7c9")
+
+      status, _, error = run("show", "Audit")
+      expect(status).to eq(2), error
+      expect(error).to include("Audit matches 2 schedules")
+
+      status, _, error = run("run-now", "a1b2c3")
+      expect(status).to eq(2), error
+      expect(error).to include("a1b2c3 matches 2 schedules")
+
+      status, printed, error = run("disable", "a1b2c3d4e5f6a7c9")
+      expect(status).to eq(0), error
+      expect(printed).to eq("a1b2c3d4e5f6a7c9 disable: ok\n")
+      expect(schedules.entries.size).to eq(1)
+    end
+
     it "fires an entry whose time is not yet come" do
       allow(Process).to receive(:spawn).and_return(12_345)
       id = session

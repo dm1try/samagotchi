@@ -160,7 +160,6 @@ module Samagotchi
 
       entry = @schedules.lookup(id)
       return failed("no schedule #{id}") if entry.nil?
-
       @stdout.puts("#{entry.id}  #{entry.title || "(untitled)"}")
       @stdout.puts("  anchor: #{entry.anchor}  head: #{entry.head}  mode: #{entry.mode}")
       @stdout.puts("  recurrence: #{entry.recurrence_words}  next due: #{clock(entry.next_due)}")
@@ -169,6 +168,8 @@ module Samagotchi
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
       @stdout.puts("  prompt: #{entry.prompt}")
       CLI::Exit::OK
+    rescue Schedules::Usage => e
+      usage_error(e.message)
     end
 
     def tick
@@ -208,6 +209,8 @@ module Samagotchi
 
       @stdout.puts("#{id} #{@argv[0]}: ok")
       CLI::Exit::OK
+    rescue Schedules::Usage => e
+      usage_error(e.message)
     end
 
     def failed(message)
