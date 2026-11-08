@@ -591,14 +591,24 @@ module Samagotchi
       raise Usage, "no #{WEEKDAYS[weekday]} occurs within 8 days of #{from}"
     end
 
-    # catch_up: none fires only when the tick arrives at the moment; one that
-    # comes more than schedule.tick_interval_minutes after it moves to the next
-    # occurrence (a machine asleep over Monday does not get a Monday run at
-    # Tuesday noon).
+    # catch_up: none fires only when the tick arrives at the moment. "Late"
+    # means a whole cycle, not a late tick: an entry is missed only when the
+    # occurrence after the one it missed is past as well, which is what the file
+    # looks like when the machine was asleep across the interval. A Mon 09:00
+    # schedule ticked at 09:20 is simply late and fires; one first seen the
+    # following Monday is missed and moves to the Monday after. A `date` one-off
+    # has no next occurrence to compare with, so it is never missed: it fires
+    # late, once.
     def late?(entry, now)
-      now - Time.iso8601(entry.next_due.to_s) > Schedules.tick_interval_minutes * 60
+      return false if entry.recurrence[:kind] == "date"
+
+      # due? has already accepted next_due, so it parses.
+      next_due_for(entry.recurrence, from: Time.iso8601(entry.next_due.to_s)) <= now
     end
 
+    # The clock moves to the next occurrence. A `date` one-off has none, so it
+    # is disabled — `late?` never sends a one-off here, but a spent `date` entry
+    # arriving from an older file is still spent.
     def reschedule(entry, now)
       if entry.recurrence[:kind] == "date"
         entry.with(next_due: nil, last_result: "missed", firing_since: nil, enabled: false)

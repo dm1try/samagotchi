@@ -73,12 +73,17 @@ the fold. If a local moment does not exist (a spring-forward gap), it fires at t
 next valid minute. Schedules use the machine's local clock; there are no named
 time zones.
 
-`catch_up` says what an overdue entry does when the tick arrives late (more than
-`schedule.tick_interval_minutes` after its moment):
+`catch_up` says what an overdue entry does when the tick arrives after its moment:
 
 - `once` (default): fire once now, then reschedule normally.
-- `none`: do not fire — `last_result: "missed"` — and move to the next occurrence
-  (a `date` entry is disabled: there is no next one).
+- `none`: fire only when the tick is near the moment. "Missed" — `last_result:
+  "missed"` and the entry moves to its next occurrence — is a **whole cycle**, not
+  a late tick: it happens only when the occurrence *after* the one it missed is
+  already past, which is what the file looks like when the machine was asleep
+  across the interval. A `Mon 09:00` schedule ticked at 09:20 fires; the same
+  entry first seen the following Monday is missed and moves to the Monday after.
+  A `date` one-off has no next occurrence to compare with, so it is never missed:
+  it fires late, once.
 
 ## The busy check
 

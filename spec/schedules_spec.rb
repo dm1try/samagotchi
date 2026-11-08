@@ -383,19 +383,76 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  it "moves to the next occurrence with catch_up none instead of firing late" do
+  it "moves to the next occurrence with catch_up none when a whole cycle has passed" do
     Dir.mktmpdir("schedules-catchup") do |root|
       dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1h"), catch_up: "none")
-      ticked = Time.now + 4200
+      ticked = Time.now + 7800
       tick = schedules.tick(now: ticked)
       expect(tick.outcomes.first.status).to eq("missed")
       after = schedules.lookup(entry.id)
       expect(after.last_result).to eq("missed")
       expect(Time.iso8601(after.next_due)).to be > ticked
       expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).size).to eq(1)
+    end
+  end
+
+  it "fires a catch_up none entry that is only a tick late" do
+    Dir.mktmpdir("schedules-catchup-late-tick") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      monday = Time.local(2026, 11, 2, 8, 50) # 2026-11-02 is a Monday
+      anchor = session(dir).id
+      schedules = store(dir, now: monday)
+      entry = schedules.add(target: anchor, prompt: "Audit", catch_up: "none",
+                            recurrence: described_class.recurrence(weekday: 1, time: "09:00"))
+      expect(Time.iso8601(entry.next_due)).to eq(Time.local(2026, 11, 2, 9, 0))
+
+      # 20 minutes late: the next Monday is still ahead, so this is a late tick,
+      # not a missed cycle, and the schedule runs.
+      tick = schedules.tick(now: Time.local(2026, 11, 2, 9, 20))
+      expect(tick.outcomes.first.status).to eq("fired")
+      after = schedules.lookup(entry.id)
+      expect(after.last_result).to start_with("new link")
+      expect(Time.iso8601(after.next_due)).to eq(Time.local(2026, 11, 9, 9, 0))
+    end
+  end
+
+  it "misses a catch_up none weekday schedule a whole cycle late and moves it to the next one" do
+    Dir.mktmpdir("schedules-catchup-cycle") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir, now: Time.local(2026, 11, 2, 8, 50))
+      entry = schedules.add(target: anchor, prompt: "Audit", catch_up: "none",
+                            recurrence: described_class.recurrence(weekday: 1, time: "09:00"))
+
+      # The machine was asleep all week: the tick finds Monday's occurrence and
+      # the one after it already past.
+      tick = schedules.tick(now: Time.local(2026, 11, 9, 9, 30))
+      expect(tick.outcomes.first.status).to eq("missed")
+      after = schedules.lookup(entry.id)
+      expect([after.last_result, Time.iso8601(after.next_due)])
+        .to eq(["missed", Time.local(2026, 11, 16, 9, 0)])
+      expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).size).to eq(1)
+    end
+  end
+
+  it "fires a `date` one-off late with catch_up none: there is no next occurrence to compare" do
+    Dir.mktmpdir("schedules-catchup-date") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      at = Time.local(2026, 11, 20, 9, 0)
+      anchor = session(dir).id
+      schedules = store(dir, now: at + 3600)
+      entry = schedules.add(target: anchor, prompt: "One thing", catch_up: "none",
+                            recurrence: described_class.recurrence(date: "2026-11-20T09:00"))
+
+      outcome = schedules.tick(now: at + 3600).outcomes.first
+      expect(outcome.status).to eq("fired")
+      after = schedules.lookup(entry.id)
+      expect([after.enabled, after.next_due, after.last_result]).to eq([false, nil, "new link #{after.head[0, 8]}"])
     end
   end
 
