@@ -17,7 +17,6 @@ module ChatLoopKernelReach
   # "Callee(@kernel)" for the kernel as an argument, "KernelLoop.name" /
   # "KernelLoop::Name" for a constant, "require kernel_loop".
   REACH = [
-    "@kernel.client",
     "@kernel.guard_generation",
     "@kernel.hooks",
     "@kernel.llm_context_turn=",

@@ -228,13 +228,15 @@ module Samagotchi
       private
 
       # Pick the loop for +model+ (EffectiveModel); the chat loop is pointed
-      # at its host's adapter (one per host, kept for its cached model list).
+      # at its host's adapter (one per host, kept for its cached model list)
+      # and client (the window probe, the re-prefill's host).
       def backend_for(model)
         return @native_backend unless model.chat?
 
         @chat_backend_mutex.synchronize do
           @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel, stable_length: ->(text) { @prompt_builder.stable_length(text) })
           @chat_backend.adapter = @host_registry.adapter_for(model.entry)
+          @chat_backend.client = model.client
           @chat_backend.session_id = session&.id
           @chat_backend
         end

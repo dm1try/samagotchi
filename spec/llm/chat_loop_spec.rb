@@ -571,7 +571,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   describe "stream events" do
     it "streams chunks with text, thinking and content, per iteration, with the window on generation_started" do
       backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "x" }]), text("done", reasoning: "hmm"))
-      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 32_768))
+      backend.client = double("client", context_window: 32_768)
 
       run
 
@@ -590,7 +590,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       remote.define_singleton_method(:remote?) { true }
       remote.define_singleton_method(:context_window) { |model:| model == "m" ? 131_072 : nil }
       backend.adapter = remote
-      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 8192))
+      backend.client = double("client", context_window: 8192)
 
       run
 
@@ -600,7 +600,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
     it "takes the turn's models:/hosts: window_tokens when the server and the list report none" do
       backend.adapter = FakeChatAdapter.new(text("ok"))
-      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+      backend.client = double("client", context_window: nil)
       setting = Samagotchi::ContextWindow::Resolved.new(tokens: 40_000, source: :host_setting)
       @settings = Samagotchi::LLM::TurnSettings.none.with(window_setting: setting)
 
@@ -612,7 +612,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
     it "carries the turn's configured price on generation_started, for SessionMetrics' estimate" do
       backend.adapter = FakeChatAdapter.new(text("ok"))
-      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+      backend.client = double("client", context_window: nil)
       price = Samagotchi::ModelPrice.new(input: 1, cache_read: 0.5, cache_write: 1, output: 2)
       @settings = Samagotchi::LLM::TurnSettings.none.with(price: price)
 
@@ -890,7 +890,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
     describe "the status line's context value" do
       before do
-        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 100_000))
+        backend.client = double("client", context_window: 100_000)
       end
 
       it "comes from the last request's server counts and the window" do
@@ -908,7 +908,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       it "is estimated before each request: :context_status on a rise, and the model's line on the tail" do
         ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "1000"
-        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+        backend.client = double("client", context_window: nil)
 
         result = run([{ role: "user", content: "x" * 2_000 }])
 
@@ -926,7 +926,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       it "adds an estimate for what the turn appended since the server's count" do
         ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "1000"
-        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+        backend.client = double("client", context_window: nil)
         counted = Samagotchi::LLM::Usage.new(prompt_tokens: 100, completion_tokens: 10, source: :server)
         backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "x" * 800 }]).with(usage: counted),
                                               text("ok"))
@@ -946,7 +946,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       it "starts the next turn's estimate from the last count's chars per token: no dip at the turn's start" do
         ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "100000"
-        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+        backend.client = double("client", context_window: nil)
         # The server counts 2,000 tokens for a 400-char prompt: the tool
         # schemas it is sent, which the chars leave out.
         counted = Samagotchi::LLM::Usage.new(prompt_tokens: 2_000, completion_tokens: 10, source: :server)

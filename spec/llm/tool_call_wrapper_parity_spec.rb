@@ -51,10 +51,12 @@ RSpec.describe "Tool call wrapper parity" do
 
   def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil, window: nil,
                adapter_class: FakeChatAdapter)
-    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: window), profile: "gemma4", services: Samagotchi::KernelLoop::Services.none(hooks: hooks))
+    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: nil), profile: "gemma4", services: Samagotchi::KernelLoop::Services.none(hooks: hooks))
     context = run_context(tools: kernel.tools, settings: kernel.turn_settings, session_dir: session_dir)
     adapter = adapter_class.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
     backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
+    # The host's client (the Engine sets it with the adapter): its window, for the guard.
+    backend.client = double("client", context_window: window)
     result = backend.complete(messages: [{ role: "user", content: "read it" }], on_stream_event: on_event,
                               max_tool_output_chars: max_tool_output_chars, context: context)
     tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
@@ -216,7 +218,7 @@ RSpec.describe "Tool call wrapper parity" do
     describe "the overflow guard (a result over half the window, with no memory.read_max_chars)" do
       # A 1000-token window at 4 chars a token: a result over 2000 chars is cut.
       let(:guard_line) { /\[cut: \d+ of \d+ chars; the rest is in the memory's \.md file in .+: read it with start_line\]\z/ }
-      # A remote host: the chat loop's window comes from its adapter, not the kernel's client.
+      # A remote host: the chat loop's window comes from its adapter, not the host's client.
       let(:listed_adapter) do
         Class.new(FakeChatAdapter) do
           def remote? = true
@@ -231,7 +233,7 @@ RSpec.describe "Tool call wrapper parity" do
         expect(completed[:output_truncated]).to be(true)
       end
 
-      it "chat: cuts it alike on a known window of the kernel's client" do
+      it "chat: cuts it alike on a known window of the host's client" do
         _result, native = run_native(max_tool_output_chars: 20_000, call: native_call, window: 1000)
         events.clear
         _result, chat = run_chat(max_tool_output_chars: 20_000, call: chat_call, window: 1000)

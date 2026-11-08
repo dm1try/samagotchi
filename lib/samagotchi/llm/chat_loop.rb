@@ -69,6 +69,12 @@ module Samagotchi
       # The session every request is for; Engine sets it with the adapter.
       # Goes out as a Session-Id header (OpenAIChat#chat).
       attr_accessor :session_id
+      # The effective model's host's client (EffectiveModel#client): what
+      # #context_window probes on a local host (a llama.cpp /props) and what
+      # a request's re-prefill is counted against. Engine sets it with the
+      # adapter (Engine#backend_for, under its chat backend mutex, from any
+      # thread a model switch runs on); nil until then (no probe).
+      attr_accessor :client
       # The last counted request's chars per token
       # (ContextStatus#counted_chars_per_token), carried to the next turn's
       # tracker: its first estimate counts the tool schemas the chars leave
@@ -403,14 +409,13 @@ module Samagotchi
         @tool_runner ||= ToolRunner.new(@kernel, window: ->(run_settings) { context_window(run_settings&.model_name, run_settings) })
       end
 
-      # The window for +model+: the kernel's client probes the server it
-      # points at (Engine keeps it on the effective model's host; a local
-      # llama.cpp answers /props), then the host's model list, the model's
+      # The window for +model+: the loop's client (#client) probes the server
+      # it points at (a local llama.cpp answers /props), then the host's model list, the model's
       # or host's window_tokens, config, env and the default. A remote
       # provider has no /props to probe. +run_settings+: the LLM::TurnSettings
       # whose window_setting counts (the turn's by default).
       def context_window(model, run_settings = settings)
-        client = @adapter.remote? ? nil : @kernel.client
+        client = @adapter.remote? ? nil : @client
         ContextWindow.resolve(client: client, model: model, adapter: @adapter, setting: run_settings&.window_setting)
       rescue StandardError
         nil

@@ -297,6 +297,23 @@ RSpec.describe "Tool host characterization" do
     expect(reprefills.call).to eq([nil])
   end
 
+  # The chat loop's window on a local host comes from that host's client
+  # (its /props), as the native loop's does.
+  it "probes a local chat host's window through its own client, and the native host's through its own" do
+    server.default("/props", json: { "chat_template" => "<|im_start|> <function=",
+                                     "default_generation_settings" => { "n_ctx" => 24_576 } })
+    engine = engine_on(ToolHostWires::CHAT)
+    session = session_on(ToolHostWires::CHAT)
+    enqueue(:chat, text: "Chat.")
+    turn(engine, session, :chat, "one")
+    enqueue(:native, text: "Native.")
+    turn(engine, session, :native, "two")
+
+    started = completed(:generation_started).map { |event| event.slice(:context_window_tokens, :context_window_source) }
+    expect(started).to eq([{ context_window_tokens: 24_576, context_window_source: :server }] * 2)
+    expect(server.requests.map(&:path)).to include("/props")
+  end
+
   # -- (d) a bare ChatLoop's own turn -----------------------------------------
 
   it "gives a bare ChatLoop (no context:) the default model's settings and a bare surface of its tools" do

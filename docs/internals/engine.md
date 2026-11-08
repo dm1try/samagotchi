@@ -204,7 +204,11 @@ Gemma 4's native contract (and thought context) is [gemma4-contract.md](gemma4-c
 
 Runs hosts whose api has a chat adapter: `api: openai` on `LLM::OpenAIChat` (OpenRouter, any OpenAI-compatible
 server) and `api: anthropic` on `LLM::AnthropicMessages` ([anthropic.md](anthropic.md)). The Engine sets the
-adapter per turn (`HostRegistry#adapter_for`). `ChatLoop#complete` copies the messages (each `dup`ed) and runs a
+adapter per turn (`HostRegistry#adapter_for`), with the session id and the loop's own client (`ChatLoop#client`, the
+effective model's `EffectiveModel#client`: what `#context_window` probes on a local host, and the host a request's
+re-prefill is counted against). `Engine#backend_for` writes all three under `@chat_backend_mutex`, from whichever
+thread asks (the turn's, or a `/model` switch's through `sync_kernel_client!`); the turn reads them on its own
+thread. The chat loop never reads the kernel's client. `ChatLoop#complete` copies the messages (each `dup`ed) and runs a
 `ChatLoop::Run` (`start: reasoning_since`, cap `ToolOutputCut.max_chars`). Differences from the native
 loop:
 
