@@ -408,7 +408,7 @@ module Samagotchi
     # appended_prompt_files, Hooks::Loader, ConfigFile.bundle_settings.
     FREE_FORM_MAPS = %w[model_aliases hooks bundles memories append_system_prompt].freeze
     # Maps of named entries and the keys an entry may hold
-    # (ConfigFile.hosts_config, ConfigFile.model_settings).
+    # (HostConfig.all, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
@@ -1183,71 +1183,6 @@ module Samagotchi
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
-    # config.yml's hosts: by lowercased name; an entry that is disabled or
-    # invalid (warned) is left out. No entry left: "default", from
-    # server.host/port.
-    # @return [Hash{String => HostConfig}]
-    def hosts_config(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw_hosts = data[HOSTS_KEY] if data.is_a?(Hash)
-
-      normalized = {}
-      if raw_hosts.is_a?(Hash)
-        raw_hosts.each do |raw_name, raw_cfg|
-          host = HostConfig.parse(raw_name, raw_cfg)
-          normalized[host.name] = host if host
-        end
-        warn_duplicate_host_models(normalized)
-      end
-      normalized["default"] = default_host_config(data, env) if normalized.empty?
-      normalized
-    rescue StandardError => e
-      Log.error(:config, "hosts_config_failed", error: e.class.name, message: e.message)
-      {}
-    end
-
-    # The host chi uses when hosts: names none: server.host/port.
-    def default_host_config(data, env)
-      opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
-      host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
-      host = "localhost" if host.empty?
-      port = Samagotchi::Config.resolve("server.port", **opts).to_i
-      port = 8080 if port <= 0 || port > 65_535
-      HostConfig.new(name: "default", host: host, port: port)
-    end
-    private_class_method :default_host_config
-
-    # Two hosts declaring one id under hosts.<name>.models: a bare id goes
-    # where HostRegistry#host_for_model sends it (the default host when it
-    # declares the id, else the first in hosts: order); say so once.
-    def warn_duplicate_host_models(hosts)
-      declared = Hash.new { |h, k| h[k] = [] }
-      hosts.each { |name, cfg| cfg.models.each { |down, model| declared[down] << [name, model.id] } }
-      declared.each_value do |owners|
-        next if owners.size < 2
-
-        names = owners.map(&:first)
-        id = owners.first.last
-        goes = names.include?("default") ? "default" : "#{names.first} unless the default host lists it"
-        warn_once "Warning: #{names.map { |n| "hosts.#{n}.models" }.join(" and ")} #{names.size == 2 ? "both" : "all"} declare #{id}; " \
-                  "a bare #{id} goes to #{goes}"
-      end
-    end
-    private_class_method :warn_duplicate_host_models
-
-    # The names (lowercased) of the hosts entries with enabled: false, which
-    # hosts_config leaves out, from config.yml's hosts:.
-    # @return [Array<String>]
-    def disabled_host_names(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw = data[HOSTS_KEY] if data.is_a?(Hash)
-      return [] unless raw.is_a?(Hash)
-
-      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && HostConfig.disabled?(cfg) }
-    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
-      []
-    end
-
     # Resolve the `recap:` section through the Config registry so scalar
     # recap settings share the single precedence path (CLI > ENV > file >
     # default). Returns false when explicitly disabled (file `recap: false`
@@ -1464,12 +1399,6 @@ module Samagotchi
         return ModelSetting.new(key: key, value: value) unless value.nil?
       end
       nil
-    end
-
-    # +raw+ parsed against config.yml's hosts (or +hosts+) and aliases.
-    # @return [ModelRef]
-    def model_ref(raw, env: ENV, path: global_path(env: env), hosts: nil)
-      ModelRef.parse(raw, hosts: hosts || hosts_config(env: env, path: path), aliases: model_aliases(env: env, path: path))
     end
 
     # Words /model takes as arguments (clear/default/none/off reset the

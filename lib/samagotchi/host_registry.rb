@@ -126,7 +126,7 @@ module Samagotchi
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @adapters = {}
       @host_lists = {}
-      raw = hosts_config || ConfigFile.hosts_config(env: env)
+      raw = hosts_config || HostConfig.all(env: env)
       @entries = {}
       raw.each do |key, cfg|
         cfg = HostConfig.coerce(key, cfg)

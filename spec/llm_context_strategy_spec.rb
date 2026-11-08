@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
                "hosts" => { "box" => { "host" => "h", "llm_context_budget_tokens" => "off" } } }
       with_config(data) do |path|
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
         expect(models["deepseek"].llm_context_budget_tokens).to eq(48_000)
         expect(hosts["box"].llm_context_budget_tokens).to be_nil
@@ -204,7 +204,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
                "hosts" => { "box" => { "host" => "h", "llm_context_budget_tokens" => 32_000 } } }
       with_config(data) do |path|
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
         expect(models["deepseek"].llm_context_budget_tokens).to eq(48_000)
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_budget_tokens).to eq(32_000)
@@ -221,7 +221,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       with_config("models" => { "deepseek" => { "llm_context_apply" => "next_request" }, "other" => { "profile" => "x" } },
                   "hosts" => { "box" => { "host" => "h", "llm_context_apply" => "turn_end" } }) do |path|
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
         expect(models["deepseek"].llm_context_apply).to eq(:next_request)
         expect(models["other"]).to have_attributes(llm_context_apply: nil)
@@ -236,7 +236,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
                   "hosts" => { "box" => { "host" => "h", "llm_context_strategy" => "none" },
                                "plain" => { "host" => "p" } }) do |path|
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
         expect(models["qwen3.6-35b"].llm_context_strategy).to eq([:stale])
         expect(models["deepseek"].llm_context_strategy).to eq(%i[stale forget])

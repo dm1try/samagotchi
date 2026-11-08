@@ -1217,7 +1217,7 @@ module Samagotchi
         @models_mutex.synchronize do
           next @registry if @registry_given
 
-          hosts = ConfigFile.hosts_config
+          hosts = HostConfig.all
           if @registry.nil? || hosts != @registry_hosts
             @registry = HostRegistry.new(hosts_config: hosts)
             @registry_hosts = hosts

@@ -224,7 +224,7 @@ module Samagotchi
       Degrade.call(:config, "model_ref_unresolved", fallback: false) do
         return true if one == other
 
-        ConfigFile.model_ref(one, env: env).ref == ConfigFile.model_ref(other, env: env).ref
+        HostConfig.model_ref(one, env: env).ref == HostConfig.model_ref(other, env: env).ref
       end
     end
 
@@ -305,7 +305,7 @@ module Samagotchi
     # it resolves to (an alias applied, ModelRef), as `chi models` names it.
     def model_ref_name(env: ENV)
       name = model_name
-      name && ConfigFile.model_ref(name, env: env).ref
+      name && HostConfig.model_ref(name, env: env).ref
     end
 
     # Routed without model discovery, so an unqualified name may land on

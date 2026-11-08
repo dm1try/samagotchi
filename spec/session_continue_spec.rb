@@ -71,9 +71,9 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     previous.working_set_pins = [{ "kind" => "file", "key" => "/r/lib/a.rb" }]
     previous.save(state_dir: tmpdir)
     save_recap(previous.id, "The user reviewed three PRs and merged two.")
-    allow(Samagotchi::ConfigFile).to receive(:model_ref).and_call_original
-    allow(Samagotchi::ConfigFile).to receive(:model_ref).with("small")
-                                                         .and_return(Samagotchi::ConfigFile.model_ref("main:gemma-small"))
+    allow(Samagotchi::HostConfig).to receive(:model_ref).and_call_original
+    allow(Samagotchi::HostConfig).to receive(:model_ref).with("small")
+                                                         .and_return(Samagotchi::HostConfig.model_ref("main:gemma-small"))
 
     link = continue(previous.id)
 
@@ -814,7 +814,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
       link = continue(previous.id)
 
-      expect(load(link.id).model_name).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+      expect(load(link.id).model_name).to eq(Samagotchi::HostConfig.model_ref("spec-model").ref)
       expect(link.model_warning).to match(%r{\Agone:org/model can't run \(unknown host 'gone' in model 'gone:org/model'.*\); started on spec-model\z})
       expect(archived?(previous.id)).to be(true)
     end

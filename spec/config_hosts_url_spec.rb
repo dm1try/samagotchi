@@ -13,7 +13,7 @@ RSpec.describe "hosts: url and api_key_env" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => yaml_hosts }.to_yaml)
-      Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+      Samagotchi::HostConfig.all(env: {}, path: path)
     end
   end
 
@@ -137,7 +137,7 @@ RSpec.describe "window_tokens on hosts: and models: entries" do
                          "models" => { "Qwen3" => { "window_tokens" => 32_768 }, "odd" => { "window_tokens" => -1 } } }.to_yaml)
       hosts = models = nil
       expect do
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
       end.to output(/'bad'.*window_tokens must be a positive number of tokens.*\n.*odd.*window_tokens/m).to_stderr
       expect(hosts.transform_values(&:window_tokens)).to eq("box" => 65_536, "bad" => nil)
@@ -157,7 +157,7 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
                                       "off" => { "host" => "off", "llm_context_strategy" => "none" },
                                       "plain" => { "host" => "plain" } } }.to_yaml)
 
-      hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+      hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
       expect(hosts.transform_values(&:llm_context_strategy)).to eq("box" => %i[stale forget], "off" => [],
                                                                    "plain" => nil)

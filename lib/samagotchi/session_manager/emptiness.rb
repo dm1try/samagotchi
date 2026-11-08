@@ -59,7 +59,7 @@ module Samagotchi
         return false if one.nil? || other.nil?
 
         Degrade.call(:config, "model_ref_unresolved", fallback: false) do
-          ConfigFile.model_ref(one).ref == ConfigFile.model_ref(other).ref
+          HostConfig.model_ref(one).ref == HostConfig.model_ref(other).ref
         end
       end
 

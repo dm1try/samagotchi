@@ -2988,7 +2988,7 @@ RSpec.describe Samagotchi::Web::App do
       a = { "box" => { name: "box", host: "a", port: 1 } }
       b = a.merge("new" => { name: "new", host: "b", port: 2 })
       hosts = a
-      allow(Samagotchi::ConfigFile).to receive(:hosts_config) { hosts }
+      allow(Samagotchi::HostConfig).to receive(:all) { hosts }
       built = []
       allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
         built << hosts_config.keys

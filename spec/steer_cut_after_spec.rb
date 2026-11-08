@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::SteerCutAfter do
   end
 
   def target_for(path, model)
-    hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+    hosts = Samagotchi::HostConfig.all(env: {}, path: path)
     Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
   end
 

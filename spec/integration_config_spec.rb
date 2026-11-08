@@ -67,7 +67,7 @@ RSpec.describe IntegrationServer do
         expect(Samagotchi::Config.get("default.model")).to eq("live-model")
         expect(Samagotchi::Config.get("server.host")).to eq("192.0.2.10")
         expect(Samagotchi::Config.get("server.port")).to eq(8081)
-        expect(Samagotchi::ConfigFile.hosts_config.keys).to eq(["integration"])
+        expect(Samagotchi::HostConfig.all.keys).to eq(["integration"])
       end
     end
 

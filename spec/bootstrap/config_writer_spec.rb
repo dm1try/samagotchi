@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
   end
 
   def parsed = YAML.safe_load_file(path)
-  def hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+  def hosts = Samagotchi::HostConfig.all(env: {}, path: path)
   def backups = Dir[File.join(File.dirname(File.realpath(path)), "config.yml.bak-*")].sort
 
   describe ".derived_name" do
@@ -190,7 +190,7 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
     it "puts the backup back when the check fails" do
       original = "hosts:\n  main:\n    host: a\n"
       existing(original)
-      allow(Samagotchi::ConfigFile).to receive(:hosts_config).and_return({})
+      allow(Samagotchi::HostConfig).to receive(:all).and_return({})
 
       outcome = writer.write(name: "lan", fields: lan, model: "m")
 

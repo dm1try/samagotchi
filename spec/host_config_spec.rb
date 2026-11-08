@@ -5,7 +5,7 @@ require "tmpdir"
 require "yaml"
 require "samagotchi/host_config"
 
-# One hosts: entry as a value object (ConfigFile.hosts_config holds them).
+# One hosts: entry as a value object (HostConfig.all holds them).
 RSpec.describe Samagotchi::HostConfig do
   before { Samagotchi::ConfigFile.reset_warnings! }
 

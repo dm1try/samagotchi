@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Thinking do
   end
 
   def target_for(path, model)
-    hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+    hosts = Samagotchi::HostConfig.all(env: {}, path: path)
     Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
   end
 
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::Thinking do
           qwen:
             thinking: off
       YAML
-        expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"].thinking).to eq(:off)
+        expect(Samagotchi::HostConfig.all(env: {}, path: path)["work"].thinking).to eq(:off)
         expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)["qwen"].thinking).to eq(:off)
         with_env("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil) do
           expect(described_class.global_level).to eq(%i[off file])

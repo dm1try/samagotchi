@@ -304,7 +304,7 @@ module Samagotchi
 
       def written_ok?(real, expected, name)
         parse(File.read(real)) == expected &&
-          ConfigFile.hosts_config(env: @env, path: real).key?(name.downcase)
+          HostConfig.all(env: @env, path: real).key?(name.downcase)
       rescue StandardError
         false
       end

@@ -13,7 +13,7 @@ RSpec.describe "hosts: api" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => yaml_hosts }.to_yaml)
-      Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+      Samagotchi::HostConfig.all(env: {}, path: path)
     end
   end
 
@@ -114,8 +114,8 @@ RSpec.describe "hosts: api" do
         path = File.join(dir, "config.yml")
         File.write(path, { "hosts" => yaml_hosts }.to_yaml)
 
-        expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path).keys).to eq(%w[main on])
-        expect(Samagotchi::ConfigFile.disabled_host_names(env: {}, path: path)).to eq(%w[box spare])
+        expect(Samagotchi::HostConfig.all(env: {}, path: path).keys).to eq(%w[main on])
+        expect(Samagotchi::HostConfig.disabled_names(env: {}, path: path)).to eq(%w[box spare])
       end
     end
   end
@@ -139,7 +139,7 @@ RSpec.describe "hosts: api" do
 
   describe "a failure outside the entries" do
     it "logs hosts_config_failed instead of answering {} silently" do
-      allow(Samagotchi::ConfigFile).to receive(:warn_duplicate_host_models).and_raise(TypeError, "bad section")
+      allow(Samagotchi::HostConfig).to receive(:warn_duplicate_models).and_raise(TypeError, "bad section")
       allow(Samagotchi::Log).to receive(:error)
 
       expect(hosts("fine" => { "host" => "h" })).to eq({})

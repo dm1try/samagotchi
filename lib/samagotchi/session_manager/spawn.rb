@@ -67,7 +67,7 @@ module Samagotchi
         # list.
         typed = Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name))
         model_warning = Samagotchi::ModelProfile.model_warning(typed)
-        ref = ConfigFile.model_ref(typed).ref
+        ref = HostConfig.model_ref(typed).ref
         session = Session.new_session(
           mode: mode,
           model_name: ref,

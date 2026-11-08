@@ -335,7 +335,7 @@ module Samagotchi
       # are left out. @return [Array<Hash>] name:, hosts:, state:
       def host_keys
         config_env = { "XDG_CONFIG_HOME" => launch_config_home }
-        hosts = ConfigFile.hosts_config(env: config_env).values.select(&:api_key_env).group_by(&:api_key_env)
+        hosts = HostConfig.all(env: config_env).values.select(&:api_key_env).group_by(&:api_key_env)
         hosts.map do |name, entries|
           state = if HostKeys.from_keychain(name, env: @env) then :keychain
                   elsif !@env[name].to_s.strip.empty? then :shell_only
