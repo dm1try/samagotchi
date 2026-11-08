@@ -200,7 +200,11 @@ The Bridge exposes:
   `tool_ids`, handed out before the batch runs), and `tool_call_completed` carries `duration_ms`: the call's time from
   the `tool_call_started` emit to its own, less an approval's `waited_ms`, rounded first (SessionMetrics' tool record
   definition). It is the one duration every UI shows: the web's live row, the tool record a reload draws, the attached
-  terminal's line; each keeps its own clock only for an older worker's event without it.
+  terminal's line; each keeps its own clock only for an older worker's event without it. A long output's
+  `tool_call_completed` also carries `preview`: `ToolOutputCut.preview` of the capped output at `WEB_PREVIEW_CHARS`
+  (a `read`'s head, any other tool's head and tail), the text a reload's row has from the saved output
+  (`MessageParts#tool_part`; spec/tool_preview_parity_spec.rb pins the two). The web row and the accumulator's part
+  take it; the TUI keeps `output`.
 
   A `turn_completed` frame omits `result`; `turn_summary.output` carries the answer:
 

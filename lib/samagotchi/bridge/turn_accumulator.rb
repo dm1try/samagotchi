@@ -345,7 +345,12 @@ module Samagotchi
           # Only System 1's auto-allow is drawn on the row (the web's label).
           guardrail = event.dig(:activity, :guardrail)
           tool[:guardrail] = guardrail if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
-          tool[:output] = capped ? ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool]) : output.dup
+          # The event's web preview (ToolRunner: the reload's cut) when it
+          # has one; an older worker's event is cut here the same way.
+          tool[:output] = if event[:preview] then event[:preview].to_s.dup
+                          elsif capped then ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool])
+                          else output.dup
+                          end
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
           tool[:diff] = event[:diff] if event[:diff]

@@ -182,6 +182,12 @@ module Samagotchi
       completed[:waited_ms] = waited_ms if waited_ms
       completed[:output_file] = output_file if output_file
       completed[:tool_id] = tool_id if tool_id
+      # A long output's web row (its hover): the cut a reload draws from the
+      # saved output (MessageParts#tool_part), so live and reload show the
+      # same text. The TUI keeps +output+.
+      if capped.length > ToolOutputCut::WEB_PREVIEW_CHARS
+        completed[:preview] = ToolOutputCut.preview(capped, cap: ToolOutputCut::WEB_PREVIEW_CHARS, tool: call[:name])
+      end
       # Also here: a UI that missed the start (a replay gap) builds its row
       # from this event (its title is in the activity).
       completed.merge!(fields.slice(*ToolRowFields::EVENT_KEYS))

@@ -163,6 +163,16 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(replayed.last[:duration_ms]).to eq(1498)
   end
 
+  it "keeps the event's web preview of a long output as the part's output, the reload's cut" do
+    long = "x" * 5000
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: long, preview: "head…tail",
+           activity: { status: "ok" } })
+
+    expect(acc.current_turn[:parts].last).to include(output: "head…tail", output_truncated: true)
+  end
+
   it "gives a running call's part the time it has run so far, so a join times the row from its start" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "delegate", params: "task" })

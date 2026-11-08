@@ -186,6 +186,18 @@ test("a live call's duration is the event's (the worker's) when it carries one; 
   assert.equal(addCompleted(m, { iteration: 1, call_index: 2 }, 2040).duration_ms, 40);
 });
 
+test("a long output's row shows the worker's preview (the reload's cut), marked truncated", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "execute" });
+  const row = addCompleted(m, { iteration: 1, call_index: 1, output: "x".repeat(5000), preview: "head…tail" });
+  assert.equal(row.output, "head…tail");
+  assert.equal(row.output_truncated, true);
+  addStarted(m, { iteration: 1, call_index: 2, tool: "execute" });
+  const short = addCompleted(m, { iteration: 1, call_index: 2, output: "ok" });
+  assert.equal(short.output, "ok");
+  assert.equal(short.output_truncated, false);
+});
+
 test("a row keeps the name the model called the tool by (an alias's), from the start or the completion", () => {
   const m = newActivity();
   const { row } = addStarted(m, { iteration: 1, call_index: 1, tool: "execute", called_as: "bash" });
