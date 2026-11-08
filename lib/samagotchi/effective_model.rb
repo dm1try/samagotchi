@@ -281,7 +281,7 @@ module Samagotchi
     # Not cached here. Raises.
     # @return [ModelProfile::Resolution]
     def profile_resolution
-      ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare)
+      ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare, models: lookup.models)
     end
 
     # See Unresolved.fallback.

@@ -372,16 +372,12 @@ module Samagotchi
     # Offline, so no /props probe: where nothing is configured, a native
     # llama.cpp host's chat template decides at runtime.
     def profile_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
-      entry = target.entry
-      bare = target.bare_model
-      return "name-based (chat API: only strips thoughts)" if entry&.chat?
+      effective = effective_model(model, env)
+      return "name-based (chat API: only strips thoughts)" if effective.entry&.chat?
 
-      names = registry.lookup_names(model)
-      override = Config.resolve_with_origin("model.profile", env: env, cli_overrides: Config.cli_overrides)
-      result = ModelProfile.resolve(names: names, entry: entry, client: nil, bare_model: bare, override: override,
-                                    models: ModelSettings.all(env: env))
+      lookup = effective.lookup
+      result = ModelProfile.resolve(names: effective.names, entry: effective.entry, client: nil, bare_model: effective.bare,
+                                    override: lookup.global("model.profile"), models: lookup.models)
       name = result.profile.name
       case result.source
       when :config then "#{name} (config #{result.detail})"
