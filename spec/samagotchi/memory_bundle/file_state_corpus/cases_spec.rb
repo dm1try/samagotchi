@@ -4,22 +4,27 @@ require "spec_helper"
 require_relative "support"
 require_relative "assets"
 
+module BundleStateCorpus
+  # What cases_spec.rb checks the corpus against.
+  module Checks
+    # The file-machinery fixes a state model closes (the research's class B):
+    # each is at least one case, its start lifted from the example that fixed it.
+    B_FIXES = [705, 703, 704, 633, 634, 587, 424, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
+    DIVERGENT = %w[D4 U4 dry-noop dry-trash edited-rule restore-unchecked].freeze
+    ASSET_DIVERGENT = %w[dry-checksum dry-dropped hook-stray-left hook-sha-dropped hook-status new-updated uninstall-unnamed].freeze
+    # What a cell's do says when the file's bytes changed or went.
+    WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze
+    ASSET_WRITES = %w[wrote_incoming wrote_other removed].freeze
+    # A cell either invariant may break, with why: [case id, column] => note.
+    # Expected empty; a new entry goes to the user as a finding first.
+    INVARIANT_ALLOWLIST = {}.freeze
+  end
+end
+
 # The corpus itself: its cases are well formed, every fix they cite is a
 # real example, and the generated expectations hold two invariants that every
 # later regeneration must keep too.
 RSpec.describe "Bundle state corpus: the cases" do
-  # The file-machinery fixes a state model closes (the research's class B):
-  # each is at least one case, its start lifted from the example that fixed it.
-  B_FIXES = [705, 703, 704, 633, 634, 587, 424, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
-  DIVERGENT = %w[D4 U4 dry-noop dry-trash edited-rule restore-unchecked].freeze
-  ASSET_DIVERGENT = %w[dry-checksum dry-dropped hook-stray-left hook-sha-dropped hook-status new-updated uninstall-unnamed].freeze
-  # What a cell's do says when the file's bytes changed or went.
-  WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze
-  ASSET_WRITES = %w[wrote_incoming wrote_other removed].freeze
-  # A cell either invariant may break, with why: [case id, column] => note.
-  # Expected empty; a new entry goes to the user as a finding first.
-  INVARIANT_ALLOWLIST = {}.freeze
-
   let(:cases) { BundleStateCorpus.memory_cases }
   let(:by_id) { cases.to_h { |kase| [kase.id, kase] } }
   let(:asset_cases) { BundleStateCorpus.asset_cases }
@@ -72,7 +77,7 @@ RSpec.describe "Bundle state corpus: the cases" do
     expect(refs.grep(String)).to eq([])
     missing = refs.reject { |ref| File.file?(ref[2]) && File.read(ref[2]).include?(ref[3]) }
     expect(missing.map(&:to_s)).to eq([])
-    expect(B_FIXES - (refs + fix_refs(asset_cases)).map { |ref| ref[1].to_i }).to eq([])
+    expect(BundleStateCorpus::Checks::B_FIXES - (refs + fix_refs(asset_cases)).map { |ref| ref[1].to_i }).to eq([])
   end
 
   it "has unique asset ids, and every asset in every state" do
@@ -85,7 +90,7 @@ RSpec.describe "Bundle state corpus: the cases" do
     expect(asset_refs.reject { |ref| File.file?(ref[2]) && File.read(ref[2]).include?(ref[3]) }.map(&:to_s)).to eq([])
     tagged = asset_cases.select { |kase| kase.fixed || kase.divergent }
     expect(tagged.reject(&:note).map(&:id)).to eq([])
-    expect(tagged.flat_map { |kase| Array(kase.divergent) } - ASSET_DIVERGENT).to eq([])
+    expect(tagged.flat_map { |kase| Array(kase.divergent) } - BundleStateCorpus::Checks::ASSET_DIVERGENT).to eq([])
   end
 
   it "has every asset case in every asset column" do
@@ -97,7 +102,7 @@ RSpec.describe "Bundle state corpus: the cases" do
   it "notes every tagged case, with a known tag" do
     tagged = cases.select { |kase| kase.fixed || kase.divergent }
     expect(tagged.reject(&:note).map(&:id)).to eq([])
-    expect(tagged.flat_map { |kase| Array(kase.divergent) } - DIVERGENT).to eq([])
+    expect(tagged.flat_map { |kase| Array(kase.divergent) } - BundleStateCorpus::Checks::DIVERGENT).to eq([])
     expect(tagged.filter_map(&:fixed) - %w[D1 D2 D3]).to eq([])
   end
 
@@ -113,16 +118,16 @@ RSpec.describe "Bundle state corpus: the cases" do
   # bundle's text are never changed or removed unless the trash has them.
   it "never changes or removes the user's own bytes without a copy in the trash" do
     lost = memory_cells.filter_map do |kase, column, shape, cell|
-      next unless WRITES.include?(cell["do"].to_s.split(",").first) && !cell["save_first"]
+      next unless BundleStateCorpus::Checks::WRITES.include?(cell["do"].to_s.split(",").first) && !cell["save_first"]
       next unless kase.disk && kase.disk != kase.base && kase.disk != kase.incoming
-      next if INVARIANT_ALLOWLIST.key?([kase.id, column])
+      next if BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.key?([kase.id, column])
 
       "#{kase.id} #{column} (#{shape}): #{cell["do"]} with no save"
     end
     lost += asset_cells.filter_map do |kase, column, shape, cell|
-      next unless ASSET_WRITES.include?(cell["do"].to_s.split(/[ ,]/).first) && cell.key?("save_first") && !cell["save_first"]
+      next unless BundleStateCorpus::Checks::ASSET_WRITES.include?(cell["do"].to_s.split(/[ ,]/).first) && cell.key?("save_first") && !cell["save_first"]
       next if kase.dev? || kase.installed.nil? || kase.installed == kase.recorded || kase.installed == kase.incoming
-      next if INVARIANT_ALLOWLIST.key?([kase.id, column])
+      next if BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.key?([kase.id, column])
 
       "#{kase.id} #{column} (#{shape}): #{cell["do"]} with no save"
     end
@@ -149,7 +154,7 @@ RSpec.describe "Bundle state corpus: the cases" do
       expectations(name).flat_map do |id, columns|
         columns.filter_map do |column, cell|
           next unless cell.key?(BundleStateCorpus::SHAPES.first)
-          next if by_id.fetch(id).marked? || INVARIANT_ALLOWLIST.key?([id, column])
+          next if by_id.fetch(id).marked? || BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.key?([id, column])
 
           "#{id} #{column}"
         end
@@ -157,12 +162,12 @@ RSpec.describe "Bundle state corpus: the cases" do
     end
     # An asset case has no mark: its shapes never differ.
     split += expectations("assets").flat_map do |id, columns|
-      columns.filter_map { |column, cell| "#{id} #{column}" if cell.key?(BundleStateCorpus::SHAPES.first) && !INVARIANT_ALLOWLIST.key?([id, column]) }
+      columns.filter_map { |column, cell| "#{id} #{column}" if cell.key?(BundleStateCorpus::SHAPES.first) && !BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.key?([id, column]) }
     end
     expect(split).to eq([])
   end
 
   it "keeps the allowlist's entries noted" do
-    expect(INVARIANT_ALLOWLIST.values.reject { |note| note.to_s.strip.empty? }).to eq(INVARIANT_ALLOWLIST.values)
+    expect(BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.values.reject { |note| note.to_s.strip.empty? }).to eq(BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.values)
   end
 end
