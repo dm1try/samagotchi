@@ -163,7 +163,10 @@ module Samagotchi
             reader.join(0.1) if reader.alive?
             reader.kill if reader.alive?
           end
-          readers.map { |reader| reader.value.to_s }
+          # readpartial gives raw bytes: the child writes UTF-8 (the answer,
+          # the trace), so each stream is read as that, a bad byte as "?",
+          # here once, for the text and the --json report alike.
+          readers.map { |reader| reader.value.to_s.dup.force_encoding(Encoding::UTF_8).scrub("?") }
         end
 
         def close_streams(streams)

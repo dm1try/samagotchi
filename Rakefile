@@ -122,7 +122,8 @@ end
 namespace :release do
   desc "Bump VERSION, the system bundle, Gemfile.lock and the CHANGELOG (Unreleased → [VERSION] - today), and raise " \
        "the requires_chi of bundles marked requires_chi_next, then of a profile left below a member's (with a patch " \
-       "bump of its version); no commit"
+       "bump of its version), and move the entries an Unreleased comment names into Plugin::Api::SINCE / " \
+       "Manifest::SINCE at VERSION; no commit"
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
     bumped = ReleaseTools.bump!(ROOT, version)
@@ -134,6 +135,9 @@ namespace :release do
       moved = p.old_version == p.version ? "#{p.version} (already bumped since the last tag)" : "#{p.old_version} → #{p.version}"
       puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{moved}; " \
            "named in the CHANGELOG's `chi update` line"
+    end
+    bumped.since.each do |rel, names|
+      puts "Moved to SINCE as #{version}: #{names.join(", ")} (#{rel})"
     end
     puts "Review with `git diff`, then run rake release:check and commit."
   rescue ReleaseTools::Error => e

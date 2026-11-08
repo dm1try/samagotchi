@@ -577,6 +577,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         expect(joined("reminder_only")).to eq(["user> earlier", "Tea time."])
       end
 
+      it "rebuilds the rows, as without one, from a drawing that isn't a Hash, and from a drawing of another turn" do
+        without = joined("tools_answer", drawing: false)
+        expect(joined("tools_answer", drawing: { drawing: "x", end: {} })).to eq(without)
+        # No turn_id: not the prompt's turn, so its parts are never read.
+        expect(joined("tools_answer", drawing: { drawing: { "parts" => "x" }, end: { "type" => "turn_completed" } })).to eq(without)
+      end
+
+      it "rebuilds the rows, as without one, from the prompt's own drawing whose parts aren't a list of rows" do
+        line = fixture("tools_answer")["lines"].last
+        without = joined("tools_answer", drawing: false)
+        ["x", ["x"], [nil]].each do |parts|
+          drawing = { drawing: line["drawing"].merge("parts" => parts), end: line["end"] }
+          expect(joined("tools_answer", drawing: drawing)).to eq(without)
+        end
+      end
+
       it "draws as before without a drawing (an older worker)" do
         expect(joined("empty_retry", drawing: false)).to eq(["user> answer please", "Here it is."])
         expect(joined("tools_answer", drawing: false)).to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok',

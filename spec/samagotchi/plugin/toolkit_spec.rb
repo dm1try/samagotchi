@@ -104,6 +104,15 @@ RSpec.describe "Plugin toolkits" do
       expect(Samagotchi::Session.load(session.id).toolkit_origin).to eq("chosen")
     end
 
+    it "saves the same kit chosen again as chosen over a kept unknown origin (a newer chi's)" do
+      session.toolkit = Samagotchi::Toolkit.new(name: "lean")
+      kept = Samagotchi::Session.from_h(session.to_h.merge("toolkit_origin" => "future"))
+      engine.session = kept
+      expect(ctx.use_toolkit("lean")).to be(true)
+      saved = File.join(Samagotchi::Session.default_state_dir, "#{kept.id}.json")
+      expect(JSON.parse(File.read(saved))["toolkit_origin"]).to eq("chosen")
+    end
+
     it "reads the tools the next turn declares" do
       expect(ctx.declared_tools).to include("delegate")
       session.toolkit = Samagotchi::Toolkit.new(name: "full", remove: ["delegate"])

@@ -81,6 +81,9 @@ module Samagotchi
     LIST = ->(value) { Array(value) }
     ID = ->(value) { value&.to_s }
     MESSAGES = ->(messages) { SessionField.scrub_utf8(messages.map { |msg| SessionField.stringify_keys(msg) }) }
+    # A text the user typed or pasted (a prompt, a title): the file gets it
+    # as valid UTF-8 (nil stays nil), the session keeps what it was given.
+    SCRUBBED = ->(value) { SessionField.scrub_utf8(value) }
     VERDICTS = lambda do |records|
       records&.map do |record|
         SessionField.scrub_utf8(record.to_h do |key, entry|
@@ -92,6 +95,10 @@ module Samagotchi
       origin = value.to_s
       TOOLKIT_ORIGINS.include?(origin) ? origin : "chosen"
     end
+    TOOLKIT_ORIGIN_UNREAD = ->(value) { value if value.is_a?(String) && !TOOLKIT_ORIGINS.include?(value) }
+    # The kept value while there is one: the written one is the cast
+    # (never nil), so it can't come first as a level's does.
+    KEPT_FIRST = ->(written, kept) { kept || written }
     PARENT_ANSWERS = lambda do |value|
       case (level = Guardrails::ParentPolicy.parse_level(value))
       when :unset then nil
@@ -99,7 +106,8 @@ module Samagotchi
       else level
       end
     end
-    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :VERDICTS, :TOOLKIT_ORIGIN, :PARENT_ANSWERS
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :SCRUBBED, :VERDICTS, :TOOLKIT_ORIGIN, :TOOLKIT_ORIGIN_UNREAD, :KEPT_FIRST,
+                     :PARENT_ANSWERS
 
     # The fields of <id>.json, in the order #save writes them: key => its
     # SessionField (the value for a file without it, REQUIRED for the ones
@@ -141,12 +149,12 @@ module Samagotchi
       SessionField.plain("created_at", REQUIRED),
       SessionField.plain("updated_at", REQUIRED),
       SessionField.plain("status", STATUS_IDLE),
-      SessionField.plain("last_prompt", ""),
-      SessionField.plain("first_preview", ""),
+      SessionField.plain("last_prompt", "", write: SCRUBBED),
+      SessionField.plain("first_preview", "", write: SCRUBBED),
       # The name the user gave the session (/title, TitleCommand), else nil:
       # every list, card and tab shows it in place of #first_preview (see
       # #display_title). A continue's new link inherits it.
-      SessionField.plain("title", nil),
+      SessionField.plain("title", nil, write: SCRUBBED),
       SessionField.plain("test_run", false, cast: BOOLEAN, write: BOOLEAN),
       # The question this session waits on (PendingQuestion), saved as
       # session.json's "pending_question"; nil with none. A Hash (a saved
@@ -225,7 +233,11 @@ module Samagotchi
       # Why this session is on its toolkit (TOOLKIT_ORIGINS; anything else
       # reads as chosen). Files from before the field read as chosen, so an
       # old default session is never newly suggested. Cast on every set too.
-      SessionField.plain("toolkit_origin", "chosen", cast: TOOLKIT_ORIGIN),
+      # An unknown String (a newer chi's origin) is written back as it was
+      # (the Unread rule), until the session sets its own: the kept value
+      # wins over the cast chosen.
+      SessionField.plain("toolkit_origin", "chosen", cast: TOOLKIT_ORIGIN, unread: TOOLKIT_ORIGIN_UNREAD,
+                                                     keep: KEPT_FIRST),
       # The two parts of #settings (Session.new's settings:, .from_h composes
       # them): its bundles part, then its core part.
       SessionField.file_only("bundle_settings", {}, from: :settings, write: ->(settings) { settings.bundles }),
@@ -271,16 +283,6 @@ module Samagotchi
 
     # Session.new's keywords: every FIELDS row's attr.
     ATTRS = FIELDS.values.filter_map(&:attr).freeze
-
-    # @raise [ArgumentError] a keyword Session.new doesn't take, or a
-    #   required one missing (Ruby's own wording)
-    def self.check_attrs!(attrs)
-      unknown = attrs.keys - ATTRS
-      raise ArgumentError, "unknown keyword#{"s" if unknown.size > 1}: #{unknown.map(&:inspect).join(", ")}" unless unknown.empty?
-
-      missing = FIELDS.values.select(&:fresh_required?).map(&:attr) - attrs.keys
-      raise ArgumentError, "missing keyword#{"s" if missing.size > 1}: #{missing.map(&:inspect).join(", ")}" unless missing.empty?
-    end
 
     # The plain fields' readers and writers (each one's meaning is at its
     # FIELDS row): a writer takes the value as given (Session.new and
@@ -360,6 +362,18 @@ module Samagotchi
 
     def toolkit_origin=(value)
       @toolkit_origin = load_field("toolkit_origin", value)
+    end
+
+    # The user chose the toolkit (/toolkit, the toolkit binding's use): the
+    # origin is chosen. Whether that changes what the file holds, so the
+    # caller saves only then: a kept unknown origin (the Unread rule) reads
+    # as chosen but is written as it was, so it counts as a change.
+    # @return [Boolean]
+    def choose_toolkit_origin!
+      field = FIELDS.fetch("toolkit_origin")
+      was = field.dump(@toolkit_origin, @unread["toolkit_origin"])
+      self.toolkit_origin = "chosen"
+      was != field.dump(@toolkit_origin, @unread["toolkit_origin"])
     end
 
     def parent_answers=(value)
@@ -446,7 +460,7 @@ module Samagotchi
     # (cast by its row, as the writers cast); +settings+ is the
     # settings pair's one value, +extra_fields+ the file's unknown keys.
     def initialize(extra_fields: {}, settings: nil, **attrs)
-      self.class.check_attrs!(attrs)
+      check_attrs!(attrs)
       # What the level fields couldn't read, by key (SessionField.level).
       @unread = {}
       FIELDS.each_value do |field|
@@ -793,9 +807,20 @@ module Samagotchi
     def load_field(key, value)
       field = FIELDS.fetch(key)
       @unread[key] = field.unread.call(value) if field.unread
-      field.load(value)
+      field.cast_value(value)
     end
     private :load_field
+
+    # @raise [ArgumentError] a keyword Session.new doesn't take, or a
+    #   required one missing (Ruby's own wording)
+    def check_attrs!(attrs)
+      unknown = attrs.keys - ATTRS
+      raise ArgumentError, "unknown keyword#{"s" if unknown.size > 1}: #{unknown.map(&:inspect).join(", ")}" unless unknown.empty?
+
+      missing = FIELDS.values.select(&:fresh_required?).map(&:attr) - attrs.keys
+      raise ArgumentError, "missing keyword#{"s" if missing.size > 1}: #{missing.map(&:inspect).join(", ")}" unless missing.empty?
+    end
+    private :check_attrs!
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
     def checkpointed
@@ -884,8 +909,9 @@ module Samagotchi
     # A prompt as a one-line preview: whitespace collapsed, cut at 80 chars.
     # A quoted or annotated message previews by what was typed under the
     # quote; a quote alone by its words, without the "> " markers or label.
+    # Bytes that aren't UTF-8 preview as ?, as the file saves them.
     def self.preview_of(text)
-      norm = preview_words(text.to_s).gsub(/\s+/, " ").strip
+      norm = preview_words(SessionField.scrub_utf8(text.to_s)).gsub(/\s+/, " ").strip
       norm.length > 80 ? "#{norm[0, 80]}…" : norm
     end
 

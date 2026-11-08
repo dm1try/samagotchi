@@ -84,6 +84,15 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(engine.toolkit_summary).to be_nil
   end
 
+  it "saves a no-op selection as chosen over a kept unknown origin (a newer chi's), and doesn't save it twice" do
+    kept = Samagotchi::Session.from_h(session.to_h.merge("toolkit_origin" => "future"))
+    engine.session = kept
+    command.run("full")
+    expect([saved, kept.to_h["toolkit_origin"]]).to eq([[kept], "chosen"])
+    command.run("full")
+    expect(saved).to eq([kept])
+  end
+
   it "asks first for a kit that declares the same tools under another name (the not-loaded line names it)" do
     allow(Samagotchi::Toolkit).to receive(:config_kits).and_return("mykit" => { "base" => "lean" })
     session.toolkit = Samagotchi::Toolkit.new(name: "lean")

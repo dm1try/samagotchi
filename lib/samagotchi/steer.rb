@@ -364,6 +364,16 @@ module Samagotchi
       turn_prompt?(message) && !shell_line?(message)
     end
 
+    # An opening's stamp: its turn_id (a prompt's, a wake note's), else its
+    # own opening_id (/continue no's reason line); nil for neither (a line
+    # an older chi wrote). Where a card (Bridge::CardPlaces) and the recap
+    # (RecapPlace) sit.
+    # @return [String, nil]
+    def opening_stamp(message)
+      id = message[:turn_id] || message["turn_id"] || message[:opening_id] || message["opening_id"]
+      id.is_a?(String) && !id.empty? ? id : nil
+    end
+
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it
     # (the Engine's); a caller's own drain (a queue's #drain) is called bare.
     # A failing drain drains nothing (the loop keeps going).

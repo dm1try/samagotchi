@@ -125,7 +125,7 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   comes mid-turn but isn't the turn's (an anytime command's, such as `/btw`) goes after that turn (`during`), and so does a
   between-turns notice. A card with an earlier card's id replaces it in place and keeps its anchor. A `list` with no messages
   (`?cards=1`'s bodies, `chi bundle try`'s trace) has no `turns_since` and no `opening_id`.
-- **The stamp.** Next to `turns_since`, an entry lists `opening_id` (`CardPlaces#opening_of`): the id of the opening its count
+- **The stamp.** Next to `turns_since`, an entry lists `opening_id` (`CardPlaces#opening_of`, one `Steer.opening_stamp` rule with the recap's): the id of the opening its count
   reaches, the one it comes after: a prompt's `turn_id` (a wake note's too), or `/continue no`'s reason line's `opening_id`. It is
   resolved at `list` time from the same anchor (an entry's own turn often has no bubble: a Continue, a failed or rolled-back turn),
   so the stamp and the count always name one place, and the page finds it by the bubble (`card_stamps.js`: `data-turn-id`, or `data-opening-id` on a wake's note or a reason line), not by counting

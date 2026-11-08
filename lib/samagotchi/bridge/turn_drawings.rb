@@ -55,13 +55,14 @@ module Samagotchi
       # One line of the file (string-keyed drawing and end, as JSON has them).
       Line = Data.define(:v, :turn_id, :kind, :from, :to, :from_digest, :to_digest, :drawing, :end) do
         # @return [Line, nil] nil for a line this chi can't draw (another
-        #   version, a missing field)
+        #   version, a missing field, parts that aren't rows: .rows?)
         def self.from_h(raw)
           return nil unless raw.is_a?(Hash) && raw["v"] == VERSION
           return nil unless raw["turn_id"].is_a?(String) && !raw["turn_id"].empty?
           return nil unless raw["from"].is_a?(Integer) && raw["to"].is_a?(Integer) && raw["from"] < raw["to"] && raw["from"] >= 0
           return nil unless raw["from_digest"].is_a?(String) && raw["to_digest"].is_a?(String)
           return nil unless raw["drawing"].is_a?(Hash) && raw["end"].is_a?(Hash)
+          return nil unless TurnDrawings.rows?(raw["drawing"]["parts"])
 
           new(v: raw["v"], turn_id: raw["turn_id"], kind: raw["kind"].to_s, from: raw["from"], to: raw["to"],
               from_digest: raw["from_digest"], to_digest: raw["to_digest"], drawing: raw["drawing"], end: raw["end"])
@@ -134,6 +135,11 @@ module Samagotchi
       private :scrubbed
 
       class << self
+        # Whether a drawing's +parts+ are rows TurnAccumulator.replay_events
+        # can unfold: none, or a list of Hashes (a hand-edited line's may be
+        # anything, and the unfold would raise).
+        def rows?(parts) = parts.nil? || (parts.is_a?(Array) && parts.all?(Hash))
+
         # The end event's display keys (END_KEYS), with an empty answer's
         # notice from its summary.
         # @return [Hash]
