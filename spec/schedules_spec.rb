@@ -173,6 +173,39 @@ RSpec.describe Samagotchi::Schedules do
     expect(described_class.recurrence(every: "1h", weekday: "", time: "")).to eq({ kind: "every", interval: "1h" })
   end
 
+  it "refuses to change a store it cannot read, rather than rewriting it" do
+    Dir.mktmpdir("schedules-corrupt") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      id = session(dir).id
+      schedules.add(target: id, prompt: "Audit", recurrence: every("1h"))
+      File.write(schedules.path, "{\"schedules\": [") # a truncated write
+
+      before = File.read(schedules.path)
+      expect(schedules.entries).to eq([]) # listing stays lenient
+      expect { schedules.add(target: id, prompt: "Another", recurrence: every("2h")) }
+        .to raise_error(described_class::Corrupt, /not readable JSON/)
+      expect(schedules.cancel("Audit")).to be_nil
+      expect(File.read(schedules.path)).to eq(before)
+    end
+  end
+
+  it "reads an entry with keys this chi does not know" do
+    Dir.mktmpdir("schedules-unknown-keys") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      id = session(dir).id
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every("1h"))
+
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first["future_field"] = "whatever a later chi adds"
+      File.write(schedules.path, JSON.generate(data))
+
+      expect(schedules.lookup(entry.id).prompt).to eq("Audit")
+      expect(schedules.entries.first.id).to eq(entry.id)
+    end
+  end
+
   it "adds nothing when the interval is zero" do
     Dir.mktmpdir("schedules-zero") do |root|
       dir = File.join(root, "sessions")

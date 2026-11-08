@@ -66,6 +66,10 @@ module Samagotchi
     # target): a usage error, exit 2.
     class Usage < StandardError; end
 
+    # schedules.json exists but is not readable JSON: a write would start from
+    # an empty list and erase every schedule, so it refuses instead.
+    class Corrupt < StandardError; end
+
     # One schedule as the file stores it. `anchor` never changes (the chain's
     # root and the provenance of the schedule); `head` is the chain's current
     # link, re-anchored after every successful chain firing — that is what
@@ -77,10 +81,12 @@ module Samagotchi
                         :firing_since, :failures, :skips, :enabled, :created_at) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once.
+      # A file written by a newer chi may carry keys this one does not know:
+      # they are dropped rather than raising in Data#initialize.
       def self.from_h(hash)
-        recurrence = hash["recurrence"]
-        new(**hash.transform_keys(&:to_sym),
-            recurrence: recurrence.is_a?(Hash) ? recurrence.transform_keys(&:to_sym) : recurrence)
+        fields = hash.transform_keys(&:to_sym).select { |key| Entry.members.include?(key) }
+        recurrence = fields[:recurrence]
+        new(**fields, recurrence: recurrence.is_a?(Hash) ? recurrence.transform_keys(&:to_sym) : recurrence)
       end
 
       def due?(now)
@@ -475,13 +481,18 @@ module Samagotchi
 
     private
 
-    def read
+    # @param strict [Boolean] a file that is not readable JSON raises rather
+    #   than reading as empty: a write starting from an empty list would rewrite
+    #   the file and lose every schedule on it. Listing stays lenient.
+    def read(strict: false)
       return [] unless File.exist?(path)
 
       data = JSON.parse(File.read(path))
       Array(data["schedules"]).map { |hash| Entry.from_h(hash) }
     rescue JSON::ParserError => e
       Log.warn(:worker, "store_unreadable", error: e.class.name, msg: e.message)
+      raise Corrupt, "#{path} is not readable JSON (#{e.message}): fix or remove it before changing schedules" if strict
+
       []
     end
 
@@ -498,7 +509,7 @@ module Samagotchi
       FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         lock.flock(File::LOCK_EX)
-        list = read
+        list = read(strict: true)
         yield(list)
         write(list: list)
       end
