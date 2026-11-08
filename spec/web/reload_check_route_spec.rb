@@ -46,16 +46,19 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
   end
 
   it "logs reload_mismatch too, its kinds sorted from the shape's vocabulary only: content and unknown tokens dropped" do
-    post({ turn_id: "T1", same: false, kinds: ["row", "answer", "secret text", "row", "<script>"], drawn: true })
+    post({ turn_id: "T1", same: false, kinds: ["row", "answer", "secret text", "row", "<script>"],
+           excused: %w[retry-row made-up command-bubble], explained: true, drawn: true })
 
     expect(lines.map(&:first)).to eq(%w[reload_checked reload_mismatch])
-    expect(lines.last.last).to eq(sid: session.id, turn_id: "T1", drawn: true, worker_version: nil, kinds: "answer,row")
+    expect(lines.last.last).to eq(sid: session.id, turn_id: "T1", drawn: true, worker_version: nil, kinds: "answer,row",
+                                  excused: "command-bubble,retry-row", explained: true)
   end
 
   it "drops a turn id that isn't one, and keeps none of the body's other fields" do
     post({ turn_id: "a b/../c", same: false, kinds: "row", drawn: "yes", text: "the answer", worker_version: "9.9.9" })
 
-    expect(lines.last.last).to eq(sid: session.id, turn_id: nil, drawn: false, worker_version: nil, kinds: "row")
+    expect(lines.last.last).to eq(sid: session.id, turn_id: nil, drawn: false, worker_version: nil, kinds: "row", excused: "",
+                                  explained: false)
     expect(lines.flatten.map(&:to_s)).not_to include("the answer", "9.9.9")
   end
 
@@ -71,9 +74,11 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
     expect(lines).to eq([])
   end
 
-  it "keeps its kinds the page's (history_shape.js KINDS)" do
+  it "keeps its kinds and ACCEPTED ids the page's (history_shape.js KINDS, ACCEPTED)" do
     source = File.read(File.expand_path("../../lib/samagotchi/web/public/history_shape.js", __dir__))
     js = source[/export const KINDS = Object\.freeze\(\[(.*?)\]\)/m, 1].scan(/"([^"]+)"/).flatten
     expect(Samagotchi::Web::ReloadCheckRoute::KINDS).to eq(js)
+    ids = source[/export const ACCEPTED = Object\.freeze\(\[(.*?)\n\]\);/m, 1].scan(/^    id: "([^"]+)"/).flatten
+    expect(Samagotchi::Web::ReloadCheckRoute::ACCEPTED_IDS).to eq(ids)
   end
 end

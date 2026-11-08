@@ -10,7 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed (no content).
+- `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed and the known divergences that explain them (no content).
 
 ### Changed
 

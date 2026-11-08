@@ -44,13 +44,20 @@ test("a handed-off turn the reload draws the same posts same, no kinds, not draw
   const { check, posts, reads } = setup();
   await check.handedOff({ pieces: pieces() });
   assert.deepEqual(reads, ["s1"]);
-  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: true, kinds: [], drawn: false }]]);
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: true, kinds: [], excused: [], explained: true, drawn: false }]]);
 });
 
 test("a reload that differs posts the kinds that did; a drawing for the turn says drawn", async () => {
   const { check, posts } = setup({ reloaded: `${PROMPT}<div class="bubble output">other</div>`, data: { turn_drawings: { T1: {} } } });
   await check.handedOff({ pieces: pieces() });
-  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["answer", "timing"], drawn: true }]]);
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["answer", "timing"], excused: [], explained: false, drawn: true }]]);
+});
+
+test("it is strict: a known divergence is a mismatch, posted with the ACCEPTED entry that would excuse it", async () => {
+  const command = '<div class="bubble command"><div class="command-line">/help</div></div>';
+  const { check, posts } = setup();
+  await check.handedOff({ pieces: pieces(PROMPT + command + ANSWER) });
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["command"], excused: ["command-bubble"], explained: true, drawn: false }]]);
 });
 
 test("a card is no finding (a reload places it after the render); the queued lines after the turn aren't the turn's", async () => {

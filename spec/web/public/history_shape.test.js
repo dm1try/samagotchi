@@ -103,12 +103,13 @@ const item = (kind, text = "", extra = {}) => ({ kind, cls: "", text, ...extra }
 
 test("compareShapes: the same lists are the same; a changed or missing item is a difference of its kind", () => {
   const live = [item("prompt", "p"), item("row", "read · a · 12ms"), item("answer", "ok"), item("timing", "turn 1 · 1.5s")];
-  assert.deepEqual(compareShapes(live, structuredClone(live)), { same: true, kinds: [], differences: [] });
+  assert.deepEqual(compareShapes(live, structuredClone(live)), { same: true, kinds: [], excused: [], explained: true, differences: [] });
 
   const reloaded = [item("prompt", "p"), item("row", "read · a · 14ms"), item("timing", "turn 1 · 1.5s")];
   const result = compareShapes(live, reloaded);
   assert.equal(result.same, false);
   assert.deepEqual(result.kinds, ["answer", "row"]);
+  assert.deepEqual([result.excused, result.explained], [[], false]);
   assert.deepEqual(result.differences, [[live[1], reloaded[1]], [live[2], null]]);
 });
 
@@ -116,8 +117,12 @@ test("compareShapes: an ACCEPTED entry explains its difference only when allowed
   const live = [item("prompt", "p"), item("block", "2 steps"), item("step", "thinking"),
     item("notice", "↻ empty answer, asking again (1/1)"), item("step", "thinking"), item("answer", "PONG")];
   const reloaded = [item("prompt", "p"), item("thinking"), item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
-  assert.deepEqual(compareShapes(live, reloaded).kinds, ["block", "step", "thinking"]);
-  assert.deepEqual(compareShapes(live, reloaded, { allow: ["retry-row"] }), { same: true, kinds: [], differences: [] });
+  // Strict (none allowed): the differences stay, each named by the entry that would excuse it.
+  const strict = compareShapes(live, reloaded);
+  assert.deepEqual([strict.same, strict.kinds, strict.excused, strict.explained],
+    [false, ["block", "step", "thinking"], ["failed-step", "retry-row"], true]);
+  assert.deepEqual(compareShapes(live, reloaded, { allow: ["retry-row"] }),
+    { same: true, kinds: [], excused: [], explained: true, differences: [] });
 
   // A command's reply bubble, dropped on a reload; one that came back is not.
   const command = [item("prompt", "p"), item("command", "/model x")];
