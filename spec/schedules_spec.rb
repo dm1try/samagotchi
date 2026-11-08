@@ -311,6 +311,28 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "never prunes the links that came before the schedule's anchor" do
+    Dir.mktmpdir("schedules-anchor-history") do |dir|
+      allow(Process).to receive(:spawn).and_return(12_345)
+      root = session(dir).id
+      middle = session(dir, continues: root).id
+      anchor = session(dir, continues: middle).id
+      # The user's own history, archived before the schedule ever existed.
+      Samagotchi::ArchiveStore.archive(root, state_dir: dir)
+      Samagotchi::ArchiveStore.archive(middle, state_dir: dir)
+
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+      4.times do |step|
+        set_idle(dir, schedules.lookup(entry.id).head)
+        schedules.tick(now: Time.now + 120 + (step * 120))
+      end
+
+      ids = Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)
+      expect(ids).to include(root, middle, schedules.lookup(entry.id).head)
+    end
+  end
+
   it "keeps everything with keep_links 0" do
     Dir.mktmpdir("schedules-keep-all") do |dir|
       allow(Process).to receive(:spawn).and_return(12_345)

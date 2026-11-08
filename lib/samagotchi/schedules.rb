@@ -707,6 +707,11 @@ module Samagotchi
       while id && !seen.include?(id)
         seen << id
         links << id
+        # The walk stops at the anchor: the links before it are the user's own
+        # history, made before this schedule existed, and the anchor itself is
+        # the id `last:<anchor>` and the user remember.
+        break if id == entry.anchor
+
         # The link a firing just made is not in the tick's listing; every
         # older one is.
         session = index.session(id) || (File.exist?(Session.session_file(id, state_dir: @state_dir)) ? Session.load(id, state_dir: @state_dir) : nil)
