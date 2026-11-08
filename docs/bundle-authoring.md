@@ -125,6 +125,7 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
 
 ## Pitfalls
 
+- **Sandbox and ENV.** A standalone `Testing::Bundle` snapshots `ENV` when built and restores it at shutdown; see [Testing a bundle](plugins.md#testing-a-bundle-experimental).
 - **Shas.** Every file the manifest names has a sha256 line, and an edit makes it stale: the install then warns
   of a checksum mismatch, and a line with no sha installs unchecked. `chi bundle check --fix` rewrites them; run it
   after the last edit.
