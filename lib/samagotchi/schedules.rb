@@ -267,7 +267,7 @@ module Samagotchi
                            detail: verdict.last, entry: entry)
       end
 
-      fire_and_record(advance(entry, @clock.call), index)
+      fire_and_record(advance(entry, @clock.call), index, attempted_due: entry.next_due)
     end
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
@@ -454,21 +454,25 @@ module Samagotchi
     end
 
     # The next +weekday+ at +time+ in the machine's local zone, strictly after
-    # +from+ (today counts when the time is still ahead). Built with
-    # Time.local, never now + 86400*n: a schedule at 09:00 keeps its wall clock
-    # across a DST change, while `every 1d` drifts an hour across the fold
-    # (docs/scheduling.md says so and points at --weekday for a time of day).
+    # +from+ (today counts when the time is still ahead). cwday, not wday:
+    # Ruby's wday is 0 for Sunday while the CLI, the tool and the docs say
+    # 7=Sun. Built with Time.local, never now + 86400*n: a schedule at 09:00
+    # keeps its wall clock across a DST change, while `every 1d` drifts an hour
+    # across the fold (docs/scheduling.md says so and points at --weekday for a
+    # time of day). Eight days is more than a week, so a valid weekday always
+    # has an occurrence: reaching the raise is a bug, and a silent fallback
+    # would turn a weekly schedule into a daily one.
     def weekday_moment(weekday, time, from:)
       hour, minute = Schedules.parse_clock(time)
       start = from.to_date
       8.times do |step|
         date = start + step
         candidate = Schedules.local_moment(date.year, date.month, date.day, hour, minute)
-        next if candidate <= from || candidate.wday != weekday
+        next if candidate <= from || candidate.to_date.cwday != weekday
 
         return candidate
       end
-      from + 86_400
+      raise Usage, "no #{WEEKDAYS[weekday]} occurs within 8 days of #{from}"
     end
 
     # catch_up: none fires only when the tick arrives at the moment; one that
@@ -603,9 +607,11 @@ module Samagotchi
       nil
     end
 
-    def fire_and_record(entry, index)
+    # +attempted_due+ is the occurrence the tick tried: a skip keeps it, so a
+    # schedule that could not run now is tried at that same time next tick.
+    def fire_and_record(entry, index, attempted_due: nil)
       outcome = fire(entry, index)
-      record(entry, outcome)
+      record(entry, outcome, attempted_due: attempted_due)
       prune(outcome.entry, index) if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       outcome
     end
@@ -656,7 +662,7 @@ module Samagotchi
 
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
-    def record(entry, outcome)
+    def record(entry, outcome, attempted_due: nil)
       write_under_lock do |list|
         position = list.index { |candidate| candidate.id == entry.id }
         next if position.nil?
@@ -673,7 +679,14 @@ module Samagotchi
                                        enabled: one_off ? false : stored.enabled,
                                        next_due: one_off ? nil : stored.next_due)
                          elsif outcome.status == "skipped"
-                           skipped(stored, outcome.detail).with(firing_since: nil)
+                           # The clock goes back to the occurrence this tick
+                           # tried: the schedule is not late, it just could not
+                           # run now — the same as a skip from the busy check.
+                           # The skip counter still grows, so max_skips bounds
+                           # the retries.
+                           back = skipped(stored, outcome.detail).with(firing_since: nil)
+                           back = back.with(next_due: attempted_due) unless attempted_due.nil?
+                           back
                          else
                            failed(stored, outcome.detail)
                          end

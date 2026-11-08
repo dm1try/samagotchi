@@ -126,6 +126,38 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "matches Sunday with weekday 7: today when the time is still ahead, next week when it is past" do
+    Dir.mktmpdir("schedules-sunday") do |dir|
+      id = session(dir).id
+      # 2026-11-08 is a Sunday.
+      schedules = store(dir, now: Time.local(2026, 11, 8, 12, 0))
+
+      later = schedules.add(target: id, prompt: "Sunday later", recurrence: described_class.recurrence(weekday: 7, time: "18:00"))
+      expect(Time.iso8601(later.next_due)).to eq(Time.local(2026, 11, 8, 18, 0))
+
+      earlier = schedules.add(target: id, prompt: "Sunday earlier", recurrence: described_class.recurrence(weekday: 7, time: "09:00"))
+      expect(Time.iso8601(earlier.next_due)).to eq(Time.local(2026, 11, 15, 9, 0))
+      expect(earlier.recurrence_words).to eq("Sun 09:00")
+    end
+  end
+
+  it "keeps a Sunday schedule on its wall clock across a DST change" do
+    Dir.mktmpdir("schedules-sunday-dst") do |dir|
+      previous_zone = ENV["TZ"]
+      ENV["TZ"] = "America/New_York"
+      begin
+        id = session(dir).id
+        schedules = store(dir, now: Time.local(2026, 3, 5, 12, 0)) # Thursday before the fold
+        entry = schedules.add(target: id, prompt: "Sunday", recurrence: described_class.recurrence(weekday: 7, time: "09:00"))
+        due = Time.iso8601(entry.next_due)
+        expect(due.localtime.strftime("%a %H:%M")).to eq("Sun 09:00")
+        expect(due.localtime.to_date).to eq(Date.new(2026, 3, 8))
+      ensure
+        ENV["TZ"] = previous_zone
+      end
+    end
+  end
+
   it "fires a chain entry once, archiving the previous link and moving the head" do
     Dir.mktmpdir("schedules-chain") do |dir|
       allow(Process).to receive(:spawn).and_return(12_345)
