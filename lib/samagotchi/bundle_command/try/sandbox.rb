@@ -130,7 +130,7 @@ module Samagotchi
 
         # Stops what the run started that outlives its child chi: the
         # workers of its delegates (they leave the child's process tree,
-        # SessionManager.detach_from_spawner) and its tasks (a group of
+        # WorkerBoot.detach_from_spawner) and its tasks (a group of
         # their own each, reparented once the child exits). Found by their
         # records in the sandbox, so nothing outside it: a session's lock
         # held by a group leader, a running task's record whose pid still

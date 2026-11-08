@@ -18,27 +18,22 @@ module Samagotchi
   autoload :SessionContinue, File.expand_path("session_continue", __dir__)
 
   # A continue moving the previous link's open delegates to the chain's new
-  # link (SessionManager.continue_session), instead of archiving them with
+  # link (SessionContinue.run), instead of archiving them with
   # it. A moved child gets a parent override (Session::PARENT_FILE), never a
   # rewritten session file, so its live worker saving a stale copy changes
   # nothing; its worker reads the override for its rings and at each turn's
   # start (Bridge::FEATURES "reparent").
   #
   # #apply runs between the new link's save and its worker's spawn, while
-  # the link is #mark_starting (a ring from a moved child must not spawn a
-  # second worker from the child's process until the link's own holds it).
-  # Each step is idempotent,
-  # and an intent file (INTENT_FILE) in the new link's folder names the move
-  # until it is done: a worker that starts and finds one finishes the move
-  # (#adopt), and a failed continue moves the same children back.
+  # the link is marked starting (StartingMarker): a ring from a moved child
+  # must not spawn a second worker from the child's process until the link's
+  # own holds it. Each step is idempotent, and an intent file (INTENT_FILE)
+  # in the new link's folder names the move until it is done: a worker that
+  # starts and finds one finishes the move (#adopt), and a failed continue
+  # moves the same children back.
   module ChildMove
     # <new link dir>/move.json: {from, ids, noted}, while a move is under way.
     INTENT_FILE = "move.json"
-    # <new link dir>/starting: {pid, at}, from the move to the worker's spawn.
-    STARTING_FILE = "starting"
-    # A starting marker older than this, or whose process is gone, is left
-    # over from a continue that died: it holds nothing back.
-    STARTING_STALE = 60.0
     # Who the note to a moved child is from (ContextNote's label).
     NOTE_SOURCE = "session chain"
     # What a live child's worker must name in its sidecar to be moved.
@@ -205,45 +200,6 @@ module Samagotchi
                  "there, and your reports reach it."
              end
       SessionInbox.write_note(child_id, text: text, source: NOTE_SOURCE, state_dir: state_dir)
-    end
-
-    # Hold off a worker for the continue's new link (#starting?) until its
-    # own worker holds it: written before the move, removed by that worker
-    # once it has the owner lock (Worker#start).
-    def mark_starting(session_id, state_dir:)
-      dir = Session.session_dir(session_id, state_dir: state_dir)
-      FileUtils.mkdir_p(dir)
-      AtomicFile.write(File.join(dir, STARTING_FILE), JSON.generate({ "pid" => Process.pid, "at" => Time.now.iso8601(3) }))
-    end
-
-    def clear_starting(session_id, state_dir:)
-      FileUtils.rm_f(File.join(Session.session_dir(session_id, state_dir: state_dir), STARTING_FILE))
-    end
-
-    # Whether a continue is moving delegates to +session_id+ right now: its
-    # marker is there, fresh, and the process that wrote it runs.
-    def starting?(session_id, state_dir:)
-      file = File.join(Session.session_dir(session_id, state_dir: state_dir), STARTING_FILE)
-      return false unless File.exist?(file)
-
-      data = JSON.parse(File.read(file))
-      return false if Time.now - Time.iso8601(data["at"].to_s) > STARTING_STALE
-
-      process_alive?(data["pid"].to_i)
-    rescue JSON::ParserError, ArgumentError, SystemCallError
-      false
-    end
-
-    # Signal 0 only asks whether the process exists.
-    def process_alive?(pid)
-      return false unless pid.positive?
-
-      Process.kill(0, pid)
-      true
-    rescue Errno::ESRCH
-      false
-    rescue Errno::EPERM
-      true
     end
   end
 end

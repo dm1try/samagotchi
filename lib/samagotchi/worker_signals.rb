@@ -3,7 +3,7 @@
 module Samagotchi
   # TERM, HUP and INT in a worker process: the running turn stops as a Stop
   # does (reason :signal), is saved, and the worker leaves (Worker#run
-  # returns :signal). SessionManager.run_session_loop installs the traps in
+  # returns :signal). WorkerBoot.run_session_loop installs the traps in
   # a spawned worker only (WORKER_PROCESS_ENV), never in a process that runs
   # the loop in-process (the specs, which fire #fire directly).
   #

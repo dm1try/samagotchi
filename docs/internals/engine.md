@@ -134,7 +134,7 @@ A worker's TERM, HUP or INT (WorkerSignals, a spawned worker only):
     (never into start, serve or the teardown, which runs whole)
   → exit! Worker::SIGNAL_HARD_EXIT (10 s) after that at the latest; a signal after the loop left brings only that
     hard exit
-  → run_session_loop restores the default handlers; exit 0, no discard; input queued behind the stopped turn
+  → WorkerBoot.run_session_loop restores the default handlers; exit 0, no discard; input queued behind the stopped turn
     wakes a new worker
 
 The effective model doesn't resolve (HostRegistry#resolve raising):

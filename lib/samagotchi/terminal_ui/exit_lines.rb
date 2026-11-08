@@ -14,7 +14,7 @@ module Samagotchi
       LATE = "worker not answering in time"
       # An exit the worker agreed to in an empty session. Said before it has
       # left: it checks again once it lets go, and a note or prompt arriving
-      # first keeps the session (SessionManager.discard_left_session).
+      # first keeps the session (WorkerBoot.discard_left_session).
       EMPTY_WORDS = "the session is empty: it will be discarded if nothing arrives before its worker stops."
       EMPTY_EXIT = "Detached; #{EMPTY_WORDS}"
       # Why the worker stayed up after /exit, by the reason it gave.

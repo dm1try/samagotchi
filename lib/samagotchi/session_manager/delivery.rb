@@ -54,8 +54,8 @@ module Samagotchi
 
     # Delivery: a user message into a session, the way a UI sends one (its
     # Bridge, else the input file). Calls SpawnPart's resume_session and the
-    # facade's session_owner through +manager+ (this class by default). Loaded
-    # only through samagotchi/session_manager.
+    # facade's session_owner through +manager+ (this class by default).
+    # Meant to be loaded through samagotchi/session_manager.
     module DeliveryPart
       # Write a user turn into a session's input directory via the same file IPC
       # the worker polls. Reused by the bridge's POST surface so a turn is

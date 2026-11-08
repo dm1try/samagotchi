@@ -37,6 +37,7 @@ require_relative "model_profile"
 require_relative "child_reports"
 require_relative "verify_fresh"
 require_relative "child_move"
+require_relative "starting_marker"
 require_relative "context_absorber"
 require_relative "context_candidates"
 require_relative "context_poller"
@@ -47,7 +48,7 @@ require_relative "participant_name"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
-  # SessionManager.run_session_loop, which takes the OwnerLock around #run).
+  # WorkerBoot.run_session_loop, which takes the OwnerLock around #run).
   #
   # It runs the session's Engine and Bridge, takes queued prompts from the
   # input dir one turn at a time, and returns when nobody has used it for the
@@ -57,8 +58,8 @@ module Samagotchi
   # exits with 1.
   #
   # The file IPC stays behind SessionInbox's functions (find_new_input_files,
-  # claim_input_file, ...) and the Bridge behind SessionManager.start_bridge,
-  # which specs stub as seams.
+  # claim_input_file, ...) and the Bridge behind #start_bridge, which specs
+  # stub as seams.
   #
   # The loop sleeps on a Waker, which the Bridge wakes when it queues a turn
   # or a command, and the reminder callback when it queues one. A fallback
@@ -132,11 +133,11 @@ module Samagotchi
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
     # @param poll_interval [Numeric, nil] seconds between fallback ticks
     # @param signals [WorkerSignals, WorkerSignals::None] the process's
-    #   trapped signals (SessionManager.run_session_loop); none by default
+    #   trapped signals (WorkerBoot.run_session_loop); none by default
     # @param signal_grace [Array(Numeric, Numeric, Numeric)] the grace, the
     #   short grace and the hard exit's delay (specs shorten them)
     # @param owner_lock [OwnerLock, nil] the session's, which this process
-    #   holds (SessionManager.run_session_loop): marked leaving as the Bridge
+    #   holds (WorkerBoot.run_session_loop): marked leaving as the Bridge
     #   stops, so an attach waits for the recap on leave (OwnerLock.await_release)
     def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: nil,
                    signals: WorkerSignals::NONE, signal_grace: [SIGNAL_GRACE, SIGNAL_SHORT_GRACE, SIGNAL_HARD_EXIT],
@@ -185,16 +186,16 @@ module Samagotchi
     end
 
     # Whether the session was empty as the worker left it, so the caller
-    # deletes it once the lock is free (SessionManager.run_session_loop
+    # deletes it once the lock is free (WorkerBoot.run_session_loop
     # checks again then).
     def discard? = @discard
 
     # Whether this worker runs a `chi scratch` session: deleted as it leaves
-    # (SessionManager.run_session_loop).
+    # (WorkerBoot.run_session_loop).
     def scratch? = !!@session&.scratch
 
     # Whether delegate reports wait that an idle parent runs a turn for
-    # (#wake_state): SessionManager.run_session_loop starts a new worker
+    # (#wake_state): WorkerBoot.run_session_loop starts a new worker
     # for them after this one leaves. Reports the budget or a failure held
     # back wait for the next human input instead.
     def wake_due? = wake_state == :due
@@ -208,7 +209,7 @@ module Samagotchi
     #   (chi stop), :signal when a signal stopped it (WorkerSignals),
     #   :crashed when the loop raised (the session is marked errored),
     #   :scratch_left when a scratch session's terminal is gone (the caller
-    #   deletes it); SessionManager.run_session_loop turns it into the exit
+    #   deletes it); WorkerBoot.run_session_loop turns it into the exit
     def run
       # The thread a signal's expired grace raises in (the main thread in a
       # worker process).
@@ -261,7 +262,7 @@ module Samagotchi
       # This worker holds the session now (a continue's starting marker held
       # off any other until it did), and a continue that died moving
       # delegates here left its intent: finish it.
-      ChildMove.clear_starting(@session_id, state_dir: @state_dir)
+      StartingMarker.clear(@session_id, state_dir: @state_dir)
       ChildMove.adopt(@session_id, state_dir: @state_dir)
       @session = Session.load(@session_id, state_dir: @state_dir)
       # A newer chi saved it: this worker keeps the fields it doesn't know
@@ -362,25 +363,25 @@ module Samagotchi
     # The Bridge (UIs and clients reach the worker from here on), then the
     # idle-exit policy.
     def serve
-      @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
-                                            on_input: -> { @waker.wake },
-                                            on_command: method(:on_command),
-                                            on_exit_request: method(:exit_request),
-                                            # Decided again as it leaves (a note may still come in).
-                                            exit_discards: method(:empty_session?),
-                                            # What a stop-all /exit stopped, for its 200.
-                                            exit_stopped: method(:stopped_holds),
-                                            # chi web's Stop asks about these before TERMed-ing
-                                            # the worker (its own holds routes).
-                                            on_holds: -> { @idle_exit&.stoppable_holds },
-                                            on_holds_stop: -> { @hold_stop&.stop_all })
+      @bridge = start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
+                             on_input: -> { @waker.wake },
+                             on_command: method(:on_command),
+                             on_exit_request: method(:exit_request),
+                             # Decided again as it leaves (a note may still come in).
+                             exit_discards: method(:empty_session?),
+                             # What a stop-all /exit stopped, for its 200.
+                             exit_stopped: method(:stopped_holds),
+                             # chi web's Stop asks about these before TERMed-ing
+                             # the worker (its own holds routes).
+                             on_holds: -> { @idle_exit&.stoppable_holds },
+                             on_holds_stop: -> { @hold_stop&.stop_all })
       # What failed to load and what plugins showed as they loaded, now that
       # a UI can be there (a late one gets them in the snapshot).
       @engine.announce_load_events!
       announce_session_warnings
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
-        timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
+        timeout_minutes: @idle_exit_minutes || config_idle_exit_minutes,
         input_pending: method(:input_pending?),
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
         running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) },
@@ -396,6 +397,33 @@ module Samagotchi
       )
       @hold_stop = HoldStop.new(engine: @engine, task_watch: @task_wakes.watch, delegates: method(:live_delegates),
                                 state_dir: @state_dir)
+    end
+
+    # Start the in-process Bridge transport for this worker. The bridge is
+    # the single live client transport, so every worker starts it. Bridge
+    # creation happens *before* the loop so the capture observer is in place
+    # for the whole session; the caller stops the returned instance on exit
+    # (see #run's ensure).
+    #
+    # @return [Samagotchi::Bridge, nil] nil when the transport failed to start
+    #   (the worker degrades: turns still flow through the input-dir loop, but
+    #   there is no live SSE or in-process cancel/answer).
+    # @param on_input [#call, nil] called after the Bridge queues a turn
+    def start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
+                     exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil)
+      require_relative "bridge"
+      Samagotchi::Bridge.new(
+        engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
+        on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
+        exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop
+      ).start
+    rescue StandardError => e
+      Log.error(:bridge, "start_failed", echo: "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}", sid: session_id, error: e.class.name)
+      nil
+    end
+
+    def config_idle_exit_minutes
+      Degrade.call(:config, "idle_exit_minutes_unreadable") { Samagotchi::Config.get("session.idle_exit_minutes") }
     end
 
     # The delegate children of this session that are running a turn or have
@@ -1634,7 +1662,7 @@ module Samagotchi
 
     # #leave_idle for a scratch worker its terminal left: checked again with
     # the event log held, then the intake closes. The session is deleted
-    # once the lock is free (SessionManager.run_session_loop: :scratch_left).
+    # once the lock is free (WorkerBoot.run_session_loop: :scratch_left).
     # @return [Boolean] false when a client came back since
     def leave_scratch
       stop_bridge_after do
@@ -1842,8 +1870,8 @@ module Samagotchi
     # A restart hands the reminders to the next worker (ReminderCarry), while
     # the event log is held: no turn can register or fire one from here. A
     # write that fails keeps this worker up with them rather than losing them.
-    # A session stopped meanwhile drops them (run_session_loop then starts no
-    # successor): nothing is written.
+    # A session stopped meanwhile drops them (WorkerBoot.run_session_loop
+    # then starts no successor): nothing is written.
     # @return [Boolean] false when the write failed
     def carry_reminders
       if stopped_on_disk?
@@ -1881,7 +1909,7 @@ module Samagotchi
     # @return [Symbol] +result+, with #discard? decided and, for a session
     #   kept, its recap written: the Bridge is closed and the idle jobs are
     #   stopped by now, and nothing waits on this (the TUI has detached). A
-    #   `chi send` meanwhile is picked up after the exit (run_session_loop);
+    #   `chi send` meanwhile is picked up after the exit (WorkerBoot.run_session_loop);
     #   a `chi --attach` finds no Bridge until then.
     # A restart keeps even an empty session (a new worker takes it over at
     # once) and leaves the recap to the conversation's next real pause.

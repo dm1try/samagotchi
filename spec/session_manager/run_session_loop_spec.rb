@@ -5,6 +5,8 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/worker_boot"
+require "samagotchi/worker"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
@@ -71,7 +73,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Samagotchi::Engine).not_to receive(:new)
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir, owner_wait: 0.1)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir, owner_wait: 0.1)
       end.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
     end
 
@@ -82,7 +84,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:stopped)
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
       expect(described_class).not_to have_received(:resume_session)
       expect(described_class).not_to have_received(:discardable?)
@@ -90,7 +92,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:crashed)
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
     end
 
@@ -105,7 +107,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(engine).not_to receive(:run_turn)
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
       expect(engine).to have_received(:announce_load_events!)
       expect(engine).not_to have_received(:start_init_tasks!)
@@ -128,7 +130,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       end.to raise_error(SystemExit)
 
       expect(owner_seen).to have_attributes(kind: "worker", pid: Process.pid)
@@ -138,7 +140,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
-  describe ".run_session_loop" do
+  describe "WorkerBoot.run_session_loop" do
     it "starts the next worker after a restart, once its lock is free, and never discards the session" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
@@ -150,7 +152,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
       allow(described_class).to receive(:delete_session)
 
-      expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
+      expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
       expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
       expect(owner_at_resume).to be_nil
       expect(described_class).not_to have_received(:delete_session)
@@ -161,7 +163,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
       allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :stopped))
       allow(Samagotchi::ProjectEnv).to receive(:compute)
-      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }.to raise_error(SystemExit)
+      expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }.to raise_error(SystemExit)
       expect(Samagotchi::ProjectEnv).not_to have_received(:compute)
     end
 
@@ -192,7 +194,7 @@ RSpec.describe Samagotchi::SessionManager do
       overlay = Samagotchi::ProjectEnv::NONE.with(reason: "no_mise")
       allow(Samagotchi::ProjectEnv).to receive(:compute).and_return(overlay)
       before_env = ENV.to_h
-      described_class.send(:apply_project_env, session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.send(:apply_project_env, session.id, state_dir: tmpdir)
       expect(Samagotchi::ProjectEnv).to have_received(:compute).with("/tmp/proj")
       expect(Samagotchi::ProjectEnv.current).to eq(overlay)
       expect(ENV.to_h).to eq(before_env)
@@ -200,7 +202,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       allow(Samagotchi::Log).to receive(:warn)
       allow(Samagotchi::ProjectEnv).to receive(:compute).and_raise(ArgumentError, "boom")
-      expect { described_class.send(:apply_project_env, session.id, state_dir: tmpdir) }.not_to raise_error
+      expect { Samagotchi::WorkerBoot.send(:apply_project_env, session.id, state_dir: tmpdir) }.not_to raise_error
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:worker, "project_env", reason: "error", error: "ArgumentError", msg: "boom")
     end
@@ -220,7 +222,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
       allow(described_class).to receive(:resume_session)
 
-      expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
+      expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
       expect(described_class).not_to have_received(:resume_session)
       expect(File.exist?(carry)).to be(false)
       expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true)
@@ -233,7 +235,7 @@ RSpec.describe Samagotchi::SessionManager do
       [true, false].each do |due|
         worker = instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: due)
         allow(Samagotchi::Worker).to receive(:new).and_return(worker)
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end
       expect(described_class).to have_received(:resume_session).once
     end
@@ -248,10 +250,10 @@ RSpec.describe Samagotchi::SessionManager do
           .and_return(instance_double(Samagotchi::Worker, scratch?: true, run: result, discard?: false, wake_due?: true))
 
         if status
-          expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+          expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }
             .to raise_error(SystemExit) { |e| expect(e.status).to eq(status) }
         else
-          expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(result)
+          expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(result)
         end
         expect(Samagotchi::Session.exist?(session.id, state_dir: tmpdir)).to be(false), result.to_s
       end
@@ -268,7 +270,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(described_class).to receive(:resume_session)
       allow(described_class).to receive(:delete_session)
 
-      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+      expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }
         .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
 
       stop = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "stop" } }
@@ -289,7 +291,7 @@ RSpec.describe Samagotchi::SessionManager do
         owner_at_resume = described_class.session_owner(id, state_dir: state_dir)
       end
 
-      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+      expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }
         .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
       expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
       expect(owner_at_resume).to be_nil
@@ -305,7 +307,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:restore!) { |signals| restored << signals }
       ENV[described_class::WORKER_PROCESS_ENV] = "1"
 
-      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
 
       expect(restored.size).to eq(1)
     ensure
@@ -323,12 +325,12 @@ RSpec.describe Samagotchi::SessionManager do
       installed = []
       allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:install!) { |signals| (installed << signals).last }
 
-      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       expect(given.last).to be(Samagotchi::WorkerSignals::NONE)
       expect(installed).to be_empty
 
       ENV[described_class::WORKER_PROCESS_ENV] = "1"
-      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       expect(ENV.fetch(described_class::WORKER_PROCESS_ENV, nil)).to be_nil
       expect(installed.size).to eq(1)
       expect(given.last).to be(installed.first)
@@ -342,17 +344,17 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Worker).to receive(:new)
         .and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: false))
       order = []
-      allow(described_class).to receive(:detach_from_spawner) { order << :detach }
+      allow(Samagotchi::WorkerBoot).to receive(:detach_from_spawner) { order << :detach }
       allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, *args, **kwargs|
         order << :lock
         original.call(*args, **kwargs)
       end
 
-      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       expect(order).to eq([:lock])
 
       ENV[described_class::WORKER_DETACH_ENV] = "1"
-      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       expect(order).to eq(%i[lock detach lock])
       expect(ENV.fetch(described_class::WORKER_DETACH_ENV, nil)).to be_nil
     ensure
@@ -370,7 +372,7 @@ RSpec.describe Samagotchi::SessionManager do
       reader, writer = IO.pipe
       starter = fork do
         reader.close
-        described_class.send(:detach_from_spawner, dir)
+        Samagotchi::WorkerBoot.send(:detach_from_spawner, dir)
         # The worker (the starter's child) from here on.
         starter_pid = Process.ppid
         writer.puts("worker #{Process.pid} sid #{Process.getsid} starter #{Process.ppid}")
@@ -407,7 +409,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(worker).to receive(:run).and_raise(NoMethodError, "undefined method 'x'")
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
 
-      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+      expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }
         .to raise_error(NoMethodError)
 
       records = File.open(log) { |io| Samagotchi::LogLine.each_record(io).to_a }
@@ -439,7 +441,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:subscribe).and_return(sub_handle)
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
     end
 
@@ -457,7 +459,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
     end
 
@@ -473,7 +475,7 @@ RSpec.describe Samagotchi::SessionManager do
       given = nil
       allow(engine).to receive(:session=) { |s| given = s }
       bridge_started = false
-      allow(described_class).to receive(:start_bridge) do
+      allow_any_instance_of(Samagotchi::Worker).to receive(:start_bridge) do
         bridge_started = true
         expect(given).not_to be_nil
         nil
@@ -484,7 +486,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       end.to raise_error(SystemExit)
 
       expect(bridge_started).to be(true)
@@ -512,7 +514,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:subscribe).and_return(sub_handle)
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
 
       expect(engine).to receive(:note_due_reminders).with(["daily"])
@@ -564,7 +566,7 @@ RSpec.describe Samagotchi::SessionManager do
         end
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
     end
 
@@ -590,7 +592,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       end.to raise_error(SystemExit)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
     end

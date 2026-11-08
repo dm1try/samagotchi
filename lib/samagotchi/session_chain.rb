@@ -15,7 +15,7 @@ module Samagotchi
   # "the next run of the same routine". The chain is derived, never stored:
   # follow +continues+ back for the earlier links, forward (the session whose
   # +continues+ names this one) for the later ones. A link is continued at
-  # most once (SessionManager.continue_session refuses a second), so the
+  # most once (SessionContinue.run refuses a second), so the
   # chain's latest link is the one nobody continues.
   module SessionChain
     # `--continues last:<id>`: the latest link of the chain <id> is in.

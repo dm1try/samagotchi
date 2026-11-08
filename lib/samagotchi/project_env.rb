@@ -107,7 +107,7 @@ module Samagotchi
     # @return [Overlay]
     def current = @current
 
-    # Only from SessionManager.run_session_loop, in a spawned worker.
+    # Only from WorkerBoot.run_session_loop, in a spawned worker.
     def install!(overlay) = @current = overlay
 
     # #current's env for a tool's spawn, less what every tool runs without

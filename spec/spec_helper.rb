@@ -42,8 +42,8 @@ require_relative "support/integration_server"
 # the worker's environment (the spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
 # what they need, :integration examples included. The suite's own switches stay.
 # That includes a worker's SAMAGOTCHI_WORKER_PROCESS / SAMAGOTCHI_WORKER_DETACH
-# (run_session_loop deletes them as it reads them; this is the second guard):
-# with them set, an in-process run_session_loop would trap signals and fork.
+# (WorkerBoot.run_session_loop deletes them as it reads them; this is the second guard):
+# with them set, an in-process WorkerBoot.run_session_loop would trap signals and fork.
 SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
 SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
 SPEC_ENV_CLEAR.call
@@ -189,7 +189,7 @@ RSpec.configure do |config|
   config.after { WebMock.disable_net_connect! }
   config.after { remove_git_repo }
   config.after { remove_hosts_config_homes }
-  # A spawned-mode run_session_loop installs the process-wide project env
+  # A spawned-mode WorkerBoot.run_session_loop installs the process-wide project env
   # (ProjectEnv.install!); later examples must start from NONE.
   config.after { Samagotchi::ProjectEnv.reset! if defined?(Samagotchi::ProjectEnv) }
   # Hooks::Loader caches plugin instances per [path, settings] for the

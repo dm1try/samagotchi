@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../worker_link"
+
 module Samagotchi
   class SessionManager
     # How long after a spawn a resume trusts that worker to take the
@@ -11,8 +13,8 @@ module Samagotchi
 
     # Spawn: deciding to start a session's worker (a new session, a resume, a
     # delegate's report waking its parent) and the spawns this process
-    # remembers. Calls WorkerBootPart's spawn_options and worker_command and
-    # the facade's ownership checks. Loaded only through samagotchi/session_manager.
+    # remembers. Calls WorkerCommandPart's spawn_options and worker_command and
+    # the facade's ownership checks. Meant to be loaded through samagotchi/session_manager.
     module SpawnPart
       # Spawn a new background session that processes the given prompt (or,
       # with none, waits idle for input).
@@ -113,10 +115,6 @@ module Samagotchi
         session
       end
 
-      # Start the next link of a chain (SessionContinue.run, which has the
-      # rules and raises SessionContinue::Refused).
-      def continue_session(...) = SessionContinue.run(...)
-
       # Ensure an existing session has a live worker process.
       # Returns the loaded session after state reconciliation.
       # @raise [OwnedByTUI] when the interactive TUI owns the session
@@ -135,7 +133,7 @@ module Samagotchi
         return session if still_starting?(session.id, state_dir: sd)
         # A continue moving delegates to it spawns its worker once they are
         # moved; one spawned now (a moved child's ring) would race the move.
-        return session if ChildMove.starting?(session.id, state_dir: sd)
+        return session if StartingMarker.fresh?(session.id, state_dir: sd)
 
         Session.clear_stopped(session.id, state_dir: sd)
         session.status = Session::STATUS_IDLE
@@ -166,7 +164,7 @@ module Samagotchi
           following = forward && SessionChain.next_of(session_id, state_dir: sd)
           return following ? wake_for_report(following, state_dir: sd, forward: false) : :archived
         end
-        return :starting if ChildMove.starting?(session_id, state_dir: sd)
+        return :starting if StartingMarker.fresh?(session_id, state_dir: sd)
 
         session = Session.load(session_id, state_dir: sd)
         return :stopped if session.status == Session::STATUS_STOPPED
@@ -232,7 +230,7 @@ module Samagotchi
         pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
         # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
         # +pid+ is the worker's starter, which exits once the worker it forked
-        # holds the lock (detach_from_spawner): the lock's pid is the worker's.
+        # holds the lock (WorkerBoot.detach_from_spawner): the lock's pid is the worker's.
         note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
         Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
         pid

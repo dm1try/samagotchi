@@ -2,6 +2,7 @@
 
 require "samagotchi/system_one"
 require "samagotchi/session_manager"
+require "samagotchi/worker_boot"
 require "samagotchi/session_retention"
 require "samagotchi/guardrails/chi_dirs"
 
@@ -228,7 +229,7 @@ RSpec.describe "Runs at the session's edges" do
     session = new_session
     allow(Samagotchi::SessionManager).to receive(:discardable?).and_return(true)
     expect(Samagotchi::SystemOne::Runs).not_to receive(:purge_session)
-    Samagotchi::SessionManager.send(:discard_left_session, session.id, state_dir: sessions, default_model: "m")
+    Samagotchi::WorkerBoot.send(:discard_left_session, session.id, state_dir: sessions, default_model: "m")
     expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: sessions))).to be(false)
   end
 

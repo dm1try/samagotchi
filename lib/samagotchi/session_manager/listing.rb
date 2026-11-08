@@ -8,7 +8,7 @@ module Samagotchi
 
     # Listing: read-only queries over the saved sessions (the lists, their
     # summary rows, a parent's delegates, a session's replies). Calls the
-    # facade's session_owner. Loaded only through samagotchi/session_manager.
+    # facade's session_owner. Meant to be loaded through samagotchi/session_manager.
     module ListingPart
       # List all sessions, reading status from persisted session.json files.
       # +project_root+: only that project's sessions (nil: every session).

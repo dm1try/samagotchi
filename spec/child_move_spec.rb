@@ -5,6 +5,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/child_move"
 require "samagotchi/session_continue"
+require "samagotchi/worker"
 
 # ChildMove: a continue moving the previous link's open delegates to the
 # new link (spec/session_continue_spec.rb has the continue's side).
@@ -97,13 +98,13 @@ RSpec.describe Samagotchi::ChildMove do
 
     it "is run by a starting worker before it loads its session, which clears the starting marker first" do
       moving = make(parent_id: from.id)
-      described_class.mark_starting(to.id, state_dir: tmpdir)
+      Samagotchi::StartingMarker.mark(to.id, state_dir: tmpdir)
       described_class.write_intent(to.id, described_class::Intent.new(from: from.id, ids: [moving.id]), state_dir: tmpdir)
       worker = Samagotchi::Worker.new(session_id: to.id, state_dir: tmpdir, session_dir: dir_of(to.id), idle_exit_minutes: 0)
       allow(Samagotchi::Session).to receive(:load).and_call_original
       allow(Samagotchi::Session).to receive(:load).with(to.id, state_dir: tmpdir) do
         raise "adopted first" unless parent_of(moving.id) == to.id
-        raise "marker cleared" if described_class.starting?(to.id, state_dir: tmpdir)
+        raise "marker cleared" if Samagotchi::StartingMarker.fresh?(to.id, state_dir: tmpdir)
 
         raise IOError, "stop here"
       end
@@ -112,29 +113,10 @@ RSpec.describe Samagotchi::ChildMove do
     end
   end
 
-  describe ".starting?" do
-    it "holds while the marker is fresh and its process runs; a stale or dead one holds nothing" do
-      expect(described_class.starting?(to.id, state_dir: tmpdir)).to be(false)
-      described_class.mark_starting(to.id, state_dir: tmpdir)
-      expect(described_class.starting?(to.id, state_dir: tmpdir)).to be(true)
-
-      file = File.join(dir_of(to.id), "starting")
-      File.write(file, JSON.generate(pid: Process.pid, at: (Time.now - 120).iso8601(3)))
-      expect(described_class.starting?(to.id, state_dir: tmpdir)).to be(false)
-
-      dead = Process.spawn(RbConfig.ruby, "-e", "0")
-      Process.wait(dead)
-      File.write(file, JSON.generate(pid: dead, at: Time.now.iso8601(3)))
-      expect(described_class.starting?(to.id, state_dir: tmpdir)).to be(false)
-
-      described_class.mark_starting(to.id, state_dir: tmpdir)
-      described_class.clear_starting(to.id, state_dir: tmpdir)
-      expect(described_class.starting?(to.id, state_dir: tmpdir)).to be(false)
-    end
-
+  describe "a starting marker (StartingMarker)" do
     it "keeps wake_for_report and resume_session from spawning the link's worker" do
       allow(Process).to receive(:spawn).and_return(12_345)
-      described_class.mark_starting(to.id, state_dir: tmpdir)
+      Samagotchi::StartingMarker.mark(to.id, state_dir: tmpdir)
 
       expect(Samagotchi::SessionManager.wake_for_report(to.id, state_dir: tmpdir)).to eq(:starting)
       Samagotchi::SessionManager.resume_session(to.id, state_dir: tmpdir)

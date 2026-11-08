@@ -10,7 +10,8 @@ require "rbconfig"
 # (child_move, reply_wait, ...) loaded after that point, while
 # SessionManager autoloads, drops the half-built class, and the parts then
 # build another without the facade's methods (spec/require_cycle_spec.rb).
-# So parts require nothing themselves.
+# Parts require only the leaves their class bodies read (none autoloads
+# SessionManager: spec/require_cycle_spec.rb).
 require_relative "chi_home"
 require_relative "system_one/runs"
 require_relative "child_env"
@@ -56,6 +57,7 @@ require_relative "context_sources"
 require_relative "context_candidates_log"
 require_relative "session_chain"
 require_relative "child_move"
+require_relative "starting_marker"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -82,8 +84,6 @@ module Samagotchi
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
-  # Needed only at call time (run_session_loop); worker.rb requires this file.
-  autoload :Worker, File.expand_path("worker", __dir__)
   # session_retention requires this file.
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
   # session_continue requires this file.
@@ -92,14 +92,15 @@ module Samagotchi
   autoload :Participants, File.expand_path("participants", __dir__)
 
   # Its methods live in parts, each a module this class extends (required
-  # at the end of this file; never on their own):
-  #   session_manager/spawn.rb        SpawnPart: start a session's worker, the spawns remembered
-  #   session_manager/worker_boot.rb  WorkerBootPart: the worker process (CROSS-VERSION CONTRACT)
-  #   session_manager/listing.rb      ListingPart: the session lists and summary rows, children, replies
-  #   session_manager/delivery.rb     DeliveryPart: a user message into a session (Bridge or input file)
-  #   session_manager/lifecycle.rb    LifecyclePart: stop and restart a worker
-  #   session_manager/removal.rb      RemovalPart: archive, unarchive, delete
-  #   session_manager/emptiness.rb    EmptinessPart: is a session empty, is a left one deleted
+  # at the end of this file; each loads alone, but is meant to be loaded
+  # through this file):
+  #   session_manager/spawn.rb           SpawnPart: start a session's worker, the spawns remembered
+  #   session_manager/worker_command.rb  WorkerCommandPart: the worker process (CROSS-VERSION CONTRACT)
+  #   session_manager/listing.rb         ListingPart: the session lists and summary rows, children, replies
+  #   session_manager/delivery.rb        DeliveryPart: a user message into a session (Bridge or input file)
+  #   session_manager/lifecycle.rb       LifecyclePart: stop and restart a worker
+  #   session_manager/removal.rb         RemovalPart: archive, unarchive, delete
+  #   session_manager/emptiness.rb       EmptinessPart: is a session empty, is a left one deleted
   class SessionManager
     # Raised when a terminal's own chi owns the session (OwnerLock kind
     # "tui": a -p --non-interactive one-shot, TerminalUI): it runs its own
@@ -145,7 +146,7 @@ module Samagotchi
 end
 
 require_relative "session_manager/spawn"
-require_relative "session_manager/worker_boot"
+require_relative "session_manager/worker_command"
 require_relative "session_manager/listing"
 require_relative "session_manager/delivery"
 require_relative "session_manager/lifecycle"

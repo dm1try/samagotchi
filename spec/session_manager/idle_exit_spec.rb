@@ -5,6 +5,8 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/worker_boot"
+require "samagotchi/worker"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
@@ -34,7 +36,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     def run_worker
-      described_class.run_session_loop(session.id, state_dir: tmpdir, idle_exit_minutes: 0.002, poll_interval: 0.01)
+      Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir, idle_exit_minutes: 0.002, poll_interval: 0.01)
     end
 
     def input_files

@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_relative "../analytics_file"
+require_relative "../session_inbox"
+require_relative "../worker_link"
+
 module Samagotchi
   class SessionManager
     # What a session's directory holds before anything happened in it. Any
@@ -13,8 +17,8 @@ module Samagotchi
 
     # Emptiness: whether nothing happened in a session (pure predicates over
     # its file and directory) and whether one being left is deleted, asked by
-    # WorkerBootPart and the retention sweep. Calls no other part. Loaded only
-    # through samagotchi/session_manager.
+    # WorkerCommandPart and the retention sweep. Calls no other part. Meant
+    # to be loaded through samagotchi/session_manager.
     module EmptinessPart
       # session.keep_empty off: sessions left with nothing in them are deleted
       # (the worker as it exits, the retention sweep).

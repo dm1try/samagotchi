@@ -7,6 +7,7 @@ require_relative "session_inbox"
 require_relative "session_chain"
 require_relative "objectives"
 require_relative "child_move"
+require_relative "starting_marker"
 require_relative "context_move"
 require_relative "archive_store"
 require_relative "recap_store"
@@ -17,9 +18,9 @@ require_relative "log"
 require_relative "session_manager"
 
 module Samagotchi
-  # The next link of a session chain (chi send --new --continues, web
-  # Continue →): SessionManager.continue_session runs .run. The archive,
-  # spawn, stop and wake it builds on are SessionManager's.
+  # The next link of a session chain: chi send --new --continues and web
+  # Continue → run .run. The archive, spawn, stop and wake it builds on are
+  # SessionManager's.
   module SessionContinue
     # A continue that can't happen (#run). reason: :continued
     # (another session continues it already: +ids+ names it), :open_children
@@ -198,7 +199,7 @@ module Samagotchi
       Log.warn(:worker, "continue_wake_failed", sid: id, error: e.class.name, msg: e.message)
     end
 
-    # The new link, holding off any worker but its own (ChildMove.starting?)
+    # The new link, holding off any worker but its own (StartingMarker.fresh?)
     # while +move+ goes to it.
     private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
@@ -206,7 +207,7 @@ module Samagotchi
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
       moved_context = nil
       before_spawn = lambda do |link|
-        ChildMove.mark_starting(link.id, state_dir: state_dir)
+        StartingMarker.mark(link.id, state_dir: state_dir)
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
         # Its movable context too, with a note saying what moved and stayed.
         moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
