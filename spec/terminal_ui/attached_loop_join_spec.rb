@@ -584,6 +584,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         expect(joined("tools_answer", drawing: { drawing: { "parts" => "x" }, end: { "type" => "turn_completed" } })).to eq(without)
       end
 
+      it "rebuilds the rows, as without one, from the prompt's own drawing whose parts aren't a list of rows" do
+        line = fixture("tools_answer")["lines"].last
+        without = joined("tools_answer", drawing: false)
+        ["x", ["x"], [nil]].each do |parts|
+          drawing = { drawing: line["drawing"].merge("parts" => parts), end: line["end"] }
+          expect(joined("tools_answer", drawing: drawing)).to eq(without)
+        end
+      end
+
       it "draws as before without a drawing (an older worker)" do
         expect(joined("empty_retry", drawing: false)).to eq(["user> answer please", "Here it is."])
         expect(joined("tools_answer", drawing: false)).to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok',

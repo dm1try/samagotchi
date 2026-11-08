@@ -285,6 +285,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(JSON.parse(JSON.generate(acc.current_turn))["parts"][1]["event"]).to include("type" => "hook_notice", "level" => "info")
   end
 
+  it "replays a notice part whose event type isn't a name (a damaged drawing) as nothing" do
+    parts = [{ kind: "notice", event: { type: 7 } }, { kind: "notice", event: { type: "steer_cut", iteration: 1 } }]
+    events = described_class.replay_events({ prompt: "hi", parts: parts })
+    expect(events.map { |event| event[:type] }).to eq(%i[turn_started steer_cut])
+  end
+
   it "keeps no notice part outside a turn, and no provider retry (a status, not a row)" do
     feed({ type: :hook_notice, hook: "h", text: "between", level: :info, between_turns: true },
          { type: :turn_started, prompt: "hi" },

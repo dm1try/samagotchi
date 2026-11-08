@@ -133,6 +133,14 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings do
       expect(kept["text"].lines.size).to be <= Samagotchi::TextDiff::MAX_LINES + 1
     end
 
+    it "skips a line whose parts aren't a list of rows (a hand edit): replay_events can't unfold it" do
+      drawings.append({ prompt: "hi", parts: [] }, end_event)
+      good = JSON.parse(File.read(path))
+      bad = ["x", ["x"], [nil]].map { |parts| JSON.generate(good.merge("drawing" => good["drawing"].merge("parts" => parts))) }
+      expect(described_class.parse("#{bad.join("\n")}\n")).to eq([])
+      expect(described_class.parse(JSON.generate(good.merge("drawing" => good["drawing"].except("parts")))).size).to eq(1)
+    end
+
     it "starts from the file's last line (#last), a torn tail skipped" do
       drawings.append({ prompt: "hi", parts: [] }, end_event)
       File.write(path, %({"v":1,"tur), mode: "a")

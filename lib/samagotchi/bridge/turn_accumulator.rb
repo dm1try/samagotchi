@@ -183,7 +183,10 @@ module Samagotchi
           when "notice"
             close_text.call
             notice = part[:event]
-            events << notice.merge(type: notice[:type].to_sym) if notice.is_a?(Hash) && notice[:type]
+            # A damaged drawing's type may be anything: only a name replays.
+            if notice.is_a?(Hash) && (notice[:type].is_a?(String) || notice[:type].is_a?(Symbol))
+              events << notice.merge(type: notice[:type].to_sym)
+            end
           when "steer"
             close_text.call
             events << { type: :pending_input_merged, count: 0, content: nil, steers: [{ source: part[:source], text: part[:text] }] }

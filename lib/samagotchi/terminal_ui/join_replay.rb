@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../bridge/turn_accumulator"
+require_relative "../bridge/turn_drawings"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../log"
@@ -163,13 +164,17 @@ module Samagotchi
 
       # The snapshot's drawing as [turn, end event] when it is +prompt+'s
       # turn (a Continue's or a reminder's drawing isn't the prompt's: the
-      # rows are rebuilt), else nil.
+      # rows are rebuilt), else nil; nil too for one whose parts aren't a
+      # list of rows.
       def drawn_turn(drawing, prompt)
         return nil unless drawing.is_a?(Hash) && drawing[:drawing].is_a?(Hash) && drawing[:end].is_a?(Hash)
 
         turn = Bridge::TurnAccumulator.from_wire(drawing[:drawing])
         id = prompt[:turn_id] || prompt["turn_id"]
         return nil unless id && turn[:turn_id].to_s == id.to_s
+        # An older worker sends a line its parse didn't check (the unfold
+        # would raise after the prompt line is drawn).
+        return nil unless Bridge::TurnDrawings.rows?(turn[:parts])
 
         [turn, EventRenderer.symbolize(Bridge::TurnAccumulator.from_wire(drawing[:end]))]
       end
