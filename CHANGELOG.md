@@ -8,13 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.156.0] - 2026-11-08
+
 ### Changed
 
 - An id or prefix that names no session is refused in one wording everywhere: `no session ID` (the CLI commands, `chi --resume`/`--attach`, chi web's 404s and the session tools), where some said `Session not found: ID`. A `chi --remote` command shows it the same against an older chi web.
 
 ### Fixed
 
-- `chi sessions list` shows a session whose worker died mid-turn as idle, as chi web does, instead of running (the plain and the `--live`/`--cwd` listings, here and with `--remote`).
+- `chi sessions list` shows a session whose worker died mid-turn as idle, as chi web does, instead of running (the plain and the `--live`/`--cwd` listings; with `--remote`, once that chi web runs this release).
+
+Update with `chi update`.
 
 ## [0.155.0] - 2026-11-07
 
@@ -5794,7 +5798,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.155.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.156.0...HEAD
+[0.156.0]: https://github.com/dm1try/samagotchi/compare/v0.155.0...v0.156.0
 [0.155.0]: https://github.com/dm1try/samagotchi/compare/v0.154.1...v0.155.0
 [0.154.1]: https://github.com/dm1try/samagotchi/compare/v0.154.0...v0.154.1
 [0.154.0]: https://github.com/dm1try/samagotchi/compare/v0.153.0...v0.154.0
