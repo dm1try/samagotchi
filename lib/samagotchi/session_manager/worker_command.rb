@@ -2,17 +2,19 @@
 
 module Samagotchi
   class SessionManager
-    # CROSS-VERSION CONTRACT: this boot string, run_session_loop(id,
-    # state_dir:), the env keys spawn_options sets and the input/ file
+    # CROSS-VERSION CONTRACT: this boot string, the entry it names
+    # (run_session_loop(id, state_dir:), the forwarder below), the env keys
+    # spawn_options sets and the input/ file
     # format are read by a NEWER chi than the one writing them. Change them
     # only additively (spec/worker_contract_spec.rb).
     BOOT_FALLBACK_ENV = "SAMAGOTCHI_BOOT_FALLBACK"
     # "1" in a worker spawn_options started: it traps signals (WorkerSignals).
-    # run_session_loop deletes it from ENV as it reads it.
+    # WorkerBoot.run_session_loop deletes it from ENV as it reads it.
     WORKER_PROCESS_ENV = "SAMAGOTCHI_WORKER_PROCESS"
-    # "1" in a worker spawn_options started: run_session_loop leaves the
-    # spawner's process tree first (detach_from_spawner); deleted from ENV
-    # as it is read, so an rspec run by the worker's execute never forks.
+    # "1" in a worker spawn_options started: WorkerBoot.run_session_loop
+    # leaves the spawner's process tree first (detach_from_spawner); deleted
+    # from ENV as it is read, so an rspec run by the worker's execute never
+    # forks.
     WORKER_DETACH_ENV = "SAMAGOTCHI_WORKER_DETACH"
 
     # The boot string's rescue under a chi home: one line in the spawner's
@@ -24,11 +26,11 @@ module Samagotchi
                        '" ERROR worker pid=#{Process.pid} sid=SID boot_failed ruby=#{RbConfig.ruby.inspect} error=" + ' \
                        "e.message.lines.first.to_s.strip.inspect) } unless f.empty?; rescue SystemCallError; end; exit 1"
 
-    # WorkerCommand: the worker process, from its spawn options and command line
-    # to run_session_loop inside it and what it does as it leaves (CROSS-VERSION
-    # CONTRACT: spec/worker_contract_spec.rb). Calls SpawnPart's note_spawn and
-    # resume_session, EmptinessPart's discardable? and RemovalPart's
-    # delete_session. Meant to be loaded through samagotchi/session_manager.
+    # WorkerCommand: the worker's command line and env (CROSS-VERSION
+    # CONTRACT: spec/worker_contract_spec.rb); the worker process itself is
+    # WorkerBoot (worker_boot.rb), which only the forwarder (run_session_loop)
+    # loads, as a worker boots. Calls no other part. Meant to be loaded
+    # through samagotchi/session_manager.
     module WorkerCommandPart
       # Build the opts hash passed to Process.spawn for a forked worker. The
       # child inherits this process's ENV and reads config.yml itself (as it
@@ -80,8 +82,8 @@ module Samagotchi
         # set its own; nothing else it runs has one); and a smoke's fake
         # "newest installed", for this process's notices only.
         child_env.merge!(ChildEnv.unset)
-        # A worker process: run_session_loop traps signals, and leaves this
-        # process's tree.
+        # A worker process: WorkerBoot.run_session_loop traps signals, and
+        # leaves this process's tree.
         child_env[WORKER_PROCESS_ENV] = "1"
         child_env[WORKER_DETACH_ENV] = "1"
         # A gem-mode worker activates the newest installed chi itself: under
@@ -92,173 +94,16 @@ module Samagotchi
         opts
       end
 
-      # Run the session loop inside the forked process.
-      # This is the entry point called by Process.spawn.
-      #
-      # Every worker starts its per-session Bridge (the single live client
-      # transport) on a port bound to 127.0.0.1 before the loop and stops it on
-      # exit. If the bridge fails to start the worker degrades: turns still flow
-      # through the input-dir loop, but there is no live SSE or in-process
-      # cancel/answer.
-      #
-      # The worker first takes the session's OwnerLock; when another owner holds
-      # it (a racing resume spawned two workers, or the TUI has the session) it
-      # exits quietly.
-      #
-      # A worker nobody uses returns once session.idle_exit_minutes have passed
-      # (see WorkerIdleExit), and one a client asked to exit (Bridge POST /exit)
-      # returns as soon as nothing keeps it. The next send wakes a new one.
-      # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
-      # @param poll_interval [Numeric, nil] seconds between the loop's fallback
-      #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
-      # A stopped session's worker exits 0 (a signalled one too) and a
-      # crashed one 1, there.
-      # @return [Symbol] :idle_exit, :exit_requested, :restart or :scratch_left
-      def run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
-                           idle_exit_minutes: nil, poll_interval: nil)
-        # A worker inherits chi's locale (LC_ALL=C too): read files as UTF-8.
-        Utf8Default.apply!
-        sd = state_dir || Session.default_state_dir
-        # The spawner passed the file and level through ENV; a worker's stderr
-        # is /dev/null, so warnings only reach the file.
-        Log.configure(stderr: false)
-        Log.session_id = session_id
-        session_dir = Session.session_dir(session_id, state_dir: sd)
-        # Read (and taken out of ENV, so nothing the worker runs inherits it)
-        # before anything else: set by spawn_options for a spawned worker.
-        spawned = ENV.delete(WORKER_PROCESS_ENV) == "1"
-        # Out of the spawner's process tree before the lock (it records this
-        # process's pid) and before any thread starts.
-        detach_from_spawner(session_dir) if ENV.delete(WORKER_DETACH_ENV) == "1"
-        # Kept in a class ivar so the lock's File lives as long as the worker.
-        @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
-        exit(0) unless @owner_lock
-        # Set by the boot string when the newest installed chi didn't load.
-        fallback = ENV.delete(BOOT_FALLBACK_ENV)
-        Log.info(:worker, "start", cwd: Dir.pwd, version: VERSION)
-        Log.warn(:worker, "boot_fallback", version: VERSION, error: fallback) if fallback
-        # Tools follow the project (its `mise env`, computed once per worker;
-        # this process's ENV is left as it is); never in a loop run in-process.
-        apply_project_env(session_id, state_dir: sd) if spawned
-        # A spawned worker stops its turn on TERM/HUP/INT and saves it; a
-        # loop run in-process (specs) traps nothing.
-        signals = spawned ? WorkerSignals.new.install! : WorkerSignals::NONE
-        worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
-                            idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, signals: signals,
-                            owner_lock: @owner_lock)
-        result = begin
-          worker.run
-        rescue StandardError, ScriptError => e
-          # The worker's stderr is /dev/null: the log is the only trace.
-          Log.exception(:worker, "crashed", e)
-          raise
-        ensure
-          @owner_lock.release
-          # A signal from here on ends the process as Ruby's default does.
-          signals.restore!
-        end
-        Log.info(:worker, "stop", reason: result)
-        # A scratch session goes with its worker however it leaves (its
-        # terminal deletes it too, whichever comes first); nothing resumes it.
-        if worker.scratch?
-          delete_left_scratch(session_id, state_dir: sd)
-          exit(result == :crashed ? 1 : 0) if %i[stopped signal crashed].include?(result)
-          return result
-        end
-        # A stopped session is left as it is: no resume for input that came
-        # in, no discard. One whose worker a signal stopped isn't discarded
-        # either; input that came in (queued behind the turn it stopped)
-        # wakes a new worker, as after an idle exit.
-        exit(0) if result == :stopped
-        if result == :signal
-          resume_session(session_id, state_dir: sd) unless SessionInbox.find_new_input_files(session_dir).empty?
-          exit(0)
-        end
-        exit(1) if result == :crashed
-        # Only after the release: a writer that still saw this worker as the
-        # owner may have queued input since the last check. Either it finds no
-        # owner after its write and wakes one, or this finds its input.
-        # A restart starts its successor here, on the newest chi installed
-        # (worker_command), once this one's lock is free.
-        # Delegate reports that rang while it left wake one too.
-        if result == :restart && Session.stopped_marker?(session_id, state_dir: sd)
-          # A stop landed as it left: no successor (resume_session would clear
-          # the stop), and the reminders go with it.
-          ReminderCarry.remove(session_dir)
-          Log.info(:worker, "restart_dropped", why: :stopped)
-        elsif result == :restart ||
-              (%i[idle_exit exit_requested].include?(result) &&
-            (!SessionInbox.find_new_input_files(session_dir).empty? || worker.wake_due?))
-          resume_session(session_id, state_dir: sd)
-        elsif worker.discard?
-          discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)
-        end
-        result
-      end
-
-      # A spawned worker leaves its spawner's process tree: a killer that
-      # walks the tree by parent pid (a terminal closing, a tool's teardown
-      # of a `chi send --wait` it ran in the background) no longer reaches it.
-      # This process (the spawner's child, which its Process.detach waits on)
-      # forks the worker, which starts a session of its own (setsid: no
-      # controlling terminal, no SIGHUP from one) and returns to run the loop;
-      # this one waits until the worker holds the session's OwnerLock, or has
-      # exited, or WORKER_START_GRACE passed, and exits: the spawner's waiter
-      # stays alive exactly while the worker starts (#still_starting?). The
-      # worker is reparented to init (launchd), which reaps it.
-      private def detach_from_spawner(session_dir)
-        worker = Process.fork
-        unless worker
-          Process.setsid
-          return
-        end
-
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + WORKER_START_GRACE
-        until Process.waitpid(worker, Process::WNOHANG) || OwnerLock.owner(session_dir)&.pid == worker ||
-              Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-          sleep(OwnerLock::RETRY_INTERVAL)
-        end
-        Process.exit!(0)
-      end
-
-      # Delete a scratch session its worker left (its terminal gone:
-      # Worker#leave_scratch, or any other way out), now the lock is free.
-      # Its terminal may have deleted it first.
-      private def delete_left_scratch(session_id, state_dir:)
-        delete_session(session_id, state_dir: state_dir)
-        Log.info(:worker, "scratch_deleted", sid: session_id)
-      rescue DeleteRefused, ArgumentError, SystemCallError => e
-        Log.info(:worker, "scratch_kept", sid: session_id, error: e.class.name, msg: e.message)
-      end
-
-      # Delete a session its worker left empty. Checked again now the lock is
-      # free: a note or input may have come in since the worker looked, and a
-      # worker woken meanwhile owns it (delete_session refuses). A `chi send`
-      # landing between this check and the delete fails with "no session"
-      # (a window of an empty session's last moments, left as is).
-      private def discard_left_session(session_id, state_dir:, default_model:)
-        return unless discardable?(session_id, state_dir: state_dir, default_model: default_model)
-
-        delete_session(session_id, state_dir: state_dir, purge_runs: false)
-        Log.info(:worker, "discarded_empty", sid: session_id)
-      rescue DeleteRefused, OwnedByTUI, ArgumentError, SystemCallError => e
-        Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)
-      end
-
-      # The tools' ProjectEnv for the session's folder (its working_directory;
-      # spawn_options chdirs there unless it is gone), installed for this
-      # process's tool spawns. Never fatal: a worker without it still runs.
-      private def apply_project_env(session_id, state_dir:)
-        session = Session.summary_from_file(Session.session_file(session_id, state_dir: state_dir))
-        dir = session&.working_directory.to_s
-        overlay = ProjectEnv.install!(ProjectEnv.compute(dir))
-        Log.info(:worker, "project_env_applied", dir: dir, ruby: overlay.ruby) if overlay.applied
-      rescue StandardError => e
-        Log.warn(:worker, "project_env", reason: "error", error: e.class.name, msg: e.message)
-      end
-
-      def config_idle_exit_minutes
-        Degrade.call(:config, "idle_exit_minutes_unreadable") { Samagotchi::Config.get("session.idle_exit_minutes") }
+      # The worker's entry, the one every boot string names (CROSS-VERSION
+      # CONTRACT: spec/worker_contract_spec.rb): it only forwards to
+      # WorkerBoot.run_session_loop, which runs the worker process. Looked up
+      # by name on purpose: a constant reference here would put SessionManager
+      # back into one cycle with Worker, Engine and Bridge (the class map).
+      # REMOVE one release after the boot string switches (see
+      # ~/.claude/plans/arch-worker-boot.md).
+      def run_session_loop(session_id, state_dir: nil, **)
+        require_relative "../worker_boot"
+        Samagotchi.const_get(:WorkerBoot).run_session_loop(session_id, state_dir: state_dir, **)
       end
 
       # The worker's command line. Run from an installed gem, the worker
@@ -304,29 +149,6 @@ module Samagotchi
         home.boot_argv(run: "begin; #{activate}; require 'samagotchi/session_manager'; " \
                              "#{HOME_BOOT_FAILED.sub("SID", session_id)}; end; " \
                              "Samagotchi::SessionManager.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})")
-      end
-
-      # Start the in-process Bridge transport for this worker. The bridge is
-      # the single live client transport, so every worker starts it. Bridge
-      # creation happens *before* the loop so the capture observer is in place
-      # for the whole session; the caller stops the returned instance on exit
-      # (see Worker#run's ensure).
-      #
-      # @return [Samagotchi::Bridge, nil] nil when the transport failed to start
-      #   (the worker degrades: turns still flow through the input-dir loop, but
-      #   there is no live SSE or in-process cancel/answer).
-      # @param on_input [#call, nil] called after the Bridge queues a turn
-      def start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
-                       exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil)
-        require_relative "../bridge"
-        Samagotchi::Bridge.new(
-          engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
-          on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
-          exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop
-        ).start
-      rescue StandardError => e
-        Log.error(:bridge, "start_failed", echo: "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}", sid: session_id, error: e.class.name)
-        nil
       end
     end
 

@@ -234,7 +234,7 @@ module Samagotchi
         pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
         # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
         # +pid+ is the worker's starter, which exits once the worker it forked
-        # holds the lock (detach_from_spawner): the lock's pid is the worker's.
+        # holds the lock (WorkerBoot.detach_from_spawner): the lock's pid is the worker's.
         note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
         Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
         pid

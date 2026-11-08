@@ -5,6 +5,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/child_move"
 require "samagotchi/session_continue"
+require "samagotchi/worker"
 
 # ChildMove: a continue moving the previous link's open delegates to the
 # new link (spec/session_continue_spec.rb has the continue's side).

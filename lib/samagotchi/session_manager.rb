@@ -83,8 +83,6 @@ module Samagotchi
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
-  # Needed only at call time (run_session_loop); worker.rb requires this file.
-  autoload :Worker, File.expand_path("worker", __dir__)
   # session_retention requires this file.
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
   # session_continue requires this file.

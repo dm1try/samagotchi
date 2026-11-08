@@ -5,6 +5,7 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/worker_boot"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
@@ -488,7 +489,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0, messages_checkpoint: [])
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       expect do
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
     end
 

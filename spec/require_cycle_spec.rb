@@ -8,6 +8,7 @@ RSpec.describe "loading session_manager and terminal_ui" do
   lib = File.expand_path("../lib", __dir__)
 
   { "samagotchi/session_manager" => "Samagotchi::SessionManager",
+    "samagotchi/worker_boot" => "Samagotchi::WorkerBoot",
     "samagotchi/terminal_ui" => "Samagotchi::TerminalUI" }.each do |file, constant|
     it "loads #{file} on its own with no circular require warning" do
       _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e",
@@ -30,8 +31,18 @@ RSpec.describe "loading session_manager and terminal_ui" do
     end
   end
 
+  it "has no load path from samagotchi/session_manager into the worker" do
+    script = 'require "samagotchi/session_manager"; abort "worker" if defined?(Samagotchi::Worker); ' \
+             'loaded = $LOADED_FEATURES.grep(%r{/samagotchi/(worker|bridge)\.rb\z}); ' \
+             "abort loaded.inspect unless loaded.empty?"
+    _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", script)
+
+    expect(status).to be_success, err
+  end
+
   it "does not load TerminalUI or Reline when a worker starts" do
-    script = 'require "samagotchi/session_manager"; Samagotchi::Worker.name; ' \
+    script = 'require "samagotchi/worker_boot"; Samagotchi::WorkerBoot.name; ' \
+             'require "samagotchi/worker"; Samagotchi::Worker.name; ' \
              'require "samagotchi/bridge"; abort "reline" if defined?(Reline); ' \
              'abort "tui" if defined?(Samagotchi::TerminalUI)'
 
@@ -57,7 +68,7 @@ RSpec.describe "loading session_manager and terminal_ui" do
     file = path.delete_prefix("#{lib}/").delete_suffix(".rb")
     it "autoloads SessionManager from #{file} whole: the facade's methods and its parts'" do
       script = "require '#{file}'; sm = Samagotchi::SessionManager; " \
-               'abort "partial" unless %i[session_owner refuse_tui! run_session_loop].all? { |m| sm.respond_to?(m) }'
+               'abort "partial" unless %i[session_owner refuse_tui! worker_command].all? { |m| sm.respond_to?(m) }'
       _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", script)
 
       expect(status).to be_success, err

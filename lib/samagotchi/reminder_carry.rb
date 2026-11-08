@@ -15,7 +15,7 @@ module Samagotchi
   # restart writes one: a stop, an idle exit, a crash and a fallback restart
   # (a TERM) drop the reminders as before, and a stop or an archive removes a
   # file left behind (SessionManager.stop_session, .archive_session); a
-  # restart a stop landed on starts no successor (.run_session_loop). A file is honoured only by the same
+  # restart a stop landed on starts no successor (WorkerBoot.run_session_loop). A file is honoured only by the same
   # session, within WINDOW of its writing (a successor starts in seconds), so
   # one no successor read can't bring reminders back a day later.
   module ReminderCarry

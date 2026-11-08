@@ -298,7 +298,7 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_opts).to include(pgroup: true)
-      # A worker process: it traps signals (run_session_loop).
+      # A worker process: it traps signals (WorkerBoot.run_session_loop).
       expect(spawned_env).to include(described_class::WORKER_PROCESS_ENV => "1", described_class::WORKER_DETACH_ENV => "1")
     end
   end
