@@ -176,6 +176,28 @@ test("a call's duration: from the start the page saw, less its approval wait; a 
   assert.equal("duration_ms" in addCompleted(m, { iteration: 3, call_index: 1 }), false);
 });
 
+test("a live call's duration is the event's (the worker's) when it carries one; the page clock only without it", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "execute", tool_id: "t4" }, 1000);
+  const row = addCompleted(m, { iteration: 1, call_index: 1, duration_ms: 37, waited_ms: 300, tool_id: "t4" }, 1750);
+  assert.equal(row.duration_ms, 37);
+  assert.equal(row.tool_id, "t4");
+  addStarted(m, { iteration: 1, call_index: 2, tool: "execute" }, 2000);
+  assert.equal(addCompleted(m, { iteration: 1, call_index: 2 }, 2040).duration_ms, 40);
+});
+
+test("a long output's row shows the worker's preview (the reload's cut), marked truncated", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "execute" });
+  const row = addCompleted(m, { iteration: 1, call_index: 1, output: "x".repeat(5000), preview: "head…tail" });
+  assert.equal(row.output, "head…tail");
+  assert.equal(row.output_truncated, true);
+  addStarted(m, { iteration: 1, call_index: 2, tool: "execute" });
+  const short = addCompleted(m, { iteration: 1, call_index: 2, output: "ok" });
+  assert.equal(short.output, "ok");
+  assert.equal(short.output_truncated, false);
+});
+
 test("a row keeps the name the model called the tool by (an alias's), from the start or the completion", () => {
   const m = newActivity();
   const { row } = addStarted(m, { iteration: 1, call_index: 1, tool: "execute", called_as: "bash" });
@@ -203,8 +225,9 @@ test("addCompleted keeps a grep's no_match on an ok row, and none on a plain one
 test("the row field lists are copied by addStarted, addCompleted's synthesized row and the snapshot replay", async () => {
   const { ACTIVITY_FIELDS, EVENT_FIELDS } = await import("../../../lib/samagotchi/web/public/activity.js");
   const { snapshotEvents } = await import("../../../lib/samagotchi/web/public/turn_events.js");
-  // The server's ToolRowFields::ACTIVITY_KEYS and EVENT_KEYS.
-  assert.deepEqual([ACTIVITY_FIELDS, EVENT_FIELDS], [["title", "called_as", "via"], ["view", "ref", "refs"]]);
+  // The server's ToolRowFields::ACTIVITY_KEYS and EVENT_KEYS, plus the
+  // run's ToolIds id (tool_id, on both events).
+  assert.deepEqual([ACTIVITY_FIELDS, EVENT_FIELDS], [["title", "called_as", "via"], ["view", "ref", "refs", "tool_id"]]);
   const fields = Object.fromEntries([...ACTIVITY_FIELDS, ...EVENT_FIELDS].map((f) => [f, { value: f }]));
   const activityFields = Object.fromEntries(ACTIVITY_FIELDS.map((f) => [f, fields[f]]));
   const eventFields = Object.fromEntries(EVENT_FIELDS.map((f) => [f, fields[f]]));

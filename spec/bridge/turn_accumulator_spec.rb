@@ -2,7 +2,6 @@
 
 require "json"
 require "samagotchi/bridge/turn_accumulator"
-require "samagotchi/terminal_ui/event_renderer"
 require "samagotchi/tools/task_runtime"
 
 RSpec.describe Samagotchi::Bridge::TurnAccumulator do
@@ -148,6 +147,29 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     feed({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "x", waited_ms: 1000,
            activity: { action: "Running command", tool: "execute", params: "ls", status: "ok" } })
     expect(acc.current_turn[:parts].last).to include(action: "Running command", duration_ms: 1500)
+  end
+
+  it "takes a tool call's duration from the event when it carries one, and keeps and replays its tool_id" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls", tool_id: "t3" })
+    clock[0] += 2.5
+    feed({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "x", waited_ms: 1000,
+           duration_ms: 1498, tool_id: "t3", activity: { tool: "execute", params: "ls", status: "ok" } })
+
+    expect(acc.current_turn[:parts].last).to include(tool_id: "t3", duration_ms: 1498)
+    replayed = described_class.replay_events(acc.current_turn).select { |e| e[:type].to_s.start_with?("tool_call") }
+    expect(replayed.map { |e| e[:tool_id] }).to eq(%w[t3 t3])
+    expect(replayed.last[:duration_ms]).to eq(1498)
+  end
+
+  it "keeps the event's web preview of a long output as the part's output, the reload's cut" do
+    long = "x" * 5000
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: long, preview: "head…tail",
+           activity: { status: "ok" } })
+
+    expect(acc.current_turn[:parts].last).to include(output: "head…tail", output_truncated: true)
   end
 
   it "gives a running call's part the time it has run so far, so a join times the row from its start" do
@@ -507,11 +529,12 @@ exit: 0"
   describe ".replay_events" do
     # Shared contract with the web (turn_events.js snapshotEvents).
     let(:fixture) { JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__))) }
-    let(:symbolize) { ->(value) { Samagotchi::TerminalUI::EventRenderer.symbolize(value) } }
+    let(:symbolize) { ->(value) { described_class.from_wire(value).then { |e| e.merge(type: e[:type].to_sym) } } }
 
-    it "replays the turn in progress as the live events the web replays it as (the queue left out)" do
-      turn = Samagotchi::TerminalUI::EventRenderer.deep_symbolize_keys(fixture.dig("snapshot", "current_turn"))
-      expected = fixture["events"].reject { |e| e["type"] == "turn_enqueued" }.map(&symbolize)
+    it "replays the turn in progress as the live events the page's join has (the queue and the page's own keys left out)" do
+      turn = described_class.from_wire(fixture.dig("snapshot", "current_turn"))
+      expected = fixture["events"].reject { |e| %w[turn_enqueued command_queued].include?(e["type"]) }.map(&symbolize)
+      expected[0] = expected.first.except(:at, :cut_after)
       expect(described_class.replay_events(turn, started_at: fixture.dig("snapshot", "started_at"))).to eq(expected)
     end
 
@@ -549,6 +572,40 @@ exit: 0"
 
     it "has nothing to replay with no turn" do
       expect(described_class.replay_events(nil)).to eq([])
+    end
+  end
+
+  describe ".join_events" do
+    # The page's unfold, shared with turn_events.js snapshotEvents.
+    let(:fixture) { JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__))) }
+
+    def join(snapshot)
+      wire = described_class.from_wire(snapshot)
+      described_class.join_events(current_turn: wire[:current_turn], queued: wire[:queued], queued_commands: wire[:queued_commands],
+                                  started_at: wire[:started_at])
+    end
+
+    # Through JSON, as chi web sends them: the page reads strings.
+    def wire(events) = JSON.parse(JSON.generate(events))
+
+    it "is the turn's live events, then the queued prompts and commands, as the page replays them" do
+      expect(wire(join(fixture["snapshot"]))).to eq(fixture["events"])
+    end
+
+    it "names a pair participant's turn with every author key, its mode too" do
+      expect(wire(join(fixture.dig("pair", "snapshot")))).to eq(fixture.dig("pair", "events"))
+    end
+
+    it "is the queue alone with no turn, and nothing with neither" do
+      events = described_class.join_events(current_turn: nil, queued: [{ enqueued_id: "e1", client_id: "web:a", prompt: "p" }])
+      expect(events).to eq([{ type: :turn_enqueued, enqueued_id: "e1", client_id: "web:a", prompt: "p" }])
+      expect(described_class.join_events(current_turn: nil)).to eq([])
+    end
+  end
+
+  describe ".from_wire" do
+    it "symbolizes a snapshot's keys all the way down and leaves the values" do
+      expect(described_class.from_wire({ "a" => [{ "b" => "c" }], "d" => { "e" => 1 } })).to eq(a: [{ b: "c" }], d: { e: 1 })
     end
   end
 end

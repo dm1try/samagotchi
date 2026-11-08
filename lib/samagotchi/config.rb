@@ -373,6 +373,9 @@ module Samagotchi
       # The stage view's working set (files, memories and URLs the turn brought into context): a rail in the stage, a
       # footprint under each finished turn and a "set N" chip in place of the mem chip; ?working_set=1|0 overrides it per page load.
       Entry.new(key: "web.working_set",          yaml_path: %w[web working_set],          type: :bool,    default: true,            expose: %i[env config cli], lifecycle: :web_start),
+      # Opt-in: the page checks each finished turn against a reload of it (one full read per turn end) and chi web logs
+      # reload_checked, with reload_mismatch and the kinds that differed (counts only, no content).
+      Entry.new(key: "web.reload_check",         yaml_path: %w[web reload_check],         type: :bool,    default: false,           expose: %i[env config cli], lifecycle: :web_start),
       # Quick replies next to Annotate in the page's selection bubble, "|"-separated (a YAML list works too); "" leaves only Annotate.
       Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli], lifecycle: :web_start),
       # What a file ref (a tool row's file, a diff line) opens on this machine: a preset (vscode, vscode-insiders, cursor, zed, none) or a URL template with {path} and an optional {line} (Web::Editor).

@@ -30,8 +30,8 @@ module TurnGolden
   }.freeze
 
   # Keys whose values are the clock's or the machine's: a file's mtime,
-  # a wait's milliseconds.
-  CLOCK_KEYS = %i[mtime_ns waited_ms].freeze
+  # a wait's milliseconds, a tool call's duration.
+  CLOCK_KEYS = %i[mtime_ns waited_ms duration_ms].freeze
 
   # The context-status estimates count the prompt's characters, paths
   # included: they differ per machine, and so may their bucket.

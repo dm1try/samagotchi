@@ -28,8 +28,9 @@ whose seq a cursor is) and its **secret**; both are published in `bridge.json` (
 A joining UI must draw a turn already half done, and the ring may have dropped its early events. The accumulator
 folds the event log into one hash, `current_turn`: the prompt, `turn_id`, origin, `at`, and ordered `parts`
 (generation, thinking, text, tool, input, steer, reminder, notice), plus `pending_question`. A tool part keeps its
-row fields (`ToolRowFields`), its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a joined row is the
-row a reload draws, and `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`). A
+row fields (`ToolRowFields`), its `tool_id`, its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a
+joined row is the row a reload draws, `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`)
+and, once finished, the event's `duration_ms` (its own clock only for an older worker's event that has none). A
 `notice` part holds the event of a row that is neither text nor a tool call (`TurnNotice::FIELDS`: a hook's notice,
 the "asking again" row, a steer's cut, a ✂ row, a question and its answer), so a join replays it through the handler
 that drew it live.
@@ -40,7 +41,12 @@ needs and the messages lag: `queued` turns (`:turn_enqueued` until started, merg
 the idle `recap` (until a turn starts), a pending `continue_offer`, and the running turn's `working_set`.
 
 Three other users: `replay_events(turn)` turns a `current_turn` back into the live events that would have drawn it
-(the web's `snapshotEvents` replays them; `spec/shared/turn_snapshot.json` pins both sides); `messages_of` gives a
+(the attached TUI's join); `join_events` is the page's unfold of the same turn plus the queue behind it (its
+`turn_started` also carries `at`, `cut_after` and every author key, then a `turn_enqueued` per queued prompt and a
+`command_queued` per waiting command), which chi web's `GET /api/sessions/:id` sends as `replay` from the worker's
+snapshot (`from_wire` symbolizes it), so any worker's snapshot gives the page the same events
+(`spec/shared/turn_snapshot.json` pins it against turn_events.js `snapshotEvents`, the page's own fallback for one
+release); `messages_of` gives a
 plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_turn?` tells `POST /turn` that
 a participant's review turn runs, so the owner's input queues behind it.
 
@@ -194,6 +200,16 @@ The Bridge exposes:
   data: {"type":"tool_call_started","iteration":2,"call_index":1,"tool":"write",
          "params":"path=notes.txt","event_seq":812}
   ```
+
+  Both tool events carry the run's `tool_id` (`ToolIds`, the id its output is saved under in the session's
+  `tool_ids`, handed out before the batch runs), and `tool_call_completed` carries `duration_ms`: the call's time from
+  the `tool_call_started` emit to its own, less an approval's `waited_ms`, rounded first (SessionMetrics' tool record
+  definition). It is the one duration every UI shows: the web's live row, the tool record a reload draws, the attached
+  terminal's line; each keeps its own clock only for an older worker's event without it. A long output's
+  `tool_call_completed` also carries `preview`: `ToolOutputCut.preview` of the capped output at `WEB_PREVIEW_CHARS`
+  (a `read`'s head, any other tool's head and tail), the text a reload's row has from the saved output
+  (`MessageParts#tool_part`; spec/tool_preview_parity_spec.rb pins the two). The web row and the accumulator's part
+  take it; the TUI keeps `output`.
 
   A `turn_completed` frame omits `result`; `turn_summary.output` carries the answer:
 

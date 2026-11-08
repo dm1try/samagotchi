@@ -1597,6 +1597,13 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["current_turn"]["parts"]).to eq([{ "kind" => "text", "text" => "so far" }])
       expect(payload["queued"].map { |q| q["prompt"] }).to eq(["next"])
       expect(payload["queued_commands"]).to eq([{ "command_id" => "c1", "client_id" => "tui:1", "line" => "/model x" }])
+      # The page's join, unfolded here (TurnAccumulator.join_events).
+      expect(payload["replay"]).to eq([
+        { "type" => "turn_started", "prompt" => "second", "origin" => nil, "continue" => false },
+        { "type" => "generation_chunk", "text" => "so far", "thinking" => "", "iteration" => nil },
+        { "type" => "turn_enqueued", "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" },
+        { "type" => "command_queued", "command_id" => "c1", "client_id" => "tui:1", "line" => "/model x", "waits" => "turn_end" }
+      ])
       expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
       expect(payload["last_event_seq"]).to eq(40)
       # The cursor to stream on from: it names the worker (its epoch).
@@ -1808,6 +1815,8 @@ RSpec.describe Samagotchi::Web::App do
       payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
 
       expect(payload["recap"]).to be_nil
+      # No worker, no turn, no queue: nothing to replay.
+      expect(payload["replay"]).to eq([])
       # When it was written: the recap's label time.
       expect(payload["saved_recap"]).to eq("text" => "We said hello.", "turns_since" => 0, "created_at" => "2026-10-24T12:32:00Z")
       expect(manager.resume_calls).to be_empty
@@ -3316,6 +3325,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call("/?working_set=0")).not_to include("data-working-set")
       expect(page.call("/?working_set=yes", working_set: false)).not_to include("data-working-set")
       expect(page.call("/?working_set=yes")).to include(' data-working-set="1"')
+    end
+
+    # web.reload_check (off by default): the page's reload check
+    # (reload_check.js) runs only when the body says so.
+    it "tells the page the reload check is on only when it is" do
+      page = ->(**opts) { build_app(**opts).call(env_for("/"))[2].first }
+
+      expect(page.call).not_to include("data-reload-check")
+      expect(page.call(reload_check: true)).to include(' data-reload-check="1"')
     end
 
     # The page parses them (annotate_presets.js); an empty one is kept so

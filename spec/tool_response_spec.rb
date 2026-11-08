@@ -32,10 +32,10 @@ RSpec.describe Samagotchi::ToolResponse do
   end
   let(:events) { [] }
 
-  def batch(names, &block)
+  def batch(names, ids: nil, &block)
     calls = names.map { |name| { name: name } }
     described_class.run_batch(runner, calls, context: :turn, iteration: 2, emit: ->(event) { events << event },
-                                             on_stream_event: :sink, cap: 50, &block)
+                                             on_stream_event: :sink, cap: 50, ids: ids, &block)
   end
 
   describe ".run_batch" do
@@ -47,11 +47,17 @@ RSpec.describe Samagotchi::ToolResponse do
       expect(events).to eq([{ type: :tool_dispatch_started, iteration: 2, call_count: 2 },
                             { type: :tool_dispatch_completed, iteration: 2, call_count: 2 }])
       expect(runner.calls.map(&:last)).to eq([
-        { context: :turn, iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 },
-        { context: :turn, iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 }
+        { context: :turn, iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50, tool_id: nil },
+        { context: :turn, iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50, tool_id: nil }
       ])
       expect(yielded).to eq([["[shots]\none shot", 0], ["[write]\nwrote", 1]])
       expect(runs.size).to eq(2)
+    end
+
+    it "hands each run its id from ids:, in call order" do
+      batch(%w[shots write], ids: %w[t7 t8])
+
+      expect(runner.calls.map { |_, options| options[:tool_id] }).to eq(%w[t7 t8])
     end
 
     it "yields an interrupted run for every call left on an Interrupt, the dispatch event's own too" do

@@ -160,6 +160,10 @@ test("snapshotEvents replays the turn in progress as live events (a notice part 
   assert.deepEqual(snapshotEvents(turnSnapshot.snapshot), turnSnapshot.events);
 });
 
+test("snapshotEvents names a pair participant's turn: author, name and mode on turn_started", () => {
+  assert.deepEqual(snapshotEvents(turnSnapshot.pair.snapshot), turnSnapshot.pair.events);
+});
+
 test("snapshotEvents splits text by iteration and leaves the last one streaming", () => {
   const turn = { prompt: "p", parts: [
     { kind: "text", iteration: 1, text: "one" },

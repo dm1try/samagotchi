@@ -8,11 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed and the known divergences that explain them (no content).
+
 ### Changed
 
 - `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
 - `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer. The plain list's `ctx N%` now rounds as the picker and chi web round it (it could read 1% apart).
 - A delegating parent's wait says `worker_gone` 5 s after a child's worker dies (was 15 s); a child whose worker never starts is reported `worker_gone` ("its worker did not start") after the 30 s boot limit (or the wait's timeout, if shorter: then the child shows as `running`, as for any wait that timed out).
+- In chi web, a long tool output's hover shows the same cut live as after a reload (the first 2000 characters of a file read, the start and end of other output).
 
 ### Fixed
 
@@ -22,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle install --dry-run` and `chi bundle upgrade --dry-run` report hooks, rules, the plugin and scripts as the real run does (`Would update`, `Would install`, `Up to date`); a changed hook showed as skipped, an unchanged rule or plugin as would install, and scripts not at all.
 - `chi bundle install core --dry-run` (a profile's dry run) no longer names a hook it would replace as your own kept file.
 - A context window given with `--context-window-tokens` to a one-shot run (`-p … --non-interactive`) is named `cli`, not `config`, where its source shows: the debug log, and chi web's context tooltip for that session.
+- A tool row's duration is the same live, after a reload and in the attached terminal (each timed the call with its own clock).
+- In chi web, a turn that fails after its tool steps shows the same time on its timing line live as after a reload (the turn record's, as a canceled turn does).
 
 ## [0.156.0] - 2026-11-08
 

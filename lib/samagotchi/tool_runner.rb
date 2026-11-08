@@ -86,7 +86,10 @@ module Samagotchi
     #   file (EditPreview.change; also on tool_call_completed, never in the
     #   model's output)
     # @param context [TurnContext] the call's turn
-    def run(call, context:, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
+    # @param tool_id [String, nil] the id the run's output is saved under
+    #   (ToolIds, handed out before the batch runs), on both tool events
+    #   so a UI's row and the saved output share it
+    def run(call, context:, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:, tool_id: nil)
       # A call_tool of one of chi's own tools runs as that tool, from here
       # on (the gate, the row, the result): rules, approvals and hooks see
       # the real call, with via: (Tools::ToolIndex#unwrap).
@@ -114,6 +117,7 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
+      started[:tool_id] = tool_id if tool_id
       # Its row fields (ToolRowFields: title, called_as, via, view, ref, and a
       # plugin tool's refs); the worker runs in its session's working
       # directory.
@@ -121,6 +125,8 @@ module Samagotchi
       refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd(context))
       fields[:refs] = refs unless refs.empty?
       started.merge!(fields)
+      # The row's clock: tool_call_completed's duration_ms runs from here.
+      started_clock = @clock.call
       emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,
@@ -175,9 +181,20 @@ module Samagotchi
       completed[:diff] = diff if diff
       completed[:waited_ms] = waited_ms if waited_ms
       completed[:output_file] = output_file if output_file
+      completed[:tool_id] = tool_id if tool_id
+      # A long output's web row (its hover): the cut a reload draws from the
+      # saved output (MessageParts#tool_part), so live and reload show the
+      # same text. The TUI keeps +output+.
+      if capped.length > ToolOutputCut::WEB_PREVIEW_CHARS
+        completed[:preview] = ToolOutputCut.preview(capped, cap: ToolOutputCut::WEB_PREVIEW_CHARS, tool: call[:name])
+      end
       # Also here: a UI that missed the start (a replay gap) builds its row
       # from this event (its title is in the activity).
       completed.merge!(fields.slice(*ToolRowFields::EVENT_KEYS))
+      # The row's duration, the one every UI shows (live, a reload's tool
+      # record, the attached terminal): SessionMetrics' definition and
+      # rounding order, from the started emit to this one, less the wait.
+      completed[:duration_ms] = [((@clock.call - started_clock) * 1000).round - (waited_ms || 0), 0].max
       emit(on_stream_event, completed)
       # After the completed event: a hook's card (check-in, skills) prints
       # under the call's tool row, not before it.

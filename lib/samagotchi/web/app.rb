@@ -76,6 +76,7 @@ require_relative "session_show"
 require_relative "session_create"
 require_relative "session_control"
 require_relative "verify_fresh_routes"
+require_relative "reload_check_route"
 require_relative "push_routes"
 require_relative "block_renderer_routes"
 require_relative "update_check"
@@ -110,6 +111,7 @@ module Samagotchi
       include SessionCreate
       include SessionControl
       include VerifyFreshRoutes
+      include ReloadCheckRoute
       include PushRoutes
       include BlockRendererRoutes
       include ProxyGate
@@ -147,6 +149,9 @@ module Samagotchi
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
       # @param working_set [Boolean] the stage view's working set
       #   (web.working_set); ?working_set=1|0 overrides it for one page load
+      # @param reload_check [Boolean] the page checks each finished turn
+      #   against a reload of it and posts the counts (web.reload_check,
+      #   opt-in; POST /api/sessions/:id/reload_check logs them)
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -185,6 +190,7 @@ module Samagotchi
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
+                     reload_check: Config::BY_KEY["web.reload_check"].default,
                      grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil, update_runner: nil,
                      update_blocked: nil, update_ops: nil)
         @start_dir = start_dir
@@ -200,6 +206,8 @@ module Samagotchi
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @working_set = working_set
+        @reload_check = reload_check
+        @reload_checks = ReloadCheckRoute::Seen.new
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @editor_url = Editor.template(editor)
         @hub = hub
@@ -293,6 +301,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/exit\z}, :handle_exit, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/recap\z}, :handle_recap, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/reload_check\z}, :handle_reload_check, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/guardrails/wrong\z}, :handle_system_one_wrong, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/stats\z}, :handle_stats, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/children/counts\z}, :handle_children_counts, :owner, :session],
@@ -1904,6 +1913,8 @@ module Samagotchi
         attrs["home"] = Dir.home
         # Only when on: the page reads its presence.
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])
+        # The opt-in reload check (reload_check.js): only when on.
+        attrs["reload-check"] = "1" if @reload_check
         attrs.merge!(annotate_presets_data)
         dir, = scope_dir(req.params["dir"])
         unless dir

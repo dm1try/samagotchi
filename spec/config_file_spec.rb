@@ -90,6 +90,17 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(entry.lifecycle).to eq(:web_start)
       end
 
+      it "keeps the reload check off by default; on from the file, env or cli (--[no-]web-reload-check)" do
+        key = "web.reload_check"
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(false)
+        expect(described_class.resolve(key, file_data: { "web" => { "reload_check" => true } }, env: {})).to be(true)
+        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_RELOAD_CHECK" => "true" })).to be(true)
+        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => true })).to be(true)
+        entry = described_class.find_by_key(key)
+        expect(entry.cli_flag).to eq("--web-reload-check")
+        expect(entry.lifecycle).to eq(:web_start)
+      end
+
       it "defaults the annotate presets to two, set from the file, env or cli; \"\" is none but not from env" do
         key = "web.annotate_presets"
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to eq("Agreed|Could you please elaborate?")

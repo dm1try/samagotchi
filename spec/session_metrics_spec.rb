@@ -1254,6 +1254,18 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot[:tool_records].map { |r| r[:duration_ms] }).to eq([250, 0])
   end
 
+  it "takes a tool record's duration from the event when it carries one (ToolRunner's: what every UI shows)" do
+    monotonic = 10.0
+    metrics = described_class.new(clock: -> { monotonic })
+    metrics.call(type: :turn_started, session_id: "timed", prompt: "x")
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "shell")
+    monotonic += 3.0
+    metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "shell", status: "ok", waited_ms: 2_750,
+                 duration_ms: 248)
+
+    expect(metrics.snapshot[:tool_records].map { |r| r[:duration_ms] }).to eq([248])
+  end
+
   # A worker's turn checkpoint (TurnCheckpoint, at most every 10 s) saves
   # the running turn's record so far, as the turn a SIGKILL now would
   # leave: the next worker loads it (and settles the turn); the turn's own

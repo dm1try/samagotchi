@@ -180,9 +180,56 @@ module Samagotchi
         events
       end
 
+      # The page's unfold of a session view (chi web's show sends it as
+      # `replay`; turn_events.js snapshotEvents was its JS twin): the turn in
+      # progress as #replay_events has it, its turn_started with what the
+      # page also reads (its wall time `at`, the run's `cut_after`, and every
+      # author key, a pair turn's participant_mode too), then a turn_enqueued
+      # per prompt queued behind it and a command_queued per command waiting
+      # for its end (spec/shared/turn_snapshot.json pins both sides). The TUI
+      # keeps #replay_events.
+      # @param current_turn [Hash, nil] #current_turn's shape, symbol keys
+      #   (a snapshot's: .from_wire)
+      # @param queued [Array<Hash>] #queued's entries
+      # @param queued_commands [Array<Hash>] #queued_commands' entries
+      # @return [Array<Hash>] symbol keys and types
+      def self.join_events(current_turn:, queued: [], queued_commands: [], started_at: nil)
+        events = replay_events(current_turn, started_at: started_at)
+        if (started = events.first)
+          started[:at] = current_turn[:at] if current_turn[:at].is_a?(String)
+          started[:cut_after] = current_turn[:cut_after] unless current_turn[:cut_after].nil?
+          Steer::AUTHOR_KEYS.each { |key| started.delete(key) }
+          Steer::AUTHOR_KEYS.each { |key| started[key] = current_turn[key] if current_turn[key] } if current_turn[:author]
+        end
+        Array(queued).each do |entry|
+          enqueued = { type: :turn_enqueued, enqueued_id: entry[:enqueued_id], client_id: entry[:client_id], prompt: entry[:prompt] }
+          enqueued[:delivery] = entry[:delivery] if entry[:delivery]
+          enqueued[:author] = entry[:author] if entry[:author]
+          events << with_images(enqueued, entry[:images])
+        end
+        Array(queued_commands).each do |entry|
+          command = { type: :command_queued, command_id: entry[:command_id], client_id: entry[:client_id], line: entry[:line],
+                      waits: "turn_end" }
+          command[:author] = entry[:author] if entry[:author]
+          events << command
+        end
+        events
+      end
+
+      # A Bridge snapshot's part (JSON: string keys) as the accumulator's own
+      # shapes: symbol keys all the way down, values as they are.
+      def self.from_wire(value)
+        case value
+        when Hash then value.to_h { |key, item| [key.is_a?(String) ? key.to_sym : key, from_wire(item)] }
+        when Array then value.map { |item| from_wire(item) }
+        else value
+        end
+      end
+
       def self.tool_replay_events(part)
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
+        call[:tool_id] = part[:tool_id] if part[:tool_id]
         # Its row fields (ToolRowFields), each in its place: title and, for
         # an alias's call, the name the model used, also in the activity.
         title = part.slice(*ToolRowFields::ACTIVITY_KEYS).compact
@@ -326,6 +373,8 @@ module Samagotchi
           part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
+          # The id its output is saved under (ToolIds; not a row field).
+          part[:tool_id] = event[:tool_id] if event[:tool_id]
           ToolRowFields::KEYS.each { |key| part[key] = event[key] if event[key] }
           parts << part
           @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call
@@ -342,16 +391,26 @@ module Samagotchi
           # Only System 1's auto-allow is drawn on the row (the web's label).
           guardrail = event.dig(:activity, :guardrail)
           tool[:guardrail] = guardrail if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
-          tool[:output] = capped ? ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool]) : output.dup
+          # The event's web preview (ToolRunner: the reload's cut) when it
+          # has one; an older worker's event is cut here the same way.
+          tool[:output] = if event[:preview] then event[:preview].to_s.dup
+                          elsif capped then ToolOutputCut.preview(output, cap: @max_output_chars, tool: event[:tool])
+                          else output.dup
+                          end
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
           tool[:diff] = event[:diff] if event[:diff]
           action = event.dig(:activity, :action)
           tool[:action] = action.to_s if action
-          # As the live row times it (EventRenderer): from tool_call_started,
-          # less an approval wait.
+          # The event's (ToolRunner's: the figure every UI shows); without
+          # one (an older worker's event), as the live row times it: from
+          # tool_call_started, less an approval wait.
           started_at = @tool_started_at.delete([event[:iteration], event[:call_index]])
-          tool[:duration_ms] = [((@clock.call - started_at) * 1000) - event[:waited_ms].to_f, 0].max.round if started_at
+          if event[:duration_ms].is_a?(Integer)
+            tool[:duration_ms] = event[:duration_ms]
+          elsif started_at
+            tool[:duration_ms] = [((@clock.call - started_at) * 1000) - event[:waited_ms].to_f, 0].max.round
+          end
         when :pending_input_merged
           # A steer-only merge (count 0) has no user part: the origins stay
           # for the user lines' own merge.

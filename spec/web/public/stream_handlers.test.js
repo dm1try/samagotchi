@@ -308,6 +308,14 @@ test("turn_failed keeps a rolled-back turn's line for its prompt_restored", () =
   assert.equal(liveTurn.failedText, null);
 });
 
+test("turn_failed of a kept turn finishes its timing line from the turn record, as turn_canceled does", () => {
+  const { handlers, page } = fakePage();
+  handlers.turn_failed({ error: "boom" });
+  assert.equal(page.calls.filter(([name]) => name === "refreshTimingFromSession").length, 0);
+  handlers.turn_failed({ error: "boom", kept_steps: 2 });
+  assert.equal(page.calls.filter(([name]) => name === "refreshTimingFromSession").length, 1);
+});
+
 // A continue turn's origin carries its offer turn's enqueued_id (the
 // original prompt's bubble key). Its failure ends the running turn's DOM only: no
 // prompt_restored follows a continue turn, so no failed bubble reuses the key.

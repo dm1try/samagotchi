@@ -5,6 +5,7 @@ import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
 import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
+import { expectSameAfterReload } from "./support/history_shape.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 import { momentAt, pageNow, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
 
@@ -39,6 +40,14 @@ async function turnEnded(page, turns) {
 }
 
 const answer = (page) => page.locator(`${H} .bubble.output`).last();
+
+// The turns are over and drawn in #history: +turns+ ended (turnEnded), and
+// the last answer, if the turn has one, has its copy button (an observer
+// adds it after the answer renders). For expectSameAfterReload.
+const ended = (turns, { answered = true } = {}) => async (page) => {
+  await turnEnded(page, turns);
+  if (answered) await expect(answer(page).locator(":scope > .copy-btn")).toHaveCount(1);
+};
 
 test("a prompt from the start page streams an answer and the turn ends", async ({ page, script }) => {
   script("plain");
@@ -141,27 +150,14 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", asy
 test("a reload after the turn shows the same turn and answer", async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
-  await turnEnded(page, 1);
-  // The copy button is added by an observer after the answer renders:
-  // compare the answers once each has it.
-  const copied = () => expect(answer(page).locator(":scope > .copy-btn")).toHaveCount(1);
-  await copied();
-  const before = {
-    user: await page.locator("#history .bubble.user").allTextContents(),
-    summary: await page.locator("#history .turn-work > summary").allTextContents(),
-    tools: await page.locator("#history .activity-tool").allTextContents(),
-    titles: await page.locator("#history .activity-params").allTextContents(),
-    answer: await answer(page).innerHTML(),
-  };
-  await page.reload();
-  await turnEnded(page, 1);
-  await expect(page.locator("#history .bubble.user")).toHaveText(before.user);
-  await expect(page.locator("#history .turn-work > summary")).toHaveText(before.summary);
-  await expect(page.locator("#history .activity-tool")).toHaveText(before.tools);
-  await expect(page.locator("#history .activity-params")).toHaveText(before.titles);
-  expect(before.titles[0]).toBe("See that the shell answers");
-  await copied();
-  expect(await answer(page).innerHTML()).toBe(before.answer);
+  await ended(1)(page);
+  const before = await answer(page).innerHTML();
+  await test.step("the turn reads the same after a reload", async () => {
+    const { live } = await expectSameAfterReload(page, ended(1));
+    expect(live.filter((item) => item.kind === "row").map((item) => item.text.split(" · ").slice(0, 2)))
+      .toEqual([["execute", "See that the shell answers"], ["read", "README.md"]]);
+  });
+  expect(await answer(page).innerHTML()).toBe(before);
   // Nothing streams after the turn: the meter and the card read the saved
   // context (its rules: ctx.test.js).
   await expect(page.locator("#infoBar .meta")).toContainText(/ctx ~?\d+%/);
@@ -179,8 +175,9 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
   await turnEnded(page, 1);
   await expect(page.locator("#history .turn-work .hook-notice")).toHaveText("↻ empty answer, asking again (1/1)");
   await expect(page.locator("#history .bubble.output")).toHaveCount(1);
-  await page.reload();
-  await turnEnded(page, 1);
+  await test.step("the turn reads the same after a reload (but the retry row's place)", async () => {
+    await expectSameAfterReload(page, ended(1), { allow: ["retry-row"] });
+  });
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   await expect(answer(page)).toHaveText("PONG after the retry.");
   await expect(page.locator("#history .bubble.output")).toHaveCount(1);
@@ -201,8 +198,9 @@ test("a turn with no answer ends in the stage as no answer, then one notice, liv
   const notice = page.locator("#history .empty-answer");
   await expect(notice).toHaveText("no answer: the model returned nothing (after 1 retry)");
   await expect(page.locator("#history .bubble.output")).toHaveCount(0);
-  await page.reload();
-  await turnEnded(page, 1);
+  await test.step("the turn reads the same after a reload", async () => {
+    await expectSameAfterReload(page, ended(1, { answered: false }));
+  });
   await expect(notice).toHaveText("no answer: the model returned nothing (after 1 retry)");
   await expect(page.locator("#history .bubble.output")).toHaveCount(0);
   await expect(page.locator("#history .turn-work > summary")).toHaveText("2 steps");
@@ -248,8 +246,9 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
-  await page.reload();
-  await turnEnded(page, 1);
+  await test.step("the turn joined mid-way reads the same after a reload", async () => {
+    await expectSameAfterReload(page, ended(1), { allow: ["retry-row"] });
+  });
   expect(await rows("#history")).toEqual(expected);
   // In the turn's order: the steered line and the card after its steps,
   // before its answer and its one timing line (the answer's Revise row aside).
@@ -633,6 +632,9 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
   await card.locator(".question-submit").click();
   await expect(answer(page)).toHaveText("The font size is 14 now: e2e-settings.conf:1.");
   await turnEnded(page, 1);
+  await test.step("the turn with its diff row reads the same after a reload", async () => {
+    await expectSameAfterReload(page, ended(1));
+  });
   const editRow = () => page.locator("#history .activity-row").filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
   const check = async () => {
     const diff = editRow().locator(".activity-diff");
@@ -1880,8 +1882,9 @@ test("a first turn that fails shows its prompt and why, once live and again afte
   await shown();
   // Back in the composer, as for a later turn that fails.
   await expect(page.locator("#prompt")).toHaveValue("Say pong");
-  await page.reload();
-  await shown();
+  await test.step("the failed turn reads the same after a reload", async () => {
+    await expectSameAfterReload(page, shown);
+  });
   await expect(page.locator("#history .hint")).toHaveCount(0);
 });
 
@@ -1900,8 +1903,9 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
   await turnEnded(page, 1);
   await shown();
   await expect(page.locator("#prompt")).toHaveValue("");
-  await page.reload();
-  await turnEnded(page, 1);
+  await test.step("the failed turn reads the same after a reload", async () => {
+    await expectSameAfterReload(page, ended(1, { answered: false }), { allow: ["failed-step"] });
+  });
   await shown();
 });
 
@@ -2037,6 +2041,9 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   }, sel);
   await expect.poll(() => after("#history .bubble.output")).toBe(true);
   await expect.poll(() => after("#history .turn-timing:not(.live)")).toBe(true);
+  await test.step("the turn reads the same after a reload (but the command's reply)", async () => {
+    await expectSameAfterReload(page, ended(1), { allow: ["command-bubble"] });
+  });
 });
 
 // check-in (after: 3 in the e2e config): the card comes up in the running
@@ -2070,8 +2077,12 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   // The card is the echo: no "/checkin nudge" bubble.
   await expect(page.locator("#history .bubble.command")).toHaveCount(0);
 
-  await page.reload();
-  await turnEnded(page, 1);
+  await test.step("the turn reads the same after a reload", async () => {
+    await expectSameAfterReload(page, async (p) => {
+      await ended(1)(p);
+      await expect(p.locator("#history .plugin-card")).toHaveCount(1);
+    }, { allow: ["in-turn-card"] });
+  });
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   const reloaded = page.locator("#history .steer-row");
   await expect(reloaded).toHaveCount(1);
@@ -2173,7 +2184,9 @@ test("a finished task's wake opens a turn: after a reload an earlier card keeps 
   await send(page, "Start a task");
   await expect(page.locator("#history .bubble.note")).toHaveCount(1);
   await turnEnded(page, 3);
-  await page.reload();
+  await test.step("the turns read the same after a reload", async () => {
+    await expectSameAfterReload(page, ended(3));
+  });
   const order = () => page.locator("#history > :is(.bubble.user, .plugin-card.warn, .bubble.note.turn-start)").evaluateAll((els) => els.map((el) => (
     el.matches(".plugin-card") ? "card" : el.matches(".note") ? "note" : el.textContent.trim())));
   await expect.poll(order).toEqual(["Read the flagged file", "card", "Start a task", "note"]);

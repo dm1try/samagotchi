@@ -1112,19 +1112,22 @@ module Samagotchi
         if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
           active[:guardrail] = { rule: guardrail[:rule], p: guardrail[:p], judgment_id: guardrail[:judgment_id] }.compact
         end
-        finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
+        finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i,
+                                                                  duration_ms: event[:duration_ms])
       end
     end
 
-    # Caller holds the mutex.
-    def finish_tool_record(active, status, waited_ms: 0)
+    # Caller holds the mutex. +duration_ms+: the event's (ToolRunner's,
+    # the figure every UI shows live); without one (a test kernel's
+    # events), timed here.
+    def finish_tool_record(active, status, waited_ms: 0, duration_ms: nil)
       record = active.slice(
         :id, :turn_id, :iteration, :call_index, :tool, :called_as, :via, :no_match, :guardrail, :started_at
       ).merge(
         status: status,
         completed_at: now.iso8601(3),
         # Less a guardrail approval wait (ToolRunner's waited_ms).
-        duration_ms: [elapsed_ms(active[:started_monotonic]) - waited_ms, 0].max
+        duration_ms: duration_ms.is_a?(Integer) ? duration_ms : [elapsed_ms(active[:started_monotonic]) - waited_ms, 0].max
       )
       @tool_records << record
       count_tool(record)

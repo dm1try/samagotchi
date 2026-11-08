@@ -7,11 +7,13 @@
       "turn_id": "turn-1",
       "origin": { "client_id": "web:abc", "enqueued_id": "e1" },
       "continue": false,
+      "at": "2026-11-08T10:00:00.000Z",
+      "cut_after": 20,
       "parts": [
         { "kind": "generation", "iteration": 1 },
         { "kind": "thinking", "iteration": 1, "text": "hmm" },
         { "kind": "text", "iteration": 1, "text": "Let me look." },
-        { "kind": "tool", "iteration": 1, "call_index": 0, "tool": "execute", "params": "command=\"ls\"", "title": "List the files",
+        { "kind": "tool", "iteration": 1, "call_index": 0, "tool": "execute", "tool_id": "t1", "params": "command=\"ls\"", "title": "List the files",
           "view": { "command": "ls\n  -la", "cwd": "lib", "description": "List the files" }, "status": "ok", "output": "a b", "output_truncated": false, "action": "Running command", "duration_ms": 1250 },
         { "kind": "tool", "iteration": 1, "call_index": 1, "tool": "edit", "params": "path=\"a.rb\"", "status": "ok",
           "output": "Edited", "output_truncated": false, "action": "Editing file", "duration_ms": 40,
@@ -31,17 +33,20 @@
         { "kind": "tool", "iteration": 3, "call_index": 0, "tool": "read", "params": "path=\"f\"", "status": "running" }
       ]
     },
-    "queued": [{ "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" }]
+    "queued": [{ "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" },
+               { "enqueued_id": "e4", "client_id": "web:z", "prompt": "next step", "delivery": "next_step", "author": "p:ann" }],
+    "queued_commands": [{ "command_id": "c1", "client_id": "web:y", "line": "/model fast", "author": "p:ann" }]
   },
   "events": [
-    { "type": "turn_started", "prompt": "do it", "turn_id": "turn-1", "origin": { "client_id": "web:abc", "enqueued_id": "e1" }, "continue": false, "started_at": "T0" },
+    { "type": "turn_started", "prompt": "do it", "turn_id": "turn-1", "origin": { "client_id": "web:abc", "enqueued_id": "e1" }, "continue": false, "started_at": "T0",
+      "at": "2026-11-08T10:00:00.000Z", "cut_after": 20 },
     { "type": "generation_started", "iteration": 1 },
     { "type": "generation_chunk", "text": "", "thinking": "hmm", "iteration": 1 },
     { "type": "generation_chunk", "text": "Let me look.", "thinking": "", "iteration": 1 },
     { "type": "generation_completed" },
-    { "type": "tool_call_started", "iteration": 1, "call_index": 0, "tool": "execute", "params": "command=\"ls\"", "title": "List the files",
+    { "type": "tool_call_started", "iteration": 1, "call_index": 0, "tool": "execute", "tool_id": "t1", "params": "command=\"ls\"", "title": "List the files",
       "view": { "command": "ls\n  -la", "cwd": "lib", "description": "List the files" } },
-    { "type": "tool_call_completed", "iteration": 1, "call_index": 0, "tool": "execute", "output": "a b", "output_truncated": false,
+    { "type": "tool_call_completed", "iteration": 1, "call_index": 0, "tool": "execute", "tool_id": "t1", "output": "a b", "output_truncated": false,
       "activity": { "action": "Running command", "tool": "execute", "status": "ok", "params": "command=\"ls\"", "title": "List the files" }, "duration_ms": 1250,
       "view": { "command": "ls\n  -la", "cwd": "lib", "description": "List the files" } },
     { "type": "tool_call_started", "iteration": 1, "call_index": 1, "tool": "edit", "params": "path=\"a.rb\"" },
@@ -63,6 +68,24 @@
     { "type": "generation_chunk", "text": "Nearly", "thinking": "", "iteration": 3 },
     { "type": "generation_completed" },
     { "type": "tool_call_started", "iteration": 3, "call_index": 0, "tool": "read", "params": "path=\"f\"" },
-    { "type": "turn_enqueued", "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" }
-  ]
+    { "type": "turn_enqueued", "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" },
+    { "type": "turn_enqueued", "enqueued_id": "e4", "client_id": "web:z", "prompt": "next step", "delivery": "next_step", "author": "p:ann" },
+    { "type": "command_queued", "command_id": "c1", "client_id": "web:y", "line": "/model fast", "waits": "turn_end", "author": "p:ann" }
+  ],
+  "pair": {
+    "description": "A pair participant's turn: its turn_started names them and their mode (the owner page's pair badge).",
+    "snapshot": {
+      "started_at": "T1",
+      "current_turn": {
+        "prompt": "fix it", "turn_id": "turn-2", "origin": { "client_id": "web:p" }, "continue": false,
+        "author": "p:ann", "author_name": "Ann", "participant_mode": "pair",
+        "parts": [{ "kind": "text", "iteration": 1, "text": "On it." }]
+      }
+    },
+    "events": [
+      { "type": "turn_started", "prompt": "fix it", "turn_id": "turn-2", "origin": { "client_id": "web:p" }, "continue": false,
+        "started_at": "T1", "author": "p:ann", "author_name": "Ann", "participant_mode": "pair" },
+      { "type": "generation_chunk", "text": "On it.", "thinking": "", "iteration": 1 }
+    ]
+  }
 }

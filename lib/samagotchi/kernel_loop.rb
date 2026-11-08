@@ -792,20 +792,24 @@ module Samagotchi
       turn.qwen_attempts = 0
       turn.qwen_partial = nil
       runs = []
+      # The batch's ids before it runs (each run's events carry its own):
+      # nothing appends to the conversation during a batch, so they are the
+      # ids the entry would get after it (spec/tool_ids_pin_spec.rb).
+      ids = ToolIds.next_ids(turn.conversation, calls.size)
       begin
         ToolResponse.run_batch(tool_runner, calls, context: @context, iteration: turn.iteration, emit: turn.emit,
-                                                   on_stream_event: turn.on_stream_event, cap: turn.cap) { |run, _| runs << run }
+                                                   on_stream_event: turn.on_stream_event, cap: turn.cap, ids: ids) { |run, _| runs << run }
       rescue Interrupt
         # A Ctrl-C mid-batch: the entry still answers every call (the
         # finished runs, then run_batch's interrupted ones), for #run to
         # hand on with the conversation.
-        turn.conversation << ToolResponse.joined(runs, ids: ToolIds.next_ids(turn.conversation, runs.size))
+        turn.conversation << ToolResponse.joined(runs, ids: ids.first(runs.size))
         raise
       end
       turn.tool_activity.concat(ToolResponse.activities(runs))
       # One entry for the batch: the capped outputs joined (ToolResponse.joined),
       # an id per run (ToolIds).
-      turn.conversation << ToolResponse.joined(runs, ids: ToolIds.next_ids(turn.conversation, runs.size))
+      turn.conversation << ToolResponse.joined(runs, ids: ids.first(runs.size))
       turn.pending_tool_calls = true
       :next
     end
