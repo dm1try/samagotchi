@@ -6,6 +6,7 @@ module Samagotchi
     # IdleClient, their usage in the session's side line, and System 1's
     # recording of judged asks. Writes @side_client/@side_client_key (under
     # @side_client_mutex); reads @metrics, @session, @host_registry.
+    # The recorder (SystemOne::Recorder) is the turn stages' recording seam.
     module SideRequestsPart
       # Count one side request (a recap, a plugin's ctx.ask_model: IdleClient's
       # on_usage) in the session's side line, apart from its turns' totals.
@@ -52,23 +53,29 @@ module Samagotchi
 
       private
 
-      # +client+ (nil for none) saving its asks as +judgment+'s runs. Anything
-      # going wrong here leaves the client as it was: a run is never worth a
-      # judgment.
-      #
-      # A scratch session's asks aren't saved; a participant's turn is never
-      # judged, so it never comes here.
+      # +client+ (nil for none) saving its asks as +judgment+'s runs
+      # (SystemOne::Recorder#wrap, over a recorder built now): the
+      # guardrails' System 1 client.
       # @param mode [String, nil] the use's mode, for its runs (Recording.wrap)
       def system_one_recording(client, judgment, session, mode: nil)
-        return client if client.nil? || session&.scratch
-
-        context = SystemOne::Recording::Context.of(session, session_model: session && effective_model_name)
-        SystemOne::Recording.wrap(client, judgment: judgment, runs: system_one_runs, context: context, recorded_mode: mode)
-      rescue StandardError => e
-        Log.warn(:system_one, "system_one_recording_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-        client
+        system_one_recorder.wrap(client, judgment, session, mode: mode)
       end
       private :system_one_recording
+
+      # What a turn stage saves its System 1 asks with (SystemOne::Recorder):
+      # this Engine's runs and the model it names now, read at this call and
+      # never kept, so each stage call sees the model as it is then (an
+      # outgoing ask after a before_turn hook's switch, the new one). Never
+      # raises: on a failure, SystemOne::Recorder::NONE (no runs, the plain
+      # client), said once per failure as before.
+      # @return [SystemOne::Recorder]
+      def system_one_recorder
+        SystemOne::Recorder.new(runs: system_one_runs, session_model: effective_model_name)
+      rescue StandardError => e
+        SystemOne::Recorder.failed(e)
+        SystemOne::Recorder::NONE
+      end
+      private :system_one_recorder
 
       # Where this Engine's runs are saved; read each time, as the settings are.
       def system_one_runs = SystemOne::Runs.for_sessions_dir(session_state_dir)
