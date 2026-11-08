@@ -59,26 +59,15 @@ module Samagotchi
         nil
       end
 
-      # Wait for the session's next reply past +cursor+ (ReplyWait) and
-      # report it. Ctrl-C leaves the turn running (130).
-      # @param owner_grace [Numeric, nil] seconds with no live worker before
-      #   it counts as gone; nil waits for whatever wakes one
-      # @param turn [String, nil] the enqueued_id of the turn waited for
-      #   (ReplyWait's turn:): a queued message's, or the turn an answer or
-      #   a --wait with no message is about (ReplyWait.own_turn)
-      # @param queued [Boolean] +turn+ is a queued message's (ReplyWait's
-      #   queued:)
-      # @param ended_before [Boolean] a last_turn that ended before the
-      #   baseline is the answer (ReplyWait's ended_before:) — the
-      #   --wait-with-no-message's settled session
-      # @param report_turn_id [String, nil] the turn id to include in the
-      #   report, even when ReplyWait uses the next-reply path
+      # Wait for what +target+ binds (ReplyWait) and report it. Ctrl-C
+      # leaves the turn running (130).
+      # @param target [ReplyWait::Target] which turn, from the cursor and
+      #   baseline prepare_wait read; its report_turn_id is the turn id the
+      #   report names, even when ReplyWait takes the next reply
       # @return [Integer] the exit status
-      def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil,
-                         queued: false, ended_before: false, report_turn_id: turn)
-        result = @access.wait_reply(id, cursor: cursor, timeout: timeout, baseline: baseline, owner_grace: owner_grace,
-                                        poll_interval: self.class::POLL_INTERVAL, turn: turn, queued: queued,
-                                        ended_before: ended_before)
+      def wait_for_reply(id, target:, timeout:)
+        report_turn_id = target.report_turn_id
+        result = @access.wait_reply(id, **target.to_h, timeout: timeout, poll_interval: self.class::POLL_INTERVAL)
         result.turn_id = report_turn_id if report_turn_id && !report_turn_id.to_s.empty?
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true

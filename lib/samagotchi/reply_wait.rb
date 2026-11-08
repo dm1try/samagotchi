@@ -6,6 +6,7 @@ require_relative "session_inbox"
 require_relative "turn_checkpoint"
 require_relative "worker_link"
 require_relative "reply_wait/poll"
+require_relative "reply_wait/target"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80

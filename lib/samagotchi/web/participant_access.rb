@@ -395,7 +395,7 @@ module Samagotchi
       # send --wait, D11): only for a turn of theirs (+turn+, the enqueued
       # id their POST …/turn answered); the body's busy, queue and created
       # don't count. The answer is what their wait on that turn needs
-      # (SendCommand's WaitTarget.after with the turn asked, the wait's
+      # (ReplyWait::Target.wait_only with the turn asked, the wait's
       # baseline), never the owner's wait state: the last turn's end (the
       # baseline's last_turn), whether their turn is known, whether a worker
       # runs it, and last_turn_id only when it is their turn. No cursor

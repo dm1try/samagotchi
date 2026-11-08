@@ -207,7 +207,7 @@ module Samagotchi
         when :accepted
           record_history(body, prompt)
           # via: bridge or file (the worker was gone: its input file), which
-          # names the turn a remote chi send --wait follows (WaitTarget).
+          # names the turn a remote chi send --wait follows (ReplyWait::Target).
           json_response(202, result.ack.merge("via" => result.via.to_s))
         when :refused then json_response(result.code, result.ack)
         when :timeout then error_response(504, "worker_timeout", result.detail)

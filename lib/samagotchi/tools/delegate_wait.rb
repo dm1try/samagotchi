@@ -73,15 +73,15 @@ module Samagotchi
           cursor = report_claim.cursor.with(report_claim: report_claim)
         end
 
-        baseline = cursor.baseline
+        target = ReplyWait::Target.from_cursor(cursor, child: Session.summary_from_file(Session.session_file(child_id, state_dir: sd)),
+                                                       owner_grace: owner_grace)
         left = timeout.to_i
         outcomes = relayed_outcomes.delete(key) || []
         loop do
           started = monotonic
-          wait = ReplyWait.call(child_id, state_dir: sd, cursor: cursor.reply_file, timeout: [left, 0].max,
-                                          poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
-                                          owner_grace: owner_grace, interject: others && -> { others.poll },
-                                          turn: cursor.turn, message_waiting: message_waiting)
+          wait = ReplyWait.call(child_id, state_dir: sd, **target.to_h, timeout: [left, 0].max,
+                                          poll_interval: poll_interval, cancelled: cancelled,
+                                          interject: others && -> { others.poll }, message_waiting: message_waiting)
           left -= monotonic - started
           unless wait.status == :waiting_for_answer &&
                  DelegateRelay.relayable?(relay, wait.question, strategy: Guardrails::ParentPolicy.for_session(wait.session),
@@ -108,7 +108,7 @@ module Samagotchi
           # asked), the relayed question no longer reported: a turn that
           # ends with no reply during the relay's POST or after it still
           # ends the wait.
-          baseline = ReplyWait.baseline_of(wait.session, question_id: wait.question.id)
+          target = target.with(baseline: ReplyWait.baseline_of(wait.session, question_id: wait.question.id))
         end
       rescue ArgumentError => e
         "Error: #{e.message}"

@@ -335,8 +335,8 @@ module Samagotchi
       before = kept ? kept.after : current
       # A follow-up's turn (DelegateCursor#turn) is reported by its own
       # reply, as delegate_result takes it, not a newer queued turn's.
-      wait = ReplyWait.call(child_id, state_dir: @state_dir, cursor: before.reply_file, baseline: before.baseline,
-                                      timeout: 0, turn: before.turn)
+      wait = ReplyWait.call(child_id, state_dir: @state_dir, **ReplyWait::Target.from_cursor(before, child: child).to_h,
+                                      timeout: 0)
       return nil unless reportable?(wait)
 
       claim_id = before.report_claim&.id || SecureRandom.hex(16)

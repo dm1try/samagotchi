@@ -25,7 +25,6 @@ require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
 require_relative "send_command/parent_gate"
-require_relative "send_command/wait_target"
 require_relative "send_command/busy"
 require_relative "session_access/local"
 
@@ -519,9 +518,9 @@ module Samagotchi
       return report_command(session.id) if @sent_command
 
       start = @access.prepare_wait(session.id, session: session, created: true)
-      wait_for_reply(session.id, cursor: start.cursor, baseline: start.baseline,
-                                 timeout: options[:timeout],
-                                 **WaitTarget.first_message(@delivered, direct_turn: session.first_turn_id).to_h)
+      target = ReplyWait::Target.first_message(start, @delivered, direct_turn: session.first_turn_id,
+                                                                  gone_after: self.class::WORKER_GONE_AFTER)
+      wait_for_reply(session.id, target: target, timeout: options[:timeout])
     end
 
     # What chi send --new asks to create: through the worker (images, a
@@ -599,9 +598,8 @@ module Samagotchi
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
-      target = WaitTarget.message(@delivered, queue: @queue, running: start.running,
-                                              running_turn: (start.own_turn if start.running))
-      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout], **target.to_h)
+      target = ReplyWait::Target.message(start, @delivered, queue: @queue, gone_after: self.class::WORKER_GONE_AFTER)
+      wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
     # A participant's --wait -m (a review turn through chi --remote with
@@ -620,9 +618,8 @@ module Samagotchi
         return 1
       end
       start = @access.prepare_wait(id, turn: turn)
-      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline, timeout: options[:timeout],
-                         owner_grace: start.live ? self.class::WORKER_GONE_AFTER : nil,
-                         **WaitTarget.after(start, requested: turn).to_h)
+      target = ReplyWait::Target.participant(start, turn: turn, gone_after: self.class::WORKER_GONE_AFTER)
+      wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -646,9 +643,8 @@ module Samagotchi
         error_line("chi send: turn #{requested_turn} is not a running, queued, or last ended turn")
         return 1
       end
-      target = WaitTarget.after(start, requested: requested_turn)
-      wait_for_reply(id, cursor: start.cursor, baseline: start.baseline,
-                         timeout: options[:timeout], owner_grace: start.live ? self.class::WORKER_GONE_AFTER : nil, **target.to_h)
+      target = ReplyWait::Target.wait_only(start, requested: requested_turn, gone_after: self.class::WORKER_GONE_AFTER)
+      wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
     # A new idle session's first turn, with the images. Its worker's Bridge
