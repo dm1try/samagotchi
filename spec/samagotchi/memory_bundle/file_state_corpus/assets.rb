@@ -17,7 +17,7 @@ module BundleStateCorpus
     def label = asset == "plugin" ? "plugin/plugin.rb" : source_rel
 
     # Its name in the Installer's summary.
-    def result_key = { "rule" => "guardrails/r.yml", "plugin" => "plugin.rb", "script" => "scripts/s.sh", "hook" => file }.fetch(asset)
+    def result_key = { "rule" => "guardrails/r.yml", "plugin" => "plugin.rb", "script" => "scripts/s.sh", "hook" => "hooks/#{file}" }.fetch(asset)
   end
 
   module Examples
@@ -48,7 +48,8 @@ module BundleStateCorpus
       dir = File.join(@root, "src", kase.id, "v2", NAME)
       return dir if File.directory?(dir)
 
-      write_bundle(kase, dir, "1.1.0", kase.incoming, link: kase.linked, listed: kase.incoming || kase.listed_missing)
+      write_bundle(kase, dir, "1.1.0", kase.incoming, link: kase.linked, listed: kase.incoming || kase.listed_missing,
+                                                      beside: kase.beside && (kase.incoming || kase.listed_missing))
       dir
     end
 
@@ -60,18 +61,21 @@ module BundleStateCorpus
       return dir if File.directory?(dir)
 
       text = kase.recorded.is_a?(String) && !kase.recorded.empty? && !kase.dev? ? kase.recorded : kase.installed
-      write_bundle(kase, dir, "1.0.0", kase.recorded.nil? ? nil : text, link: false, listed: !kase.recorded.nil?)
+      write_bundle(kase, dir, "1.0.0", kase.recorded.nil? ? nil : text, link: false, listed: !kase.recorded.nil?, beside: kase.beside)
       dir
     end
 
     # A bundle dir: its manifest, the case's file (+text+; a link out of the
-    # dir with +link+; listed in the manifest with +listed+) and, beside, an
-    # unchanged hooks/h.rb.
-    def write_bundle(kase, dir, version, text, link:, listed:)
+    # dir with +link+; listed in the manifest with +listed+) and, with
+    # +beside+, an unchanged hooks/h.rb. A hook case's source (v2) ships its
+    # hook only when the case's incoming has one (or the manifest lists one
+    # it lacks): that source is refused; without, an install or upgrade
+    # retires the record's hooks. v1 is the kept manifest.yml, hooks: and all.
+    def write_bundle(kase, dir, version, text, link:, listed:, beside:)
       FileUtils.mkdir_p(dir)
       manifest = { "name" => NAME, "version" => version, "scope" => "system" }
       hooks = {}
-      if kase.beside
+      if beside
         write(File.join(dir, "hooks", "h.rb"), "# v1\n")
         hooks["h.rb"] = HOOK_META.merge("sha256" => "sha256:#{BundleStateCorpus.sha("# v1\n")}")
       end

@@ -27,8 +27,8 @@ module Samagotchi
     # bundle that isn't installed and never downgrades.
     #
     # .md files take the Installer's 3-way merge: a clean text merge replaces
-    # the file (merged), a real conflict keeps the user's (behind). Hooks, rules,
-    # the plugin and scripts are replaced; an edited one (Trash.edit?: its
+    # the file (merged), a real conflict keeps the user's (behind). Rules,
+    # the plugin and scripts are replaced, an older chi's hooks removed; an edited one (Trash.edit?: its
     # bytes neither the recorded sha, none recorded counting as edited, nor
     # the incoming file's) is copied to the trash first and listed in
     # replaced (#trash_bound).
@@ -202,6 +202,10 @@ module Samagotchi
         if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
+
+        # The upgrade would refuse it (Installer#refuse_hooks).
+        hooks = Manifest::HooksRetired.files_in(row.source_dir)
+        return skip(row, Manifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
@@ -277,39 +281,21 @@ module Samagotchi
       end
 
       # What the upgrade from +source_dir+ copies to the trash, as
-      # hooks/F, guardrails/F, plugin/F, scripts/F: Trash.edit? over the files
-      # AssetInstaller replaces or removes, each against the file it puts in
-      # its place. Hooks: the ones install_hooks copies (listed, else every
-      # hooks/*.rb; present, not links) and the ones prune_dropped_hooks
-      # removes (recorded, no longer shipped; no incoming). Rules, the plugin
-      # and scripts: their whole folder, which the upgrade replaces.
+      # hooks/F, guardrails/F, plugin/F, scripts/F: Trash.edits over the
+      # folders AssetInstaller replaces or removes, each file against the one
+      # it puts in its place. Rules, the plugin and scripts: their whole
+      # folder, which the upgrade replaces. hooks/: an older chi's, which the
+      # upgrade removes whole (AssetInstaller#retire_hooks; no incoming).
       def trash_bound(name, bundle, manifest, source_dir)
         provenance = Provenance.new(name: name)
         rules = Dir.glob(File.join(source_dir, "guardrails", "*.yml")).sort
                    .reject { |file| AssetInstaller.linked?(file, source_dir) }
         plugin = manifest.plugin ? { manifest.plugin[:file] => File.join(source_dir, manifest.plugin[:file]) } : {}
         scripts = manifest.scripts.keys.to_h { |file| [file, File.join(source_dir, "scripts", file)] }
-        trash_bound_hooks(provenance, bundle, manifest, source_dir) +
+        Trash.edits(provenance.hooks_dir, "hooks", bundle.hooks.transform_values(&:sha256)) +
           Trash.edits(provenance.guardrails_dir, "guardrails", bundle.guardrails, rules.to_h { |file| [File.basename(file), file] }) +
           Trash.edits(provenance.plugin_dir, "plugin", bundle.plugin_shas, plugin) +
           Trash.edits(provenance.scripts_dir, "scripts", bundle.scripts, scripts)
-      end
-
-      # #trash_bound's hooks: AssetInstaller#install_hooks' set (incoming: the
-      # source's file), then #prune_dropped_hooks' (incoming: none). A stray
-      # file in hooks/ is in neither: the upgrade leaves it.
-      def trash_bound_hooks(provenance, bundle, manifest, source_dir)
-        src = ->(file) { File.join(source_dir, "hooks", file) }
-        listed = manifest.hooks.keys.select { |file| file.is_a?(String) && !file.empty? }
-        listed = Dir.glob(src.call("*.rb")).map { |file| File.basename(file) } if manifest.hooks.empty?
-        shipped = listed.reject do |file|
-          (File.symlink?(src.call(file)) || File.exist?(src.call(file))) && AssetInstaller.linked?(src.call(file), source_dir)
-        end
-        incoming = shipped.select { |file| File.exist?(src.call(file)) }.to_h { |file| [file, src.call(file)] }
-        incoming.merge!((bundle.hooks.keys - shipped).to_h { |file| [file, nil] })
-        incoming.filter_map do |file, from|
-          "hooks/#{file}" if Trash.edit?(File.join(provenance.hooks_dir, file), recorded: bundle.hooks[file]&.sha256, incoming: from)
-        end
       end
 
       # Installed rules and the plugin whose sha differs from the recorded

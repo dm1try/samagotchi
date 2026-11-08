@@ -21,7 +21,7 @@ module Samagotchi
     #
     # It installs and loads the bundle in a Testing::Sandbox (temp HOME and
     # XDG dirs), not in the user's config or state, but in this process: the
-    # plugin's and hooks' own code runs as written; --fix rewrites stale
+    # plugin's own code runs as written; --fix rewrites stale
     # sha256 lines (MemoryBundle::Shas). #run returns 0 without errors, 1
     # with any.
     #
@@ -34,8 +34,8 @@ module Samagotchi
 
           Check the bundle at PATH (default: .) as an install would take it, one finding per line:
             error|warn|info CODE file[:line]: message (fix: hint)
-          It installs and loads the bundle in a sandbox (temp HOME, config and state), not in yours, but its plugin and
-          hooks run in this process as written: run it on code you'd install.
+          It installs and loads the bundle in a sandbox (temp HOME, config and state), not in yours, but its plugin
+          runs in this process as written: run it on code you'd install.
           --fix            rewrite stale and placeholder sha256 lines in manifest.yml
           --set KEY=VALUE  a setting for the load (config.yml bundles: <name>: KEY), repeatable
           Exit status: 0 no errors, 1 errors, 2 usage.
@@ -81,6 +81,7 @@ module Samagotchi
       # @return [Integer] exit status
       def run
         manifest = read_manifest
+        manifest = nil if manifest && hooks_retired?
         if manifest
           missing = check_files(manifest)
           check_source_tree(manifest, missing) unless @installed
@@ -136,11 +137,26 @@ module Samagotchi
         Dir.mktmpdir("chi-bundle-check-") do |tmp|
           File.write(File.join(tmp, "manifest.yml"), MemoryBundle::Shas.parseable(@text))
           MemoryBundle::Manifest.read(dir: tmp)
+        rescue MemoryBundle::Manifest::HooksRetired => e
+          add(:error, :"hooks-retired", "manifest.yml", e.message, line: manifest_line("hooks"), fix: hooks_fix)
+          nil
         rescue MemoryBundle::Manifest::ValidationError => e
           add(:error, :manifest, "manifest.yml", e.message.gsub(tmp, display(@dir)))
           nil
         end
       end
+
+      # A source with hooks/*.rb (listed or not) can't be installed: the run
+      # stops there, as after a manifest error (Installer#refuse_hooks).
+      def hooks_retired?
+        files = MemoryBundle::Manifest::HooksRetired.files_in(@dir)
+        return false if files.empty?
+
+        add(:error, :"hooks-retired", "hooks/", MemoryBundle::Manifest::HooksRetired.for_files(files).message, fix: hooks_fix)
+        true
+      end
+
+      def hooks_fix = "hook the events from plugin.rb with chi.on, then remove hooks/ and the manifest's hooks:"
 
       # The line of manifest.yml naming +file+ (its entry), or nil.
       def manifest_line(file)
@@ -192,7 +208,7 @@ module Samagotchi
       # @return [Boolean] whether a listed file is missing
       def check_files(manifest)
         listed = manifest.files.keys + Array(manifest.plugin && manifest.plugin[:file]) +
-                 manifest.hooks.keys.map { |h| File.join("hooks", h) } + manifest.scripts.keys.map { |s| File.join("scripts", s) }
+                 manifest.scripts.keys.map { |s| File.join("scripts", s) }
         missing = listed.reject { |rel| File.file?(path(rel)) }
         missing.each do |rel|
           add(:error, :"missing-file", "manifest.yml", "lists #{rel}, which isn't in the bundle", line: manifest_line(rel),
@@ -202,7 +218,7 @@ module Samagotchi
       end
 
       # What an install leaves out: a memory files: doesn't list (by
-      # MemoryFiles' rules), a plugin, hook or script the manifest doesn't name.
+      # MemoryFiles' rules), a plugin or script the manifest doesn't name.
       def check_unlisted(manifest)
         memories = MemoryBundle::MemoryFiles.select(@dir, manifest)
         loose = Dir.glob(path("*.md")).map { |f| File.basename(f) }.sort.reject do |name|
@@ -211,9 +227,6 @@ module Samagotchi
         loose.each { |name| unlisted(name, "files:") }
         plugin = manifest.plugin && manifest.plugin[:file]
         unlisted("plugin.rb", "plugin:") if File.file?(path("plugin.rb")) && plugin != "plugin.rb"
-        Dir.glob(path("hooks/*.rb")).sort.each do |file|
-          unlisted("hooks/#{File.basename(file)}", "hooks:") unless manifest.hooks.key?(File.basename(file))
-        end
         Dir.glob(path("scripts/*")).sort.each do |file|
           unlisted("scripts/#{File.basename(file)}", "scripts:") unless manifest.scripts.key?(File.basename(file))
         end
@@ -251,7 +264,7 @@ module Samagotchi
 
       # ── requires_chi ──────────────────────────────────────────────────
 
-      def code?(manifest) = manifest.plugin || manifest.hooks.any? || manifest.scripts.any?
+      def code?(manifest) = manifest.plugin || manifest.scripts.any?
 
       def check_requires_chi(manifest)
         line = manifest_line("requires_chi")
@@ -414,7 +427,7 @@ module Samagotchi
         registered.tools.each { |name| add(:info, :registered, plugin, "tool #{name}") }
         registered.hooks.each do |event, hooks|
           hooks.each do |hook|
-            file = manifest.hooks.key?(hook.hook) ? "hooks/#{hook.hook}" : plugin
+            file = plugin
             next add(:info, :registered, file, "hook #{event} (priority #{hook.priority})") if Hooks::EVENTS.include?(event)
 
             add(:warn, :"hook-event", file, "hook on #{event.inspect}, which chi never fires",

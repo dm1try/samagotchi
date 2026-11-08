@@ -68,17 +68,27 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                     "(fix: add the file or drop the entry)"])
   end
 
-  it "unlisted: a memory, plugin, hook or script an install leaves out; a README isn't one" do
-    File.write(File.join(dir, "extra.md"), "x")
+  it "hooks-retired: a manifest that lists hooks, or hooks/*.rb with no key, and the run stops there (exit 1)" do
+    words = Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS
+    fix = "(fix: hook the events from plugin.rb with chi.on, then remove hooks/ and the manifest's hooks:)"
     FileUtils.mkdir_p(File.join(dir, "hooks"))
-    File.write(File.join(dir, "hooks", "loose.rb"), "x")
+    File.write(File.join(dir, "hooks", "watch.rb"), "class Watch; end\n")
+    expect(findings).to eq(["error hooks-retired hooks/: hooks/watch.rb: #{words} #{fix}"])
+    expect(@status).to eq(1)
+
+    out.truncate(0)
+    out.rewind
+    edit("manifest.yml") { |text| "#{text}hooks:\n  watch.rb:\n    event: after_turn\n" }
+    expect(findings).to eq(["error hooks-retired manifest.yml:13: hooks: #{words} #{fix}"])
+  end
+
+  it "unlisted: a memory, plugin or script an install leaves out; a README isn't one" do
+    File.write(File.join(dir, "extra.md"), "x")
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     File.write(File.join(dir, "scripts", "run.sh"), "x")
     expect(findings(:warn)).to eq([
       "warn unlisted extra.md: manifest.yml's files: doesn't list it, so an install leaves it out " \
       "(fix: list it under files:, then chi bundle check --fix)",
-      "warn unlisted hooks/loose.rb: manifest.yml's hooks: doesn't list it, so an install leaves it out " \
-      "(fix: list it under hooks:, then chi bundle check --fix)",
       "warn unlisted scripts/run.sh: manifest.yml's scripts: doesn't list it, so an install leaves it out " \
       "(fix: list it under scripts:, then chi bundle check --fix)"
     ])

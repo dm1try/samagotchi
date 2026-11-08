@@ -226,7 +226,7 @@ RSpec.describe "chi subcommand argument parsing" do
   end
 
   describe "chi bundle" do
-    let(:source) { File.expand_path("fixtures/sample_hooks_bundle", __dir__) }
+    let(:source) { File.expand_path("fixtures/sample_memory_bundle", __dir__) }
     let(:installers) { [] }
     let(:builders) { [] }
 

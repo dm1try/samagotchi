@@ -14,7 +14,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Removed
 
-- Bundles' class-file hooks (`hooks/*.rb` and the manifest's `hooks:`) no longer load: a bundle hooks events from its `plugin.rb` with `chi.on` (docs/plugins.md). An installed bundle that still has them keeps its memories, rules, plugin and scripts, and chi says at the first turn that its hooks no longer load; `chi bundle status` and `chi update` say so too. Your config's own `hooks:` are unchanged.
+- Bundles can no longer ship class-file hooks (`hooks/*.rb` and the manifest's `hooks:`): a bundle hooks events from its `plugin.rb` with `chi.on` (docs/plugins.md). An installed bundle that still has them keeps its memories, rules, plugin and scripts, and chi says at the first turn that its hooks no longer load (`chi bundle status` and `chi update` say so too); installing or upgrading it is refused until they move. Your config's own `hooks:` are unchanged.
+- The next install or upgrade of such a bundle from a source without hooks removes its old `hooks/` (an edited hook is copied to the trash first; `--dry-run` and `chi update`'s plan say so), and `chi bundle uninstall` still removes them. An external bundle whose source still ships hooks stays on the first-turn warning until its source moves them or you uninstall it. `chi bundle build` no longer copies an installed bundle's hooks, and `chi bundle check` reports a source's hooks as `hooks-retired`.
 - The test kit's `Testing::Bundle#hooks_namespace` (the module a bundle's hook files were loaded in); `Testing::Install::Result#hook_failures` and `Registered#hooks` stay, filled from the plugin and config hooks.
 
 ### Fixed

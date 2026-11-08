@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/legacy_hooks_record"
 require "tmpdir"
 require "fileutils"
 require "yaml"
@@ -181,7 +182,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
         again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         again.run
-        line = "test-bundle was already installed from #{bundle_dir}: its hooks, rules, plugin and scripts " \
+        line = "test-bundle was already installed from #{bundle_dir}: its rules, plugin and scripts " \
                "now match it and its record was rewritten"
         expect(again.summary.lines.map(&:chomp).count(line)).to eq(1)
         expect(again.summary).to include("Up to date: identity.md")
@@ -1025,17 +1026,17 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(summary).to include("new.md")
     end
 
-    # A bundle with one memory and one hook, so the summary has both kinds
+    # A bundle with one memory and one script, so the summary has both kinds
     # of file to name.
-    def summary_bundle(files: { "tips.md" => "# Tips\n" }, hooks: { "guardrails.rb" => "class G; end\n" })
+    def summary_bundle(files: { "tips.md" => "# Tips\n" }, scripts: { "g.sh" => "#!/bin/sh\n" })
       dir = File.join(tmpdir, "summary-bundle")
-      FileUtils.mkdir_p(File.join(dir, "hooks"))
+      FileUtils.mkdir_p(File.join(dir, "scripts"))
       files.each { |name, text| File.write(File.join(dir, name), text) }
-      hooks.each { |name, text| File.write(File.join(dir, "hooks", name), text) }
+      scripts.each { |name, text| File.write(File.join(dir, "scripts", name), text) }
       manifest = {
         "name" => "sum-bundle", "version" => "1.0.0", "scope" => "system",
         "files" => files.to_h { |name, text| [name, "sha256:#{Digest::SHA256.hexdigest(text)}"] },
-        "hooks" => hooks.to_h { |name, text| [name, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(text)}", "event" => "before_tool_call" }] }
+        "scripts" => scripts.to_h { |name, text| [name, "sha256:#{Digest::SHA256.hexdigest(text)}"] }
       }
       File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       dir
@@ -1046,7 +1047,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
 
     def rewritten_line(source)
-      "sum-bundle was already installed from #{source}: its hooks, rules, plugin and scripts " \
+      "sum-bundle was already installed from #{source}: its rules, plugin and scripts " \
         "now match it and its record was rewritten"
     end
 
@@ -1056,8 +1057,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       again = install_summary(dir)
 
       expect(again.results["tips.md"].word).to eq(:up_to_date)
-      expect(again.results["guardrails.rb"].word).to eq(:up_to_date)
-      expect(again.summary).to include("Up to date: tips.md, guardrails.rb")
+      expect(again.results["scripts/g.sh"].word).to eq(:up_to_date)
+      expect(again.summary).to include("Up to date: tips.md, scripts/g.sh")
       expect(again.summary).not_to include("Skipped:")
     end
 
@@ -1068,7 +1069,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       again = install_summary(dir)
 
       expect(again.summary).to include("Skipped: tips.md")
-      expect(again.summary).to include("Up to date: guardrails.rb")
+      expect(again.summary).to include("Up to date: scripts/g.sh")
       expect(again.summary).not_to include("Up to date: tips.md")
     end
 
@@ -1113,121 +1114,125 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
-  describe "hooks" do
-    def write_bundle_with_hooks(base_dir, files = {}, hooks = {}, name: "test-bundle", version: "1.0.0", trust_level: nil)
-      bundle_dir = File.join(base_dir, "bundle_hooks_#{rand(1000)}")
-      FileUtils.mkdir_p(bundle_dir)
-      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
-      files.each { |fname, content| File.write(File.join(bundle_dir, fname), content) }
-      hooks.each { |fname, content| File.write(File.join(bundle_dir, "hooks", fname), content) }
-      manifest = { "name" => name, "version" => version, "files" => {}, "hooks" => {} }
-      files.keys.each { |k| manifest["files"][k] = "sha256:#{Digest::SHA256.hexdigest(files[k])}" }
-      hooks.keys.each { |k| manifest["hooks"][k] = { "sha256" => "sha256:#{Digest::SHA256.hexdigest(hooks[k])}", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } }
-      manifest["trust_level"] = trust_level if trust_level
-      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
-      bundle_dir
+  describe "class-file hooks (retired)" do
+    let(:words) { Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS }
+
+    def source_with(dir, manifest: {}, files: {})
+      FileUtils.mkdir_p(dir)
+      { "identity.md" => "# Id\n" }.merge(files).each do |file, text|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, file)))
+        File.write(File.join(dir, file), text)
+      end
+      File.write(File.join(dir, "manifest.yml"), YAML.dump({ "name" => "hb", "version" => "1.0.0", "scope" => "system",
+                                                             "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id\n")}" } }
+                                                             .merge(manifest)))
+      dir
     end
 
-    it "copies hooks/*.rb to <bundle_dir>/hooks/" do
-      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" })
-      installer = installer_for(source: bundle_dir, name: "hook-bundle", scope: "system")
-      installer.run
-      expect(File.exist?(File.join(bundles_dir, "hook-bundle", "hooks", "guardrails.rb"))).to be true
-      expect(installer.results["guardrails.rb"].word).to eq(:installed)
+    def run(source, **opts) = described_class.new(source: source, name: "hb", scope: "system", **opts).tap(&:run)
+
+    it "refuses a source whose manifest lists hooks, strict or not, its dry run too, and writes nothing" do
+      src = source_with(File.join(tmpdir, "listed"), manifest: { "hooks" => { "g.rb" => { "event" => "before_tool_call" } } },
+                                                     files: { "hooks/g.rb" => "class G; end\n" })
+      [{}, { strict: false }, { dry_run: true }, { force: true }].each do |opts|
+        expect { run(src, **opts) }.to raise_error(described_class::InstallError, "hooks/g.rb: #{words}"), opts.inspect
+      end
+      FileUtils.rm_rf(File.join(src, "hooks"))
+      expect { run(src, strict: false) }.to raise_error(described_class::InstallError, "hooks: #{words}")
+      expect(Dir.exist?(File.join(bundles_dir, "hb"))).to be(false)
+      expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be(false)
     end
 
-    it "stores hook provenance and trust_level" do
-      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, trust_level: "reviewed")
-      installer = installer_for(source: bundle_dir, name: "hook-bundle", scope: "system")
-      installer.run
-      data = JSON.parse(File.read(File.join(bundles_dir, "hook-bundle", "manifest.json")), symbolize_names: true)
-      expect(data[:hooks]).to include(:"guardrails.rb")
-      expect(data[:trust_level]).to eq("reviewed")
+    it "refuses a source with hooks/*.rb and no hooks: key" do
+      src = source_with(File.join(tmpdir, "unlisted"), files: { "hooks/a.rb" => "# a\n", "hooks/b.rb" => "# b\n" })
+      expect { run(src) }.to raise_error(described_class::InstallError, "hooks/a.rb, hooks/b.rb: #{words}")
     end
 
-    it "upgrade overwrites hook and warns on local edit" do
-      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "up-bundle")
-      installer = installer_for(source: bundle_dir, name: "up-bundle", scope: "system")
-      installer.run
-      # local edit
-      hook_path = File.join(bundles_dir, "up-bundle", "hooks", "guardrails.rb")
-      File.write(hook_path, File.read(hook_path) + "# local edit\n")
-      # new bundle version
-      bundle_dir2 = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); raise \"x\"; end; end" }, name: "up-bundle", version: "1.0.1")
-      up_installer = described_class.new(source: bundle_dir2, name: "up-bundle", scope: "system", force: false, strict: true, upgrade: true)
-      up_installer.run
-      expect(up_installer.warnings.any? { |w| w.include?("locally modified") }).to be true
-      expect(up_installer.results["guardrails.rb"].word).to eq(:updated)
+    it "takes a source that keeps an empty hooks: key" do
+      expect(run(source_with(File.join(tmpdir, "empty-key"), manifest: { "hooks" => {} })).results["identity.md"].word).to eq(:installed)
     end
 
-    it "dry_run does not copy hooks" do
-      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" })
-      installer = described_class.new(source: bundle_dir, name: "dry-bundle", scope: "system", force: false, strict: true, dry_run: true)
-      installer.run
-      expect(File.exist?(File.join(bundles_dir, "dry-bundle", "hooks", "guardrails.rb"))).to be false
-      expect(installer.results["guardrails.rb"].word).to eq(:would_install)
+    describe "an older chi's record that still has them" do
+      let(:src) { source_with(File.join(tmpdir, "ported"), manifest: { "version" => "1.1.0" }) }
+      let(:bundle_dir) { File.join(bundles_dir, "hb") }
+
+      before do
+        run(source_with(File.join(tmpdir, "v1")))
+        LegacyHooksRecord.legacy_hooks_record("hb", hooks: { "a.rb" => "# a\n", "b.rb" => "# b\n" }, edited: ["b.rb"])
+      end
+
+      it "removes them on an upgrade, the edited one copied to the trash first, and records none" do
+        up = run(src, upgrade: true)
+
+        expect(up.results.slice("hooks/a.rb", "hooks/b.rb").values.map(&:word)).to eq(%i[removed removed])
+        expect(up.summary).to include("Removed (chi no longer loads class-file bundle hooks): hooks/a.rb, hooks/b.rb\n")
+        expect(up.summary).to include("Copied to the trash first: hooks/b.rb (#{up.trash_dir})")
+        expect(File.read(File.join(up.trash_dir, "hooks", "b.rb"))).to eq("# edited by hand\n")
+        expect(File.exist?(File.join(up.trash_dir, "hooks", "a.rb"))).to be(false)
+        expect(Dir.exist?(File.join(bundle_dir, "hooks"))).to be(false)
+        expect(Dir.glob(File.join(bundle_dir, "bases", "*.rb"))).to eq([])
+        expect(JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))["hooks"]).to eq({})
+      end
+
+      it "says the same in a dry run, and changes nothing" do
+        dry = run(src, upgrade: true, dry_run: true)
+
+        expect(dry.results.slice("hooks/a.rb", "hooks/b.rb").values.map(&:word)).to eq(%i[would_remove would_remove])
+        expect(dry.summary).to include("Would remove (chi no longer loads class-file bundle hooks): hooks/a.rb, hooks/b.rb\n")
+        expect(Dir.children(File.join(bundle_dir, "hooks")).sort).to eq(%w[a.rb b.rb])
+        expect(JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))["hooks"].keys).to eq(%w[a.rb b.rb])
+      end
+
+      it "removes them on a plain install too" do
+        run(File.join(tmpdir, "v1"))
+        expect(Dir.exist?(File.join(bundle_dir, "hooks"))).to be(false)
+      end
+
+      it "leaves them when the install fails on a file the manifest names (the plugin), before it removes anything" do
+        broken = source_with(File.join(tmpdir, "broken"), manifest: { "version" => "1.1.0", "plugin" => { "file" => "plugin.rb" } })
+        expect { run(broken, upgrade: true) }.to raise_error(described_class::InstallError, /plugin plugin\.rb, which the bundle doesn't have/)
+        expect(Dir.children(File.join(bundle_dir, "hooks")).sort).to eq(%w[a.rb b.rb])
+      end
     end
 
-    it "an upgrade with an identical hook reports it up to date, not Updated" do
-      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "same-bundle")
-      installer_for(source: bundle_dir, name: "same-bundle", scope: "system").run
-
-      up = described_class.new(source: bundle_dir, name: "same-bundle", scope: "system", strict: true, upgrade: true)
-      up.run
-      expect(up.results["guardrails.rb"].word).to eq(:up_to_date)
-      expect(up.summary).to include("Up to date: identity.md, guardrails.rb")
-      expect(up.summary).not_to include("Updated:")
+    it "removes an empty hooks/ dir without a word" do
+      run(source_with(File.join(tmpdir, "v1")))
+      FileUtils.mkdir_p(File.join(bundles_dir, "hb", "hooks"))
+      up = run(source_with(File.join(tmpdir, "v2"), manifest: { "version" => "1.1.0" }), upgrade: true)
+      expect(up.summary).not_to include("hooks")
+      expect(Dir.exist?(File.join(bundles_dir, "hb", "hooks"))).to be(false)
     end
 
-    it "strict hook checksum verify warns on mismatch" do
-      bundle_dir = File.join(tmpdir, "bundle_hook_cksum")
-      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
-      File.write(File.join(bundle_dir, "identity.md"), "# Id\n")
-      File.write(File.join(bundle_dir, "hooks", "guardrails.rb"), "class Guardrails; def call(e); end; end")
-      manifest = { "name" => "cksum-hook", "version" => "1.0", "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id\n")}" }, "hooks" => { "guardrails.rb" => { "sha256" => "sha256:0000000000000000000000000000000000000000000000000000000000000000", "event" => "before_tool_call" } } }
-      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
-      installer = installer_for(source: bundle_dir, name: "cksum-hook", scope: "system")
-      installer.run
-      expect(installer.warnings.any? { |w| w.include?("Checksum mismatch for hook") }).to be true
-    end
+    it "removes a dev record's hook links, not their targets, and copies nothing to the trash" do
+      dev_src = source_with(File.join(tmpdir, "dev"))
+      run(dev_src, dev: true)
+      FileUtils.mkdir_p(File.join(tmpdir, "dev-hooks"))
+      target = File.join(tmpdir, "dev-hooks", "g.rb").tap { |path| File.write(path, "# the source's hook\n") }
+      FileUtils.mkdir_p(File.join(bundles_dir, "hb", "hooks"))
+      File.symlink(target, File.join(bundles_dir, "hb", "hooks", "g.rb"))
+      LegacyHooksRecord.legacy_hooks_record("hb", hooks: { "g.rb" => { text: nil } })
 
-    it "a hook with no declared sha256 (or none declared at all) installs without a checksum warning" do
-      bundle_dir = File.join(tmpdir, "bundle_hook_nosha")
-      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
-      File.write(File.join(bundle_dir, "identity.md"), "# Id\n")
-      File.write(File.join(bundle_dir, "hooks", "guardrails.rb"), "class Guardrails; def call(e); end; end")
-      File.write(File.join(bundle_dir, "hooks", "other.rb"), "class Other; end")
-      manifest = { "name" => "nosha-hook", "version" => "1.0", "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id\n")}" },
-                   "hooks" => { "guardrails.rb" => { "event" => "before_tool_call" } } }
-      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
-      installer = installer_for(source: bundle_dir, name: "nosha-hook", scope: "system")
-      installer.run
-      expect(installer.results["guardrails.rb"].word).to eq(:installed)
-      expect(installer.warnings.grep(/Checksum mismatch/)).to be_empty
-
-      FileUtils.rm_rf(File.join(bundles_dir, "nosha-hook"))
-      manifest.delete("hooks")
-      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
-      discovered = installer_for(source: bundle_dir, name: "nosha-hook", scope: "system", force: true)
-      discovered.run
-      expect(discovered.results.keys).to include("guardrails.rb", "other.rb")
-      expect(discovered.warnings.grep(/Checksum mismatch/)).to be_empty
+      again = run(dev_src, dev: true)
+      expect(again.summary).to include("Removed (chi no longer loads class-file bundle hooks): hooks/g.rb")
+      expect(again.trash_dir).to be_nil
+      expect(File.read(target)).to eq("# the source's hook\n")
+      expect(Dir.exist?(File.join(bundles_dir, "hb", "hooks"))).to be(false)
     end
   end
 
   describe "asset dry run" do
-    let(:assets) { %w[h.rb plugin.rb guardrails/r.yml scripts/s.sh] }
+    let(:assets) { %w[plugin.rb guardrails/r.yml scripts/s.sh] }
 
-    def asset_bundle(version, hook:)
+    def asset_bundle(version, plugin:)
       dir = File.join(tmpdir, "assets-#{version}")
-      { "a.md" => "# A\n", "hooks/h.rb" => hook, "plugin.rb" => "# plugin\n", "guardrails/r.yml" => "rules: []\n",
+      { "a.md" => "# A\n", "plugin.rb" => plugin, "guardrails/r.yml" => "rules: []\n",
         "scripts/s.sh" => "#!/bin/sh\necho 1\n" }.each do |file, text|
         FileUtils.mkdir_p(File.dirname(File.join(dir, file)))
         File.write(File.join(dir, file), text)
       end
       File.write(File.join(dir, "manifest.yml"), YAML.dump(
         "name" => "assets", "version" => version, "scope" => "system", "files" => { "a.md" => "sha256:fake" },
-        "hooks" => { "h.rb" => { "event" => "before_tool_call" } }, "plugin" => { "file" => "plugin.rb" },
+        "plugin" => { "file" => "plugin.rb" },
         "scripts" => { "s.sh" => "" }
       ))
       dir
@@ -1238,8 +1243,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
 
     it "reports each asset as the real run does, with would_ where it would write" do
-      run_assets(asset_bundle("1.0.0", hook: "puts 1\n"))
-      v2 = asset_bundle("2.0.0", hook: "puts 2\n")
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
 
       dry = run_assets(v2, upgrade: true, dry_run: true)
       real = run_assets(v2, upgrade: true)
@@ -1248,14 +1253,14 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(dry.results.slice(*assets)).to eq(real.results.slice(*assets).transform_values do |result|
         result.with(word: words.fetch(result.word, result.word))
       end)
-      expect(dry.results["h.rb"].word).to eq(:would_update)
-      expect(dry.summary).to include("Would update: h.rb\n").and include("Up to date: a.md, guardrails/r.yml, plugin.rb, scripts/s.sh")
-      expect(dry.summary.lines.grep(/\ASkipped:/).join).not_to match(%r{h\.rb|plugin\.rb|guardrails/|scripts/})
+      expect(dry.results["plugin.rb"].word).to eq(:would_update)
+      expect(dry.summary).to include("Would update: plugin.rb\n").and include("Up to date: a.md, guardrails/r.yml, scripts/s.sh")
+      expect(dry.summary.lines.grep(/\ASkipped:/).join).not_to match(%r{plugin\.rb|guardrails/|scripts/})
     end
 
     it "lists an unchanged memory and an unchanged rule as up to date, as the real run does" do
-      run_assets(asset_bundle("1.0.0", hook: "puts 1\n"))
-      v2 = asset_bundle("2.0.0", hook: "puts 2\n")
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
 
       dry = run_assets(v2, upgrade: true, dry_run: true)
       real = run_assets(v2, upgrade: true)
@@ -1267,7 +1272,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
 
     it "says would install for each asset of a fresh bundle, and writes nothing" do
-      dry = run_assets(asset_bundle("1.0.0", hook: "puts 1\n"), dry_run: true)
+      dry = run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"), dry_run: true)
 
       expect(dry.results.slice(*assets)).to eq(assets.to_h { |asset| [asset, Samagotchi::MemoryBundle::Installer::FileResult.new(word: :would_install)] })
       expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
@@ -1501,7 +1506,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     # A flat archive or a git repo puts the links at the extract's top
     # level; copying them must keep them links (not copies of their target).
-    it "a flat tar with a top-level memory link, a link to that link and a linked hooks dir installs none of them" do
+    it "a flat tar with a top-level memory link, a link to that link and a linked hooks dir: refused, nothing copied" do
       dir = linky_dir
       File.symlink(secret, File.join(dir, "notes.md"))
       File.symlink("notes.md", File.join(dir, "chain.md"))
@@ -1512,11 +1517,9 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       tar = File.join(tmpdir, "flat.tar.gz")
       expect(system("tar", "-czf", tar, "-C", dir, ".")).to be(true)
 
-      installer = installer_for(source: tar, name: "linky", scope: "system").tap(&:run)
-
-      expect(installer.warnings).to include("chain.md is a symlink (not installed)", "notes.md is a symlink (not installed)")
-      expect(installer.results.keys).to be_empty
-      expect(Dir.exist?(File.join(bundles_dir, "linky", "hooks"))).to be false
+      expect { installer_for(source: tar, name: "linky", scope: "system").run }
+        .to raise_error(described_class::InstallError, "hooks/evil.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}")
+      expect(Dir.exist?(File.join(bundles_dir, "linky"))).to be false
       expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
     end
 
@@ -1533,26 +1536,17 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
     end
 
-    it "skips a linked hook and a linked guardrails dir with a warning; the real ones install" do
-      dir = linky_dir("hooks" => { "real.rb" => { "event" => "before_tool_call" }, "evil.rb" => { "event" => "before_tool_call" } })
-      FileUtils.mkdir_p(File.join(dir, "hooks"))
-      File.write(File.join(dir, "hooks", "real.rb"), "# real\n")
-      File.symlink(secret, File.join(dir, "hooks", "evil.rb"))
+    it "skips a linked guardrails dir with a warning" do
+      dir = linky_dir
       outside_rules = File.join(tmpdir, "rules")
       FileUtils.mkdir_p(outside_rules)
       File.write(File.join(outside_rules, "r.yml"), "SECRET-TOKEN-123\n")
       File.symlink(outside_rules, File.join(dir, "guardrails"))
 
       installer = installer_for(source: dir, name: "linky", scope: "system")
-      _dir, manifest = installer.run
+      installer.run
 
-      expect(installer.warnings).to include("hooks/evil.rb is a symlink (not installed)",
-                                            "guardrails/r.yml is a symlink (not installed)")
-      # Not counted (the CLI's "Hooks: N hook(s)") nor recorded.
-      expect(manifest.hooks.keys).to eq(["real.rb"])
-      expect(Samagotchi::MemoryBundle::Provenance.new(name: "linky").read[:hooks].keys).to eq([:"real.rb"])
-      expect(File.exist?(File.join(bundles_dir, "linky", "hooks", "real.rb"))).to be true
-      expect(File.exist?(File.join(bundles_dir, "linky", "hooks", "evil.rb"))).to be false
+      expect(installer.warnings).to include("guardrails/r.yml is a symlink (not installed)")
       expect(Dir.exist?(File.join(bundles_dir, "linky", "guardrails"))).to be false
       expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
     end

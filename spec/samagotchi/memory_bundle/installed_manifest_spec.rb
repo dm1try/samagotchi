@@ -207,35 +207,11 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       expect(without.block_renderers).to eq([])
     end
 
-    it "takes each recorded hook's events from the kept manifest with the record's sha, and nothing the record lacks" do
-      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call", "on_error" => "fail_closed" },
-                       "found.rb" => { "sha256" => "sha256:ff", "event" => "" } }
-      yml = kept_yml + <<~YAML
-        hooks:
-          g.rb:
-            sha256: sha256:other
-            events: [before_tool_call, after_tool_call]
-            on_error: fail_closed
-            priority: 5
-          extra.rb:
-            event: before_turn
-      YAML
-      hooks = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest.hooks
-      expect(hooks.keys).to eq(%w[g.rb found.rb])
-      expect(hooks["g.rb"]).to eq(hook.new(sha256: "sha256:hh", events: %w[before_tool_call after_tool_call],
-                                           on_error: "fail_closed", priority: 5))
-      expect(hooks["g.rb"].fail_closed?("before_tool_call")).to be(true)
-      expect(hooks["found.rb"]).to eq(hook.new(sha256: "sha256:ff"))
-    end
-
-    it "keeps the record's hooks whole when one kept hook entry doesn't parse" do
-      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call" },
-                       "h.rb" => { "sha256" => "sha256:ii", "event" => "after_tool_call" } }
+    it "finds no problem in an older install's kept hooks:, however it is written (class-file hooks are retired)" do
       yml = kept_yml + "hooks:\n  g.rb:\n    events: [after_turn]\n  h.rb:\n    event: x\n    events: [y]\n"
-      manifest = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest
-      expect(manifest.problems.keys).to eq(["hooks"])
-      expect(manifest.hooks).to eq("g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call"),
-                                   "h.rb" => hook.new(sha256: "sha256:ii", event: "after_tool_call"))
+      manifest = kept_bundle(recorded.merge("hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "after_turn" } }), yml).manifest
+      expect(manifest.problems).to eq({})
+      expect(manifest.origin).to eq(:kept)
     end
 
     it "reads session_settings and settings with their types from the kept manifest, each falling back alone" do

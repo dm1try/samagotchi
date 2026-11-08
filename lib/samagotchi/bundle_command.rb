@@ -39,7 +39,7 @@ module Samagotchi
           List installed bundles and the ones shipped with chi that aren't installed.
 
         build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
-          Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
+          Build local memories and an installed plugin, rules and scripts into a shareable bundle (dir or zip).
           --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
           FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
           a named memory brings its model overlays (<name>.<model-key>.md).
@@ -75,7 +75,7 @@ module Samagotchi
           It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
           refused, and the bundle is not written anywhere.
         install --dev PATH
-          Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
+          Install the bundle in the local directory PATH as a link to it: its plugin, rules and scripts
           are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
           their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
           pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
@@ -90,7 +90,7 @@ module Samagotchi
       Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
 
         build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
-          Build local memories and installed hooks into a shareable bundle (dir or zip).
+          Build local memories and an installed plugin, rules and scripts into a shareable bundle (dir or zip).
           --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
           FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
           a named memory brings its model overlays (<name>.<model-key>.md).
@@ -200,7 +200,7 @@ module Samagotchi
 
       installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dev: dev)
       run_installer(installer, failed: "Install") do |manifest|
-        print_hooks_and_plugin(manifest)
+        print_plugin(manifest)
         print_provenance(bundle_name, manifest)
       end
     end
@@ -236,7 +236,7 @@ module Samagotchi
 
       unless Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
-        # (no Hooks/Plugin lines here)
+        # (no Plugin line here)
         installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dry_run: dry_run)
         return run_installer(installer, failed: "Install") do |manifest|
           next dry_run_done if dry_run
@@ -246,7 +246,7 @@ module Samagotchi
       end
       installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, upgrade: true, dry_run: dry_run)
       run_installer(installer, failed: "Upgrade") do |manifest|
-        print_hooks_and_plugin(manifest, plugin: !dry_run)
+        print_plugin(manifest, plugin: !dry_run)
         next dry_run_done if dry_run
 
         # Its summary said so, to someone reading.
@@ -304,7 +304,7 @@ module Samagotchi
     # Runs +installer+, prints its summary, then yields the manifest.
     # Ensures the extracted source dir is cleaned up even if an exception
     # occurs between installer.run and the block (e.g. summary,
-    # print_hooks_and_plugin). The block (upgrade_conflicts) still sees
+    # print_plugin). The block (upgrade_conflicts) still sees
     # the files because cleanup happens after the block returns or raises.
     # @return [Integer] the block's exit status, or 1 after "<failed> failed: …"
     def run_installer(installer, failed:)
@@ -318,8 +318,7 @@ module Samagotchi
       installer.cleanup_source!
     end
 
-    def print_hooks_and_plugin(manifest, plugin: true)
-      @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(", ")})" if manifest&.hooks&.any?
+    def print_plugin(manifest, plugin: true)
       return unless plugin && manifest&.plugin
 
       # Installed with --force past its requires_chi: the Engine won't load it.
@@ -425,8 +424,6 @@ module Samagotchi
         puts_trashed(uninstaller.trashed_files, uninstaller.trash_dir)
         @stdout.puts uninstaller.trash_copy_line if uninstaller.trash_copy_line
         @stdout.puts "Removed: #{uninstaller.removed_files.join(", ")}" unless uninstaller.removed_files.empty?
-        hook_removed = uninstaller.removed_files.count { |f| f.start_with?("hooks/") }
-        @stdout.puts "Hooks removed: #{hook_removed}" if hook_removed > 0
         uninstaller.warnings.each { |w| @stdout.puts w }
         0
       rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
@@ -597,15 +594,12 @@ module Samagotchi
       rescue ArgumentError => e
         @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
       end
-      hooks = record.manifest.hooks
       plugin_path = prov.plugin_path(record)
       plugin_file = plugin_path && File.basename(plugin_path)
       if file_arg
-        # Try file first, then hook
+        # A memory first, then the plugin (an older chi's hook is no file of the bundle's)
         if record.owns?(file_arg)
           diff_memory(prov, target_dir, file_arg)
-        elsif hooks.key?(file_arg)
-          diff_hook(prov, file_arg, hooks[file_arg])
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
           diff_plugin(prov, record, plugin_path)
         else
@@ -616,10 +610,6 @@ module Samagotchi
       else
         record.files.each_key do |key|
           diff_memory(prov, target_dir, key)
-          @stdout.puts ""
-        end
-        hooks.each do |key, hook|
-          diff_hook(prov, key, hook)
           @stdout.puts ""
         end
         if plugin_file
@@ -655,11 +645,6 @@ module Samagotchi
       else
         @stdout.puts "--- incoming: the bundle's saved copy can't be read ---"
       end
-    end
-
-    def diff_hook(prov, key, hook)
-      print_base_and_current("hooks/#{key}", prov.base_path(key), File.join(prov.hooks_dir, key))
-      @stdout.puts hook_metadata_line(hook)
     end
 
     def diff_plugin(prov, record, plugin_path)
@@ -722,10 +707,6 @@ module Samagotchi
       names = installed.map(&:name)
       here, gone = members.partition { |m| names.include?(m) }
       "includes=#{here.join(",")}#{"  left out=#{gone.join(",")}" unless gone.empty?}"
-    end
-
-    def hook_metadata_line(hook)
-      "--- metadata: #{hook.events_field} on_error=#{hook.on_error} priority=#{hook.priority} sha256=#{hook.sha256}"
     end
 
     def build(rest)

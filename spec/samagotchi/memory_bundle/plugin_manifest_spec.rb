@@ -26,7 +26,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  def write_source(plugin: { "file" => "plugin.rb" }, requires_chi: nil, content: plugin_source, sha: :real, hook: false)
+  def write_source(plugin: { "file" => "plugin.rb" }, requires_chi: nil, content: plugin_source, sha: :real)
     src = File.join(tmpdir, "src-#{rand(100_000)}")
     FileUtils.mkdir_p(src)
     File.write(File.join(src, "identity.md"), "# Id\n")
@@ -37,12 +37,6 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       plugin = plugin.merge("sha256" => "sha256:#{Digest::SHA256.hexdigest(content.to_s)}") if sha == :real
       plugin = plugin.merge("sha256" => "sha256:#{"0" * 64}") if sha == :wrong
       manifest["plugin"] = plugin
-    end
-    if hook
-      hook_source = "class AuditHook\n  def call(_ctx); end\nend\n"
-      FileUtils.mkdir_p(File.join(src, "hooks"))
-      File.write(File.join(src, "hooks", "audit.rb"), hook_source)
-      manifest["hooks"] = { "audit.rb" => { "sha256" => Digest::SHA256.hexdigest(hook_source), "event" => "after_tool_call" } }
     end
     manifest["requires_chi"] = requires_chi if requires_chi
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
@@ -262,16 +256,6 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(up.results["plugin.rb"].word).to eq(:up_to_date)
       expect(up.summary).to include("Up to date: identity.md, plugin.rb")
       expect(up.summary).not_to include("Updated:")
-    end
-
-    it "with --force, warns that a hook-only bundle's hooks won't load when this chi doesn't meet requires_chi" do
-      installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"), force: true)
-      expect(installer.warnings).to include("Bundle plug: its hooks won't load: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")
-    end
-
-    it "doesn't warn about hooks when this chi meets requires_chi" do
-      installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"))
-      expect(installer.warnings.join).not_to include("won't load")
     end
 
     it "removes the plugin when an upgrade drops it" do

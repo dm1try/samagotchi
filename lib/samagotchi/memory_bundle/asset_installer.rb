@@ -2,7 +2,6 @@
 
 require "fileutils"
 require_relative "file_digest"
-require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "provenance"
 require_relative "../version"
@@ -13,8 +12,10 @@ module Samagotchi
 
     # The install of a bundle's parts that live in its own dir
     # (<bundles>/<name>/, Provenance#bundle_dir) rather than in the
-    # memories dir: hooks/*.rb, guardrails/*.yml, the plugin file and
-    # scripts/*. Each replaces what an earlier version installed. Installer
+    # memories dir: guardrails/*.yml, the plugin file and scripts/*. Each
+    # replaces what an earlier version installed. An older chi's record
+    # with class-file hooks has them removed (#retire_hooks): chi no longer
+    # loads them, and the Installer refuses a source that has any. Installer
     # runs it after the memories; it adds to the installer's results and
     # warnings, and #run returns what the record (Provenance#write) keeps.
     # A dev install (+dev+, `chi bundle install --dev`) links each file to
@@ -24,11 +25,12 @@ module Samagotchi
     class AssetInstaller
       # What was installed: the paths Provenance#write records (each
       # empty / nil on a dry run).
-      #   hooks       every hook basename the bundle ships
-      #   hook_files, guardrail_files, script_files
-      #               basename => installed path
+      #   guardrail_files, script_files  basename => installed path
       #   plugin_file the installed plugin file, nil without one
-      Installed = Data.define(:hooks, :hook_files, :guardrail_files, :plugin_file, :script_files)
+      Installed = Data.define(:guardrail_files, :plugin_file, :script_files)
+
+      # The retire's summary words (Installer#summary): why the hooks went.
+      RETIRED = "chi no longer loads class-file bundle hooks"
 
       # @param source_dir [String] the normalized bundle source
       # @param manifest [Manifest, nil] nil for a non-strict install without one
@@ -61,18 +63,16 @@ module Samagotchi
       # @raise [Installer::InstallError] the manifest names a plugin or
       #   script the bundle doesn't have
       def run
-        install_hooks
-        prune_dropped_hooks if (@upgrade || (@dev && @existing&.dev)) && @existing && !@dry_run
-        verify_hook_checksums if @manifest && @strict && !@dev
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
         guardrail_files = install_guardrails(incoming_rules)
         plugin_file = install_plugin
         script_files = install_scripts
-        warn_hooks_requires_chi
+        # After the plugin and scripts, which raise for a file the manifest
+        # names and the bundle lacks: a refused install leaves hooks/ as it was.
+        retire_hooks
         warn_rules_requires_chi(incoming_rules)
-        Installed.new(hooks: @bundle_hooks, hook_files: @hook_files, guardrail_files: guardrail_files,
-                      plugin_file: plugin_file, script_files: script_files)
+        Installed.new(guardrail_files: guardrail_files, plugin_file: plugin_file, script_files: script_files)
       end
 
       # Whether the bundle file +src+ reads through a symlink: it is one, or
@@ -91,99 +91,28 @@ module Samagotchi
 
       private
 
-      # Copies the bundle's hooks/*.rb into <bundle_dir>/hooks/: the ones
-      # its manifest lists, else (no hooks: in it) every hooks/*.rb, which is
-      # then added to manifest.hooks with no event (the loader skips it, the
-      # record keeps it). Without a manifest every hooks/*.rb is copied.
-      # Sets @bundle_hooks (every hook the bundle ships) and @hook_files
-      # (basename => installed path, for the record).
-      def install_hooks
-        @bundle_hooks = []
-        @hook_files = {}
-        return install_unlisted_hooks unless @manifest
+      # The hooks/ an older chi installed (class-file hooks, which no longer
+      # load): every file in it goes, an edited one (or one the record
+      # doesn't know) copied to the trash first, a dev link never (it points
+      # at the source, which stays). Each is a :removed result (a dry run's
+      # :would_remove, through #planned) with the RETIRED note; an empty
+      # hooks/ dir goes without a word. The record keeps no hooks
+      # (Provenance#write).
+      def retire_hooks
+        dir = @provenance.hooks_dir
+        return unless File.directory?(dir) || File.symlink?(dir)
 
-        hook_entries = @manifest.hooks
-        if hook_entries.empty?
-          Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each { |p| hook_entries[File.basename(p)] = BundleHook.new }
+        files = File.symlink?(dir) ? [] : Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).sort.reject { |f| File.directory?(File.join(dir, f)) }
+        files.each do |file|
+          @results["hooks/#{file}"] = @dry_run ? planned(retired) : retired
         end
-        hook_entries.keys.each do |basename|
-          next unless basename.is_a?(String) && !basename.empty?
+        return if @dry_run
 
-          src = File.join(@bundle_dir, "hooks", basename)
-          # A linked hook isn't the bundle's: not installed, counted or recorded.
-          next hook_entries.delete(basename) if (File.symlink?(src) || File.exist?(src)) && linked_out?(src, "hooks/#{basename}")
-
-          @bundle_hooks << basename
-          install_hook(basename, src) if File.exist?(src)
-        end
+        @trash.copy_edits(dir, "hooks", @existing&.hooks&.transform_values(&:sha256))
+        FileUtils.rm_rf(dir)
       end
 
-      # One listed hook; an upgrade overwrites a local edit with a warning.
-      def install_hook(basename, src)
-        dest = File.join(@provenance.hooks_dir, basename)
-        result = result_for(src, dest, updated: @upgrade && @existing)
-        return @results[basename] = planned(result) if @dry_run
-
-        prev_sha = @existing&.hooks&.dig(basename)&.sha256
-        if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
-          @warnings << "Hook #{basename} was locally modified; overwriting"
-        end
-
-        FileUtils.mkdir_p(@provenance.hooks_dir)
-        @trash.copy_edit(dest, as: "hooks/#{basename}", recorded: prev_sha, incoming: src)
-        place(src, dest)
-        @results[basename] = result
-        @hook_files[basename] = dest
-      end
-
-      # No manifest (a non-strict install): every hooks/*.rb is copied.
-      def install_unlisted_hooks
-        Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each do |src|
-          basename = File.basename(src)
-          next if linked_out?(src, "hooks/#{basename}")
-
-          @bundle_hooks << basename
-          if @dry_run
-            @results[basename] = Installer::FileResult.new(word: :would_install)
-          else
-            FileUtils.mkdir_p(@provenance.hooks_dir)
-            dest = File.join(@provenance.hooks_dir, basename)
-            @trash.copy_edit(dest, as: "hooks/#{basename}", recorded: @existing&.hooks&.dig(basename)&.sha256, incoming: src)
-            place(src, dest)
-            @results[basename] = Installer::FileResult.new(word: :installed)
-            @hook_files[basename] = dest
-          end
-        end
-      end
-
-      # An upgrade removes the hooks the previous version shipped and this
-      # one doesn't (a local file too, with a warning; a dev link silently).
-      def prune_dropped_hooks
-        @existing.hooks.each_key do |old_key_str|
-          next if @bundle_hooks.include?(old_key_str)
-
-          old_dest = File.join(@provenance.hooks_dir, old_key_str)
-          if File.exist?(old_dest) && !@force && !File.symlink?(old_dest)
-            @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
-          end
-          @trash.copy_edit(old_dest, as: "hooks/#{old_key_str}", recorded: @existing.hooks[old_key_str]&.sha256)
-          FileUtils.rm_f(old_dest)
-        end
-      end
-
-      # Strict mode: a hook whose sha256 differs from the one its manifest
-      # declares warns (as verify_memory_checksums does). The bundle's file is
-      # checked, the one the install copies, so a dry run checks what it
-      # would install, not the old hook in place.
-      def verify_hook_checksums
-        @bundle_hooks.each do |basename|
-          next if @conflicts.key?(basename)
-
-          warning = FileDigest.mismatch("hook #{basename}", File.join(@bundle_dir, "hooks", basename),
-                                        @manifest.checksum_for_hook(basename))
-          @warnings << warning if warning
-        end
-      end
+      def retired = Installer::FileResult.new(word: :removed, note: RETIRED)
 
       # The bundle's guardrails/*.yml into <bundle_dir>/guardrails/: the
       # set replaces what an earlier version installed. Same bytes as
@@ -299,12 +228,14 @@ module Samagotchi
         Installer::FileResult.new(word: word)
       end
 
-      # A dry run's word for a result: would_install, would_update, or the
-      # up to date result as it is (nothing would be written).
+      # A dry run's word for a result: would_install, would_update,
+      # would_remove, or the up to date result as it is (nothing would be
+      # written).
       def planned(result)
         case result.word
         when :installed then result.with(word: :would_install)
         when :updated then result.with(word: :would_update)
+        when :removed then result.with(word: :would_remove)
         else result
         end
       end
@@ -333,21 +264,10 @@ module Samagotchi
         true
       end
 
-      # The hook loader skips every hook of a bundle whose requires_chi this
-      # chi doesn't meet (Hooks::BundleLoader); say so at install, as
-      # install_plugin does for the plugin.
-      def warn_hooks_requires_chi
-        return if @manifest.nil? || @bundle_hooks.empty?
-
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
-          @warnings << "Bundle #{@name}: its hooks won't load: #{failure}"
-        end
-      end
-
       # GuardrailWiring#bundle_rules doesn't read the rules of a bundle whose
       # requires_chi this chi doesn't meet, and a session that never loaded
       # them records a required load failure (the gate refuses guarded calls
-      # until chi is updated): say so at install, as the hooks warning does.
+      # until chi is updated): say so at install, as install_plugin does.
       def warn_rules_requires_chi(rule_files)
         return if @manifest.nil? || rule_files.empty?
 
