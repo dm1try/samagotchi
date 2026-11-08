@@ -108,7 +108,7 @@ module Samagotchi
     # The reasoning_history level (ReasoningHistory.resolve), the session's
     # +own+ first.
     def reasoning_history(own:)
-      ReasoningHistory.resolve(target, names: names, session: own).first
+      ReasoningHistory.resolve(lookup, session: own).first
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, ReasoningHistory::DEFAULT)
     end
@@ -119,7 +119,7 @@ module Samagotchi
     def reasoning_history_explained(own:, native: false)
       return nil unless native || entry&.chat?
 
-      ReasoningHistory.explain(target, names: names, session: own)
+      ReasoningHistory.explain(lookup, session: own)
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, nil)
     end
@@ -129,7 +129,7 @@ module Samagotchi
     def reasoning_history_summary(own:)
       return nil unless entry&.chat?
 
-      level, source = ReasoningHistory.resolve(target, names: names, session: own)
+      level, source = ReasoningHistory.resolve(lookup, session: own)
       source ? ReasoningHistory.label(level, source) : nil
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, nil)

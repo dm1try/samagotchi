@@ -63,38 +63,31 @@ module Samagotchi
       nil
     end
 
-    # The level for +target+ and where it came from ("session",
+    # The level for +lookup+'s model and where it came from ("session",
     # "SAMAGOTCHI_REASONING_HISTORY", "models: qwen", "hosts.work"; nil for
     # the default).
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @param session [Symbol, nil] the session's own level (Session#reasoning_history)
     # @return [Array(Symbol, String|nil)]
-    def resolve(target, names:, models: nil, session: nil)
+    def resolve(lookup, session: nil)
       return [session, SESSION_SOURCE] if session
 
-      env = env_level
+      env = env_level(lookup)
       return [env, ENV_NAME] if env
 
-      models ||= begin
-        ModelSettings.all
-      rescue StandardError
-        {}
-      end
-      setting = ModelSettings.find(names, :reasoning_history, models: models)
+      setting = lookup.model(:reasoning_history)
       return [setting.value, "models: #{setting.key}"] if setting
 
-      host = target.entry&.reasoning_history
-      return [host, "hosts.#{target.entry.name}"] if host
+      host = lookup.host(:reasoning_history)
+      return [host, "hosts.#{lookup.host_name}"] if host
 
-      [API_DEFAULTS.fetch(target.entry&.api&.to_sym, DEFAULT), nil]
+      [API_DEFAULTS.fetch(lookup.entry&.api&.to_sym, DEFAULT), nil]
     end
 
     # #resolve, as a SettingExplained with the session's own level beside it.
     # @return [SettingExplained]
-    def explain(target, names:, models: nil, session: nil)
-      level, source = resolve(target, names: names, models: models, session: session)
+    def explain(lookup, session: nil)
+      level, source = resolve(lookup, session: session)
       SettingExplained.new(level: level, source: source, own: session)
     end
 
@@ -150,9 +143,10 @@ module Samagotchi
     # "drop (models: qwen)", "turn (default)".
     def label(level, source) = "#{level} (#{source || "default"})"
 
-    # SAMAGOTCHI_REASONING_HISTORY as a level, nil when unset or unknown.
-    def env_level
-      raw, origin = Config.get_with_origin(KEY)
+    # SAMAGOTCHI_REASONING_HISTORY (read with +lookup+'s env) as a level,
+    # nil when unset or unknown.
+    def env_level(lookup)
+      raw, origin = lookup.global(KEY)
       origin == :env ? level(raw, ENV_NAME) : nil
     rescue StandardError
       nil

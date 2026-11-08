@@ -409,14 +409,11 @@ module Samagotchi
     # first (SAMAGOTCHI_SESSION_REASONING_HISTORY); a native host keeps the
     # running turn's on its own.
     def reasoning_history_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
-      return "native loop: the running turn's, always" unless target.entry&.chat?
+      effective = effective_model(model, env)
+      return "native loop: the running turn's, always" unless effective.entry&.chat?
 
       session = session_model(env) ? ReasoningHistory.session_level(env[SESSION_REASONING_HISTORY_ENV]) : nil
-      level, source = ReasoningHistory.resolve(target, names: registry.lookup_names(model, target: target),
-                                                       models: ModelSettings.all(env: env), session: session)
-      ReasoningHistory.label(level, source)
+      ReasoningHistory.label(*ReasoningHistory.resolve(effective.lookup, session: session))
     rescue StandardError => e
       "(unknown: #{e.message})"
     end
