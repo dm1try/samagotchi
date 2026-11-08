@@ -490,7 +490,7 @@ module Samagotchi
              when :skipped then "skipped (#{result.error})"
              else "failed (#{result.error})"
              end
-      @stdout.puts("system bundle: #{text}")
+      @stdout.puts("system bundle: #{[text, *result.warnings].join("; ")}")
       result.status != :failed
     end
 

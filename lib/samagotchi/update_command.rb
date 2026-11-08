@@ -297,10 +297,14 @@ module Samagotchi
       earlier = [] if %i[installed skipped failed].include?(result.status)
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
       notes = file_notes(row, system::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy, earlier: earlier)
+      # What the run warned of (a Checksum mismatch, a file it skipped) goes
+      # on its row, as ensure! echoes it.
+      warnings = Array(result.warnings)
+      warned = [*notes, *warnings]
       case result.status
-      when :installed then done(row, :install)
-      when :updated then done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :restored then done(row, :restore, notes.empty? ? nil : notes.join("; ")).tap { |r| r.to = nil }
+      when :installed then done(row, :install, warnings.empty? ? nil : warnings.join("; "))
+      when :updated then done(row, :update, warned.empty? ? nil : warned.join("; "))
+      when :restored then done(row, :restore, warned.empty? ? nil : warned.join("; ")).tap { |r| r.to = nil }
       when :merged, :up_to_date then same_version(row, notes + result.warnings, changed: result.merged.any?)
       when :newer_installed then skipped(row, ["newer than this chi's #{result.to}: left", *notes].join("; ")).tap { |r| r.to = nil }
       when :skipped then skipped(row, result.error)
@@ -352,7 +356,7 @@ module Samagotchi
       notes = file_notes(row, update.name, update.to || update.from, update.merged, update.behind, update.trash_copy, earlier: earlier)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own].compact
+        notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own, update.note].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note, update.manifest].compact, changed: Array(update.merged).any?)
       when :skipped then skipped(row, [update.note, *notes].join("; "))

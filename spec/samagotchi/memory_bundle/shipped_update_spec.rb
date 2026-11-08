@@ -77,6 +77,23 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(mtimes).to eq(before)
   end
 
+  it "notes the Checksum mismatch of a memory the update writes, on its row" do
+    install(old_copy("known-names", md: "old words\n"), "known-names")
+    rows = described_class.plan
+    bad = rows.first.dup.tap { |row| row.source_dir = File.join(tmp, "bad", "known-names") }
+    FileUtils.mkdir_p(File.dirname(bad.source_dir))
+    FileUtils.cp_r(File.join(shipped, "known-names"), bad.source_dir)
+    data = YAML.load_file(File.join(bad.source_dir, "manifest.yml"))
+    key = data["files"].keys.first
+    data["files"][key] = "sha256:#{"0" * 64}"
+    File.write(File.join(bad.source_dir, "manifest.yml"), YAML.dump(data))
+
+    row = described_class.apply([bad]).first
+
+    expect(row.status).to eq(:updated)
+    expect(row.note).to start_with("Checksum mismatch for #{key}: expected 00000000...")
+  end
+
   it "keeps an edited .md that conflicts, and the hook still loads (its sha is recorded)" do
     install(old_copy("known-names", md: "old words\n"), "known-names")
     File.write(File.join(system_dir, "known_names.md"), "old words\nmy note\n")

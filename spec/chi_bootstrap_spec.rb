@@ -60,6 +60,16 @@ RSpec.describe "chi bootstrap" do
     ])
   end
 
+  it "says what the system bundle's run warned of in its line" do
+    out = StringIO.new
+    command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})
+    mismatch = "Checksum mismatch for identity.md: expected 00000000..., got 11111111..."
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1.0.0", to: "1.0.0", status: :restored, merged: [], behind: [], warnings: [mismatch])
+
+    expect(command.send(:system_bundle_line, result, false)).to be(true)
+    expect(out.string).to eq("system bundle: v1.0.0 restored missing files; #{mismatch}\n")
+  end
+
   it "names a merge at the same version in its system bundle line, not as a failure" do
     out = StringIO.new
     command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})
