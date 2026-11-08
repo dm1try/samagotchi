@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require_relative "../../support/legacy_hooks_record"
 require "tmpdir"
 require "json"
 require "fileutils"
@@ -68,10 +69,17 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
 
     st = described_class.bundle_status("legacy")
 
-    expect([st.scope, st.scope_error, st.target_dir, st.plugin, st.hooks_requires_failure, st.needs])
-      .to eq(["system", nil, system_dir, nil, nil, []])
+    expect([st.scope, st.scope_error, st.target_dir, st.plugin, st.retired_hooks, st.needs])
+      .to eq(["system", nil, system_dir, nil, {}, []])
     expect(st.files["old.md"]).to include(modified: false, missing: false, conflict: false)
     expect(st.files["odd.md"]).to include(stored_checksum: nil, missing: true)
+  end
+
+  it "names the class-file hooks a 0.157 record still has, each there or missing" do
+    LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "b.rb" => "class B; end\n", "a.rb" => "class A; end\n" })
+    File.delete(File.join(system_dir, ".bundles", "old-hooks", "hooks", "b.rb"))
+
+    expect(described_class.bundle_status("old-hooks").retired_hooks).to eq("a.rb" => "ok", "b.rb" => "missing")
   end
 
   it "calls a file modified when its entry has neither a checksum nor a base: unknown counts as edited" do

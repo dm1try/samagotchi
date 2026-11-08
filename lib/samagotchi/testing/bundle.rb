@@ -25,7 +25,7 @@ require_relative "recording_api"
 
 module Samagotchi
   module Testing
-    # A hook (a plugin's chi.on block or a hook file) raised while the kit
+    # A hook (a plugin's chi.on block) raised while the kit
     # fired it: chi would log it and go on, a test fails with it.
     class HookFailed < StandardError
       # @return [Hooks::Failure]
@@ -53,8 +53,7 @@ module Samagotchi
 
     # One bundle loaded for a test through chi's own seams: its plugin
     # through Plugin::Loader.register_file (Plugin::Api, a real
-    # Plugin::Context) and its hook files through
-    # Hooks::BundleLoader.load_hook_file, into real registries (commands
+    # Plugin::Context), into real registries (commands
     # and tools with chi's built-ins in them, so a name clash fails as in
     # chi). Only the edges are recorded: the Host and hook Runtime
     # (Recorder), ctx.sessions (Testing::Sessions), chi.init tasks and
@@ -130,8 +129,6 @@ module Samagotchi
       # @return [Module, nil] the module the plugin was evaluated in
       #   (bundle.namespace::ThinkingWatch)
       attr_reader :namespace
-      # @return [Module] the module the hook files were evaluated in
-      attr_reader :hooks_namespace
       # @return [Array<Init>]
       attr_reader :inits
       # @return [Array<StagedTools>]
@@ -183,13 +180,6 @@ module Samagotchi
                                                                                                   api_class: RecordingApi) do |built|
             @plugin = built
           end
-        end
-        @hooks_namespace = Module.new
-        @manifest.hooks.each do |basename, hook|
-          next if hook.events.empty?
-
-          Hooks::BundleLoader.load_hook_file(@name, basename, File.join(@dir, "hooks", basename), hook, hooks,
-                                             settings: @settings, namespace: @hooks_namespace)
         end
         self
       rescue Exception # rubocop:disable Lint/RescueException -- leave the sandbox it entered, whatever failed

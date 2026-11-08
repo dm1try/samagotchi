@@ -12,6 +12,11 @@ and commands may change between minor versions. How releases are made:
 
 - A folder in no git repository can be a chi project: `chi project init [DIR]` writes `DIR/.chi/project.yml`, and DIR and every subfolder share one project memories folder, group their sessions (`chi sessions list`, chi web's projects) and take `chi context --project`. `chi project` shows which project a folder is in. A git repository stays the project wherever there is one (init writes nothing there), and `$HOME` or a folder above it can't be marked. A folder chi already ran in at its top keeps its memories. A session in a subfolder of a marked project reads the AGENTS.md chain from the project's top, and `delegate`'s `cwd:` takes any folder of it (not a nested repository or marked project); sessions already running in a folder when it is marked keep the old project until `chi sessions restart`.
 
+### Removed
+
+- Bundles' class-file hooks (`hooks/*.rb` and the manifest's `hooks:`) no longer load: a bundle hooks events from its `plugin.rb` with `chi.on` (docs/plugins.md). An installed bundle that still has them keeps its memories, rules, plugin and scripts, and chi says at the first turn that its hooks no longer load; `chi bundle status` and `chi update` say so too. Your config's own `hooks:` are unchanged.
+- The test kit's `Testing::Bundle#hooks_namespace` (the module a bundle's hook files were loaded in); `Testing::Install::Result#hook_failures` and `Registered#hooks` stay, filled from the plugin and config hooks.
+
 ### Fixed
 
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.

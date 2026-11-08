@@ -312,14 +312,11 @@ module Samagotchi
         end
       end
 
-      # Installed hooks, rules and the plugin whose sha differs from the
-      # recorded one (they didn't load), as hooks/F, guardrails/F, plugin/F.
+      # Installed rules and the plugin whose sha differs from the recorded
+      # one (they didn't load), as guardrails/F, plugin/F.
       def edited_executables(name, bundle)
         provenance = Provenance.new(name: name)
         edited = []
-        bundle.hooks.each do |file, hook|
-          edited << "hooks/#{file}" if edited?(File.join(provenance.hooks_dir, file), hook.sha256)
-        end
         bundle.guardrails.each do |file, sha|
           edited << "guardrails/#{file}" if edited?(File.join(provenance.guardrails_dir, file), sha)
         end

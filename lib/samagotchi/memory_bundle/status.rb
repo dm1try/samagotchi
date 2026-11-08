@@ -16,14 +16,15 @@ module Samagotchi
       # A bundle as this chi reads it now (what chi bundle status prints):
       # its stored record, the scope it resolves to (scope_error when it
       # can't), the folder its files belong in, what each file looks like on
-      # disk, its installed plugin, why none of its hooks load, and its needs
+      # disk, its installed plugin, the class-file hooks its record still
+      # has (retired_hooks: they don't load), and its needs
       # with what this process's PATH found. The +files+ entries and +plugin+
       # stay Hashes: their fields differ per case (an unchecked file has no
       # paths at all). An entry's behind is its FileStanding::Behind, nil for a
       # file that isn't; merge_note its FileStanding::MergeNote, nil without one;
       # unreadable: the file is there, but this chi can't read it.
       Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
-                           :hooks_requires_failure, :needs)
+                           :retired_hooks, :needs)
 
       # A scope this chi can't resolve (a newer chi's, a hand edit) isn't
       # guessed: scope_error says so, target_dir is nil and each file is
@@ -69,7 +70,7 @@ module Samagotchi
         end
         Report.new(provenance: bundle, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
                    target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
-                   hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle))
+                   retired_hooks: retired_hooks(provenance, bundle), needs: needs_status(bundle))
       end
 
       # A FileState digest as the Report has it: nil for none, or one that
@@ -77,13 +78,14 @@ module Samagotchi
       def self.digest_or_nil(digest) = digest == :unreadable ? nil : digest
       private_class_method :digest_or_nil
 
-      # Why none of the bundle's hooks load (this chi doesn't meet its
-      # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
-      def self.hooks_requires_failure(bundle)
-        manifest = bundle.manifest
-        return nil if manifest.hooks.empty?
-
-        manifest.requires_chi_failure
+      # The class-file hooks the record still has (a 0.157 install's; chi
+      # loads none, Manifest::HooksRetired), each "ok" or "missing" in
+      # hooks/, by name; {} for none.
+      # @return [Hash{String => String}]
+      def self.retired_hooks(provenance, bundle)
+        bundle.hooks.keys.sort.to_h do |file|
+          [file, File.exist?(File.join(provenance.hooks_dir, file)) ? "ok" : "missing"]
+        end
       end
 
       # The stored needs, each with found: from this process's PATH (the

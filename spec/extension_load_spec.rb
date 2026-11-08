@@ -8,6 +8,7 @@ require "samagotchi/memory_bundle/installer"
 require "tmpdir"
 require "json"
 require "yaml"
+require_relative "support/legacy_hooks_record"
 
 RSpec.describe Samagotchi::ExtensionLoad do
   subject(:extension_load) { described_class.new(hook_failures: Samagotchi::Guardrails::LoadFailures.new) }
@@ -37,51 +38,39 @@ RSpec.describe Samagotchi::ExtensionLoad do
     expect(extension_load.loading?).to be false
   end
 
-  it "hands the hook-failure notice to every installed bundle's hook files" do
-    allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
-    record = Samagotchi::MemoryBundle::InstalledBundle.parse("b", hooks: { "k.rb" => { event: "before_turn" } }, trust_level: "reviewed")
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks).and_yield("b", record)
-    notice = ->(hook, failed, effect: nil) { [hook, failed, effect] }
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(hook_failed: notice)).and_return(1)
+  describe "a record that still has class-file hooks (a 0.157 install)" do
+    around do |example|
+      Dir.mktmpdir("ext-retired") { |tmp| with_config_home(File.join(tmp, "config")) { example.run } }
+    end
 
-    described_class.new(hook_failures: Samagotchi::Guardrails::LoadFailures.new, hook_failed: notice).hooks
-  end
+    let(:failures) { Samagotchi::Guardrails::LoadFailures.new }
 
-  it "loads the hooks with no notice when the Engine gives none (the test kit's sandbox)" do
-    allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
-    record = Samagotchi::MemoryBundle::InstalledBundle.parse("b", hooks: { "k.rb" => { event: "before_turn" } }, trust_level: "reviewed")
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks).and_yield("b", record)
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(hook_failed: nil)).and_return(1)
+    it "loads none of them and adds one not-required failure per record, in the retired words" do
+      LegacyHooksRecord.legacy_hooks_record("old", hooks: { "g.rb" => "class G; def call(e) = raise('ran'); end\n",
+                                                            "h.rb" => "class H; end\n" })
+      registry = described_class.new(hook_failures: failures).hooks
 
-    extension_load.hooks
-  end
+      expect(registry.bundle_hook_names(:after_turn)).to eq([])
+      expect(failures.list.map { |f| [f.what, f.reason, f.required] })
+        .to eq([["hooks (bundle old)", Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS, false]])
+      expect(failures.required).to eq([])
+    end
 
-  it "registers a hook under the events its kept manifest.yml lists when the record lost them, fail-closed as declared" do
-    Dir.mktmpdir("ext-kept") do |tmp|
-      with_config_home(File.join(tmp, "config")) do
-        allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
-        src = File.join(tmp, "src")
-        FileUtils.mkdir_p(File.join(src, "hooks"))
-        File.write(File.join(src, "hooks", "g.rb"), "class G; def call(event); end; end\n")
-        File.write(File.join(src, "manifest.yml"), YAML.dump(
-          "name" => "g", "version" => "1.0.0", "trust_level" => "reviewed",
-          "hooks" => { "g.rb" => { "events" => %w[before_tool_call after_turn], "on_error" => "fail_closed" } }
-        ))
-        Samagotchi::MemoryBundle::Installer.new(source: src, name: "g", scope: "system").run
-        record = File.join(Samagotchi::MemoryPaths.bundles_dir, "g", "manifest.json")
-        raw = JSON.parse(File.read(record))
-        raw["hooks"]["g.rb"] = raw["hooks"]["g.rb"].except("events").merge("event" => "", "on_error" => "skip")
-        File.write(record, JSON.generate(raw))
+    it "says nothing of an empty hooks map or an empty hooks/ dir" do
+      LegacyHooksRecord.legacy_hooks_record("empty", hooks: {})
+      FileUtils.mkdir_p(File.join(Samagotchi::MemoryPaths.bundles_dir, "empty", "hooks"))
+      described_class.new(hook_failures: failures).hooks
 
-        # add_bundle_hooks rescues everything a load raises, so the hook is looked at after.
-        passed = nil
-        allow(Samagotchi::Hooks::BundleLoader).to receive(:load) { |metadata:, **| (passed = metadata) && 1 }
-        extension_load.hooks
-        hook = passed.fetch("g.rb")
-        expect(hook.events).to eq(%w[before_tool_call after_turn])
-        expect(hook.fail_closed?("before_tool_call")).to be(true)
-        expect(hook.sha256).to eq(raw["hooks"]["g.rb"]["sha256"])
-      end
+      expect(failures.list).to eq([])
+    end
+
+    it "leaves a manifest.json that doesn't read to the plugin loader and the rules" do
+      dir = File.join(Samagotchi::MemoryPaths.bundles_dir, "broken")
+      FileUtils.mkdir_p(File.join(dir, "hooks"))
+      File.write(File.join(dir, "manifest.json"), "{ not json")
+      described_class.new(hook_failures: failures).hooks
+
+      expect(failures.list).to eq([])
     end
   end
 

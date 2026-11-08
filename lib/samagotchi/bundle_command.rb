@@ -519,22 +519,14 @@ module Samagotchi
           @stdout.puts "  #{k}: #{label}"
         end
         @stdout.puts "  #{manifest_line(st.provenance)}"
-        # Hooks
         manifest = st.provenance.manifest
-        hooks = manifest.hooks
         trust = manifest.trust_level || "experimental"
         commit = st.provenance.source_commit
-        @stdout.puts "  trust_level: #{trust}" if hooks.any? || trust
+        @stdout.puts "  trust_level: #{trust}"
         @stdout.puts "  source_commit: #{commit}" if commit
-        if hooks.any?
-          @stdout.puts "  Hooks (#{hooks.size}):"
-          hooks.each do |hk, hook|
-            hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk)
-            exists = File.exist?(hook_path) ? "ok" : "missing"
-            @stdout.puts "    #{hk}: #{hook.events_field} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
-          end
-          @stdout.puts "    requires_chi: #{manifest.requires_chi}" if st.hooks_requires_failure
-          @stdout.puts "    not loaded: #{st.hooks_requires_failure}" if st.hooks_requires_failure
+        unless st.retired_hooks.empty?
+          @stdout.puts "  Hooks (#{st.retired_hooks.size}): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
+          st.retired_hooks.each { |file, state| @stdout.puts "    #{file} [#{state}]" }
         end
         if (plugin = st.plugin)
           note = plugin[:state] == "modified" ? " (edited after install: not loaded; reinstall the bundle)" : ""
@@ -555,11 +547,10 @@ module Samagotchi
 
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           mods = st.files.values.count { |v| v[:behind] || v[:missing] || v[:unreadable] }
-          hooks_count = st.provenance.manifest.hooks.size
-          hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
+          hook_info = st.retired_hooks.empty? ? "" : " hooks=#{st.retired_hooks.size}"
           plugin = st.plugin
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
-          mods += 1 if st.hooks_requires_failure
+          mods += 1 unless st.retired_hooks.empty?
           mods += 1 if st.scope_error
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st.provenance.includes

@@ -3,6 +3,7 @@
 require "spec_helper"
 require_relative "support/worker_fixtures"
 require_relative "support/fake_provider_server"
+require_relative "support/legacy_hooks_record"
 require "socket"
 require "stringio"
 require "tmpdir"
@@ -489,11 +490,6 @@ RSpec.describe Samagotchi::UpdateCommand do
       bundle_dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "partial")
       record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
       expect(record["files"]).to eq({})
-      # A hook the manifest lists that the record lacks (none was installed for it).
-      kept = File.join(bundle_dir, "manifest.yml")
-      File.write(kept, YAML.dump(YAML.load_file(kept).tap { |m| m["hooks"]["extra.rb"] = { "event" => "after_turn" } }))
-      File.write(File.join(bundle_dir, "manifest.json"),
-                 JSON.generate(record.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}")))
 
       _, rows = json_rows
       statuses = finding_rows(rows, "partial").map { |r| r["status"] }
@@ -594,6 +590,17 @@ RSpec.describe Samagotchi::UpdateCommand do
       _, rows = json_rows
       expect(finding_rows(rows, "edited").map { |r| r["status"] }).to include(a_string_starting_with("warn edited plugin/plugin.rb:"))
       expect(File.read(plugin)).to end_with("# mine\n")
+    end
+
+    it "says a record's class-file hooks no longer load, once, and leaves them" do
+      install_external("old-hooks")
+      LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "watch.rb" => "class Watch; def call(_e) = nil; end\n" })
+      _, rows = json_rows
+      expect(finding_rows(rows, "old-hooks").map { |r| [r["level"], r["status"]] }).to eq([[
+        "warn", "warn hooks-retired hooks/: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS} " \
+                "(fix: chi bundle upgrade old-hooks once its source hooks from plugin.rb, or chi bundle uninstall old-hooks)"
+      ]])
+      expect(File.exist?(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "old-hooks", "hooks", "watch.rb"))).to be(true)
     end
 
     it "checks a dev install's linked files" do

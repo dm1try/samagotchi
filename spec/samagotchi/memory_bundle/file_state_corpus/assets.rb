@@ -239,11 +239,14 @@ module BundleStateCorpus
       Samagotchi::BundleCommand.new(["status", NAME], stdout: out, stderr: StringIO.new).run
       return "not installed" if out.string.include?("not installed.")
 
-      prefix = @case.asset == "hook" ? "    #{@case.file}: " : ("  Plugin: " if @case.asset == "plugin")
+      # A hook's line under "Hooks (N): not loaded: …", whole: "h.rb [ok]".
+      prefix = @case.asset == "hook" ? "    #{@case.file} [" : ("  Plugin: " if @case.asset == "plugin")
       return nil unless prefix
 
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
-      line ? @sandbox.mask(line.delete_prefix(prefix.lstrip).strip) : "-"
+      return "-" unless line
+
+      @sandbox.mask(@case.asset == "hook" ? line.strip : line.delete_prefix(prefix.lstrip).strip)
     end
 
     def names?(line) = line.include?(File.basename(@case.source_rel))

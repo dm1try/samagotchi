@@ -284,7 +284,7 @@ RSpec.describe AffectedSpecs::Picker do
                  "lib/samagotchi/bundles/check-in/spec/check_in_spec.rb" => "")
     bundle_specs = %w[lib/samagotchi/bundles/check-in/spec/check_in_spec.rb lib/samagotchi/bundles/loop-guard/spec/loop_guard_spec.rb]
     %w[lib/samagotchi/testing/bundle.rb lib/samagotchi/testing.rb lib/samagotchi/plugin/context.rb
-       lib/samagotchi/hooks/bundle_loader.rb lib/samagotchi/guardrails/gate.rb].each do |changed|
+       lib/samagotchi/hooks/loader.rb lib/samagotchi/guardrails/gate.rb].each do |changed|
       picks = pick(changed).ruby.select { |p| p.path.include?("/bundles/") }
       expect(paths(picks)).to match_array(bundle_specs)
       expect(picks.map(&:reason)).to all(eq("rule: the shipped bundles' own specs run on the test kit and chi's plugin " \

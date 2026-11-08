@@ -335,20 +335,6 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:requires_failure]).to match(/requires chi >= 99.0/)
     end
 
-    it "carries a requires_chi failure for a hook-only bundle (installed with --force)" do
-      install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"), force: true)
-      st = Samagotchi::MemoryBundle::Status.bundle_status("plug")
-      expect(st.plugin).to be_nil
-      expect(st.hooks_requires_failure).to match(/requires chi >= 99.0/)
-    end
-
-    it "has no hooks failure when the bundle has no hooks or this chi meets requires_chi" do
-      install(write_source(requires_chi: ">= 99.0"), force: true)
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil
-      install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"), force: true, upgrade: true)
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil
-    end
-
     it "has no plugin entry without one" do
       install(write_source(plugin: nil))
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin).to be_nil

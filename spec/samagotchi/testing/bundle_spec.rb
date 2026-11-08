@@ -43,29 +43,26 @@ RSpec.describe Samagotchi::Testing::Bundle do
     FileUtils.rm_rf(dir)
   end
 
-  # A bundle in +dir+: plugin.rb (when given) and hooks/<file> => [event (a
-  # list: events:), source].
-  def write_bundle(plugin: nil, hooks: {}, name: "kit-test")
+  # A bundle in +dir+: plugin.rb, when given.
+  def write_bundle(plugin: nil, name: "kit-test")
     manifest = { "name" => name, "version" => "1.0.0", "files" => {} }
     if plugin
       File.write(File.join(dir, "plugin.rb"), plugin)
       manifest["plugin"] = { "file" => "plugin.rb", "sha256" => "" }
     end
-    unless hooks.empty?
-      FileUtils.mkdir_p(File.join(dir, "hooks"))
-      manifest["hooks"] = hooks.to_h do |file, (event, source, on_error)|
-        File.write(File.join(dir, "hooks", file), source)
-        [file, { (event.is_a?(Array) ? "events" : "event") => event, "on_error" => on_error || "skip" }]
-      end
-    end
     File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
     dir
   end
 
+  # A plugin whose #register is +lines+ (Ruby, chi in scope).
+  def plugin_with(*lines)
+    "class Plugin\n  def register(chi)\n#{lines.join("\n")}\n  end\nend\n"
+  end
+
   def load(**) = described_class.load(dir, **).tap { |bundle| loaded << bundle }
 
-  it "loads the plugin and its hook files through chi's loaders, with chi's built-ins registered beside them" do
-    write_bundle(plugin: plugin, hooks: { "guard.rb" => ["before_tool_call", "class Guard; def call(e) = nil; end"] })
+  it "loads the plugin through chi's loader, with chi's built-ins registered beside it" do
+    write_bundle(plugin: plugin)
     bundle = load(settings: { word: "hey" })
 
     expect(bundle.name).to eq("kit-test")
@@ -74,10 +71,8 @@ RSpec.describe Samagotchi::Testing::Bundle do
     expect(bundle.bundle_tools.map(&:name)).to eq(["shout"])
     expect(bundle.commands.lookup("/model").source).to eq("core")
     expect(bundle.tools["execute"]).not_to be_nil
-    expect(bundle.hook_names(:before_tool_call)).to eq([["kit-test", "guard.rb", 100]])
     expect(bundle.hook_names(:after_turn)).to eq([["kit-test", "plugin.rb", 100]])
     expect(bundle.namespace::Plugin::VERSION_SEEN).to eq(Samagotchi::VERSION)
-    expect(bundle.hooks_namespace::Guard).to be_a(Class)
     expect(bundle.ctx).to be_a(Samagotchi::Plugin::Context)
     expect(bundle.ctx.settings).to eq("word" => "hey")
   end
@@ -143,28 +138,15 @@ RSpec.describe Samagotchi::Testing::Bundle do
     end
   end
 
-  it "loads a hook file with events: under each event, one instance" do
-    write_bundle(hooks: { "both.rb" => [%w[before_turn after_turn],
-                                        "class Both; def call(e) = e[:seen] = (@n = (@n || 0) + 1); end"] })
-    bundle = load
-
-    expect(bundle.hook_names(:before_turn)).to eq([["kit-test", "both.rb", 100]])
-    expect(bundle.hook_names(:after_turn)).to eq([["kit-test", "both.rb", 100]])
-    expect([bundle.fire(:before_turn)[:seen], bundle.fire(:after_turn)[:seen]]).to eq([1, 2])
-  end
-
   it "fires :question_asked as chi's seams do: the step's text and fields in, the checked refs out" do
-    source = <<~RUBY
-      class Asked
-        def call(event)
-          q = event[:question]
-          event[:notify].call([event[:kind], event[:text], q[:question], q.frozen?, event[:ask_user].call(question: "no").inspect].join("|"))
-          event[:refs].call(match: "T-1", kind: "issue", target: { id: "T-1" },
-                            actions: [{ id: "open", label: "Open", url: "https://example.test/T-1" }])
-        end
+    write_bundle(plugin: plugin_with(<<~RUBY))
+      chi.on(:question_asked) do |event|
+        q = event[:question]
+        event[:notify].call([event[:kind], event[:text], q[:question], q.frozen?, event[:ask_user].call(question: "no").inspect].join("|"))
+        event[:refs].call(match: "T-1", kind: "issue", target: { id: "T-1" },
+                          actions: [{ id: "open", label: "Open", url: "https://example.test/T-1" }])
       end
     RUBY
-    write_bundle(hooks: { "asked.rb" => ["question_asked", source] })
     bundle = load
 
     refs = bundle.question_asked("Proceed with T-1?", kind: "approval", question: { question: "Go?" })
@@ -175,27 +157,11 @@ RSpec.describe Samagotchi::Testing::Bundle do
   end
 
   it "question_asked: no refs from the hooks is an empty list; a raising hook fails the call" do
-    write_bundle(hooks: { "boom.rb" => ["question_asked", "class Boom; def call(e) = raise('boom'); end"] })
+    write_bundle(plugin: plugin_with("chi.on(:question_asked) { raise 'boom' }"))
     bundle = load
 
     expect { bundle.question_asked("x") }.to raise_error(Samagotchi::Testing::HookFailed, /boom/)
     expect(bundle.lenient { bundle.question_asked("x") }).to eq([])
-  end
-
-  it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
-    write_bundle(hooks: { "guard.rb" => ["after_turn", "class Guard; def call(e) = e[:first] = true; end"] })
-    shared_namespace = Samagotchi::Plugin::Loader.namespace_for("kit-test")
-    constants_before = shared_namespace.constants(false)
-    first = load
-    File.write(File.join(dir, "hooks", "guard.rb"), "class Guard; def call(e) = e[:second] = true; end\n")
-    second = load
-
-    expect(first.hooks_namespace).not_to equal(second.hooks_namespace)
-    expect(first.fire(:after_turn)[:first]).to be(true)
-    expect(first.fire(:after_turn)).not_to have_key(:second)
-    expect(second.fire(:after_turn)[:second]).to be(true)
-    expect(second.fire(:after_turn)).not_to have_key(:first)
-    expect(shared_namespace.constants(false)).to eq(constants_before)
   end
 
   it "fails to load a plugin whose command clashes with chi's own, as chi would" do
@@ -376,12 +342,12 @@ RSpec.describe Samagotchi::Testing::Bundle do
   end
 
   it "raises a hook's error after the fire (chi would log it), or collects it under lenient" do
-    write_bundle(plugin: plugin, hooks: { "flaky.rb" => ["after_turn", "class Flaky; def call(e) = raise(ArgumentError, 'flaky broke'); end"] })
+    write_bundle(plugin: plugin.sub('chi.init("warming up")', "chi.on(:after_turn, priority: 200) { raise ArgumentError, 'flaky broke' }\n    chi.init(\"warming up\")"))
     bundle = load
     expect { bundle.fire(:generation_progress, text: "boom") }
       .to raise_error(Samagotchi::Testing::HookFailed, /plugin.rb \(bundle kit-test\) generation_progress hook raised on generation_progress: RuntimeError: broken stream hook/)
     expect { bundle.fire(:generation_progress, text: "boom") }.to raise_error(Samagotchi::Testing::HookFailed)
-    expect { bundle.fire(:after_turn, status: "x") }.to raise_error(Samagotchi::Testing::HookFailed, /flaky\.rb \(bundle kit-test\).*flaky broke/)
+    expect { bundle.fire(:after_turn, status: "x") }.to raise_error(Samagotchi::Testing::HookFailed, /plugin\.rb \(bundle kit-test\) after_turn hook.*flaky broke/)
     expect(bundle.cards.size).to eq(1) # the plugin's after_turn hook ran first all the same
 
     bundle.lenient { bundle.fire(:after_turn, status: "y") }
@@ -389,30 +355,25 @@ RSpec.describe Samagotchi::Testing::Bundle do
   end
 
   it "reports every failing hook in one HookFailed error" do
-    write_bundle(hooks: {
-      "first.rb" => ["after_turn", "class First; def call(e) = raise('first broke'); end"],
-      "second.rb" => ["after_turn", "class Second; def call(e) = raise('second broke'); end"]
-    })
+    write_bundle(plugin: plugin_with("chi.on(:after_turn) { raise 'first broke' }", "chi.on(:question_asked) { raise 'second broke' }",
+                                     "chi.on(:after_turn, priority: 200) { raise 'third broke' }"))
     bundle = load
 
     expect { bundle.fire(:after_turn) }.to raise_error(Samagotchi::Testing::HookFailed) { |error|
-      expect(error.failures.map(&:hook)).to eq(["first.rb (bundle kit-test)", "second.rb (bundle kit-test)"])
-      expect(error.message).to include("first broke", "second broke")
+      expect(error.failures.map { |failure| failure.error.message }).to eq(["first broke", "third broke"])
+      expect(error.message).to include("first broke", "third broke")
       expect(error.cause.message).to eq("first broke")
     }
   end
 
   it "evaluates a tool call through a real Gate: the hooks vote on a recording Verdict, with context and targets" do
-    guard = <<~RUBY
-      class Guard
-        def call(event)
-          return unless event[:targets][:command].to_s.include?("rm")
+    write_bundle(plugin: plugin_with(<<~'RUBY'))
+      chi.on(:before_tool_call) do |event|
+        next unless event[:targets][:command].to_s.include?("rm")
 
-          event[:guardrail].deny!("no rm in \#{event[:context][:cwd]}", rule: "no-rm", advice: "use trash")
-        end
+        event[:guardrail].deny!("no rm in #{event[:context][:cwd]}", rule: "no-rm", advice: "use trash")
       end
     RUBY
-    write_bundle(hooks: { "guard.rb" => ["before_tool_call", guard] })
     bundle = load(host: { cwd: "/work" })
 
     verdict = bundle.tool_call({ name: "execute", content: "rm -rf x" })
@@ -427,9 +388,9 @@ RSpec.describe Samagotchi::Testing::Bundle do
   end
 
   it "fails the tool call when a fail-closed guardrail raises, which also denies" do
-    write_bundle(hooks: { "guard.rb" => ["before_tool_call", "class Guard; def call(e) = raise('oops'); end", "fail_closed"] })
+    write_bundle(plugin: plugin_with("chi.on(:before_tool_call, on_error: :fail_closed) { raise 'oops' }"))
     bundle = load
-    expect { bundle.tool_call({ name: "read", path: "x" }) }.to raise_error(Samagotchi::Testing::HookFailed, /guardrail guard\.rb.*oops/)
+    expect { bundle.tool_call({ name: "read", path: "x" }) }.to raise_error(Samagotchi::Testing::HookFailed, /guardrail plugin\.rb \(bundle kit-test\).*oops/)
     verdict = bundle.lenient { bundle.tool_call({ name: "read", path: "x" }) }
     expect(verdict).to be_deny
   end

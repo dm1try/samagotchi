@@ -66,6 +66,15 @@ module Samagotchi
     class Manifest
       class ValidationError < StandardError; end
 
+      # Class-file bundle hooks (hooks/*.rb, the manifest's hooks:) are
+      # retired: chi installs and loads none. WORDS is the one wording of
+      # it, wherever chi meets one (the Engine's first-turn line, install,
+      # chi bundle check and status, chi update's row).
+      class HooksRetired < ValidationError
+        WORDS = "class-file bundle hooks are retired: chi loads no hooks/*.rb; a bundle hooks events from its " \
+                "plugin.rb with chi.on, see docs/plugins.md"
+      end
+
       # A plugin file is a plain .rb name in the bundle's top directory.
       PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
       # A script is a plain file name in the bundle's scripts/.

@@ -11,6 +11,7 @@ require "stringio"
 require "spec_helper"
 require "samagotchi/bundle_command"
 require "samagotchi/hooks"
+require "samagotchi/plugin/loader"
 
 # `chi bundle` as a user runs it: the text on each stream and the exit
 # codes, pinned before the command moved out of bin/chi. Each run gets its
@@ -576,7 +577,7 @@ Hooks removed: 1\n\z})
       FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))
       File.write(File.join(memories, ".bundles", "broken", "manifest.json"), "{bad")
 
-      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
+      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n", "", 0])
     end
 
     it "names the file a profile's --force copied to the trash" do
@@ -1115,7 +1116,7 @@ Hooks removed: 1\n\z})
     after { FileUtils.rm_rf(@root) }
 
     it "status NAME and diff name both events" do
-      expect(chi("status", "two-events")[0]).to include("    links.rb: events=after_turn,question_asked on_error=log priority=100 [ok]\n")
+      expect(chi("status", "two-events")[0]).to include("  Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}\n    links.rb [ok]\n")
       expect(chi("diff", "two-events", "links.rb")[0]).to include(
         "--- metadata: events=after_turn,question_asked on_error=log priority=100 sha256=sha256:#{@sha}\n"
       )
@@ -1133,7 +1134,7 @@ Hooks removed: 1\n\z})
 
     it "status lists both" do
       expect(chi("status")).to eq([
-        "  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n  " \
+        "  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n  " \
         "sample-plugin v1.0.0 scope=system files=0 plugin=plugin.rb issues=0\n", "", 0
       ])
     end
@@ -1148,8 +1149,8 @@ Hooks removed: 1\n\z})
           identity.md: ok
           Manifest: [kept]
           trust_level: reviewed
-          Hooks (1):
-            guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]
+          Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}
+            guardrails.rb [ok]
       TEXT
     end
 
@@ -1343,8 +1344,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("status", "sample-hooks-bundle")
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n    " \
-                             "requires_chi: >= 99.0\n    not loaded: #{failure}\n")
+      expect(out).to include("  Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}\n    guardrails.rb [ok]\n")
       expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
     end
   end
@@ -1447,7 +1447,7 @@ Hooks removed: 1\n\z})
     it "installs into XDG_CONFIG_HOME, status reads it back, and a failure exits 1" do
       expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")))
         .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
-      expect(spawn("status")).to eq(["  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
+      expect(spawn("status")).to eq(["  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n", "", 0])
       expect(spawn("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
   end
