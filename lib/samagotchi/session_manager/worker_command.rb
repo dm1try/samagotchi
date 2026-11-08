@@ -24,12 +24,12 @@ module Samagotchi
                        '" ERROR worker pid=#{Process.pid} sid=SID boot_failed ruby=#{RbConfig.ruby.inspect} error=" + ' \
                        "e.message.lines.first.to_s.strip.inspect) } unless f.empty?; rescue SystemCallError; end; exit 1"
 
-    # WorkerBoot: the worker process, from its spawn options and command line
+    # WorkerCommand: the worker process, from its spawn options and command line
     # to run_session_loop inside it and what it does as it leaves (CROSS-VERSION
     # CONTRACT: spec/worker_contract_spec.rb). Calls SpawnPart's note_spawn and
     # resume_session, EmptinessPart's discardable? and RemovalPart's
     # delete_session. Meant to be loaded through samagotchi/session_manager.
-    module WorkerBootPart
+    module WorkerCommandPart
       # Build the opts hash passed to Process.spawn for a forked worker. The
       # child inherits this process's ENV and reads config.yml itself (as it
       # is when the worker starts); opts[:env] adds to it (merged, not
@@ -330,6 +330,6 @@ module Samagotchi
       end
     end
 
-    extend WorkerBootPart
+    extend WorkerCommandPart
   end
 end

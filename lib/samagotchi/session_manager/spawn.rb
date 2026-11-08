@@ -13,7 +13,7 @@ module Samagotchi
 
     # Spawn: deciding to start a session's worker (a new session, a resume, a
     # delegate's report waking its parent) and the spawns this process
-    # remembers. Calls WorkerBootPart's spawn_options and worker_command and
+    # remembers. Calls WorkerCommandPart's spawn_options and worker_command and
     # the facade's ownership checks. Meant to be loaded through samagotchi/session_manager.
     module SpawnPart
       # Spawn a new background session that processes the given prompt (or,

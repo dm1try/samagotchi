@@ -95,13 +95,13 @@ module Samagotchi
   # Its methods live in parts, each a module this class extends (required
   # at the end of this file; each loads alone, but is meant to be loaded
   # through this file):
-  #   session_manager/spawn.rb        SpawnPart: start a session's worker, the spawns remembered
-  #   session_manager/worker_boot.rb  WorkerBootPart: the worker process (CROSS-VERSION CONTRACT)
-  #   session_manager/listing.rb      ListingPart: the session lists and summary rows, children, replies
-  #   session_manager/delivery.rb     DeliveryPart: a user message into a session (Bridge or input file)
-  #   session_manager/lifecycle.rb    LifecyclePart: stop and restart a worker
-  #   session_manager/removal.rb      RemovalPart: archive, unarchive, delete
-  #   session_manager/emptiness.rb    EmptinessPart: is a session empty, is a left one deleted
+  #   session_manager/spawn.rb           SpawnPart: start a session's worker, the spawns remembered
+  #   session_manager/worker_command.rb  WorkerCommandPart: the worker process (CROSS-VERSION CONTRACT)
+  #   session_manager/listing.rb         ListingPart: the session lists and summary rows, children, replies
+  #   session_manager/delivery.rb        DeliveryPart: a user message into a session (Bridge or input file)
+  #   session_manager/lifecycle.rb       LifecyclePart: stop and restart a worker
+  #   session_manager/removal.rb         RemovalPart: archive, unarchive, delete
+  #   session_manager/emptiness.rb       EmptinessPart: is a session empty, is a left one deleted
   class SessionManager
     # Raised when a terminal's own chi owns the session (OwnerLock kind
     # "tui": a -p --non-interactive one-shot, TerminalUI): it runs its own
@@ -147,7 +147,7 @@ module Samagotchi
 end
 
 require_relative "session_manager/spawn"
-require_relative "session_manager/worker_boot"
+require_relative "session_manager/worker_command"
 require_relative "session_manager/listing"
 require_relative "session_manager/delivery"
 require_relative "session_manager/lifecycle"
