@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/tools/schedule_task"
 require "samagotchi/tools/list_schedules"
 require "samagotchi/tools/cancel_schedule"
+require "samagotchi/schedules"
 require "samagotchi/session"
 
 # The schedule tools (docs/scheduling.md): what the model can register, list and

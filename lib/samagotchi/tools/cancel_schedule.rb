@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../schedules"
-
 module Samagotchi
   module Tools
     # Cancel a durable schedule of this session's chain by its id, a unique
@@ -14,6 +12,9 @@ module Samagotchi
       def self.name = NAME
 
       def self.call(content, all: false, peers: nil)
+        # Required here, not at the top of the file: the kit does not pay
+        # for the session lifecycle until a schedule is actually used.
+        require_relative "../schedules"
         name = content.to_s.strip
         return "Error: cancel_schedule needs the schedule's id or title" if name.empty?
 

@@ -13,6 +13,9 @@ module Samagotchi
       def self.name = NAME
 
       def self.call(_content, include_disabled: false, all: false, peers: nil)
+        # Required here, not at the top of the file: the kit does not pay
+        # for the session lifecycle until a schedule is actually used.
+        require_relative "../schedules"
         wanted = include_disabled == true || include_disabled.to_s.strip.casecmp?("true")
         want_all = all == true || all.to_s.strip.casecmp?("true")
         schedules = Samagotchi::Schedules.new(state_dir: peers&.state_dir)

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../schedules"
-
 module Samagotchi
   module Tools
     # Register a durable schedule for this session (docs/scheduling.md): a
@@ -17,6 +15,9 @@ module Samagotchi
 
       def self.call(content, title: nil, prompt: nil, every: nil, weekday: nil, time: nil, date: nil,
                     mode: nil, keep_links: nil, peers: nil)
+        # Required here, not at the top of the file: the kit does not pay
+        # for the session lifecycle until a schedule is actually used.
+        require_relative "../schedules"
         return "Error: this session's id is not known here" unless peers&.session_id
 
         prompt = content.to_s if prompt.to_s.strip.empty?
