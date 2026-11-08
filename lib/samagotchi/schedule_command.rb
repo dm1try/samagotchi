@@ -47,7 +47,7 @@ module Samagotchi
     def command_name = SUBCOMMANDS.include?(@argv.first.to_s) ? "chi schedule #{@argv.first}" : "chi schedule"
 
     FLAGS = {
-      "add" => CLI::Flags.new(args: false) do |f|
+      "add" => CLI::Flags.new(args: true) do |f|
         f.value "--session", "--continues", key: :target
         f.value "-m", "--message", "--prompt", key: :prompt
         f.value "--title"
