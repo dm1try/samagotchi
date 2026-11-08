@@ -117,9 +117,9 @@ level_no_base_legacy:
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
   upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 pristine_no_base:
-  upgrade: {do: kept, save_first: false, next_base: none, checksum: old, mark: set, word: null, label: "stays behind 1.1.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["a.md stays behind 1.1.0: no merge possible (no recorded base) (--force takes the bundle's version, your file copied to the trash first)"]}
+  upgrade: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   upgrade_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: null, label: ok, warns: ["a.md would stay behind 1.1.0: no merge possible (no recorded base) (--force takes the bundle's version, your file copied to the trash first)"]}
+  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
 pristine_no_base_marked:
   upgrade:
     "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "stays behind 1.1.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["a.md stays behind 1.1.0: no merge possible (no recorded base) (--force takes the bundle's version, your file copied to the trash first)"]}

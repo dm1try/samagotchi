@@ -104,6 +104,10 @@ module Samagotchi
         %i[edited any] => KEEP,
         # The text merge: merged, a conflict, or already merged.
         %i[diverged any] => DECIDE,
+        # No base: no merge. One never edited (the checksum vouches for it)
+        # takes the update as a file equal to its base would (U4); a marked
+        # one, or an edit, stays behind.
+        %i[pristine_no_base none] => FAST_FORWARD,
         %i[pristine_no_base any] => BEHIND, %i[edited_no_base any] => BEHIND,
         %i[dropped_pristine any] => REMOVE, %i[dropped_edited any] => KEPT_PRUNED, %i[dropped_missing any] => DROPPED_GONE,
         %i[dropped_pristine shared] => KEPT_SHARED, %i[dropped_edited shared] => KEPT_SHARED

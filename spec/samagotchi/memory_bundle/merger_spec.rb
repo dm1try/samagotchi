@@ -24,11 +24,12 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
     # owns them all, its checksum the base's.
     def sides(files)
       entries = files.to_h do |key, texts|
-        texts.each do |side, text|
+        texts.except(:checksum).each do |side, text|
           path = upgrade.paths(key)[side]
           text ? File.write(path, text) : FileUtils.rm_f(path)
         end
-        [key, texts[:base] ? { checksum: Digest::SHA256.hexdigest(texts[:base]) } : {}]
+        vouched = texts.fetch(:checksum, texts[:base])
+        [key, vouched ? { checksum: Digest::SHA256.hexdigest(vouched) } : {}]
       end
       File.write(File.join(upgrade.provenance.bundle_dir, "manifest.json"),
                  JSON.generate(name: "demo", version: "1.0.0", scope: "system", files: entries))
@@ -41,11 +42,12 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
       "an edit the bundle didn't change" => [%w[b c b], :keep, :recorded],
       "an edit the bundle changed too" => [%w[b c i], :conflict, :recorded],
       "an edit with no base" => [[nil, "c", "i"], :conflict, :recorded],
+      "no base, a file its checksum vouches for" => [[nil, "c", "i", "c"], :fast_forward, :on_disk],
       "no base, the bundle's bytes" => [[nil, "i", "i"], :noop, :on_disk],
       "a file the bundle doesn't have" => [["b", "c", nil], :noop, :recorded]
-    }.each do |what, ((base, current, incoming), status, next_base)|
+    }.each do |what, ((base, current, incoming, *checksum), status, next_base)|
       it "reads #{what} as #{status}, its next base #{next_base}" do
-        sides("a.md" => { base: base, current: current, incoming: incoming })
+        sides("a.md" => { base: base, current: current, incoming: incoming }.merge(checksum.empty? ? {} : { checksum: checksum.first }))
         expect(upgrade.outcome("a.md")).to have_attributes(status: status, base: next_base)
       end
     end

@@ -30,7 +30,7 @@
 #               wrong today (one tag or a list): U4, U7 (the plan's),
 #               dry-trash, restore-unchecked; note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
-#               P1.9, edited-rule, D4: P1.10); note says how
+#               P1.9, edited-rule, D4: P1.10, U4); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -225,11 +225,11 @@ cases:
     mark: legacy
   - id: pristine_no_base
     kind: pristine_no_base
-    divergent: U4
-    changed: D4
+    changed: [D4, U4]
     note: >-
       D4: install skipped a never-edited file as already exists, "your own copy" (P5), and takes the new text since
-      P1.10; U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited
+      P1.10; U4: upgrade left it behind (no recorded base) while status and uninstall call it unedited, and
+      fast-forwards it since the U4 fix
     base: null
     disk: abc
     incoming: abC
@@ -243,8 +243,8 @@ cases:
     mark: current
     divergent: U4
     note: >-
-      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
-      unmarked-only rule, unlike D4.
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited. The U4 fix
+      fast-forwards the unmarked file only (as D4 and U5): a marked one stays the mark's, behind.
   - id: pristine_no_base_legacy
     kind: pristine_no_base
     base: null
@@ -254,8 +254,8 @@ cases:
     mark: legacy
     divergent: U4
     note: >-
-      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
-      unmarked-only rule, unlike D4.
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited. The U4 fix
+      fast-forwards the unmarked file only (as D4 and U5): a marked one stays the mark's, behind.
   - id: edited_no_base
     kind: edited_no_base
     base: null

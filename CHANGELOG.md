@@ -34,6 +34,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle install core --dry-run` (a profile's dry run) no longer names a hook it would replace as your own kept file.
 - `chi bundle upgrade --dry-run` lists a memory that already has the bundle's text as up to date, as the upgrade itself does; it listed it as skipped.
 - `chi bundle upgrade` (and `chi update`'s plan) leaves behind a memory that `chi bundle status` calls `modified` but whose base copy equals it, as it does any edit it can't merge; it replaced the file with the bundle's text and kept no copy.
+- `chi bundle upgrade` (and `chi update`'s plan) takes the bundle's new text for a memory you never edited that has no base copy (chi compares it with the checksum its install recorded), as for any unedited memory; it left the file behind as a conflict while `chi bundle status` called it `ok`.
 - A context window given with `--context-window-tokens` to a one-shot run (`-p … --non-interactive`) is named `cli`, not `config`, where its source shows: the debug log, and chi web's context tooltip for that session.
 - A tool row's duration is the same live, after a reload and in the attached terminal (each timed the call with its own clock).
 - In chi web, a turn that fails after its tool steps shows the same time on its timing line live as after a reload (the turn record's, as a canceled turn does).
