@@ -296,7 +296,13 @@ module Samagotchi
         end
 
         list = read
+        # Ordered by the moment each entry is due, then id: with one chain
+        # firing per tick, the entries of that chain take turns (a skipped
+        # entry keeps its `next_due`, so the earliest waiting one goes next).
+        # File order would let the first entry added win every tick and starve
+        # the rest into their max_skips.
         due = list.select { |entry| entry.enabled && entry.due?(now) }
+                  .sort_by { |entry| [entry.next_due.to_s, entry.id] }
         return Tick.new(locked: false, outcomes: []) if due.empty?
 
         # One session listing for the whole tick: a chain walk re-globbing

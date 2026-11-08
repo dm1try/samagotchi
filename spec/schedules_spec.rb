@@ -367,6 +367,47 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "takes the earliest due entry first, so a chain's entries take turns" do
+    Dir.mktmpdir("schedules-fair") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      # Added in this order, due at the same moment: file order would fire the
+      # first one every tick and starve the other two into max_skips.
+      a = schedules.add(target: anchor, prompt: "A", title: "A", recurrence: every("1m"))
+      b = schedules.add(target: anchor, prompt: "B", title: "B", recurrence: every("1m"))
+      c = schedules.add(target: anchor, prompt: "C", title: "C", recurrence: every("1m"))
+      now = Time.now + 60
+
+      fired = []
+      3.times do |round|
+        tick = schedules.tick(now: now + (round * 60))
+        fired.concat(tick.outcomes.select { |outcome| outcome.status == "fired" }.map(&:title))
+        tick.outcomes.each do |outcome|
+          set_idle(dir, schedules.lookup(outcome.id).head) if outcome.status == "fired"
+        end
+      end
+
+      expect(fired.uniq.sort).to eq(%w[A B C])
+      [a, b, c].each do |added|
+        entry = schedules.lookup(added.id)
+        expect(entry.enabled).to be(true)
+        expect(entry.skips).to be < entry.max_skips
+      end
+      # One line: the three firings continue each other, not three separate
+      # chains hanging off the anchor.
+      chain = []
+      id = Samagotchi::SessionChain.latest(anchor, state_dir: dir)
+      while id
+        chain << id
+        id = Samagotchi::Session.load(id, state_dir: dir).continues
+      end
+      expect(chain.size).to eq(4)
+      expect(chain).to include(*schedules.entries.map(&:head))
+    end
+  end
+
   it "changes nothing on --dry-run" do
     Dir.mktmpdir("schedules-dry") do |root|
       dir = File.join(root, "sessions")

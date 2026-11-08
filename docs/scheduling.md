@@ -209,9 +209,11 @@ second one exits 0 with "no schedules due (another tick holds the lock)".
 `--dry-run` prints what would fire and changes nothing; `--format json` is the seam
 for scripts and for a future web UI.
 
-A tick fires **one entry per chain**: of the due entries of one chain, the first
-fires and the rest are skipped — "the chain just fired; retry at the next tick" —
-with `skips += 1` and `next_due` left at the occurrence they tried. A second chain
+A tick fires **one entry per chain**: of the due entries of one chain, the one due
+earliest (`next_due`, then id) fires and the rest are skipped — "the chain just
+fired; retry at the next tick" — with `skips += 1` and `next_due` left at the
+occurrence they tried, so the chain's entries take turns instead of the first one
+added winning every tick. A second chain
 firing in the same pass would continue the link the first one just made and archive
 it before its prompt ever ran: that link has no worker lock yet and the tick's
 listing predates it, so the busy check cannot see it. `same` entries are unaffected:
