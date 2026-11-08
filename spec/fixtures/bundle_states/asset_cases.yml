@@ -1,0 +1,211 @@
+# One file of a bundle's own folder per case (a guardrail rule, the plugin, a
+# script, a hook), in a known state, run through every asset command
+# (spec/samagotchi/memory_bundle/file_state_corpus/assets_spec.rb). Hand-written;
+# expect/assets.yml is generated (UPDATE_GOLDENS=1) and reviewed.
+#
+# A case:
+#   id, asset   rule (guardrails/r.yml), plugin (plugin.rb), script
+#               (scripts/s.sh) or hook (hooks/h.rb)
+#   state       new, unchanged, pristine, edited_sha, edited_no_sha, dev_link,
+#               dropped_pristine, dropped_edited; a hook also stray,
+#               listed_missing, unlisted, linked, pristine_no_sha
+#   recorded    the text whose sha256 the record holds; "" recorded with no
+#               sha; null not in the record
+#   installed   the installed file's text, null: none (dev: a link to the source)
+#   incoming    the bundle's text, null: the version dropped it
+#   file        the hook's name (default h.rb)
+#   beside      the bundle also has hooks/h.rb, unchanged (a stray file's case)
+#   listed_missing  the manifest lists the hook, the source has no such file
+#   unlisted    the manifest has no hooks: key (every hooks/*.rb installs)
+#   linked      the source's hooks/h.rb is a symlink out of the source
+#   fix, fixed, divergent, note   as in memory_cases.yml; asset tags: dry-checksum,
+#               dry-dropped, hook-stray-left, hook-sha-dropped, hook-status,
+#               new-updated, uninstall-unnamed
+texts:
+  v1: "# v1\n"
+  v2: "# v2\n"
+  mine: "# mine\n"
+
+cases:
+  - {id: rule_new, asset: rule, state: new, recorded: null, installed: null, incoming: v2}
+  - id: rule_unchanged
+    asset: rule
+    state: unchanged
+    recorded: v1
+    installed: v1
+    incoming: v1
+    fix:
+      - "704 spec/samagotchi/memory_bundle/installer_spec.rb: an unchanged rules file is skipped as already up to date; a changed one is installed"
+  - {id: rule_pristine, asset: rule, state: pristine, recorded: v1, installed: v1, incoming: v2}
+  - id: rule_edited_sha
+    asset: rule
+    state: edited_sha
+    recorded: v1
+    installed: mine
+    incoming: v2
+    fix:
+      - "44 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited file an upgrade replaces, in its own subfolder, and says so"
+      - "45 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited hook, rule, plugin and script to the trash, with --force or without"
+  - {id: rule_edited_no_sha, asset: rule, state: edited_no_sha, recorded: "", installed: mine, incoming: v2}
+  - {id: rule_dev_link, asset: rule, state: dev_link, recorded: dev, installed: v2, incoming: v2}
+  - {id: rule_dropped_pristine, asset: rule, state: dropped_pristine, recorded: v1, installed: v1, incoming: null}
+  - {id: rule_dropped_edited, asset: rule, state: dropped_edited, recorded: v1, installed: mine, incoming: null}
+
+  - id: plugin_new
+    asset: plugin
+    state: new
+    recorded: null
+    installed: null
+    incoming: v2
+    divergent: new-updated
+    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+  - id: plugin_unchanged
+    asset: plugin
+    state: unchanged
+    recorded: v1
+    installed: v1
+    incoming: v1
+    divergent: uninstall-unnamed
+    note: >-
+      chi bundle uninstall of a bundle with no memories and no hooks (the short path) names no Removed: plugin/...,
+      where the long path does
+    fix:
+      - "587 spec/samagotchi/memory_bundle/plugin_manifest_spec.rb: an upgrade with an identical plugin reports it up to date, not Updated"
+  - {id: plugin_pristine, asset: plugin, state: pristine, recorded: v1, installed: v1, incoming: v2}
+  - {id: plugin_edited_sha, asset: plugin, state: edited_sha, recorded: v1, installed: mine, incoming: v2}
+  - {id: plugin_edited_no_sha, asset: plugin, state: edited_no_sha, recorded: "", installed: mine, incoming: v2}
+  - {id: plugin_dev_link, asset: plugin, state: dev_link, recorded: dev, installed: v2, incoming: v2}
+  - {id: plugin_dropped_pristine, asset: plugin, state: dropped_pristine, recorded: v1, installed: v1, incoming: null}
+  - {id: plugin_dropped_edited, asset: plugin, state: dropped_edited, recorded: v1, installed: mine, incoming: null}
+
+  - id: script_new
+    asset: script
+    state: new
+    recorded: null
+    installed: null
+    incoming: v2
+    divergent: new-updated
+    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+  - {id: script_unchanged, asset: script, state: unchanged, recorded: v1, installed: v1, incoming: v1}
+  - {id: script_pristine, asset: script, state: pristine, recorded: v1, installed: v1, incoming: v2}
+  - id: script_edited_sha
+    asset: script
+    state: edited_sha
+    recorded: v1
+    installed: mine
+    incoming: v2
+    fixed: D2
+    note: "P3: chi update's plan names the edited script it copies to the trash"
+  - {id: script_edited_no_sha, asset: script, state: edited_no_sha, recorded: "", installed: mine, incoming: v2}
+  - {id: script_dev_link, asset: script, state: dev_link, recorded: dev, installed: v2, incoming: v2}
+  - {id: script_dropped_pristine, asset: script, state: dropped_pristine, recorded: v1, installed: v1, incoming: null}
+  - {id: script_dropped_edited, asset: script, state: dropped_edited, recorded: v1, installed: mine, incoming: null}
+
+  - id: hook_new
+    asset: hook
+    state: new
+    recorded: null
+    installed: null
+    incoming: v2
+    divergent: new-updated
+    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+  - id: hook_unchanged
+    asset: hook
+    state: unchanged
+    recorded: v1
+    installed: v1
+    incoming: v1
+    fixed: D3
+    note: "P1: the dry run calls an unchanged hook up to date, as the real run does"
+    fix:
+      - "587 spec/samagotchi/memory_bundle/installer_spec.rb: an upgrade with an identical hook reports it up to date, not Updated"
+  - id: hook_pristine
+    asset: hook
+    state: pristine
+    recorded: v1
+    installed: v1
+    incoming: v2
+    fixed: D3
+    divergent: dry-checksum
+    note: >-
+      P1: the dry run says Would update for a hook the real run updates. dry-checksum: upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new manifest
+  - id: hook_edited_sha
+    asset: hook
+    state: edited_sha
+    recorded: v1
+    installed: mine
+    incoming: v2
+    divergent: [dry-checksum, hook-status]
+    note: >-
+      dry-checksum: upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new manifest. hook-status: chi bundle status says [ok] for an edited hook the loader refuses (its sha
+      differs); the plugin's line says modified, not loaded
+  - id: hook_edited_no_sha
+    asset: hook
+    state: edited_no_sha
+    recorded: ""
+    installed: mine
+    incoming: v2
+    fixed: D2
+    divergent: dry-checksum
+    note: >-
+      P3: chi update's plan names an edited hook installed with no recorded sha. dry-checksum: upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new manifest
+  - {id: hook_dev_link, asset: hook, state: dev_link, recorded: dev, installed: v2, incoming: v2}
+  - id: hook_dropped_pristine
+    asset: hook
+    state: dropped_pristine
+    recorded: v1
+    installed: v1
+    incoming: null
+    divergent: [hook-stray-left, dry-dropped]
+    note: >-
+      hook-stray-left: a plain install of a version without the hook drops it from the record but leaves the file in hooks/, unloaded, and no later upgrade removes it (rules, the plugin and scripts go). dry-dropped: upgrade --dry-run says nothing of the hook the upgrade removes
+  - id: hook_dropped_edited
+    asset: hook
+    state: dropped_edited
+    recorded: v1
+    installed: mine
+    incoming: null
+    divergent: [hook-stray-left, dry-dropped]
+    note: >-
+      hook-stray-left: a plain install of a version without the hook drops it from the record but leaves the file in hooks/, unloaded, and no later upgrade removes it (rules, the plugin and scripts go). dry-dropped: upgrade --dry-run says nothing of the hook the upgrade copies to the trash
+      and removes
+  # The hook selection install_hooks and ShippedUpdate#trash_bound_hooks must
+  # share (the batch review's LOW 3): their plan and upgrade cells agree.
+  - {id: hook_stray, asset: hook, state: stray, file: extra.rb, beside: true, recorded: null, installed: mine, incoming: null}
+  - id: hook_listed_missing
+    asset: hook
+    state: listed_missing
+    listed_missing: true
+    recorded: v1
+    installed: mine
+    incoming: null
+    divergent: hook-sha-dropped
+    note: >-
+      install and upgrade keep the edited file but record the hook with no sha, so a hook the loader refused (its sha
+      differed) loads after them
+  - id: hook_unlisted
+    asset: hook
+    state: unlisted
+    unlisted: true
+    recorded: v1
+    installed: mine
+    incoming: v2
+    fix:
+      - "424 spec/samagotchi/memory_bundle/installer_spec.rb: a hook with no declared sha256 (or none declared at all) installs without a checksum warning"
+  - id: hook_linked
+    asset: hook
+    state: linked
+    linked: true
+    recorded: v1
+    installed: mine
+    incoming: v2
+    divergent: hook-stray-left
+    note: "a plain install skips the linked source hook and drops it from the record, leaving the edited file in hooks/"
+  - id: hook_pristine_no_sha
+    asset: hook
+    state: pristine_no_sha
+    recorded: ""
+    installed: v1
+    incoming: v2
+    divergent: dry-checksum
+    note: "upgrade --dry-run warns \"Checksum mismatch for hook h.rb\": it checks the installed (old) hook against the new manifest"
