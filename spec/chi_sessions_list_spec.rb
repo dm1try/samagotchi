@@ -79,11 +79,10 @@ RSpec.describe "chi sessions list" do
     File.write(File.join(dir, "recap.json"), JSON.generate({ text: text, title: title, covered: 2 }.compact))
   end
 
-  # Remotely a plain list is chi web's rows in the --live/--cwd text form
-  # (its status and folder · description), not this machine's file reads.
-  plain = "the plain listing; remotely the --live text form of chi web's rows"
+  # One line wherever the list runs (SessionRow#cli_line): the plain
+  # listing, the --live/--cwd text and a remote's, from chi web's rows there.
   RemoteBackend.both(self) do
-    it "prints the same lines as before with no new flags", local_only: plain do
+    it "prints the same lines as before with no new flags" do
       session = make("hello there")
       make("a test", test_run: true)
 
@@ -93,6 +92,27 @@ RSpec.describe "chi sessions list" do
       expect(out).to include("#{session.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
       expect(out).to include("  a test [test]\n")
       expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
+    end
+
+    it "reads a live idle worker's session as idle, as every other idle session" do
+      live = make("hello there", live: true)
+
+      [[], %w[--live], %w[--cwd /work], %w[--format text]].each do |args|
+        out, err, status = run_chi(*args)
+        expect(status).to eq(0), err
+        expect(out).to match(/^#{live.id}  idle      /), "#{args.join(" ")}: #{out}"
+      end
+    end
+
+    it "prints the same line in the plain and the --live text listings" do
+      live = make("hello there", live: true)
+      write_recap(live, "The user was fixing the login page. It works now.", title: "Login page fix")
+      save_context(live, 1234, 10_000)
+
+      line = ->(*args) { run_chi(*args).first.lines.find { |l| l.start_with?(live.id) } }
+      expect(line.call).to end_with("ctx 12%   #{Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at}  Login page fix\n")
+      expect(line.call("--live")).to eq(line.call)
+      expect(line.call("--cwd", "/work")).to eq(line.call)
     end
 
     it "lists test sessions marked [test] with no picker flags, as the plain listing does" do
@@ -130,7 +150,7 @@ RSpec.describe "chi sessions list" do
       end
     end
 
-    it "marks a session whose last turn loop-guard stopped [looped], and no other", local_only: plain do
+    it "marks a session whose last turn loop-guard stopped [looped], and no other" do
       looped = make("kept repeating itself", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
       other = make("stopped from the outside", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "check-in" })
       plain = make("finished", last_turn: { "outcome" => "completed" })
@@ -154,7 +174,7 @@ RSpec.describe "chi sessions list" do
       end
     end
 
-    it "marks a chi scratch session [scratch]", local_only: plain do
+    it "marks a chi scratch session [scratch]" do
       make("throwaway", scratch: true)
 
       out, err, status = run_chi
@@ -177,7 +197,7 @@ RSpec.describe "chi sessions list" do
       expect(rows).to eq(scratch.id => true, plain.id => false)
     end
 
-    it "shows how full the context was after the last turn, in the plain and the --live listings; json has ctx_pct", local_only: plain do
+    it "shows how full the context was after the last turn, in the plain and the --live listings; json has ctx_pct" do
       counted = make("counted", live: true)
       save_context(counted, 1234, 10_000)
       scratch = make("throwaway", scratch: true)
@@ -199,7 +219,7 @@ RSpec.describe "chi sessions list" do
       expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
     end
 
-    it "counts the fill against the session's llm_context budget when it is smaller than the window", local_only: plain do
+    it "counts the fill against the session's llm_context budget when it is smaller than the window" do
       budgeted = make("counted", live: true)
       budgeted.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 20_000)
       budgeted.save(state_dir: state_dir)
@@ -213,7 +233,7 @@ RSpec.describe "chi sessions list" do
       expect(JSON.parse(json).first["ctx_pct"]).to eq(61.7)
     end
 
-    it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)", local_only: plain do
+    it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)" do
       parent = make("the plan")
       child = make("count the specs", live: true, parent_id: parent.id)
 
@@ -230,7 +250,7 @@ RSpec.describe "chi sessions list" do
       expect(by_id).to eq(parent.id => [nil, false], child.id => [parent.id, false])
     end
 
-    it "marks a chain's link with the session it continues, in the plain and the --live listings; json has continues", local_only: plain do
+    it "marks a chain's link with the session it continues, in the plain and the --live listings; json has continues" do
       previous = make("monday")
       today = make("tuesday", live: true).tap do |s|
         s.continues = previous.id
@@ -296,7 +316,7 @@ RSpec.describe "chi sessions list" do
       expect(JSON.parse(out).first.values_at("waiting", "waiting_id", "relayed_to")).to eq(%w[approval a1 pppppppp])
     end
 
-    it "shows a quoted message without its quote markers", local_only: plain do
+    it "shows a quoted message without its quote markers" do
       make("> answer:\n> the build failed\n\nsame bug?")
 
       out, err, status = run_chi
@@ -305,7 +325,7 @@ RSpec.describe "chi sessions list" do
       expect(out).to include("  answer: the build failed same bug?\n")
     end
 
-    it "shows the first message of a session with no turn yet (chi send --new -m \"/model x\", the web start page)", local_only: plain do
+    it "shows the first message of a session with no turn yet (chi send --new -m \"/model x\", the web start page)" do
       session = make(nil)
       session.first_preview = "/model box:gemma"
       session.save(state_dir: state_dir)
@@ -316,7 +336,7 @@ RSpec.describe "chi sessions list" do
       expect(out).to include("#{session.id}  idle  ").and include("  /model box:gemma\n")
     end
 
-    it "shows a saved recap's first sentence in place of the last prompt, in the text output only", local_only: plain do
+    it "shows a saved recap's first sentence in place of the last prompt, in the text output only" do
       recapped = make("fix it", live: true)
       plain = make("hello there", live: true)
       write_recap(recapped, "The user was fixing the login page for the new theme, and the tests. It works now.")
@@ -337,7 +357,7 @@ RSpec.describe "chi sessions list" do
         .to include("desc" => "app · fix it")
     end
 
-    it "shows a session's title over its recap and its last prompt, plain, live, tsv and json", local_only: plain do
+    it "shows a session's title over its recap and its last prompt, plain, live, tsv and json" do
       titled = make("fix it", live: true)
       write_recap(titled, "The user was fixing the login page. It works now.")
       s = Samagotchi::Session.load(titled.id, state_dir: state_dir)
@@ -351,7 +371,7 @@ RSpec.describe "chi sessions list" do
         .to include("desc" => "app · Login fix", "title" => "Login fix")
     end
 
-    it "shows the recap's auto title over its first sentence in the plain listing, a title over both", local_only: plain do
+    it "shows the recap's auto title over its first sentence in the plain listing, a title over both" do
       auto = make("fix it", live: true)
       write_recap(auto, "The user was fixing the login page. It works now.", title: "Login page fix")
       expect(run_chi.first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login page fix\n")
@@ -378,7 +398,7 @@ RSpec.describe "chi sessions list" do
       expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login fix\n")
     end
 
-    it "cuts a long recap to 60 characters, as it does a prompt", local_only: plain do
+    it "cuts a long recap to 60 characters, as it does a prompt" do
       session = make("x")
       write_recap(session, "Checking #{"word " * 30}.")
 
@@ -409,7 +429,7 @@ RSpec.describe "chi sessions list" do
       expect(status).to eq(0), err
       expect(out).to start_with("#{live.id}  idle      ")
       expect(out).to include("a live test [test]\n")
-      expect(out).to end_with("\n1 session(s)\n")
+      expect(out).to end_with("\n1 session(s) (sort=updated_at order=desc)\n")
     end
 
     it "--format json: one object per session" do

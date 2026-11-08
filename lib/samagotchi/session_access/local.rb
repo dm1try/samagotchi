@@ -81,9 +81,6 @@ module Samagotchi
       # @return [OwnerLock::Owner, nil] the worker or one-turn chi run that owns it
       def owner(id) = SessionManager.session_owner(id, **dir)
 
-      # SessionManager.list_sessions: Session objects, for chi sessions list.
-      def list(**filters) = SessionManager.list_sessions(**filters, **dir)
-
       # SessionManager.session_rows: the SessionRows chi sessions list
       # prints and chi note --all reaches (chi web's summaries route answers
       # their #to_summary_h).
