@@ -77,7 +77,14 @@ module Samagotchi
     LIST = ->(value) { Array(value) }
     ID = ->(value) { value&.to_s }
     MESSAGES = ->(messages) { SessionField.scrub_utf8(messages.map { |msg| SessionField.stringify_keys(msg) }) }
-    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES
+    VERDICTS = lambda do |records|
+      records&.map do |record|
+        SessionField.scrub_utf8(record.to_h do |key, entry|
+          [key.to_s, entry.is_a?(Hash) ? SessionField.stringify_keys(entry) : entry]
+        end)
+      end
+    end
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :VERDICTS
 
     # The fields of <id>.json, in the order #save writes them: key => its
     # SessionField (the value for a file without it, REQUIRED for the ones
@@ -126,7 +133,10 @@ module Samagotchi
       # #display_title). A continue's new link inherits it.
       SessionField.plain("title", nil),
       SessionField.plain("test_run", false, cast: BOOLEAN, write: BOOLEAN),
-      SessionField.typed("pending_question", nil),
+      # The question this session waits on (PendingQuestion), saved as
+      # session.json's "pending_question"; nil with none. A Hash (a saved
+      # record, string or symbol keys) is read with PendingQuestion.from_file.
+      SessionField.value("pending_question", :from_file, scrub: true) { PendingQuestion },
       SessionField.plain("used_memory_names", [], cast: NAMES, write: LIST),
       # The project the session was started in (ProjectScope.root_for its
       # folder), stored because worktrees are deleted after a merge and a
@@ -138,7 +148,11 @@ module Samagotchi
       # Names as given; the engine normalizes them.
       SessionField.plain("preloaded_memory_names", [], cast: NAMES, write: LIST),
       SessionField.plain("muted_memory_names", [], cast: NAMES, write: LIST),
-      SessionField.typed("prompt_notes", []),
+      # The model notes the session's system prompt carried at its last build
+      # (Array<PromptNote>: name, scope, chars, digest; ModelNotes), set by the
+      # Engine at each build (a start, a resume's or a woken worker's first
+      # turn, /model) and saved, so what a session ran with can be read later.
+      SessionField.list("prompt_notes") { PromptNote },
       # The session that delegated this one (the `delegate` tool) or that a
       # plugin forked it from (ctx.sessions.fork), else nil.
       # Set before the spawn and kept on respawns, like preloaded_memory_names.
@@ -147,8 +161,15 @@ module Samagotchi
       # deletes it too once its last client is gone), and by the next sweep
       # (or `chi sessions clean`) when both died first.
       SessionField.plain("scratch", false, cast: BOOLEAN),
-      SessionField.typed("last_turn", nil),
-      SessionField.typed("verdicts", nil, optional: true),
+      # How the last turn ended (LastTurn), for a parent's wait (ReplyWait)
+      # and the web's notifications (the hub sends it in the summary); nil
+      # before the first turn.
+      SessionField.value("last_turn", :from_file) { LastTurn },
+      # Verdict cards recorded by completed Verify turns, in append order.
+      # A missing field stays missing until the first verdict is recorded
+      # (#verdicts reads it as []). Cast on every set too.
+      SessionField.plain("verdicts", nil, cast: ->(values) { values.nil? ? nil : Array(values) }, write: VERDICTS,
+                                          optional: true),
       # Started by the `delegate` tool (a fork has a parent_id too, but isn't
       # one): see #delegate?.
       SessionField.plain("delegate", false, cast: BOOLEAN),
@@ -166,16 +187,32 @@ module Samagotchi
       # (SessionSetup). Cast on every set too.
       SessionField.plain("appended_prompt_files", [], cast: ->(paths) { Array(paths).map(&:to_s).reject(&:empty?).uniq },
                                                       write: LIST),
-      SessionField.typed("toolkit", nil),
+      # The session's toolkit (Toolkit: the tools its prompts declare), as
+      # given when it was created; nil for a session from before toolkits,
+      # which is on Toolkit::FULL (Toolkit.of). Saved and never resolved
+      # again from config, so a respawned worker declares the same tools; a
+      # continue and a fork copy it (SessionSetup.of), a delegate child gets
+      # the one its delegate call named, else toolkit.child
+      # (SessionManager.spawn_session). A Hash or a String reads too.
+      SessionField.value("toolkit", :from_file) { Toolkit },
       SessionField.typed("toolkit_origin", "chosen"),
       # The two parts of #settings (Session.new's settings:, .from_h composes
       # them): its bundles part, then its core part.
       SessionField.file_only("bundle_settings", {}, from: :settings, write: ->(settings) { settings.bundles }),
       SessionField.file_only("config_settings", {}, from: :settings, write: ->(settings) { settings.core }),
-      SessionField.typed("interrupted_turn", nil),
+      # The mark of a turn a worker checkpointed and never finished
+      # (InterruptedTurn), as loaded; the next worker settles it and sets it
+      # to nil. While a turn runs, #turn_checkpoint's marker is saved instead.
+      SessionField.value("interrupted_turn", :from_file) { InterruptedTurn },
       SessionField.typed("parent_answers", nil),
-      SessionField.typed("working_set_pins", []),
-      SessionField.typed("review", nil, optional: true),
+      # The working set's items the user pinned (/working-set pin;
+      # WorkingSetPin), [] with none: the model's forget_outputs refuses
+      # their outputs. A respawn, a continue and a fork keep them
+      # (SessionSetup.of); a delegate child starts without.
+      SessionField.list("working_set_pins") { WorkingSetPin },
+      # A review session's subjects and source (SessionReview), nil for any
+      # other session.
+      SessionField.value("review", :of, optional: true) { SessionReview },
       # The id the prompt a session is created with gets (SessionManager
       # .spawn_session), so its first turn is a turn with an id like one sent
       # later: the worker's first turn takes it as its origin, its reply file
@@ -183,7 +220,10 @@ module Samagotchi
       # chi web's create) can name it (`--wait --turn T ID`). nil for a
       # session created idle, and for one saved before the field existed.
       SessionField.plain("first_turn_id", nil, optional: true),
-      SessionField.typed("verify_fresh", nil, optional: true)
+      # A Verify fresh child's requester, rules and claim (VerifyFreshOrigin),
+      # nil for any other session. Set once, at spawn (VerifyFresh.start).
+      # Autoloaded on the first one (the bundle test kit's load budget).
+      SessionField.value("verify_fresh", :of, optional: true) { VerifyFreshOrigin }
     ].to_h { |field| [field.key, field] }.freeze
 
     # FIELDS a session file has only when set: a session without them saves
@@ -213,56 +253,53 @@ module Samagotchi
     attr_writer :project_root, :delegate
     attr_reader :appended_prompt_files, :written_by
 
-    def appended_prompt_files=(paths)
-      @appended_prompt_files = FIELDS.fetch("appended_prompt_files").load(paths)
+    def appended_prompt_files=(value)
+      @appended_prompt_files = load_field("appended_prompt_files", value)
     end
-    # The model notes the session's system prompt carried at its last build
-    # (Array<PromptNote>: name, scope, chars, digest; ModelNotes), set by the
-    # Engine at each build (a start, a resume's or a woken worker's first
-    # turn, /model) and saved, so what a session ran with can be read later.
-    attr_reader :prompt_notes
 
-    # @param notes [Array<PromptNote, Hash>] a file's hashes are read
-    #   (PromptNote.list)
-    def prompt_notes=(notes)
-      @prompt_notes = PromptNote.list(notes)
+    # The value objects' readers and writers: a writer reads its value as
+    # its FIELDS row does (a file's Hash, the object itself; nil is none).
+    attr_reader :prompt_notes, :pending_question, :last_turn, :interrupted_turn, :toolkit, :review, :verify_fresh,
+                :working_set_pins
+
+    def prompt_notes=(value)
+      @prompt_notes = load_field("prompt_notes", value)
     end
-    # The question this session waits on (PendingQuestion), saved as
-    # session.json's "pending_question"; nil with none. A Hash (a saved
-    # record, string or symbol keys) is read with PendingQuestion.from_file.
-    attr_reader :pending_question
 
     def pending_question=(value)
-      @pending_question = PendingQuestion.from_file(value)
+      @pending_question = load_field("pending_question", value)
     end
 
-    # How the last turn ended (LastTurn), for a parent's wait (ReplyWait)
-    # and the web's notifications (the hub sends it in the summary); nil
-    # before the first turn.
-    attr_reader :last_turn
-
-    # @param value [LastTurn, Hash, nil] a file's Hash is read
-    #   (LastTurn.from_file)
     def last_turn=(value)
-      @last_turn = LastTurn.from_file(value)
+      @last_turn = load_field("last_turn", value)
     end
 
-    # Verdict cards recorded by completed Verify turns, in append order.
-    # A missing field stays missing until the first verdict is recorded.
+    def interrupted_turn=(value)
+      @interrupted_turn = load_field("interrupted_turn", value)
+    end
+
+    def toolkit=(value)
+      @toolkit = load_field("toolkit", value)
+    end
+
+    def review=(value)
+      @review = load_field("review", value)
+    end
+
+    def verify_fresh=(value)
+      @verify_fresh = load_field("verify_fresh", value)
+    end
+
+    def working_set_pins=(value)
+      @working_set_pins = load_field("working_set_pins", value)
+    end
+
+    # Verdict cards recorded by completed Verify turns ([] before the
+    # first; the file has none then).
     def verdicts = @verdicts || []
 
-    def verdicts=(values)
-      @verdicts = values.nil? ? nil : Array(values)
-    end
-
-    # The mark of a turn a worker checkpointed and never finished
-    # (InterruptedTurn), as loaded; the next worker settles it and sets it
-    # to nil. While a turn runs, #turn_checkpoint's marker is saved instead.
-    attr_reader :interrupted_turn
-
-    # @param value [InterruptedTurn, Hash, nil]
-    def interrupted_turn=(value)
-      @interrupted_turn = InterruptedTurn.from_file(value)
+    def verdicts=(value)
+      @verdicts = load_field("verdicts", value)
     end
 
     # The running turn's checkpoint (TurnCheckpoint): {messages:, marker:}
@@ -330,20 +367,6 @@ module Samagotchi
     # couldn't read; nil when there is neither.
     def reasoning_history_file = @reasoning_history&.to_s || @reasoning_history_unread
 
-    # The session's toolkit (Toolkit: the tools its prompts declare), as
-    # given when it was created; nil for a session from before toolkits,
-    # which is on Toolkit::FULL (Toolkit.of). Saved and never resolved
-    # again from config, so a respawned worker declares the same tools; a
-    # continue and a fork copy it (SessionSetup.of), a delegate child gets
-    # the one its delegate call named, else toolkit.child
-    # (SessionManager.spawn_session).
-    attr_reader :toolkit
-
-    # @param value [Toolkit, Hash, String, nil] the session file's form too
-    def toolkit=(value)
-      @toolkit = value.is_a?(Toolkit) ? value : Toolkit.from_file(value)
-    end
-
     # Why this session is on its toolkit. Files from before the field read
     # as chosen, so an old default session is never newly suggested.
     attr_reader :toolkit_origin
@@ -389,26 +412,8 @@ module Samagotchi
                         end
     end
 
-    # A review session's subjects and source (SessionReview), nil for any
-    # other session.
-    attr_reader :review
-
-    # @param value [SessionReview, Hash, nil] the session file's form too
-    def review=(value)
-      @review = SessionReview.of(value)
-    end
-
     # Whether this is a review session (chi review, the web's Start review).
     def review? = !@review.nil?
-
-    # A Verify fresh child's requester, rules and claim (VerifyFreshOrigin),
-    # nil for any other session. Set once, at spawn (VerifyFresh.start).
-    attr_reader :verify_fresh
-
-    # @param value [VerifyFreshOrigin, Hash, nil] the session file's form too
-    def verify_fresh=(value)
-      @verify_fresh = value.nil? ? nil : VerifyFreshOrigin.of(value)
-    end
 
     # The session whose participants.json names this session's
     # participants: a Verify fresh child's parent (its requester's grant is
@@ -421,17 +426,6 @@ module Samagotchi
     def tool_output_count = @messages.count { |msg| TOOL_ROLES.include?((msg[:role] || msg["role"]).to_s) }
 
     TOOL_ROLES = %w[tool_response tool].freeze
-
-    # The working set's items the user pinned (/working-set pin;
-    # WorkingSetPin), [] with none: the model's forget_outputs refuses
-    # their outputs. A respawn, a continue and a fork keep them
-    # (SessionSetup.of); a delegate child starts without.
-    attr_reader :working_set_pins
-
-    # @param value [Array<WorkingSetPin, Hash>] the session file's form too
-    def working_set_pins=(value)
-      @working_set_pins = WorkingSetPin.list(value)
-    end
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
@@ -818,28 +812,19 @@ module Samagotchi
       FIELDS.each_value.with_object({}) do |field, file|
         value = case field.key
                 when "messages" then field.dump(checkpoint ? checkpoint[:messages] : @messages)
-                when "interrupted_turn" then (checkpoint ? checkpoint[:marker] : @interrupted_turn)&.to_file
-                when "pending_question" then @pending_question && SessionField.scrub_utf8(@pending_question.to_file)
+                when "interrupted_turn" then field.dump(checkpoint ? checkpoint[:marker] : @interrupted_turn)
                 when "llm_context" then llm_context_file
                 when "thinking" then thinking_file
                 when "reasoning_history" then reasoning_history_file
-                when "toolkit" then @toolkit&.to_file
-                when "prompt_notes" then @prompt_notes.map(&:to_file)
-                when "last_turn" then @last_turn&.to_file
-                when "working_set_pins" then @working_set_pins.map(&:to_file)
-                when "review" then @review&.to_file
-                when "verify_fresh" then @verify_fresh&.to_file
-                when "verdicts"
-                  @verdicts&.map do |record|
-                    SessionField.scrub_utf8(record.to_h do |key, entry|
-                      [key.to_s, entry.is_a?(Hash) ? SessionField.stringify_keys(entry) : entry]
-                    end)
-                  end
                 else field.dump(instance_variable_get(field.ivar))
                 end
         file[field.key] = value unless value.nil? && field.optional
       end.merge(@extra_fields.reject { |key, _| FIELDS.key?(key) })
     end
+
+    # +value+ as +key+'s FIELDS row reads it (its writer's value).
+    def load_field(key, value) = FIELDS.fetch(key).load(value)
+    private :load_field
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
     def checkpointed

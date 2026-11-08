@@ -56,6 +56,13 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.toolkit_origin).to eq("chosen")
     end
 
+    it "has a public reader (delegate?) and writer for every FIELDS row's attr (written_by only a reader: #to_h writes VERSION)" do
+      attrs = described_class::FIELDS.values.filter_map(&:attr)
+      readable = ->(attr) { described_class.public_method_defined?(attr) || described_class.public_method_defined?(:"#{attr}?") }
+      expect(attrs.reject(&readable)).to eq([])
+      expect(attrs.reject { |attr| described_class.public_method_defined?(:"#{attr}=") }).to eq([:written_by])
+    end
+
     it "writes every FIELDS key, in that order (an OPTIONAL_FIELDS one only when set), and reads the same session back from it" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
                                             preloaded_memory_names: %w[notes], parent_id: "p1")

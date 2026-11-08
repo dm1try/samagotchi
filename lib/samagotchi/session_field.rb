@@ -17,6 +17,31 @@ module Samagotchi
           write: write, via_writer: false)
     end
 
+    # A value object's field (nil for none): a value that is already one
+    # is taken as it is, nil is nil (the type isn't loaded for it: an
+    # autoloaded one stays unloaded), anything else is read with the type's
+    # +reader+ (from_file, of); the file gets its #to_file, through
+    # .scrub_utf8 with +scrub+. +type+ is a block, so the row names its type
+    # without loading it.
+    def self.value(key, reader, optional: false, scrub: false, &type)
+      cast = lambda do |value|
+        next nil if value.nil?
+
+        klass = yield
+        value.is_a?(klass) ? value : klass.public_send(reader, value)
+      end
+      write = scrub ? ->(value) { value && scrub_utf8(value.to_file) } : ->(value) { value&.to_file }
+      new(key: key, attr: key.to_sym, from: nil, default: nil, fresh: nil, optional: optional, cast: cast,
+          write: write, via_writer: false)
+    end
+
+    # A list of value objects ([] for none): read with the type's .list, each
+    # written with its #to_file.
+    def self.list(key, &type)
+      new(key: key, attr: key.to_sym, from: nil, default: [], fresh: [], optional: false,
+          cast: ->(value) { yield.list(value) }, write: ->(values) { values.map(&:to_file) }, via_writer: false)
+    end
+
     # A field Session.new sets through Session's public writer (#<attr>=),
     # written by #to_h's own arm.
     def self.typed(key, default, optional: false)
