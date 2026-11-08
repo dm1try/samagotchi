@@ -343,11 +343,11 @@ source_moved_marked:
 missing_wrong_sha:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
   install_force: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
-  install_dry: {do: none, save_first: false, next_base: old, checksum: old, mark: none, word: Would install, label: "missing,no-index", warns: []}
+  install_dry: {do: none, save_first: false, next_base: old, checksum: old, mark: none, word: Would install, label: "missing,no-index", warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
 pristine_wrong_sha:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)", "Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
-  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
+  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
 new_no_sha:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: added, word: Installed, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: added, word: Installed, label: ok, warns: []}

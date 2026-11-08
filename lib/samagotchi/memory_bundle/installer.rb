@@ -553,16 +553,15 @@ module Samagotchi
       # new or missing file, --force, an upgrade's or a re-install's
       # fast-forward) whose sha256 differs from its manifest's warns. One
       # kept, skipped or merged isn't checked (a local edit isn't a bad
-      # download). A dry run writes nothing: it checks a file already there
-      # only for an install (--force over the bundle's text), not the old text
-      # a fast-forward would replace.
+      # download). What is checked is the source file the write takes its
+      # bytes from, so a dry run checks what it would write, never the
+      # user's bytes on disk.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
-          action = @results[file_key]&.action
-          next unless action&.from_source?
-          next if @dry_run && action.word != :installed
+          result = @results[file_key]
+          next unless result&.action&.from_source?
 
-          warning = FileDigest.mismatch(file_key, File.join(@target_dir, file_key), @manifest.checksum_for(file_key))
+          warning = FileDigest.mismatch(file_key, result.state.paths[:incoming], @manifest.checksum_for(file_key))
           @warnings << warning if warning
         end
       end

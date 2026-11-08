@@ -438,7 +438,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(checksum_warnings).to be_empty
         end
 
-        it "checks a memory an upgrade or a re-install fast-forwards, not its dry run (U7)" do
+        it "checks a memory an upgrade or a re-install fast-forwards, and its dry run (U7)" do
           bundle = lambda do |dir, version, text, sha|
             FileUtils.mkdir_p(dir)
             File.write(File.join(dir, "identity.md"), text)
@@ -455,7 +455,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           up = described_class.new(source: v2, name: "cksum-ff", scope: "system", strict: true, upgrade: true)
           up.run
 
-          expect(dry.warnings.grep(/Checksum mismatch/)).to be_empty
+          expect(dry.warnings.grep(/Checksum mismatch for identity\.md/).size).to eq(1)
           expect(up.summary).to include("Updated: identity.md")
           expect(up.warnings.grep(/Checksum mismatch for identity\.md/).size).to eq(1)
 
@@ -465,6 +465,24 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           again.run
           expect(again.summary).to include("Updated: identity.md")
           expect(again.warnings.grep(/Checksum mismatch for identity\.md/).size).to eq(1)
+        end
+
+        # A dry run checks the bytes it would write, not the user's edit on disk.
+        it "does not blame an edited file on a --force dry run whose source matches its sha" do
+          bundle_dir = File.join(tmpdir, "bundle_cksum_edit")
+          FileUtils.mkdir_p(bundle_dir)
+          File.write(File.join(bundle_dir, "identity.md"), "# Identity\n")
+          File.write(File.join(bundle_dir, "manifest.yml"),
+                     YAML.dump("name" => "cksum-edit", "version" => "1.0",
+                               "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Identity\n")}" }))
+          installer_for(source: bundle_dir, name: "cksum-edit", scope: "system").run
+          File.write(File.join(system_memories_dir, "identity.md"), "# Identity, mine\n")
+
+          dry = described_class.new(source: bundle_dir, name: "cksum-edit", scope: "system", strict: true, force: true, dry_run: true)
+          dry.run
+
+          expect(dry.summary).to include("identity.md")
+          expect(dry.warnings.grep(/Checksum mismatch/)).to be_empty
         end
       end
     end
