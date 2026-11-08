@@ -116,7 +116,8 @@ Context window lookup (`ContextWindow.resolve`, the first that answers wins; the
 3. The config file's `models.<key>.window_tokens` (by the model's lookup names, as sampling and vision look a model
    up; `:model_setting`), else `hosts.<name>.window_tokens` (`:host_setting`). `ContextWindow.setting(lookup)` (the
    effective model's `ModelLookup`) reads it per turn for the effective model, after the hooks that may switch it.
-4. `context.window_tokens`: CLI, `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` or the config file (`:config` or `:env`).
+4. `context.window_tokens`: `--context-window-tokens`, `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` or the config file (`:cli`,
+   `:env` or `:config`).
 5. `ContextWindow::DEFAULT_TOKENS`, 256000 (`:default`).
 
 Settings (3 and 4) only fill in when the server and its list report nothing (a server that is down, a chat host whose list has no window). A

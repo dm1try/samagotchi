@@ -16,7 +16,7 @@
       },
       "configured": {
         "tokens": 50000,
-        "source": "config"
+        "source": "cli"
       },
       "configured_env": {
         "tokens": 60000,
@@ -42,7 +42,7 @@
       },
       "configured": {
         "tokens": 50000,
-        "source": "config"
+        "source": "cli"
       },
       "configured_env": {
         "tokens": 60000,
@@ -68,7 +68,7 @@
       },
       "configured": {
         "tokens": 50000,
-        "source": "config"
+        "source": "cli"
       },
       "configured_env": {
         "tokens": 60000,
@@ -84,11 +84,11 @@
       "configured_context_window": null,
       "context_window": {
         "tokens": 50000,
-        "source": "config"
+        "source": "cli"
       },
       "configured": {
         "tokens": 50000,
-        "source": "config"
+        "source": "cli"
       },
       "configured_env": {
         "tokens": 60000,

@@ -35,9 +35,9 @@ RSpec.describe Samagotchi::ContextWindow do
     expect(described_class.resolve(client: client, model: "m").to_h).to eq(tokens: 200_000, source: :config)
   end
 
-  it "labels a CLI override as config and the env var as env" do
+  it "labels a CLI override as cli and the env var as env" do
     stub_config(64_000, :cli)
-    expect(described_class.resolve.source).to eq(:config)
+    expect(described_class.resolve.to_h).to eq(tokens: 64_000, source: :cli)
 
     stub_config(32_000, :env)
     expect(described_class.resolve.to_h).to eq(tokens: 32_000, source: :env)

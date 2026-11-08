@@ -11,14 +11,14 @@ module Samagotchi
   #      provider's context_length)
   #   3. models.<key>.window_tokens, else hosts.<name>.window_tokens
   #      (#setting: the most specific wins)
-  #   4. context.window_tokens (CLI, SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the
-  #      config file)
+  #   4. context.window_tokens (--context-window-tokens,
+  #      SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the config file)
   #   5. DEFAULT_TOKENS
   # Settings (3 and 4) only fill in when the server and its list report
   # nothing.
   #
-  # Sources: :server, :model_list, :model_setting, :host_setting, :config
-  # (CLI or file), :env, :default.
+  # Sources: :server, :model_list, :model_setting, :host_setting, :cli,
+  # :env, :config (the file), :default.
   module ContextWindow
     DEFAULT_TOKENS = 256_000
 
@@ -76,7 +76,7 @@ module Samagotchi
       end
       return Resolved.new(tokens: DEFAULT_TOKENS, source: :default) unless positive_integer?(value)
 
-      Resolved.new(tokens: value, source: origin == :env ? :env : :config)
+      Resolved.new(tokens: value, source: { cli: :cli, env: :env }.fetch(origin, :config))
     end
 
     # For callers with no client at hand (tool output guardrails): the last
