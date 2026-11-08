@@ -29,7 +29,7 @@ module Samagotchi
       # @param get [#call] a Config key → its value
       # @return [Choice]
       def resolve(host_registry: nil, get: ->(key) { Config.get(key) })
-        registry = host_registry || HostRegistry.new
+        registry = host_registry || HostRegistry.current
         SETTINGS.each do |model, host_ref, base_url|
           target = IdleTarget.resolve(model: get.call(model), host_ref: get.call(host_ref), base_url: get.call(base_url),
                                       host_registry: registry)

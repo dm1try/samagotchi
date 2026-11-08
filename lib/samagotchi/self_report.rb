@@ -4,6 +4,7 @@ require_relative "version"
 require_relative "config"
 require_relative "context_window"
 require_relative "degrade"
+require_relative "effective_model"
 require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
@@ -181,15 +182,12 @@ module Samagotchi
       Degrade.call(:config, "model_window_unreadable") do
         return nil unless model
 
-        registry = HostRegistry.new(env: env)
-        target = registry.resolve(model)
-        names = registry.lookup_names(model, target: target)
-        models = ModelSettings.all(env: env)
-        window = ContextWindow.setting(target, names: names, models: models)
+        effective = effective_model(model, env)
+        window = effective.window_setting
         return nil unless window
-        return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
+        return [window.tokens, "hosts.#{effective.host_name}"] if window.source == :host_setting
 
-        [window.tokens, "models: #{ModelSettings.find(names, :window_tokens, models: models).key}"]
+        [window.tokens, "models: #{effective.lookup.model(:window_tokens).key}"]
       end
     end
 
@@ -232,7 +230,7 @@ module Samagotchi
     # engine keys memory_write current_model_only): which `<name>.<key>.md`
     # overlays are this model's.
     def model_key_for(model, env)
-      ModelOverlay.key_for(HostRegistry.new(env: env).bare_name(model)) || "-"
+      ModelOverlay.key_for(registry(env).bare_name(model)) || "-"
     rescue StandardError
       ModelOverlay.key_for(model) || "-"
     end
@@ -243,7 +241,7 @@ module Samagotchi
     # without any. Read from the memories dirs now: a session's prompt
     # takes them at its next build (/stats names the ones it carries).
     def model_notes_for(model, env)
-      bare = HostRegistry.new(env: env).bare_name(model)
+      bare = registry(env).bare_name(model)
       key = ModelOverlay.key_for(bare)
       notes = ModelNotes.for(name: bare, key: key, fallback_key: fallback_model_key(model, key, env),
                              muted: session_muted(env), env: env, warn: false)
@@ -260,7 +258,7 @@ module Samagotchi
     def fallback_model_key(model, key, env)
       Degrade.call(:model, "fallback_key_unresolved") do
         typed = session_typed_model(env) || model
-        typed_key = ModelOverlay.key_for(HostRegistry.new(env: env).parse_qualified_model(typed).last)
+        typed_key = ModelOverlay.key_for(registry(env).parse_qualified_model(typed).last)
         typed_key == key ? nil : typed_key
       end
     end
@@ -311,7 +309,7 @@ module Samagotchi
     # Routed without model discovery, so an unqualified name may land on
     # another host at runtime after /models.
     def loop_for(model, env)
-      entry = HostRegistry.new(env: env).resolve(model).entry
+      entry = registry(env).resolve(model).entry
       return "-" unless entry
 
       return "native (raw prompt)" unless entry.chat?
@@ -327,15 +325,15 @@ module Samagotchi
     # chat host (api: openai or anthropic) has no /props, so it gets its model list
     # with the same timeouts: up/down and the ids it serves.
     def served_model_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
+      hosts = registry(env)
+      target = hosts.resolve(model)
       entry = target.entry
       bare = target.bare_model
       return "-" unless entry
       return "reported per turn (remote host)" if entry.remote?
       return chat_served_model_for(entry, bare, env) if entry.chat?
 
-      client = registry.client_for(entry)
+      client = hosts.client_for(entry)
       props = client.server_props(model: bare)
       return NO_PROPS if props.nil? || props.status == :http_error
       return "unknown (the server didn't answer; is it running?)" if props.status == :network_error
@@ -374,16 +372,12 @@ module Samagotchi
     # Offline, so no /props probe: where nothing is configured, a native
     # llama.cpp host's chat template decides at runtime.
     def profile_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
-      entry = target.entry
-      bare = target.bare_model
-      return "name-based (chat API: only strips thoughts)" if entry&.chat?
+      effective = effective_model(model, env)
+      return "name-based (chat API: only strips thoughts)" if effective.entry&.chat?
 
-      names = registry.lookup_names(model)
-      override = Config.resolve_with_origin("model.profile", env: env, cli_overrides: Config.cli_overrides)
-      result = ModelProfile.resolve(names: names, entry: entry, client: nil, bare_model: bare, override: override,
-                                    models: ModelSettings.all(env: env))
+      lookup = effective.lookup
+      result = ModelProfile.resolve(names: effective.names, entry: effective.entry, client: nil, bare_model: effective.bare,
+                                    override: lookup.global("model.profile"), models: lookup.models)
       name = result.profile.name
       case result.source
       when :config then "#{name} (config #{result.detail})"
@@ -397,11 +391,8 @@ module Samagotchi
     # The model's thinking level and where it came from (Thinking.resolve);
     # in a session's commands its own level first (SAMAGOTCHI_SESSION_THINKING).
     def thinking_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
       session = session_model(env) ? Thinking.session_level(env[SESSION_THINKING_ENV]) : nil
-      Thinking.explain(target, names: registry.lookup_names(model, target: target),
-                               models: ModelSettings.all(env: env), session: session).label
+      Thinking.explain(effective_model(model, env).lookup, session: session).label
     rescue StandardError => e
       "(unknown: #{e.message})"
     end
@@ -411,20 +402,28 @@ module Samagotchi
     # first (SAMAGOTCHI_SESSION_REASONING_HISTORY); a native host keeps the
     # running turn's on its own.
     def reasoning_history_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
-      return "native loop: the running turn's, always" unless target.entry&.chat?
+      effective = effective_model(model, env)
+      return "native loop: the running turn's, always" unless effective.entry&.chat?
 
       session = session_model(env) ? ReasoningHistory.session_level(env[SESSION_REASONING_HISTORY_ENV]) : nil
-      level, source = ReasoningHistory.resolve(target, names: registry.lookup_names(model, target: target),
-                                                       models: ModelSettings.all(env: env), session: session)
-      ReasoningHistory.label(level, source)
+      ReasoningHistory.label(*ReasoningHistory.resolve(effective.lookup, session: session))
     rescue StandardError => e
       "(unknown: #{e.message})"
     end
 
+    # The hosts chi self reads (HostRegistry.current: the process's shared
+    # one for ENV, a fresh one for another env).
+    def registry(env) = HostRegistry.current(env: env)
+
+    # +model+ as chi self reads its settings (EffectiveModel: every layer
+    # through its ModelLookup, with +env+). Raises as HostRegistry#resolve does.
+    # @return [EffectiveModel]
+    def effective_model(model, env)
+      EffectiveModel.of(registry(env), ModelChoice.new(name: model, typed: model))
+    end
+
     def host_for(model, env)
-      target = HostRegistry.new(env: env).resolve(model)
+      target = registry(env).resolve(model)
       entry = target.entry
       bare = target.bare_model
       return "(no hosts configured)" unless entry
@@ -437,7 +436,7 @@ module Samagotchi
     # The variable the host's API key comes from and whether it is set, or
     # comes from the Keychain (HostKeys); the key itself is never shown.
     def api_key_for(model, env)
-      name = HostRegistry.new(env: env).resolve(model).entry&.api_key_env
+      name = registry(env).resolve(model).entry&.api_key_env
       return "-" unless name
 
       state = { env: "set", keychain: "keychain" }.fetch(HostKeys.source(name, env: env), "unset")

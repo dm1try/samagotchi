@@ -2066,7 +2066,7 @@ RSpec.describe Samagotchi::Worker do
         switched = ran(JSON.parse(post_command("/model clear").body)["command_id"])
         expect(switched).to include(changed: ["model"])
         expect(switched[:llm_context]).to include(strategy: "stale", strategy_source: "session")
-        expect(shown[:output]).to start_with("llm context: stale (the session)")
+        expect(shown[:output]).to start_with("llm context: stale (session)")
       end
 
       it "runs /thinking: the session keeps its own level, and the command_ran carries the level the next turn runs at" do

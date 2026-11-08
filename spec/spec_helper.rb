@@ -236,6 +236,8 @@ RSpec.configure do |config|
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
     # EffectiveModel::Unresolved warns once per process for each failure.
     Samagotchi::EffectiveModel::Unresolved.reset! if defined?(Samagotchi::EffectiveModel::Unresolved)
+    # The process's shared HostRegistry (HostRegistry.current): one per example.
+    Samagotchi::HostRegistry.reset_current! if defined?(Samagotchi::HostRegistry)
     # The saved host model lists (ModelListStore) are a file in the state dir
     # this whole suite shares: a spec that lists a fake host's models must
     # not make the next example's model look unknown (nor hide a real one).

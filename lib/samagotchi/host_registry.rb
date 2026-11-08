@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "ipaddr"
 require_relative "config"
+require_relative "host_address"
 require_relative "log"
 require_relative "model_ref"
 require_relative "client"
@@ -88,11 +88,11 @@ module Samagotchi
       def dialect_profile = LLM::Dialect.for(dialect)
 
       # A provider on the network rather than a local server: hosts.<name>.remote
-      # when set, else by its address (HostRegistry.remote_address?). An API
+      # when set, else by its address (HostAddress.remote_address?). An API
       # key doesn't decide: a llama.cpp on the LAN can have one. A remote
       # host's model list is cached longer, it gets a first-token limit, and
       # it isn't asked for llama.cpp's /props.
-      def remote? = remote.nil? ? HostRegistry.remote_address?(scheme, host) : remote
+      def remote? = remote.nil? ? HostAddress.remote_address?(scheme, host) : remote
 
       def models_ttl = remote? ? REMOTE_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS
 
@@ -102,7 +102,7 @@ module Samagotchi
       # and read_timeout catches a dead one). 0 turns it off.
       def first_token_limit
         seconds = first_token_timeout
-        seconds = HostRegistry.configured_first_token_timeout if seconds.nil?
+        seconds = HostAddress.configured_first_token_timeout if seconds.nil?
         seconds = remote? ? REMOTE_FIRST_TOKEN_TIMEOUT : nil if seconds.nil?
         seconds&.positive? ? seconds : nil
       end
@@ -115,13 +115,61 @@ module Samagotchi
       def openai_base_url = entry.openai_base_url
     end
 
+    # Raised when a client override is set on the shared registry (.current):
+    # every command and chi web's routes would then send through it.
+    class Shared < StandardError
+      def initialize(msg = "HostRegistry.current is shared: set a client override on a registry of your own") = super
+    end
+
     # A client that every target uses instead of its host's own (specs inject
     # a stub this way; the Engine/TUI `client:` keyword sets it).
-    attr_accessor :client_override
+    attr_reader :client_override
+
+    # @raise [Shared] on the shared registry (.current)
+    def client_override=(client)
+      raise Shared if @shared
+
+      @client_override = client
+    end
+
+    @current_mutex = Mutex.new
+
+    # The registry this process's commands and chi web share: one per
+    # process, built again when config.yml's hosts: no longer equal the ones
+    # it was built from (HostConfig.all, compared as read: the YAML read is
+    # mtime-cached), so a host added while chi web runs is listed on the next
+    # read, and its model lists, index and adapters are kept while hosts:
+    # stay. It doesn't rebuild on server.first_token_timeout or the
+    # server.host/port fallback entry: those are read at construction. It
+    # refuses a client override (Shared). An Engine and the TerminalUI take
+    # it once, at their start: a running worker keeps the hosts it started
+    # with.
+    # For any env but the process ENV (chi self's spec envs): a fresh
+    # registry on that env, never kept.
+    # @return [HostRegistry]
+    def self.current(env: ENV)
+      return new(env: env) unless env.equal?(ENV)
+
+      @current_mutex.synchronize do
+        hosts = HostConfig.all
+        if @current.nil? || hosts != @current_hosts
+          @current = new(hosts_config: hosts, shared: true)
+          @current_hosts = hosts
+        end
+        @current
+      end
+    end
+
+    # Forget the shared registry (specs: one per example).
+    def self.reset_current!
+      @current_mutex.synchronize { @current = @current_hosts = nil }
+    end
 
     # @param clock [#call, nil] monotonic seconds (specs)
-    def initialize(hosts_config: nil, env: ENV, client_override: nil, clock: nil)
+    # @param shared [Boolean] .current's own: refuses a client override
+    def initialize(hosts_config: nil, env: ENV, client_override: nil, clock: nil, shared: false)
       @client_override = client_override
+      @shared = shared
       @env = env
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @adapters = {}
@@ -155,45 +203,9 @@ module Samagotchi
 
     attr_reader :entries
 
-    # Loopback, private (RFC 1918, IPv6 unique local) and link-local nets.
-    LOCAL_NETS = %w[127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10
-                    ::1/128 fc00::/7 fe80::/10].map { |net| IPAddr.new(net) }.freeze
-
-    # Name suffixes that stay on a home or office network: mDNS, the
-    # special-use and customary private names, router defaults (fritz.box)
-    # and Tailscale's MagicDNS. Compared on whole labels.
-    LOCAL_NAME_SUFFIXES = %w[localhost local lan home home.arpa internal intranet localdomain private corp test
-                             box ts.net].freeze
-
-    # Whether an address is remote: https, an http IP address outside the
-    # local nets (LOCAL_NETS), or an http name with a dot whose suffix isn't
-    # a local one (LOCAL_NAME_SUFFIXES): `gpu.example.com` is remote, while
-    # `box`, `mac.local`, `gpu.lan` and `pc.tail1234.ts.net` are local. chi
-    # doesn't look names up; hosts.<name>.remote overrides either way.
-    def self.remote_address?(scheme, host)
-      return true if scheme.to_s == "https"
-
-      address = IPAddr.new(host.to_s.delete_prefix("[").delete_suffix("]"))
-      address = address.native if address.ipv4_mapped?
-      LOCAL_NETS.none? { |net| net.family == address.family && net.include?(address) }
-    rescue IPAddr::Error
-      remote_name?(host)
-    end
-
-    def self.remote_name?(host)
-      name = host.to_s.downcase.delete_suffix(".")
-      return false unless name.include?(".")
-
-      LOCAL_NAME_SUFFIXES.none? { |suffix| name == suffix || name.end_with?(".#{suffix}") }
-    end
-    private_class_method :remote_name?
-
-    # server.first_token_timeout, or nil when unset or unreadable.
-    def self.configured_first_token_timeout
-      Config.get("server.first_token_timeout")
-    rescue StandardError
-      nil
-    end
+    # The env its hosts, aliases and saved lists are read with (ENV, or chi
+    # self's): what an EffectiveModel's ModelLookup reads every layer with.
+    attr_reader :env
 
     def default_entry
       @entries["default"] || @entries.values.first

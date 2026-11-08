@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "config"
-require_relative "model_profile"
 require_relative "setting_explained"
 
 module Samagotchi
@@ -79,30 +78,23 @@ module Samagotchi
       nil
     end
 
-    # The level for +target+ and where it came from ("session",
+    # The level for +lookup+'s model and where it came from ("session",
     # "--thinking", "models: qwen", "hosts.work", "thinking.level"; nil for
     # the default).
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @param session [Symbol, nil] the session's own level (Session#thinking)
     # @return [Array(Symbol, String|nil)]
-    def resolve(target, names:, models: nil, session: nil)
+    def resolve(lookup, session: nil)
       return [session, SESSION_SOURCE] if session
 
-      global, origin = global_level
+      global, origin = global_level(lookup)
       return [global, origin == :cli ? "--thinking" : "SAMAGOTCHI_THINKING_LEVEL"] if global && %i[cli env].include?(origin)
 
-      models ||= begin
-        ModelSettings.all
-      rescue StandardError
-        {}
-      end
-      setting = ModelSettings.find(names, :thinking, models: models)
+      setting = lookup.model(:thinking)
       return [setting.value, "models: #{setting.key}"] if setting
 
-      host = target.entry.thinking
-      return [host, "hosts.#{target.entry.name}"] if host
+      host = lookup.host(:thinking)
+      return [host, "hosts.#{lookup.host_name}"] if host
       return [global, "thinking.level"] if global
 
       [DEFAULT, nil]
@@ -110,14 +102,15 @@ module Samagotchi
 
     # #resolve, as a SettingExplained with the session's own level beside it.
     # @return [SettingExplained]
-    def explain(target, names:, models: nil, session: nil)
-      level, source = resolve(target, names: names, models: models, session: session)
+    def explain(lookup, session: nil)
+      level, source = resolve(lookup, session: session)
       SettingExplained.new(level: level, source: source, own: session)
     end
 
     # thinking.level as a level and its origin (:cli, :env, :file), or nil.
-    def global_level
-      raw, origin = Config.get_with_origin("thinking.level")
+    # @param lookup [ModelLookup] whose env the key is read with
+    def global_level(lookup)
+      raw, origin = lookup.global("thinking.level")
       return nil if origin == :default
 
       where = { cli: "--thinking", env: "SAMAGOTCHI_THINKING_LEVEL" }.fetch(origin, "thinking.level")
@@ -139,13 +132,15 @@ module Samagotchi
     #              only the tail changes (llama.cpp and Splash keep the rest).
     # @param target [HostRegistry::ModelTarget]
     # @param profile [String, nil] the native prompt profile's name
+    # @param inferred [String, nil] the profile a local chat host's model
+    #   name says (ModelProfile.inferred_profile_name of its bare id)
     # @return [Symbol]
-    def cache_cost(target, profile: nil)
+    def cache_cost(target, profile: nil, inferred: nil)
       entry = target.entry
       if entry&.chat?
         return :provider if entry.remote?
 
-        return ModelProfile.inferred_profile_name(target.bare_model) == "gemma4" ? :full : :tail
+        return inferred == "gemma4" ? :full : :tail
       end
 
       profile == "gemma4" ? :full : :tail

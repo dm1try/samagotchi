@@ -409,7 +409,7 @@ RSpec.describe "Engine#stats_snapshot" do
     session.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 64_000)
     engine.session = session
 
-    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "the session")
+    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "session")
   end
 
   it "builds the metrics snapshot once per session state" do

@@ -90,7 +90,9 @@ module Samagotchi
       # As typed: the Engine applies an alias where it resolves the model.
       flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
       @effective_model_name = flag_model_name || @default_model_name
-      @host_registry = host_registry || Samagotchi::HostRegistry.new
+      # Taken once (as the Engine's); a client (specs) goes on a registry of
+      # its own, never the shared one.
+      @host_registry = host_registry || (client ? Samagotchi::HostRegistry.new : Samagotchi::HostRegistry.current)
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
       @client = @host_registry.resolve(@effective_model_name).client

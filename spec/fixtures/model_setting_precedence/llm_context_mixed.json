@@ -1,0 +1,44 @@
+[
+  {
+    "step": "model strategy, host apply",
+    "surfaces": {
+      "effective": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts.box",
+        "budget_tokens": 80000,
+        "budget_source": "host_setting",
+        "budget_where": "hosts.box",
+        "own": null
+      },
+      "session_budget": 80000,
+      "api_models": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts.box",
+        "budget_tokens": 80000,
+        "budget_source": "host_setting",
+        "budget_where": "hosts.box",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts.box",
+        "budget_tokens": 80000,
+        "budget_source": "host_setting",
+        "budget_where": "hosts.box",
+        "own": null
+      }
+    }
+  }
+]

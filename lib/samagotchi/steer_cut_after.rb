@@ -32,27 +32,20 @@ module Samagotchi
       nil
     end
 
-    # The seconds for +target+ and where they came from
+    # The seconds for +lookup+'s model and where they came from
     # ("SAMAGOTCHI_STEER_CUT_AFTER", "models: qwen", "hosts.splash",
     # "steer.cut_after"; nil for the default).
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @return [Array(Integer, String|nil)]
-    def resolve(target, names:, models: nil)
-      value, origin = Config.get_with_origin("steer.cut_after")
+    def resolve(lookup)
+      value, origin = lookup.global("steer.cut_after")
       return [value.to_i, ENV_KEY] if origin == :env
 
-      models ||= begin
-        ModelSettings.all
-      rescue StandardError
-        {}
-      end
-      setting = ModelSettings.find(names, :steer_cut_after, models: models)
+      setting = lookup.model(:steer_cut_after)
       return [setting.value, "models: #{setting.key}"] if setting
 
-      host = target.entry.steer_cut_after
-      return [host, "hosts.#{target.entry.name}"] unless host.nil?
+      host = lookup.host(:steer_cut_after)
+      return [host, "hosts.#{lookup.host_name}"] unless host.nil?
 
       return [value.to_i, "steer.cut_after"] if origin == :file
 

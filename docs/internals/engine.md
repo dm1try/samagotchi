@@ -377,7 +377,18 @@ a bare id to another host, and another process's saved model lists change what a
   command thread, the recap thread, plugin threads.
 - `ModelChoice` (`ModelBinding#choice`) holds the name and the typed name as **one value**, so a reader never pairs
   one model's name with another's typed name.
-- `EffectiveModel.of_session` builds a saved session's (no worker): `Web::App`, `LLMContextStrategy.for_session`.
+- Every reader passes its `ModelLookup` (`model_lookup.rb`) to the setting module: one input for every layer (the
+  target's host entry, the lookup names, the `models:` map, and the env the CLI/env/file layers are read with, the
+  registry's own: `HostRegistry#env`). Each module (`Thinking`, `ReasoningHistory`, `SteerCutAfter`,
+  `SamplingSettings`, `VisionSupport`, `ContextWindow.setting`, `LLMContextStrategy`) keeps its own ordered
+  `resolve` over it and never names `ModelLookup` or `ModelSettings` (the class map's rule: the modules' parsers are
+  what `ModelSettings` calls). `ModelProfile.resolve` takes its `models` map. `.of(registry, choice, models:)` takes
+  one map for many models (the start page's picker).
+- `EffectiveModel.of_session` builds a saved session's (no worker): `SessionSetting#saved_summary`, and
+  `EffectiveModel.session_llm_context` / `.session_budget` (a session page, a session list's ctx %).
+- The registry: an Engine (and the TerminalUI) takes `HostRegistry.current` once at its start, so a running worker
+  keeps the hosts it started with; commands and chi web read `.current` (one per process, built again when
+  `hosts:` changes; it refuses a client override, so a spec's `client:` goes on a registry of its own).
 
 `SessionSetting` (`session_setting.rb`) describes the four per-session settings (llm_context, thinking,
 reasoning_history, toolkit): own value, commands, chips, a saved session's chip, the web's fallback. The session
@@ -750,6 +761,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `event_fanout.rb`, `events.rb`, `event_routes.rb` | `EventFanout` (sink + observers, the stream handler, the working set's emit); the shared event sets; where a card, notice or guardrails line goes |
 | `engine_snapshots.rb` | `session_state_snapshot` (cheap, never raises), `stats_snapshot` (may probe `/props`) |
 | `model_binding.rb`, `effective_model.rb`, `session_model_settings.rb`, `session_setting.rb` | The model choice and profile; `EffectiveModel` / `ModelChoice`; the session's settings on its model; the per-session setting descriptors |
+| `model_lookup.rb`, `host_registry.rb`, `host_address.rb` | `ModelLookup`, every setting layer's input; `HostRegistry` (`.current`, the shared one); `HostAddress`, whether an address is remote |
 | `thinking_notices.rb`, `level_setting_command.rb`, `thinking_command.rb`, `reasoning_history_command.rb`, `reasoning_history.rb` | Thinking notices; `/thinking`, `/reasoning-history`; `ReasoningHistory` (`.resolve`, `.run_start`) |
 | `steer.rb`, `steer_cut.rb`, `generation_phase.rb`, `waiting_steer.rb`, `steer_cut_after.rb`, `cut_policy.rb` | Steers at boundaries; the cut seam and its parts; the cut wait; the loops' cut path |
 | `kernel_loop.rb` | The native loop |

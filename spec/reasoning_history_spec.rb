@@ -3,6 +3,7 @@
 require "tmpdir"
 require "samagotchi/config"
 require "samagotchi/host_registry"
+require "samagotchi/model_lookup"
 require "samagotchi/reasoning_history"
 
 # reasoning_history (drop|turn|all): which of its own reasoning a chat
@@ -23,7 +24,8 @@ RSpec.describe Samagotchi::ReasoningHistory do
       models = Samagotchi::ModelSettings.all(env: {}, path: path)
       hosts = Samagotchi::HostConfig.all(env: {}, path: path)
       target = Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
-      described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)
+      lookup = Samagotchi::ModelLookup.for(target, names: [target.model, target.bare_model], models: models)
+      described_class.public_send(how, lookup, session: session)
     end
   end
 

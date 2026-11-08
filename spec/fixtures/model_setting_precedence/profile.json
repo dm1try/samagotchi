@@ -1,0 +1,128 @@
+[
+  {
+    "step": "cli",
+    "surfaces": {
+      "model_profile": {
+        "name": "gemma4",
+        "source": "cli",
+        "detail": null,
+        "label": "cli"
+      },
+      "effective": {
+        "name": "gemma4",
+        "source": "cli",
+        "detail": null,
+        "label": "cli"
+      },
+      "self_report": "gemma4 (cli)"
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "model_profile": {
+        "name": "qwen36",
+        "source": "env",
+        "detail": null,
+        "label": "env"
+      },
+      "effective": {
+        "name": "qwen36",
+        "source": "env",
+        "detail": null,
+        "label": "env"
+      },
+      "self_report": "qwen36 (env)"
+    }
+  },
+  {
+    "step": "models: loc (typed alias)",
+    "surfaces": {
+      "model_profile": {
+        "name": "gemma4",
+        "source": "config",
+        "detail": "models: loc",
+        "label": "config (models: loc)"
+      },
+      "effective": {
+        "name": "gemma4",
+        "source": "config",
+        "detail": "models: loc",
+        "label": "config (models: loc)"
+      },
+      "self_report": "gemma4 (config models: loc)"
+    }
+  },
+  {
+    "step": "models: nat:mod-n (alias target)",
+    "surfaces": {
+      "model_profile": {
+        "name": "qwen36",
+        "source": "config",
+        "detail": "models: nat:mod-n",
+        "label": "config (models: nat:mod-n)"
+      },
+      "effective": {
+        "name": "qwen36",
+        "source": "config",
+        "detail": "models: nat:mod-n",
+        "label": "config (models: nat:mod-n)"
+      },
+      "self_report": "qwen36 (config models: nat:mod-n)"
+    }
+  },
+  {
+    "step": "models: mod-n (bare id)",
+    "surfaces": {
+      "model_profile": {
+        "name": "gemma4",
+        "source": "config",
+        "detail": "models: mod-n",
+        "label": "config (models: mod-n)"
+      },
+      "effective": {
+        "name": "gemma4",
+        "source": "config",
+        "detail": "models: mod-n",
+        "label": "config (models: mod-n)"
+      },
+      "self_report": "gemma4 (config models: mod-n)"
+    }
+  },
+  {
+    "step": "hosts.nat",
+    "surfaces": {
+      "model_profile": {
+        "name": "qwen36",
+        "source": "config",
+        "detail": "hosts.nat",
+        "label": "config (hosts.nat)"
+      },
+      "effective": {
+        "name": "qwen36",
+        "source": "config",
+        "detail": "hosts.nat",
+        "label": "config (hosts.nat)"
+      },
+      "self_report": "qwen36 (config hosts.nat)"
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "model_profile": {
+        "name": "qwen36",
+        "source": "default",
+        "detail": null,
+        "label": "default"
+      },
+      "effective": {
+        "name": "qwen36",
+        "source": "default",
+        "detail": null,
+        "label": "default"
+      },
+      "self_report": "from the server at runtime (default qwen36)"
+    }
+  }
+]

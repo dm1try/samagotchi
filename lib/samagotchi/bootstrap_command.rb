@@ -3,6 +3,7 @@
 require "rbconfig"
 require_relative "config"
 require_relative "model_profile"
+require_relative "host_address"
 require_relative "host_registry"
 require_relative "host_keys"
 require_relative "chi_home"
@@ -342,7 +343,7 @@ module Samagotchi
     # The "loading the model?" hint fits a local server (a llama.cpp loading
     # weights); a remote provider's slow answer is the network, not a load.
     def loading_hint?(result)
-      !HostRegistry.remote_address?(result.candidate.scheme, result.candidate.host)
+      !HostAddress.remote_address?(result.candidate.scheme, result.candidate.host)
     end
 
     # 0 written, 1 written but not as planned, nil with @exit on a refusal.

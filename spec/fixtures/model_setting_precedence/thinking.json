@@ -1,0 +1,209 @@
+[
+  {
+    "step": "session",
+    "surfaces": {
+      "effective": {
+        "level": "high",
+        "source": "session",
+        "own": "high"
+      },
+      "effective_level": "high",
+      "self_report": "medium (--thinking)",
+      "self_report_in_session": "high (session)",
+      "api_models": {
+        "level": "medium",
+        "source": "--thinking",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "high",
+        "source": "session",
+        "own": "high"
+      }
+    }
+  },
+  {
+    "step": "cli",
+    "surfaces": {
+      "effective": {
+        "level": "medium",
+        "source": "--thinking",
+        "own": null
+      },
+      "effective_level": "medium",
+      "self_report": "medium (--thinking)",
+      "self_report_in_session": "medium (--thinking)",
+      "api_models": {
+        "level": "medium",
+        "source": "--thinking",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "medium",
+        "source": "--thinking",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "effective": {
+        "level": "low",
+        "source": "SAMAGOTCHI_THINKING_LEVEL",
+        "own": null
+      },
+      "effective_level": "low",
+      "self_report": "low (SAMAGOTCHI_THINKING_LEVEL)",
+      "self_report_in_session": "low (SAMAGOTCHI_THINKING_LEVEL)",
+      "api_models": {
+        "level": "low",
+        "source": "SAMAGOTCHI_THINKING_LEVEL",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "low",
+        "source": "SAMAGOTCHI_THINKING_LEVEL",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "models: small (typed alias)",
+    "surfaces": {
+      "effective": {
+        "level": "off",
+        "source": "models: small",
+        "own": null
+      },
+      "effective_level": "off",
+      "self_report": "off (models: small)",
+      "self_report_in_session": "off (models: small)",
+      "api_models": {
+        "level": "off",
+        "source": "models: small",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "off",
+        "source": "models: small",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "models: box:qwen-a (alias target)",
+    "surfaces": {
+      "effective": {
+        "level": "high",
+        "source": "models: box:qwen-a",
+        "own": null
+      },
+      "effective_level": "high",
+      "self_report": "high (models: box:qwen-a)",
+      "self_report_in_session": "high (models: box:qwen-a)",
+      "api_models": {
+        "level": "high",
+        "source": "models: box:qwen-a",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "high",
+        "source": "models: box:qwen-a",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "models: qwen-a (bare id)",
+    "surfaces": {
+      "effective": {
+        "level": "medium",
+        "source": "models: qwen-a",
+        "own": null
+      },
+      "effective_level": "medium",
+      "self_report": "medium (models: qwen-a)",
+      "self_report_in_session": "medium (models: qwen-a)",
+      "api_models": {
+        "level": "medium",
+        "source": "models: qwen-a",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "medium",
+        "source": "models: qwen-a",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "effective": {
+        "level": "low",
+        "source": "hosts.box",
+        "own": null
+      },
+      "effective_level": "low",
+      "self_report": "low (hosts.box)",
+      "self_report_in_session": "low (hosts.box)",
+      "api_models": {
+        "level": "low",
+        "source": "hosts.box",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "low",
+        "source": "hosts.box",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "file thinking.level",
+    "surfaces": {
+      "effective": {
+        "level": "off",
+        "source": "thinking.level",
+        "own": null
+      },
+      "effective_level": "off",
+      "self_report": "off (thinking.level)",
+      "self_report_in_session": "off (thinking.level)",
+      "api_models": {
+        "level": "off",
+        "source": "thinking.level",
+        "own": null
+      },
+      "saved_chip": {
+        "level": "off",
+        "source": "thinking.level",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "effective": {
+        "level": "default",
+        "source": null,
+        "own": null
+      },
+      "effective_level": "default",
+      "self_report": "default",
+      "self_report_in_session": "default",
+      "api_models": {
+        "level": "default",
+        "source": null,
+        "own": null
+      },
+      "saved_chip": {
+        "level": "default",
+        "source": null,
+        "own": null
+      }
+    }
+  }
+]

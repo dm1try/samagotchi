@@ -451,4 +451,94 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(Samagotchi::ModelListStore.find("box")).to be_nil
     end
   end
+
+  # What a running Engine and a short-lived command each see of a hosts:
+  # edit. chi web's own rebuild on a change is pinned in spec/web/app_spec.rb
+  # ("lists a host added…") and spec/web/session_hub_spec.rb.
+  describe "hosts: changes" do
+    let(:home) { Dir.mktmpdir("hosts-changes") }
+
+    around do |example|
+      with_config_home(home) { with_env("SAMAGOTCHI_DEFAULT_MODEL" => nil) { example.run } }
+    ensure
+      FileUtils.rm_rf(home)
+    end
+
+    before do
+      require "samagotchi/engine"
+      require "samagotchi/self_report"
+      allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:ensure!)
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      write_hosts(8081)
+    end
+
+    def write_hosts(port)
+      path = File.join(home, "samagotchi", "config.yml")
+      data = YAML.safe_load_file(path) || {}
+      File.write(path, YAML.dump(data.merge("hosts" => { "box" => { "host" => "127.0.0.1", "port" => port } })))
+      @writes = (@writes || 0) + 1
+      File.utime(Time.now + @writes, Time.now + @writes, path)
+    end
+
+    it "leaves an Engine built before the edit on the hosts it started with" do
+      engine = Samagotchi::Engine.new(model_name: "box:m")
+      write_hosts(9091)
+
+      expect(engine.model_identity.host).to eq("host box, 127.0.0.1:8081")
+      expect(Samagotchi::Engine.new(model_name: "box:m").model_identity.host).to eq("host box, 127.0.0.1:9091")
+    end
+
+    it "gives chi self's rows the file as it is now" do
+      expect(Samagotchi::SelfReport.host_for("box:m", ENV)).to include("127.0.0.1:8081")
+      write_hosts(9091)
+
+      expect(Samagotchi::SelfReport.host_for("box:m", ENV)).to include("127.0.0.1:9091")
+    end
+
+    describe ".current" do
+      it "is one registry while hosts: stay, and a new one after an edit" do
+        first = described_class.current
+        expect(described_class.current).to be(first)
+        expect(first.find_entry("box").port).to eq(8081)
+
+        write_hosts(9091)
+        second = described_class.current
+        expect(second).not_to be(first)
+        expect(second.find_entry("box").port).to eq(9091)
+        expect(described_class.current).to be(second)
+      end
+
+      it "gives every thread the same one" do
+        registries = Array.new(8) { Thread.new { described_class.current } }.map(&:value)
+
+        expect(registries.uniq(&:object_id).size).to eq(1)
+      end
+
+      it "is a fresh registry each call for another env, never the shared one" do
+        env = ENV.to_h
+        one = described_class.current(env: env)
+
+        expect(described_class.current(env: env)).not_to be(one)
+        expect(one).not_to be(described_class.current)
+        expect(one.env).to be(env)
+      end
+
+      it "refuses a client override; a registry of one's own takes it" do
+        expect { described_class.current.client_override = double("client") }.to raise_error(described_class::Shared)
+        expect(described_class.current.client_override).to be_nil
+        expect { described_class.current(env: ENV.to_h).client_override = double("client") }.not_to raise_error
+      end
+    end
+
+    it "sends an Engine given a registry and a client through that client" do
+      stub = double("client")
+      given = described_class.new(hosts_config: { "box" => { host: "127.0.0.1", port: 8081 } })
+      engine = Samagotchi::Engine.new(host_registry: given, client: stub, model_name: "box:m")
+
+      # Every turn's client is its target's (EffectiveModel#client): the stub,
+      # never the host's own.
+      expect(given.resolve("box:m").client).to be(stub)
+      expect(engine.model_identity.host).to eq("host box, 127.0.0.1:8081")
+    end
+  end
 end

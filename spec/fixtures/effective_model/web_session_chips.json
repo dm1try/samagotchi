@@ -25,7 +25,7 @@
       "llm_context": {
         "strategy": "stale",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -80,7 +80,7 @@
       "llm_context": {
         "strategy": "stale",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -139,7 +139,7 @@
       "llm_context": {
         "strategy": "stale",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -194,7 +194,7 @@
       "llm_context": {
         "strategy": "stale",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -245,7 +245,7 @@
       "llm_context": {
         "strategy": "stale",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",

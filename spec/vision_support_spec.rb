@@ -3,6 +3,7 @@
 require "json"
 require "samagotchi/vision_support"
 require "samagotchi/host_registry"
+require "samagotchi/model_lookup"
 require "samagotchi/model_profile"
 
 RSpec.describe Samagotchi::VisionSupport do
@@ -28,7 +29,8 @@ RSpec.describe Samagotchi::VisionSupport do
   end
 
   def answer(target, profile: qwen, adapter: nil, models: {})
-    described_class.for(target, names: [target.model, target.bare_model], profile: profile, adapter: adapter, models: models)
+    lookup = Samagotchi::ModelLookup.for(target, names: [target.model, target.bare_model], models: models)
+    described_class.for(lookup, profile: profile, adapter: adapter)
   end
 
   describe "a native host" do

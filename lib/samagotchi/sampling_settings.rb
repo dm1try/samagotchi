@@ -11,18 +11,16 @@ module Samagotchi
   module SamplingSettings
     EMPTY = {}.freeze
 
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @return [Hash] frozen, symbol keys; may be empty
-    def self.for(target, names:, models: nil)
-      resolve(target, names, models).first
+    def self.for(lookup)
+      resolve(lookup).first
     end
 
     # "temperature=0.6 presence_penalty=1.5 (hosts.work, models: qwen)" for
     # /model, or nil when nothing is configured.
-    def self.summary(target, names:, models: nil)
-      params, sources = resolve(target, names, models)
+    def self.summary(lookup)
+      params, sources = resolve(lookup)
       return nil if params.empty?
 
       pairs = params.map { |key, value| "#{key}=#{value.nil? ? "(not sent)" : value.inspect}" }
@@ -37,16 +35,11 @@ module Samagotchi
       fields.map { |key, value| "#{key}=#{value.is_a?(String) ? value : JSON.generate(value)}" }.join(" ")
     end
 
-    def self.resolve(target, names, models)
-      models ||= begin
-        ModelSettings.all
-      rescue StandardError
-        {}
-      end
-      host = target.entry.sampling || EMPTY
-      model = ModelSettings.find(names, :sampling, models: models)
+    def self.resolve(lookup)
+      host = lookup.host(:sampling) || EMPTY
+      model = lookup.model(:sampling)
       sources = []
-      sources << "hosts.#{target.entry.name}" unless host.empty?
+      sources << "hosts.#{lookup.host_name}" unless host.empty?
       sources << "models: #{model.key}" if model
       [host.merge(model&.value || EMPTY).freeze, sources]
     end

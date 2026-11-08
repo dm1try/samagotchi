@@ -4,6 +4,7 @@ require_relative "host_registry"
 require_relative "log"
 require_relative "context_window"
 require_relative "llm_context_strategy"
+require_relative "model_lookup"
 require_relative "model_profile"
 require_relative "reasoning_history"
 require_relative "sampling_settings"
@@ -22,7 +23,8 @@ module Samagotchi
 
   # The effective model resolved once (HostRegistry#resolve: its host and
   # client, the id sent) with the names its models: entry may be under
-  # (HostRegistry#lookup_names), and its settings read from them. An
+  # (HostRegistry#lookup_names), and its settings read from them through
+  # one ModelLookup (every layer's input, with the registry's env). An
   # immutable snapshot built per read, never kept across reads: config.yml,
   # a model listing (which may move a bare id to another host) and another
   # process's saved lists all change what a resolve gives without any
@@ -32,14 +34,17 @@ module Samagotchi
   # Engine has always given (Unresolved); building one raises as
   # HostRegistry#resolve does (SessionModelSettings#model_setting gives the
   # fallback then).
-  EffectiveModel = Data.define(:registry, :name, :typed, :target, :names) do
+  EffectiveModel = Data.define(:registry, :name, :typed, :target, :names, :lookup) do
     # @param registry [HostRegistry]
     # @param choice [ModelChoice]
+    # @param models [Hash{String => ModelSettings}, nil] one models: map for
+    #   many models (a picker); ModelSettings.all at each read by default
     # @raise what HostRegistry#resolve raises
-    def self.of(registry, choice)
+    def self.of(registry, choice, models: nil)
       target = registry.resolve(choice.name)
-      new(registry: registry, name: choice.name, typed: choice.typed, target: target,
-          names: registry.lookup_names(choice.typed, resolved: choice.name, target: target))
+      names = registry.lookup_names(choice.typed, resolved: choice.name, target: target)
+      new(registry: registry, name: choice.name, typed: choice.typed, target: target, names: names,
+          lookup: ModelLookup.for(target, names: names, models: models, env: registry.env))
     end
 
     # A saved session's model (no worker): its model name, the default when
@@ -48,6 +53,34 @@ module Samagotchi
     def self.of_session(session, registry:)
       name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
       of(registry, ModelChoice.new(name: name, typed: session.model_typed || name))
+    end
+
+    # A saved session's LLM context strategy, apply rule and budget, each
+    # with where it came from (LLMContextStrategy::Explained#summary), as
+    # its worker would resolve them; nil when they can't be (an unreadable
+    # config, a model that resolves nowhere). From config and the registry
+    # only: no network, no model call. What a session page, a session
+    # list's ctx % and a spawn-time check all read.
+    # @param session [Session, nil]
+    # @param registry [HostRegistry, nil] the hosts to resolve against;
+    #   HostRegistry.current by default
+    # @return [Hash, nil] Explained#summary, symbol keys
+    def self.session_llm_context(session, registry: nil)
+      return nil if session.nil?
+
+      own = session.llm_context
+      of_session(session, registry: registry || HostRegistry.current).llm_context_explained(own&.resolve_args || {})&.summary(own)
+    rescue StandardError # degrade-ok: a saved session's model that resolves nowhere has no budget to show; the readers log their own
+      nil
+    end
+
+    # The budget a saved session's turns run under
+    # (.session_llm_context's :budget_tokens), nil when it is off or can't
+    # be resolved. What a session list's ctx % counts against, so a saved
+    # session's fill reads as the live meter.
+    # @return [Integer, nil]
+    def self.session_budget(session, registry: nil)
+      session_llm_context(session, registry: registry)&.fetch(:budget_tokens, nil)
     end
 
     def entry = target.entry
@@ -63,21 +96,21 @@ module Samagotchi
 
     # The configured request parameters (hosts: and models: sampling).
     def sampling
-      SamplingSettings.for(target, names: names)
+      SamplingSettings.for(lookup)
     rescue StandardError => e
       unresolved(:sampling_unresolved, e, SamplingSettings::EMPTY)
     end
 
     # "temperature=0.6 (hosts.work)", nil when none.
     def sampling_summary
-      SamplingSettings.summary(target, names: names)
+      SamplingSettings.summary(lookup)
     rescue StandardError => e
       unresolved(:sampling_unresolved, e, nil)
     end
 
     # The thinking level (Thinking.resolve), the session's +own+ first.
     def thinking(own:)
-      Thinking.resolve(target, names: names, session: own).first
+      Thinking.resolve(lookup, session: own).first
     rescue StandardError => e
       unresolved(:thinking_unresolved, e, Thinking::DEFAULT)
     end
@@ -85,23 +118,25 @@ module Samagotchi
     # The thinking level with where it came from (SettingExplained), nil
     # when it can't be resolved.
     def thinking_explained(own:)
-      Thinking.explain(target, names: names, session: own)
+      Thinking.explain(lookup, session: own)
     rescue StandardError => e
       unresolved(:thinking_unresolved, e, nil)
     end
 
     # What a thinking level change costs the prompt cache
     # (Thinking.cache_cost); the block gives the prompt profile, asked only
-    # on a native host. Raises.
+    # on a native host; a local chat host's is the one its name says. Raises.
     # @return [Symbol]
     def thinking_cache_cost(&)
-      Thinking.cache_cost(target, profile: entry&.chat? ? nil : yield&.name)
+      return Thinking.cache_cost(target, inferred: ModelProfile.inferred_profile_name(bare)) if entry&.chat?
+
+      Thinking.cache_cost(target, profile: yield&.name)
     end
 
     # The reasoning_history level (ReasoningHistory.resolve), the session's
     # +own+ first.
     def reasoning_history(own:)
-      ReasoningHistory.resolve(target, names: names, session: own).first
+      ReasoningHistory.resolve(lookup, session: own).first
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, ReasoningHistory::DEFAULT)
     end
@@ -112,7 +147,7 @@ module Samagotchi
     def reasoning_history_explained(own:, native: false)
       return nil unless native || entry&.chat?
 
-      ReasoningHistory.explain(target, names: names, session: own)
+      ReasoningHistory.explain(lookup, session: own)
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, nil)
     end
@@ -122,7 +157,7 @@ module Samagotchi
     def reasoning_history_summary(own:)
       return nil unless entry&.chat?
 
-      level, source = ReasoningHistory.resolve(target, names: names, session: own)
+      level, source = ReasoningHistory.resolve(lookup, session: own)
       source ? ReasoningHistory.label(level, source) : nil
     rescue StandardError => e
       unresolved(:reasoning_history_unresolved, e, nil)
@@ -139,7 +174,7 @@ module Samagotchi
     # [seconds, source] a cut waits for thinking (SteerCutAfter.resolve);
     # the global and its name when it can't be resolved.
     def steer_cut_after_explained
-      SteerCutAfter.resolve(target, names: names)
+      SteerCutAfter.resolve(lookup)
     rescue StandardError => e
       unresolved(:steer_cut_after_unresolved, e, [SteerCut.cut_after, "steer.cut_after"])
     end
@@ -148,7 +183,7 @@ module Samagotchi
     # (LLMContextStrategy.explain) under the session's +args+
     # (LLMContextOverride#resolve_args), nil when it can't be resolved.
     def llm_context_explained(args)
-      LLMContextStrategy.explain(target, names: names, **args)
+      LLMContextStrategy.explain(lookup, **args)
     rescue StandardError => e
       unresolved(:llm_context_unresolved, e, nil)
     end
@@ -156,14 +191,14 @@ module Samagotchi
     # The LLM context layers its turns run under; [] when they can't be
     # resolved.
     def llm_context_layers(args)
-      LLMContextStrategy.resolve(target, names: names, **args).active_layers
+      LLMContextStrategy.resolve(lookup, **args).active_layers
     rescue StandardError => e
       unresolved(:llm_context_unresolved, e, [])
     end
 
     # models:/hosts: window_tokens (ContextWindow.setting), nil when unset.
     def window_setting
-      ContextWindow.setting(target, names: names)
+      ContextWindow.setting(lookup)
     rescue StandardError => e
       unresolved(:window_unresolved, e, nil)
     end
@@ -171,7 +206,7 @@ module Samagotchi
     # The window config.yml gives this model or its host
     # (ContextWindow.setting), never asking a server: a session loaded on
     # it (Engine#session=, before a worker's Bridge serves). nil when none.
-    def configured_context_window = ContextWindow.setting(target, names: names)
+    def configured_context_window = ContextWindow.setting(lookup)
 
     # The window as its loop would see it (ChatLoop#context_window: a remote
     # chat host has no /props, only its model list); nil when it can't be
@@ -183,7 +218,7 @@ module Samagotchi
         adapter = registry.adapter_for(entry)
         client = nil if adapter.remote?
       end
-      ContextWindow.resolve(client: client, model: bare, adapter: adapter, setting: ContextWindow.setting(target, names: names))
+      ContextWindow.resolve(client: client, model: bare, adapter: adapter, setting: ContextWindow.setting(lookup))
     rescue StandardError => e
       unresolved(:window_unresolved, e, nil)
     end
@@ -232,7 +267,7 @@ module Samagotchi
 
     # Whether it sees images (VisionSupport.for) under +profile+.
     def vision_support(profile)
-      VisionSupport.for(target, profile: profile, adapter: vision_adapter, names: names)
+      VisionSupport.for(lookup, profile: profile, adapter: vision_adapter)
     end
 
     # A chat host's adapter (what it says of images), nil on a native host.
@@ -246,7 +281,7 @@ module Samagotchi
     # Not cached here. Raises.
     # @return [ModelProfile::Resolution]
     def profile_resolution
-      ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare)
+      ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare, models: lookup.models)
     end
 
     # See Unresolved.fallback.

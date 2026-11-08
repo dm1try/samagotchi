@@ -1,0 +1,262 @@
+[
+  {
+    "step": "session",
+    "surfaces": {
+      "effective": {
+        "strategy": "forget",
+        "strategy_source": "session",
+        "strategy_where": "session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "forget"
+          ]
+        }
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "forget",
+        "strategy_source": "session",
+        "strategy_where": "session",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "strategy": [
+            "forget"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "step": "models: small",
+    "surfaces": {
+      "effective": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "stale",
+        "strategy_source": "model_setting",
+        "strategy_where": "models: small",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "effective": {
+        "strategy": "forget",
+        "strategy_source": "host_setting",
+        "strategy_where": "hosts.box",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "forget",
+        "strategy_source": "host_setting",
+        "strategy_where": "hosts.box",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "forget",
+        "strategy_source": "host_setting",
+        "strategy_where": "hosts.box",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "effective": {
+        "strategy": "stale,forget",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "stale,forget",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "stale,forget",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "file llm_context.strategy",
+    "surfaces": {
+      "effective": {
+        "strategy": "stale",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "stale",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "stale",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  }
+]

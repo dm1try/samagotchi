@@ -17,6 +17,7 @@ require_relative "turn_flow"
 require_relative "guardrails/parent_approvals"
 require_relative "guardrails/parent_policy"
 require_relative "image_store"
+require_relative "effective_model"
 require_relative "host_registry"
 require_relative "model_profile"
 require_relative "vision_support"
@@ -193,16 +194,13 @@ module Samagotchi
     # @param typed [String, nil] the name the model was typed as (a session's model_typed)
     # @return [VisionSupport::Answer] value nil when unknown
     def self.vision_answer(model_name, registry: nil, typed: nil)
-      registry ||= HostRegistry.new
+      registry ||= HostRegistry.current
       name = ModelProfile.required_model_name(model_name)
-      target = registry.resolve(name)
-      names = registry.lookup_names(typed.to_s.strip.empty? ? name : typed, resolved: name, target: target)
-      entry = target.entry
-      return VisionSupport.for(target, adapter: registry.adapter_for(entry), names: names) if entry.chat?
+      model = EffectiveModel.of(registry, ModelChoice.new(name: name, typed: typed.to_s.strip.empty? ? name : typed))
+      return model.vision_support(nil) if model.chat?
 
-      profile = ModelProfile.resolve(names: names, entry: entry, client: target.client, bare_model: target.bare_model).profile
-      answer = VisionSupport.for(target, profile: profile, names: names)
-      props = target.client.server_props(model: target.bare_model)
+      answer = model.vision_support(model.profile_resolution.profile)
+      props = model.client.server_props(model: model.bare)
       return UNKNOWN_VISION if answer.no? && !props&.answered? && !configured_no?(answer)
 
       answer

@@ -802,8 +802,8 @@ also offline (from the saved records). `/recap` is in
 Switch](#runtime-model-switch-assist-mode).
 
 `/llm-context` shows the LLM context strategy, apply rule and budget the next
-turn runs under, each with where it came from (`the session`, `models: <key>`,
-`hosts entry '<name>'`, `llm_context.*`), and the session's own values.
+turn runs under, each with where it came from (`session`, `models: <key>`,
+`hosts.<name>`, `llm_context.*`), and the session's own values.
 `/llm-context strategy <none|stale|stale,forget> apply <payoff|next_request|turn_end>
 budget <tokens|64k|off>` sets the session's own (any of the three, in one line;
 `default` unsets one), and `/llm-context reset` unsets them all. A change is

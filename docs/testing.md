@@ -75,6 +75,15 @@ spec/engine_turn_golden_spec.rb`, then read `git diff spec/fixtures/turn_goldens
 to `tmp/turn_goldens/<golden>.actual` and names the `diff` to run. Changes to the turn path (engine, kernel loop, chat loop,
 tool runner, gate, guardrail wiring, system prompt, tool declarations, registry) pick it in `script/affected-specs`.
 
+The model-setting characterizations (`spec/engine_effective_model_characterization_spec.rb`,
+`spec/engine_session_model_settings_characterization_spec.rb`, `spec/web/app_session_settings_characterization_spec.rb`
+over `spec/fixtures/effective_model/`, and `spec/model_setting_precedence_characterization_spec.rb`'s ladders over
+`spec/fixtures/model_setting_precedence/`) pin the settings on the code as it was before the `ModelLookup` refactor
+(`UPDATE_GOLDENS=1` regenerates them after an intended change only). They are retired after their refactor: the
+next round folds the first three into one wiring example each in `effective_model_spec.rb`,
+`session_model_settings_spec.rb` and `session_setting_spec.rb`, and the ladders the round after into the setting
+modules' and `model_lookup_spec.rb`.
+
 The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_block.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, `stage_view.js`, `bubbles.js`, `cards_place.js`, the chips, `info_bar.js`, `info_bar_model.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
@@ -254,6 +263,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `lock_holder.rb` | *helper*: `spawn_lock_holder(session_dir)`, a stand-in worker process holding a session's owner lock, which says so on a pipe |
 | `integration_server.rb` | *helper*: the live model server `:integration` examples use, from `SAMAGOTCHI_INTEGRATION_*` ([Integration specs](#integration-specs)) |
 | `mcp_bundle.rb` | The shipped mcp bundle's path and the fake MCP server its specs start (`MCP_FAKE_COMMAND`, no RubyGems) |
+| `model_setting_ladders.rb` | shared context "model setting ladders": per setting a config, env and CLI with every layer set, peeled top down (`peel`), against `spec/fixtures/model_setting_precedence/` |
 | `no_console.rb` | Loaded first (`ruby -r`) by spawned bin/chi children: `IO.console` is nil, so output never wraps at a terminal's width |
 | `recording_surface.rb` | `RecordingSurface`: a `TerminalUI::Surface` that records commits and slots instead of drawing |
 | `remote_backend.rb` | `RemoteBackend`: `SessionAccess::Remote` against chi web's Rack app in this process (no socket, LAN token gate) |

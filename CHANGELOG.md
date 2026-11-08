@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
+
 ### Fixed
 
 - `chi bundle uninstall` asks for `--force` before taking a memory you edited that has no base copy (chi compares it with the checksum its install recorded; with neither, it counts as edited), as it does for any edited file; it used to move it to the trash without asking.
@@ -15,6 +19,7 @@ and commands may change between minor versions. How releases are made:
 - `chi update`'s plan names every edited hook, rule, plugin file and script it replaces or removes, as its `Copied to the trash first` line does; it left out edited scripts and hooks installed with no recorded sha, and its row now says `a copy goes to the trash first` instead of `it wasn't loading`.
 - `chi bundle install --dry-run` and `chi bundle upgrade --dry-run` report hooks, rules, the plugin and scripts as the real run does (`Would update`, `Would install`, `Up to date`); a changed hook showed as skipped, an unchanged rule or plugin as would install, and scripts not at all.
 - `chi bundle install core --dry-run` (a profile's dry run) no longer names a hook it would replace as your own kept file.
+- A context window given with `--context-window-tokens` to a one-shot run (`-p … --non-interactive`) is named `cli`, not `config`, where its source shows: the debug log, and chi web's context tooltip for that session.
 
 ## [0.156.0] - 2026-11-08
 

@@ -148,10 +148,10 @@ module Samagotchi
     end
 
     # Where one value came from: :session, :model_setting, :host_setting
-    # or :config, and the place as a warning names it ("the session",
-    # "models: deepseek", "hosts entry 'box'", "llm_context.apply").
+    # or :config, and the place, named as the other settings name theirs
+    # ("session", "models: deepseek", "hosts.box", "llm_context.apply").
     Origin = Data.define(:source, :where)
-    SESSION_ORIGIN = Origin.new(source: :session, where: "the session")
+    SESSION_ORIGIN = Origin.new(source: :session, where: "session")
 
     # What a turn's strategy, apply rule and budget are, each with its
     # Origin (/llm-context, /stats, the web's info bar).
@@ -169,26 +169,22 @@ module Samagotchi
       end
     end
 
-    # The strategy for +target+'s turn.
-    # @param target [HostRegistry::ModelTarget, nil]
-    # @param names [Array<String>] HostRegistry#lookup_names
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # The strategy for +lookup+'s model's turn.
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @param session [Array<Symbol>, nil] the session's own layers ([]: none)
     # @param session_apply [Symbol, nil] the session's own apply rule
     # @param session_budget [Integer, nil] the session's own budget (0: off)
     # @return [Resolved]
-    def resolve(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
-      explain(target, names: names, models: models, session: session, session_apply: session_apply,
-                      session_budget: session_budget).resolved
+    def resolve(lookup, session: nil, session_apply: nil, session_budget: nil)
+      explain(lookup, session: session, session_apply: session_apply, session_budget: session_budget).resolved
     end
 
     # #resolve, with where each value came from.
     # @return [Explained]
-    def explain(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
-      models ||= ModelSettings.all
-      layers, source, where = layers_for(target, names, models, session)
-      apply, apply_origin = apply_for(target, names, models, session_apply)
-      budget, budget_origin = budget_for(target, names, models, session_budget)
+    def explain(lookup, session: nil, session_apply: nil, session_budget: nil)
+      layers, source, where = layers_for(lookup, session)
+      apply, apply_origin = apply_for(lookup, session_apply)
+      budget, budget_origin = budget_for(lookup, session_budget)
       resolved = resolved(layers, source, where).with(apply: apply, protect_steps: protect_steps,
                                                       stale_edits: Config.get(STALE_EDITS_SETTING) == true,
                                                       budget_tokens: budget)
@@ -196,79 +192,47 @@ module Samagotchi
                     budget_tokens: budget_origin)
     end
 
-    # A session's LLM context strategy, apply rule and budget, each with
-    # where it came from (Explained#summary), as its worker would resolve
-    # them; nil when they can't be (an unreadable config, a model that
-    # resolves nowhere). Resolves from config and the registry only: no
-    # network, no model call. What a session page, a session list's ctx %
-    # and a spawn-time check all read.
-    # @param session [Session, nil]
-    # @param registry [HostRegistry, nil] the hosts to resolve against;
-    #   HostRegistry.new by default (what the caller usually has)
-    # @return [Hash, nil] Explained#summary, symbol keys
-    def for_session(session, registry: nil)
-      return nil if session.nil?
-
-      # Here, not at the top: config.rb requires this file before ConfigFile
-      # exists, and effective_model.rb requires config.rb (via host_registry.rb).
-      require_relative "effective_model"
-      registry ||= HostRegistry.new
-      own = session.llm_context
-      EffectiveModel.of_session(session, registry: registry).llm_context_explained(own&.resolve_args || {})&.summary(own)
-    rescue StandardError
-      nil
-    end
-
-    # The budget a session's turns run under (for_session's :budget_tokens),
-    # nil when it is off or can't be resolved. What a session list's ctx %
-    # counts against, so a saved session's fill reads as the live meter.
-    # @param session [Session, nil]
-    # @param registry [HostRegistry, nil] see .for_session
-    # @return [Integer, nil]
-    def session_budget(session, registry: nil)
-      for_session(session, registry: registry)&.fetch(:budget_tokens, nil)
-    end
-
     # [the budget, its Origin]: the session's own first (0 there is off,
     # whatever the model says).
-    def budget_for(target, names, models, session_budget)
+    def budget_for(lookup, session_budget)
       return [session_budget.positive? ? session_budget : nil, SESSION_ORIGIN] unless session_budget.nil?
 
-      if (setting = ModelSettings.find(names, :llm_context_budget_tokens, models: models))
+      if (setting = lookup.model(:llm_context_budget_tokens))
         return [setting.value, Origin.new(source: :model_setting, where: "models: #{setting.key}")]
       end
 
-      budget = target&.entry&.llm_context_budget_tokens
-      return [budget, Origin.new(source: :host_setting, where: "hosts entry '#{target.entry.name}'")] if budget
+      budget = lookup.host(:llm_context_budget_tokens)
+      return [budget, Origin.new(source: :host_setting, where: "hosts.#{lookup.host_name}")] if budget
 
-      [parse_budget(Config.get(BUDGET_SETTING), BUDGET_SETTING), Origin.new(source: :config, where: BUDGET_SETTING)]
+      [parse_budget(lookup.global(BUDGET_SETTING).first, BUDGET_SETTING), Origin.new(source: :config, where: BUDGET_SETTING)]
     end
 
-    def layers_for(target, names, models, session)
+    def layers_for(lookup, session)
       return [session, :session, SESSION_ORIGIN.where] if session
 
-      if (setting = ModelSettings.find(names, :llm_context_strategy, models: models))
+      if (setting = lookup.model(:llm_context_strategy))
         return [setting.value, :model_setting, "models: #{setting.key}"]
       end
 
-      layers = target&.entry&.llm_context_strategy
-      return [layers, :host_setting, "hosts entry '#{target.entry.name}'"] if layers
+      layers = lookup.host(:llm_context_strategy)
+      return [layers, :host_setting, "hosts.#{lookup.host_name}"] if layers
 
-      [parse(Config.get(SETTING), SETTING) || [], :config, SETTING]
+      [parse(lookup.global(SETTING).first, SETTING) || [], :config, SETTING]
     end
 
     # [the apply rule, its Origin].
-    def apply_for(target, names, models, session_apply)
+    def apply_for(lookup, session_apply)
       return [session_apply, SESSION_ORIGIN] if session_apply
 
-      if (setting = ModelSettings.find(names, :llm_context_apply, models: models))
+      if (setting = lookup.model(:llm_context_apply))
         return [setting.value, Origin.new(source: :model_setting, where: "models: #{setting.key}")]
       end
 
-      apply = target&.entry&.llm_context_apply
-      return [apply, Origin.new(source: :host_setting, where: "hosts entry '#{target.entry.name}'")] if apply
+      apply = lookup.host(:llm_context_apply)
+      return [apply, Origin.new(source: :host_setting, where: "hosts.#{lookup.host_name}")] if apply
 
-      [parse_apply(Config.get(APPLY_SETTING), APPLY_SETTING) || DEFAULT_APPLY, Origin.new(source: :config, where: APPLY_SETTING)]
+      [parse_apply(lookup.global(APPLY_SETTING).first, APPLY_SETTING) || DEFAULT_APPLY,
+       Origin.new(source: :config, where: APPLY_SETTING)]
     end
 
     # llm_context.protect_steps: 0 or more (a negative one is the default).

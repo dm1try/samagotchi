@@ -1,0 +1,72 @@
+[
+  {
+    "step": "cli (not a layer: masks the file key)",
+    "surfaces": {
+      "effective": [
+        10,
+        "models: small"
+      ],
+      "summary": "after 10 s (models: small)"
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "effective": [
+        5,
+        "SAMAGOTCHI_STEER_CUT_AFTER"
+      ],
+      "summary": "after 5 s (SAMAGOTCHI_STEER_CUT_AFTER)"
+    }
+  },
+  {
+    "step": "models: small",
+    "surfaces": {
+      "effective": [
+        10,
+        "models: small"
+      ],
+      "summary": "after 10 s (models: small)"
+    }
+  },
+  {
+    "step": "models: qwen-a",
+    "surfaces": {
+      "effective": [
+        0,
+        "models: qwen-a"
+      ],
+      "summary": "never (models: qwen-a)"
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "effective": [
+        30,
+        "hosts.box"
+      ],
+      "summary": "after 30 s (hosts.box)"
+    }
+  },
+  {
+    "step": "file steer.cut_after",
+    "surfaces": {
+      "effective": [
+        40,
+        "steer.cut_after"
+      ],
+      "summary": "after 40 s (steer.cut_after)"
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "effective": [
+        20,
+        null
+      ],
+      "summary": null
+    }
+  }
+]

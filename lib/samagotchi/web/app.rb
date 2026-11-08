@@ -27,6 +27,7 @@ require_relative "../session_metrics"
 require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
+require_relative "../effective_model"
 require_relative "../llm_context_override"
 require_relative "../working_set"
 require_relative "../model_catalog"
@@ -1157,30 +1158,29 @@ module Samagotchi
 
           settings = ModelSettings.all
           models.each do |model|
-            target = registry.resolve(model[:name])
-            names = registry.lookup_names(model[:name], target: target)
-            summary = SamplingSettings.summary(target, names: names, models: settings)
+            effective = EffectiveModel.of(registry, ModelChoice.new(name: model[:name], typed: model[:name]), models: settings)
+            summary = SamplingSettings.summary(effective.lookup)
             model[:sampling] = summary if summary
-            add_llm_context(model, target, names, settings)
-            add_thinking(model, target, names, settings)
+            add_llm_context(model, effective)
+            add_thinking(model, effective)
           end
         end
       end
 
       # The LLM context +model+ starts under (the start page's ⚙ panel);
-      # one that can't be read leaves this model without, not the others.
-      def add_llm_context(model, target, names, settings)
-        Degrade.call(:web, "model_llm_context_unreadable") do
-          model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
-        end
+      # one that can't be read leaves this model without (the key absent),
+      # not the others.
+      def add_llm_context(model, effective)
+        explained = effective.llm_context_explained({})
+        model[:llm_context] = explained.summary(nil) if explained
       end
 
       # The thinking level +model+ starts at, with where it came from (the
-      # start page's ⚙ panel; SettingExplained#summary, no session).
-      def add_thinking(model, target, names, settings)
-        Degrade.call(:web, "model_thinking_unreadable") do
-          model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
-        end
+      # start page's ⚙ panel; SettingExplained#summary, no session); one
+      # that can't be read leaves this model without (the key absent).
+      def add_thinking(model, effective)
+        explained = effective.thinking_explained(own: nil)
+        model[:thinking] = explained.summary if explained
       end
 
       # The served model a session's last generation reported (analytics.json,
@@ -1210,17 +1210,16 @@ module Samagotchi
         end
       end
 
-      # Built again when config.yml's hosts: changed (compared as read: the
-      # YAML read is mtime-cached), so the model picker lists a host added
+      # The shared registry (HostRegistry.current: built again when
+      # config.yml's hosts: changed), so the model picker lists a host added
       # while chi web runs. An injected registry (specs) stays.
       def host_registry
         @models_mutex.synchronize do
           next @registry if @registry_given
 
-          hosts = HostConfig.all
-          if @registry.nil? || hosts != @registry_hosts
-            @registry = HostRegistry.new(hosts_config: hosts)
-            @registry_hosts = hosts
+          current = HostRegistry.current
+          unless current.equal?(@registry)
+            @registry = current
             @models_thread = nil # a listing of the old hosts
           end
           @registry

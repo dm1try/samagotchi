@@ -21,11 +21,11 @@ const CTX_MODEL = {
   budget_tokens: null, budget_source: "config", budget_where: "llm_context.budget_tokens", own: null,
 };
 // The session set its own apply rule only: the strategy still follows.
-const CTX_OWN_APPLY = { ...CTX_MODEL, apply: "turn_end", apply_source: "session", apply_where: "the session",
+const CTX_OWN_APPLY = { ...CTX_MODEL, apply: "turn_end", apply_source: "session", apply_where: "session",
                         own: { apply: "turn_end" } };
 const CTX_OWN = {
-  ...CTX_MODEL, strategy: "stale", strategy_source: "session", strategy_where: "the session",
-  budget_tokens: 64000, budget_source: "session", budget_where: "the session",
+  ...CTX_MODEL, strategy: "stale", strategy_source: "session", strategy_where: "session",
+  budget_tokens: 64000, budget_source: "session", budget_where: "session",
   own: { strategy: ["stale"], budget_tokens: 64000 },
 };
 const labels = (markup, group) => [...markup.matchAll(new RegExp(`data-act="${group}:[^"]*" aria-pressed="(true|false)"[^>]*>([^<]*)<`, "g"))]
@@ -50,7 +50,7 @@ test("the chip names only what the session set, in the start page's words; class
   assert.equal(chip.text, "think low · reasoning all · ctx stale · budget 64000");
   assert.equal(chip.own, true);
   assert.equal(chip.label, "Session settings: think low, reasoning all, ctx stale · budget 64000");
-  assert.match(chip.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(the session\)/);
+  assert.match(chip.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(session\)/);
   assert.equal(chipModel({ thinking: THINK_MODEL, llmContext: CTX_OWN_APPLY }).text, "ctx apply turn_end");
   const markup = markupOf(chipTemplate({ thinking: THINK_OWN, reasoningHistory: null, llmContext: CTX_MODEL }));
   assert.match(markup, /class="model settings-chip own"/);

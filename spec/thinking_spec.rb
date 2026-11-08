@@ -6,6 +6,7 @@ require "samagotchi/client"
 require "samagotchi/config"
 require "samagotchi/host_registry"
 require "samagotchi/model_profile"
+require "samagotchi/model_lookup"
 require "samagotchi/thinking"
 
 # The thinking: level (off|low|medium|high|default): parsing, where it is
@@ -73,7 +74,7 @@ RSpec.describe Samagotchi::Thinking do
         expect(Samagotchi::HostConfig.all(env: {}, path: path)["work"].thinking).to eq(:off)
         expect(Samagotchi::ModelSettings.all(env: {}, path: path)["qwen"].thinking).to eq(:off)
         with_env("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil) do
-          expect(described_class.global_level).to eq(%i[off file])
+          expect(described_class.global_level(Samagotchi::ModelLookup.for(nil, names: []))).to eq(%i[off file])
         end
       end
     end
@@ -116,7 +117,8 @@ RSpec.describe Samagotchi::Thinking do
         Samagotchi::Config.reload!(cli_overrides: cli)
         models = Samagotchi::ModelSettings.all(env: {}, path: path)
         target = target_for(path, model)
-        described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)
+        lookup = Samagotchi::ModelLookup.for(target, names: [target.model, target.bare_model], models: models)
+        described_class.public_send(how, lookup, session: session)
       end
     end
 
@@ -194,8 +196,8 @@ RSpec.describe Samagotchi::Thinking do
     it "is the whole prompt on Gemma (native, or a local chat server), the provider's on a remote chat host, the tail otherwise" do
       expect(described_class.cache_cost(target(chat: false), profile: "qwen36")).to eq(:tail)
       expect(described_class.cache_cost(target(chat: false), profile: "gemma4")).to eq(:full)
-      expect(described_class.cache_cost(target(chat: true, model: "google/Gemma-4-26B"), profile: nil)).to eq(:full)
-      expect(described_class.cache_cost(target(chat: true, model: "incoai/Qwen3.6-35B-A3B-Splash"))).to eq(:tail)
+      expect(described_class.cache_cost(target(chat: true, model: "google/Gemma-4-26B"), inferred: "gemma4")).to eq(:full)
+      expect(described_class.cache_cost(target(chat: true, model: "incoai/Qwen3.6-35B-A3B-Splash"), inferred: "qwen36")).to eq(:tail)
       expect(described_class.cache_cost(target(chat: true, remote: true, model: "google/gemma-4"))).to eq(:provider)
     end
   end

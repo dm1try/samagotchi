@@ -73,7 +73,7 @@ module Samagotchi
 
     # @return [Array(Hash, Boolean)] the payload and whether any host listed
     def catalog(timeout)
-      registry = @registry || HostRegistry.new
+      registry = @registry || HostRegistry.current
       results = registry.list_all_models(force: true, wait: timeout)
       listed = results.values.any? { |data| data.error.nil? }
       [ModelCatalog.payload(results, registry: registry, default_name: default_name), listed]

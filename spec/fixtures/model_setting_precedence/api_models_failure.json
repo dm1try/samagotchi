@@ -1,0 +1,50 @@
+[
+  {
+    "step": "second fails",
+    "surfaces": [
+      {
+        "name": "small",
+        "llm_context": {
+          "strategy": "none",
+          "strategy_source": "config",
+          "strategy_where": "llm_context.strategy",
+          "apply": "payoff",
+          "apply_source": "config",
+          "apply_where": "llm_context.apply",
+          "budget_tokens": null,
+          "budget_source": "config",
+          "budget_where": "llm_context.budget_tokens",
+          "own": null
+        },
+        "thinking": {
+          "level": "low",
+          "source": "models: small",
+          "own": null
+        }
+      },
+      {
+        "name": "box:qwen-b"
+      },
+      {
+        "name": "qwen-a",
+        "llm_context": {
+          "strategy": "none",
+          "strategy_source": "config",
+          "strategy_where": "llm_context.strategy",
+          "apply": "payoff",
+          "apply_source": "config",
+          "apply_where": "llm_context.apply",
+          "budget_tokens": null,
+          "budget_source": "config",
+          "budget_where": "llm_context.budget_tokens",
+          "own": null
+        },
+        "thinking": {
+          "level": "default",
+          "source": null,
+          "own": null
+        }
+      }
+    ]
+  }
+]

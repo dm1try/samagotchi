@@ -1057,7 +1057,7 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
       status = events.select { |e| e[:type] == :context_status }.map { |e| e[:status] }
 
-      expect(status.last).to include("src=server", "window_tokens=200000", "window_src=config", "est_pct=60.0")
+      expect(status.last).to include("src=server", "window_tokens=200000", "window_src=cli", "est_pct=60.0")
     ensure
       Samagotchi::Config.reload!(cli_overrides: {})
     end

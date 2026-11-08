@@ -105,7 +105,9 @@ Behavior:
 - A key chi doesn't read warns at start, with the closest known key:
   `config: unknown key 'default.modle' (did you mean 'default.model'?)`.
   Names you choose under the maps below (host names, model ids) don't warn.
-- Environment variables and CLI flags win over config-file values.
+- Environment variables and CLI flags win over config-file values. A model's
+  own settings (`models:`, `hosts:`) layer in between: see
+  [Where a model setting comes from](#where-a-model-setting-comes-from).
 - An edit to the file needs no restart of `chi web`. A new worker reads the
   file when it starts; a running worker sees only settings whose readers check
   the file again (see [When a change applies](#when-a-change-applies)). The web
@@ -148,7 +150,7 @@ or `chi web` restart.
 | `default.model` | New session | Existing sessions keep their saved model; change one with `/model`. |
 | `default.input`, `no_default_input`, `no_interrupt` | Next CLI run | These set up that run's first prompt or turn limit. |
 | `default.max_tokens`, `max_tool_output_chars`, `memory.read_max_chars`, `read.*`, `execute.*` except `execute.description`, `image.*` | Next matching request or tool use | An operation already in progress keeps its resolved limits. |
-| `server.host`, `server.port`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. The web model picker refreshes `hosts:` on file change; a running worker does not. |
+| `server.host`, `server.port`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. Commands (`chi self`, `chi models`, the session lists) and chi web (its model picker, the session cards) read `hosts:` as it is now; a running worker keeps the hosts it started with until it restarts. |
 | `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
 | `model_aliases` | Next model lookup | A session keeps its resolved model unless it is explicitly switched. |
 | `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
@@ -228,6 +230,35 @@ A few environment variables are not settings (no config.yml key, no flag):
   `chi --model X` spawned: X is that run's model, which the chi its commands run must not inherit.
 - `SAMAGOTCHI_LOG_STRICT=1`: an unknown log tag or a malformed log event raises instead of being dropped. The spec
   suite sets it, and a bundle's tests keep it (`Samagotchi::Testing::Sandbox`).
+
+## Where a model setting comes from
+
+A model's settings come in layers, and the first one set wins. Every surface reads them the same way: a turn,
+`/model` and `/stats`, `chi self`, the web's chips and the start page's ⚙ panel, and a session list's ctx %. A
+`models:` entry is looked up under each name the model goes by, the most specific first: the name as typed (an
+alias), the alias's target (`host:id`), the part after a host prefix, then the id the host is asked for.
+
+| Setting | Order, first set wins |
+|---|---|
+| `thinking` | the session's own (`/thinking`, `chi --thinking`) → `chi web --thinking` or `SAMAGOTCHI_THINKING_LEVEL` → `models:` → `hosts.<name>.thinking` → `thinking.level` in config.yml → `default` |
+| `reasoning_history` | the session's own (`/reasoning-history`) → `SAMAGOTCHI_REASONING_HISTORY` → `models:` → `hosts.<name>` → the api's default (`all` on `api: anthropic`, else `turn`) |
+| `steer_cut_after` | `SAMAGOTCHI_STEER_CUT_AFTER` → `models:` → `hosts.<name>` → `steer.cut_after` in config.yml → 20 |
+| `profile` | `--profile` or `SAMAGOTCHI_MODEL_PROFILE` → `models:` (an unknown profile warns, and the next name is tried) → `hosts.<name>.profile` → the server's chat template → the name → `qwen36` |
+| `sampling` | merged: `hosts.<name>.sampling`, then `models:` over it, key by key |
+| `vision` | `models:` → `hosts.<name>.vision` → what the server or the host's model list says |
+| `window_tokens` | the server's `n_ctx` → the host's model list → `models:` → `hosts.<name>.window_tokens` → `context.window_tokens` (`--context-window-tokens`, `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` or config.yml) → 256000 |
+| `llm_context_strategy`, `llm_context_apply`, `llm_context_budget_tokens` | each on its own: the session's own (`/llm-context`, `chi --llm-context…`) → `models:` → `hosts.<name>` → `llm_context.*` (`SAMAGOTCHI_LLM_CONTEXT_…` or config.yml) → the default |
+
+Two rules, both intended:
+
+- For thinking, reasoning_history, steer_cut_after and the profile, a process-wide override (a flag or an
+  environment variable) beats the model's own setting: it runs every model one way for a while.
+- For the window and the LLM context, the global key is the fallback whatever sets it: an environment variable
+  or a flag there doesn't beat a model's or a host's setting. (`steer.cut_after` from config.yml, too, comes after
+  the host's.)
+
+Where a value came from is named as `session`, `models: KEY`, `hosts.NAME`, or the config key or environment
+variable that set it.
 
 ## Model Server API
 
@@ -1774,8 +1805,8 @@ its own). The first target is a long session such as a day-long coordinator, whe
   budget don't ask: they only decide when a batch goes in, and each batch's break comes as designed (`next_request`
   with staged edits pending moves a break the old rule makes by the end of the next turn anyway). The chip's Set and
   `--llm-context` on an attached or resumed session send `--yes`.
-- **Where to see it:** `/llm-context` (each value and where it came from: `the session`, `models: <key>`,
-  `hosts entry '<name>'`, `llm_context.*`), `/stats` (`llm context:`), the turn log (an `llm_context` record per
+- **Where to see it:** `/llm-context` (each value and where it came from: `session`, `models: <key>`,
+  `hosts.<name>`, `llm_context.*`), `/stats` (`llm context:`), the turn log (an `llm_context` record per
   turn that runs a layer or whose session set its strategy) and the web's chip. A woken worker's status line counts
   its saved context against the session's budget.
 

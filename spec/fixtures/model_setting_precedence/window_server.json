@@ -1,0 +1,16 @@
+{
+  "server n_ctx (native)": {
+    "step": "server",
+    "surfaces": {
+      "tokens": 40960,
+      "source": "server"
+    }
+  },
+  "model list (chat)": {
+    "step": "model list",
+    "surfaces": {
+      "tokens": 131072,
+      "source": "model_list"
+    }
+  }
+}

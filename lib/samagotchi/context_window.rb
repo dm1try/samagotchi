@@ -11,14 +11,14 @@ module Samagotchi
   #      provider's context_length)
   #   3. models.<key>.window_tokens, else hosts.<name>.window_tokens
   #      (#setting: the most specific wins)
-  #   4. context.window_tokens (CLI, SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the
-  #      config file)
+  #   4. context.window_tokens (--context-window-tokens,
+  #      SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the config file)
   #   5. DEFAULT_TOKENS
   # Settings (3 and 4) only fill in when the server and its list report
   # nothing.
   #
-  # Sources: :server, :model_list, :model_setting, :host_setting, :config
-  # (CLI or file), :env, :default.
+  # Sources: :server, :model_list, :model_setting, :host_setting, :cli,
+  # :env, :config (the file), :default.
   module ContextWindow
     DEFAULT_TOKENS = 256_000
 
@@ -48,16 +48,13 @@ module Samagotchi
     # The window config.yml gives this model or its host:
     # models.<key>.window_tokens (by the model's lookup names, as sampling
     # and vision look a model up), else hosts.<name>.window_tokens.
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] HostRegistry#lookup_names
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @return [Resolved, nil]
-    def setting(target, names:, models: nil)
-      models ||= ModelSettings.all
-      tokens = ModelSettings.find(names, :window_tokens, models: models)&.value
+    def setting(lookup)
+      tokens = lookup.model(:window_tokens)&.value
       return Resolved.new(tokens: tokens, source: :model_setting) if positive_integer?(tokens)
 
-      tokens = target&.entry&.window_tokens
+      tokens = lookup.host(:window_tokens)
       positive_integer?(tokens) ? Resolved.new(tokens: tokens, source: :host_setting) : nil
     rescue StandardError
       nil
@@ -79,7 +76,7 @@ module Samagotchi
       end
       return Resolved.new(tokens: DEFAULT_TOKENS, source: :default) unless positive_integer?(value)
 
-      Resolved.new(tokens: value, source: origin == :env ? :env : :config)
+      Resolved.new(tokens: value, source: { cli: :cli, env: :env }.fetch(origin, :config))
     end
 
     # For callers with no client at hand (tool output guardrails): the last
