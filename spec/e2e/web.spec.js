@@ -1904,7 +1904,7 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
   await shown();
   await expect(page.locator("#prompt")).toHaveValue("");
   await test.step("the failed turn reads the same after a reload", async () => {
-    await expectSameAfterReload(page, ended(1, { answered: false }), { allow: ["failed-step", "failed-timing"] });
+    await expectSameAfterReload(page, ended(1, { answered: false }), { allow: ["failed-step"] });
   });
   await shown();
 });

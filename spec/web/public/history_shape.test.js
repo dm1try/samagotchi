@@ -137,12 +137,13 @@ test("compareShapes: an ACCEPTED entry explains its difference only when allowed
   assert.equal(compareShapes([item("prompt", "p"), card], [item("prompt", "p")], { allow: ["in-turn-card"] }).same, false);
 });
 
-test("ACCEPTED: each entry has an id and a reason; the found ones name their test", () => {
+test("ACCEPTED: each entry has an id and a reason; the found ones name their test; P2 closes the bugs", () => {
   const ids = ACCEPTED.map((entry) => entry.id);
-  assert.deepEqual(ids, ["retry-row", "command-bubble", "edit-mark", "failed-step", "failed-timing", "in-turn-card"]);
+  assert.deepEqual(ids, ["retry-row", "command-bubble", "edit-mark", "failed-step", "in-turn-card"]);
   for (const entry of ACCEPTED) {
     assert.ok(entry.reason.length > 20, entry.id);
     assert.equal(typeof entry.match, "function");
   }
-  assert.deepEqual(ACCEPTED.filter((entry) => entry.found).map((entry) => entry.id), ["failed-step", "failed-timing", "in-turn-card"]);
+  assert.deepEqual(ACCEPTED.filter((entry) => entry.found).map((entry) => entry.id), ["failed-step", "in-turn-card"]);
+  assert.deepEqual(ACCEPTED.filter((entry) => entry.closedBy).map((entry) => entry.id), ["retry-row", "failed-step", "in-turn-card"]);
 });
