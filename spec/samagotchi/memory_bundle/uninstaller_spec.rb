@@ -10,6 +10,7 @@ require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/memory_bundle/builder"
+require_relative "../../support/legacy_hooks_record"
 
 RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
   let(:tmpdir) { Dir.mktmpdir("uninstaller-") }
@@ -26,22 +27,25 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     FileUtils.rm_rf(tmpdir)
   end
 
+  # A source with +files+; its installed record gets +hooks+ as a 0.157
+  # install left them (LegacyHooksRecord: chi no longer installs hooks).
   def write_bundle_with_hooks(files = {}, hooks = {}, name: "test-bundle", version: "1.0.0")
     src = File.join(tmpdir, "src_#{name}_#{rand(1000)}")
     FileUtils.mkdir_p(src)
-    FileUtils.mkdir_p(File.join(src, "hooks"))
     files.each { |k, v| File.write(File.join(src, k), v) }
-    hooks.each { |k, v| File.write(File.join(src, "hooks", k), v) }
-    manifest = { "name" => name, "version" => version, "files" => {}, "hooks" => {} }
+    manifest = { "name" => name, "version" => version, "files" => {} }
     files.each { |k, v| manifest["files"][k] = "sha256:#{Digest::SHA256.hexdigest(v)}" }
-    hooks.each { |k, v| manifest["hooks"][k] = { "sha256" => "sha256:#{Digest::SHA256.hexdigest(v)}", "event" => "before_tool_call", "on_error" => "skip" } }
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+    (@legacy_hooks ||= {})[src] = hooks
     src
   end
 
   def install_bundle(src, name, dev: false)
     inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", force: false, strict: true, dev: dev)
-    inst.run
+    inst.run.tap do
+      hooks = @legacy_hooks&.fetch(src, {}) || {}
+      LegacyHooksRecord.legacy_hooks_record(name, hooks: hooks.transform_values { |text| { text: text, meta: { "event" => "before_tool_call" } } }) unless hooks.empty?
+    end
   end
 
   it "removes hook files and dir" do
@@ -56,7 +60,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
   end
 
   it "moves a dev bundle's memory copies to trash without changing its source files" do
-    src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, { "g.rb" => "class G; def call(e); end; end" }, name: "dev-trash")
+    src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, name: "dev-trash")
     install_bundle(src, "dev-trash", dev: true)
     source_files = -> { Dir.glob(File.join(src, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
     before = source_files.call.to_h { |path| [path, File.binread(path)] }

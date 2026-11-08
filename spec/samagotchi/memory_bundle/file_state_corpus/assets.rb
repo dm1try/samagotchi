@@ -126,17 +126,14 @@ module BundleStateCorpus
       beside = File.join(provenance.hooks_dir, "h.rb")
       write(beside, "# v1\n") if kase.beside
       recorded = kase.recorded.nil? ? nil : installed
-      hooks = kase.beside ? { "h.rb" => HOOK_META } : {}
-      hook_files = kase.beside ? { "h.rb" => beside } : {}
-      if kase.asset == "hook" && recorded
-        hooks[kase.file] = HOOK_META
-        hook_files[kase.file] = recorded
-      end
-      provenance.write(files: {}, scope: "system", version: "1.0.0", source_path: source(kase), hooks: hooks, hooks_files: hook_files,
+      provenance.write(files: {}, scope: "system", version: "1.0.0", source_path: source(kase),
                        guardrails_files: kase.asset == "rule" && recorded ? { "r.yml" => recorded } : {},
                        plugin_file: kase.asset == "plugin" && recorded ? recorded : nil,
                        scripts_files: kase.asset == "script" && recorded ? { "s.sh" => recorded } : {},
                        dev: kase.dev?, manifest_from: first_source(kase))
+      hooks = kase.beside ? { "h.rb" => { text: nil, meta: HOOK_META } } : {}
+      hooks[kase.file] = { text: nil, meta: HOOK_META } if kase.asset == "hook" && recorded
+      LegacyHooksRecord.legacy_hooks_record(NAME, hooks: hooks) unless hooks.empty?
       return if kase.recorded.nil? || kase.dev?
 
       path = File.join(provenance.bundle_dir, "manifest.json")
