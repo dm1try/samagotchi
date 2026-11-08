@@ -18,9 +18,10 @@ RSpec.describe Samagotchi::Toolkit do
       expect(declared(described_class.new(name: "full").resolve(kits))).to eq(builtins)
     end
 
-    it "lean leaves out the delegate, session and reminder tools" do
+    it "lean leaves out the delegate, session, reminder and schedule tools" do
       resolved = described_class.new(name: "lean").resolve(kits)
-      expect(builtins - declared(resolved)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions
+      expect(builtins - declared(resolved)).to eq(%w[register_reminder cancel_reminder list_reminders
+                                                     schedule_task list_schedules cancel_schedule list_sessions
                                                      send_note delegate delegate_result objectives])
       expect(resolved.fallback).to be_nil
     end

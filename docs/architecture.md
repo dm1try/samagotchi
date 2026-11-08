@@ -194,7 +194,7 @@ log's last 4 MB). Rows: [configuration.md](configuration.md#checking-it-chi-home
 
 ## Session retention & ordering
 
-- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files.
+- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files. Durable schedules belong to the machine, not a session: `~/.local/state/samagotchi/schedules.json` and its `schedules.lock`, next to `sessions/` ([Scheduling](scheduling.md)).
 - **Single owner:** the process running a session's Engine (its worker, or a `--non-interactive` one-shot) holds a flock on `owner.lock` (`OwnerLock`); a second owner backs off, and the web answers 409 for a session a one-shot owns.
 - **Status:** `status` is turn state (`idle`/`running`); liveness is the lock. A stop is the `<uuid>/stopped` marker (`Session.mark_stopped`; a resume removes it), which `Session.load` and `.summary_from_file` read as status `stopped`, so no other process rewrites a worker's session file.
 - **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep at most once per `session.sweep_interval_hours` (default 24) from the session hub's full-probe tick (and on `GET /api/sessions`, which the page no longer calls), manual via `bin/chi sessions prune --dry-run`.
@@ -432,7 +432,7 @@ shared with `/api/sessions` and the session view; built on the session's `Sessio
 reads, so the page, `chi sessions list` and `/children` agree on status, liveness and a waiting question) carries `owner`, `project_root` and
 `bridge_up` (`WorkerLink` answers Live: a worker holds the lock and its sidecar names its pid; the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
-(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`,
+(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`, `activity` (`GET /activity`, the busy check a schedule tick asks a live worker),
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no
@@ -655,6 +655,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Dialects | `llm/dialect.rb` (`LLM::Dialect`) | What an `api: anthropic` provider's `/v1/messages` does differently (`dialect: fireworks`) ([internals/anthropic.md](internals/anthropic.md)). |
 | Logging | `log.rb` (`Log`), `log_subscriber.rb` (`LogSubscriber`), `log_path.rb` (`LogPath`), `log_line.rb` | The debug log: tagged records, a session's event trail, where the file goes ([configuration.md](configuration.md#debug-log-file)). |
 | Stores | `reminder_store.rb` (`ReminderStore`), `recap_store.rb` (`RecapStore`) | A session's reminders, and its idle recap (`recap.json`). |
+| Schedules | `schedules.rb` (`Schedules`, its `Entry`, `Tick`, `Index`), `schedule_command.rb` (`ScheduleCommand`) | Durable schedules that outlive every worker: `<state dir>/schedules.json` and its `schedules.lock`, the tick's busy check (a live worker asked over the Bridge's `GET /activity`, the files when there is none), the chain prune. `chi schedule` is this machine only. See [Scheduling](scheduling.md). |
 | Reply waits | `reply_wait.rb` (`ReplyWait`, `GONE_AFTER`: the one dead-worker rule), `reply_wait/poll.rb` (`ReplyWait::Poll`, one look per poll), `reply_wait/target.rb` (`ReplyWait::Target`: which turn a wait binds, cursor, baseline, `owner_grace`; `first_message`, `message`, `wait_only`, `answer`, `participant`, `from_cursor`), `reply_wait/liveness.rb` (`ReplyWait::Liveness`: one owner and link read per look; `#owner?` for gone, `#worker_owned?` for an open question) | `chi send --wait`, `chi answer`, a participant's wait, the delegate tools and delegate reports wait through `ReplyWait.call(id, **target.to_h, …)` ([sub-agent.md](sub-agent.md)). |
 | Session rows | `session_row.rb` (`SessionRow`) | A session as the lists see it: scalar facts only, built by `SessionManager.session_rows` (one owner, link, recap and analytics read each), `#to_summary_h` the summaries route's body and `.from_summary_h` a remote's rows read back, `#cli_line` the one `chi sessions list` line, `.running_or_starting?` the delegates' and Verify fresh's "running" (a 15 s grace for a worker on its way). A leaf: never session_manager or web. |
 | Setup and update | `bootstrap_command.rb`, `bootstrap/`, `update_command.rb`, `gem_update.rb` | `chi bootstrap` (first config.yml, system bundle, core profile) and `chi update` (the gem, shipped bundles, the macOS helper). |

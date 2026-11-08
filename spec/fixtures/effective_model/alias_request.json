@@ -1,6 +1,6 @@
 {
   "temperature": 1.0,
-  "prompt": "sha256:224d22296d68018cd49884b254c5216d7cb15df434edfd1dcef6ae93d00cb842",
+  "prompt": "sha256:a72eda748aa9b11a9e49664bad5278873165bd538201e002f160028e5895d16b",
   "stop": [
     "<|im_end|>"
   ],

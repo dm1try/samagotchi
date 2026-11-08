@@ -527,7 +527,9 @@ message:
   `batch`;
 - owner-voiced tools, which act in the owner's name beyond the turn:
   `delegate` and any `delegate_*` tool, `register_reminder`,
-  `cancel_reminder`, `send_note`, `forget_outputs`, `task_create`,
+  `cancel_reminder`, `schedule_task`, `list_schedules`, `cancel_schedule`
+  (a durable schedule outlives the session and fires on this machine),
+  `send_note`, `forget_outputs`, `task_create`,
   `task_stop`, `find_tools` (it loads tools into the session), `objectives`
   (a move on the owner's list), and
   `memory_write` (a memory reaches the owner's later sessions); and the tools

@@ -233,9 +233,9 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "are a keyword answer's matches: a built-in by name, a source tool by acts_as, never a refused or odd name" do
       expect(index.find("echo", surface: now).loaded).to eq(%w[mcp_fs_echo])
-      expect(index.find("sessions", surface: now).loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+      expect(index.find("sessions", surface: now).loaded).to eq(%w[list_sessions schedule_task send_note delegate delegate_result])
       expect(index.find("sessions", server: "fs", surface: now)).to start_with("(searched every group)")
-      expect(index.find("sessions", server: "fs", surface: now).loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+      expect(index.find("sessions", server: "fs", surface: now).loaded).to eq(%w[list_sessions schedule_task send_note delegate delegate_result])
     end
 
     it "are none for the names listing, a miss or an unknown group" do
@@ -258,14 +258,15 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       lean!
       chi = index.all_groups(now).first
       expect(chi.name).to eq("chi")
-      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders schedule_task list_schedules cancel_schedule list_sessions send_note
                                              delegate delegate_result objectives])
       expect(find_entry.schema[:description]).to end_with(
-        "\nGroups:\n- chi: chi's and its bundles' tools not declared in this session (8 tools)"
+        "\nGroups:\n- chi: chi's and its bundles' tools not declared in this session (11 tools)"
       )
 
       registry.toolkit = kit("child")
       expect(index.all_groups(now).first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
+                                                                     schedule_task list_schedules cancel_schedule
                                                                      list_sessions objectives])
       registry.toolkit = kit(remove: %w[delegate])
       expect(index.all_groups(now).first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
@@ -279,9 +280,9 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
       lean!
       chi = index.all_groups(now).first
-      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders schedule_task list_schedules cancel_schedule list_sessions send_note
                                              delegate delegate_result objectives web_search])
-      expect(find_entry.schema[:description]).to end_with("bundles' tools not declared in this session (9 tools)")
+      expect(find_entry.schema[:description]).to end_with("bundles' tools not declared in this session (12 tools)")
       expect(index.find("search web", surface: now)).to include("chi/web_search: Search the web for a query.")
       expect(index.find("search web", surface: now).loaded).to include("web_search")
       expect(index.find("tools", surface: now).to_s).not_to include("chi/find_tools", "chi/call_tool")
@@ -374,7 +375,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       registry.toolkit = kit
       index.refresh!
       first = registry[find_name].schema[:description]
-      expect(first).to end_with("\n- chi: chi's and its bundles' tools not declared in this session (8 tools)\n- fs (1 tool)")
+      expect(first).to end_with("\n- chi: chi's and its bundles' tools not declared in this session (11 tools)\n- fs (1 tool)")
 
       again = described_class.new.tap { |i| i.add(fs) }
       other = Samagotchi::Tools::Builtins.registry

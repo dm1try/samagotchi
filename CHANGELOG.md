@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi schedule <add|list|show|tick|run-now|enable|disable|cancel>`: durable schedules that outlive every worker. Each entry is a prompt with a clock in `~/.local/state/samagotchi/schedules.json`, fired by a tick run by cron, systemd or (with `schedule.auto_tick: true`) chi web's hub, and each firing is either the next link of the session's chain (the default, with `--keep-links` pruning the older links and their delegates) or a turn queued in the session itself (`--mode same`). Recurrence is `--every 45m`, `--weekday 1 --time 09:00` or `--date 2026-11-20T09:00`; a busy target is skipped and retried at the next tick, and 12 consecutive skips or 3 consecutive failures disable it (any success resets both). The model registers its own with `schedule_task`, `list_schedules` and `cancel_schedule`. `register_reminder` is unchanged: a reminder lives in a live worker and holds it up; a schedule wakes one. See docs/scheduling.md.
+
 ## [0.158.0] - 2026-11-08
 
 ### Added

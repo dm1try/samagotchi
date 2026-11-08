@@ -546,7 +546,7 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil,
-                     exit_stopped: nil, on_holds: nil, on_holds_stop: nil, heartbeat_interval: 0.2)
+                     exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil, heartbeat_interval: 0.2)
       @engine = make_engine
       @session = make_session
       hold_worker(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir))
@@ -554,7 +554,7 @@ RSpec.describe Samagotchi::Bridge do
         engine: @engine, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
         on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped,
-        on_holds: on_holds, on_holds_stop: on_holds_stop
+        on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -2506,6 +2506,39 @@ RSpec.describe Samagotchi::Bridge do
 
         expect(get_holds).to eq([501, { "error" => "holds_unavailable" }])
         expect(post_stop_holds).to eq([501, { "error" => "holds_unavailable" }])
+      end
+    end
+
+    describe "GET /session/:id/activity (what a schedule tick asks a live worker)" do
+      def get_activity(session_id: @session.id, header: secret_header)
+        res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/activity"), header)
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      it "answers with the snapshot, small enough for a tick to read, and BridgeClient reads it" do
+        start_bridge(on_activity: lambda {
+          { turn_running: true, input_pending: false, awaiting_continue: false,
+            open_streams: 2, reminders: 1, tasks_holding: 0 }
+        })
+
+        status, body = get_activity
+        expect(status).to eq(200)
+        expect(body).to eq({ "session_id" => @session.id, "turn_running" => true, "input_pending" => false,
+                             "awaiting_continue" => false, "open_streams" => 2, "reminders" => 1, "tasks_holding" => 0 })
+        expect(JSON.generate(body).bytesize).to be < 300
+
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
+        expect(client.get("activity")).to eq([200, body])
+      end
+
+      it "refuses without the secret, answers 501 with no snapshot step, and 404 for another session" do
+        start_bridge(on_activity: -> { { turn_running: false } })
+
+        expect(Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/activity")).code.to_i).to eq(403)
+        expect(get_activity(session_id: "other")).to eq([404, { "error" => "unknown_session" }])
+
+        start_bridge
+        expect(get_activity).to eq([501, { "error" => "activity_unavailable" }])
       end
     end
 

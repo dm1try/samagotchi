@@ -174,6 +174,7 @@ or `chi web` restart.
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
 | `session.idle_exit_minutes`, `session.project_env`, `session.carry_last_answer`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer and project env; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
+| `schedule.*` | Next CLI run | `chi schedule add` and `chi schedule tick` read them for that run; with `schedule.auto_tick` on, `chi web`'s hub ticks on `schedule.tick_interval_minutes`. |
 | `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
@@ -2270,6 +2271,14 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
 | `session.keep_status` | none | yes | Comma list of statuses never pruned (a session a worker or `chi` has open is never pruned anyway). |
 | `session.sweep_interval_hours` | `24` | yes | How often the retention sweep runs. |
+| `schedule.auto_tick` | `false` | | `chi web`'s hub runs `chi schedule tick` too, sharing the schedule lock with cron. Off by default: cron or systemd is the documented driver. See [Scheduling](scheduling.md). |
+| `schedule.tick_interval_minutes` | `5` | | How often the hub ticks when `schedule.auto_tick` is on, and how late a `catch_up: none` schedule may be before it moves to its next occurrence. |
+| `schedule.default_keep_links` | `5` | | Chain links a schedule keeps behind its current one (`0` keeps all). Archived links are outside the retention sweep, so this is what bounds them. See [Scheduling](scheduling.md). |
+| `schedule.default_max_failures` | `3` | | Consecutive failures that disable a schedule. |
+| `schedule.default_max_skips` | `12` | | Consecutive busy targets that disable a schedule; `list` prints it as a time window. |
+| `schedule.default_catch_up` | `once` | | An overdue schedule fires once at the next tick (`once`) or moves to its next occurrence (`none`). |
+| `schedule.max_per_session` | `10` | | Enabled schedules one chain may hold. `schedule_task` (and `chi schedule add`) refuse past it, so a routine that re-schedules itself cannot pile up entries. |
+| `schedule.max_total` | `50` | | Enabled schedules this machine may hold, across every chain. |
 | `image.max_side` | `1568` | | See "Images". |
 | `image.max_bytes` | `3750000` | | See "Images". |
 | `image.max_per_request` | `20` | | See "Images". |

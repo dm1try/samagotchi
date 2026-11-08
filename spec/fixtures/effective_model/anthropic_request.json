@@ -49,6 +49,9 @@
       "register_reminder",
       "cancel_reminder",
       "list_reminders",
+      "schedule_task",
+      "list_schedules",
+      "cancel_schedule",
       "list_sessions",
       "send_note",
       "context_read",
@@ -57,7 +60,7 @@
       "ask_user_question",
       "objectives"
     ],
-    "digest": "sha256:59d7f25d1edc1d7a4e75516664f61e89072bb59917e576324e1a6c25530ef5de"
+    "digest": "sha256:963c64838e10b474579c7e741c8149fa8ff6d438714a6493adb3d9fcae39cbf6"
   },
   "tool_choice": {
     "type": "auto"

@@ -277,13 +277,13 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
       expect(kernel.tools.names).to include("find_tools", "call_tool")
       expect(kernel.tools.names).not_to include("late_tool")
       expect(kernel.tools.reachable_names).to include("late_tool")
-      expect(kernel.tools["find_tools"].schema[:description]).to include("tools not declared in this session (9 tools)")
+      expect(kernel.tools["find_tools"].schema[:description]).to include("tools not declared in this session (12 tools)")
       expect(events.select { |e| e[:type] == :hook_notice && e[:level] == :warn }).to eq([])
     end
 
     it "doesn't bring find_tools and call_tool in on a kit that needed none, says so once, and /toolkit add declares it" do
       allow(kernel).to receive(:run).and_return(result)
-      left_out = %w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate delegate_result
+      left_out = %w[register_reminder cancel_reminder list_reminders schedule_task list_schedules cancel_schedule list_sessions send_note delegate delegate_result
                     objectives]
       sess = session(Samagotchi::Toolkit.new(name: "lean", add: left_out))
       turn(sess)
@@ -335,7 +335,7 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
 
     it "keeps find_tools and call_tool declared, its chi group now empty: the declared tools stay for the session" do
       allow(kernel).to receive(:run).and_return(result)
-      left_out = %w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate delegate_result
+      left_out = %w[register_reminder cancel_reminder list_reminders schedule_task list_schedules cancel_schedule list_sessions send_note delegate delegate_result
                     objectives]
       sess = session(Samagotchi::Toolkit.new(name: "lean", add: left_out))
       turn(sess)

@@ -104,7 +104,9 @@ SUBCOMMANDS = {
   # the chi home: the Ruby every chi launch boots (set, doctor)
   "home" => ["samagotchi/home_command", "HomeCommand"],
   # this folder's project; init marks a folder in no git repository (.chi/project.yml)
-  "project" => ["samagotchi/project_command", "ProjectCommand"]
+  "project" => ["samagotchi/project_command", "ProjectCommand"],
+  # durable schedules that outlive every worker (add, list, show, tick, run-now, …)
+  "schedule" => ["samagotchi/schedule_command", "ScheduleCommand"]
 }.freeze
 # chi --remote NAME <command> (or CHI_REMOTE=NAME): the session commands
 # against another machine's chi web; what runs here only is refused (exit 2).

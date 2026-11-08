@@ -822,7 +822,10 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
-    (described_class::OWNER_VOICED + %w[objectives cancel_reminder task_stop find_tools delegate_result]).each do |tool|
+    # The schedule tools are named here as well as in the constant: dropping
+    # one from OWNER_VOICED must fail this spec, not just shorten the loop.
+    named = %w[schedule_task list_schedules cancel_schedule register_reminder send_note]
+    (described_class::OWNER_VOICED + named + %w[objectives cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
       expect(verdict).to be_deny, tool
       expect(verdict.reason).to eq(format(described_class::OWNER_ONLY, tool))

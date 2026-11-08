@@ -242,6 +242,8 @@ module Samagotchi
         when "task"
           task = id.delete_prefix(ClientId::TASK_PREFIX)
           return "task #{Tools::TaskRecord.short_id(task)} finished" unless task.empty?
+        when "schedule"
+          return "schedule"
         end
 
         prefix = id[/\A[^:]*:/]

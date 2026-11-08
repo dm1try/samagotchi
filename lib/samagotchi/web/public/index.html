@@ -1384,7 +1384,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   /* One run: the groups' chips are the meta's. */
   #infoBar .meta .bar-group{display:contents}
   #infoBar .meta .bar-sep{display:none}
-  #infoBar .meta :is(.tools-chip,.notes-chip,.mem-chip,.ws-chip,.chain-link,.parent,.children-chip,.participants-chip,.dir,.ctx,.speed,.session-time,.worker-badge){display:none}
+  #infoBar .meta :is(.tools-chip,.notes-chip,.mem-chip,.ws-chip,.chain-link,.chain-pruned,.parent,.children-chip,.participants-chip,.dir,.ctx,.speed,.session-time,.worker-badge){display:none}
   #infoBar .info-actions{display:none}
   #infoBar .meta .status+.model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
@@ -1577,6 +1577,9 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .chain-row .cr-date{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* A row with its time (chainStamp): every row's date as wide, so the previews line up. */
 .chain-rows:has(.cr-date.timed) .cr-date{min-width:16ch}
+/* A chain pruned by a schedule (docs/scheduling.md): the popover's last line and the info bar say the earlier links are gone. */
+.chain-row.chain-pruned,.chain-row.chain-pruned .cr-n{color:var(--text-muted)}
+#infoBar .meta .chain-pruned{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);white-space:nowrap}
 /* The session page's links to the previous and the next link of its chain. */
 #infoBar .meta a.chain-link{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap;color:var(--accent)}
 @media(hover:hover){#infoBar .meta a.chain-link:hover{background:var(--accent-bg)}}
