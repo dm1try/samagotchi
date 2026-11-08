@@ -5,7 +5,13 @@ require "open3"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/session"
+require "samagotchi/session_manager"
+require "samagotchi/session_continue"
+require "samagotchi/plugin/context"
+require "samagotchi/review_start"
+require "samagotchi/verify_fresh"
 require "samagotchi/verify_fresh_origin"
+require "samagotchi/tools/delegate"
 
 # A session file's bytes (characterization): what #save writes for every
 # field, what a load→save of an older or a newer chi's file writes, and the
@@ -14,7 +20,11 @@ require "samagotchi/verify_fresh_origin"
 # The golden is the file exactly as #save writes it, but for two
 # placeholders: the spec's tmpdir is <TMP> and this chi's VERSION is
 # <VERSION>. The *_in.json files are hand-written inputs (a newer chi's,
-# an old chi's file), never regenerated.
+# an old chi's file), never regenerated. The paths that make or rewrite a
+# session file (fork, continue, a delegate child, resume, respawn, review,
+# Verify fresh, a plain spawn) are pinned the same way, their clock's
+# created_at/updated_at as <NOW> and their ids from a fixed sequence, with
+# what each keeps of its source in carry_matrix.json.
 #
 # Regenerate only after an intended change to the file's bytes:
 #   UPDATE_GOLDENS=1 bundle exec rspec spec/session_file_goldens_spec.rb
@@ -214,6 +224,147 @@ RSpec.describe "Session file goldens (characterization)" do
                           created_at: "x", updated_at: "x")
       end.to raise_error(ArgumentError)
       expect { minimal(colour: "blue") }.to raise_error(ArgumentError)
+    end
+  end
+
+  describe "paths" do
+    let(:folder) { FileUtils.mkdir_p(File.join(tmp, "project")).first }
+    let(:manager) { Samagotchi::SessionManager }
+
+    before do
+      counter = 0
+      allow(SecureRandom).to receive(:uuid) { format("00000000-0000-4000-8000-%012d", counter += 1) }
+      allow(manager).to receive(:spawn_worker_for_session)
+      # A new session's test_run follows the env (CI=true sets it).
+      allow(session_class).to receive(:test_session_env?).and_return(true)
+    end
+
+    def masked(text) = text.gsub(/^  "(created_at|updated_at)": "[^"]+"/, %(  "\\1": "<NOW>"))
+
+    def expect_path_golden(name, id) = expect_golden(name, masked(file_text(id)))
+
+    # every_field's session as a live source: its own folder, not a
+    # scratch session, a delegate or a child (a continue and a resume
+    # refuse or move those), with an unclear verdict a Verify fresh checks.
+    def source
+      @source ||= every_field_session.tap do |s|
+        s.working_directory = folder
+        s.project_root = folder
+        s.scratch = false
+        s.delegate = false
+        s.parent_id = nil
+        s.status = "idle"
+        s.verdicts = [*s.verdicts, { check_turn_id: "t-3", verdict: "unclear",
+                                     anchor: { turn_id: "44444444-4444-4444-8444-444444444444", quote: "unsure" } }]
+        s.save(state_dir: state_dir, now: later)
+      end
+    end
+
+    def loaded(id) = session_class.load(id, state_dir: state_dir)
+
+    def fork_child
+      host = Samagotchi::Plugin::Host.new(session_id: -> { source.id }, cwd: -> { folder },
+                                          model_name: -> { source.model_name }, state_dir: -> { state_dir },
+                                          setup: -> { Samagotchi::SessionSetup.of(loaded(source.id)) })
+      sessions = Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {}, host: host).sessions
+      sessions.fork(messages: loaded(source.id).messages, title: "forked")
+    end
+
+    def continue_link
+      Samagotchi::SessionContinue.run(source.id, state_dir: state_dir, recap_wait: 0, archive_wait: 0).id
+    end
+
+    # The spawn_session call Tools::Delegate.start_child makes.
+    def delegate_child
+      parent = loaded(source.id)
+      setup = Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean"),
+                                           parent_answers: parent.parent_answers)
+      manager.spawn_session(prompt: "check the parser", working_directory: folder, model_name: parent.model_name,
+                            memories: Samagotchi::Tools::Delegate::CHILD_MEMORIES, parent_id: parent.id,
+                            delegate: true, setup: setup, state_dir: state_dir).id
+    end
+
+    # What a woken worker does before its first turn.
+    def respawn
+      session = loaded(source.id)
+      session.drop_dead_question
+      session.save(state_dir: state_dir, now: later)
+      session.id
+    end
+
+    def value_of(id) = JSON.parse(masked(file_text(id)))
+
+    it "a fork, from the source's setup" do
+      expect_path_golden("fork_child.json", fork_child)
+    end
+
+    it "a continue's new link, the previous link's bytes unchanged" do
+      before_bytes = file_text(source.id)
+      expect_path_golden("continue_link.json", continue_link)
+      expect(file_text(source.id)).to eq(before_bytes)
+    end
+
+    it "a delegate child" do
+      expect_path_golden("delegate_child.json", delegate_child)
+    end
+
+    it "a plain spawn on the default setup (config's toolkit, origin default, a first turn)" do
+      id = manager.spawn_session(prompt: "hi", working_directory: folder, model_name: "main:gemma-small",
+                                 state_dir: state_dir).id
+      expect_path_golden("spawned.json", id)
+    end
+
+    it "a review session (ReviewStart.start)" do
+      git_repo(folder)
+      File.write(File.join(folder, "plan.md"), "# Plan\n")
+      id = Samagotchi::ReviewStart.start(subjects: ["plan.md"], dir: folder, model: "main:gemma-small",
+                                         state_dir: state_dir).id
+      expect_path_golden("review_started.json", id)
+    end
+
+    it "a Verify fresh child (VerifyFresh.start)" do
+      id = Samagotchi::VerifyFresh.start(source.id, of: "t-3", author: nil, state_dir: state_dir).id
+      expect_path_golden("verify_fresh_child.json", id)
+    end
+
+    it "a resume of a stopped, moved session: idle, the marker cleared, parent.json's parent written into the file" do
+      session_class.mark_stopped(source.id, state_dir: state_dir)
+      session_class.reparent(source.id, to: "golden-0012-new-parent", from: nil, state_dir: state_dir)
+      manager.resume_session(source.id, state_dir: state_dir)
+      expect(session_class.stopped_marker?(source.id, state_dir: state_dir)).to be(false)
+      expect_path_golden("resumed.json", source.id)
+    end
+
+    it "a respawn: the dead worker's question dropped, the interrupted turn kept until settled" do
+      expect_path_golden("respawned.json", respawn)
+    end
+
+    it "an archive and an unarchive leave the file's bytes as they were" do
+      before_bytes = file_text(source.id)
+      manager.archive_session(source.id, state_dir: state_dir, wait: 0)
+      expect(file_text(source.id)).to eq(before_bytes)
+      expect(session_class.list(state_dir: state_dir, include_archived: true).find { |s| s.id == source.id })
+        .to have_attributes(archived: true)
+      manager.unarchive_session(source.id, state_dir: state_dir)
+      expect(file_text(source.id)).to eq(before_bytes)
+    end
+
+    it "keeps what each path keeps of its source (the carry matrix)" do
+      src = value_of(source.id)
+      fresh = JSON.parse(File.read(File.join(golden_dir, "defaults.json")))
+      children = { "fork" => fork_child, "delegate" => delegate_child, "respawn" => respawn,
+                   "continue" => continue_link }.transform_values { |id| value_of(id) }
+      matrix = session_class::FIELDS.keys.to_h do |key|
+        [key, children.transform_values do |child|
+          if !child.key?(key) then "absent"
+          elsif child[key] == src[key] then "same"
+          elsif child[key] == fresh[key] then "default"
+          else "own"
+          end
+        end]
+      end
+      expect_golden("carry_matrix.json", "#{JSON.pretty_generate(matrix)}\n")
+      expect(Samagotchi::SessionSetup.members - session_class.public_instance_methods).to eq([])
     end
   end
 end

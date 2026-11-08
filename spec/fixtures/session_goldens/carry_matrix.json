@@ -1,0 +1,248 @@
+{
+  "metadata_version": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "written_by": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "id": {
+    "fork": "own",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "own"
+  },
+  "mode": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "model_name": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "own"
+  },
+  "model_typed": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "working_directory": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "messages": {
+    "fork": "own",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "created_at": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "updated_at": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "status": {
+    "fork": "same",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "last_prompt": {
+    "fork": "own",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "own"
+  },
+  "first_preview": {
+    "fork": "own",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "title": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "test_run": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "pending_question": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "default",
+    "continue": "default"
+  },
+  "used_memory_names": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "project_root": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "preloaded_memory_names": {
+    "fork": "default",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "muted_memory_names": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "prompt_notes": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "parent_id": {
+    "fork": "own",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "scratch": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "last_turn": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "verdicts": {
+    "fork": "absent",
+    "delegate": "absent",
+    "respawn": "same",
+    "continue": "absent"
+  },
+  "delegate": {
+    "fork": "same",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "llm_context": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "continues": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "own"
+  },
+  "thinking": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "reasoning_history": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "appended_prompt_files": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "toolkit": {
+    "fork": "same",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "toolkit_origin": {
+    "fork": "own",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "own"
+  },
+  "bundle_settings": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "config_settings": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "interrupted_turn": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
+  "parent_answers": {
+    "fork": "same",
+    "delegate": "same",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "working_set_pins": {
+    "fork": "same",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "review": {
+    "fork": "absent",
+    "delegate": "absent",
+    "respawn": "same",
+    "continue": "same"
+  },
+  "first_turn_id": {
+    "fork": "absent",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "absent"
+  },
+  "verify_fresh": {
+    "fork": "absent",
+    "delegate": "absent",
+    "respawn": "same",
+    "continue": "absent"
+  }
+}
