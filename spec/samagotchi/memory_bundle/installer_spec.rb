@@ -77,7 +77,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
         expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be true
         expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Identity\n")
-        expect(installer.results["identity.md"][:status]).to eq("installed")
+        expect(installer.results["identity.md"].word).to eq(:installed)
       end
 
       it "does NOT delete source directory after install (P1 regression)" do
@@ -134,8 +134,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         installer.run
 
-        expect(installer.results["identity.md"][:status]).to eq("skipped")
-        expect(installer.results["new_file.md"][:status]).to eq("installed")
+        expect(installer.results["identity.md"].word).to eq(:kept_own)
+        expect(installer.results["new_file.md"].word).to eq(:installed)
         expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Existing\n")
       end
 
@@ -170,7 +170,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         installer.run
 
-        expect(installer.results["identity.md"]).to eq(status: "skipped", reason: "already up to date")
+        expect(installer.results["identity.md"].word).to eq(:up_to_date)
         expect(installer.warnings).to be_empty
         expect(installer.summary).not_to include("--force")
       end
@@ -202,7 +202,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
         again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         again.run
-        expect(again.results["identity.md"]).to eq(status: "skipped", reason: "already exists")
+        expect(again.results["identity.md"].word).to eq(:kept_own)
         expect(again.warnings).to eq(["Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"])
         expect(again.summary).to include("chi bundle upgrade test-bundle")
       end
@@ -214,7 +214,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
         installer = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, dry_run: true)
         installer.run
-        expect(installer.results["identity.md"]).to eq(status: "skipped", reason: "already up to date")
+        expect(installer.results["identity.md"].word).to eq(:up_to_date)
       end
 
       it "overwrites existing files with --force" do
@@ -228,7 +228,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system", force: true)
         installer.run
 
-        expect(installer.results["identity.md"][:status]).to eq("installed")
+        expect(installer.results["identity.md"].word).to eq(:installed)
         expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# New Identity\n")
       end
 
@@ -541,8 +541,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
       up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
       up.run
-      expect(up.results["guardrails/a.yml"]).to eq(status: "skipped", reason: "already up to date")
-      expect(up.results["guardrails/b.yml"]).to eq(status: "installed")
+      expect(up.results["guardrails/a.yml"].word).to eq(:up_to_date)
+      expect(up.results["guardrails/b.yml"].word).to eq(:installed)
       expect(File.read(File.join(bundles_dir, "test-bundle", "guardrails", "b.yml"))).to eq("rules: [] # v2\n")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read[:guardrails].keys.map(&:to_s))
         .to contain_exactly("a.yml", "b.yml")
@@ -715,7 +715,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
       up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
       up.run
-      expect(up.results["identity.md"][:status]).to eq("kept")
+      expect(up.results["identity.md"].word).to eq(:kept)
       expect(File.read(target)).to eq("# Identity\nmy edit\n")
     end
   end
@@ -739,22 +739,22 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = upgrade(v2)
 
       expect(File.read(mine)).to eq("# my notes\n")
-      expect(up.results["notes.md"]).to eq(status: "skipped", reason: "already exists")
+      expect(up.results["notes.md"].word).to eq(:kept_own)
       expect(up.conflicts).to be_empty
-      expect(up.results["fresh.md"][:status]).to eq("installed")
+      expect(up.results["fresh.md"].word).to eq(:installed)
       data = Samagotchi::MemoryBundle::Provenance.new(name: "up-bundle").read
       expect(data[:files].keys).to contain_exactly(:"keep.md", :"fresh.md")
 
       # and stays skipped on the next upgrade (no fast-forward over it)
       v3 = write_bundle(File.join(tmpdir, "v3"), { "keep.md" => "# Keep\n", "notes.md" => "# Theirs 2\n" }, name: "up-bundle", version: "0.3.0")
-      expect(upgrade(v3).results["notes.md"][:status]).to eq("skipped")
+      expect(upgrade(v3).results["notes.md"].word).to eq(:kept_own)
       expect(File.read(mine)).to eq("# my notes\n")
     end
 
     it "is reported as skipped on a dry run, not as a conflict" do
       v2 = write_bundle(File.join(tmpdir, "v2"), { "keep.md" => "# Keep\n", "notes.md" => "# Theirs\n" }, name: "up-bundle", version: "0.2.0")
       up = upgrade(v2, dry_run: true)
-      expect(up.results["notes.md"]).to eq(status: "would_skip")
+      expect(up.results["notes.md"].word).to eq(:would_skip)
       expect(up.conflicts).to be_empty
     end
   end
@@ -851,7 +851,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(File.read(File.join(up.trash_dir, "old.md"))).to eq("# Old\n")
       expect(File.exist?(File.join(system_memories_dir, "keep.md"))).to be true
       expect(File.read(index_path)).not_to match(/^.*\bold\b/)
-      expect(up.results["old.md"][:status]).to eq("removed")
+      expect(up.results["old.md"].word).to eq(:removed)
       expect(up.summary).to include("Removed (no longer in the bundle): old.md (moved to #{up.trash_dir})")
       data = JSON.parse(File.read(File.join(bundles_dir, "drop-bundle", "manifest.json")))
       expect(data["files"].keys).to eq(["keep.md"])
@@ -862,7 +862,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"))
 
       expect(File.read(old_path)).to include("my notes")
-      expect(up.results["old.md"][:status]).to eq("kept_pruned")
+      expect(up.results["old.md"].word).to eq(:kept_pruned)
       expect(up.warnings).to include("Kept old.md: no longer in the bundle but edited locally (--force moves it to the trash)")
     end
 
@@ -889,7 +889,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     it "only reports the removal on a dry run" do
       up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), dry_run: true)
       expect(File.exist?(old_path)).to be true
-      expect(up.results["old.md"][:status]).to eq("would_remove")
+      expect(up.results["old.md"].word).to eq(:would_remove)
       expect(up.trash_dir).to be_nil
     end
   end
@@ -944,8 +944,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       install_summary(dir)
       again = install_summary(dir)
 
-      expect(again.results["tips.md"]).to eq(status: "skipped", reason: "already up to date")
-      expect(again.results["guardrails.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(again.results["tips.md"].word).to eq(:up_to_date)
+      expect(again.results["guardrails.rb"].word).to eq(:up_to_date)
       expect(again.summary).to include("Up to date: tips.md, guardrails.rb")
       expect(again.summary).not_to include("Skipped:")
     end
@@ -1022,7 +1022,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       installer = installer_for(source: bundle_dir, name: "hook-bundle", scope: "system")
       installer.run
       expect(File.exist?(File.join(bundles_dir, "hook-bundle", "hooks", "guardrails.rb"))).to be true
-      expect(installer.results["guardrails.rb"][:status]).to eq("installed")
+      expect(installer.results["guardrails.rb"].word).to eq(:installed)
     end
 
     it "stores hook provenance and trust_level" do
@@ -1046,7 +1046,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up_installer = described_class.new(source: bundle_dir2, name: "up-bundle", scope: "system", force: false, strict: true, upgrade: true)
       up_installer.run
       expect(up_installer.warnings.any? { |w| w.include?("locally modified") }).to be true
-      expect(up_installer.results["guardrails.rb"][:status]).to eq("updated")
+      expect(up_installer.results["guardrails.rb"].word).to eq(:updated)
     end
 
     it "dry_run does not copy hooks" do
@@ -1054,7 +1054,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       installer = described_class.new(source: bundle_dir, name: "dry-bundle", scope: "system", force: false, strict: true, dry_run: true)
       installer.run
       expect(File.exist?(File.join(bundles_dir, "dry-bundle", "hooks", "guardrails.rb"))).to be false
-      expect(installer.results["guardrails.rb"][:status]).to eq("would_install")
+      expect(installer.results["guardrails.rb"].word).to eq(:would_install)
     end
 
     it "an upgrade with an identical hook reports it up to date, not Updated" do
@@ -1063,7 +1063,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
       up = described_class.new(source: bundle_dir, name: "same-bundle", scope: "system", strict: true, upgrade: true)
       up.run
-      expect(up.results["guardrails.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(up.results["guardrails.rb"].word).to eq(:up_to_date)
       expect(up.summary).to include("Up to date: identity.md, guardrails.rb")
       expect(up.summary).not_to include("Updated:")
     end
@@ -1091,7 +1091,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
       installer = installer_for(source: bundle_dir, name: "nosha-hook", scope: "system")
       installer.run
-      expect(installer.results["guardrails.rb"][:status]).to eq("installed")
+      expect(installer.results["guardrails.rb"].word).to eq(:installed)
       expect(installer.warnings.grep(/Checksum mismatch/)).to be_empty
 
       FileUtils.rm_rf(File.join(bundles_dir, "nosha-hook"))
@@ -1133,11 +1133,11 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       dry = run_assets(v2, upgrade: true, dry_run: true)
       real = run_assets(v2, upgrade: true)
 
-      words = { "updated" => "would_update", "installed" => "would_install" }
+      words = { updated: :would_update, installed: :would_install }
       expect(dry.results.slice(*assets)).to eq(real.results.slice(*assets).transform_values do |result|
-        result.merge(status: words.fetch(result[:status], result[:status]))
+        result.with(word: words.fetch(result.word, result.word))
       end)
-      expect(dry.results["h.rb"]).to eq(status: "would_update")
+      expect(dry.results["h.rb"].word).to eq(:would_update)
       expect(dry.summary).to include("Would update: h.rb\n").and include("Up to date: guardrails/r.yml, plugin.rb, scripts/s.sh\n")
       expect(dry.summary.lines.grep(/\ASkipped:/).join).not_to match(%r{h\.rb|plugin\.rb|guardrails/|scripts/})
     end
@@ -1145,7 +1145,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     it "says would install for each asset of a fresh bundle, and writes nothing" do
       dry = run_assets(asset_bundle("1.0.0", hook: "puts 1\n"), dry_run: true)
 
-      expect(dry.results.slice(*assets)).to eq(assets.to_h { |asset| [asset, { status: "would_install" }] })
+      expect(dry.results.slice(*assets)).to eq(assets.to_h { |asset| [asset, Samagotchi::MemoryBundle::Installer::FileResult.new(word: :would_install)] })
       expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
     end
   end
@@ -1492,7 +1492,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       new_dir = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: nil, name: "repo-bundle")
       up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
 
-      expect(up.results["README.md"]).to include(status: "removed")
+      expect(up.results["README.md"].word).to eq(:removed)
       expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be false
       expect(index_text).not_to include("**README**")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s)).to eq(["real.md"])
@@ -1513,7 +1513,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         .to contain_exactly("real.md", "README.md")
 
       up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
-      expect(up.results["README.md"]).to include(status: "removed")
+      expect(up.results["README.md"].word).to eq(:removed)
       expect(File.exist?(File.join(system_memories_dir, "README.md"))).to be false
       expect(index_text).not_to include("**README**")
     end
@@ -1537,7 +1537,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(files[:"README.md"][:checksum]).to eq(Digest::SHA256.hexdigest("# Readme\n"))
 
       up = described_class.new(source: new_dir, name: "repo-bundle", scope: "system", strict: true, upgrade: true).tap(&:run)
-      expect(up.results["README.md"]).to include(status: "kept_pruned")
+      expect(up.results["README.md"].word).to eq(:kept_pruned)
       expect(File.read(File.join(system_memories_dir, "README.md"))).to eq("# Readme, my notes\n")
     end
   end

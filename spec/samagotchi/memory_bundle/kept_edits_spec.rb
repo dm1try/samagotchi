@@ -59,8 +59,8 @@ RSpec.describe "Kept edits in a bundle" do
       dry = run_installer(upgrade: true, dry_run: true)
 
       expect(dry.conflicts).to eq("a.md" => { base: provenance.base_path("a.md"), current: target, incoming: File.join(source, "a.md") })
-      expect(dry.results.slice("a.md", "b.md", "c.md").transform_values { |r| r[:status] })
-        .to eq("a.md" => "conflict", "b.md" => "keep", "c.md" => "fast_forward")
+      expect(dry.results.slice("a.md", "b.md", "c.md").transform_values(&:word))
+        .to eq("a.md" => :conflict, "b.md" => :keep, "c.md" => :fast_forward)
       expect(File.read(target)).to eq("edited\n")
       expect(provenance.record.version).to eq("1.0.0")
     end
@@ -76,7 +76,7 @@ RSpec.describe "Kept edits in a bundle" do
     it "prints no checksum mismatch for a file a plain install would skip" do
       dry = run_installer(write_source("1.0.0", { "a.md" => "a1\n", "b.md" => "b1\n", "c.md" => "c1\n" }), dry_run: true)
 
-      expect(dry.results["a.md"][:status]).to eq("would_skip")
+      expect(dry.results["a.md"].word).to eq(:would_skip)
       expect(dry.warnings.grep(/Checksum mismatch for a\.md/)).to be_empty
     end
   end
@@ -97,7 +97,7 @@ RSpec.describe "Kept edits in a bundle" do
       up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
 
       expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail two"))
-      expect(up.results["a.md"][:status]).to eq("merged")
+      expect(up.results["a.md"].word).to eq(:merged)
       expect(up.merged_files).to eq(["a.md"])
       expect(up.conflicts).to be_empty
       expect(up.summary).to include("merged 2.0.0 into your a.md")
@@ -111,7 +111,7 @@ RSpec.describe "Kept edits in a bundle" do
         incoming = doc(tail: "tail #{word}")
         up = run_installer(write_source("#{i + 2}.0.0", { "a.md" => incoming }), upgrade: true)
 
-        expect(up.results["a.md"][:status]).to eq("merged")
+        expect(up.results["a.md"].word).to eq(:merged)
         expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail #{word}"))
         expect(File.read(provenance.base_path("a.md"))).to eq(incoming)
         expect(provenance.read[:files][:"a.md"].except(:merged_version, :merged_at, :merged_trash)).to eq(checksum: Digest::SHA256.hexdigest(incoming))
@@ -137,7 +137,7 @@ RSpec.describe "Kept edits in a bundle" do
       File.write(target, both)
       up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
 
-      expect(up.results["a.md"]).to eq(status: "kept", reason: "local edits already hold the bundle's changes")
+      expect(up.results["a.md"]).to have_attributes(word: :kept, note: "local edits already hold the bundle's changes")
       expect(up.merged_files).to be_empty
       expect(trash_files).to be_empty
       expect(File.read(target)).to eq(both)
@@ -176,7 +176,7 @@ RSpec.describe "Kept edits in a bundle" do
       up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
 
       expect(File.read(target)).to eq("a live memory_write\n")
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})"))
       expect(File.read(provenance.base_path("a.md"))).to eq(doc)
       expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
@@ -198,7 +198,7 @@ RSpec.describe "Kept edits in a bundle" do
     it "says would merge in a dry run, and writes nothing" do
       dry = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true, dry_run: true)
 
-      expect(dry.results["a.md"][:status]).to eq("would_merge")
+      expect(dry.results["a.md"].word).to eq(:would_merge)
       expect(dry.summary).to include("would merge 2.0.0 into your a.md")
       expect(dry.summary).not_to include("Checksum mismatch")
       expect(dry.summary.lines.map(&:chomp)).not_to include("merged 2.0.0 into your a.md")
@@ -239,7 +239,7 @@ RSpec.describe "Kept edits in a bundle" do
 
     def expect_untouched(up, version: "2.0.0")
       expect(File.read(target)).to eq("edited\n")
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(up.conflicts).to have_key("a.md")
       expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
       expect(provenance.read[:version]).to eq(version)
@@ -280,7 +280,7 @@ RSpec.describe "Kept edits in a bundle" do
     it "calls a real conflict a conflict in a dry run, with no write" do
       dry = run_installer(write_source("2.0.0"), upgrade: true, dry_run: true)
 
-      expect(dry.results["a.md"][:status]).to eq("conflict")
+      expect(dry.results["a.md"].word).to eq(:conflict)
       expect(dry.summary).not_to include("would merge")
       expect(File.read(target)).to eq("edited\n")
     end
@@ -496,7 +496,7 @@ RSpec.describe "Kept edits in a bundle" do
       upgrade_with_agent
       again = run_installer(upgrade: true)
 
-      expect(again.results["a.md"][:status]).to eq("conflict")
+      expect(again.results["a.md"].word).to eq(:conflict)
     end
 
     it "keeps a file that still holds conflict markers as a conflict" do
@@ -584,7 +584,7 @@ RSpec.describe "Kept edits in a bundle" do
         provenance.resolve_conflicts("a.md" => { incoming: File.join(tmpdir, "gone.md"), current: target })
         up = run_installer(write_source("3.0.0"), upgrade: true)
 
-        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.results["a.md"].word).to eq(:conflict)
         expect(File.read(target)).to eq("edited\n")
       end
     end
@@ -602,7 +602,7 @@ RSpec.describe "Kept edits in a bundle" do
       %w[2.0.0 3.0.0].each do |version|
         up = run_installer(write_source(version), upgrade: true)
 
-        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.results["a.md"].word).to eq(:conflict)
         expect(File.read(target)).to eq("edited\n")
         expect(File.exist?(provenance.base_path("a.md"))).to be false
         expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
@@ -632,7 +632,7 @@ RSpec.describe "Kept edits in a bundle" do
       expect(File.exist?(provenance.base_path("a.md"))).to be false
 
       up = run_installer(write_source("2.0.0"), upgrade: true)
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(File.read(target)).to eq("edited\n")
     end
 
@@ -640,7 +640,7 @@ RSpec.describe "Kept edits in a bundle" do
       %w[2.0.0 3.0.0].each do |version|
         up = run_installer(write_source(version, { "z.md" => "z\n" }), upgrade: true)
 
-        expect(up.results["a.md"]).to include(status: "kept_pruned")
+        expect(up.results["a.md"].word).to eq(:kept_pruned)
         expect(File.read(target)).to eq("edited\n")
         expect(File.exist?(provenance.base_path("a.md"))).to be false
       end
@@ -651,7 +651,7 @@ RSpec.describe "Kept edits in a bundle" do
       run_installer(write_source("1.0.1", { "z.md" => "z\n" }))
 
       expect(provenance.read[:files]).to have_key(:"a.md")
-      expect(run_installer(write_source("2.0.0", { "z.md" => "z\n" }), upgrade: true).results["a.md"][:status]).to eq("kept_pruned")
+      expect(run_installer(write_source("2.0.0", { "z.md" => "z\n" }), upgrade: true).results["a.md"].word).to eq(:kept_pruned)
     end
 
     it "chi bundle status calls it modified" do
@@ -696,7 +696,7 @@ RSpec.describe "Kept edits in a bundle" do
     it "keeps the mark and the base on a file it skipped" do
       up = run_installer(write_source("2.0.0"))
 
-      expect(up.results["a.md"]).to eq(status: "skipped", reason: "already exists")
+      expect(up.results["a.md"].word).to eq(:kept_own)
       expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
       expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
     end
@@ -739,7 +739,7 @@ RSpec.describe "Kept edits in a bundle" do
     it "stays a conflict at the next upgrade: no fast-forward over it" do
       up = run_installer(write_source("3.0.0"), upgrade: true)
 
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(File.read(target)).to eq("edited\n")
       expect(File.read(provenance.base_path("a.md"))).to eq("edited\n")
       expect(provenance.read[:files][:"a.md"]).to include(conflict: true, legacy_base: true)
