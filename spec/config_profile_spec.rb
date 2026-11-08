@@ -45,7 +45,7 @@ RSpec.describe "prompt profile config" do
     it "is kept on the host (as written; ModelProfile.resolve validates it)" do
       with_config("hosts" => { "box" => { "host" => "box", "profile" => " Qwen36 " },
                                "plain" => { "host" => "h" } }) do |path|
-        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        hosts = Samagotchi::HostConfig.all(env: {}, path: path)
 
         expect(hosts["box"].profile).to eq("qwen36")
         expect(hosts["plain"].profile).to be_nil
@@ -53,11 +53,11 @@ RSpec.describe "prompt profile config" do
     end
   end
 
-  describe "ConfigFile.model_settings" do
+  describe "ModelSettings.all" do
     it "reads the models: map, keyed by id or alias, case-insensitively" do
       with_config("models" => { "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M" => { "profile" => "qwen36" },
                                 "Ista" => { "profile" => "Gemma4" } }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq(
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq(
           "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => Samagotchi::ModelSettings.new(profile: "qwen36"),
           "ista" => Samagotchi::ModelSettings.new(profile: "gemma4")
         )
@@ -66,10 +66,10 @@ RSpec.describe "prompt profile config" do
 
     it "skips entries that are not maps and gives {} without a models: section" do
       with_config("models" => { "a" => "qwen36", "b" => { "profile" => "" }, "c" => { "profile" => "qwen36" } }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq("b" => Samagotchi::ModelSettings.new, "c" => Samagotchi::ModelSettings.new(profile: "qwen36"))
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq("b" => Samagotchi::ModelSettings.new, "c" => Samagotchi::ModelSettings.new(profile: "qwen36"))
       end
       with_config("default" => { "model" => "m" }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq({})
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq({})
       end
     end
 

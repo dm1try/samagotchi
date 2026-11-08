@@ -176,8 +176,8 @@ module Samagotchi
     # @return [String] +model_name+
     def self.check_host!(model_name, env: ENV, hosts: nil)
       require_relative "config"
-      hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
-      parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
+      hosts ||= Samagotchi::HostConfig.all(env: env)
+      parsed = Samagotchi::HostConfig.model_ref(model_name, env: env, hosts: hosts)
       if (other = parsed.host_conflict)
         raise UnknownHost, "alias '#{parsed.alias_name}' names host '#{other}', not '#{parsed.host_name}'; " \
                            "use #{parsed.alias_name} or #{other}:#{parsed.alias_name}"
@@ -234,9 +234,9 @@ module Samagotchi
     def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil, relist: nil, now: Time.now.to_i)
       require_relative "config"
       require_relative "model_list_store"
-      hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
+      hosts ||= Samagotchi::HostConfig.all(env: env)
       lists ||= Samagotchi::ModelListStore
-      parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
+      parsed = Samagotchi::HostConfig.model_ref(model_name, env: env, hosts: hosts)
       host = parsed.host_name
       return nil unless host
       # Declared under hosts.<name>.models: served whatever the host lists.
@@ -323,7 +323,7 @@ module Samagotchi
       prefix = prefix.strip.downcase
       return nil if hosts.keys.any? { |k| k.to_s.downcase == prefix }
 
-      Samagotchi::ConfigFile.disabled_host_names(env: env).include?(prefix) ? prefix : nil
+      Samagotchi::HostConfig.disabled_names(env: env).include?(prefix) ? prefix : nil
     end
 
     # "box/x" named host box until '/' stopped naming a host: a saved
@@ -437,7 +437,7 @@ module Samagotchi
     def self.resolve(names:, entry:, client:, bare_model:, override: nil, models: nil)
       require_relative "config"
       override ||= Samagotchi::Config.get_with_origin("model.profile")
-      models ||= Samagotchi::ConfigFile.model_settings
+      models ||= Samagotchi::ModelSettings.all
       names = Array(names).map { |n| n.to_s.strip }.reject(&:empty?).uniq
 
       value, origin = override

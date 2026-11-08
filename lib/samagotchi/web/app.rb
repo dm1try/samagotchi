@@ -1155,7 +1155,7 @@ module Samagotchi
         Degrade.call(:web, "model_sampling_unreadable") do
           return if registry.nil? || models.empty?
 
-          settings = ConfigFile.model_settings
+          settings = ModelSettings.all
           models.each do |model|
             target = registry.resolve(model[:name])
             names = registry.lookup_names(model[:name], target: target)
@@ -1217,7 +1217,7 @@ module Samagotchi
         @models_mutex.synchronize do
           next @registry if @registry_given
 
-          hosts = ConfigFile.hosts_config
+          hosts = HostConfig.all
           if @registry.nil? || hosts != @registry_hosts
             @registry = HostRegistry.new(hosts_config: hosts)
             @registry_hosts = hosts

@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::SessionSetting do
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "oai:m", working_directory: Dir.pwd) }
 
-  before { allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({}) }
+  before { allow(Samagotchi::ModelSettings).to receive(:all).and_return({}) }
 
   it "names the settings in the order every chip list has them, /stats's without the toolkit" do
     expect(described_class::ALL.map(&:key)).to eq(%i[llm_context thinking reasoning_history toolkit])

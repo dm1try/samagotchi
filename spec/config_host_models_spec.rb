@@ -18,7 +18,7 @@ RSpec.describe "hosts.<name>.models" do
   end
 
   def hosts(yaml_hosts)
-    with_config(yaml_hosts) { |path| Samagotchi::ConfigFile.hosts_config(env: {}, path: path) }
+    with_config(yaml_hosts) { |path| Samagotchi::HostConfig.all(env: {}, path: path) }
   end
 
   it "parses each host's models by downcased id, {} when unset" do
@@ -42,7 +42,7 @@ RSpec.describe "hosts.<name>.models" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, yaml)
-      work = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"]
+      work = Samagotchi::HostConfig.all(env: {}, path: path)["work"]
 
       expect(work.models.keys).to eq(%w[rr/inf rr/nan])
       expect(work.models.values.map(&:price)).to eq([nil, nil])

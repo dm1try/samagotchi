@@ -87,12 +87,12 @@ module DepsCheck
 
   # --- hosts --------------------------------------------------------------
 
-  # The hosts: entries of chi's config.yml (ConfigFile.hosts_config, what
+  # The hosts: entries of chi's config.yml (HostConfig.all, what
   # Config.load! reads them with), loaded on demand: a rake task that
   # doesn't check deps never loads chi's config.
   def config_hosts
     require_relative "../../lib/samagotchi/host_config"
-    Samagotchi::ConfigFile.hosts_config.values.map do |h|
+    Samagotchi::HostConfig.all.values.map do |h|
       Host.new(name: h.name, host: h.host, port: h.port, scheme: h.scheme, api: h.api&.to_s)
     end
   end

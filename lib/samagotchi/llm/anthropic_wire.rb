@@ -4,7 +4,7 @@ require "digest"
 require "json"
 require_relative "../log"
 require_relative "utf8_scrub"
-require_relative "../tools/tool_index"
+require_relative "../tools/index_hint"
 
 module Samagotchi
   module LLM
@@ -278,7 +278,7 @@ module Samagotchi
       # don't change; only this wire says it).
       def loaded_text(text, names)
         line = "Loaded: #{names.join(", ")}. #{LOADED_HINT}"
-        text = text.sub("#{Tools::ToolIndex::CALL_HINT}\n\n", "")
+        text = text.sub("#{Tools::IndexHint::CALL_HINT}\n\n", "")
         blank?(text) ? line : "#{line}\n\n#{text}"
       end
 

@@ -24,7 +24,7 @@ module Samagotchi
     # @param target [HostRegistry::ModelTarget]
     # @param profile [ModelProfile, nil] the model's prompt profile (native)
     # @param adapter [LLM::OpenAIChat, nil] the chat host's adapter
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
     # @return [Answer]
     def self.for(target, names:, profile: nil, adapter: nil, models: nil)
@@ -47,11 +47,11 @@ module Samagotchi
 
     def self.configured(_target, entry, models, names)
       models ||= begin
-        ConfigFile.model_settings
+        ModelSettings.all
       rescue StandardError
         {}
       end
-      if (setting = ConfigFile.model_setting(names, :vision, models: models))
+      if (setting = ModelSettings.find(names, :vision, models: models))
         return Answer.new(value: setting.value, reason: setting.value ? nil : "models: #{setting.key} sets vision: false")
       end
       return nil if entry.vision.nil?

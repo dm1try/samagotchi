@@ -8,11 +8,14 @@ require_relative "config_text_edit"
 require_relative "log"
 require_relative "model_ref"
 require_relative "paths"
-require_relative "llm_context_strategy"
-require_relative "host_model"
 require_relative "config/restart_watch"
 
 module Samagotchi
+  # Which LLM context strategy a turn runs under; it reads Config.
+  autoload :LLMContextStrategy, File.expand_path("llm_context_strategy", __dir__)
+  # A hosts.<name>.models entry and its price; they read ConfigFile.
+  autoload :HostModel, File.expand_path("host_model", __dir__)
+  autoload :ModelPrice, File.expand_path("model_price", __dir__)
   # Parses the thinking: levels of host and model entries (it needs Config).
   autoload :Thinking, File.expand_path("thinking", __dir__)
   # One hosts: entry; it needs ConfigFile's readers.
@@ -88,6 +91,12 @@ module Samagotchi
       next_request_or_turn_end next_update desktop_update web_start next_cli_run next_empty_answer_retry
       next_history_access next_matching_turn_display_poll_write
     ].freeze
+
+    # llm_context.policy's default: the sentence forget_outputs' description
+    # carries (ToolDeclarations::FORGET_OUTPUTS_POLICY), the plan's D7 line,
+    # adapted from CLM's steering example.
+    DEFAULT_LLM_CONTEXT_POLICY = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note " \
+                                 "what it established; keep anything you'll still edit against."
 
     ENTRIES = [
       # universal – env+config+cli
@@ -261,7 +270,7 @@ module Samagotchi
       # and hosts.<name>.llm_context_budget_tokens come first. Kept as written: LLMContextStrategy.parse_budget reads it.
       Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :string, default: nil,           expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
-      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config], lifecycle: :worker_start),
+      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: DEFAULT_LLM_CONTEXT_POLICY, expose: %i[env config], lifecycle: :worker_start),
 
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag
@@ -399,7 +408,7 @@ module Samagotchi
     # appended_prompt_files, Hooks::Loader, ConfigFile.bundle_settings.
     FREE_FORM_MAPS = %w[model_aliases hooks bundles memories append_system_prompt].freeze
     # Maps of named entries and the keys an entry may hold
-    # (ConfigFile.hosts_config, ConfigFile.model_settings).
+    # (HostConfig.all, ModelSettings.all).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
@@ -408,6 +417,8 @@ module Samagotchi
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
     HOST_MODEL_KEYS = %w[price served].freeze
+    # The keys a hosts.<name>.models.<id>.price may hold (ModelPrice.parse).
+    MODEL_PRICE_KEYS = %w[input cache_read cache_write output].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     # And toolkit's kits (Toolkit.kits), and bundles' judgments' settings (SystemOne::JudgmentSettings).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze, "system_one" => %w[judgments].freeze }.freeze
@@ -887,9 +898,9 @@ module Samagotchi
       def price_key_problems(prefix, price)
         return [] unless price.is_a?(Hash)
 
-        (price.keys.map(&:to_s) - ModelPrice::KEYS).map do |k|
+        (price.keys.map(&:to_s) - MODEL_PRICE_KEYS).map do |k|
           # A renamed key is compared by its new name, so that name is the hint.
-          unknown_key_message("#{prefix}#{k}", RENAMED_PRICE_KEYS.fetch(k, k), ModelPrice::KEYS, prefix: prefix)
+          unknown_key_message("#{prefix}#{k}", RENAMED_PRICE_KEYS.fetch(k, k), MODEL_PRICE_KEYS, prefix: prefix)
         end
       end
 
@@ -1172,71 +1183,6 @@ module Samagotchi
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
-    # config.yml's hosts: by lowercased name; an entry that is disabled or
-    # invalid (warned) is left out. No entry left: "default", from
-    # server.host/port.
-    # @return [Hash{String => HostConfig}]
-    def hosts_config(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw_hosts = data[HOSTS_KEY] if data.is_a?(Hash)
-
-      normalized = {}
-      if raw_hosts.is_a?(Hash)
-        raw_hosts.each do |raw_name, raw_cfg|
-          host = HostConfig.parse(raw_name, raw_cfg)
-          normalized[host.name] = host if host
-        end
-        warn_duplicate_host_models(normalized)
-      end
-      normalized["default"] = default_host_config(data, env) if normalized.empty?
-      normalized
-    rescue StandardError => e
-      Log.error(:config, "hosts_config_failed", error: e.class.name, message: e.message)
-      {}
-    end
-
-    # The host chi uses when hosts: names none: server.host/port.
-    def default_host_config(data, env)
-      opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
-      host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
-      host = "localhost" if host.empty?
-      port = Samagotchi::Config.resolve("server.port", **opts).to_i
-      port = 8080 if port <= 0 || port > 65_535
-      HostConfig.new(name: "default", host: host, port: port)
-    end
-    private_class_method :default_host_config
-
-    # Two hosts declaring one id under hosts.<name>.models: a bare id goes
-    # where HostRegistry#host_for_model sends it (the default host when it
-    # declares the id, else the first in hosts: order); say so once.
-    def warn_duplicate_host_models(hosts)
-      declared = Hash.new { |h, k| h[k] = [] }
-      hosts.each { |name, cfg| cfg.models.each { |down, model| declared[down] << [name, model.id] } }
-      declared.each_value do |owners|
-        next if owners.size < 2
-
-        names = owners.map(&:first)
-        id = owners.first.last
-        goes = names.include?("default") ? "default" : "#{names.first} unless the default host lists it"
-        warn_once "Warning: #{names.map { |n| "hosts.#{n}.models" }.join(" and ")} #{names.size == 2 ? "both" : "all"} declare #{id}; " \
-                  "a bare #{id} goes to #{goes}"
-      end
-    end
-    private_class_method :warn_duplicate_host_models
-
-    # The names (lowercased) of the hosts entries with enabled: false, which
-    # hosts_config leaves out, from config.yml's hosts:.
-    # @return [Array<String>]
-    def disabled_host_names(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw = data[HOSTS_KEY] if data.is_a?(Hash)
-      return [] unless raw.is_a?(Hash)
-
-      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && HostConfig.disabled?(cfg) }
-    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
-      []
-    end
-
     # Resolve the `recap:` section through the Config registry so scalar
     # recap settings share the single precedence path (CLI > ENV > file >
     # default). Returns false when explicitly disabled (file `recap: false`
@@ -1418,47 +1364,6 @@ module Samagotchi
       end
     rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       {}
-    end
-
-    # The top-level `models:` map: per-model settings keyed by model id or
-    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`, each a
-    # ModelSettings; an entry that is not a map is skipped.
-    # @return [Hash{String => ModelSettings}]
-    def model_settings(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw = data[MODELS_KEY] if data.is_a?(Hash)
-      return {} unless raw.is_a?(Hash)
-
-      raw.each_with_object({}) do |(k, v), result|
-        key = k.to_s.strip.downcase
-        settings = ModelSettings.parse(key, v)
-        result[key] = settings if settings
-      end
-    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
-      {}
-    end
-
-    # The first +names+ (model as typed, alias-resolved, bare, …) whose
-    # models: entry sets +field+ (a ModelSettings member; another name
-    # raises ArgumentError): a ModelSetting (key, value), or nil.
-    # VisionSupport and SamplingSettings look a model up the same way.
-    # @param models [Hash{String => ModelSettings}, nil] model_settings by default
-    # @return [ModelSetting, nil]
-    def model_setting(names, field, models: nil)
-      raise ArgumentError, "unknown models: field #{field.inspect}" unless ModelSettings.members.include?(field)
-
-      models ||= model_settings
-      Array(names).map { |name| name.to_s.strip.downcase }.reject(&:empty?).uniq.each do |key|
-        value = models[key]&.public_send(field)
-        return ModelSetting.new(key: key, value: value) unless value.nil?
-      end
-      nil
-    end
-
-    # +raw+ parsed against config.yml's hosts (or +hosts+) and aliases.
-    # @return [ModelRef]
-    def model_ref(raw, env: ENV, path: global_path(env: env), hosts: nil)
-      ModelRef.parse(raw, hosts: hosts || hosts_config(env: env, path: path), aliases: model_aliases(env: env, path: path))
     end
 
     # Words /model takes as arguments (clear/default/none/off reset the

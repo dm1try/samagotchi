@@ -412,7 +412,7 @@ module Samagotchi
       # read is mtime-cached), so a host added or a window changed while
       # chi web runs is picked up on the next refresh of a card.
       def hub_registry
-        hosts = ConfigFile.hosts_config
+        hosts = HostConfig.all
         if @hub_registry.nil? || hosts != @hub_registry_hosts
           @hub_registry = HostRegistry.new(hosts_config: hosts)
           @hub_registry_hosts = hosts

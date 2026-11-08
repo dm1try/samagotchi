@@ -253,7 +253,7 @@ RSpec.describe Samagotchi::Engine, "#steer" do
     end
 
     it "waits for the model's own steer_cut_after (models: 60), where the global would cut" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings)
+      allow(Samagotchi::ModelSettings).to receive(:all)
         .and_return(engine.effective_model_name.downcase => Samagotchi::ModelSettings.new(steer_cut_after: 60))
       expect(cut_during(nil, thinking_for: 30)).to eq([:waits, nil])
       expect(cut_during(nil, thinking_for: 61).first).to eq(:now)

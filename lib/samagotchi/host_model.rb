@@ -67,12 +67,8 @@ module Samagotchi
       served == "any" || served.any? { |id| id.casecmp?(name.to_s.strip) }
     end
 
-    # config.rb requires this file, so config is required here only when a
-    # warning needs it (this file loaded alone).
-    def self.warn_once(message)
-      require_relative "config"
-      ConfigFile.warn_once(message)
-    end
+    # Config comes with model_price.
+    def self.warn_once(message) = ConfigFile.warn_once(message)
     private_class_method :warn_once
 
     # One host's rows as the listings show them, declared ids first, then

@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::SteerCutAfter do
   end
 
   def target_for(path, model)
-    hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+    hosts = Samagotchi::HostConfig.all(env: {}, path: path)
     Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
   end
 
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::SteerCutAfter do
     def resolve(path, dir, model, env: {})
       with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_STEER_CUT_AFTER" => nil }.merge(env)) do
         Samagotchi::Config.reload!(cli_overrides: {})
-        models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+        models = Samagotchi::ModelSettings.all(env: {}, path: path)
         target = target_for(path, model)
         described_class.resolve(target, names: [target.model, target.bare_model], models: models)
       end

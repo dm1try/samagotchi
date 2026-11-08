@@ -6,7 +6,7 @@ require_relative "reasoning_history"
 
 module Samagotchi
   # One config.yml models: entry (per-model settings keyed by model id or
-  # alias), parsed and checked; ConfigFile.model_settings holds them by
+  # alias), parsed and checked; ModelSettings.all holds them by
   # downcased key. Each field is nil when unset: profile kept as written
   # (downcased; ModelProfile.resolve validates it), vision true/false,
   # sampling a request-field map, thinking a level, reasoning_history a
@@ -19,6 +19,41 @@ module Samagotchi
     # Every field may be left out (nil).
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, **fields)
+    end
+
+    # The top-level `models:` map: per-model settings keyed by model id or
+    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`, each a
+    # ModelSettings; an entry that is not a map is skipped.
+    # @return [Hash{String => ModelSettings}]
+    def self.all(env: ENV, path: ConfigFile.global_path(env: env))
+      data = ConfigFile.read_yaml(env: env, path: path)
+      raw = data[ConfigFile::MODELS_KEY] if data.is_a?(Hash)
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(k, v), result|
+        key = k.to_s.strip.downcase
+        settings = parse(key, v)
+        result[key] = settings if settings
+      end
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
+      {}
+    end
+
+    # The first +names+ (model as typed, alias-resolved, bare, …) whose
+    # models: entry sets +field+ (a ModelSettings member; another name
+    # raises ArgumentError): a ModelSetting (key, value), or nil.
+    # VisionSupport and SamplingSettings look a model up the same way.
+    # @param models [Hash{String => ModelSettings}, nil] .all by default
+    # @return [ModelSetting, nil]
+    def self.find(names, field, models: nil)
+      raise ArgumentError, "unknown models: field #{field.inspect}" unless members.include?(field)
+
+      models ||= all
+      Array(names).map { |name| name.to_s.strip.downcase }.reject(&:empty?).uniq.each do |key|
+        value = models[key]&.public_send(field)
+        return ModelSetting.new(key: key, value: value) unless value.nil?
+      end
+      nil
     end
 
     # A models: entry as written, or nil when it is not a map (or the key is
@@ -45,7 +80,7 @@ module Samagotchi
     end
   end
 
-  # One field ConfigFile.model_setting found: the models: key that set it
+  # One field ModelSettings.find found: the models: key that set it
   # and its value.
   ModelSetting = Data.define(:key, :value)
 end

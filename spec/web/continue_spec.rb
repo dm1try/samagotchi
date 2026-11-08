@@ -94,7 +94,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
       status, body = create(continues: previous.id, idle: true)
 
       expect(status).to eq(201), body.inspect
-      expect(body["model_name"]).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+      expect(body["model_name"]).to eq(Samagotchi::HostConfig.model_ref("spec-model").ref)
       expect(body["model_warning"]).to match(%r{\Agone:org/model can't run \(unknown host 'gone'.*\); started on spec-model\z})
       expect(archived?(previous.id)).to be(true)
     end

@@ -10,7 +10,7 @@ require "samagotchi/turn_flow"
 RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
   before do
     allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
     Samagotchi::ConfigFile.reset_warnings!
     engine.session = session
   end

@@ -2,8 +2,8 @@
 
 require "samagotchi/model_settings"
 
-# One config.yml models: entry as a value object (ConfigFile.model_settings
-# holds them), and ConfigFile.model_setting's lookup over them.
+# One config.yml models: entry as a value object (ModelSettings.all
+# holds them), and ModelSettings.find's lookup over them.
 RSpec.describe Samagotchi::ModelSettings do
   before { Samagotchi::ConfigFile.reset_warnings! }
 
@@ -41,27 +41,27 @@ RSpec.describe Samagotchi::ModelSettings do
     end
   end
 
-  describe "ConfigFile.model_setting" do
+  describe "ModelSettings.find" do
     let(:models) do
       { "fast" => described_class.new(vision: false), "qwen" => described_class.new(vision: true, thinking: :high) }
     end
 
     it "gives the first lookup name whose entry sets the field, with its key; false counts as set" do
-      expect(Samagotchi::ConfigFile.model_setting(%w[Fast qwen], :vision, models: models))
+      expect(described_class.find(%w[Fast qwen], :vision, models: models))
         .to eq(Samagotchi::ModelSetting.new(key: "fast", value: false))
-      expect(Samagotchi::ConfigFile.model_setting(%w[fast qwen], :thinking, models: models))
+      expect(described_class.find(%w[fast qwen], :thinking, models: models))
         .to eq(Samagotchi::ModelSetting.new(key: "qwen", value: :high))
-      expect(Samagotchi::ConfigFile.model_setting(%w[fast], :thinking, models: models)).to be_nil
+      expect(described_class.find(%w[fast], :thinking, models: models)).to be_nil
     end
 
     it "counts a steer_cut_after of 0 as set (0 = never)" do
       more = { "slow" => described_class.new(steer_cut_after: 0) }
-      expect(Samagotchi::ConfigFile.model_setting(%w[fast slow], :steer_cut_after, models: models.merge(more)))
+      expect(described_class.find(%w[fast slow], :steer_cut_after, models: models.merge(more)))
         .to eq(Samagotchi::ModelSetting.new(key: "slow", value: 0))
     end
 
     it "raises on a field no models: entry has, instead of finding nothing" do
-      expect { Samagotchi::ConfigFile.model_setting(%w[qwen], :thinkng, models: models) }
+      expect { described_class.find(%w[qwen], :thinkng, models: models) }
         .to raise_error(ArgumentError, /unknown models: field :thinkng/)
     end
   end

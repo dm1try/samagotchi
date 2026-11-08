@@ -68,7 +68,7 @@ module Samagotchi
     # the default).
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @param session [Symbol, nil] the session's own level (Session#reasoning_history)
     # @return [Array(Symbol, String|nil)]
     def resolve(target, names:, models: nil, session: nil)
@@ -78,11 +78,11 @@ module Samagotchi
       return [env, ENV_NAME] if env
 
       models ||= begin
-        ConfigFile.model_settings
+        ModelSettings.all
       rescue StandardError
         {}
       end
-      setting = ConfigFile.model_setting(names, :reasoning_history, models: models)
+      setting = ModelSettings.find(names, :reasoning_history, models: models)
       return [setting.value, "models: #{setting.key}"] if setting
 
       host = target.entry&.reasoning_history

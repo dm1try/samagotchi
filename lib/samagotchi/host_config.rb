@@ -8,7 +8,7 @@ require_relative "llm/dialect"
 require_relative "reasoning_history"
 
 module Samagotchi
-  # One config.yml hosts: entry, parsed and checked (ConfigFile.hosts_config
+  # One config.yml hosts: entry, parsed and checked (HostConfig.all
   # holds them by lowercased name; HostRegistry builds its HostEntry from
   # one).
   #
@@ -27,6 +27,77 @@ module Samagotchi
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
     end
+
+    # config.yml's hosts: by lowercased name; an entry that is disabled or
+    # invalid (warned) is left out. No entry left: "default", from
+    # server.host/port.
+    # @return [Hash{String => HostConfig}]
+    def self.all(env: ENV, path: ConfigFile.global_path(env: env))
+      data = ConfigFile.read_yaml(env: env, path: path)
+      raw_hosts = data[ConfigFile::HOSTS_KEY] if data.is_a?(Hash)
+
+      normalized = {}
+      if raw_hosts.is_a?(Hash)
+        raw_hosts.each do |raw_name, raw_cfg|
+          host = parse(raw_name, raw_cfg)
+          normalized[host.name] = host if host
+        end
+        warn_duplicate_models(normalized)
+      end
+      normalized["default"] = default_host(data, env) if normalized.empty?
+      normalized
+    rescue StandardError => e
+      Log.error(:config, "hosts_config_failed", error: e.class.name, message: e.message)
+      {}
+    end
+
+    # The names (lowercased) of the hosts entries with enabled: false, which
+    # .all leaves out, from config.yml's hosts:.
+    # @return [Array<String>]
+    def self.disabled_names(env: ENV, path: ConfigFile.global_path(env: env))
+      data = ConfigFile.read_yaml(env: env, path: path)
+      raw = data[ConfigFile::HOSTS_KEY] if data.is_a?(Hash)
+      return [] unless raw.is_a?(Hash)
+
+      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && disabled?(cfg) }
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
+      []
+    end
+
+    # +raw+ parsed against config.yml's hosts (or +hosts+) and aliases.
+    # @return [ModelRef]
+    def self.model_ref(raw, env: ENV, path: ConfigFile.global_path(env: env), hosts: nil)
+      ModelRef.parse(raw, hosts: hosts || all(env: env, path: path), aliases: ConfigFile.model_aliases(env: env, path: path))
+    end
+
+    # The host chi uses when hosts: names none: server.host/port.
+    def self.default_host(data, env)
+      opts = { file_data: data, env: env, cli_overrides: Config.cli_overrides }
+      host = Config.resolve("server.host", **opts).to_s.strip
+      host = "localhost" if host.empty?
+      port = Config.resolve("server.port", **opts).to_i
+      port = 8080 if port <= 0 || port > 65_535
+      new(name: "default", host: host, port: port)
+    end
+    private_class_method :default_host
+
+    # Two hosts declaring one id under hosts.<name>.models: a bare id goes
+    # where HostRegistry#host_for_model sends it (the default host when it
+    # declares the id, else the first in hosts: order); say so once.
+    def self.warn_duplicate_models(hosts)
+      declared = Hash.new { |h, k| h[k] = [] }
+      hosts.each { |name, cfg| cfg.models.each { |down, model| declared[down] << [name, model.id] } }
+      declared.each_value do |owners|
+        next if owners.size < 2
+
+        names = owners.map(&:first)
+        id = owners.first.last
+        goes = names.include?("default") ? "default" : "#{names.first} unless the default host lists it"
+        ConfigFile.warn_once "Warning: #{names.map { |n| "hosts.#{n}.models" }.join(" and ")} #{names.size == 2 ? "both" : "all"} " \
+                             "declare #{id}; a bare #{id} goes to #{goes}"
+      end
+    end
+    private_class_method :warn_duplicate_models
 
     # A hosts: entry as written in config.yml,
     # or nil when it is disabled (enabled: false) or invalid. An invalid

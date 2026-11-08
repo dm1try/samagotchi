@@ -37,18 +37,18 @@ module Samagotchi
     # "steer.cut_after"; nil for the default).
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @return [Array(Integer, String|nil)]
     def resolve(target, names:, models: nil)
       value, origin = Config.get_with_origin("steer.cut_after")
       return [value.to_i, ENV_KEY] if origin == :env
 
       models ||= begin
-        ConfigFile.model_settings
+        ModelSettings.all
       rescue StandardError
         {}
       end
-      setting = ConfigFile.model_setting(names, :steer_cut_after, models: models)
+      setting = ModelSettings.find(names, :steer_cut_after, models: models)
       return [setting.value, "models: #{setting.key}"] if setting
 
       host = target.entry.steer_cut_after

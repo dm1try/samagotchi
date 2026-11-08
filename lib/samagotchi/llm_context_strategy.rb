@@ -35,11 +35,9 @@ module Samagotchi
     LAYERS = %i[stale forget].freeze
     # The layers a turn can run under so far.
     BUILT = %i[stale forget].freeze
-    # The sentence forget_outputs' description carries (global only):
-    # the plan's D7 line, adapted from CLM's steering example.
+    # The sentence forget_outputs' description carries (global only; its
+    # default is Config::DEFAULT_LLM_CONTEXT_POLICY).
     POLICY_SETTING = "llm_context.policy"
-    DEFAULT_POLICY = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it " \
-                     "established; keep anything you'll still edit against."
 
     APPLY_SETTING = "llm_context.apply"
     APPLY_KEY = "llm_context_apply"
@@ -174,7 +172,7 @@ module Samagotchi
     # The strategy for +target+'s turn.
     # @param target [HostRegistry::ModelTarget, nil]
     # @param names [Array<String>] HostRegistry#lookup_names
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @param session [Array<Symbol>, nil] the session's own layers ([]: none)
     # @param session_apply [Symbol, nil] the session's own apply rule
     # @param session_budget [Integer, nil] the session's own budget (0: off)
@@ -187,7 +185,7 @@ module Samagotchi
     # #resolve, with where each value came from.
     # @return [Explained]
     def explain(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
-      models ||= ConfigFile.model_settings
+      models ||= ModelSettings.all
       layers, source, where = layers_for(target, names, models, session)
       apply, apply_origin = apply_for(target, names, models, session_apply)
       budget, budget_origin = budget_for(target, names, models, session_budget)
@@ -236,7 +234,7 @@ module Samagotchi
     def budget_for(target, names, models, session_budget)
       return [session_budget.positive? ? session_budget : nil, SESSION_ORIGIN] unless session_budget.nil?
 
-      if (setting = ConfigFile.model_setting(names, :llm_context_budget_tokens, models: models))
+      if (setting = ModelSettings.find(names, :llm_context_budget_tokens, models: models))
         return [setting.value, Origin.new(source: :model_setting, where: "models: #{setting.key}")]
       end
 
@@ -249,7 +247,7 @@ module Samagotchi
     def layers_for(target, names, models, session)
       return [session, :session, SESSION_ORIGIN.where] if session
 
-      if (setting = ConfigFile.model_setting(names, :llm_context_strategy, models: models))
+      if (setting = ModelSettings.find(names, :llm_context_strategy, models: models))
         return [setting.value, :model_setting, "models: #{setting.key}"]
       end
 
@@ -263,7 +261,7 @@ module Samagotchi
     def apply_for(target, names, models, session_apply)
       return [session_apply, SESSION_ORIGIN] if session_apply
 
-      if (setting = ConfigFile.model_setting(names, :llm_context_apply, models: models))
+      if (setting = ModelSettings.find(names, :llm_context_apply, models: models))
         return [setting.value, Origin.new(source: :model_setting, where: "models: #{setting.key}")]
       end
 

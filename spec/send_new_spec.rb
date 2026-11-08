@@ -261,7 +261,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
 
       expect(run("--new", "--continues", previous.id, "-m", "start the day")).to eq(0), err.string
       expect(err.string).to match(%r{\Achi send: warning: gone:org/model can't run \(unknown host 'gone'.*\); started on spec-model\n\z})
-      expect(links.first.model_name).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+      expect(links.first.model_name).to eq(Samagotchi::HostConfig.model_ref("spec-model").ref)
     end
 
     it "judges images by the model the link will run: the given one, or the default it falls back to" do

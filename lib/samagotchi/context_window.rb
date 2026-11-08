@@ -50,11 +50,11 @@ module Samagotchi
     # and vision look a model up), else hosts.<name>.window_tokens.
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] HostRegistry#lookup_names
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @return [Resolved, nil]
     def setting(target, names:, models: nil)
-      models ||= ConfigFile.model_settings
-      tokens = ConfigFile.model_setting(names, :window_tokens, models: models)&.value
+      models ||= ModelSettings.all
+      tokens = ModelSettings.find(names, :window_tokens, models: models)&.value
       return Resolved.new(tokens: tokens, source: :model_setting) if positive_integer?(tokens)
 
       tokens = target&.entry&.window_tokens
