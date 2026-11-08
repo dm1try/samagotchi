@@ -125,6 +125,9 @@ test("a late response from an earlier open cannot replace the latest project lis
   s.done();
 });
 
+// A settled `api()` promise needs a macrotask: one microtask tick lets a stale-answer test pass without its guard.
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 test("New project opens with the default root's parent and places the caret at the end", async () => {
   const row = { ...current, root_label: "~/projects/samagotchi" };
   const s = openPicker({ api: async () => [row] });
@@ -169,7 +172,7 @@ test("creating a project navigates to its project scope without a hash", async (
   input.value = dir;
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
   s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await Promise.resolve();
+  await tick();
 
   assert.deepEqual(calls.at(-1), ["/api/projects", { method: "POST", body: JSON.stringify({ dir }) }]);
   assert.deepEqual(s.assigned, [projectScopeHref(dir, "")]);
@@ -188,7 +191,7 @@ test("a create refusal shows the server detail and keeps the entered path", asyn
   input.value = "/home/me";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
   s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await Promise.resolve();
+  await tick();
 
   assert.equal(s.picker.pop.querySelector('[name="dir"]').value, "/home/me");
   assert.equal(s.picker.pop.querySelector('[role="alert"]').textContent, "home cannot be a project");
@@ -218,7 +221,7 @@ test("a create response after the picker closes is dropped", async () => {
   s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   s.picker.pop.querySelector('[data-act="close"]').click();
   resolve({ outcome: "created", root: "/new", dir: "/new" });
-  await Promise.resolve();
+  await tick();
 
   assert.deepEqual(s.assigned, []);
   assert.equal(s.picker.isOpen(), false);
