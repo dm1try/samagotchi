@@ -105,11 +105,7 @@ module Samagotchi
       # +incoming+'s. A link (a dev install's) points at its source, which
       # nothing here touches.
       def copy_edit(path, as:, recorded: nil, incoming: nil)
-        return if File.symlink?(path) || !File.file?(path)
-        return if incoming && File.file?(incoming) && FileUtils.identical?(incoming, path)
-        return if !Provenance.recorded_sha(recorded).empty? && Provenance.sha_matches?(path, recorded)
-
-        copy(path, as: as)
+        copy(path, as: as) if self.class.edit?(path, recorded: recorded, incoming: incoming)
       end
 
       # copy_edit for every file under +dir+, which is about to go, at any depth
@@ -117,10 +113,29 @@ module Samagotchi
       # @param recorded [Hash, nil] path in dir => its recorded sha256
       # @param incoming [Hash] path in dir => the source replacing it
       def copy_edits(dir, label, recorded = nil, incoming = {})
-        return if File.symlink?(dir) || !File.directory?(dir)
+        self.class.edited_in(dir, recorded, incoming).each { |file| copy(File.join(dir, file), as: "#{label}/#{file}") }
+      end
 
-        Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).sort.each do |file|
-          copy_edit(File.join(dir, file), as: "#{label}/#{file}", recorded: recorded&.[](file), incoming: incoming[file])
+      # Whether #copy_edit would copy the file at +path+ (read-only): the rule
+      # ShippedUpdate's plan names its replaced files by.
+      def self.edit?(path, recorded: nil, incoming: nil)
+        return false if File.symlink?(path) || !File.file?(path)
+        return false if incoming && File.file?(incoming) && FileUtils.identical?(incoming, path)
+
+        Provenance.recorded_sha(recorded).empty? || !Provenance.sha_matches?(path, recorded)
+      end
+
+      # What #copy_edits would copy (read-only), as <label>/<its path in dir>.
+      def self.edits(dir, label, recorded = nil, incoming = {})
+        edited_in(dir, recorded, incoming).map { |file| "#{label}/#{file}" }
+      end
+
+      # The files under +dir+ (paths in it) #copy_edits copies.
+      def self.edited_in(dir, recorded, incoming)
+        return [] if File.symlink?(dir) || !File.directory?(dir)
+
+        Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).sort.select do |file|
+          edit?(File.join(dir, file), recorded: recorded&.[](file), incoming: incoming[file])
         end
       end
 

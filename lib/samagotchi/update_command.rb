@@ -22,8 +22,8 @@ require "json"
 module Samagotchi
   # `chi update`: brings an installed chi up to date in one go: the system
   # bundle, the shipped bundles the user installed, and the macOS helper.
-  # Unedited things update; edited ones merge or stay behind (.md) or are replaced
-  # and reported (hooks, plugin, rules, which didn't load once edited). Live
+  # Unedited things update; edited ones merge or stay behind (.md) or are replaced,
+  # copied to the trash first, and reported (hooks, plugin, rules, scripts). Live
   # workers and a running chi web are reported, never restarted. The bundles
   # chi didn't ship are only checked, under the chi that will run them
   # (BundleCommand::InstalledCheck): what it finds is rows that fail nothing.
@@ -526,7 +526,7 @@ module Samagotchi
     def replaced(files)
       return nil if files.empty?
 
-      "#{@dry_run ? "would replace" : "replaced"} edited #{files.join(", ")} (it wasn't loading)"
+      "#{@dry_run ? "would replace" : "replaced"} edited #{files.join(", ")} (a copy goes to the trash first)"
     end
 
     def print_table(rows)

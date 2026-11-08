@@ -378,7 +378,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     )
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
 
-    expect(row.status).to include("replaced edited hooks/x.rb (it wasn't loading)").and include("old copies: chi bundle trash")
+    expect(row.status).to include("replaced edited hooks/x.rb (a copy goes to the trash first)").and include("old copies: chi bundle trash")
   end
 
   it "leaves the bundles alone with --no-bundles or update.bundles: false" do

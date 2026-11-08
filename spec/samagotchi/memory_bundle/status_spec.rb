@@ -74,6 +74,18 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     expect(st.files["odd.md"]).to include(stored_checksum: nil, missing: true)
   end
 
+  it "calls a file modified when its entry has neither a checksum nor a base: unknown counts as edited" do
+    FileUtils.mkdir_p(system_dir)
+    File.write(File.join(system_dir, "bare.md"), "mine\n")
+    dir = File.join(system_dir, ".bundles", "bare")
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "manifest.json"), JSON.generate(
+      "name" => "bare", "version" => "0.1.0", "scope" => "system", "files" => { "bare.md" => {} }
+    ))
+
+    expect(described_class.bundle_status("bare").files["bare.md"]).to include(modified: true, missing: false)
+  end
+
   it "has no needs for a bundle that declares none" do
     expect(described_class.needs_status(Samagotchi::MemoryBundle::InstalledBundle.new(name: "none"))).to eq([])
   end

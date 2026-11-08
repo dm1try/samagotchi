@@ -159,6 +159,16 @@ module Samagotchi
         unchecked?(recorded) || file_sha(path) == recorded_sha(recorded)
       end
 
+      # Whether a memory on disk is what the install wrote: the entry's
+      # recorded checksum, else its base copy. Unknown counts as edited. The
+      # one rule a prune, an uninstall's refusal and chi bundle status read.
+      def self.unchanged?(path, entry, base_path)
+        recorded = entry[:checksum]
+        return sha_matches?(path, recorded) unless recorded_sha(recorded).empty?
+
+        File.exist?(base_path) && file_sha(path) == file_sha(base_path)
+      end
+
       # The record's mirror of the manifest keys (InstalledBundle::MIRROR_KEYS)
       # as #write records them from its kwargs: what an older chi reads, and
       # what #adopt_manifest holds a source's manifest against.

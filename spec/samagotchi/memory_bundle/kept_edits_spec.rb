@@ -653,6 +653,35 @@ RSpec.describe "Kept edits in a bundle" do
       expect(provenance.read[:files]).to have_key(:"a.md")
       expect(run_installer(write_source("2.0.0", { "z.md" => "z\n" }), upgrade: true).results["a.md"][:status]).to eq("kept_pruned")
     end
+
+    it "chi bundle status calls it modified" do
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("demo").files["a.md"]).to include(modified: true)
+    end
+
+    it "uninstall refuses it without --force, which moves it to the trash" do
+      expect { uninstall }.to raise_error(Samagotchi::MemoryBundle::Uninstaller::UninstallError,
+                                          "Uninstall blocked: a.md has local edits (#{Samagotchi::MemoryBundle::FileStanding::FORCE_MOVES})")
+      expect(File.read(target)).to eq("edited\n")
+
+      uninstall(force: true)
+      expect(File.exist?(target)).to be false
+      expect(trash_files).to include("a.md" => "edited\n")
+    end
+  end
+
+  describe "an unedited file with no base" do
+    before do
+      write_source("1.0.0")
+      run_installer
+      FileUtils.rm_f(provenance.base_path("a.md"))
+    end
+
+    it "is not modified, and uninstall moves it without --force (its checksum still matches)" do
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("demo").files["a.md"]).to include(modified: false)
+
+      uninstall
+      expect(File.exist?(target)).to be false
+    end
   end
 
   describe "a plain install over a conflict-marked file" do

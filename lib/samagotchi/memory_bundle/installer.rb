@@ -155,6 +155,7 @@ module Samagotchi
           status == "would_skip" || status == "noop" || (status == "skipped" && r[:reason] != "already up to date")
         end.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
+        would_update = @results.select { |_, r| r[:status].to_s == "would_update" }.keys
         fast_forward = @results.select { |_, r| r[:status].to_s == "fast_forward" }.keys
         removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
         would_remove = @results.select { |_, r| r[:status].to_s == "would_remove" }.keys
@@ -162,6 +163,7 @@ module Samagotchi
         lines << "Installed: #{installed.join(", ")}" unless installed.empty?
         lines << "Updated: #{updated.join(", ")}" unless updated.empty?
         lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
+        lines << "Would update: #{would_update.join(", ")}" unless would_update.empty?
         lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
         lines << FileStanding.merged_line(merged, @manifest&.version) unless merged.empty?
         lines << FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?
@@ -714,7 +716,7 @@ module Samagotchi
           if others.any?
             @results[key] = { status: "kept_shared", reason: "bundle #{others.join(", ")} has it too" }
             @warnings << "Kept #{key}: no longer in the bundle, but bundle #{others.join(", ")} has it too"
-          elsif @force || installed_unchanged?(target, meta, provenance.base_path(key))
+          elsif @force || Provenance.unchanged?(target, meta, provenance.base_path(key))
             @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
             next if @dry_run
 
@@ -725,15 +727,6 @@ module Samagotchi
             @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{FileStanding::FORCE_MOVES})"
           end
         end
-      end
-
-      # Whether the file on disk is what the previous install wrote: its
-      # recorded checksum, else the base snapshot. Unknown counts as edited.
-      def installed_unchanged?(target, meta, base_path)
-        recorded = meta[:checksum]
-        return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
-
-        File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
       end
 
       # One warning per manifest key this chi's parser never reads (docs/cli.md's

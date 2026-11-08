@@ -339,8 +339,9 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   the merge itself, and `--force` replacing the file. A dry run and an automatic update
   (`update.auto`) show it and leave it, and so does a failed row or one with no place
   for it (a skipped system bundle). A memory that can't be read at a
-  newer version fails that bundle's row with the file's name. Hooks, rules and the plugin are replaced; an edited one didn't
-  load anyway (its sha no longer matched), the row says it was replaced, and
+  newer version fails that bundle's row with the file's name. Hooks, rules, the plugin and scripts are replaced. One
+  whose bytes are neither what the install recorded (nothing recorded counts as edited) nor the new version's is
+  edited: the row says `replaced edited hooks/x (a copy goes to the trash first)` (`would replace` in the plan), and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
   `guardrails/x`, `plugin/x`, `scripts/x` inside the dir).
   A bundle of the same name from elsewhere (a zip, git) is skipped ("not from

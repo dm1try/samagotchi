@@ -487,7 +487,9 @@ for a file another bundle installed.
   and the output names them and the dir:
   `Moved to the trash: notes.md (…/.trash/team-notes-20261003-120000)`. So
   does an upgrade's removal of a file the new version no longer ships. A
-  file you edited still needs `--force`. A hook, rule, plugin or script you
+  file you edited still needs `--force`: chi tells by comparing it with what
+  the install recorded (the record's checksum, else its base copy; a file with
+  neither counts as edited). A hook, rule, plugin or script you
   edited isn't asked about: it is copied to the same dir (`Copied to the trash
   first: scripts/x (…)`) and the bundle's own copy goes. `chi bundle trash` lists the trash
   (oldest first, with file count, size, and age); `--empty` deletes all
@@ -548,7 +550,8 @@ for a file another bundle installed.
   folder while the note exists. A `chi update` row or `chi bundle upgrade` output
   printed to you ends it for what it printed (an automatic update leaves it), and
   `--force` replacing the file ends it too. No session is told at start.
-- **`chi bundle status`** says per file what is `modified`, `missing` or
+- **`chi bundle status`** says per file what is `modified` (the uninstall's
+  rule above: edited, or with nothing recorded to tell), `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
   behind, missing or unreadable (and a plugin or hooks that won't load), not edits. A
   file an older chi marked, which no retry has looked at, says `may be behind`, and so

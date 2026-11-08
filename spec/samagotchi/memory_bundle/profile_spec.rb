@@ -202,6 +202,21 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(Dir.children(system_dir).sort).to eq(%w[a.md b.md])
       expect(install(core).kept_own).to eq(result.kept_own)
     end
+
+    it "doesn't call a hook it would replace kept as the user's own on a dry run, as the real run doesn't" do
+      dir = ship("a")
+      FileUtils.mkdir_p(File.join(dir, "hooks"))
+      File.write(File.join(dir, "hooks", "h.rb"), "puts 1\n")
+      data = YAML.load_file(File.join(dir, "manifest.yml"))
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(data.merge("hooks" => { "h.rb" => { "event" => "before_tool_call" } })))
+      leftover = File.join(system_dir, ".bundles", "a", "hooks", "h.rb")
+      FileUtils.mkdir_p(File.dirname(leftover))
+      File.write(leftover, "puts 0\n")
+      core = ship_meta("core", %w[a])
+
+      expect(install(core, dry_run: true).kept_own).to eq({})
+      expect(install(core).kept_own).to eq({})
+    end
   end
 
   describe ".install with force" do

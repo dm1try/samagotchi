@@ -49,8 +49,8 @@ module Samagotchi
           current_checksum = nil if unreadable
           base_checksum = checksum(base_path)
           base_checksum = nil if base_checksum == :unreadable
-          modified = base_checksum && current_checksum && base_checksum != current_checksum
           missing = !File.exist?(target_path)
+          modified = !missing && !unreadable && edited?(target_path, meta, base_path)
           # A model overlay has no index line (Installer#note_overlay).
           overlay = ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys, target_dir: target_dir)
           index_present = overlay ? nil : index_has_entry?(scope, file_key_str)
@@ -82,6 +82,15 @@ module Samagotchi
         :unreadable
       end
       private_class_method :checksum
+
+      # Provenance.unchanged?'s rule; a base it can't read, with no checksum,
+      # is unknown and counts as edited.
+      def self.edited?(target_path, meta, base_path)
+        !Provenance.unchanged?(target_path, meta, base_path)
+      rescue SystemCallError
+        true
+      end
+      private_class_method :edited?
 
       # Why none of the bundle's hooks load (this chi doesn't meet its
       # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
