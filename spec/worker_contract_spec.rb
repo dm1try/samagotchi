@@ -115,6 +115,23 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::ReplyWait::TURN_IDS_FEATURE).to eq("turn_ids")
   end
 
+  # A wait (ReplyWait::Poll#follow_merge) reads which turn took a merged
+  # input from input/merged/<id>; a chi before it reads input/settled/<id>
+  # as the turn's worker_stopped end, so a merge writes nothing there.
+  it "records a merge in input/merged/<enqueued_id> as {into, at}, and nothing under input/settled/" do
+    Dir.mktmpdir do |dir|
+      Samagotchi::SessionInbox.mark_merged(dir, "m1", into: "host-1")
+
+      expect(Samagotchi::SessionInbox::MERGED_DIR).to eq("merged")
+      record = JSON.parse(File.read(File.join(dir, "input", "merged", "m1")))
+      expect(record.keys).to contain_exactly("into", "at")
+      expect(record["into"]).to eq("host-1")
+      expect(Time.iso8601(record["at"])).to be_a(Time)
+      expect(Dir.exist?(File.join(dir, "input", Samagotchi::TurnCheckpoint::SETTLED_DIR))).to be(false)
+      expect(Samagotchi::TurnCheckpoint.settled_turn(dir, "m1")).to be_nil
+    end
+  end
+
   it "keeps the routes and client ids one session's worker uses on another's" do
     expect(Samagotchi::Bridge::ROUTES).to include(%w[POST relay/status] => :handle_relay_status)
     expect(Samagotchi::Bridge::ROUTES.keys).to include(%w[POST relay])

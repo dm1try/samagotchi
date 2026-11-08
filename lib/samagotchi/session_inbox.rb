@@ -442,7 +442,7 @@ module Samagotchi
     private_class_method :unmark_removed
 
     # How old a per-input tombstone (input/removed/, TurnCheckpoint's
-    # input/settled/) gets before a worker's start prunes it (#prune_old).
+    # input/settled/, a merge record in input/merged/) gets before a worker's start prunes it (#prune_old).
     # A wait reads one at its next poll (ReplyWait::POLL_INTERVAL) and a
     # later `chi send --wait --turn` reads a settled one at its start, so
     # only a wait whose process slept (a closed laptop) or one started long
@@ -469,6 +469,42 @@ module Samagotchi
 
     # The removed tombstones past +max_age+ (#prune_old).
     def self.prune_removed(session_dir, max_age: TOMBSTONE_MAX_AGE) = prune_old(session_dir, REMOVED_DIR, max_age: max_age)
+
+    # Where a running turn's drain records an input it merged as a steer:
+    # input/merged/<enqueued_id> = {"into": the turn's enqueued_id, "at"}.
+    # Its own directory: a file in input/settled/ reads as worker_stopped to
+    # a chi before it, and no *.json glob sees a subdirectory.
+    MERGED_DIR = "merged"
+
+    # Records that the input +id+ went into the turn +into+ (both
+    # enqueued_ids) as a steer, before the drain deletes its claimed file
+    # (Worker#pending_input_drain): a wait for it (ReplyWait's turn:) then
+    # waits for that turn (Poll#follow_merge). Nothing for an id that
+    # can't name a file, nor for a turn with none; a failed write only
+    # logs (the wait infers the merge, as for a worker before this).
+    def self.mark_merged(session_dir, id, into:, now: Time.now)
+      return unless ENQUEUED_ID_NAME.match?(id.to_s) && ENQUEUED_ID_NAME.match?(into.to_s)
+
+      dir = File.join(session_dir, INPUT_DIR, MERGED_DIR)
+      FileUtils.mkdir_p(dir)
+      AtomicFile.write(File.join(dir, id), JSON.generate("into" => into, "at" => now.iso8601(3)))
+    rescue SystemCallError, IOError => e
+      Log.warn(:worker, "merge_record_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
+    end
+
+    # @return [String, nil] the enqueued_id of the turn the input +id+ was
+    #   merged into (#mark_merged), nil without a readable record
+    def self.merged_into(session_dir, id)
+      return nil unless ENQUEUED_ID_NAME.match?(id.to_s)
+
+      into = JSON.parse(File.read(File.join(session_dir, INPUT_DIR, MERGED_DIR, id.to_s)))["into"]
+      ENQUEUED_ID_NAME.match?(into.to_s) ? into : nil
+    rescue JSON::ParserError, SystemCallError, TypeError, NoMethodError
+      nil
+    end
+
+    # The merge records past +max_age+ (#prune_old).
+    def self.prune_merged(session_dir, max_age: TOMBSTONE_MAX_AGE) = prune_old(session_dir, MERGED_DIR, max_age: max_age)
 
     # @return [Boolean] whether the queued input +enqueued_id+ was removed
     #   before it ran (#take_queued_input's tombstone), or is being removed:

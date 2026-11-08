@@ -220,9 +220,60 @@ RSpec.describe Samagotchi::SessionInbox do
         expect(described_class.removed?(session_dir, "r-new")).to be(true)
       end
 
+      it "drops the merge records past the same age (.prune_merged)" do
+        max = described_class::TOMBSTONE_MAX_AGE
+        old_merged = tombstone(described_class::MERGED_DIR, "m-old", age: max + 60)
+        new_merged = tombstone(described_class::MERGED_DIR, "m-new", age: 0)
+
+        expect(described_class.prune_merged(session_dir)).to eq(1)
+        expect([old_merged, new_merged].map { |f| File.exist?(f) }).to eq([false, true])
+      end
+
       it "is a no-op for a session without any" do
+        expect(described_class.prune_merged(session_dir)).to eq(0)
         expect(described_class.prune_removed(session_dir)).to eq(0)
         expect(Samagotchi::TurnCheckpoint.prune_settled(session_dir)).to eq(0)
+      end
+    end
+
+    describe "merge records (.mark_merged, .merged_into)" do
+      it "records which turn's enqueued_id a merged input went into, and reads it back" do
+        at = Time.utc(2026, 11, 8, 12, 0, 0)
+        described_class.mark_merged(session_dir, "m1", into: "host-1", now: at)
+
+        raw = JSON.parse(File.read(File.join(input_dir, described_class::MERGED_DIR, "m1")))
+        expect(raw).to eq("into" => "host-1", "at" => at.iso8601(3))
+        expect(described_class.merged_into(session_dir, "m1")).to eq("host-1")
+        expect(described_class.merged_into(session_dir, "m2")).to be_nil
+      end
+
+      it "writes nothing for an id that can't name a file, nor for a turn with no id" do
+        described_class.mark_merged(session_dir, "../x", into: "host-1")
+        described_class.mark_merged(session_dir, "m1", into: nil)
+        described_class.mark_merged(session_dir, nil, into: "host-1")
+
+        expect(Dir.exist?(File.join(input_dir, described_class::MERGED_DIR))).to be(false)
+        expect(described_class.merged_into(session_dir, "../x")).to be_nil
+      end
+
+      it "reads nil for an unreadable record, and a failed write only logs" do
+        dir = File.join(input_dir, described_class::MERGED_DIR)
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "m1"), "{nope")
+        expect(described_class.merged_into(session_dir, "m1")).to be_nil
+        File.write(File.join(dir, "m2"), JSON.generate("into" => "../x"))
+        expect(described_class.merged_into(session_dir, "m2")).to be_nil
+
+        allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::EACCES)
+        allow(Samagotchi::Log).to receive(:warn)
+        described_class.mark_merged(session_dir, "m3", into: "host-1")
+        expect(Samagotchi::Log).to have_received(:warn).with(:worker, "merge_record_write_failed", hash_including(enqueued_id: "m3"))
+      end
+
+      it "is outside every input/*.json glob" do
+        described_class.mark_merged(session_dir, "m1", into: "host-1")
+        expect(described_class.find_new_input_files(session_dir)).to eq([])
+        expect(described_class.claimed_input_files(session_dir)).to eq([])
       end
     end
 

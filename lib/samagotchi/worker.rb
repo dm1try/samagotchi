@@ -676,13 +676,14 @@ module Samagotchi
       save_or_log(:interrupted_turn) { save_session }
     end
 
-    # The per-input tombstones (removed, settled) older than
+    # The per-input tombstones (removed, settled, merged) older than
     # SessionInbox::TOMBSTONE_MAX_AGE, once per worker start: they only go
     # with the session dir otherwise.
     def prune_tombstones
       removed = SessionInbox.prune_removed(@session_dir)
       settled = TurnCheckpoint.prune_settled(@session_dir)
-      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled) if (removed + settled).positive?
+      merged = SessionInbox.prune_merged(@session_dir)
+      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled, merged: merged) if (removed + settled + merged).positive?
     end
 
     # A saved parent_answers that isn't a level reads as hard on every
@@ -1331,6 +1332,8 @@ module Samagotchi
       origin = fresh_origin(turn_args[:origin])
       # Settled here: the checkpoint's prompt carries it from the start.
       turn_args = turn_args.merge(origin: origin, id: turn_args[:id] || SecureRandom.uuid)
+      # The id its drain's merge records name (SessionInbox.mark_merged).
+      @turn_enqueued_id = origin.enqueued_id
       verdicts_before = @session.verdicts.size
       @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
@@ -1540,6 +1543,9 @@ module Samagotchi
           begin
             input = SessionInbox.read_input(claimed_file)
             prompt = input.prompt.to_s.strip
+            # Which turn took it, on disk before its file goes (a wait for
+            # it reads this, not an inference: ReplyWait::Poll#follow_merge).
+            SessionInbox.mark_merged(@session_dir, input.origin.enqueued_id, into: @turn_enqueued_id) unless prompt.empty?
             prompt.empty? ? nil : [prompt, input.origin]
           ensure
             FileUtils.rm_f(claimed_file)
