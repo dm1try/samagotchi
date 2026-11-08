@@ -44,8 +44,6 @@ module Samagotchi
     # Raised when another process (a worker or another chi) owns the session
     # this run was asked to use.
     class SessionBusy < StandardError; end
-    # --resume with an id that has no saved session.
-    class SessionNotFound < StandardError; end
 
     EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
 
@@ -100,9 +98,7 @@ module Samagotchi
       # between the load and the lock that this run would later save over.
       # An unknown id is refused before the claim, which would leave an
       # empty session dir behind.
-      if session_id && !Session.exist?(session_id)
-        raise SessionNotFound, "Session not found: #{session_id}"
-      end
+      raise Session::NotFound, session_id if session_id && !Session.exist?(session_id)
 
       claim_session!(session_id) if session_id
       @resume_session = session_id ? Session.load(session_id) : nil
@@ -434,7 +430,7 @@ module Samagotchi
 
     # A fresh session reaches the disk before its first turn: a tool in that
     # turn reads it from there (delegate loads its parent to start a child,
-    # "Session not found" otherwise).
+    # "no session …" otherwise).
     def save_before_first_turn(session)
       session.save unless Session.exist?(session.id)
     end

@@ -314,11 +314,13 @@ module Samagotchi
 
       # @return [String] the child's id, or an Error: line
       def self.follow_up(task, session:, parent:, state_dir:)
-        id = Session.resolve_id(session, state_dir: state_dir)
+        id = Session.resolve!(session, state_dir: state_dir)
         child = begin
           Session.load(id, state_dir: state_dir)
-        rescue ArgumentError
-          return "Error: no session #{session} (list_sessions shows them)"
+        rescue Session::NotFound
+          raise # gone since resolve!: the outer rescue adds the list_sessions hint
+        rescue ArgumentError => e # a file that won't load
+          return "Error: #{e.message}"
         end
         unless child.parent_id == parent.id
           return "Error: #{id[0, 8]} is not a delegate of this session; send_note reaches any session"
@@ -340,6 +342,8 @@ module Samagotchi
         "Error: session #{id[0, 8]}: #{e.message}"
       rescue SessionManager::OwnedByTUI
         "Error: session #{id[0, 8]} is #{OwnerLock::TUI_BUSY}, which can't take a delegated message"
+      rescue Session::NotFound => e
+        "Error: #{e.message} (list_sessions shows them)"
       rescue Session::AmbiguousId => e
         "Error: #{e.message}"
       end

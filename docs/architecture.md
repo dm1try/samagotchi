@@ -500,6 +500,8 @@ verbatim) and the fields its class is built from, so a remote client raises the 
 `scratch` (`ArchiveRefused`: `session_id`, `reason`, `busy_id`), a restart's `held`/`not_running`/`unsupported`/
 `failed` (`RestartRefused`: `session_id`, `reason`, `version`), a continue's `continued`/`open_children`/`folder_gone`
 (`SessionContinue::Refused`: `session_id`, `reason`, `ids`) and `ambiguous_id` (`Session::AmbiguousId`: `ids`).
+A session an id names none of is `404 not_found` with `Session::NotFound`'s words (`no session X`, `#session_not_found`):
+every lookup goes through `Session.resolve!` (an id or a unique prefix), and every surface shows that one message.
 
 ## Model loops and adapters
 

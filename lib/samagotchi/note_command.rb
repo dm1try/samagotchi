@@ -109,8 +109,7 @@ module Samagotchi
     def resolve(given)
       @access.resolve(given)
     rescue ArgumentError => e
-      message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
-      error_line("chi note: #{message}")
+      error_line("chi note: #{e.message}")
       nil
     end
 

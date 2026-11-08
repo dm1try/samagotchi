@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
       allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::SessionManager::OwnedByTUI, "s1")
       expect(call("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"d"}').first).to eq(409)
 
-      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(ArgumentError, "Session not found")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::Session::NotFound.new("x"))
       expect(call("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"e"}').first).to eq(404)
 
       expect(history).to eq([])

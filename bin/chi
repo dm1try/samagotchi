@@ -459,7 +459,7 @@ begin
   # Ctrl-C cancelled it.
   exit 1 if %i[turn_failed empty_answer iteration_limit].include?(ended)
   exit Samagotchi::CLI::Exit::INTERRUPTED if ended == :interrupted
-rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel,
+rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::Session::NotFound, Samagotchi::ModelProfile::MissingModel,
        Samagotchi::Toolkit::Refused => e
   warn "Error: #{e.message}"
   exit 1

@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::TerminalUI::RemoteLink do
       allow(remote).to receive(:attach_worker).and_raise(Samagotchi::SessionAccess::RemoteTooOld, "too old")
       expect(link.live_worker).to eq([:gone, "too_old"])
 
-      allow(remote).to receive(:attach_worker).and_raise(ArgumentError, "Session not found: s-1")
+      allow(remote).to receive(:attach_worker).and_raise(Samagotchi::Session::NotFound.new("s-1"))
       expect(link.live_worker).to eq([:gone, "unknown_session"])
     end
 

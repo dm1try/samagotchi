@@ -353,10 +353,10 @@ module Samagotchi
           # "..", a %2F) is an unknown session before any handler makes a path.
           # (/api/sessions/resolve and /summaries take no id.)
           if req.path_info.start_with?("/api/sessions/") && !m.captures.empty? && !Session.valid_id?(m.captures.first)
-            return error_response(404, "not_found", "Session not found: #{m.captures.first.to_s[0, 80]}")
+            return session_not_found(m.captures.first)
           end
 
-          return session_route(principal) { send(handler, req, *m.captures) } if kind == :session
+          return session_route(principal, m.captures.first) { send(handler, req, *m.captures) } if kind == :session
 
           return send(handler, req, *m.captures)
         end
@@ -383,11 +383,14 @@ module Samagotchi
       # raises (Session.load, the manager's find) is a 404 not_found with
       # its message. Only these routes: elsewhere an ArgumentError is a bug,
       # #route's 500. A handler's own rescues run first.
-      def session_route(principal = nil)
+      def session_route(principal = nil, id = nil)
         yield
       rescue ArgumentError => e
-        # A participant's 404 never carries the lookup's words (a path).
-        error_response(404, "not_found", principal.nil? || principal.owner? ? e.message : "Session not found")
+        return error_response(404, "not_found", e.message) if principal.nil? || principal.owner?
+
+        # A participant's 404 never carries a lookup's words (a path): it
+        # names their own session's id (valid_id? passed), nothing else.
+        session_not_found(id)
       end
 
       # API requests at debug level (not the page and its assets): method,
@@ -1560,7 +1563,7 @@ module Samagotchi
         begin
           session = @session_class.load(id, state_dir: default_state_dir)
         rescue ArgumentError
-          return error_response(404, "not_found", "Session not found: #{id}")
+          return session_not_found(id)
         end
         # Its terminal's alone: a tab's stream would keep its worker up.
         return scratch_refused(id) if session.scratch
@@ -1975,6 +1978,10 @@ module Samagotchi
       def not_found(path:)
         error_response(404, "not_found", "not found: #{path}")
       end
+
+      # 404 not_found for an id (or prefix) that names no session, in
+      # Session::NotFound's words (SessionAccess::Remote maps it back).
+      def session_not_found(given) = error_response(404, "not_found", Session::NotFound.new(given).message)
 
       # One tab's GET /api/events: a bounded queue behind a lambda sink,
       # subscribed and snapshotted as one step under the hub's lock, then

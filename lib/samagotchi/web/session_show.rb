@@ -184,7 +184,7 @@ module Samagotchi
       # cards from its light GET tail, else the saved ones; the session file
       # is only stat'ed (the 404), never parsed.
       def handle_cards_read(id)
-        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+        return session_not_found(id) unless session_exists?(id)
 
         tail = live_tail(id)
         json_response(200, { cards: cards_for_display(live_or_saved(tail, "cards") { saved_cards(id) }) })
@@ -201,7 +201,7 @@ module Samagotchi
       # are the newest turn's (#recent_timing), which the page merges by id
       # (the page still sends ?recent=1, which is accepted and not needed).
       def handle_tail_read(req, id)
-        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+        return session_not_found(id) unless session_exists?(id)
 
         turn_id = req.params["turn_id"].to_s.strip
         turn_id = nil if turn_id.empty?
@@ -259,7 +259,7 @@ module Samagotchi
       # the live ones) and turn_count, when the page's merge comes up short.
       # The worker's GET state, never its messages.
       def handle_timing_read(id)
-        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+        return session_not_found(id) unless session_exists?(id)
 
         state = bridge_get_json(id, "state")
         json_response(200, { timing: timing_payload(id, live_metrics: state && state["session_state_snapshot"]&.fetch("metrics", nil)) })

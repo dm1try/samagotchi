@@ -240,8 +240,17 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
       expect(remote.resolve_id("abcd1")).to eq(a.id)
       expect(remote.resolve_id("ffff")).to eq("ffff")
-      expect { remote.resolve("ffff") }.to raise_error(ArgumentError)
+      expect { remote.resolve("ffff") }.to raise_error(Samagotchi::Session::NotFound, "no session ffff")
+      expect { remote.show("ffff") }.to raise_error(Samagotchi::Session::NotFound, "no session ffff")
       expect { remote.resolve("abcd") }.to raise_error(Samagotchi::Session::AmbiguousId) { |e| expect(e.ids).to eq([a.id, b.id]) }
+    end
+
+    it "takes the previous chi web's \"Session not found: X\" as Session::NotFound, another 404 as its own words" do
+      old, = scripted([404, { error: "not_found", detail: "Session not found: abc1" }])
+      expect { old.show("abc1") }.to raise_error(Samagotchi::Session::NotFound, "no session abc1") { |e| expect(e.given).to eq("abc1") }
+
+      other, = scripted([404, { error: "not_found", detail: "no question q1" }])
+      expect { other.show("abc1") }.to raise_error(ArgumentError, "no question q1") { |e| expect(e).not_to be_a(Samagotchi::Session::NotFound) }
     end
 
     it "raises OwnedByTUI, DeleteRefused, ArchiveRefused and RestartRefused with their own words" do

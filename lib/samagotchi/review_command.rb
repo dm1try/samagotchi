@@ -64,7 +64,7 @@ module Samagotchi
     rescue ModelProfile::MissingModel, Toolkit::Refused => e
       refused("could not start: #{e.message}")
     rescue ArgumentError => e
-      refused(e.is_a?(Session::AmbiguousId) ? e.message : e.message.sub(/\ASession not found: /, "no session "))
+      refused(e.message)
     end
 
     private

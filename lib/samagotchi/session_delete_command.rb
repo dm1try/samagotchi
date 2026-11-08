@@ -76,7 +76,7 @@ module Samagotchi
       @stdout.puts("#{short}  refused: #{line}")
       false
     rescue ArgumentError => e
-      error_line("chi sessions delete: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+      error_line("chi sessions delete: #{e.message}")
       false
     rescue SystemCallError => e
       @stdout.puts("#{short}  failed: #{e.message}")

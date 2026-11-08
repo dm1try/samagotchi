@@ -783,10 +783,11 @@ RSpec.describe Samagotchi::Session do
   end
 
   describe ".load" do
-    it "raises ArgumentError when session_id does not exist" do
+    it "raises NotFound (an ArgumentError) when session_id does not exist, or isn't an id" do
       expect do
         described_class.load("nonexistent-id", state_dir: tmpdir)
-      end.to raise_error(ArgumentError, /Session not found/)
+      end.to raise_error(described_class::NotFound, "no session nonexistent-id")
+      expect { described_class.load("../etc", state_dir: tmpdir) }.to raise_error(ArgumentError, "no session ../etc")
     end
 
     it "raises ArgumentError on corrupted JSON" do
@@ -826,6 +827,25 @@ RSpec.describe Samagotchi::Session do
         described_class::AmbiguousId,
         "session id ab matches 2 sessions:\n  abc12345-0000  first\n  abd99999-0000  second"
       ) { |error| expect(error.ids).to eq(%w[abc12345-0000 abd99999-0000]) }
+    end
+
+    describe ".resolve!" do
+      it "gives the full id of an existing session for an id or a unique prefix" do
+        expect(described_class.resolve!("abc", state_dir: tmpdir)).to eq("abc12345-0000")
+        expect(described_class.resolve!("abd99999-0000", state_dir: tmpdir)).to eq("abd99999-0000")
+      end
+
+      it "raises NotFound naming what was given, for no match or an id that isn't one" do
+        ["zzz", "a*", "../etc", ""].each do |given|
+          expect { described_class.resolve!(given, state_dir: tmpdir) }.to raise_error(described_class::NotFound, "no session #{given}") do |error|
+            expect(error.given).to eq(given)
+          end
+        end
+      end
+
+      it "raises AmbiguousId for a prefix of several" do
+        expect { described_class.resolve!("ab", state_dir: tmpdir) }.to raise_error(described_class::AmbiguousId)
+      end
     end
   end
 
@@ -979,7 +999,7 @@ RSpec.describe Samagotchi::Session do
     end
 
     it ".mark_stopped refuses a session that doesn't exist" do
-      expect { described_class.mark_stopped("nope", state_dir: tmpdir) }.to raise_error(ArgumentError, /not found/)
+      expect { described_class.mark_stopped("nope", state_dir: tmpdir) }.to raise_error(described_class::NotFound, "no session nope")
     end
   end
 

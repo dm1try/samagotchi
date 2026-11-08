@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::TerminalUI::RemoteConnector do
     [Samagotchi::SessionManager::OwnedByTUI.new("ab12"),
      Samagotchi::SessionAccess::Refused.new(Samagotchi::Session::SCRATCH_REFUSED, code: "scratch"),
      Samagotchi::SessionAccess::RemoteFailed.new("remote studio (http://x): connection refused"),
-     ArgumentError.new("Session not found: ab12")].each do |error|
+     Samagotchi::Session::NotFound.new("ab12")].each do |error|
       allow(remote).to receive(:attach_wake).and_raise(error)
       expect { connector.connect }.to raise_error(Samagotchi::TerminalUI::AttachLauncher::Error, error.message)
     end
