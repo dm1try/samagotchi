@@ -144,6 +144,113 @@ RSpec.describe Samagotchi::MemoryPaths do
     end
   end
 
+  describe ".lookup" do
+    around do |example|
+      Dir.mktmpdir { |tmp| @tmp = tmp; example.run }
+    end
+
+    # Not realpathed on purpose: on macOS the tmp dir is a symlink
+    # (/var → /private/var), and a marked root comes back realpathed.
+    let(:real_tmp) { File.realpath(@tmp) }
+    let(:home) { File.join(@tmp, "home").tap { |dir| FileUtils.mkdir_p(dir) } }
+
+    def mark(dir)
+      FileUtils.mkdir_p(File.join(dir, ".chi"))
+      File.write(File.join(dir, described_class::MARKER), "# chi project marker\n")
+      dir
+    end
+
+    def git_init(dir)
+      out, status = Open3.capture2e("git", "init", "-q", dir)
+      raise "git init failed: #{out}" unless status.success?
+    end
+
+    def look(dir) = described_class.lookup(dir, home: home)
+
+    it "finds a marker at the top and from a subfolder, as the realpath of the marked folder" do
+      notes = mark(File.join(@tmp, "notes"))
+      sub = File.join(notes, "sub", "deep").tap { |dir| FileUtils.mkdir_p(dir) }
+      root = File.join(real_tmp, "notes")
+
+      expect(look(notes)).to eq(described_class::ProjectLookup.new(kind: :marker, root: root, top: root))
+      expect(look(sub)).to eq(look(notes))
+      expect(look(File.join(real_tmp, "notes", "sub")).root).to eq(root)
+    end
+
+    it "is none outside a repo and a marker: the folder itself as root, no top" do
+      plain = File.join(@tmp, "plain").tap { |dir| FileUtils.mkdir_p(dir) }
+
+      expect(look(plain)).to eq(described_class::ProjectLookup.new(kind: :none, root: plain, top: nil))
+    end
+
+    it "lets git win over a marker above the .git and below it" do
+      above = mark(File.join(@tmp, "above"))
+      repo = File.join(above, "repo")
+      git_init(repo)
+      inside = mark(File.join(repo, "inner"))
+
+      expect(look(repo).kind).to eq(:git)
+      expect(look(inside)).to have_attributes(kind: :git, root: File.join(real_tmp, "above", "repo"))
+    end
+
+    it "takes the nearest marker: a marked folder inside another is its own project" do
+      outer = mark(File.join(@tmp, "outer"))
+      inner = mark(File.join(outer, "inner"))
+
+      expect(look(File.join(inner, "x")).root).to eq(File.join(real_tmp, "outer", "inner"))
+      expect(look(File.join(outer, "y")).root).to eq(File.join(real_tmp, "outer"))
+    end
+
+    it "needs project.yml: a bare .chi/ dir is no marker" do
+      dir = File.join(@tmp, "dotchi")
+      FileUtils.mkdir_p(File.join(dir, ".chi"))
+
+      expect(look(dir).kind).to eq(:none)
+    end
+
+    it "ignores a marker in $HOME or above it, and in /" do
+      mark(home)
+      below = File.join(home, "work").tap { |d| FileUtils.mkdir_p(d) }
+      expect(look(below).kind).to eq(:none)
+      expect(look(home).kind).to eq(:none)
+
+      mark(@tmp)
+      expect(look(File.join(@tmp, "elsewhere")).kind).to eq(:none)
+      expect(described_class.above_home?("/", home: nil)).to be(true)
+      expect(described_class.above_home?(home, home: home)).to be(true)
+      expect(described_class.above_home?(File.join(home, "work"), home: home)).to be(false)
+    end
+
+    it "keeps a marked project under $HOME" do
+      project = mark(File.join(home, "notes"))
+
+      expect(look(File.join(project, "sub")).kind).to eq(:marker)
+    end
+
+    it "keeps the old cwd-fallback key at the top, and the same key after git init" do
+      notes = File.join(@tmp, "notes").tap { |dir| FileUtils.mkdir_p(dir) }
+      # Before: a worker in the folder keyed on its physical Dir.pwd.
+      before = described_class.project_key(File.realpath(notes))
+
+      mark(notes)
+      expect(described_class.key_for_root(look(notes).root)).to eq(before)
+
+      git_init(notes)
+      expect(described_class.project_key(notes)).to eq(before)
+    end
+
+    it "answers the readers from the one lookup" do
+      notes = mark(File.join(@tmp, "notes"))
+      root = File.join(real_tmp, "notes")
+      plain = File.join(@tmp, "plain").tap { |dir| FileUtils.mkdir_p(dir) }
+
+      expect([described_class.in_project?(notes), described_class.in_repo?(notes)]).to eq([true, false])
+      expect([described_class.marked_root(notes), described_class.project_top(notes)]).to eq([root, root])
+      expect([described_class.in_project?(plain), described_class.marked_root(plain), described_class.project_top(plain)])
+        .to eq([false, nil, nil])
+    end
+  end
+
   describe ".common_git_dir" do
     def git(*args)
       out, status = Open3.capture2e("git", "-c", "user.name=x", "-c", "user.email=x@x",
