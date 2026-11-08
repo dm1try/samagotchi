@@ -187,12 +187,13 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.ruby.map(&:reason)).to all(start_with("rule: "))
   end
 
-  it "picks the bundle-state corpus for the bundle code, chi bundle, the corpus's fixtures and helpers, by a rule" do
+  it "picks the bundle-state corpus for the bundle code, chi bundle, the paths and overlays it reads, its fixtures and helpers, by a rule" do
     corpus = %w[spec/samagotchi/memory_bundle/file_state_corpus/cases_spec.rb
                 spec/samagotchi/memory_bundle/file_state_corpus/upgrade_spec.rb]
     corpus.each { |path| files[path] = "" }
 
-    %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/bundle_command.rb spec/fixtures/bundle_states/expect/upgrade.yml
+    %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/memory_bundle.rb lib/samagotchi/bundle_command.rb
+       lib/samagotchi/model_overlay.rb lib/samagotchi/memory_paths.rb spec/fixtures/bundle_states/expect/upgrade.yml
        spec/samagotchi/memory_bundle/file_state_corpus/observe.rb].each do |changed|
       picked = pick(changed).ruby.select { |pick| corpus.include?(pick.path) }
 

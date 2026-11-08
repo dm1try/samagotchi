@@ -365,7 +365,7 @@ files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
 file's layer (any `foo/*.rb` → `spec/foo_golden_spec.rb` when there is one; `turn_flow.rb` and `turn_note.rb`, whose
 words the attached TUI prints, pick its `event_renderer` and `attached_loop` specs by a rule; `memory_bundle/*.rb`,
-`bundle_command.rb` and the corpus's fixtures pick the bundle-state corpus). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
+`bundle_command.rb`, `memory_paths.rb`, `model_overlay.rb` and the corpus's fixtures pick the bundle-state corpus). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
 effective-model, request, prompt-snapshot and full system-prompt goldens because they hash the request's prompt and
 tools. Then come the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
