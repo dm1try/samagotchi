@@ -6,6 +6,7 @@ require "time"
 
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../schedules"
 require_relative "../bridge_client"
 require_relative "../worker_link"
 require_relative "../config"
@@ -105,6 +106,7 @@ module Samagotchi
         @dir_mtime = nil    # the state dir's mtime at the last glob
         @root_cache = {}    # folder → project root, for sessions saved before project_root
         @next_full_probe = nil
+        @next_schedule_tick = nil
         @wakeup = Queue.new # stop wakes the tick thread out of its sleep
         @thread = nil
         @stopped = false
@@ -148,6 +150,8 @@ module Samagotchi
             check_installed
           end
         end
+        # Outside the projection's lock: a firing can wait for a recap.
+        schedule_tick
         nil
       end
 
@@ -311,6 +315,22 @@ module Samagotchi
       def sweep
         @manager.retention_sweep_if_due(state_dir: @state_dir)
       rescue StandardError
+        nil
+      end
+
+      # chi web can be the scheduler when the user opts in (schedule.auto_tick):
+      # the same tick cron runs, gated by schedule.tick_interval_minutes and
+      # sharing schedules.lock, so cron and the hub never both fire.
+      def schedule_tick
+        return unless Config.get("schedule.auto_tick")
+
+        now = @now.call
+        return if @next_schedule_tick && now < @next_schedule_tick
+
+        @next_schedule_tick = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
+        Samagotchi::Schedules.new(state_dir: @state_dir).tick
+      rescue StandardError => e
+        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
         nil
       end
 

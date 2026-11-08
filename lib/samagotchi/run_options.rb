@@ -214,6 +214,7 @@ module Samagotchi
                  chi models [--format json] [TEXT]   the models --model takes, from every host
                  chi home [set [--ruby PATH] | doctor]   the Ruby every chi launch boots
                  chi project [init [DIR]]         this folder's project; init makes a folder in no git repository one
+                 chi schedule <add|list|show|tick|run-now|enable|disable|cancel>   durable schedules that outlive every worker
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
                  chi --remote NAME <send|answer|note|context|sessions|share|review> …   those commands on that machine (or CHI_REMOTE=NAME)
                  chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
