@@ -11,8 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
-- `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer.
-- A delegating parent's wait says `worker_gone` 5 s after a child's worker dies (it was 15 s); a child whose worker never starts is reported at once (`its worker did not start`) once the boot limit passes.
+- `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer. The plain list's `ctx N%` now rounds as the picker and chi web round it (it could read 1% apart).
+- A delegating parent's wait says `worker_gone` 5 s after a child's worker dies (was 15 s); a child whose worker never starts is reported `worker_gone` ("its worker did not start") after the 30 s boot limit (or the wait's timeout, if shorter: then the child shows as `running`, as for any wait that timed out).
 
 ### Fixed
 

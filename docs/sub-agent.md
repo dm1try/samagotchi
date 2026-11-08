@@ -203,7 +203,9 @@ answers from any local process.
   marking the session). A worker chi just started is awaited first (`chi send
   --new`, a `delegate` child), so a slow boot isn't read as a death; a
   delegate child whose worker never starts is reported `worker_gone` ("its
-  worker did not start") once the boot limit (30 s) passes.
+  worker did not start") once the boot limit (30 s) passes. That await is
+  part of the `delegate` call's wait: the call's `timeout` bounds it (the
+  child then reads `running`) and the parent's Stop ends it.
 - A follow-up (`chi send --wait -m "…" ID`) to a session waiting for an answer
   isn't sent: it exits 1 with the `chi answer` command for the question. The
   step-limit question is the exception: it waits between turns, so a message
