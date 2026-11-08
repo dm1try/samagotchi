@@ -1603,8 +1603,8 @@ bundle.shutdown
   debug log), `HOME`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, no git config of yours, no Keychain and none of your
   `SAMAGOTCHI_*` settings; `sandbox.config(hash)` writes its config.yml. A `Testing::Bundle.new` or `Bundle.load` with
   no `sandbox:` and no current sandbox enters its own, snapshots `ENV` when it is built, and restores that copy at
-  `bundle.shutdown`. Build it before changing `ENV` in a test, not lazily inside `with_env`; or scope the sandbox to
-  the example with the `:bundle` tag or `Sandbox.with { … }`.
+  `bundle.shutdown`. Build it before changing `ENV` in a test, not lazily inside a block that sets `ENV` for one example (your own
+  helper, or ClimateControl); or scope the sandbox to the example with the `:bundle` tag or `Sandbox.with { … }`.
 - **RSpec:** `require "samagotchi/testing/rspec"`; example groups tagged `:bundle` (a spec under a bundle's own
   `spec/` is tagged by itself) get `load_bundle(dir)`, `shipped_bundle(name)` and `sandbox`, each example in its
   own sandbox, its bundles shut down after it (chi's shipped bundles keep theirs in `<bundle>/spec/`,

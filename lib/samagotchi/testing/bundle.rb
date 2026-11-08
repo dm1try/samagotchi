@@ -150,7 +150,8 @@ module Samagotchi
         own = session_settings.nil? || session_settings.empty? ? {} : { setup: setup_with(session_settings, host[:setup]) }
         @own_sandbox = sandbox.nil? && Sandbox.current.nil?
         # With no active sandbox, this one saves ENV at construction and
-        # restores that copy at shutdown; don't lazily build it inside with_env.
+        # restores that copy at shutdown; don't lazily build it inside a block
+        # that sets ENV for one example (your own helper, or ClimateControl).
         @sandbox = sandbox || Sandbox.current || Sandbox.enter
         build(host, own)
       rescue Exception # rubocop:disable Lint/RescueException -- leave the sandbox it entered, whatever failed
