@@ -189,6 +189,14 @@ RSpec.describe Samagotchi::Session do
       expect { described_class.from_h(data.except("mode")) }.to raise_error(KeyError)
     end
 
+    it "refuses an unknown or a missing keyword in Ruby's words; the check is the instance's own" do
+      attrs = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp").to_h
+                             .transform_keys(&:to_sym).slice(*described_class::ATTRS)
+      expect { described_class.new(**attrs, bogus: 1) }.to raise_error(ArgumentError, "unknown keyword: :bogus")
+      expect { described_class.new(**attrs.except(:mode)) }.to raise_error(ArgumentError, "missing keyword: :mode")
+      expect(described_class).not_to respond_to(:check_attrs!)
+    end
+
     # A newer chi's origin, or a hand edit: the Unread rule, as the levels.
     it "reads an unknown toolkit_origin as chosen and writes it back as it was, until the session sets its own" do
       data = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp").to_h

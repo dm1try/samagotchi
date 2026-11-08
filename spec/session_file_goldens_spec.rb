@@ -369,6 +369,10 @@ RSpec.describe "Session file goldens (characterization)" do
       end
       expect_golden("carry_matrix.json", "#{JSON.pretty_generate(matrix)}\n")
       expect(Samagotchi::SessionSetup.members - session_class.public_instance_methods).to eq([])
+      # new_session passes **setup after its own keywords: a member named
+      # like one of them would win over it silently.
+      explicit = session_class.method(:new_session).parameters.map(&:last) - %i[setup now]
+      expect(Samagotchi::SessionSetup.members & explicit).to eq([])
     end
   end
 end

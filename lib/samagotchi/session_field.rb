@@ -99,7 +99,7 @@ module Samagotchi
     def ivar = :"@#{attr || from}"
 
     # +value+ as the attribute holds it.
-    def load(value) = cast ? cast.call(value) : value
+    def cast_value(value) = cast ? cast.call(value) : value
 
     # The attribute's +value+ as the file holds it, with what the session
     # kept of a value it couldn't read (+kept+, .level's).

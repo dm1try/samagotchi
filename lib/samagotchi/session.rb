@@ -284,16 +284,6 @@ module Samagotchi
     # Session.new's keywords: every FIELDS row's attr.
     ATTRS = FIELDS.values.filter_map(&:attr).freeze
 
-    # @raise [ArgumentError] a keyword Session.new doesn't take, or a
-    #   required one missing (Ruby's own wording)
-    def self.check_attrs!(attrs)
-      unknown = attrs.keys - ATTRS
-      raise ArgumentError, "unknown keyword#{"s" if unknown.size > 1}: #{unknown.map(&:inspect).join(", ")}" unless unknown.empty?
-
-      missing = FIELDS.values.select(&:fresh_required?).map(&:attr) - attrs.keys
-      raise ArgumentError, "missing keyword#{"s" if missing.size > 1}: #{missing.map(&:inspect).join(", ")}" unless missing.empty?
-    end
-
     # The plain fields' readers and writers (each one's meaning is at its
     # FIELDS row): a writer takes the value as given (Session.new and
     # .from_h cast it), except the ones defined below.
@@ -470,7 +460,7 @@ module Samagotchi
     # (cast by its row, as the writers cast); +settings+ is the
     # settings pair's one value, +extra_fields+ the file's unknown keys.
     def initialize(extra_fields: {}, settings: nil, **attrs)
-      self.class.check_attrs!(attrs)
+      check_attrs!(attrs)
       # What the level fields couldn't read, by key (SessionField.level).
       @unread = {}
       FIELDS.each_value do |field|
@@ -817,9 +807,20 @@ module Samagotchi
     def load_field(key, value)
       field = FIELDS.fetch(key)
       @unread[key] = field.unread.call(value) if field.unread
-      field.load(value)
+      field.cast_value(value)
     end
     private :load_field
+
+    # @raise [ArgumentError] a keyword Session.new doesn't take, or a
+    #   required one missing (Ruby's own wording)
+    def check_attrs!(attrs)
+      unknown = attrs.keys - ATTRS
+      raise ArgumentError, "unknown keyword#{"s" if unknown.size > 1}: #{unknown.map(&:inspect).join(", ")}" unless unknown.empty?
+
+      missing = FIELDS.values.select(&:fresh_required?).map(&:attr) - attrs.keys
+      raise ArgumentError, "missing keyword#{"s" if missing.size > 1}: #{missing.map(&:inspect).join(", ")}" unless missing.empty?
+    end
+    private :check_attrs!
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
     def checkpointed
