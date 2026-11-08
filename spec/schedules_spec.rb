@@ -715,6 +715,35 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "records a run-now refusal, so a schedule that can never fire is disabled" do
+    Dir.mktmpdir("schedules-run-now-record") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Wake", recurrence: every("1m"), mode: described_class::SAME)
+      inbox = Samagotchi::Session.session_dir(anchor, state_dir: dir)
+      Samagotchi::SessionInbox.write_input(inbox, prompt: "a turn is queued")
+
+      # Busy is a skip, counted the way a tick counts one, with the clock left
+      # where it was: run-now is not a scheduled occurrence, so there is no
+      # due_was to put back.
+      expect(schedules.run_now(entry.id).status).to eq("skipped")
+      expect(schedules.lookup(entry.id).skips).to eq(1)
+      Samagotchi::SessionInbox.find_new_input_files(inbox).each { |file| File.delete(file) }
+
+      Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+      3.times do
+        outcome = schedules.run_now(entry.id)
+        expect([outcome.status, outcome.detail]).to eq(%w[failed archived])
+      end
+
+      after = schedules.lookup(entry.id)
+      expect([after.failures, after.skips, after.enabled, after.last_result]).to eq([3, 1, false, "archived"])
+      expect(after.next_due).to eq(entry.next_due)
+      expect(schedules.entries).to be_empty
+    end
+  end
+
   it "does not fire an `every 30m` schedule at every tick" do
     Dir.mktmpdir("schedules-every") do |root|
       dir = File.join(root, "sessions")

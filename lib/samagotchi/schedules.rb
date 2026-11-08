@@ -336,6 +336,10 @@ module Samagotchi
     end
 
     # Fire one entry now, whatever its next_due says (`chi schedule run-now`).
+    # A refusal is recorded exactly as a tick records one — the counters move,
+    # and max_skips or max_failures can disable a schedule that can never run.
+    # `due_was` is not involved: run-now is not a scheduled occurrence, so
+    # there is no clock to put back and next_due stays where it was.
     # @return [Outcome]
     def run_now(id_or_name)
       entry = lookup(id_or_name)
@@ -344,8 +348,10 @@ module Samagotchi
       index = Index.new(@state_dir)
       verdict = check(entry, index)
       if verdict
-        return Outcome.new(id: entry.id, title: entry.title, status: verdict.first == :skip ? "skipped" : "failed",
-                           detail: verdict.last, entry: entry)
+        kind, reason = verdict
+        status = kind == :skip ? "skipped" : "failed"
+        record_refusal(entry, status, reason)
+        return Outcome.new(id: entry.id, title: entry.title, status: status, detail: reason, entry: entry)
       end
 
       fire_and_record(advance(entry, @clock.call), index)
@@ -783,6 +789,19 @@ module Samagotchi
     def classify(entry, reason, message)
       status = SKIP_REASONS.include?(reason.to_s) ? "skipped" : "failed"
       Outcome.new(id: entry.id, title: entry.title, status: status, detail: message, entry: entry)
+    end
+
+    # A run-now refused before anything was tried: the same counters a tick
+    # moves for a skip or a failure. `due_was` is untouched — run-now is not a
+    # scheduled occurrence, so there is no occurrence to put the clock back to.
+    def record_refusal(entry, status, reason)
+      write_under_lock do |list|
+        position = list.index { |candidate| candidate.id == entry.id }
+        next if position.nil?
+
+        stored = list[position]
+        list[position] = status == "skipped" ? skipped(stored, reason) : failed(stored, reason)
+      end
     end
 
     # The result goes back under the lock before any pruning, so a prune that
