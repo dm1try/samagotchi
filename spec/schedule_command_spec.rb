@@ -13,8 +13,6 @@ require "samagotchi/session_access/dispatch"
 # `chi schedule` (docs/scheduling.md): the subcommands, their flags, their exit
 # codes and the machine-only contract. The store itself is spec/schedules_spec.rb.
 RSpec.describe Samagotchi::ScheduleCommand do
-  SUBCOMMANDS = { "schedule" => ["samagotchi/schedule_command", "ScheduleCommand"] }.freeze
-
   around do |example|
     Dir.mktmpdir("schedule-command") do |tmp|
       @dir = File.realpath(tmp)
@@ -323,7 +321,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
 
       expect(Samagotchi::SessionAccess::Contract::MACHINE).to include("schedule")
       expect(dispatch.refusal).to eq("chi schedule runs on this machine only: run it on studio")
-      expect(dispatch.run(SUBCOMMANDS, stderr: remote_err)).to eq(Samagotchi::CLI::Exit::USAGE)
+      expect(dispatch.run({ "schedule" => ["samagotchi/schedule_command", "ScheduleCommand"] }, stderr: remote_err)).to eq(Samagotchi::CLI::Exit::USAGE)
       expect(remote_err.string).to eq("Error: chi schedule runs on this machine only: run it on studio\n")
     end
   end
