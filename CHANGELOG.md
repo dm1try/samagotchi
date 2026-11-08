@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.157.0] - 2026-11-08
+
 ### Added
 
 - `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed and the known divergences that explain them (no content).
@@ -5838,7 +5840,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.156.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.157.0...HEAD
+[0.157.0]: https://github.com/dm1try/samagotchi/compare/v0.156.0...v0.157.0
 [0.156.0]: https://github.com/dm1try/samagotchi/compare/v0.155.0...v0.156.0
 [0.155.0]: https://github.com/dm1try/samagotchi/compare/v0.154.1...v0.155.0
 [0.154.1]: https://github.com/dm1try/samagotchi/compare/v0.154.0...v0.154.1

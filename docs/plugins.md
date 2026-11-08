@@ -29,7 +29,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
   # required: true           # optional: a guardrail plugin; if it fails to load, every tool call is
-                             # denied (see chi.on's on_error: :fail_closed; chi newer than 0.156.0)
+                             # denied (see chi.on's on_error: :fail_closed; chi 0.157.0 or newer)
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
                              # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
@@ -486,7 +486,7 @@ event in a worker also shows once in every UI (`plugins> plugin.rb (bundle x) be
 
 #### A guard that fails closed: `on_error: :fail_closed`
 
-A `:before_tool_call` guard can fail closed (chi newer than 0.156.0; `on_error:` on any
+A `:before_tool_call` guard can fail closed (chi 0.157.0 or newer; `on_error:` on any
 other event, or a value other than `:log` / `:fail_closed`, is a load error):
 
 ```ruby
@@ -509,7 +509,7 @@ chi.on(:before_tool_call, priority: 10, on_error: :fail_closed) { |event, _ctx| 
 - An older chi doesn't know `on_error:`: `chi.on` raises on the keyword, so
   the whole plugin fails to load there, and not as a guardrail (that chi ignores
   `required:`). Give the bundle a `requires_chi` that leaves such a chi out
-  (`"> 0.156.0"`; once the release is out, `chi bundle check` names its floor).
+  (`">= 0.157.0"`; `chi bundle check` names this floor).
 
 To act from the block, use `ctx`: `ctx.notify`, `ctx.ask_user`,
 `ctx.steer`, `ctx.stop_turn`, `ctx.stop_generation`. Inside the block they

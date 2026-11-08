@@ -57,8 +57,8 @@ module Samagotchi
         "ctx.continues" => "0.141.0", "ctx.context.left_behind" => "0.141.0", "ctx.context.attach(movable:)" => "0.141.0",
         "ctx.session_dir" => "0.143.0", "ctx.session_dir(create:)" => "0.144.0",
         "ctx.objectives" => "0.149.0", "ctx.turn_running?" => "0.149.0",
-        "ctx.last_answer" => "0.154.0"
-        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "chi.on(on_error:)".
+        "ctx.last_answer" => "0.154.0",
+        "chi.on(on_error:)" => "0.157.0"
       }.freeze
 
       # chi.on's on_error: values. :log (the default) logs a raise and goes
