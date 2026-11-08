@@ -115,10 +115,6 @@ module Samagotchi
         session
       end
 
-      # Start the next link of a chain (SessionContinue.run, which has the
-      # rules and raises SessionContinue::Refused).
-      def continue_session(...) = SessionContinue.run(...)
-
       # Ensure an existing session has a live worker process.
       # Returns the loaded session after state reconciliation.
       # @raise [OwnedByTUI] when the interactive TUI owns the session

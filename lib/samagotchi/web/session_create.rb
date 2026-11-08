@@ -140,7 +140,7 @@ module Samagotchi
       end
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
-      # link of that session's chain (SessionManager.continue_session), in its
+      # link of that session's chain (SessionContinue.run), in its
       # folder and with its own setup (SessionSetup: llm_context, thinking
       # and reasoning_history levels, settings), so dir, llm_context, thinking and settings are
       # refused beside it (a create takes no reasoning_history). It runs on
@@ -328,11 +328,11 @@ module Samagotchi
         [level, nil]
       end
 
-      # SessionManager.continue_session, its refusals as responses: [session,
+      # SessionContinue.run, its refusals as responses: [session,
       # nil] or [nil, the response]. Only its own errors: what fails after
       # the new link started is not a refusal of it.
       def continue_from(given, prompt:, preview:, model:)
-        [@manager.continue_session(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir), nil]
+        [SessionContinue.run(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir), nil]
       rescue SessionContinue::Refused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : {}
         [nil, refusal_response(409, e.reason.to_s, e, session_id: e.session_id, reason: e.reason.to_s, ids: e.ids, **extra)]

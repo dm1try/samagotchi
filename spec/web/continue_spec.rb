@@ -12,7 +12,7 @@ require "samagotchi/session"
 require "samagotchi/session_manager"
 
 # POST /api/sessions with continues: the next link of a session chain
-# (SessionManager.continue_session; spec/session_continue_spec.rb has its rules).
+# (SessionContinue.run; spec/session_continue_spec.rb has its rules).
 RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
   around do |example|
     Dir.mktmpdir("web-continue") do |tmp|

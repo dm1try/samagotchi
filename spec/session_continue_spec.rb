@@ -10,7 +10,7 @@ require "samagotchi/objectives"
 require "samagotchi/tools/delegate_cursor"
 require_relative "support/worker_links"
 
-# SessionContinue.run (SessionManager.continue_session): the next link of a session chain.
+# SessionContinue.run: the next link of a session chain.
 RSpec.describe Samagotchi::SessionContinue, ".run" do
   include WorkerLinks
 

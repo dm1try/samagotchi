@@ -119,7 +119,7 @@ module Samagotchi
     # Started by the `delegate` tool (a fork has a parent_id too, but isn't
     # one): see #delegate?.
     attr_writer :delegate
-    # The session this one continues (SessionManager.continue_session): the
+    # The session this one continues (SessionContinue.run): the
     # previous link of a chain, "the next run of the same routine", else
     # nil. Not a parent: archiving one link leaves the next alone. The chain
     # itself is derived (SessionChain), never stored.
@@ -353,7 +353,7 @@ module Samagotchi
     attr_accessor :model_warning
 
     # The delegates a continue moved to this new link (ChildMove;
-    # SessionManager.continue_session sets it); not saved.
+    # SessionContinue.run sets it); not saved.
     attr_accessor :moved_children
 
     # The attached context a continue took to this new link
@@ -361,7 +361,7 @@ module Samagotchi
     attr_accessor :moved_context
 
     # The text web `continue →` prefills in this new link
-    # (SessionChain.opener_for; SessionManager.continue_session sets it); not
+    # (SessionChain.opener_for; SessionContinue.run sets it); not
     # saved.
     attr_accessor :opener
 

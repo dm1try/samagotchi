@@ -18,7 +18,7 @@ module Samagotchi
   autoload :SessionContinue, File.expand_path("session_continue", __dir__)
 
   # A continue moving the previous link's open delegates to the chain's new
-  # link (SessionManager.continue_session), instead of archiving them with
+  # link (SessionContinue.run), instead of archiving them with
   # it. A moved child gets a parent override (Session::PARENT_FILE), never a
   # rewritten session file, so its live worker saving a stale copy changes
   # nothing; its worker reads the override for its rings and at each turn's

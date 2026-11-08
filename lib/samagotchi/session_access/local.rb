@@ -33,6 +33,8 @@ module Samagotchi
   # Loaded on first use: SessionManager and its ~80 files only when a
   # command reaches it (chi context never does).
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
+  # A continue (#create with continues); it requires session_manager.
+  autoload :SessionContinue, File.expand_path("../session_continue", __dir__)
 
   module SessionAccess
     # This machine's sessions: the calls the session commands made before
@@ -140,7 +142,7 @@ module Samagotchi
 
         start = spec.preview ? { prompt: spec.prompt, preview: spec.preview } : { prompt: spec.prompt }
         if spec.continues
-          return SessionManager.continue_session(spec.continues, **start, model: spec.model_name, **dir)
+          return SessionContinue.run(spec.continues, **start, model: spec.model_name, **dir)
         end
 
         SessionManager.spawn_session(**start, working_directory: spec.working_directory, model_name: spec.model_name,

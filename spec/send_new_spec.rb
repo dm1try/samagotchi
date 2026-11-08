@@ -170,7 +170,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(spawned).to be_empty
   end
 
-  # --continues: the next link of a chain (SessionManager.continue_session;
+  # --continues: the next link of a chain (SessionContinue.run;
   # spec/session_continue_spec.rb has its rules).
   describe "--continues" do
     let(:folder) { Dir.mktmpdir("send-continues") }

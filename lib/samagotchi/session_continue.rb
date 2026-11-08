@@ -18,9 +18,9 @@ require_relative "log"
 require_relative "session_manager"
 
 module Samagotchi
-  # The next link of a session chain (chi send --new --continues, web
-  # Continue →): SessionManager.continue_session runs .run. The archive,
-  # spawn, stop and wake it builds on are SessionManager's.
+  # The next link of a session chain: chi send --new --continues and web
+  # Continue → run .run. The archive, spawn, stop and wake it builds on are
+  # SessionManager's.
   module SessionContinue
     # A continue that can't happen (#run). reason: :continued
     # (another session continues it already: +ids+ names it), :open_children
