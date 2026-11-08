@@ -55,6 +55,24 @@ RSpec.describe LLMContextBench::Strategies::ForgetOutputs do
     expect(sent.last[:content]).to start_with("[CONTEXT: ~").and include("over the budget", "forget_outputs")
   end
 
+  # The ToolHost refactor (~/.claude/plans/arch-toolhost.md, r2 M3) builds
+  # the bench's ChatLoop another way: what it asks with stays these bytes.
+  # After an intended change:
+  #   UPDATE_PROMPTS=1 bundle exec rspec spec/llm_context_bench/forget_offer_spec.rb
+  it "asks with these exact wire messages and tools" do
+    forget, asked = strategy(answer)
+    forget.plans(kase)
+
+    _, sent, tools = asked.first
+    text = "#{JSON.pretty_generate({ "messages" => sent, "tools" => tools }).gsub(dir, "<DIR>")}\n"
+    path = File.expand_path("../fixtures/llm_context_bench/forget_offer_ask.json", __dir__)
+    if ENV["UPDATE_PROMPTS"] == "1"
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, text)
+    end
+    expect(text).to eq(File.read(path))
+  end
+
   it "runs a forget_outputs call through chi: the forgets it lets through, the ids it refuses, the note" do
     note = "a.rb, the spec: nothing to fix (VERIFIED). NEXT: c.rb"
     forget, = strategy(answer(["read", { "path" => "lib/c.rb" }], ["forget_outputs", { "ids" => %w[t1 t2 t5], "note" => note }]))
