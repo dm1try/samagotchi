@@ -2992,7 +2992,7 @@ RSpec.describe Samagotchi::Web::App do
       hosts = a
       allow(Samagotchi::HostConfig).to receive(:all) { hosts }
       built = []
-      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
+      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:, **|
         built << hosts_config.keys
         FakeModelRegistry.new(hosts_config.keys.to_h { |k| [k, Samagotchi::HostRegistry::HostListing.new(models: [model_info("m-#{k}")])] },
                               default_host: "box")

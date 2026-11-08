@@ -495,6 +495,41 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(Samagotchi::SelfReport.host_for("box:m", ENV)).to include("127.0.0.1:9091")
     end
 
+    describe ".current" do
+      it "is one registry while hosts: stay, and a new one after an edit" do
+        first = described_class.current
+        expect(described_class.current).to be(first)
+        expect(first.find_entry("box").port).to eq(8081)
+
+        write_hosts(9091)
+        second = described_class.current
+        expect(second).not_to be(first)
+        expect(second.find_entry("box").port).to eq(9091)
+        expect(described_class.current).to be(second)
+      end
+
+      it "gives every thread the same one" do
+        registries = Array.new(8) { Thread.new { described_class.current } }.map(&:value)
+
+        expect(registries.uniq(&:object_id).size).to eq(1)
+      end
+
+      it "is a fresh registry each call for another env, never the shared one" do
+        env = ENV.to_h
+        one = described_class.current(env: env)
+
+        expect(described_class.current(env: env)).not_to be(one)
+        expect(one).not_to be(described_class.current)
+        expect(one.env).to be(env)
+      end
+
+      it "refuses a client override; a registry of one's own takes it" do
+        expect { described_class.current.client_override = double("client") }.to raise_error(described_class::Shared)
+        expect(described_class.current.client_override).to be_nil
+        expect { described_class.current(env: ENV.to_h).client_override = double("client") }.not_to raise_error
+      end
+    end
+
     it "sends an Engine given a registry and a client through that client" do
       stub = double("client")
       given = described_class.new(hosts_config: { "box" => { host: "127.0.0.1", port: 8081 } })

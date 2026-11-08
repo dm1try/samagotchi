@@ -592,7 +592,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hosts = a
       allow(Samagotchi::HostConfig).to receive(:all) { hosts }
       built = []
-      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
+      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:, **|
         built << hosts_config.keys
         Object.new
       end

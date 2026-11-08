@@ -1210,17 +1210,16 @@ module Samagotchi
         end
       end
 
-      # Built again when config.yml's hosts: changed (compared as read: the
-      # YAML read is mtime-cached), so the model picker lists a host added
+      # The shared registry (HostRegistry.current: built again when
+      # config.yml's hosts: changed), so the model picker lists a host added
       # while chi web runs. An injected registry (specs) stays.
       def host_registry
         @models_mutex.synchronize do
           next @registry if @registry_given
 
-          hosts = HostConfig.all
-          if @registry.nil? || hosts != @registry_hosts
-            @registry = HostRegistry.new(hosts_config: hosts)
-            @registry_hosts = hosts
+          current = HostRegistry.current
+          unless current.equal?(@registry)
+            @registry = current
             @models_thread = nil # a listing of the old hosts
           end
           @registry

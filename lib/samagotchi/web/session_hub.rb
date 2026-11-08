@@ -404,21 +404,13 @@ module Samagotchi
         emit("session", session: summary)
       end
 
-      # One HostRegistry kept across scans: every session's ctx_pct may
-      # need its llm_context budget resolved, and the registry's config read
-      # is what would otherwise repeat per scan and per session. Built on
-      # the first summary that needs it, and built again when config.yml's
-      # hosts: changed (compared as read, like App#host_registry: the YAML
-      # read is mtime-cached), so a host added or a window changed while
-      # chi web runs is picked up on the next refresh of a card.
-      def hub_registry
-        hosts = HostConfig.all
-        if @hub_registry.nil? || hosts != @hub_registry_hosts
-          @hub_registry = HostRegistry.new(hosts_config: hosts)
-          @hub_registry_hosts = hosts
-        end
-        @hub_registry
-      end
+      # The registry kept across scans (HostRegistry.current, built again
+      # when config.yml's hosts: changed): every session's ctx_pct may need
+      # its llm_context budget resolved, and the registry's config read is
+      # what would otherwise repeat per scan and per session; a host added
+      # or a window changed while chi web runs is picked up on the next
+      # refresh of a card.
+      def hub_registry = HostRegistry.current
 
       def drop(id)
         entry = @sessions.delete(id)
