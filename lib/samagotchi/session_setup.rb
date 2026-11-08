@@ -42,24 +42,27 @@ module Samagotchi
             working_set_pins: WorkingSetPin.list(working_set_pins))
     end
 
-    def empty?
-      llm_context.nil? && thinking.nil? && reasoning_history.nil? && appended_prompt_files.empty? && toolkit.nil? &&
-        toolkit_origin.nil? && settings.empty? && parent_answers.nil? && working_set_pins.empty?
-    end
+    # Every member at its default: none of the session's own settings.
+    def empty? = self == self.class.new
 
-    # A session's own setup, for a session that starts from it. Its
-    # toolkit always: one from before toolkits is full (Toolkit.of), not
-    # whatever config's default is now.
+    # A session's own setup, for a session that starts from it: each
+    # member is the session's field of the same name (Session.new_session
+    # applies them by name), but for SessionSetup::CARRY's. Its toolkit
+    # always: one from before toolkits is full (Toolkit.of), not whatever
+    # config's default is now.
     # @param session [Session, nil]
     # @return [SessionSetup]
     def self.of(session)
       return new if session.nil?
 
-      new(llm_context: session.llm_context, thinking: session.thinking, reasoning_history: session.reasoning_history,
-          appended_prompt_files: session.appended_prompt_files, toolkit: Toolkit.of(session.toolkit),
-          toolkit_origin: "inherited",
-          settings: session.settings, parent_answers: session.parent_answers,
-          working_set_pins: session.working_set_pins)
+      new(**members.to_h { |member| [member, self::CARRY.fetch(member) { ->(s) { s.public_send(member) } }.call(session)] })
     end
   end
+
+  # How SessionSetup.of carries a member that isn't its session's field as
+  # it is: member => (session) -> value.
+  SessionSetup::CARRY = {
+    toolkit: ->(session) { Toolkit.of(session.toolkit) },
+    toolkit_origin: ->(_session) { "inherited" }
+  }.freeze
 end

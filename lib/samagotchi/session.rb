@@ -545,16 +545,20 @@ module Samagotchi
     # Build a new, unsaved session.
     # @param messages [Array<Hash>] a conversation to start from (a fork's
     #   seed); [] by default
-    # @param setup [SessionSetup] the session's own settings (none by default)
+    # @param setup [SessionSetup, nil] the session's own settings (none by
+    #   default): each member is the field of the same name (a member that
+    #   isn't one is an ArgumentError), a toolkit_origin of none is chosen
     # @param now [Time] its created_at and updated_at (a spec's clock)
     # @raise [Toolkit::Refused] its toolkit (setup's, else the configured
     #   one SessionManager.spawn_session gives it) builds on a config kit
     #   with an invalid groups: (Toolkit.check_new!)
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil,
+                         scratch: false, model_typed: nil, delegate: false, setup: nil, continues: nil,
                          review: nil, now: Time.now)
-      Toolkit.check_new!(setup.toolkit || Toolkit.configured(delegate: delegate))
+      own = setup.to_h
+      own = own.merge(toolkit_origin: own[:toolkit_origin] || "chosen")
+      Toolkit.check_new!(own[:toolkit] || Toolkit.configured(delegate: delegate))
       now = now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -579,17 +583,9 @@ module Samagotchi
         parent_id: parent_id,
         scratch: scratch,
         delegate: delegate,
-        llm_context: setup.llm_context,
-        thinking: setup.thinking,
-        reasoning_history: setup.reasoning_history,
-        appended_prompt_files: setup.appended_prompt_files,
-        toolkit: setup.toolkit,
-        toolkit_origin: setup.toolkit_origin || "chosen",
-        settings: setup.settings,
-        parent_answers: setup.parent_answers,
-        working_set_pins: setup.working_set_pins,
         continues: continues,
-        review: review
+        review: review,
+        **own
       )
     end
 
