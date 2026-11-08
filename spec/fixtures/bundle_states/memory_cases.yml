@@ -1,0 +1,580 @@
+# One bundle memory per case, in a known state, run through every command
+# (spec/samagotchi/memory_bundle/file_state_corpus/). Hand-written; the
+# expectations in expect/ are generated (UPDATE_GOLDENS=1) and reviewed.
+#
+# A case:
+#   id          unique
+#   kind        the FileState kind it is (hand-assigned; asserted from P1.1)
+#   installed   false: no record at all (default true)
+#   owned       the record lists the file (default true)
+#   key         the file's name (default a.md)
+#   base        the base copy's text (bases/<key>), null: none
+#   disk        the file's text in the memories dir, null: not there
+#   incoming    the bundle's text in the source, null: the bundle dropped it
+#   recorded    the entry's checksum: base, disk, other (of another text) or
+#               none (no checksum key); default base, or disk with no base
+#   sha         the source manifest's files: sha256 for the file: right,
+#               wrong or none (an entry with no checksum); default right
+#   mark        none, current (a mark 0.155 writes) or legacy (an older mark
+#               0.155 has since given a digest: legacy_base); the 0.149 shape
+#               writes both as a bare conflict: true
+#   marked_incoming  the text a mark speaks of: incoming or older (the
+#               source moved since the mark); default incoming, older when
+#               the bundle dropped the file
+#   shipped_history  ShippedHistory.shipped?'s answer for the file (default false)
+#   claimants   other installed bundles that list the file too
+#   unreadable  the disk file is mode 000
+#   fix         "<tsv id> <spec file>: <example description>": the example
+#               the case's start was lifted from (it stays in its file)
+#   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
+#               wrong today (one tag or a list): D4, U4, U7 (the plan's), dry-noop
+#               (P1.9), dry-trash, edited-rule, restore-unchecked; note says which
+#   note        why, for a tagged case
+#
+# Texts are named by their three lines; one letter's change is one line's.
+texts:
+  abc: "a\nb\nc\n"
+  Abc: "A\nb\nc\n"
+  abC: "a\nb\nC\n"
+  AbC: "A\nb\nC\n"
+  Xbc: "X\nb\nc\n"
+  abcd: "a\nb\nc\nd\n"
+  ab: "a\nb\n"
+  obc: "o\nb\nc\n"
+  zzz: "z\nz\nz\n"
+
+cases:
+  # Owned, with a base: the five relations of disk (D), base (B) and incoming (I).
+  - id: level_same
+    kind: level
+    base: abc
+    disk: abc
+    incoming: abc
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    fix:
+      - "703 spec/samagotchi/memory_bundle/installer_spec.rb: skips an existing file identical to the bundle's as already up to date, without a warning"
+  - id: level_same_marked
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: abc
+    disk: abc
+    incoming: abc
+    mark: current
+  - id: level_same_legacy
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: abc
+    disk: abc
+    incoming: abc
+    mark: legacy
+  - id: level
+    kind: level
+    base: abc
+    disk: abC
+    incoming: abC
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+  - id: level_marked
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: abc
+    disk: abC
+    incoming: abC
+    mark: current
+    fix:
+      - "50 spec/samagotchi/memory_bundle/kept_edits_spec.rb: drops it once the file has the incoming bytes"
+  - id: level_legacy
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: abc
+    disk: abC
+    incoming: abC
+    mark: legacy
+  - id: pristine
+    kind: pristine
+    base: abc
+    disk: abc
+    incoming: abC
+    divergent: D4
+    note: >-
+      install (and its dry run) skips a file the user never edited as "already exists", calls it "your own
+      copy", and the record's version moves on with the old text and no mark (P5; P1.10 takes the new text)
+  - id: pristine_marked
+    kind: pristine
+    divergent: dry-trash
+    note: "0.155: upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
+    base: abc
+    disk: abc
+    incoming: abC
+    mark: current
+  - id: pristine_legacy
+    kind: pristine
+    base: abc
+    disk: abc
+    incoming: abC
+    mark: legacy
+    fix:
+      - "40 spec/samagotchi/memory_bundle/file_standing_spec.rb: doesn't claim edits for a base it can't vouch for"
+  - id: edited
+    kind: edited
+    base: abc
+    disk: Abc
+    incoming: abc
+    fix:
+      - "705 spec/samagotchi/memory_bundle/installer_spec.rb: keeps the installed base, so the next upgrade still keeps the edit"
+      - "51 spec/samagotchi/memory_bundle/kept_edits_spec.rb: says a kept edit is kept, with no checksum mismatch for it"
+      - "43 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies an edit to the trash before an upgrade overwrites it, and says so"
+  - id: edited_marked
+    kind: edited
+    base: abc
+    disk: Abc
+    incoming: abc
+    mark: current
+  - id: edited_legacy
+    kind: edited
+    base: abc
+    disk: Abc
+    incoming: abc
+    mark: legacy
+  # Diverged: both changed it. The texts pick a clean merge, a conflict or a
+  # file that already has the bundle's change.
+  - id: diverged_clean
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: abC
+  - id: diverged_conflict
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: Xbc
+    fix:
+      - "48 spec/samagotchi/memory_bundle/kept_edits_spec.rb: brings the next upgrade back to a conflict, not a silent keep"
+  - id: diverged_already
+    kind: diverged
+    base: abc
+    disk: AbC
+    incoming: abC
+  - id: diverged_clean_marked
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: abC
+    mark: current
+    fix:
+      - "37 spec/update_hint_spec.rb: counts a retry that would merge, not one that only records a reason"
+  - id: diverged_conflict_marked
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: Xbc
+    mark: current
+    fix:
+      - "34 spec/chi_bundle_cli_spec.rb: says so per file in status, and counts it as an issue"
+      - "34 spec/chi_bundle_cli_spec.rb: says so in list"
+      - "39 spec/update_command_spec.rb: reads 'up to date' only when nothing stays behind, a warning in its note"
+      - "50 spec/samagotchi/memory_bundle/kept_edits_spec.rb: keeps the mark and the base on a file it skipped"
+      - "16 spec/chi_bundle_cli_spec.rb: diff shows the bundle's new text after base and current"
+  - id: diverged_clean_legacy
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: abC
+    mark: legacy
+  - id: diverged_conflict_legacy
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: Xbc
+    mark: legacy
+
+  # Owned, no base: level, the checksum's text (never edited), neither.
+  - id: level_no_base
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: null
+    disk: abC
+    incoming: abC
+    recorded: disk
+  - id: level_no_base_marked
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: null
+    disk: abC
+    incoming: abC
+    recorded: disk
+    mark: current
+  - id: level_no_base_legacy
+    kind: level
+    divergent: dry-noop
+    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    base: null
+    disk: abC
+    incoming: abC
+    recorded: disk
+    mark: legacy
+  - id: pristine_no_base
+    kind: pristine_no_base
+    divergent: [D4, U4]
+    note: >-
+      D4: install skips a never-edited file as already exists, "your own copy" (P5); U4: upgrade leaves it behind
+      (no recorded base) while status and uninstall call it unedited
+    base: null
+    disk: abc
+    incoming: abC
+    recorded: disk
+  - id: pristine_no_base_marked
+    kind: pristine_no_base
+    base: null
+    disk: abc
+    incoming: abC
+    recorded: disk
+    mark: current
+    divergent: U4
+    note: >-
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
+      unmarked-only rule, unlike D4.
+  - id: pristine_no_base_legacy
+    kind: pristine_no_base
+    base: null
+    disk: abc
+    incoming: abC
+    recorded: disk
+    mark: legacy
+    divergent: U4
+    note: >-
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
+      unmarked-only rule, unlike D4.
+  - id: edited_no_base
+    kind: edited_no_base
+    base: null
+    disk: Abc
+    incoming: abC
+    recorded: other
+    fixed: D1
+    note: "P2 and P4: status says modified, and uninstall asks for --force"
+    fix:
+      - "49 spec/samagotchi/memory_bundle/kept_edits_spec.rb: survives two upgrades as a conflict, its base still missing"
+  - id: edited_no_base_marked
+    kind: edited_no_base
+    base: null
+    disk: Abc
+    incoming: abC
+    recorded: other
+    mark: current
+  - id: edited_no_base_legacy
+    kind: edited_no_base
+    base: null
+    disk: Abc
+    incoming: abC
+    recorded: other
+    mark: legacy
+  - id: edited_no_checksum
+    kind: edited_no_base
+    base: null
+    disk: Abc
+    incoming: abC
+    recorded: none
+    note: "no base and no checksum: unknown counts as edited (D1)"
+
+  # Owned and missing: the bundle still ships it, or dropped it too.
+  - id: missing
+    kind: missing
+    base: abc
+    disk: null
+    incoming: abC
+    fix:
+      - "55 spec/samagotchi/memory_bundle/system_bundle_spec.rb: restores a missing file alone: no merge, no asset touched, the record's version and time kept"
+  - id: missing_marked
+    kind: missing
+    base: abc
+    disk: null
+    incoming: abC
+    mark: current
+    fix:
+      - "55 spec/samagotchi/memory_bundle/system_bundle_spec.rb: restores a deleted marked file with the bundle's text, and the mark goes"
+  - id: missing_legacy
+    kind: missing
+    base: abc
+    disk: null
+    incoming: abC
+    mark: legacy
+  - id: dropped_missing
+    kind: dropped_missing
+    base: abc
+    disk: null
+    incoming: null
+    fix:
+      - "347 spec/samagotchi/memory_bundle/installer_spec.rb: a plain re-install keeps a dropped file's old base, and no record of one the user deleted"
+  - id: dropped_missing_marked
+    kind: dropped_missing
+    base: abc
+    disk: null
+    incoming: null
+    mark: current
+  - id: dropped_missing_legacy
+    kind: dropped_missing
+    base: abc
+    disk: null
+    incoming: null
+    mark: legacy
+
+  # Present, the bundle dropped it: D==B, no B with D==checksum, no B with
+  # D!=checksum, D!=B.
+  - id: dropped_pristine
+    kind: dropped_pristine
+    base: abc
+    disk: abc
+    incoming: null
+  - id: dropped_pristine_marked
+    kind: dropped_pristine
+    base: abc
+    disk: abc
+    incoming: null
+    mark: current
+  - id: dropped_pristine_legacy
+    kind: dropped_pristine
+    base: abc
+    disk: abc
+    incoming: null
+    mark: legacy
+  - id: dropped_pristine_no_base
+    kind: dropped_pristine
+    base: null
+    disk: abc
+    incoming: null
+    recorded: disk
+  - id: dropped_pristine_no_base_marked
+    kind: dropped_pristine
+    base: null
+    disk: abc
+    incoming: null
+    recorded: disk
+    mark: current
+  - id: dropped_pristine_no_base_legacy
+    kind: dropped_pristine
+    base: null
+    disk: abc
+    incoming: null
+    recorded: disk
+    mark: legacy
+  - id: dropped_edited_no_base
+    kind: dropped_edited
+    base: null
+    disk: Abc
+    incoming: null
+    recorded: other
+  - id: dropped_edited_no_base_marked
+    kind: dropped_edited
+    base: null
+    disk: Abc
+    incoming: null
+    recorded: other
+    mark: current
+  - id: dropped_edited_no_base_legacy
+    kind: dropped_edited
+    base: null
+    disk: Abc
+    incoming: null
+    recorded: other
+    mark: legacy
+  - id: dropped_edited
+    kind: dropped_edited
+    base: abc
+    disk: Abc
+    incoming: null
+  - id: dropped_edited_marked
+    kind: dropped_edited
+    base: abc
+    disk: Abc
+    incoming: null
+    mark: current
+    fix:
+      - "52 spec/samagotchi/memory_bundle/kept_edits_spec.rb: keeps the mark and the base, and answers that it settled nothing"
+  - id: dropped_edited_legacy
+    kind: dropped_edited
+    base: abc
+    disk: Abc
+    incoming: null
+    mark: legacy
+
+  # Not the bundle's: the record doesn't list it.
+  - id: new
+    kind: new
+    owned: false
+    base: null
+    disk: null
+    incoming: abC
+  - id: user_same
+    kind: user_same
+    owned: false
+    base: null
+    disk: abC
+    incoming: abC
+  - id: user_file
+    kind: user_file
+    owned: false
+    base: null
+    disk: Abc
+    incoming: abC
+    fix:
+      - "43 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies a user's own same-name file the bundle never owned"
+      - "51 spec/samagotchi/memory_bundle/kept_edits_spec.rb: prints no checksum mismatch for a file a plain install would skip"
+      - "290 spec/samagotchi/memory_bundle/profile_spec.rb: names on a dry run the memory files the install would keep as the user's own, writing nothing"
+  - id: fresh_user_file
+    kind: user_file
+    installed: false
+    owned: false
+    base: null
+    disk: Abc
+    incoming: abC
+    fix:
+      - "633 spec/samagotchi/memory_bundle/installer_spec.rb: records only the files it wrote: a skipped file stays the user's"
+
+  # Another installed bundle lists the file too.
+  - id: dropped_pristine_shared
+    kind: dropped_pristine
+    base: abc
+    disk: abc
+    incoming: null
+    claimants: [other]
+    fix:
+      - "634 spec/samagotchi/memory_bundle/installer_spec.rb: keeps a dropped file another installed bundle has too, and drops it from this bundle's record"
+  - id: dropped_edited_shared
+    kind: dropped_edited
+    base: abc
+    disk: Abc
+    incoming: null
+    claimants: [other]
+  - id: pristine_shared
+    kind: pristine
+    divergent: D4
+    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    base: abc
+    disk: abc
+    incoming: abC
+    claimants: [other]
+  - id: edited_shared
+    kind: edited
+    base: abc
+    disk: Abc
+    incoming: abc
+    claimants: [other]
+    fix:
+      - "634 spec/samagotchi/memory_bundle/uninstaller_spec.rb: doesn't block the uninstall when edited: it isn't removed"
+
+  # A file chi can't read.
+  - id: unreadable
+    kind: unreadable
+    base: abc
+    disk: abc
+    incoming: abC
+    unreadable: true
+    fix:
+      - "36 spec/samagotchi/memory_bundle/shipped_update_spec.rb: fails only that row, in the plan and through apply, on an edited file it can't read at a newer version"
+
+  # A record whose base isn't its checksum's text: the checksum answers first.
+  - id: recorded_other
+    kind: edited
+    base: abc
+    disk: abc
+    incoming: abC
+    recorded: other
+    divergent: edited-rule
+    note: >-
+      kind edited: Provenance.unchanged? reads the checksum first, so status says modified and uninstall asks for
+      --force, while Merger.classify reads the base: upgrade fast-forwards it with no trash copy A plain install
+      rewrites its checksum to the file's, so status turns from modified to ok and uninstall stops refusing, with no
+      user action. Its upgrade cell is invariant 1's allowlist entry.
+
+  # The legacy guard: an older mark on a file equal to its base takes an
+  # update that only gains lines; one that removes a line waits, unless
+  # ShippedHistory proves the base.
+  - id: pristine_legacy_gains
+    kind: pristine
+    divergent: dry-trash
+    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
+    base: abc
+    disk: abc
+    incoming: abcd
+    mark: legacy
+  - id: pristine_legacy_gains_proved
+    kind: pristine
+    divergent: dry-trash
+    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
+    base: abc
+    disk: abc
+    incoming: abcd
+    mark: legacy
+    shipped_history: true
+  - id: pristine_legacy_removes
+    kind: pristine
+    base: abc
+    disk: abc
+    incoming: ab
+    mark: legacy
+  - id: pristine_legacy_removes_proved
+    kind: pristine
+    divergent: dry-trash
+    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
+    base: abc
+    disk: abc
+    incoming: ab
+    mark: legacy
+    shipped_history: true
+
+  # A marked file whose source moved since the mark (Remerge's first question).
+  - id: source_moved_marked
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: abC
+    mark: current
+    marked_incoming: older
+
+  # The integrity check: a written file's manifest sha is wrong, or absent.
+  - id: missing_wrong_sha
+    kind: missing
+    divergent: restore-unchecked
+    note: "restore (SystemBundle.sync) puts the file back with no checksum warning; install and upgrade warn"
+    base: abc
+    disk: null
+    incoming: abC
+    sha: wrong
+  - id: pristine_wrong_sha
+    kind: pristine
+    base: abc
+    disk: abc
+    incoming: abC
+    sha: wrong
+    divergent: [U7, D4]
+    note: >-
+      U7: upgrade fast-forwards it (Updated) with no checksum warning: the integrity check skips a fast-forward, where
+      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skips the
+      never-edited file as already exists, as pristine
+  - id: new_no_sha
+    kind: new
+    owned: false
+    base: null
+    disk: null
+    incoming: abC
+    sha: none
+    fix:
+      - "20 spec/samagotchi/memory_bundle/installer_spec.rb: does not warn when a files entry declares no checksum"
+
+  # A model overlay (no base memory anywhere: an orphan overlay).
+  - id: overlay_pristine
+    kind: pristine
+    divergent: D4
+    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    key: a.mx.md
+    base: abc
+    disk: abc
+    incoming: abC

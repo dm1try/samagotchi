@@ -84,6 +84,29 @@ next round folds the first three into one wiring example each in `effective_mode
 `session_model_settings_spec.rb` and `session_setting_spec.rb`, and the ladders the round after into the setting
 modules' and `model_lookup_spec.rb`.
 
+`UPDATE_GOLDENS=1` is the characterization specs' variable (the prompt and turn goldens above use `UPDATE_PROMPTS`):
+the model-setting ones above, claude-peer's goldens and the bundle-state corpus below. Regenerate only for an intended
+change, then read the diff.
+
+The bundle-state corpus (`spec/samagotchi/memory_bundle/file_state_corpus/`, `spec/fixtures/bundle_states/`) pins what
+every bundle file state does under every command that reads or writes it. Each case in `memory_cases.yml` (a memory:
+owned, edited, behind, missing, dropped, the user's own, another bundle's too…) and `asset_cases.yml` (a rule, the
+plugin, a script, a hook) is written directly as a starting tree, in the 0.155 and the 0.149 record shape, and run
+through install, `--force`, `--dry-run`, upgrade and its flags, chi update's plan, Remerge, the system bundle's restore,
+uninstall and status. A cell holds only what a user or the next command sees (the bytes, the trash, base and checksum,
+the mark, the summary's word, status's label, the warnings), never the Installer's result strings. `expect/*.yml` are
+generated (`UPDATE_GOLDENS=1 bundle exec rspec spec/samagotchi/memory_bundle/file_state_corpus/`, which also writes
+`tmp/bundle_states/review.<file>.txt`, every cell in words); a mismatch names the case, command and shape and writes
+`tmp/bundle_states/<file>.yml.actual` to diff. A regeneration asserts nothing, so run the folder again without
+`UPDATE_GOLDENS`: that run checks the new cells against `cases_spec.rb`, which holds what every regeneration keeps. No
+user bytes (neither the bundle's text nor what the record vouches for, its checksum first) are changed or removed without
+a copy in the trash first; the two record shapes give one answer except on a marked case (an allowlist entry needs a
+note); and for every asset, chi update's plan lists as replaced exactly the files the upgrade copies to the trash. To stay
+under 3 s, `upgrade_spec.rb` runs the 0.149 shape for marked cases only (`MARKED_ONLY_149`), where the shapes can differ. A regenerated cell is
+reviewed: a refactor that turns the corpus red stops and asks, and only a commit that means to change a cell
+regenerates, its changed cells read one by one; a cell that looks wrong today carries a `divergent:` tag and a note in
+its case.
+
 The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_block.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, `stage_view.js`, `bubbles.js`, `cards_place.js`, the chips, `info_bar.js`, `info_bar_model.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
@@ -344,7 +367,8 @@ files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*
 `lib/samagotchi/foo/bar/baz.rb` → `spec/foo/bar_baz_spec.rb`), the specs that read
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
 file's layer (any `foo/*.rb` → `spec/foo_golden_spec.rb` when there is one; `turn_flow.rb` and `turn_note.rb`, whose
-words the attached TUI prints, pick its `event_renderer` and `attached_loop` specs by a rule). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
+words the attached TUI prints, pick its `event_renderer` and `attached_loop` specs by a rule; `memory_bundle/*.rb`,
+`bundle_command.rb`, `memory_paths.rb`, `model_overlay.rb` and the corpus's fixtures pick the bundle-state corpus). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
 effective-model, request, prompt-snapshot and full system-prompt goldens because they hash the request's prompt and
 tools. Then come the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before

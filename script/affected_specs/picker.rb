@@ -107,7 +107,12 @@ module AffectedSpecs
       why: "PrivateFiles, checked through Grants', the push store's and chi web's refusals (none names it)" },
     { match: %w[lib/samagotchi/turn_flow.rb lib/samagotchi/turn_note.rb],
       specs: %w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb],
-      why: "the attached TUI prints their turn-end and continue words" }
+      why: "the attached TUI prints their turn-end and continue words" },
+    { match: %w[lib/samagotchi/memory_bundle.rb lib/samagotchi/memory_bundle/**/*.rb lib/samagotchi/bundle_command.rb
+                lib/samagotchi/model_overlay.rb lib/samagotchi/memory_paths.rb spec/fixtures/bundle_states/**/*
+                spec/samagotchi/memory_bundle/file_state_corpus/*.rb],
+      specs: %w[spec/samagotchi/memory_bundle/file_state_corpus/*_spec.rb],
+      why: "pins every bundle file state × command" }
   ].freeze
 
   # A constant named in more spec files than this is a hub: listing them
