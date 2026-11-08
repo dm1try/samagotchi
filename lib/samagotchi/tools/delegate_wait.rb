@@ -27,10 +27,6 @@ module Samagotchi
       Advance = Data.define(:cursor, :already_reported)
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
-      # Seconds with no worker before the child counts as gone: as long as
-      # Delegate gives a starting child (its worker takes the owner lock
-      # only once it has booted).
-      OWNER_GRACE = 15
       # Cut like an execute result: full up to TRUNCATE_AT bytes, else a
       # head-and-tail preview of PREVIEW bytes.
       TRUNCATE_AT_BYTES = OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES
@@ -50,7 +46,9 @@ module Samagotchi
       # @param timeout [Integer] seconds
       # @param poll_interval [Float]
       # @param owner_grace [Numeric] seconds with no live worker before
-      #   the child's worker counts as gone
+      #   the child's worker counts as gone (ReplyWait::GONE_AFTER; a child
+      #   whose worker is on its way was awaited first:
+      #   Delegate.await_worker)
       # @return [String] the tool result
       #
       # A child's approval, when this session can host a relay (Peers#relay),
@@ -59,7 +57,7 @@ module Samagotchi
       # against +timeout+, and the result gets one outcome line per relayed
       # approval. Without a relay, and for the model's and hooks' questions,
       # the question comes back to the model as before.
-      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: OWNER_GRACE)
+      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: ReplyWait::GONE_AFTER)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }

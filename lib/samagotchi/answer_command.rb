@@ -138,7 +138,7 @@ module Samagotchi
       end
       # Answered here, or no longer open (answered elsewhere, or a newer
       # question): what comes next either way.
-      wait_for_reply(id, target: ReplyWait::Target.answer(start, gone_after: self.class::WORKER_GONE_AFTER),
+      wait_for_reply(id, target: ReplyWait::Target.answer(start),
                          timeout: options[:timeout])
     end
 

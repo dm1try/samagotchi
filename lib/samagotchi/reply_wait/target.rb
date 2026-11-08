@@ -34,9 +34,8 @@ module Samagotchi
       #   message started the session itself (no delivery)
       # @param direct_turn [String, nil] that first turn's id, for a direct
       #   start
-      # @param gone_after [Numeric] seconds with no worker before it is gone
-      def self.first_message(start, delivered, gone_after:, direct_turn: nil)
-        reads = { cursor: start&.cursor, baseline: start&.baseline, owner_grace: gone_after }
+      def self.first_message(start, delivered, direct_turn: nil)
+        reads = { cursor: start&.cursor, baseline: start&.baseline, owner_grace: ReplyWait::GONE_AFTER }
         return new(**reads) unless delivered || !direct_turn.to_s.strip.empty?
 
         return new(turn: direct_turn, report_turn_id: direct_turn, queued: true, **reads) if delivered.nil?
@@ -56,7 +55,7 @@ module Samagotchi
       # running, which takes no steer) is a --queue's.
       # @param start [SessionAccess::WaitStart] read before it went in (its
       #   running says the session was running then)
-      def self.message(start, delivered, queue:, gone_after:)
+      def self.message(start, delivered, queue:)
         running = start.running
         queue ||= delivered.delivery == Delivery::QUEUE
         turn = delivered.enqueued_id if queue || delivered.file? || !running
@@ -65,7 +64,7 @@ module Samagotchi
                  else delivered.enqueued_id
                  end
         new(turn: turn, report_turn_id: report, queued: queue && !turn.nil?, cursor: start.cursor,
-            baseline: start.baseline, owner_grace: gone_after)
+            baseline: start.baseline, owner_grace: ReplyWait::GONE_AFTER)
       end
 
       # --wait with no message: --turn's (+requested+), or the turn running
@@ -76,24 +75,24 @@ module Samagotchi
       # last one. A session no worker runs waits for whatever wakes one (no
       # owner_grace).
       # @param start [SessionAccess::WaitStart]
-      def self.wait_only(start, requested:, gone_after:)
+      def self.wait_only(start, requested:)
         turn = requested || start.own_turn
         ended_before = requested ? start.last_turn_id == requested : start.settled
         new(turn: turn, report_turn_id: turn || (start.last_turn_id if start.settled), ended_before: ended_before,
-            cursor: start.cursor, baseline: start.baseline, owner_grace: start.live ? gone_after : nil)
+            cursor: start.cursor, baseline: start.baseline, owner_grace: start.live ? ReplyWait::GONE_AFTER : nil)
       end
 
       # chi answer: the turn the question is about (start's own_turn: the
       # one running, or the one whose continue offer stands), else the next
       # reply.
-      def self.answer(start, gone_after:)
+      def self.answer(start)
         new(turn: start.own_turn, report_turn_id: start.own_turn, cursor: start.cursor, baseline: start.baseline,
-            owner_grace: gone_after)
+            owner_grace: ReplyWait::GONE_AFTER)
       end
 
       # A participant's --wait -m: their review turn just queued (+turn+),
       # as --wait --turn T (their wait routes take only a turn of theirs).
-      def self.participant(start, turn:, gone_after:) = wait_only(start, requested: turn, gone_after: gone_after)
+      def self.participant(start, turn:) = wait_only(start, requested: turn)
 
       # A delegate's wait (DelegateWait, a delegate report) from the
       # parent's DelegateCursor: the newest reply it was given, the child as

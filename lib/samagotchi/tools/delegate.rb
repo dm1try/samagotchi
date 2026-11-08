@@ -10,6 +10,7 @@ require_relative "../guardrails/context"
 require_relative "peers"
 require_relative "delegate_wait"
 require_relative "../child_reports"
+require_relative "../worker_link"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -74,6 +75,8 @@ module Samagotchi
 
         note = Array(warnings).map { |warning| "Warning: #{warning}\n" }.join
         if wait
+          return note + worker_did_not_start(child_id) unless await_worker(child_id, state_dir: sd)
+
           result = DelegateWait.call(child_id, peers: peers, timeout: timeout)
           return RefText.wrap(note + result, result.respond_to?(:ref_path) ? result.ref_path : nil)
         end
@@ -84,6 +87,26 @@ module Samagotchi
       rescue ArgumentError, Toolkit::Refused => e
         "Error: #{e.message}"
       end
+
+      # Before a wait on a child this call started or woke: its worker
+      # takes the owner lock only once it has booted, so the wait's one
+      # dead-worker rule (ReplyWait::GONE_AFTER) runs from there. A child a
+      # worker (or a one-turn run) owns already goes straight on; else its
+      # worker gets WorkerLink::START_LIMIT, the boot limit, to come up.
+      # @return [Boolean] false: no worker came up
+      def self.await_worker(child_id, state_dir:)
+        dir = Session.session_dir(child_id, state_dir: state_dir)
+        return true if OwnerLock.owner(dir)
+
+        WorkerLink.await(child_id, session_dir: dir, timeout: WorkerLink::START_LIMIT, unlink: false,
+                                   give_up: ->(link) { link.worker_owned? }).worker_owned?
+      end
+
+      def self.worker_did_not_start(child_id)
+        DelegateWait.result(child_id, ParentReport.status(ReplyWait::Result.new(status: :worker_gone)),
+                            "its worker did not start; delegate with session: #{child_id} starts it again with a message")
+      end
+      private_class_method :worker_did_not_start
 
       # How the reply of a child left running comes back: a report only
       # reaches a parent that can get one (DelegateWait.reports_mode).

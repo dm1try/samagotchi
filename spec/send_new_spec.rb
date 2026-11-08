@@ -882,7 +882,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     end
 
     it "reports a worker that died without saying so" do
-      stub_const("Samagotchi::SendCommand::WORKER_GONE_AFTER", 0.1)
+      stub_const("Samagotchi::ReplyWait::GONE_AFTER", 0.1)
       owner[0] = nil
 
       expect(run("--new", "--wait", "-m", "x")).to eq(1)
@@ -1070,7 +1070,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       end
 
       it "waits on an idle session with no worker until one replies" do
-        stub_const("Samagotchi::SendCommand::WORKER_GONE_AFTER", 0.05)
+        stub_const("Samagotchi::ReplyWait::GONE_AFTER", 0.05)
         owner[0] = nil
         idle = make(status: "idle")
         later(0.2) do

@@ -40,6 +40,10 @@ RSpec.describe "delegate tools" do
     # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
     # here, but in an example about that wait (:real_settle).
     stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1) unless example.metadata[:real_settle]
+    # The children here are played by the examples, with no worker to boot:
+    # the wait doesn't await one (Delegate.await_worker), but in an example
+    # about that await (:real_boot).
+    allow(Samagotchi::Tools::Delegate).to receive(:await_worker).and_return(true) unless example.metadata[:real_boot]
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -368,6 +372,53 @@ RSpec.describe "delegate tools" do
       out = described_class.call("count the specs", timeout: 5, peers: peers)
 
       expect(out).to end_with("status: answered\n---\nthe first turn's reply\n")
+    end
+
+    describe "the one dead-worker rule (ReplyWait::GONE_AFTER)" do
+      def child_dir = Samagotchi::Session.session_dir((session_files - [parent.id]).first, state_dir: tmpdir)
+
+      it "says a child whose worker is killed mid-turn is gone after GONE_AFTER, as chi send --wait does" do
+        stub_const("Samagotchi::ReplyWait::GONE_AFTER", 0.2)
+        parent
+        later do
+          lock = Samagotchi::OwnerLock.acquire(child_dir, kind: "worker")
+          looked(2)
+          lock.release
+        end
+
+        out = described_class.call("count the specs", timeout: 5, peers: peers)
+
+        expect(out).to include("status: worker_gone\nthe child's worker is gone (it stopped or crashed)")
+      end
+
+      it "says at once, once the boot limit passed, that a child whose worker never started did not start", :real_boot do
+        stub_const("Samagotchi::WorkerLink::START_LIMIT", 0.2)
+        parent
+
+        out = described_class.call("count the specs", timeout: 5, peers: peers)
+
+        child_id = (session_files - [parent.id]).first
+        expect(out).to eq("session: #{child_id}\nstatus: worker_gone\nits worker did not start; delegate with " \
+                          "session: #{child_id} starts it again with a message")
+      end
+
+      it "waits for a slow-booting child's worker instead of calling it gone", :real_boot do
+        stub_const("Samagotchi::ReplyWait::GONE_AFTER", 0.1)
+        stub_const("Samagotchi::WorkerLink::START_LIMIT", 5)
+        parent
+        Thread.new do
+          sleep 0.5 # sleep-ok: the boot, longer than GONE_AFTER
+          locks << Samagotchi::OwnerLock.acquire(child_dir, kind: "worker")
+          looked(1)
+          child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+          write_reply(child, "booted and done\n", turn: child.first_turn_id)
+          set_status(child, "idle", last_turn: { "ended_at" => Time.now.iso8601(3), "enqueued_id" => child.first_turn_id })
+        end.tap { |t| threads << t }
+
+        out = described_class.call("count the specs", timeout: 5, peers: peers)
+
+        expect(out).to end_with("status: answered\n---\nbooted and done\n")
+      end
     end
 
     it "reports a first turn that failed before the wait's first look, not a timeout" do

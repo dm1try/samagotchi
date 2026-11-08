@@ -518,8 +518,7 @@ module Samagotchi
       return report_command(session.id) if @sent_command
 
       start = @access.prepare_wait(session.id, session: session, created: true)
-      target = ReplyWait::Target.first_message(start, @delivered, direct_turn: session.first_turn_id,
-                                                                  gone_after: self.class::WORKER_GONE_AFTER)
+      target = ReplyWait::Target.first_message(start, @delivered, direct_turn: session.first_turn_id)
       wait_for_reply(session.id, target: target, timeout: options[:timeout])
     end
 
@@ -598,7 +597,7 @@ module Samagotchi
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
-      target = ReplyWait::Target.message(start, @delivered, queue: @queue, gone_after: self.class::WORKER_GONE_AFTER)
+      target = ReplyWait::Target.message(start, @delivered, queue: @queue)
       wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
@@ -618,7 +617,7 @@ module Samagotchi
         return 1
       end
       start = @access.prepare_wait(id, turn: turn)
-      target = ReplyWait::Target.participant(start, turn: turn, gone_after: self.class::WORKER_GONE_AFTER)
+      target = ReplyWait::Target.participant(start, turn: turn)
       wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
@@ -643,7 +642,7 @@ module Samagotchi
         error_line("chi send: turn #{requested_turn} is not a running, queued, or last ended turn")
         return 1
       end
-      target = ReplyWait::Target.wait_only(start, requested: requested_turn, gone_after: self.class::WORKER_GONE_AFTER)
+      target = ReplyWait::Target.wait_only(start, requested: requested_turn)
       wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 

@@ -17,9 +17,6 @@ module Samagotchi
     # override the constants (specs stub them on the class).
     module ParentWait
       POLL_INTERVAL = ReplyWait::POLL_INTERVAL
-      # No live worker this long while waiting: it died before it could mark
-      # the session (a worker takes well under a second to start).
-      WORKER_GONE_AFTER = 5
       FORMATS = %w[text json].freeze
 
       # @return [Integer] the exit status

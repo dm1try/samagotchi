@@ -20,7 +20,11 @@ RSpec.describe Samagotchi::ReplyWait::Target do
   end
 
   def first_message(delivery, direct_turn: nil)
-    described_class.first_message(start, delivery, direct_turn: direct_turn, gone_after: 5)
+    described_class.first_message(start, delivery, direct_turn: direct_turn)
+  end
+
+  it "gives every caller's wait one dead-worker rule, ReplyWait::GONE_AFTER (5 s)" do
+    expect(Samagotchi::ReplyWait::GONE_AFTER).to eq(5)
   end
 
   describe ".first_message" do
@@ -48,7 +52,7 @@ RSpec.describe Samagotchi::ReplyWait::Target do
 
   describe ".message" do
     def message(delivery, queue:, running:, own_turn: nil)
-      described_class.message(start(running: running, own_turn: own_turn), delivery, queue: queue, gone_after: 5)
+      described_class.message(start(running: running, own_turn: own_turn), delivery, queue: queue)
     end
 
     it "waits for a queue's own turn, queued" do
@@ -81,35 +85,35 @@ RSpec.describe Samagotchi::ReplyWait::Target do
   describe ".wait_only" do
     it "takes a settled session's last turn as ended before, and --turn's own" do
       settled = start(settled: true, last_turn_id: "l1")
-      expect(described_class.wait_only(settled, requested: nil, gone_after: 5))
+      expect(described_class.wait_only(settled, requested: nil))
         .to have_attributes(turn: nil, report_turn_id: "l1", ended_before: true)
-      expect(described_class.wait_only(settled, requested: "l1", gone_after: 5))
+      expect(described_class.wait_only(settled, requested: "l1"))
         .to have_attributes(turn: "l1", report_turn_id: "l1", ended_before: true)
-      expect(described_class.wait_only(start, requested: nil, gone_after: 5))
+      expect(described_class.wait_only(start, requested: nil))
         .to have_attributes(turn: nil, report_turn_id: nil, ended_before: false)
     end
 
     it "waits for the turn running now, and on a session no worker runs for whatever wakes one (no grace)" do
-      expect(described_class.wait_only(start(own_turn: "r0"), requested: nil, gone_after: 5))
+      expect(described_class.wait_only(start(own_turn: "r0"), requested: nil))
         .to have_attributes(turn: "r0", report_turn_id: "r0", owner_grace: 5)
-      expect(described_class.wait_only(start(live: false), requested: nil, gone_after: 5).owner_grace).to be_nil
+      expect(described_class.wait_only(start(live: false), requested: nil).owner_grace).to be_nil
     end
   end
 
   describe ".answer" do
     it "waits for the turn the question is about, else the next reply" do
-      expect(described_class.answer(start(own_turn: "r0"), gone_after: 5).to_h)
+      expect(described_class.answer(start(own_turn: "r0")).to_h)
         .to eq(cursor: "c.txt", baseline: baseline, owner_grace: 5, turn: "r0", queued: false, ended_before: false)
-      expect(described_class.answer(start(own_turn: "r0"), gone_after: 5).report_turn_id).to eq("r0")
-      expect(described_class.answer(start, gone_after: 5)).to have_attributes(turn: nil, report_turn_id: nil)
+      expect(described_class.answer(start(own_turn: "r0")).report_turn_id).to eq("r0")
+      expect(described_class.answer(start)).to have_attributes(turn: nil, report_turn_id: nil)
     end
   end
 
   describe ".participant" do
     it "waits for the review turn just queued, as --turn T" do
-      expect(described_class.participant(start(last_turn_id: "p1"), turn: "p1", gone_after: 5))
+      expect(described_class.participant(start(last_turn_id: "p1"), turn: "p1"))
         .to have_attributes(turn: "p1", report_turn_id: "p1", ended_before: true, owner_grace: 5)
-      expect(described_class.participant(start(live: false), turn: "p1", gone_after: 5))
+      expect(described_class.participant(start(live: false), turn: "p1"))
         .to have_attributes(turn: "p1", ended_before: false, owner_grace: nil)
     end
   end
