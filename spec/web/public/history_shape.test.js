@@ -124,6 +124,19 @@ test("compareShapes: an ACCEPTED entry explains its difference only when allowed
   assert.deepEqual(compareShapes(live, reloaded, { allow: ["retry-row"] }),
     { same: true, kinds: [], excused: [], explained: true, differences: [] });
 
+  // Only the retried empty step's shape: without a retry row live, or for a
+  // step the row doesn't follow, the entry excuses nothing.
+  const noRetry = live.filter((it) => it.kind !== "notice");
+  assert.equal(compareShapes(noRetry, reloaded.filter((it) => it.kind !== "notice"), { allow: ["retry-row"] }).same, false);
+  const unrelated = [item("prompt", "p"), item("block", "2 steps"), item("step", "read a"), item("step", "thinking"),
+    item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
+  const kept = [item("prompt", "p"), item("block", "1 step"), item("step", "read a"), item("notice", "↻ empty answer, asking again (1/1)"),
+    item("answer", "PONG")];
+  assert.equal(compareShapes(unrelated, kept, { allow: ["retry-row"] }).same, true);
+  const stray = [item("prompt", "p"), item("block", "2 steps"), item("step", "thinking"), item("step", "read a"),
+    item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
+  assert.equal(compareShapes(stray, kept, { allow: ["retry-row"] }).same, false);
+
   // A command's reply bubble, dropped on a reload; one that came back is not.
   const command = [item("prompt", "p"), item("command", "/model x")];
   assert.equal(compareShapes(command, [item("prompt", "p")], { allow: ["command-bubble"] }).same, true);
