@@ -190,6 +190,23 @@ module Samagotchi
         raise Usage, "a scratch session is deleted when its terminal leaves: a schedule cannot run against one"
       end
 
+      # A model told to "make sure the Monday audit is scheduled" on every
+      # firing would otherwise multiply the same schedule: the chain keeps one
+      # entry per thing it does, and the machine a bounded number of them.
+      same = duplicate_in_chain(anchor, prompt: prompt, title: title, recurrence: recurrence)
+      if same
+        raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
+                     "cancel it with chi schedule cancel #{same.id} to change it"
+      end
+
+      ids = chain_of(anchor)
+      in_chain = entries.count { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
+      per_chain = per_chain_limit
+      raise Usage, "this chain has #{in_chain} schedules, the limit is #{per_chain} (schedule.max_per_session)" if in_chain >= per_chain
+
+      total = entries.size
+      raise Usage, "this machine has #{total} schedules, the limit is #{total_limit} (schedule.max_total)" if total >= total_limit
+
       now = @clock.call
       entry = Entry.new(
         id: SecureRandom.hex(8), title: title.to_s.strip.empty? ? nil : title.to_s.strip,
@@ -210,6 +227,47 @@ module Samagotchi
     def cancel(id_or_name) = change(id_or_name, delete: true)
     def enable(id_or_name) = change(id_or_name, enabled: true)
     def disable(id_or_name) = change(id_or_name, enabled: false)
+
+    # Every session of the chain +session_id+ belongs to: the head of the
+    # chain and each link back to its root. A schedule belongs to a chain when
+    # its anchor or its head is one of them.
+    # @return [Array<String>]
+    def chain_of(session_id)
+      index = Index.new(@state_dir)
+      head = index.latest(session_id)
+      ids = [head]
+      id = head
+      while (previous = index.continues(id)) && !ids.include?(previous)
+        ids << previous
+        id = previous
+      end
+      ids
+    end
+
+    # The schedules of this session's chain — the ones the tools may touch
+    # without `all: true`.
+    def for_chain(session_id, include_disabled: false)
+      ids = chain_of(session_id)
+      entries(include_disabled: include_disabled).select { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
+    end
+
+    # An enabled schedule of the same chain that says the same thing: the same
+    # prompt and recurrence, or the same title.
+    # @return [Entry, nil]
+    def duplicate_in_chain(session_id, prompt:, title:, recurrence:)
+      given_title = title.to_s.strip
+      ids = chain_of(session_id)
+      entries.find do |entry|
+        next unless ids.include?(entry.anchor) || ids.include?(entry.head)
+
+        (entry.prompt == prompt && entry.recurrence == recurrence) ||
+          (!given_title.empty? && entry.title.to_s.strip.casecmp?(given_title))
+      end
+    end
+
+    # How many enabled schedules one chain may hold, and one machine.
+    def per_chain_limit = positive_config("schedule.max_per_session", 10)
+    def total_limit = positive_config("schedule.max_total", 50)
 
     # One pass over the file: the entries due now, each checked for busy, then
     # advanced and (outside the lock) fired.
@@ -473,6 +531,11 @@ module Samagotchi
       configured.to_s.strip.match?(/\A-?\d+\z/) ? [configured.to_i, min].max : fallback
     end
 
+    def positive_config(key, fallback)
+      value = Config.get(key).to_i
+      value.positive? ? value : fallback
+    end
+
     # The next occurrence strictly after +from+.
     def next_due_for(recurrence, from: @clock.call)
       case recurrence[:kind]
@@ -702,7 +765,6 @@ module Samagotchi
         position = list.index { |candidate| candidate.id == entry.id }
         next if position.nil?
 
-        stored = list[position]
         stored = list[position]
         updated = if outcome.status == "fired"
                     # Any success clears the skip and failure counters: twelve

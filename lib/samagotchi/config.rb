@@ -172,6 +172,9 @@ module Samagotchi
       Entry.new(key: "schedule.default_max_failures", yaml_path: %w[schedule default_max_failures],  type: :integer, default: 3,    expose: %i[env config], lifecycle: :next_cli_run),
       Entry.new(key: "schedule.default_max_skips",    yaml_path: %w[schedule default_max_skips],     type: :integer, default: 12,   expose: %i[env config], lifecycle: :next_cli_run),
       Entry.new(key: "schedule.default_catch_up",     yaml_path: %w[schedule default_catch_up],      type: :enum,    default: "once", expose: %i[env config], enum_values: %w[once none], lifecycle: :next_cli_run),
+      # What one chain and one machine may hold, so a routine that re-schedules itself cannot multiply its entries.
+      Entry.new(key: "schedule.max_per_session",      yaml_path: %w[schedule max_per_session],      type: :integer, default: 10,    expose: %i[env config], lifecycle: :next_cli_run),
+      Entry.new(key: "schedule.max_total",            yaml_path: %w[schedule max_total],            type: :integer, default: 50,    expose: %i[env config], lifecycle: :next_cli_run),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how

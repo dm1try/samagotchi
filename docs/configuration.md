@@ -2277,6 +2277,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `schedule.default_max_failures` | `3` | | Consecutive failures that disable a schedule. |
 | `schedule.default_max_skips` | `12` | | Consecutive busy targets that disable a schedule; `list` prints it as a time window. |
 | `schedule.default_catch_up` | `once` | | An overdue schedule fires once at the next tick (`once`) or moves to its next occurrence (`none`). |
+| `schedule.max_per_session` | `10` | | Enabled schedules one chain may hold. `schedule_task` (and `chi schedule add`) refuse past it, so a routine that re-schedules itself cannot pile up entries. |
+| `schedule.max_total` | `50` | | Enabled schedules this machine may hold, across every chain. |
 | `image.max_side` | `1568` | | See "Images". |
 | `image.max_bytes` | `3750000` | | See "Images". |
 | `image.max_per_request` | `20` | | See "Images". |

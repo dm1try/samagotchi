@@ -107,6 +107,15 @@ RSpec.describe Samagotchi::ScheduleCommand do
       end
     end
 
+    it "refuses a schedule the chain already has, naming the entry to cancel" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit the queue", recurrence: hourly, title: "Audit")
+      status, _, error = run("add", "--session", id, "--every", "1h", "-m", "Audit the queue")
+      expect(status).to eq(2), error
+      expect(error.lines.first).to include("#{entry.id} already schedules this")
+      expect(schedules.entries.size).to eq(1)
+    end
+
     it "refuses an empty or oversized prompt, naming the limit (exit 2)" do
       id = session
       status, _, error = run("add", "--session", id, "--every", "1h", "-m", "   ")
@@ -259,12 +268,13 @@ RSpec.describe Samagotchi::ScheduleCommand do
 
   describe "run-now, enable, disable and cancel" do
     it "refuses an ambiguous prefix or title with exit 2, naming the matches" do
-      fixed = ["a1b2c3d4e5f6a7b8", "a1b2c3d4e5f6a7c9"]
+      fixed = %w[a1b2c3d4e5f6a7b8 a1b2c3d4e5f6a7c9]
       allow(SecureRandom).to receive(:hex).and_wrap_original do |original, length|
         length == 8 ? fixed.shift : original.call(length)
       end
       id = session
       schedules.add(target: id, prompt: "One", recurrence: hourly, title: "Audit")
+      schedules.disable("a1b2c3d4e5f6a7b8")
       schedules.add(target: id, prompt: "Two", recurrence: hourly, title: "Audit")
 
       status, _, error = run("cancel", "a1b2c3")
@@ -282,7 +292,8 @@ RSpec.describe Samagotchi::ScheduleCommand do
       status, printed, error = run("disable", "a1b2c3d4e5f6a7c9")
       expect(status).to eq(0), error
       expect(printed).to eq("a1b2c3d4e5f6a7c9 disable: ok\n")
-      expect(schedules.entries.size).to eq(1)
+      expect(schedules.entries).to be_empty
+      expect(schedules.entries(include_disabled: true).size).to eq(2)
     end
 
     it "fires an entry whose time is not yet come" do

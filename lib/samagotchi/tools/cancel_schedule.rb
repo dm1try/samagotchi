@@ -4,21 +4,35 @@ require_relative "../schedules"
 
 module Samagotchi
   module Tools
-    # Cancel a durable schedule by its id, a unique prefix of it, or its title
-    # (docs/scheduling.md).
+    # Cancel a durable schedule of this session's chain by its id, a unique
+    # prefix of it, or its title (docs/scheduling.md). A schedule of another
+    # session's chain is refused unless the call says `all: true`: `chi
+    # schedule cancel` is the machine-wide way.
     class CancelSchedule
       NAME = "cancel_schedule"
 
       def self.name = NAME
 
-      def self.call(content, peers: nil)
+      def self.call(content, all: false, peers: nil)
         name = content.to_s.strip
         return "Error: cancel_schedule needs the schedule's id or title" if name.empty?
 
+        want_all = all == true || all.to_s.strip.casecmp?("true")
         schedules = Schedules.new(state_dir: peers&.state_dir)
-        entry = schedules.cancel(name)
+        entry = schedules.lookup(name)
         return "No schedule named #{name}." if entry.nil?
 
+        if want_all || peers&.session_id.nil?
+          schedules.cancel(name)
+          return "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
+        end
+
+        unless schedules.chain_of(peers.session_id).any? { |id| id == entry.anchor || id == entry.head }
+          return "Error: #{entry.id} belongs to another session's chain. " \
+                 "chi schedule cancel #{entry.id} cancels it, or say all: true if you meant it."
+        end
+
+        schedules.cancel(name)
         "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
       rescue StandardError => e
         "Error: #{e.message}"

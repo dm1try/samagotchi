@@ -219,13 +219,14 @@ RSpec.describe Samagotchi::Schedules do
     Dir.mktmpdir("schedules-ambiguous") do |root|
       dir = File.join(root, "sessions")
       # Only the schedule ids are fixed (AtomicFile's temp names also use hex).
-      fixed = ["a1b2c3d4e5f6a7b8", "a1b2c3d4e5f6a7c9"]
+      fixed = %w[a1b2c3d4e5f6a7b8 a1b2c3d4e5f6a7c9]
       allow(SecureRandom).to receive(:hex).and_wrap_original do |original, length|
         length == 8 ? fixed.shift : original.call(length)
       end
       id = session(dir).id
       schedules = store(dir)
       first = schedules.add(target: id, prompt: "One", recurrence: every("1h"), title: "Audit")
+      schedules.disable(first.id) # a disabled entry is not a duplicate, but it still answers a lookup
       schedules.add(target: id, prompt: "Two", recurrence: every("2h"), title: "Audit")
 
       expect(schedules.lookup("a1b2c3d4e5f6a7b8").prompt).to eq("One")
@@ -235,7 +236,7 @@ RSpec.describe Samagotchi::Schedules do
                                                            /a1b2c3 matches 2 schedules: a1b2c3d4e5f6a7b8, a1b2c3d4e5f6a7c9/)
       expect { schedules.cancel("a1b2c3") }.to raise_error(described_class::Usage, /matches 2 schedules/)
       expect { schedules.disable("Audit") }.to raise_error(described_class::Usage, /Audit matches 2 schedules/)
-      expect(schedules.entries.size).to eq(2)
+      expect(schedules.entries(include_disabled: true).size).to eq(2)
 
       # A full id still resolves.
       expect(schedules.enable("a1b2c3d4e5f6a7c9").id).to eq("a1b2c3d4e5f6a7c9")

@@ -160,6 +160,7 @@ module Samagotchi
 
       entry = @schedules.lookup(id)
       return failed("no schedule #{id}") if entry.nil?
+
       @stdout.puts("#{entry.id}  #{entry.title || "(untitled)"}")
       @stdout.puts("  anchor: #{entry.anchor}  head: #{entry.head}  mode: #{entry.mode}")
       @stdout.puts("  recurrence: #{entry.recurrence_words}  next due: #{clock(entry.next_due)}")

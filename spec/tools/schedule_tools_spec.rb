@@ -97,9 +97,60 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
         .to include("a scratch session is deleted")
     end
   end
+
+  it "refuses a schedule the chain already has, naming the one to cancel" do
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      schedules = store(dir)
+      first = schedules.add(target: id, prompt: "Audit the queue", title: "Audit",
+                            recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+
+      answer = described_class.call(nil, prompt: "Audit the queue", every: "1h", peers: peers(dir, id))
+      expect(answer).to include("Error: #{first.id} already schedules this")
+      expect(answer).to include("chi schedule cancel #{first.id}")
+      expect(schedules.entries.size).to eq(1)
+
+      # The same title is a duplicate even with another prompt.
+      expect(described_class.call(nil, prompt: "Something else", every: "3h", title: "Audit", peers: peers(dir, id)))
+        .to include("already schedules this")
+      # A different prompt and recurrence is a different schedule.
+      expect(described_class.call(nil, prompt: "Check the build", every: "2h", peers: peers(dir, id)))
+        .to start_with("Scheduled ")
+    end
+  end
+
+  it "caps how many schedules one chain and one machine hold" do
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      schedules = store(dir)
+
+      with_env("SAMAGOTCHI_SCHEDULE_MAX_PER_SESSION" => "2") do
+        described_class.call(nil, prompt: "One", every: "1h", peers: peers(dir, id))
+        described_class.call(nil, prompt: "Two", every: "2h", peers: peers(dir, id))
+        expect(described_class.call(nil, prompt: "Three", every: "3h", peers: peers(dir, id)))
+          .to eq("Error: this chain has 2 schedules, the limit is 2 (schedule.max_per_session)")
+      end
+
+      with_env("SAMAGOTCHI_SCHEDULE_MAX_TOTAL" => "2") do
+        other = session(dir).id
+        expect(described_class.call(nil, prompt: "Elsewhere", every: "1d", peers: peers(dir, other)))
+          .to eq("Error: this machine has 2 schedules, the limit is 2 (schedule.max_total)")
+        expect(schedules.entries.size).to eq(2)
+      end
+    end
+  end
 end
 
 RSpec.describe Samagotchi::Tools::ListSchedules do
+  def session_here(state_dir)
+    now = Time.now.utc.iso8601
+    Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
+                            working_directory: Dir.tmpdir, created_at: now, updated_at: now,
+                            status: "idle", messages: []).tap { |saved| saved.save(state_dir: state_dir) }
+  end
+
   def peers(state_dir)
     Struct.new(:session_id, :state_dir).new(nil, state_dir)
   end
@@ -149,9 +200,57 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
       expect(described_class.call(nil, peers: peers(dir))).to eq("No schedules.")
     end
   end
+
+  it "lists only the schedules of this session's chain, and points at the machine-wide list" do
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
+      mine = session_here(dir).id
+      other = session_here(dir).id
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      entry = schedules.add(target: mine, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      theirs = schedules.add(target: other, prompt: "Someone else's", recurrence: Samagotchi::Schedules.recurrence(every: "2h"))
+      here = Struct.new(:session_id, :state_dir).new(mine, dir)
+
+      answer = described_class.call(nil, peers: here)
+      expect(answer).to include(entry.id)
+      expect(answer).not_to include(theirs.id)
+      expect(answer.lines.last).to include("`chi schedule list` shows every schedule on this machine")
+
+      expect(described_class.call(nil, all: true, peers: here)).to include(theirs.id)
+    end
+  end
+
+  it "sees a schedule anchored at an earlier link of the chain" do
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
+      now = Time.now.utc.iso8601
+      parent = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
+                                       working_directory: Dir.tmpdir, created_at: now, updated_at: now,
+                                       status: "idle", messages: []).tap { |saved| saved.save(state_dir: dir) }.id
+      child = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
+                                      working_directory: Dir.tmpdir, created_at: now, updated_at: now,
+                                      status: "idle", continues: parent, messages: [])
+                                      .tap { |saved| saved.save(state_dir: dir) }.id
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      entry = schedules.add(target: parent, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      other = session_here(dir).id
+      schedules.add(target: other, prompt: "Not ours", recurrence: Samagotchi::Schedules.recurrence(every: "2h"))
+
+      answer = described_class.call(nil, peers: Struct.new(:session_id, :state_dir).new(child, dir))
+      expect(answer).to include(entry.id)
+      expect(answer.lines.size).to eq(2) # the entry and the pointer line
+    end
+  end
 end
 
 RSpec.describe Samagotchi::Tools::CancelSchedule do
+  def session_here(state_dir)
+    now = Time.now.utc.iso8601
+    Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
+                            working_directory: Dir.tmpdir, created_at: now, updated_at: now,
+                            status: "idle", messages: []).tap { |saved| saved.save(state_dir: state_dir) }
+  end
+
   def peers(state_dir)
     Struct.new(:session_id, :state_dir).new(nil, state_dir)
   end
@@ -181,6 +280,25 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
       dir = File.join(root, "sessions")
       expect(described_class.call("", peers: peers(dir))).to eq("Error: cancel_schedule needs the schedule's id or title")
       expect(described_class.call("gone", peers: peers(dir))).to eq("No schedule named gone.")
+    end
+  end
+
+  it "refuses a schedule of another session's chain, and takes it with all: true" do
+    Dir.mktmpdir("schedule-cancel") do |root|
+      dir = File.join(root, "sessions")
+      mine = session_here(dir).id
+      other = session_here(dir).id
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      theirs = schedules.add(target: other, prompt: "Their routine", recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      here = Struct.new(:session_id, :state_dir).new(mine, dir)
+
+      answer = described_class.call(theirs.id, peers: here)
+      expect(answer).to include("belongs to another session's chain")
+      expect(answer).to include("chi schedule cancel #{theirs.id}")
+      expect(schedules.entries.size).to eq(1)
+
+      expect(described_class.call(theirs.id, all: true, peers: here)).to eq("Cancelled #{theirs.id} (every 1h).")
+      expect(schedules.entries).to be_empty
     end
   end
 end

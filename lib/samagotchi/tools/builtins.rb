@@ -115,9 +115,11 @@ module Samagotchi
                             keep_links: call[:keep_links], peers: kctx.peers)
         end,
         ListSchedules::NAME => lambda do |call, kctx|
-          ListSchedules.call(call[:content], include_disabled: call[:include_disabled], peers: kctx.peers)
+          ListSchedules.call(call[:content], include_disabled: call[:include_disabled], all: call[:all], peers: kctx.peers)
         end,
-        CancelSchedule::NAME => ->(call, kctx) { CancelSchedule.call(call[:content], peers: kctx.peers) },
+        CancelSchedule::NAME => lambda do |call, kctx|
+          CancelSchedule.call(call[:content], all: call[:all], peers: kctx.peers)
+        end,
         ListSessions::NAME => ->(call, kctx) { ListSessions.call(call[:content], peers: kctx.peers, cwd: call[:cwd]) },
         SendNote::NAME => ->(call, kctx) { SendNote.call(call[:content], session: call[:session], peers: kctx.peers) },
         ContextRead::NAME => lambda do |call, kctx|
