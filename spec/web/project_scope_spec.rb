@@ -130,6 +130,88 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/projects" do
+    def create_project(dir)
+      call("/api/projects", method: "POST", body: JSON.generate(dir: dir))
+    end
+
+    it "marks a new folder and returns its real root and directory" do
+      target = File.join(@tmp, "notes")
+
+      status, _, body = create_project(target)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "created", "root" => target, "dir" => target)
+      expect(File.read(File.join(target, Samagotchi::MemoryPaths::MARKER))).to eq(Samagotchi::ProjectInit::MARKER_TEXT)
+    end
+
+    it "does not mark a git folder" do
+      status, _, body = create_project(repo_a)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "git", "root" => repo_a, "dir" => repo_a)
+      expect(File.exist?(File.join(repo_a, Samagotchi::MemoryPaths::MARKER))).to be(false)
+    end
+
+    it "creates a missing folder inside a git repo without marking it" do
+      target = File.join(repo_a, "new", "sub")
+
+      status, _, body = create_project(target)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "git", "root" => repo_a, "dir" => target)
+      expect(File.directory?(target)).to be(true)
+      expect(File.exist?(File.join(target, Samagotchi::MemoryPaths::MARKER))).to be(false)
+    end
+
+    it "reports an already-marked folder without rewriting it" do
+      FileUtils.mkdir_p(File.join(plain, ".chi"))
+      File.write(File.join(plain, Samagotchi::MemoryPaths::MARKER), "original")
+
+      status, _, body = create_project(plain)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "already_marked", "root" => plain, "dir" => plain)
+      expect(File.read(File.join(plain, Samagotchi::MemoryPaths::MARKER))).to eq("original")
+    end
+
+    it "expands ~/ against the server's home" do
+      allow(Dir).to receive(:home).and_return(@tmp)
+      target = File.join(@tmp, "notes")
+
+      status, _, body = create_project("~/notes")
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "created", "root" => target, "dir" => target)
+    end
+
+    it "rejects a user tilde path and a relative path" do
+      ["~nosuchuser/x", "relative/path"].each do |dir|
+        status, _, body = create_project(dir)
+        expect([status, JSON.parse(body)["error"]]).to eq([400, "invalid_dir"])
+      end
+    end
+
+    it "refuses home and reports a path blocked by a file" do
+      allow(Dir).to receive(:home).and_return(@tmp)
+      status, _, body = create_project(@tmp)
+      expect([status, JSON.parse(body)["error"]]).to eq([422, "above_home"])
+      expect(JSON.parse(body)["detail"]).to include("is $HOME")
+
+      file = File.join(@tmp, "file")
+      File.write(file, "")
+      status, _, body = create_project(File.join(file, "child"))
+      expect([status, JSON.parse(body)["error"]]).to eq([422, "write_failed"])
+      expect(JSON.parse(body)["detail"]).to include(file)
+    end
+
+    it "answers invalid_json for a bad body" do
+      status, _, body = call("/api/projects", method: "POST", body: "{")
+
+      expect([status, JSON.parse(body)["error"]]).to eq([400, "invalid_json"])
+    end
+  end
+
   describe "POST /api/sessions with dir" do
     it "starts the chat in that folder, and in the server's cwd without one" do
       call("/api/sessions", method: "POST", body: JSON.generate(prompt: "hi", dir: repo_a))

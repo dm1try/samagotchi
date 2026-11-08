@@ -17,6 +17,7 @@ require_relative "../delivery"
 require_relative "../answer_tail"
 require_relative "../answer_refs"
 require_relative "../question_asked"
+require_relative "../project_init"
 require_relative "../bridge_client"
 require_relative "../worker_link"
 require_relative "../bridge/bounded_queue"
@@ -268,6 +269,7 @@ module Samagotchi
         ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :participant],
         ["GET", %r{\A/api/sessions\z}, :handle_list, :owner],
         ["GET", %r{\A/api/projects\z}, :handle_projects, :owner],
+        ["POST", %r{\A/api/projects\z}, :handle_project_create, :owner],
         ["POST", %r{\A/api/sessions\z}, :handle_create, :owner],
         ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :participant],
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
@@ -1004,6 +1006,37 @@ module Samagotchi
 
         current_root = dir && ProjectScope.root_for(dir)
         json_response(200, ProjectList.build(@hub.snapshot, start_dir: start_dir, current_root: current_root))
+      end
+
+      def handle_project_create(req)
+        body = parse_json(request_body(req))
+        return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
+
+        requested = body["dir"]
+        unless requested.is_a?(String) && !requested.strip.empty? && !requested.include?("\0")
+          return error_response(400, "invalid_dir", "dir must be an absolute folder")
+        end
+
+        home = Dir.home
+        dir = if requested == "~"
+                home
+              elsif requested.start_with?("~/")
+                File.join(home, requested.delete_prefix("~/"))
+              else
+                requested
+              end
+        return error_response(400, "invalid_dir", "dir must be an absolute folder") unless dir.start_with?("/")
+
+        outcome = ProjectInit.call(dir, home: home)
+        return error_response(422, outcome.reason.to_s, outcome.message) if outcome.kind == :refused
+
+        begin
+          FileUtils.mkdir_p(dir) if outcome.kind == :git && !File.directory?(dir)
+          dir = File.realpath(dir)
+        rescue SystemCallError => e
+          return error_response(422, "write_failed", "couldn't create #{Paths.tilde(dir)}: #{e.message}")
+        end
+        json_response(200, outcome: outcome.kind.to_s, root: outcome.root, dir: dir)
       end
 
       # A scope folder from the page: [dir, nil] (dir nil when none was
