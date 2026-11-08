@@ -365,6 +365,22 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       server&.stop
     end
 
+    it "reports a non-ASCII answer in --json as the child wrote it (UTF-8, not raw bytes)" do
+      server = FakeProviderServer.start
+      server.default("/completion", sse: ["data: #{JSON.generate(content: "héllo ✓", stop: true)}\n\n"])
+      Dir.mktmpdir do |dir|
+        source = bundle_at(File.join(dir, "source"))
+        env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1",
+                                    "SAMAGOTCHI_SERVER_PORT" => server.port.to_s, "SAMAGOTCHI_RETRY_MAX" => "0")
+        json_out, json_err, json_status = try_here(source, "-p", "say it", "--json", "--timeout", run_timeout, env: env)
+
+        expect(json_status).to eq(0), json_err
+        expect(JSON.parse(json_out)["answer"]).to eq("héllo ✓\n")
+      end
+    ensure
+      server&.stop
+    end
+
     it "prints a denied tool call in the trace and JSON report" do
       server = FakeProviderServer.start
       tool_call = {
