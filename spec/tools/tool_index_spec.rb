@@ -25,6 +25,10 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
                        schema: { "type" => "object", "properties" => { "n" => { "type" => "integer" } } })
   end
 
+  it "points a keyword answer at its own call tool (IndexHint::CALL_HINT, a leaf, names CALL_NAME)" do
+    expect(Samagotchi::Tools::IndexHint::CALL_HINT).to start_with("Call one with #{call_name}(")
+  end
+
   def tool(group, name, **) = described_class::Tool.new(group: group, name: name, acts_as: "mcp_#{group}_#{name}", **)
 
   def source(**)
