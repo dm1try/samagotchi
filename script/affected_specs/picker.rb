@@ -74,7 +74,7 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/engine/*.rb],
       specs: %w[spec/engine_spec.rb spec/engine_*_spec.rb], why: "Engine's parts (engine/*.rb), tested through the Engine" },
     { match: %w[lib/samagotchi/turn_stages/*.rb lib/samagotchi/engine.rb lib/samagotchi/engine/*.rb
-                lib/samagotchi/objectives_audit.rb],
+                lib/samagotchi/objectives_audit.rb lib/samagotchi/system_one/recorder.rb],
       specs: %w[spec/toolkit_suggest_engine_spec.rb spec/toolkit_suggest_on_spec.rb spec/context_judge_engine_spec.rb
                 spec/samagotchi/plugin/judgments_engine_spec.rb spec/turn_stages_wiring_spec.rb
                 spec/turn_stages/constructor_contract_spec.rb],

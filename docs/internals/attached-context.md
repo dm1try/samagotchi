@@ -145,9 +145,10 @@ lines (never twice at one owner-prompt count; one re-ask after `reask_after_turn
 nothing, so the next owner prompt asks again.
 
 The driver is the turn stage `TurnStages::ContextJudge` (`turn_stages/context_judge.rb`), not the judge:
-`Engine#prepare_turn` calls its `start(turn)` after the toolkit suggestion settled and before `apply_toolkit!` (an owner
+`Engine#prepare_turn` calls its `start(turn, recorder:)` after the toolkit suggestion settled and before `apply_toolkit!` (an owner
 turn's start; skipped for participants, review sessions and a Continue), and `Engine#judge_late_candidates` (a proposal
-after the prompts) forwards to its `late_candidates`; both make one pass (docs/internals/engine.md, "Turn stages").
+after the prompts) gives its `late_candidates` the session, the owner's messages, the recorder and the sessions dir
+(none of it read with no session or in a review session); both make one pass (docs/internals/engine.md, "Turn stages").
 It first logs status changes (`ContextCandidatesLog.look`), returns at `mode: off`, builds the due `Job`s, and hands
 them to `SideJudgments` (`:context` kind: one thread, one batch per session at a time), asked at once on any host,
 the model's own server too.

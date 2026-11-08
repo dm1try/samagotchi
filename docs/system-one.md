@@ -10,8 +10,9 @@ was sent and what came of it. The runs don't leave the machine; a hosted System 
 ## The common layer
 
 `SystemOne::Client` asks. `SystemOne::Recording` wraps it where a use builds its
-client (`Engine#system_one_recording`): the same duck type, the same answers and
-the same raises. A cancelled ask saves its run, then raises; a run that can't be saved is
+client (`SystemOne::Recorder#wrap`, over the recorder `Engine#system_one_recorder` builds
+for each call: the Engine's runs and its model then; `Engine#system_one_recording` for the
+guardrails): the same duck type, the same answers and the same raises. A cancelled ask saves its run, then raises; a run that can't be saved is
 one warn and never changes the answer. A use that needs the run's id at once passes it
 (`client.ask(..., run_id: id)`); one client serves several threads.
 
