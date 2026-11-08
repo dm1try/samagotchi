@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "session"
+require_relative "session_row"
 require_relative "session_manager"
 require_relative "session_retention"
 require_relative "project_scope"
@@ -142,28 +143,6 @@ module Samagotchi
       options.to_h { |key, value| [key, INTEGER_OPTIONS.include?(key) ? Integer(value, 10) : value] }
     end
 
-    # The flags a list row carries: a chi scratch session, a test run, an
-    # archived one, and the turn's stopper (see #stopped_flag).
-    def session_flag(scratch:, test_run:, archived:, stopped_by: nil)
-      flag = if scratch
-               " [scratch]"
-             else
-               (test_run ? " [test]" : "")
-             end
-      flag += " [archived]" if archived
-      flag + stopped_flag(stopped_by)
-    end
-
-    # The marker for a turn a hook stopped: "[looped]" for loop-guard (the
-    # bundle's thinking watch, and the word `chi sessions stats` uses for its
-    # cuts), "[stopped by X]" for any other hook; "" otherwise. A cut with no
-    # retry left records the same stopped_by.
-    def stopped_flag(by)
-      return "" if by.to_s.empty?
-
-      by.to_s == "loop-guard" ? " [looped]" : " [stopped by #{by}]"
-    end
-
     def list
       format, scope, cwd = @opts.values_at(:format, :scope, :cwd)
       unless format.nil? || %w[text json tsv].include?(format)
@@ -207,52 +186,12 @@ module Samagotchi
       )
       case format
       when "json"
-        # owner: "worker", "tui" (a one-turn chi run: it takes no notes or messages)
-        # or nil; recap: the saved recap's first sentence, or nil; project:
-        # its git project's root, or nil
-        # parent_id: the session that delegated it (the delegate tool), or nil
-        # delegate: started by the delegate tool (a fork has a parent_id too)
-        # continues: the session it continues (its chain's previous link), or nil
-        # archived: hidden from the lists (only with --archived can it be true)
-        # scratch: a `chi scratch` session (deleted when its terminal leaves,
-        # a leftover one at the next sweep)
-        # ctx_pct: how full the context was after the last turn, or nil
-        # title: the session's own name (/title; desc shows it too), or nil;
-        # auto_title: the one its recap gave it (RecapTitle), or nil
-        # waiting: the kind of question it waits on (question, approval,
-        # hook: chi answer or the web answers it), or nil; waiting_id: its
-        # id, for chi answer --question; relayed_to: the parent session (short
-        # id) whose card it also waits in (the approval relay), or nil
-        keys = %i[id short_id desc title auto_title cwd project updated_at live busy owner recap parent_id continues delegate archived scratch ctx_pct
-                  waiting waiting_id relayed_to stopped_by]
-        @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
+        # SessionRow::JSON_KEYS (its comment says what each one is).
+        @stdout.puts JSON.generate(summaries.map { |row| row.to_summary_h.slice(*Samagotchi::SessionRow::JSON_KEYS) })
       when "tsv"
-        summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }
+        summaries.each { |row| @stdout.puts "#{row.id}\t#{row.desc}" }
       else
-        summaries.each do |summary|
-          state = if summary[:relayed_to] then "waiting (in parent #{summary[:relayed_to]})"
-                  elsif summary[:waiting] then "waiting"
-                  elsif summary[:busy] then "running"
-                  else summary[:live] ? "live" : summary[:status].to_s
-                  end
-          # The recap's auto title, else its first sentence, says more than
-          # the last prompt (text only: tsv and json keep desc for pickers);
-          # a title (in desc) says what the user named it.
-          desc = summary[:desc]
-          named = summary[:auto_title] || summary[:recap]
-          if named && !summary[:title]
-            desc = [File.basename(summary[:cwd].to_s), named].reject(&:empty?).join(" · ")
-            desc = "#{desc[0, 59]}…" if desc.length > 60
-          end
-          # A delegated session points at its parent.
-          child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          # A chain's link points at the one it continues.
-          child += "  ↪ #{summary[:continues_short_id]}" if summary[:continues_short_id]
-          flag = session_flag(scratch: summary[:scratch], test_run: summary[:test_run], archived: summary[:archived],
-                              stopped_by: summary[:stopped_by])
-          ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
-          @stdout.puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
-        end
+        summaries.each { |row| @stdout.puts row.cli_line }
         if project
           @stdout.puts "#{"\n" unless summaries.empty?}#{scope_note.call(summaries.size)}"
         else
@@ -294,7 +233,8 @@ module Samagotchi
       end
       # A delegated session points at its parent: ↳ <parent's short id>.
       row = lambda do |s|
-        flag = session_flag(scratch: s.scratch, test_run: s.test_run, archived: s.archived, stopped_by: s.stopped_by)
+        flag = Samagotchi::SessionRow.flags(scratch: s.scratch, test_run: s.test_run, archived: s.archived,
+                                            stopped_by: s.stopped_by)
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
         child += "  ↪ #{s.continues[0, 8]}" if s.continues
         # A question waits for an answer (chi answer, the web, chi --attach).

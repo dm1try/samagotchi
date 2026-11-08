@@ -111,6 +111,36 @@ RSpec.describe Samagotchi::SessionRow do
     end
   end
 
+  describe "#cli_line" do
+    def line(**fields)
+      described_class.from_summary_h({ id: "i" * 36, status: "idle", updated_at: "2026-11-08T10:00:00Z",
+                                       preview: "the prompt" }.merge(fields)).cli_line
+    end
+
+    it "prints the state, the context's fill, updated_at and the text" do
+      expect(line).to eq("#{"i" * 36}  idle      #{" " * 8}  2026-11-08T10:00:00Z  the prompt")
+      expect(line(status: "running", ctx_pct: 12.3)).to start_with("#{"i" * 36}  running   ctx 12%   ")
+    end
+
+    it "says waiting for a question, and in which parent's card a relayed one waits" do
+      expect(line(waiting: "question")).to include("  waiting   ")
+      expect(line(waiting: "approval", relayed_to: "pppppppp")).to include("  waiting (in parent pppppppp)  ")
+    end
+
+    it "takes a title, else the recap's auto title, else its first sentence, else the prompt; 60 characters" do
+      expect(line(title: "Named", preview: "Named", auto_title: "Auto")).to end_with("  Named")
+      expect(line(auto_title: "Auto", recap: "Recap.")).to end_with("  Auto")
+      expect(line(recap: "Recap.")).to end_with("  Recap.")
+      expect(line(recap: "r" * 100)).to end_with("  #{"r" * 60}")
+    end
+
+    it "adds the flags and the links" do
+      expect(line(test_run: true, archived: true, stopped_by: "loop-guard", parent_id: "p" * 36, continues: "c" * 36))
+        .to end_with("the prompt [test] [archived] [looped]  ↳ pppppppp  ↪ cccccccc")
+      expect(line(scratch: true, test_run: true, stopped_by: "check-in")).to end_with(" [scratch] [stopped by check-in]")
+    end
+  end
+
   describe "#to_summary_h" do
     it "has the summaries route's 28 keys, in order" do
       expect(row(make).to_summary_h.keys).to eq(
@@ -139,6 +169,14 @@ RSpec.describe Samagotchi::SessionRow do
            first_preview title owner recap auto_title ctx_pct tokens memory_index side archived project_root bridge_up
            worker_version worker_features pending_question pending_card last_turn verdicts verify_fresh last_verdict]
       )
+    end
+
+    it "gives chi sessions list --format json 22 of them, no status (JSON_KEYS)" do
+      expect(described_class::JSON_KEYS).to eq(
+        %i[id short_id desc title auto_title cwd project updated_at live busy owner recap parent_id continues delegate
+           archived scratch ctx_pct waiting waiting_id relayed_to stopped_by]
+      )
+      expect(described_class::JSON_KEYS - described_class::SUMMARY_KEYS).to be_empty
     end
 
     it "reads a missing key as nil" do

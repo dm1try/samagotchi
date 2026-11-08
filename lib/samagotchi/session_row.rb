@@ -38,6 +38,23 @@ module Samagotchi
                       auto_title ctx_pct parent_id parent_short_id continues continues_short_id delegate archived
                       scratch test_run stopped_by waiting waiting_id relayed_to].freeze
     DERIVED_KEYS = %i[short_id parent_short_id continues_short_id].freeze
+    # `chi sessions list --format json`'s keys (of SUMMARY_KEYS: no status).
+    # owner: "worker", "tui" (a one-turn chi run: it takes no notes or
+    # messages) or nil; recap: the saved recap's first sentence, or nil;
+    # project: its git project's root, or nil; parent_id: the session that
+    # delegated it (the delegate tool), or nil; delegate: started by the
+    # delegate tool (a fork has a parent_id too); continues: the session it
+    # continues (its chain's previous link), or nil; archived: hidden from
+    # the lists (only with --archived can it be true); scratch: a `chi
+    # scratch` session; ctx_pct: how full the context was after the last
+    # turn, or nil; title: the session's own name (/title; desc shows it
+    # too), or nil; auto_title: the one its recap gave it (RecapTitle), or
+    # nil; waiting: the kind of question it waits on (question, approval,
+    # hook), or nil; waiting_id: its id, for chi answer --question;
+    # relayed_to: the parent session (short id) whose card it also waits in
+    # (the approval relay), or nil.
+    JSON_KEYS = %i[id short_id desc title auto_title cwd project updated_at live busy owner recap parent_id continues
+                   delegate archived scratch ctx_pct waiting waiting_id relayed_to stopped_by].freeze
 
     # @param session [Session] a saved session
     # @param session_dir [String] its folder
@@ -118,6 +135,23 @@ module Samagotchi
     end
 
     # "<cwd basename> · <last prompt, or the first preview>", one line.
+    # The flags a list line carries: a chi scratch session, a test run, an
+    # archived one, and the turn's stopper: "[looped]" for loop-guard (the
+    # bundle's thinking watch, and the word `chi sessions stats` uses for
+    # its cuts), "[stopped by X]" for any other hook (a cut with no retry
+    # left records the same stopped_by).
+    def self.flags(scratch:, test_run:, archived:, stopped_by: nil)
+      flag = if scratch
+               " [scratch]"
+             else
+               (test_run ? " [test]" : "")
+             end
+      flag += " [archived]" if archived
+      return flag if stopped_by.to_s.empty?
+
+      flag + (stopped_by.to_s == "loop-guard" ? " [looped]" : " [stopped by #{stopped_by}]")
+    end
+
     def self.desc_of(session)
       desc = [File.basename(session.working_directory.to_s), summary_text(session)].reject(&:empty?).join(" · ")
       cut(desc, DESC_LIMIT)
@@ -135,6 +169,26 @@ module Samagotchi
 
     def running_or_starting?
       self.class.running_or_starting?(saved_status: saved_status, live: live, busy: busy, updated_at: updated_at)
+    end
+
+    # The session as `chi sessions list` prints it, wherever it runs (the
+    # plain list, the --live/--cwd text, a remote's): its id, state (a
+    # question it waits on, else the displayed status), the context's fill,
+    # updated_at, its text (a title, else the recap's auto title or first
+    # sentence, else the last prompt; 60 characters), its flags, and the
+    # parent it was delegated from (↳) and the link it continues (↪). Reads
+    # only row fields, so a remote row prints the same line.
+    def cli_line
+      state = if relayed_to then "waiting (in parent #{relayed_to})"
+              elsif waiting then "waiting"
+              else status.to_s
+              end
+      text = (title ? preview : auto_title || recap || preview).to_s[0, DESC_LIMIT]
+      links = parent_short_id ? "  ↳ #{parent_short_id}" : ""
+      links += "  ↪ #{continues_short_id}" if continues_short_id
+      ctx = SessionMetrics.context_label(ctx_pct)
+      flag = self.class.flags(scratch: scratch, test_run: test_run, archived: archived, stopped_by: stopped_by)
+      "#{id}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{updated_at}  #{text}#{flag}#{links}"
     end
 
     # The summaries route's row: SUMMARY_KEYS, in order.

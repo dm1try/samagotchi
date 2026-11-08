@@ -110,6 +110,9 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
                              "recap" => "Fixed the flaky spec.", "waiting" => "question", "waiting_id" => "q1")
       expect(row).to have_key("ctx_pct")
       expect(rows.find { |r| r["id"] == idle.id }).to include("live" => false, "waiting" => nil, "preview" => "later")
+      # The wire a 0.156 chi reads: SessionRow#to_summary_h's 28 keys, in order.
+      expect(rows.map(&:keys).uniq).to eq([Samagotchi::SessionRow::SUMMARY_KEYS.map(&:to_s)])
+      expect(Samagotchi::SessionRow::SUMMARY_KEYS.size).to eq(28)
     end
 
     # The remote chi sessions list's rows: the same status as the web's own

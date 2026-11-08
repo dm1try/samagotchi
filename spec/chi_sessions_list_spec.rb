@@ -192,7 +192,7 @@ RSpec.describe "chi sessions list" do
       expect(out).to include("#{unknown.id}  idle      #{" " * 8}  ")
 
       live_out, = run_chi("--live")
-      expect(live_out).to include("#{counted.id}  live      ctx 12%   ")
+      expect(live_out).to include("#{counted.id}  idle      ctx 12%   ")
 
       json, = run_chi("--format", "json", "--scope=all")
       by_id = JSON.parse(json).to_h { |row| [row["id"], row["ctx_pct"]] }
@@ -223,7 +223,7 @@ RSpec.describe "chi sessions list" do
       expect(out).to match(/#{parent.id}  idle .* the plan\n/)
 
       out, _err, _status = run_chi("--live")
-      expect(out).to include("#{child.id}  live      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
+      expect(out).to include("#{child.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
 
       out, _err, _status = run_chi("--format=json")
       by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("parent_id", "delegate")] }
@@ -244,7 +244,7 @@ RSpec.describe "chi sessions list" do
       expect(out).to match(/#{previous.id}  idle .* monday\n/)
 
       out, _err, _status = run_chi("--live")
-      expect(out).to include("#{today.id}  live      #{" " * 8}  #{saved}  app · tuesday  ↪ #{previous.id[0, 8]}\n")
+      expect(out).to include("#{today.id}  idle      #{" " * 8}  #{saved}  tuesday  ↪ #{previous.id[0, 8]}\n")
 
       out, _err, _status = run_chi("--format=json")
       expect(JSON.parse(out).to_h { |row| [row["id"], row["continues"]] }).to eq(previous.id => nil, today.id => previous.id)
@@ -329,8 +329,8 @@ RSpec.describe "chi sessions list" do
 
       live_out = run_chi("--live").first
       expect(live_out.lines.find { |l| l.start_with?(recapped.id) })
-        .to end_with("  app · Fixing the login page for the new theme, and the test…\n")
-      expect(live_out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  app · hello there\n")
+        .to end_with("  Fixing the login page for the new theme, and the tests.\n")
+      expect(live_out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  hello there\n")
 
       expect(run_chi("--live", "--format", "tsv").first).to include("#{recapped.id}\tapp · fix it\n")
       expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == recapped.id })
@@ -345,7 +345,7 @@ RSpec.describe "chi sessions list" do
       s.save(state_dir: state_dir)
 
       expect(run_chi.first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  Login fix\n")
-      expect(run_chi("--live").first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  app · Login fix\n")
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(titled.id) }).to end_with("  Login fix\n")
       expect(run_chi("--live", "--format", "tsv").first).to include("#{titled.id}\tapp · Login fix\n")
       expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == titled.id })
         .to include("desc" => "app · Login fix", "title" => "Login fix")
@@ -367,7 +367,7 @@ RSpec.describe "chi sessions list" do
       auto = make("fix it", live: true)
       write_recap(auto, "The user was fixing the login page. It works now.", title: "Login page fix")
 
-      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  app · Login page fix\n")
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login page fix\n")
       expect(run_chi("--live", "--format", "tsv").first).to include("#{auto.id}\tapp · fix it\n")
       expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == auto.id })
         .to include("desc" => "app · fix it", "title" => nil, "auto_title" => "Login page fix", "recap" => "Fixing the login page.")
@@ -375,7 +375,7 @@ RSpec.describe "chi sessions list" do
       s = Samagotchi::Session.load(auto.id, state_dir: state_dir)
       s.title = "Login fix"
       s.save(state_dir: state_dir)
-      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  app · Login fix\n")
+      expect(run_chi("--live").first.lines.find { |l| l.start_with?(auto.id) }).to end_with("  Login fix\n")
     end
 
     it "cuts a long recap to 60 characters, as it does a prompt", local_only: plain do
@@ -407,7 +407,7 @@ RSpec.describe "chi sessions list" do
       env["SAMAGOTCHI_ENV"] = "test"
       out, err, status = run_chi("--live")
       expect(status).to eq(0), err
-      expect(out).to start_with("#{live.id}  live      ")
+      expect(out).to start_with("#{live.id}  idle      ")
       expect(out).to include("a live test [test]\n")
       expect(out).to end_with("\n1 session(s)\n")
     end
