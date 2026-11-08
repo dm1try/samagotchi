@@ -18,6 +18,15 @@ RSpec.describe Samagotchi::SessionChain, ".opener_for" do
   end
   let(:opener) { "You are the coordinator again: read the hand-off memory, check the queue, then list today's merges in order." }
 
+  it "is the link's own opener when the link it continues was pruned by a schedule" do
+    # keep_links pruning (docs/scheduling.md) deletes the older links, so the head
+    # still names a session that is gone. The walks follow `continues` forward, so
+    # nothing breaks; the page says "earlier links pruned" instead of linking to it.
+    head = link([{ role: "user", content: "Audit the queue", turn_id: "t1" }],
+                continues: "00000000-0000-0000-0000-000000000000")
+    expect(described_class.opener_for(head)).to eq("Audit the queue")
+  end
+
   it "is nil for a chain's first link: its first message is the task, not an opener" do
     expect(described_class.opener_for(link([{ role: "user", content: "fix X", turn_id: "t1" }], continues: nil))).to be_nil
   end
