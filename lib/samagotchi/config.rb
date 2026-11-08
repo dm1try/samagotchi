@@ -8,12 +8,14 @@ require_relative "config_text_edit"
 require_relative "log"
 require_relative "model_ref"
 require_relative "paths"
-require_relative "host_model"
 require_relative "config/restart_watch"
 
 module Samagotchi
   # Which LLM context strategy a turn runs under; it reads Config.
   autoload :LLMContextStrategy, File.expand_path("llm_context_strategy", __dir__)
+  # A hosts.<name>.models entry and its price; they read ConfigFile.
+  autoload :HostModel, File.expand_path("host_model", __dir__)
+  autoload :ModelPrice, File.expand_path("model_price", __dir__)
   # Parses the thinking: levels of host and model entries (it needs Config).
   autoload :Thinking, File.expand_path("thinking", __dir__)
   # One hosts: entry; it needs ConfigFile's readers.
@@ -415,6 +417,8 @@ module Samagotchi
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
     HOST_MODEL_KEYS = %w[price served].freeze
+    # The keys a hosts.<name>.models.<id>.price may hold (ModelPrice.parse).
+    MODEL_PRICE_KEYS = %w[input cache_read cache_write output].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     # And toolkit's kits (Toolkit.kits), and bundles' judgments' settings (SystemOne::JudgmentSettings).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze, "system_one" => %w[judgments].freeze }.freeze
@@ -894,9 +898,9 @@ module Samagotchi
       def price_key_problems(prefix, price)
         return [] unless price.is_a?(Hash)
 
-        (price.keys.map(&:to_s) - ModelPrice::KEYS).map do |k|
+        (price.keys.map(&:to_s) - MODEL_PRICE_KEYS).map do |k|
           # A renamed key is compared by its new name, so that name is the hint.
-          unknown_key_message("#{prefix}#{k}", RENAMED_PRICE_KEYS.fetch(k, k), ModelPrice::KEYS, prefix: prefix)
+          unknown_key_message("#{prefix}#{k}", RENAMED_PRICE_KEYS.fetch(k, k), MODEL_PRICE_KEYS, prefix: prefix)
         end
       end
 
