@@ -484,6 +484,27 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(dry.summary).to include("identity.md")
           expect(dry.warnings.grep(/Checksum mismatch/)).to be_empty
         end
+
+        it "checks the bundle's file an upgrade merges into a local edit" do
+          dir = File.join(tmpdir, "bundle_cksum_merge")
+          FileUtils.mkdir_p(dir)
+          write = lambda do |version, text, sha|
+            File.write(File.join(dir, "a.md"), text)
+            File.write(File.join(dir, "manifest.yml"),
+                       YAML.dump("name" => "cksum-merge", "version" => version, "files" => { "a.md" => "sha256:#{sha}" }))
+          end
+          write.call("1.0", "a\nb\nc\n", Digest::SHA256.hexdigest("a\nb\nc\n"))
+          installer_for(source: dir, name: "cksum-merge", scope: "system").run
+          File.write(File.join(system_memories_dir, "a.md"), "A\nb\nc\n")
+          write.call("2.0", "a\nb\nC\n", "0" * 64)
+
+          up = described_class.new(source: dir, name: "cksum-merge", scope: "system", strict: true, upgrade: true)
+          up.run
+
+          expect(up.merged_files).to eq(["a.md"])
+          expect(File.read(File.join(system_memories_dir, "a.md"))).to eq("A\nb\nC\n")
+          expect(up.warnings.grep(/Checksum mismatch for a\.md/).size).to eq(1)
+        end
       end
     end
 

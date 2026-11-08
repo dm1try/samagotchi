@@ -549,17 +549,17 @@ module Samagotchi
         @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
       end
 
-      # Strict mode: a memory written from the bundle (Action#from_source?: a
-      # new or missing file, --force, an upgrade's or a re-install's
-      # fast-forward) whose sha256 differs from its manifest's warns. One
-      # kept, skipped or merged isn't checked (a local edit isn't a bad
-      # download). What is checked is the source file the write takes its
-      # bytes from, so a dry run checks what it would write, never the
-      # user's bytes on disk.
+      # Strict mode: a memory that takes the bundle's text (Action#takes_source?:
+      # a new or missing file, --force, an upgrade's or a re-install's
+      # fast-forward, a merge into a local edit) warns when the bundle's file
+      # differs from its manifest's sha256. One kept or skipped isn't checked
+      # (it takes nothing from the bundle). What is checked is the source
+      # file, the bytes the write or merge takes, so a dry run checks what it
+      # would bring in, never the user's bytes on disk.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
           result = @results[file_key]
-          next unless result&.action&.from_source?
+          next unless result&.action&.takes_source?
 
           warning = FileDigest.mismatch(file_key, result.state.paths[:incoming], @manifest.checksum_for(file_key))
           @warnings << warning if warning

@@ -39,9 +39,11 @@ module Samagotchi
         # The file stays behind the bundle, marked (a conflict to the report).
         def behind? = record == :mark
 
-        # The bundle's text is written (installed, forced or fast-forwarded):
-        # the bytes are the download's, so the manifest's sha checks them.
-        def from_source? = self.do == :write_incoming
+        # The bundle's text goes into the file: written (installed, forced or
+        # fast-forwarded) or merged into a local edit. The source file is the
+        # download, so the manifest's sha checks it (Installer's integrity
+        # check). :restore is SystemBundle's; it checks its own copy.
+        def takes_source? = %i[write_incoming merge].include?(self.do)
       end
 
       WRITE = Action.new(do: :write_incoming, word: :installed, next_base: :on_disk)

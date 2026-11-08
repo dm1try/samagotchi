@@ -31,7 +31,7 @@
 #               dry-trash; note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
 #               P1.9, edited-rule, D4: P1.10, U4, U7,
-#               restore-unchecked, dry-source); note says how
+#               restore-unchecked, dry-source, merge-checked); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -570,6 +570,16 @@ cases:
       upgrade and install warn. dry-source: their dry runs said nothing; they check the source file since, and warn as
       the real runs do. D4: install skipped the never-edited file as already exists, as pristine; since P1.10 it takes
       the new text
+  - id: diverged_wrong_sha
+    kind: diverged
+    base: abc
+    disk: Abc
+    incoming: abC
+    sha: wrong
+    changed: merge-checked
+    note: >-
+      merge-checked: an upgrade merged the bundle's text into the edit with no checksum warning; the incoming file is
+      checked since, so the upgrade and its dry run warn (remerge, at the shipped version, still doesn't)
   - id: new_no_sha
     kind: new
     owned: false

@@ -334,6 +334,10 @@ pristine_wrong_sha:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status: {label: ok, list: null}
+diverged_wrong_sha:
+  uninstall: {do: refused, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+  uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
+  status: {label: modified, list: null}
 new_no_sha:
   uninstall: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: null, label: not installed, warns: []}
   uninstall_force: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: null, label: not installed, warns: []}

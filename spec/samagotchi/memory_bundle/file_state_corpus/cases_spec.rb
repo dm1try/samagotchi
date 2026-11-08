@@ -12,7 +12,7 @@ module BundleStateCorpus
     B_FIXES = [705, 703, 704, 633, 634, 587, 424, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
     DIVERGENT = %w[U4 dry-trash].freeze
     # Divergent tags a later commit changed the cells of (the plan's P1.9 …).
-    CHANGED = %w[D4 U4 U7 dry-noop edited-rule restore-unchecked dry-source].freeze
+    CHANGED = %w[D4 U4 U7 dry-noop edited-rule restore-unchecked dry-source merge-checked].freeze
     ASSET_DIVERGENT = %w[dry-dropped dry-trash hook-stray-left hook-sha-dropped hook-status new-updated rule-installed
                          uninstall-unnamed].freeze
     # Asset tags a later commit changed the cells of.
