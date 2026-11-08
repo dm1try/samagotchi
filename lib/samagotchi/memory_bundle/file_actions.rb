@@ -38,6 +38,10 @@ module Samagotchi
 
         # The file stays behind the bundle, marked (a conflict to the report).
         def behind? = record == :mark
+
+        # The bundle's text is written (installed, forced or fast-forwarded):
+        # the bytes are the download's, so the manifest's sha checks them.
+        def from_source? = self.do == :write_incoming
       end
 
       WRITE = Action.new(do: :write_incoming, word: :installed, next_base: :on_disk)

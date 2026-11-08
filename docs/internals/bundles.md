@@ -134,7 +134,7 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    file that is a symlink or resolves outside the bundle dir (`AssetInstaller#linked?`, a linked `hooks/` too) is
    skipped with a warning (a hook or rule) or raises `InstallError` (the plugin, a script).
 5. An upgrade's `prune_dropped_files`: each dropped file's `FileState` (`shipped: false`) and its `UPGRADE` / `FORCE` row: unchanged (`#edited?` false) → trash; edited → kept (`kept_pruned`); owned by another bundle → kept.
-6. `verify_memory_checksums` (strict: a memory whose action writes the bundle's text as `:installed`; an upgrade's fast-forward isn't checked), `warn_missing_needs`.
+6. `verify_memory_checksums` (strict: a memory whose action writes the bundle's text, `Action#from_source?`: installed, forced, or an upgrade's or a re-install's fast-forward; a dry run checks only an install's file already on disk, not the old text a fast-forward would replace), `warn_missing_needs`.
 7. `write_provenance` (manifest, not a dry run): each owned file's base comes from its action's `next_base`
    (`Installer#next_base`): the file on disk, which has the bundle's bytes; the incoming file for a merge, since the merged
    file holds the user's edit and taking it would make current == base, so the next upgrade would fast-forward over the

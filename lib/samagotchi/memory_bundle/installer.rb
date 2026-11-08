@@ -549,15 +549,18 @@ module Samagotchi
         @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
       end
 
-      # Strict mode: a memory installed from the bundle (its action writes the
-      # bundle's text, word :installed: a new or missing file, --force) whose
-      # sha256 differs from its manifest's warns, a dry run's too. One kept,
-      # skipped or merged isn't checked (a local edit isn't a bad download),
-      # nor, today, one an upgrade fast-forwards (:updated).
+      # Strict mode: a memory written from the bundle (Action#from_source?: a
+      # new or missing file, --force, an upgrade's or a re-install's
+      # fast-forward) whose sha256 differs from its manifest's warns. One
+      # kept, skipped or merged isn't checked (a local edit isn't a bad
+      # download). A dry run writes nothing: it checks a file already there
+      # only for an install (--force over the bundle's text), not the old text
+      # a fast-forward would replace.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
           action = @results[file_key]&.action
-          next unless action&.do == :write_incoming && action.word == :installed
+          next unless action&.from_source?
+          next if @dry_run && action.word != :installed
 
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)
