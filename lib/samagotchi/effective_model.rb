@@ -170,7 +170,7 @@ module Samagotchi
 
     # models:/hosts: window_tokens (ContextWindow.setting), nil when unset.
     def window_setting
-      ContextWindow.setting(target, names: names)
+      ContextWindow.setting(lookup)
     rescue StandardError => e
       unresolved(:window_unresolved, e, nil)
     end
@@ -178,7 +178,7 @@ module Samagotchi
     # The window config.yml gives this model or its host
     # (ContextWindow.setting), never asking a server: a session loaded on
     # it (Engine#session=, before a worker's Bridge serves). nil when none.
-    def configured_context_window = ContextWindow.setting(target, names: names)
+    def configured_context_window = ContextWindow.setting(lookup)
 
     # The window as its loop would see it (ChatLoop#context_window: a remote
     # chat host has no /props, only its model list); nil when it can't be
@@ -190,7 +190,7 @@ module Samagotchi
         adapter = registry.adapter_for(entry)
         client = nil if adapter.remote?
       end
-      ContextWindow.resolve(client: client, model: bare, adapter: adapter, setting: ContextWindow.setting(target, names: names))
+      ContextWindow.resolve(client: client, model: bare, adapter: adapter, setting: ContextWindow.setting(lookup))
     rescue StandardError => e
       unresolved(:window_unresolved, e, nil)
     end

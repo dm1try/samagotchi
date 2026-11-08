@@ -2,6 +2,7 @@
 
 require "samagotchi/context_window"
 require "samagotchi/host_registry"
+require "samagotchi/model_lookup"
 
 RSpec.describe Samagotchi::ContextWindow do
   let(:client) { double("client") }
@@ -103,11 +104,11 @@ RSpec.describe Samagotchi::ContextWindow, "per model and per host (models.<key>.
 
   it "takes the model's setting over the host's, by the model's lookup names" do
     models = { "m" => Samagotchi::ModelSettings.new(window_tokens: 32_768) }
-    expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: models).to_h)
+    expect(described_class.setting(Samagotchi::ModelLookup.for(target(window_tokens: 65_536), names: %w[box:m m], models: models)).to_h)
       .to eq(tokens: 32_768, source: :model_setting)
-    expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: {}).to_h)
+    expect(described_class.setting(Samagotchi::ModelLookup.for(target(window_tokens: 65_536), names: %w[box:m m], models: {})).to_h)
       .to eq(tokens: 65_536, source: :host_setting)
-    expect(described_class.setting(target, names: %w[m], models: {})).to be_nil
+    expect(described_class.setting(Samagotchi::ModelLookup.for(target, names: %w[m], models: {}))).to be_nil
   end
 
   it "fills in after the server and the model list, before context.window_tokens" do

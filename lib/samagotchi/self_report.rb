@@ -182,15 +182,12 @@ module Samagotchi
       Degrade.call(:config, "model_window_unreadable") do
         return nil unless model
 
-        registry = HostRegistry.new(env: env)
-        target = registry.resolve(model)
-        names = registry.lookup_names(model, target: target)
-        models = ModelSettings.all(env: env)
-        window = ContextWindow.setting(target, names: names, models: models)
+        effective = effective_model(model, env)
+        window = effective.window_setting
         return nil unless window
-        return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
+        return [window.tokens, "hosts.#{effective.host_name}"] if window.source == :host_setting
 
-        [window.tokens, "models: #{ModelSettings.find(names, :window_tokens, models: models).key}"]
+        [window.tokens, "models: #{effective.lookup.model(:window_tokens).key}"]
       end
     end
 

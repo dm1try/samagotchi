@@ -48,16 +48,13 @@ module Samagotchi
     # The window config.yml gives this model or its host:
     # models.<key>.window_tokens (by the model's lookup names, as sampling
     # and vision look a model up), else hosts.<name>.window_tokens.
-    # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>] HostRegistry#lookup_names
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup)
     # @return [Resolved, nil]
-    def setting(target, names:, models: nil)
-      models ||= ModelSettings.all
-      tokens = ModelSettings.find(names, :window_tokens, models: models)&.value
+    def setting(lookup)
+      tokens = lookup.model(:window_tokens)&.value
       return Resolved.new(tokens: tokens, source: :model_setting) if positive_integer?(tokens)
 
-      tokens = target&.entry&.window_tokens
+      tokens = lookup.host(:window_tokens)
       positive_integer?(tokens) ? Resolved.new(tokens: tokens, source: :host_setting) : nil
     rescue StandardError
       nil
