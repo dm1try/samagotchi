@@ -440,7 +440,7 @@ module Samagotchi
         awaiting_continue: @turn_flow.awaiting_continue?,
         open_streams: @bridge&.open_streams.to_i,
         reminders: @engine.reminder_store&.any? ? 1 : 0,
-        tasks_holding: Degrade.call(:tasks, "activity_tasks_unreadable") { @task_wakes&.watch&.holding&.size.to_i }
+        tasks_holding: Degrade.call(:worker, "activity_tasks_unreadable") { @task_wakes&.watch&.holding&.size.to_i }
       }
     end
 
