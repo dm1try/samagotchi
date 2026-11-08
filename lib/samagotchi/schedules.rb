@@ -303,6 +303,11 @@ module Samagotchi
         # every session per call is the tick's dominant cost.
         index = Index.new(@state_dir)
         updated = list.dup
+        # One firing per chain per tick. A second chain entry of the same chain
+        # would continue the link the first one just made: that link has no
+        # worker lock yet and is not in this tick's index, so the busy check
+        # cannot see it, and its prompt would be archived before it ever ran.
+        fired_chains = {}
         due.each do |entry|
           position = updated.index { |candidate| candidate.id == entry.id }
           verdict = check(entry, index)
@@ -315,7 +320,14 @@ module Samagotchi
                                     detail: reason, entry: entry)
             next
           end
+          if entry.mode == CHAIN && fired_chains[chain_key(index, entry)]
+            reason = "the chain just fired; retry at the next tick"
+            updated[position] = skipped(entry, reason) unless dry_run
+            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
+            next
+          end
           if dry_run
+            fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "dry", detail: entry.recurrence_words, entry: entry)
             next
           end
@@ -327,6 +339,7 @@ module Samagotchi
           advanced = advance(entry, now)
           updated[position] = advanced
           pending << advanced
+          fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
         end
         write(list: updated) unless dry_run
       end
@@ -431,6 +444,17 @@ module Samagotchi
 
       # A link's predecessor, or nil (a pruned or never-existing one).
       def continues(id) = @by_id[id]&.continues
+
+      # A chain's root: +id+ back through `continues` until a link with no
+      # predecessor. Entries of one chain share this root whichever link each
+      # of them was added against.
+      def root(id)
+        seen = [id]
+        while (previous = @by_id[seen.last]&.continues) && !seen.include?(previous)
+          seen << previous
+        end
+        seen.last
+      end
     end
 
     # The length of an interval in seconds; nil for something that is not an
@@ -671,6 +695,14 @@ module Samagotchi
       return [nil, "archived"] if index.archived?(head)
 
       [head, nil]
+    end
+
+    # Which chain an entry belongs to, for the one-firing-per-chain-per-tick
+    # guard: the root of the chain its resolved target is in. Every entry of a
+    # chain has the same root, whichever link it was added against.
+    def chain_key(index, entry)
+      target, _reason = target_of(entry, index)
+      index.root(target)
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no

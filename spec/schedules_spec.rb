@@ -324,6 +324,49 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "fires one entry per chain per tick, and retries the other at the next one" do
+    Dir.mktmpdir("schedules-chain-once") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      first = schedules.add(target: anchor, prompt: "Audit", title: "Audit", recurrence: every("5m"))
+      second = schedules.add(target: anchor, prompt: "Check the build", title: "Check", recurrence: every("5m"))
+      due = first.next_due # both were added at the same clock, so both are due now
+
+      tick = schedules.tick(now: Time.now + 300)
+      expect(tick.outcomes.map(&:status).sort).to eq(%w[fired skipped])
+      fired = tick.outcomes.find { |outcome| outcome.status == "fired" }
+      held = tick.outcomes.find { |outcome| outcome.status == "skipped" }
+      expect(held.id).to eq([first.id, second.id].reject { |id| id == fired.id }.first)
+      expect(held.detail).to eq("the chain just fired; retry at the next tick")
+
+      # The link the first firing made is still standing: the second entry did
+      # not continue it and archive it before its prompt ever ran.
+      link = schedules.lookup(fired.id).head
+      expect(archived?(dir, link)).to be(false)
+      expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).size).to eq(2)
+
+      # The skip is not a lost occurrence: the clock stayed at the moment the
+      # tick tried.
+      held_entry = schedules.lookup(held.id)
+      expect([held_entry.skips, held_entry.failures, held_entry.next_due, held_entry.head, held_entry.enabled])
+        .to eq([1, 0, due, anchor, true])
+
+      # The next tick fires it, and it continues the link the first one made:
+      # the chain stays one line, and each entry's head is its own link.
+      set_idle(dir, link)
+      again = schedules.tick(now: Time.now + 420)
+      expect(again.outcomes.map(&:status)).to eq(["fired"])
+      head = schedules.lookup(held.id).head
+      expect(Samagotchi::Session.load(head, state_dir: dir).continues).to eq(link)
+      expect(Samagotchi::Session.load(link, state_dir: dir).continues).to eq(anchor)
+      expect(Samagotchi::SessionChain.latest(anchor, state_dir: dir)).to eq(head)
+      expect(schedules.lookup(fired.id).head).to eq(link)
+      expect(schedules.lookup(held.id).skips).to eq(0)
+    end
+  end
+
   it "changes nothing on --dry-run" do
     Dir.mktmpdir("schedules-dry") do |root|
       dir = File.join(root, "sessions")

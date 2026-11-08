@@ -209,6 +209,14 @@ second one exits 0 with "no schedules due (another tick holds the lock)".
 `--dry-run` prints what would fire and changes nothing; `--format json` is the seam
 for scripts and for a future web UI.
 
+A tick fires **one entry per chain**: of the due entries of one chain, the first
+fires and the rest are skipped — "the chain just fired; retry at the next tick" —
+with `skips += 1` and `next_due` left at the occurrence they tried. A second chain
+firing in the same pass would continue the link the first one just made and archive
+it before its prompt ever ran: that link has no worker lock yet and the tick's
+listing predates it, so the busy check cannot see it. `same` entries are unaffected:
+they queue a turn, they do not archive.
+
 `schedule.auto_tick: true` makes chi web's hub tick on
 `schedule.tick_interval_minutes` (default 5) as well, sharing the same lock, so
 cron and the hub can coexist without firing twice. It is off by default: cron or
