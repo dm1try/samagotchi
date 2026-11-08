@@ -69,7 +69,7 @@ test("the answer and the steps' texts take their items' markdown; a row its tool
   assert.ok([...host.children].every((el) => el.dataset.drawn === "T1"));
 });
 
-test("a drawn card that asked sits beside the block, its buttons off; without a stored one its body is the drawing's", () => {
+test("a drawn card that asked sits beside the block; the drawing's own copy (no stored card) has its buttons off", () => {
   const card = { type: "card", in_turn: true, id: "check-in", source: "check-in", title: "Check in", body: "still?", level: "info",
     actions: [{ label: "Nudge", command: "/check-in nudge" }] };
   const events = [started, gen(1), say(1, "Work."), ...row(1), card, gen(2), say(2, "Done.")];
@@ -100,4 +100,19 @@ test("a wake's note just before the range (its id the drawn turn's) opens the dr
   assert.deepEqual(groups.map((g) => [g.drawn, g.user]), [["T1", 0]]);
   const shape = historyShape(drawn([started, gen(1), say(1, "Ran.")], items));
   assert.deepEqual(shape.map((it) => it.kind), ["note", "answer"]);
+});
+
+test("a drawn card CardStore still lists keeps its buttons as CardStore gives them, and its latest body", () => {
+  const card = { type: "card", in_turn: true, id: "go", source: "b", title: "Go on?", body: "first", level: "info",
+    actions: [{ label: "Go", command: "/go" }] };
+  const events = [started, gen(1), say(1, "Work."), ...row(1), card, gen(2), say(2, "Done.")];
+  const items = [{ role: "user", content: "hi", turn_id: "T1", drawn: "T1" }, { role: "assistant", content: "Work.", drawn: "T1" },
+    { role: "assistant", content: "Done.", drawn: "T1" }];
+  const stored = [{ ...card, body: "latest" }];
+  const el = drawn(events, items, { cards: stored }).querySelector(":scope > .plugin-card");
+  assert.match(el.textContent, /latest/);
+  assert.ok([...el.querySelectorAll(".card-action")].length === 1);
+  assert.ok([...el.querySelectorAll(".card-action")].every((b) => !b.disabled));
+  const dead = drawn(events, items, { cards: [{ ...card, actions: [] }] }).querySelector(".plugin-card");
+  assert.equal(dead.querySelectorAll(".card-action").length, 0);
 });
