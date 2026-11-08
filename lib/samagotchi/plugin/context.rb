@@ -182,7 +182,7 @@ module Samagotchi
       def model_key = @host.model_key&.call
 
       # The names the session's model is looked up under now, as chi's own
-      # per-model config is (models: maps, ConfigFile.model_setting): as
+      # per-model config is (models: maps, ModelSettings.find): as
       # typed (an alias), the alias's target, the resolved ref ("host:id"),
       # without the host, the bare id the host serves; deduped, first the
       # most specific. Compare them downcased, first hit, as chi does.

@@ -759,7 +759,7 @@ RSpec.describe Samagotchi::SelfReport do
     before { allow(Samagotchi::Log).to receive(:warn) }
 
     it "keeps its fallback and is logged: the model window, the session's mutes, the shipped bundle" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_raise(IOError, "config gone")
+      allow(Samagotchi::ModelSettings).to receive(:all).and_raise(IOError, "config gone")
       expect(described_class.model_window(env, "m")).to be_nil
 
       allow(Samagotchi::Session).to receive(:valid_id?).and_raise(IOError, "state gone")

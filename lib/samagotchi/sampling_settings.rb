@@ -13,7 +13,7 @@ module Samagotchi
 
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @return [Hash] frozen, symbol keys; may be empty
     def self.for(target, names:, models: nil)
       resolve(target, names, models).first
@@ -39,12 +39,12 @@ module Samagotchi
 
     def self.resolve(target, names, models)
       models ||= begin
-        ConfigFile.model_settings
+        ModelSettings.all
       rescue StandardError
         {}
       end
       host = target.entry.sampling || EMPTY
-      model = ConfigFile.model_setting(names, :sampling, models: models)
+      model = ModelSettings.find(names, :sampling, models: models)
       sources = []
       sources << "hosts.#{target.entry.name}" unless host.empty?
       sources << "models: #{model.key}" if model

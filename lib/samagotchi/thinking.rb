@@ -84,7 +84,7 @@ module Samagotchi
     # the default).
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
     # @param session [Symbol, nil] the session's own level (Session#thinking)
     # @return [Array(Symbol, String|nil)]
     def resolve(target, names:, models: nil, session: nil)
@@ -94,11 +94,11 @@ module Samagotchi
       return [global, origin == :cli ? "--thinking" : "SAMAGOTCHI_THINKING_LEVEL"] if global && %i[cli env].include?(origin)
 
       models ||= begin
-        ConfigFile.model_settings
+        ModelSettings.all
       rescue StandardError
         {}
       end
-      setting = ConfigFile.model_setting(names, :thinking, models: models)
+      setting = ModelSettings.find(names, :thinking, models: models)
       return [setting.value, "models: #{setting.key}"] if setting
 
       host = target.entry.thinking

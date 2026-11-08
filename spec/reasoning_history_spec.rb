@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::ReasoningHistory do
 
   def resolve(path, dir, model, env: {}, session: nil, how: :resolve)
     with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_REASONING_HISTORY" => nil }.merge(env)) do
-      models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+      models = Samagotchi::ModelSettings.all(env: {}, path: path)
       hosts = Samagotchi::HostConfig.all(env: {}, path: path)
       target = Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
       described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)

@@ -38,7 +38,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
     allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
     allow_any_instance_of(Samagotchi::Client).to receive(:cached_server_props).and_return(nil)
     allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|

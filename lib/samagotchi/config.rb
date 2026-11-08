@@ -408,7 +408,7 @@ module Samagotchi
     # appended_prompt_files, Hooks::Loader, ConfigFile.bundle_settings.
     FREE_FORM_MAPS = %w[model_aliases hooks bundles memories append_system_prompt].freeze
     # Maps of named entries and the keys an entry may hold
-    # (HostConfig.all, ConfigFile.model_settings).
+    # (HostConfig.all, ModelSettings.all).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
@@ -1364,41 +1364,6 @@ module Samagotchi
       end
     rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       {}
-    end
-
-    # The top-level `models:` map: per-model settings keyed by model id or
-    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`, each a
-    # ModelSettings; an entry that is not a map is skipped.
-    # @return [Hash{String => ModelSettings}]
-    def model_settings(env: ENV, path: global_path(env: env))
-      data = read_yaml(env: env, path: path)
-      raw = data[MODELS_KEY] if data.is_a?(Hash)
-      return {} unless raw.is_a?(Hash)
-
-      raw.each_with_object({}) do |(k, v), result|
-        key = k.to_s.strip.downcase
-        settings = ModelSettings.parse(key, v)
-        result[key] = settings if settings
-      end
-    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
-      {}
-    end
-
-    # The first +names+ (model as typed, alias-resolved, bare, …) whose
-    # models: entry sets +field+ (a ModelSettings member; another name
-    # raises ArgumentError): a ModelSetting (key, value), or nil.
-    # VisionSupport and SamplingSettings look a model up the same way.
-    # @param models [Hash{String => ModelSettings}, nil] model_settings by default
-    # @return [ModelSetting, nil]
-    def model_setting(names, field, models: nil)
-      raise ArgumentError, "unknown models: field #{field.inspect}" unless ModelSettings.members.include?(field)
-
-      models ||= model_settings
-      Array(names).map { |name| name.to_s.strip.downcase }.reject(&:empty?).uniq.each do |key|
-        value = models[key]&.public_send(field)
-        return ModelSetting.new(key: key, value: value) unless value.nil?
-      end
-      nil
     end
 
     # Words /model takes as arguments (clear/default/none/off reset the

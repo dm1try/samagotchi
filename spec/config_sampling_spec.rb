@@ -35,7 +35,7 @@ RSpec.describe "sampling config" do
   it "reads a models: entry's sampling map" do
     with_config("models" => { "Qwen3.6-35B" => { "sampling" => { "temperature" => 0.6, "top_p" => 0.95 } },
                               "other" => { "profile" => "qwen36" } }) do |path|
-      models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+      models = Samagotchi::ModelSettings.all(env: {}, path: path)
 
       expect(models["qwen3.6-35b"]).to eq(Samagotchi::ModelSettings.new(sampling: { temperature: 0.6, top_p: 0.95 }))
       expect(models["other"]).to have_attributes(sampling: nil)
@@ -70,7 +70,7 @@ RSpec.describe "sampling config" do
   it "warns about a sampling that is not a map and skips it" do
     with_config("models" => { "m" => { "sampling" => "hot" } }) do |path|
       models = nil
-      expect { models = Samagotchi::ConfigFile.model_settings(env: {}, path: path) }
+      expect { models = Samagotchi::ModelSettings.all(env: {}, path: path) }
         .to output(/models: m: sampling must be a map of request parameters; ignored/).to_stderr
       expect(models["m"]).to eq(Samagotchi::ModelSettings.new)
     end

@@ -1155,7 +1155,7 @@ module Samagotchi
         Degrade.call(:web, "model_sampling_unreadable") do
           return if registry.nil? || models.empty?
 
-          settings = ConfigFile.model_settings
+          settings = ModelSettings.all
           models.each do |model|
             target = registry.resolve(model[:name])
             names = registry.lookup_names(model[:name], target: target)

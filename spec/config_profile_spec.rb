@@ -53,11 +53,11 @@ RSpec.describe "prompt profile config" do
     end
   end
 
-  describe "ConfigFile.model_settings" do
+  describe "ModelSettings.all" do
     it "reads the models: map, keyed by id or alias, case-insensitively" do
       with_config("models" => { "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M" => { "profile" => "qwen36" },
                                 "Ista" => { "profile" => "Gemma4" } }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq(
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq(
           "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => Samagotchi::ModelSettings.new(profile: "qwen36"),
           "ista" => Samagotchi::ModelSettings.new(profile: "gemma4")
         )
@@ -66,10 +66,10 @@ RSpec.describe "prompt profile config" do
 
     it "skips entries that are not maps and gives {} without a models: section" do
       with_config("models" => { "a" => "qwen36", "b" => { "profile" => "" }, "c" => { "profile" => "qwen36" } }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq("b" => Samagotchi::ModelSettings.new, "c" => Samagotchi::ModelSettings.new(profile: "qwen36"))
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq("b" => Samagotchi::ModelSettings.new, "c" => Samagotchi::ModelSettings.new(profile: "qwen36"))
       end
       with_config("default" => { "model" => "m" }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq({})
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)).to eq({})
       end
     end
 

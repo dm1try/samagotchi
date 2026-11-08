@@ -58,7 +58,7 @@ RSpec.describe "Engine prompt profile resolution" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
   end
 
   def engine_with(client)
@@ -172,7 +172,7 @@ RSpec.describe "Engine prompt profile resolution" do
   end
 
   it "looks up models: under the alias as typed" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("ista" => Samagotchi::ModelSettings.new(profile: "gemma4"))
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return("ista" => Samagotchi::ModelSettings.new(profile: "gemma4"))
     allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("ista" => "house-blend-35b")
     engine = engine_with(FakeResolvingClient.new(answered(ornith_props)))
 
@@ -182,7 +182,7 @@ RSpec.describe "Engine prompt profile resolution" do
   end
 
   it "looks up models: vision under the alias as typed, like the profile" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("ista" => Samagotchi::ModelSettings.new(vision: false))
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return("ista" => Samagotchi::ModelSettings.new(vision: false))
     allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("ista" => "house-blend-35b")
     engine = engine_with(FakeResolvingClient.new(answered(ornith_props)))
 
@@ -195,7 +195,7 @@ end
 RSpec.describe "Engine#stats_snapshot" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "house-blend-35b") { example.run } }
 
-  before { allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({}) }
+  before { allow(Samagotchi::ModelSettings).to receive(:all).and_return({}) }
 
   let(:ornith_props) { JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/props_ornith.json", __dir__))) }
 

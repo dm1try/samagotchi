@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::Engine, "reasoning history" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
     allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
   end
 

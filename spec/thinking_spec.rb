@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::Thinking do
             thinking: off
       YAML
         expect(Samagotchi::HostConfig.all(env: {}, path: path)["work"].thinking).to eq(:off)
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)["qwen"].thinking).to eq(:off)
+        expect(Samagotchi::ModelSettings.all(env: {}, path: path)["qwen"].thinking).to eq(:off)
         with_env("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil) do
           expect(described_class.global_level).to eq(%i[off file])
         end
@@ -114,7 +114,7 @@ RSpec.describe Samagotchi::Thinking do
     def resolve(path, dir, model, env: {}, cli: {}, session: nil, how: :resolve)
       with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil }.merge(env)) do
         Samagotchi::Config.reload!(cli_overrides: cli)
-        models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+        models = Samagotchi::ModelSettings.all(env: {}, path: path)
         target = target_for(path, model)
         described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)
       end

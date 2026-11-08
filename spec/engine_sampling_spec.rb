@@ -41,7 +41,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
 
   it "resolves the effective model's sampling each turn and sets it on the kernel" do
     models = { "ornith" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.6 }) }
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
 
     engine.run_turn(session, "hi")
     models["ornith"] = models["ornith"].with(sampling: { temperature: 0.2 })
@@ -51,7 +51,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
   end
 
   it "sets an empty map when nothing is configured" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
 
     engine.run_turn(session, "hi")
 
@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
 
   it "resolves the effective model's thinking level each turn and sets it on the kernel" do
     models = { "ornith" => Samagotchi::ModelSettings.new(thinking: :off) }
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
 
     engine.run_turn(session, "hi")
     models["ornith"] = models["ornith"].with(thinking: :high)
@@ -103,7 +103,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
 
   it "counts a saved context status against the effective model's llm_context budget, as its turns do" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "ornith" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 1000) })
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({ "ornith" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 1000) })
 
     expect(engine.send(:saved_context_status, { used_tokens: 500, window_tokens: 100_000 }))
       .to eq(est_pct: 50.0, bucket: "40plus")
@@ -111,7 +111,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
 
   it "resolves the effective model's strategy each turn: none by default, then stale, then stale with forget" do
     models = {}
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
 
     engine.run_turn(session, "hi")
     models["ornith"] = Samagotchi::ModelSettings.new(llm_context_strategy: [:stale])
@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
 
   it "puts the session's own values first, from the next turn's start: the strategy, the apply rule and the budget" do
     models = { "ornith" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_budget_tokens: 1000) }
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return(models)
 
     engine.run_turn(session, "hi")
     session.llm_context = Samagotchi::LLMContextOverride.new(strategy: %i[stale forget], apply: :turn_end, budget_tokens: 0)
@@ -140,7 +140,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
 
   it "counts a woken worker's saved context status against the session's own budget" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "ornith" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 1000) })
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({ "ornith" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 1000) })
     session.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 2000)
     engine.session = session
 
@@ -149,7 +149,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
 
   it "declares forget_outputs in the native prompt only while the session's strategy has forget" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
     engine.session = session
     plain = engine.system_prompt
 
@@ -160,7 +160,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
 
   it "counts the snapshot's context status against a budget the session sets after a turn" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
     engine.session = session
     engine.instance_variable_set(:@last_context_status, { est_pct: 0.5, bucket: nil })
     allow(engine.metrics).to receive(:snapshot).and_wrap_original do |original|
@@ -173,7 +173,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
 
   it "logs the turn's strategy and its source when it runs a layer or the session set it, and puts it in the snapshot" do
-    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
     logged = []
     allow(Samagotchi::Log).to receive(:info).and_call_original
     allow(Samagotchi::Log).to receive(:info).with(:turn, "llm_context", any_args) { |*_args, **fields| logged << fields }

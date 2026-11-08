@@ -184,12 +184,12 @@ module Samagotchi
         registry = HostRegistry.new(env: env)
         target = registry.resolve(model)
         names = registry.lookup_names(model, target: target)
-        models = ConfigFile.model_settings(env: env)
+        models = ModelSettings.all(env: env)
         window = ContextWindow.setting(target, names: names, models: models)
         return nil unless window
         return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
 
-        [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).key}"]
+        [window.tokens, "models: #{ModelSettings.find(names, :window_tokens, models: models).key}"]
       end
     end
 
@@ -383,7 +383,7 @@ module Samagotchi
       names = registry.lookup_names(model)
       override = Config.resolve_with_origin("model.profile", env: env, cli_overrides: Config.cli_overrides)
       result = ModelProfile.resolve(names: names, entry: entry, client: nil, bare_model: bare, override: override,
-                                    models: ConfigFile.model_settings(env: env))
+                                    models: ModelSettings.all(env: env))
       name = result.profile.name
       case result.source
       when :config then "#{name} (config #{result.detail})"
@@ -401,7 +401,7 @@ module Samagotchi
       target = registry.resolve(model)
       session = session_model(env) ? Thinking.session_level(env[SESSION_THINKING_ENV]) : nil
       Thinking.explain(target, names: registry.lookup_names(model, target: target),
-                               models: ConfigFile.model_settings(env: env), session: session).label
+                               models: ModelSettings.all(env: env), session: session).label
     rescue StandardError => e
       "(unknown: #{e.message})"
     end
@@ -417,7 +417,7 @@ module Samagotchi
 
       session = session_model(env) ? ReasoningHistory.session_level(env[SESSION_REASONING_HISTORY_ENV]) : nil
       level, source = ReasoningHistory.resolve(target, names: registry.lookup_names(model, target: target),
-                                                       models: ConfigFile.model_settings(env: env), session: session)
+                                                       models: ModelSettings.all(env: env), session: session)
       ReasoningHistory.label(level, source)
     rescue StandardError => e
       "(unknown: #{e.message})"

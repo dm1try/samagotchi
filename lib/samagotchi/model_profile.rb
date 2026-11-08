@@ -437,7 +437,7 @@ module Samagotchi
     def self.resolve(names:, entry:, client:, bare_model:, override: nil, models: nil)
       require_relative "config"
       override ||= Samagotchi::Config.get_with_origin("model.profile")
-      models ||= Samagotchi::ConfigFile.model_settings
+      models ||= Samagotchi::ModelSettings.all
       names = Array(names).map { |n| n.to_s.strip }.reject(&:empty?).uniq
 
       value, origin = override

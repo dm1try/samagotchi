@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "names the configured sampling of the model" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings)
+      allow(Samagotchi::ModelSettings).to receive(:all)
         .and_return("qwen3-14b" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.6, presence_penalty: 1.5 }))
 
       expect(commands.run("/model").output)
@@ -187,14 +187,14 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "names the model's thinking level and where it came from, nothing when none is set" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
+      allow(Samagotchi::ModelSettings).to receive(:all).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
 
       expect(commands.run("/model").output)
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: off (models: qwen3-14b)")
     end
 
     it "names the session's own thinking level over the model's" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
+      allow(Samagotchi::ModelSettings).to receive(:all).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
       session.thinking = :low
 
       expect(commands.run("/model").output)
@@ -202,17 +202,17 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "names the model's steer cut wait and where it came from, nothing for the default" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 0))
+      allow(Samagotchi::ModelSettings).to receive(:all).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 0))
 
       expect(commands.run("/model").output)
         .to end_with("; steer cut: never (models: qwen3-14b)")
 
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 60))
+      allow(Samagotchi::ModelSettings).to receive(:all).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 60))
 
       expect(commands.run("/model").output)
         .to end_with("; steer cut: after 60 s (models: qwen3-14b)")
 
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+      allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
 
       expect(commands.run("/model").output).not_to include("steer cut")
     end
@@ -275,7 +275,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
     describe "on a successful switch" do
       it "carries the model's thinking level after the model note" do
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
 
         expect(commands.run("/model alpha:gemma-small").output)
@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::SessionCommands do
       end
 
       it "prefers the session's own level over the model's" do
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
         session.thinking = :low
 
@@ -296,7 +296,7 @@ RSpec.describe Samagotchi::SessionCommands do
       end
 
       it "puts the level before the notes part" do
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
         gemma = Samagotchi::ModelNotes::Note.new(name: "model_notes_gemma", scope: "project", body: "B", chars: 1, digest: "d")
         allow(Samagotchi::ModelNotes).to receive(:for).and_return([gemma])
@@ -307,7 +307,7 @@ RSpec.describe Samagotchi::SessionCommands do
       end
 
       it "carries the level on a reset to the default" do
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
 
         expect(commands.run("/model clear").output)
@@ -316,7 +316,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
       it "carries the level after the default clause" do
         allow(Samagotchi::ConfigFile).to receive(:write_default_model!)
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
 
         expect(commands.run("/model alpha:gemma-small --default").output)
@@ -326,7 +326,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
       it "carries the level before the alias clause" do
         allow(Samagotchi::ConfigFile).to receive(:write_model_alias!)
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
 
         expect(commands.run("/model alpha:gemma-small --alias gemma").output)
@@ -336,7 +336,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
       it "leaves a failed-persist alias reply without the level" do
         allow(Samagotchi::ConfigFile).to receive(:write_model_alias!).and_raise(StandardError, "disk full")
-        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        allow(Samagotchi::ModelSettings).to receive(:all)
           .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
 
         expect(commands.run("/model alpha:gemma-small --alias gemma").output)

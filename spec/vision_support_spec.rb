@@ -134,7 +134,7 @@ RSpec.describe Samagotchi::VisionSupport do
       hosts = Samagotchi::HostConfig.all(env: @env)
       expect(hosts["main"].vision).to be(false)
       expect(hosts["box"].vision).to be_nil
-      expect(Samagotchi::ConfigFile.model_settings(env: @env)["ornith"]).to eq(Samagotchi::ModelSettings.new(vision: true))
+      expect(Samagotchi::ModelSettings.all(env: @env)["ornith"]).to eq(Samagotchi::ModelSettings.new(vision: true))
     end
   end
 end
