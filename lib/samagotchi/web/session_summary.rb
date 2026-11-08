@@ -141,7 +141,7 @@ module Samagotchi
       # no network) is resolved only for a session that has a saved context
       # to count. One registry per caller (the hub) or one built here.
       def budget_resolver(session, registry)
-        -> { EffectiveModel.session_budget(session, registry: registry ||= HostRegistry.new) }
+        -> { EffectiveModel.session_budget(session, registry: registry ||= HostRegistry.current) }
       end
       private_class_method :budget_resolver
 

@@ -63,13 +63,13 @@ module Samagotchi
     # list's ctx % and a spawn-time check all read.
     # @param session [Session, nil]
     # @param registry [HostRegistry, nil] the hosts to resolve against;
-    #   HostRegistry.new by default
+    #   HostRegistry.current by default
     # @return [Hash, nil] Explained#summary, symbol keys
     def self.session_llm_context(session, registry: nil)
       return nil if session.nil?
 
       own = session.llm_context
-      of_session(session, registry: registry || HostRegistry.new).llm_context_explained(own&.resolve_args || {})&.summary(own)
+      of_session(session, registry: registry || HostRegistry.current).llm_context_explained(own&.resolve_args || {})&.summary(own)
     rescue StandardError # degrade-ok: a saved session's model that resolves nowhere has no budget to show; the readers log their own
       nil
     end

@@ -286,6 +286,7 @@ module Samagotchi
     def self.default_relist(hosts)
       lambda do |host_name, relist_env|
         require_relative "host_registry"
+        # Not .current: the caller's hosts, and a fresh listing is the point.
         registry = Samagotchi::HostRegistry.new(hosts_config: hosts, env: relist_env)
         answer = nil
         thread = Thread.new { answer = registry.list_models(host_name) }

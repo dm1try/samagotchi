@@ -230,7 +230,7 @@ module Samagotchi
     # engine keys memory_write current_model_only): which `<name>.<key>.md`
     # overlays are this model's.
     def model_key_for(model, env)
-      ModelOverlay.key_for(HostRegistry.new(env: env).bare_name(model)) || "-"
+      ModelOverlay.key_for(registry(env).bare_name(model)) || "-"
     rescue StandardError
       ModelOverlay.key_for(model) || "-"
     end
@@ -241,7 +241,7 @@ module Samagotchi
     # without any. Read from the memories dirs now: a session's prompt
     # takes them at its next build (/stats names the ones it carries).
     def model_notes_for(model, env)
-      bare = HostRegistry.new(env: env).bare_name(model)
+      bare = registry(env).bare_name(model)
       key = ModelOverlay.key_for(bare)
       notes = ModelNotes.for(name: bare, key: key, fallback_key: fallback_model_key(model, key, env),
                              muted: session_muted(env), env: env, warn: false)
@@ -258,7 +258,7 @@ module Samagotchi
     def fallback_model_key(model, key, env)
       Degrade.call(:model, "fallback_key_unresolved") do
         typed = session_typed_model(env) || model
-        typed_key = ModelOverlay.key_for(HostRegistry.new(env: env).parse_qualified_model(typed).last)
+        typed_key = ModelOverlay.key_for(registry(env).parse_qualified_model(typed).last)
         typed_key == key ? nil : typed_key
       end
     end
@@ -309,7 +309,7 @@ module Samagotchi
     # Routed without model discovery, so an unqualified name may land on
     # another host at runtime after /models.
     def loop_for(model, env)
-      entry = HostRegistry.new(env: env).resolve(model).entry
+      entry = registry(env).resolve(model).entry
       return "-" unless entry
 
       return "native (raw prompt)" unless entry.chat?
@@ -325,15 +325,15 @@ module Samagotchi
     # chat host (api: openai or anthropic) has no /props, so it gets its model list
     # with the same timeouts: up/down and the ids it serves.
     def served_model_for(model, env)
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
+      hosts = registry(env)
+      target = hosts.resolve(model)
       entry = target.entry
       bare = target.bare_model
       return "-" unless entry
       return "reported per turn (remote host)" if entry.remote?
       return chat_served_model_for(entry, bare, env) if entry.chat?
 
-      client = registry.client_for(entry)
+      client = hosts.client_for(entry)
       props = client.server_props(model: bare)
       return NO_PROPS if props.nil? || props.status == :http_error
       return "unknown (the server didn't answer; is it running?)" if props.status == :network_error
@@ -411,15 +411,19 @@ module Samagotchi
       "(unknown: #{e.message})"
     end
 
+    # The hosts chi self reads (HostRegistry.current: the process's shared
+    # one for ENV, a fresh one for another env).
+    def registry(env) = HostRegistry.current(env: env)
+
     # +model+ as chi self reads its settings (EffectiveModel: every layer
     # through its ModelLookup, with +env+). Raises as HostRegistry#resolve does.
     # @return [EffectiveModel]
     def effective_model(model, env)
-      EffectiveModel.of(HostRegistry.new(env: env), ModelChoice.new(name: model, typed: model))
+      EffectiveModel.of(registry(env), ModelChoice.new(name: model, typed: model))
     end
 
     def host_for(model, env)
-      target = HostRegistry.new(env: env).resolve(model)
+      target = registry(env).resolve(model)
       entry = target.entry
       bare = target.bare_model
       return "(no hosts configured)" unless entry
@@ -432,7 +436,7 @@ module Samagotchi
     # The variable the host's API key comes from and whether it is set, or
     # comes from the Keychain (HostKeys); the key itself is never shown.
     def api_key_for(model, env)
-      name = HostRegistry.new(env: env).resolve(model).entry&.api_key_env
+      name = registry(env).resolve(model).entry&.api_key_env
       return "-" unless name
 
       state = { env: "set", keychain: "keychain" }.fetch(HostKeys.source(name, env: env), "unset")

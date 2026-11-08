@@ -230,7 +230,9 @@ module Samagotchi
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
       @judgments = build_judgments
-      @host_registry = host_registry || HostRegistry.new
+      # Taken once: a running worker keeps the hosts it started with. A
+      # client (specs) goes on a registry of its own, never the shared one.
+      @host_registry = host_registry || (client ? HostRegistry.new : HostRegistry.current)
       # The turn stages over the objectives (its audit, view and proposals)
       # and the Verify/Revise anchors (TurnStages).
       @objectives_stage = build_objectives_stage

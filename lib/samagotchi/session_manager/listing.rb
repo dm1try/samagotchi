@@ -93,7 +93,7 @@ module Samagotchi
       # @return [#call] (session) -> the session's budget in tokens or nil
       private def listing_budgets
         registry = nil
-        ->(session) { EffectiveModel.session_budget(session, registry: registry ||= HostRegistry.new) }
+        ->(session) { EffectiveModel.session_budget(session, registry: registry ||= HostRegistry.current) }
       end
 
       # The sessions delegated by +parent_id+ (the `delegate` tool), newest

@@ -194,7 +194,7 @@ module Samagotchi
     # @param typed [String, nil] the name the model was typed as (a session's model_typed)
     # @return [VisionSupport::Answer] value nil when unknown
     def self.vision_answer(model_name, registry: nil, typed: nil)
-      registry ||= HostRegistry.new
+      registry ||= HostRegistry.current
       name = ModelProfile.required_model_name(model_name)
       model = EffectiveModel.of(registry, ModelChoice.new(name: name, typed: typed.to_s.strip.empty? ? name : typed))
       return model.vision_support(nil) if model.chat?
