@@ -127,6 +127,7 @@ test("a late response from an earlier open cannot replace the latest project lis
 
 // A settled `api()` promise needs a macrotask: one microtask tick lets a stale-answer test pass without its guard.
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const submitEvent = () => new window.Event("submit", { bubbles: true, cancelable: true });
 
 test("New project opens with the default root's parent and places the caret at the end", async () => {
   const row = { ...current, root_label: "~/projects/samagotchi" };
@@ -171,7 +172,7 @@ test("creating a project navigates to its project scope without a hash", async (
   const input = s.picker.pop.querySelector('[name="dir"]');
   input.value = dir;
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  s.picker.pop.querySelector("form").dispatchEvent(submitEvent());
   await tick();
 
   assert.deepEqual(calls.at(-1), ["/api/projects", { method: "POST", body: JSON.stringify({ dir }) }]);
@@ -190,11 +191,15 @@ test("a create refusal shows the server detail and keeps the entered path", asyn
   const input = s.picker.pop.querySelector('[name="dir"]');
   input.value = "/home/me";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  assert.equal(input.getAttribute("aria-invalid"), "false");
+  s.picker.pop.querySelector("form").dispatchEvent(submitEvent());
   await tick();
 
   assert.equal(s.picker.pop.querySelector('[name="dir"]').value, "/home/me");
   assert.equal(s.picker.pop.querySelector('[role="alert"]').textContent, "home cannot be a project");
+  const field = s.picker.pop.querySelector('[name="dir"]');
+  assert.equal(field.getAttribute("aria-invalid"), "true");
+  assert.equal(field.getAttribute("aria-describedby"), s.picker.pop.querySelector('[role="alert"]').id);
   s.done();
 });
 
@@ -218,12 +223,52 @@ test("a create response after the picker closes is dropped", async () => {
   s.button.click();
   await Promise.resolve();
   s.picker.pop.querySelector('[data-act="new-project"]').click();
-  s.picker.pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  s.picker.pop.querySelector("form").dispatchEvent(submitEvent());
   s.picker.pop.querySelector('[data-act="close"]').click();
   resolve({ outcome: "created", root: "/new", dir: "/new" });
   await tick();
 
   assert.deepEqual(s.assigned, []);
   assert.equal(s.picker.isOpen(), false);
+  s.done();
+});
+
+test("a second submit while a create is out sends no second request", async () => {
+  let posts = 0;
+  let resolve;
+  const pending = new Promise((done) => { resolve = done; });
+  const s = openPicker({ api: async (path, opts) => {
+    if (opts?.method !== "POST") return [current, other];
+    posts += 1;
+    return pending;
+  } });
+  s.button.click();
+  await tick();
+  s.picker.pop.querySelector('[data-act="new-project"]').click();
+  const form = s.picker.pop.querySelector("form");
+  form.dispatchEvent(submitEvent());
+  form.dispatchEvent(submitEvent());
+  resolve({ outcome: "created", root: "/new", dir: "/new" });
+  await tick();
+
+  assert.equal(posts, 1);
+  assert.deepEqual(s.assigned, [projectScopeHref("/new", "")]);
+  s.done();
+});
+
+test("a project list that loads after the form opened leaves the caret in the field", async () => {
+  let resolve;
+  const pending = new Promise((done) => { resolve = done; });
+  const s = openPicker({ api: () => pending });
+  s.button.click();
+  s.picker.pop.querySelector('[data-act="new-project"]').click();
+  const input = s.picker.pop.querySelector('[name="dir"]');
+  assert.equal(document.activeElement, input);
+
+  resolve([current, other]);
+  await tick();
+
+  assert.equal(s.picker.pop.querySelectorAll("a.project-row:not(.project-all)").length, 2);
+  assert.equal(document.activeElement, s.picker.pop.querySelector('[name="dir"]'));
   s.done();
 });
