@@ -201,6 +201,9 @@ module Samagotchi
       # @param plugin_file [String, nil] the installed plugin file; its name
       #   and sha256 are recorded (the Engine checks it at load) with a base
       #   snapshot
+      # @param plugin_required [Boolean] the manifest's plugin: required: true
+      #   (a guardrail plugin), recorded with it as "required": true, so the
+      #   Engine knows it whatever becomes of the kept manifest.yml
       # @param requires_chi [String, nil] the manifest's requirement
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
       # @param marks [Array<FileStanding::Behind>] files an upgrade left behind;
@@ -227,7 +230,7 @@ module Samagotchi
       #   an older chi sharing this memories dir reads only them
       #   (docs/internals/bundles.md); a key a later manifest gains is never added
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
+                guardrails_files: {}, plugin_file: nil, plugin_required: false, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false, manifest_from: nil)
         FileUtils.mkdir_p(@bundle_dir)
@@ -328,6 +331,7 @@ module Samagotchi
           content = File.binread(plugin_file.to_s) # the base snapshot's bytes
           manifest_data["plugin"] = { "file" => File.basename(plugin_file.to_s),
                                       "sha256" => dev ? DEV_SHA : FileDigest.sha256(plugin_file.to_s) }
+          manifest_data["plugin"]["required"] = true if plugin_required
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end

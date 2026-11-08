@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - `web.reload_check` (off by default): chi web checks each finished turn against a reload of it and logs `reload_mismatch` with the kinds that differed and the known divergences that explain them (no content).
+- A bundle's plugin can guard tool calls fail-closed: `chi.on(:before_tool_call, on_error: :fail_closed)` denies the call its block raised on, and a plugin its manifest marks `required: true` (under `plugin:`) that fails to load (an edited file, an unmet `requires_chi`, a raise) makes chi deny every tool call until it is fixed, as a fail-closed bundle hook does. `chi bundle check` warns about a fail-closed hook whose plugin isn't marked required (docs/plugins.md).
 
 ### Changed
 

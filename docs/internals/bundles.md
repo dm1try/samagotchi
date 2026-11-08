@@ -88,6 +88,12 @@ status and diff, `Builder` and `InstalledCopy`. Their requires_chi checks are `I
 `Hooks::BundleLoader.load` is given the installed bundle's manifest and uses the same gate. `GuardrailWiring#rules_stamp` stats each bundle's
 `manifest.yml` with its `manifest.json` and `guardrails/*`, so a changed requires_chi re-reads the rules. No reader
 calls `Manifest.new` on a kept file: `Manifest.tolerant` through `InstalledManifest` is the one read.
+A guardrail plugin (`plugin:` `required: true`) is known from `InstalledManifest#plugin_required` before
+`Plugin::Loader.load_bundle` builds it: the install records the flag in the record's `plugin:` (`PluginRef#required`,
+`Provenance#write`'s `plugin_required:`), and the kept manifest's flag is ORed with it, so a missing, edited or
+unparsable kept manifest.yml never drops it (an older chi's `PluginRef` ignores the key):
+its failure goes to the hook failures as required (`ExtensionLoad#load_plugins` passes them as `guardrail_failures:`),
+where the gate denies every tool call; a `chi.on(on_error: :fail_closed)` hook is wrapped `Hooks.wrap(policy: :deny)`.
 The checks live in `Hooks::BundleLoader.load` and `Plugin::Loader.load_bundle`; the loading itself is
 `BundleLoader.load_hook_file` (one hook file, into a given `namespace:`) and `Plugin::Loader.register_file` (one
 plugin file: build, `register`, `commit!`), which raise instead of logging: the bundle test kit

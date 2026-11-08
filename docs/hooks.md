@@ -465,6 +465,10 @@ change), as for every hook.
   (missing file, syntax error), chi denies every tool call and says why; if it
   raises as a `before_tool_call` hook, that call is denied. See
   [Guardrails](guardrails.md#failing-closed).
+- A plugin's `chi.on(:before_tool_call, on_error: :fail_closed)` (chi newer than 0.156.0) is
+  the same for a bundle: a raise denies that call, and a plugin its manifest
+  marks `required: true` that fails to load denies every call. See
+  [plugins.md](plugins.md#a-guard-that-fails-closed-on_error-fail_closed).
 
 A hook that fails to load is reported as a `[samagotchi:hooks]` warning and
 once in the UI.

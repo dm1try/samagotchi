@@ -1449,10 +1449,13 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
 
 ## Failing closed
 
-- A config hook with `required: true`, or a bundle `before_tool_call` hook with
-  `on_error: fail_closed`, that fails to load (missing, syntax error, or for a
-  bundle hook a sha256 that differs from the installed one) makes chi deny
-  every tool call. One that raises when called denies that call.
+- A config hook with `required: true`, a bundle `before_tool_call` hook with
+  `on_error: fail_closed`, or a bundle plugin its manifest marks `required: true`
+  (`plugin:` `required: true`, for a `chi.on(:before_tool_call, on_error:
+  :fail_closed)` guard, chi newer than 0.156.0, [plugins.md](plugins.md#a-guard-that-fails-closed-on_error-fail_closed)),
+  that fails to load (missing, syntax error, an unmet `requires_chi`, or for a
+  bundle's file a sha256 that differs from the installed one) makes chi deny
+  every tool call. A fail-closed hook that raises when called denies that call.
 - Other hooks stay fail-open; a load failure is a warning.
 - Every load failure is shown once, at the start of the first turn
   (`guardrails> …` in the terminal, a red line on the web).

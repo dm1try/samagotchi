@@ -135,6 +135,19 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "but plugin.rb uses ctx.cost, which needs chi 0.83.0 (fix: requires_chi: \">= 0.83.0\")"])
   end
 
+  it "fail-closed: a fail-closed chi.on hook in a plugin the manifest doesn't call required" do
+    edit("plugin.rb") { |text| text.sub("    chi.on(:after_tool_call)", "    chi.on(:before_tool_call, on_error: :fail_closed) { |_event| nil }\n    chi.on(:after_tool_call)") }
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', "requires_chi: \">= #{Samagotchi::VERSION}\"") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn fail-closed plugin.rb:8: a fail-closed chi.on hook, but the manifest's plugin: has no " \
+                                   "required: true: if the plugin fails to load, tool calls still run " \
+                                   "(fix: add required: true under plugin: in manifest.yml)"])
+    out.truncate(0)
+    out.rewind
+    edit("manifest.yml") { |text| text.sub("  file: plugin.rb\n", "  file: plugin.rb\n  required: true\n") }
+    expect(findings(:warn)).to eq([])
+  end
+
   it "requires-chi-floor: a member of a ctx object newer than the object itself" do
     edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.30.0"') }
     edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", "ctx.notify(ctx.sessions.children.size.to_s)") }

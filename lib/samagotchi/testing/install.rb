@@ -23,7 +23,8 @@ module Samagotchi
     module Install
       # warnings: the Installer's; plugin_failures / hook_failures:
       # [Guardrails::LoadFailures::Failure] of this bundle, each location
-      # in the source dir; registered: what it registered (#registered).
+      # in the source dir (hook_failures: the guardrails', a required
+      # plugin's among them); registered: what it registered (#registered).
       Result = Data.define(:name, :warnings, :plugin_failures, :hook_failures, :registered) do
         def failures = plugin_failures + hook_failures
       end

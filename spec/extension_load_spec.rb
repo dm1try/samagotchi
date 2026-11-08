@@ -91,12 +91,15 @@ RSpec.describe Samagotchi::ExtensionLoad do
     expect(Samagotchi::ConfigFile).to have_received(:bundle_settings).once
   end
 
-  it "passes the bundle settings to the plugin loader" do
+  it "passes the bundle settings to the plugin loader, and the hook failures for a required plugin's" do
+    hook_failures = Samagotchi::Guardrails::LoadFailures.new
+    extension_load = described_class.new(hook_failures: hook_failures)
     allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return("b" => {})
     allow(Samagotchi::Plugin::Loader).to receive(:load_installed)
     failures = Samagotchi::Guardrails::LoadFailures.new
     extension_load.load_plugins(:registries, failures: failures)
 
-    expect(Samagotchi::Plugin::Loader).to have_received(:load_installed).with(:registries, failures: failures, settings: { "b" => {} })
+    expect(Samagotchi::Plugin::Loader).to have_received(:load_installed)
+      .with(:registries, failures: failures, guardrail_failures: hook_failures, settings: { "b" => {} })
   end
 end

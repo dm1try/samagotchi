@@ -60,7 +60,7 @@ module Samagotchi
           prompt_sections: @prompt_sections,
           prompt_changed: -> { prompt_changed! },
           judgments: @judgments,
-          hook_failed: ->(hook, failed) { @hook_routes.plugin_hook_failed(hook, failed) }
+          hook_failed: ->(hook, failed, effect: :log) { @hook_routes.plugin_hook_failed(hook, failed, effect: effect) }
         )
         # What plugins show while they load (an MCP server that didn't
         # start) waits for the first turn, beside the load warnings: no UI

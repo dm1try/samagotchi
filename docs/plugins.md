@@ -28,6 +28,8 @@ version: 1.0.0
 plugin:
   file: plugin.rb
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
+  # required: true           # optional: a guardrail plugin; if it fails to load, every tool call is
+                             # denied (see chi.on's on_error: :fail_closed; chi newer than 0.156.0)
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
                              # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
@@ -469,7 +471,7 @@ end
   of reach until the user declares it (`/toolkit add NAME`), with one warn
   notice by your bundle's name.
 
-### `chi.on(event, priority: 100) { |event, ctx| … }`
+### `chi.on(event, priority: 100, on_error: :log) { |event, ctx| … }`
 
 This is a bundle hook, the same as a `hooks/*.rb` file. See
 [hooks.md](hooks.md#hook-events) for the events; on `:after_turn`,
@@ -481,6 +483,33 @@ attaches refs to it ([Refs on the answer](hooks.md#refs-on-the-answer-display-on
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped; the first failure per
 event in a worker also shows once in every UI (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`).
+
+#### A guard that fails closed: `on_error: :fail_closed`
+
+A `:before_tool_call` guard can fail closed (chi newer than 0.156.0; `on_error:` on any
+other event, or a value other than `:log` / `:fail_closed`, is a load error):
+
+```ruby
+chi.on(:before_tool_call, priority: 10, on_error: :fail_closed) { |event, _ctx| @guard.call(event) }
+```
+
+- A raise in the block denies the call it was about (`guardrail plugin.rb
+  (bundle x) before_tool_call hook raised …`), and its first failure tells
+  every UI that it denies the calls it guards.
+- Mark the plugin required in its manifest (`plugin:` `required: true`). The
+  install records it with the plugin (manifest.json's `plugin:`, beside the
+  kept manifest.yml), so chi knows it before the plugin registers anything,
+  and an edited or missing kept manifest.yml doesn't lose it. A plugin that then fails
+  to load (a sha256 that differs, an unmet `requires_chi`, a raise in the file
+  or in `register`) is a **required guardrail failure**: every tool call is
+  denied until it is fixed ([guardrails.md](guardrails.md#failing-closed)).
+  Without the flag a fail-closed hook still denies the call it raises on, but
+  a load failure denies nothing; `chi bundle check` warns (`fail-closed`) and
+  the log says so (`plugin_fail_closed_unrequired`).
+- An older chi doesn't know `on_error:`: `chi.on` raises on the keyword, so
+  the whole plugin fails to load there, and not as a guardrail (that chi ignores
+  `required:`). Give the bundle a `requires_chi` that leaves such a chi out
+  (`"> 0.156.0"`; once the release is out, `chi bundle check` names its floor).
 
 To act from the block, use `ctx`: `ctx.notify`, `ctx.ask_user`,
 `ctx.steer`, `ctx.stop_turn`, `ctx.stop_generation`. Inside the block they
@@ -1622,7 +1651,11 @@ A plugin that fails to load is shown on stderr at start, and in every UI as
 soon as the session's UI is up (`plugins> plugin plugin.rb (bundle x) failed
 to load (…)`); a UI that joins later gets it too. The rest
 of chi, including the other plugins, works as usual. Unlike a required
-guardrail, a plugin failure does not deny tool calls.
+guardrail, a plugin failure does not deny tool calls, unless the manifest marks
+the plugin `required: true` (a guardrail plugin,
+[`on_error: :fail_closed`](#a-guard-that-fails-closed-on_error-fail_closed)):
+then it is shown with the guardrails (`plugin plugin.rb (bundle x) failed to
+load (…). Every tool call is denied until it is fixed`) and every tool call is denied.
 
 A change needs a restart. A running worker keeps the plugins it started
 with. After an install or upgrade, a worker only loads the new code when it
