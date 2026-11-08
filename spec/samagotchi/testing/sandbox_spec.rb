@@ -127,8 +127,8 @@ RSpec.describe Samagotchi::Testing::Sandbox do
   # (The kit's Gate takes a TurnContext: turn_context.rb and llm/turn_settings.rb.)
   # (ReplyWait reads liveness through reply_wait/liveness.rb.)
   # (Merger reads a memory's FileState and FileActions: file_state.rb, file_actions.rb.)
-  # (SessionPaths: Session's paths and id rule, a leaf.)
-  it "requires no Engine with the kit, in under 285 chi files" do
+  # (SessionPaths, SessionField: Session's leaves.)
+  it "requires no Engine with the kit, in under 286 chi files" do
     lib = File.expand_path("../../../lib", __dir__)
     script = 'lib = ARGV.fetch(0); require "samagotchi/testing"; ' \
              'print [$LOADED_FEATURES.count { |f| f.start_with?(lib + "/samagotchi/") }, ' \
@@ -137,6 +137,6 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(status).to be_success, err
     count, engine = out.split
     expect(engine).to eq("nil")
-    expect(Integer(count)).to be < 285
+    expect(Integer(count)).to be < 286
   end
 end

@@ -14,6 +14,7 @@ require_relative "session_setup"
 require_relative "prompt_note"
 require_relative "working_set_pin"
 require_relative "session_review"
+require_relative "session_field"
 require_relative "session_paths"
 require_relative "version"
 
@@ -67,32 +68,153 @@ module Samagotchi
     SORT_KEYS = %w[created_at updated_at].freeze
     SORT_ORDERS = %w[asc desc].freeze
 
-    attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                  :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
-                  :used_memory_names
-    # The id the prompt a session is created with gets (SessionManager
-    # .spawn_session), so its first turn is a turn with an id like one sent
-    # later: the worker's first turn takes it as its origin, its reply file
-    # and last_turn carry it, and a wait for it (`chi send --new --wait`,
-    # chi web's create) can name it (`--wait --turn T ID`). nil for a
-    # session created idle, and for one saved before the field existed.
-    attr_accessor :first_turn_id
-    # Memories the session was started with (--memory) and memories hidden
-    # from it (--mute): the worker rebuilds the same prompt on a respawn.
-    # Names as given; the engine normalizes them.
-    attr_accessor :preloaded_memory_names, :muted_memory_names
-    # The name the user gave the session (/title, TitleCommand), else nil:
-    # every list, card and tab shows it in place of #first_preview (see
-    # #display_title). A continue's new link inherits it.
-    attr_accessor :title
-    # The files chi --append-system-prompt put into the session's system
-    # prompt (absolute paths; config.yml's append_system_prompt: entries
-    # aren't stored): kept on respawns, copied by a fork and a continue
-    # (SessionSetup).
-    attr_reader :appended_prompt_files
+    # A field a session file must have (KeyError without it).
+    REQUIRED = SessionField::REQUIRED
+
+    # How the plain rows read and write their values.
+    BOOLEAN = ->(value) { !!value }
+    NAMES = ->(names) { name_list(names) }
+    LIST = ->(value) { Array(value) }
+    ID = ->(value) { value&.to_s }
+    MESSAGES = ->(messages) { SessionField.scrub_utf8(messages.map { |msg| SessionField.stringify_keys(msg) }) }
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES
+
+    # The fields of <id>.json, in the order #save writes them: key => its
+    # SessionField (the value for a file without it, REQUIRED for the ones
+    # it must have; how it is read and written). Session.new, .from_h and
+    # #to_h all go by this table: a new field is one row (plus a
+    # SessionSetup member when a fork and a continue carry it). Messages
+    # change key type on the way (symbols in memory, strings on disk).
+    #
+    # A new field: a chi older than it (from the release after 0.130.0)
+    # keeps the key as it was (#extra_fields) but doesn't honour it, and the
+    # next newer chi reads it again. So it must be safe to come back
+    # unchanged after an older chi ran turns on the session: static data, or
+    # append-only data the older chi never appends to (review, verify_fresh,
+    # first_turn_id, verdicts); a cursor into messages, which an older chi
+    # would have moved, needs a check against what it points at. Only
+    # top-level keys are kept: the value objects (SessionReview,
+    # VerifyFreshOrigin, Toolkit, LastTurn, PendingQuestion, InterruptedTurn,
+    # PromptNote, WorkingSetPin, LLMContextOverride) write their own members
+    # only, so an older chi still drops a new sub-key of one of them; add a
+    # top-level field when an older chi must keep it. A removed key would
+    # stay an extra forever: leave it out of the extras in .from_h then (no
+    # key was ever removed).
+    FIELDS = [
+      SessionField.plain("metadata_version", 1, fresh: METADATA_VERSION),
+      # The chi version that last saved the loaded file (#to_h writes this
+      # chi's VERSION); nil for a file from 0.130.0 or older.
+      SessionField.plain("written_by", nil, write: ->(_) { VERSION }),
+      SessionField.plain("id", REQUIRED),
+      SessionField.plain("mode", REQUIRED),
+      SessionField.plain("model_name", REQUIRED),
+      # The name model_name was typed as when that differs from the resolved
+      # ref stored in model_name (an alias: `small` for `gemma-small`), else
+      # nil. The models: lookup takes it (HostRegistry#lookup_names).
+      SessionField.plain("model_typed", nil),
+      SessionField.plain("working_directory", REQUIRED),
+      # The conversation (symbol keys in memory; .from_h symbolizes a
+      # file's); a running turn's checkpoint is saved in its place (#to_h).
+      SessionField.plain("messages", [], fresh: REQUIRED, write: MESSAGES),
+      SessionField.plain("created_at", REQUIRED),
+      SessionField.plain("updated_at", REQUIRED),
+      SessionField.plain("status", STATUS_IDLE),
+      SessionField.plain("last_prompt", ""),
+      SessionField.plain("first_preview", ""),
+      # The name the user gave the session (/title, TitleCommand), else nil:
+      # every list, card and tab shows it in place of #first_preview (see
+      # #display_title). A continue's new link inherits it.
+      SessionField.plain("title", nil),
+      SessionField.plain("test_run", false, cast: BOOLEAN, write: BOOLEAN),
+      SessionField.typed("pending_question", nil),
+      SessionField.plain("used_memory_names", [], cast: NAMES, write: LIST),
+      # The project the session was started in (ProjectScope.root_for its
+      # folder), stored because worktrees are deleted after a merge and a
+      # deleted folder no longer leads to its repository. nil outside a repo,
+      # and in files written before the field existed (see #project_root).
+      SessionField.plain("project_root", nil),
+      # Memories the session was started with (--memory) and memories hidden
+      # from it (--mute): the worker rebuilds the same prompt on a respawn.
+      # Names as given; the engine normalizes them.
+      SessionField.plain("preloaded_memory_names", [], cast: NAMES, write: LIST),
+      SessionField.plain("muted_memory_names", [], cast: NAMES, write: LIST),
+      SessionField.typed("prompt_notes", []),
+      # The session that delegated this one (the `delegate` tool) or that a
+      # plugin forked it from (ctx.sessions.fork), else nil.
+      # Set before the spawn and kept on respawns, like preloaded_memory_names.
+      SessionField.plain("parent_id", nil, cast: ID),
+      # A `chi scratch` session: deleted when its terminal leaves (its worker
+      # deletes it too once its last client is gone), and by the next sweep
+      # (or `chi sessions clean`) when both died first.
+      SessionField.plain("scratch", false, cast: BOOLEAN),
+      SessionField.typed("last_turn", nil),
+      SessionField.typed("verdicts", nil, optional: true),
+      # Started by the `delegate` tool (a fork has a parent_id too, but isn't
+      # one): see #delegate?.
+      SessionField.plain("delegate", false, cast: BOOLEAN),
+      SessionField.typed("llm_context", nil),
+      # The session this one continues (SessionContinue.run): the
+      # previous link of a chain, "the next run of the same routine", else
+      # nil. Not a parent: archiving one link leaves the next alone. The chain
+      # itself is derived (SessionChain), never stored.
+      SessionField.plain("continues", nil, cast: ID),
+      SessionField.typed("thinking", nil),
+      SessionField.typed("reasoning_history", nil),
+      # The files chi --append-system-prompt put into the session's system
+      # prompt (absolute paths; config.yml's append_system_prompt: entries
+      # aren't stored): kept on respawns, copied by a fork and a continue
+      # (SessionSetup). Cast on every set too.
+      SessionField.plain("appended_prompt_files", [], cast: ->(paths) { Array(paths).map(&:to_s).reject(&:empty?).uniq },
+                                                      write: LIST),
+      SessionField.typed("toolkit", nil),
+      SessionField.typed("toolkit_origin", "chosen"),
+      # The two parts of #settings (Session.new's settings:, .from_h composes
+      # them): its bundles part, then its core part.
+      SessionField.file_only("bundle_settings", {}, from: :settings, write: ->(settings) { settings.bundles }),
+      SessionField.file_only("config_settings", {}, from: :settings, write: ->(settings) { settings.core }),
+      SessionField.typed("interrupted_turn", nil),
+      SessionField.typed("parent_answers", nil),
+      SessionField.typed("working_set_pins", []),
+      SessionField.typed("review", nil, optional: true),
+      # The id the prompt a session is created with gets (SessionManager
+      # .spawn_session), so its first turn is a turn with an id like one sent
+      # later: the worker's first turn takes it as its origin, its reply file
+      # and last_turn carry it, and a wait for it (`chi send --new --wait`,
+      # chi web's create) can name it (`--wait --turn T ID`). nil for a
+      # session created idle, and for one saved before the field existed.
+      SessionField.plain("first_turn_id", nil, optional: true),
+      SessionField.typed("verify_fresh", nil, optional: true)
+    ].to_h { |field| [field.key, field] }.freeze
+
+    # FIELDS a session file has only when set: a session without them saves
+    # as it did before they existed.
+    OPTIONAL_FIELDS = FIELDS.values.select(&:optional).map(&:key).freeze
+
+    # Session.new's keywords: every FIELDS row's attr.
+    ATTRS = FIELDS.values.filter_map(&:attr).freeze
+
+    # @raise [ArgumentError] a keyword Session.new doesn't take, or a
+    #   required one missing (Ruby's own wording)
+    def self.check_attrs!(attrs)
+      unknown = attrs.keys - ATTRS
+      raise ArgumentError, "unknown keyword#{"s" if unknown.size > 1}: #{unknown.map(&:inspect).join(", ")}" unless unknown.empty?
+
+      missing = FIELDS.values.select(&:fresh_required?).map(&:attr) - attrs.keys
+      raise ArgumentError, "missing keyword#{"s" if missing.size > 1}: #{missing.map(&:inspect).join(", ")}" unless missing.empty?
+    end
+
+    # The plain fields' readers and writers (each one's meaning is at its
+    # FIELDS row): a writer takes the value as given (Session.new and
+    # .from_h cast it), except the ones defined below.
+    attr_accessor :id, :metadata_version, :mode, :model_name, :model_typed, :working_directory, :messages,
+                  :created_at, :updated_at, :status, :last_prompt, :first_preview, :title, :test_run,
+                  :used_memory_names, :preloaded_memory_names, :muted_memory_names, :parent_id, :scratch,
+                  :continues, :first_turn_id
+    attr_writer :project_root, :delegate
+    attr_reader :appended_prompt_files, :written_by
 
     def appended_prompt_files=(paths)
-      @appended_prompt_files = Array(paths).map(&:to_s).reject(&:empty?).uniq
+      @appended_prompt_files = FIELDS.fetch("appended_prompt_files").load(paths)
     end
     # The model notes the session's system prompt carried at its last build
     # (Array<PromptNote>: name, scope, chars, digest; ModelNotes), set by the
@@ -105,31 +227,6 @@ module Samagotchi
     def prompt_notes=(notes)
       @prompt_notes = PromptNote.list(notes)
     end
-    # The name model_name was typed as when that differs from the resolved
-    # ref stored in model_name (an alias: `small` for `gemma-small`), else
-    # nil. The models: lookup takes it (HostRegistry#lookup_names).
-    attr_accessor :model_typed
-    # The project the session was started in (ProjectScope.root_for its
-    # folder), stored because worktrees are deleted after a merge and a
-    # deleted folder no longer leads to its repository. nil outside a repo,
-    # and in files written before the field existed (see #project_root).
-    attr_writer :project_root
-    # The session that delegated this one (the `delegate` tool) or that a
-    # plugin forked it from (ctx.sessions.fork), else nil.
-    # Set before the spawn and kept on respawns, like preloaded_memory_names.
-    attr_accessor :parent_id
-    # Started by the `delegate` tool (a fork has a parent_id too, but isn't
-    # one): see #delegate?.
-    attr_writer :delegate
-    # The session this one continues (SessionContinue.run): the
-    # previous link of a chain, "the next run of the same routine", else
-    # nil. Not a parent: archiving one link leaves the next alone. The chain
-    # itself is derived (SessionChain), never stored.
-    attr_accessor :continues
-    # A `chi scratch` session: deleted when its terminal leaves (its worker
-    # deletes it too once its last client is gone), and by the next sweep
-    # (or `chi sessions clean`) when both died first.
-    attr_accessor :scratch
     # The question this session waits on (PendingQuestion), saved as
     # session.json's "pending_question"; nil with none. A Hash (a saved
     # record, string or symbol keys) is read with PendingQuestion.from_file.
@@ -372,59 +469,23 @@ module Samagotchi
     # FIELDS as they were. Never read by this chi.
     attr_reader :extra_fields
 
-    # The chi version that last saved the loaded file (#to_h writes this
-    # chi's VERSION); nil for a file from 0.130.0 or older.
-    attr_reader :written_by
+    # Every FIELDS row's attr is a keyword (a missing required one or an
+    # unknown one raises ArgumentError, as Ruby's keywords do), given as is
+    # (cast by the row, or by the typed fields' writers); +settings+ is the
+    # settings pair's one value, +extra_fields+ the file's unknown keys.
+    def initialize(extra_fields: {}, settings: nil, **attrs)
+      self.class.check_attrs!(attrs)
+      FIELDS.each_value do |field|
+        next unless field.attr
 
-    def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION, written_by: nil, status: STATUS_IDLE, last_prompt: "",
-                   first_preview: "", first_turn_id: nil, test_run: false, pending_question: nil,
-                   used_memory_names: [], project_root: nil,
-                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
-                   continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, toolkit_origin: "chosen", settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
-                   working_set_pins: [], review: nil, verdicts: nil, verify_fresh: nil, extra_fields: {})
-      @id = id
-      @metadata_version = metadata_version
-      @written_by = written_by
-      @mode = mode
-      @model_name = model_name
-      @model_typed = model_typed
-      @working_directory = working_directory
-      @messages = messages
-      @created_at = created_at
-      @updated_at = updated_at
-      @status = status
-      @last_prompt = last_prompt
-      @first_preview = first_preview
-      @first_turn_id = first_turn_id
-      @title = title
-      @test_run = !!test_run
-      self.pending_question = pending_question
-      @used_memory_names = self.class.name_list(used_memory_names)
-      @preloaded_memory_names = self.class.name_list(preloaded_memory_names)
-      @muted_memory_names = self.class.name_list(muted_memory_names)
-      self.prompt_notes = prompt_notes
-      @project_root = project_root
-      @parent_id = parent_id&.to_s
-      @scratch = !!scratch
-      self.last_turn = last_turn
-      @delegate = !!delegate
-      @continues = continues&.to_s
-      self.llm_context = llm_context
-      self.thinking = thinking
-      self.reasoning_history = reasoning_history
-      self.appended_prompt_files = appended_prompt_files
-      self.toolkit = toolkit
-      self.toolkit_origin = toolkit_origin
+        value = attrs.fetch(field.attr) { field.fresh_value }
+        if field.via_writer
+          public_send(:"#{field.attr}=", value)
+        else
+          instance_variable_set(field.ivar, field.load(value))
+        end
+      end
       self.settings = settings
-      self.parent_answers = parent_answers
-      self.working_set_pins = working_set_pins
-      self.review = review
-      self.verdicts = verdicts
-      self.verify_fresh = verify_fresh
-      self.interrupted_turn = interrupted_turn
       @extra_fields = extra_fields.to_h { |key, value| [key.to_s, value] }.freeze
       @turn_checkpoint = nil
       @archived = false
@@ -590,84 +651,12 @@ module Samagotchi
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
     end
 
-    # A field a session file must have (KeyError without it).
-    REQUIRED = Object.new.freeze
-
-    # The fields of <id>.json, in the order #save writes them: key => the
-    # value for a file without it (REQUIRED for the ones it must have).
-    # .from_h and #to_h both go by this table; messages change key type on
-    # the way (symbols in memory, strings on disk); last_turn, prompt_notes
-    # and pending_question are value objects in memory (LastTurn,
-    # PromptNote, PendingQuestion).
-    #
-    # A new field: a chi older than it (from the release after 0.130.0)
-    # keeps the key as it was (#extra_fields) but doesn't honour it, and the
-    # next newer chi reads it again. So it must be safe to come back
-    # unchanged after an older chi ran turns on the session: static data, or
-    # append-only data the older chi never appends to (review, verify_fresh,
-    # first_turn_id, verdicts); a cursor into messages, which an older chi
-    # would have moved, needs a check against what it points at. Only
-    # top-level keys are kept: the value objects (SessionReview,
-    # VerifyFreshOrigin, Toolkit, LastTurn, PendingQuestion, InterruptedTurn,
-    # PromptNote, WorkingSetPin, LLMContextOverride) write their own members
-    # only, so an older chi still drops a new sub-key of one of them; add a
-    # top-level field when an older chi must keep it. A removed key would
-    # stay an extra forever: leave it out of the extras in .from_h then (no
-    # key was ever removed).
-    FIELDS = {
-      "metadata_version" => 1,
-      "written_by" => nil,
-      "id" => REQUIRED,
-      "mode" => REQUIRED,
-      "model_name" => REQUIRED,
-      "model_typed" => nil,
-      "working_directory" => REQUIRED,
-      "messages" => [],
-      "created_at" => REQUIRED,
-      "updated_at" => REQUIRED,
-      "status" => STATUS_IDLE,
-      "last_prompt" => "",
-      "first_preview" => "",
-      "title" => nil,
-      "test_run" => false,
-      "pending_question" => nil,
-      "used_memory_names" => [],
-      "project_root" => nil,
-      "preloaded_memory_names" => [],
-      "muted_memory_names" => [],
-      "prompt_notes" => [],
-      "parent_id" => nil,
-      "scratch" => false,
-      "last_turn" => nil,
-      "verdicts" => nil,
-      "delegate" => false,
-      "llm_context" => nil,
-      "continues" => nil,
-      "thinking" => nil,
-      "reasoning_history" => nil,
-      "appended_prompt_files" => [],
-      "toolkit" => nil,
-      "toolkit_origin" => "chosen",
-      "bundle_settings" => {},
-      "config_settings" => {},
-      "interrupted_turn" => nil,
-      "parent_answers" => nil,
-      "working_set_pins" => [],
-      "review" => nil,
-      "first_turn_id" => nil,
-      "verify_fresh" => nil
-    }.freeze
-
-    # FIELDS a session file has only when set: a session without them saves
-    # as it did before they existed.
-    OPTIONAL_FIELDS = %w[review first_turn_id verdicts verify_fresh].freeze
-
     # A session from a parsed session file. +messages+ false leaves the
     # conversation out (the lists' lightweight summaries).
     # @raise [KeyError] for a missing REQUIRED field
     def self.from_h(data, messages: true)
-      attrs = FIELDS.to_h do |key, default|
-        [key.to_sym, default.equal?(REQUIRED) ? data.fetch(key) : data.fetch(key, default)]
+      attrs = FIELDS.to_h do |key, field|
+        [key.to_sym, field.required? ? data.fetch(key) : data.fetch(key, field.default)]
       end
       attrs[:settings] = SessionConfig::Settings.new(core: attrs.delete(:config_settings), bundles: attrs.delete(:bundle_settings))
       attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
@@ -826,21 +815,15 @@ module Samagotchi
     # messages.
     def to_h
       checkpoint = checkpointed
-      FIELDS.keys.to_h do |key|
-        value = case key
-                when "messages"
-                  (checkpoint ? checkpoint[:messages] : @messages).map { |msg| scrub_utf8(stringify_message_keys(msg)) }
+      FIELDS.each_value.with_object({}) do |field, file|
+        value = case field.key
+                when "messages" then field.dump(checkpoint ? checkpoint[:messages] : @messages)
                 when "interrupted_turn" then (checkpoint ? checkpoint[:marker] : @interrupted_turn)&.to_file
-                when "pending_question" then @pending_question && scrub_utf8(@pending_question.to_file)
-                when "written_by" then VERSION
-                when "test_run" then !!@test_run
-                when "delegate" then @delegate
+                when "pending_question" then @pending_question && SessionField.scrub_utf8(@pending_question.to_file)
                 when "llm_context" then llm_context_file
                 when "thinking" then thinking_file
                 when "reasoning_history" then reasoning_history_file
                 when "toolkit" then @toolkit&.to_file
-                when "bundle_settings" then @settings.bundles
-                when "config_settings" then @settings.core
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "working_set_pins" then @working_set_pins.map(&:to_file)
@@ -848,17 +831,14 @@ module Samagotchi
                 when "verify_fresh" then @verify_fresh&.to_file
                 when "verdicts"
                   @verdicts&.map do |record|
-                    scrub_utf8(record.to_h do |key, entry|
-                      [key.to_s, entry.is_a?(Hash) ? stringify_message_keys(entry) : entry]
+                    SessionField.scrub_utf8(record.to_h do |key, entry|
+                      [key.to_s, entry.is_a?(Hash) ? SessionField.stringify_keys(entry) : entry]
                     end)
                   end
-                when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"
-                  Array(instance_variable_get(:"@#{key}"))
-                else instance_variable_get(:"@#{key}")
+                else field.dump(instance_variable_get(field.ivar))
                 end
-        [key, value]
-      end.reject { |key, value| value.nil? && OPTIONAL_FIELDS.include?(key) }
-        .merge(@extra_fields.reject { |key, _| FIELDS.key?(key) })
+        file[field.key] = value unless value.nil? && field.optional
+      end.merge(@extra_fields.reject { |key, _| FIELDS.key?(key) })
     end
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
@@ -975,24 +955,6 @@ module Samagotchi
 
       text = self.class.preview_of(ContextNote.text_of(note))
       text.empty? ? nil : self.class.preview_of("note: #{text}")
-    end
-
-    def stringify_message_keys(hash)
-      hash.each_with_object({}) { |(k, v), h| h[k.to_s] = v }
-    end
-
-    # The last guard before JSON.generate, which raises on bytes that
-    # aren't UTF-8: a save that raised would lose the whole conversation.
-    # ToolRunner already scrubs tool output; this covers any other source.
-    def scrub_utf8(obj)
-      case obj
-      when String
-        str = obj.encoding == Encoding::UTF_8 ? obj : obj.dup.force_encoding(Encoding::UTF_8)
-        str.valid_encoding? ? str : str.scrub("?")
-      when Array then obj.map { |element| scrub_utf8(element) }
-      when Hash then obj.to_h { |key, value| [key, scrub_utf8(value)] }
-      else obj
-      end
     end
 
     class << self
