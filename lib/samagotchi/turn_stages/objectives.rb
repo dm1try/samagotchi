@@ -14,78 +14,62 @@ module Samagotchi
     # audit of what comes in at a turn's start and what goes out at its end
     # (ObjectivesAudit), the view announced when it changed, and the model's
     # proposals kept as cards until the turn is over. Its state is those
-    # proposals under their mutex, the last view announced and the audit.
+    # proposals under their mutex and the last view announced (under the
+    # event lock); the audit is built per call.
     class Objectives
       # @param side_judgments [SideJudgments] the Engine's side asks (the audit's kinds)
       # @param host_registry [HostRegistry] System 1's client resolves its host here
-      # @param state_dir [#call] the sessions dir
-      # @param recording [#call] (client, judgment, session, mode:) → the client saving its runs
-      # @param runs [#call] the Engine's SystemOne::Runs
-      # @param synchronize [#call] (&block) runs the block under the event lock (Engine#synchronize_events)
-      # @param announce [#call] (event) tells the observers (Engine#announce)
-      # @param running [#call] the running turn's conversation, nil between turns (Engine#live_conversation)
-      # @param show_card [#call] (**card) shows a card (Engine#show_card)
-      def initialize(side_judgments:, host_registry:, state_dir:, recording:, runs:, synchronize:, announce:, running:, show_card:)
+      def initialize(side_judgments:, host_registry:)
         @side_judgments = side_judgments
-        @state_dir = state_dir
-        @synchronize = synchronize
-        @announce = announce
-        @running = running
-        @show_card = show_card
+        @host_registry = host_registry
         # The last view announced (#announce), under the event lock.
         @announced = nil
         # The model's proposals until the turn is over (#finally).
         @proposals = []
         @proposals_mutex = Mutex.new
-        # With saving off nothing would come of an ask, so none is made.
-        @audit = ObjectivesAudit.new(
-          side: side_judgments, state_dir: state_dir,
-          client_for: lambda do |judgment, session|
-            next nil unless runs.call.on?
-
-            recording.call(SystemOne::Client.from_config(host_registry: host_registry, mode: ObjectivesAudit::MODE, tag: :system_one),
-                           judgment, session, mode: nil)
-          end
-        )
       end
 
       # System 1 on the objectives, in audit (ObjectivesAudit), at a turn's
       # start: the owner's turns only, and for a message a person's: a
       # reminder's or a delegate's prompt isn't one.
-      def incoming(turn)
+      # @param recorder [SystemOne::Recorder] the audit's runs (built for this call)
+      def incoming(turn, recorder:)
         return unless turn.prompt.is_a?(String) && turn.origin.human? && OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
 
-        @audit.incoming(turn.session, turn.prompt)
+        audit(turn.context.state_dir, recorder).incoming(turn.session, turn.prompt)
       end
 
       # The turn's answer, after the end event and before :after_turn (the
       # caller skips a canceled or exhausted turn): the owner's turns only.
-      def outgoing(turn, result)
+      # @param recorder [SystemOne::Recorder] the audit's runs (built for this
+      #   call: after a before_turn hook's model switch, the new model)
+      def outgoing(turn, result, recorder:)
         return unless OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
 
-        @audit.outgoing(turn.session, result.text)
+        audit(turn.context.state_dir, recorder).outgoing(turn.session, result.text)
       end
 
       # A note added between turns (Engine#add_context_note): incoming too.
-      def note(session, note) = @audit.note(session, note)
+      # @param recorder [SystemOne::Recorder] the audit's runs (built for this call)
+      # @param state_dir [String] the sessions dir
+      def note(session, note, recorder:, state_dir:) = audit(state_dir, recorder).note(session, note)
 
       # The session's objectives as the page draws them (Objectives.view), when
       # that differs from the last announced: after an edit (its file written,
       # pending), once a list note is in, at a turn's end (its moves) and after
-      # a rollback. A session with no list announces nothing. It only informs:
-      # a failure is logged, never the turn's.
-      def announce(session)
-        return unless session
+      # a rollback. A session with no list announces nothing. The caller
+      # (Engine#announce_objectives) holds the event lock, the one guard of
+      # the last view, announces the event and logs a failure: it only
+      # informs, never fails a turn.
+      # @param state_dir [String] the sessions dir
+      # @param running [Array<Hash>, nil] the running turn's conversation (Engine#live_conversation), nil between turns
+      # @return [Hash, nil] the :objectives_updated event to announce, nil when the view is the same
+      def announce(session, state_dir:, running:)
+        view = Samagotchi::Objectives.view(session.id, session.messages, state_dir: state_dir, running: running&.dup)
+        return if view.nil? || view == @announced
 
-        @synchronize.call do
-          view = Samagotchi::Objectives.view(session.id, session.messages, state_dir: @state_dir.call, running: @running.call&.dup)
-          next if view.nil? || view == @announced
-
-          @announced = view
-          @announce.call({ type: :objectives_updated, session_id: session.id, **view })
-        end
-      rescue StandardError => e
-        Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
+        @announced = view
+        { type: :objectives_updated, session_id: session.id, **view }
       end
 
       # A change the model proposes (the objectives tool), kept until the turn
@@ -108,9 +92,15 @@ module Samagotchi
       # failed or rolled-back turn keeps none, and its proposals are dropped
       # here so the next turn does not show them either: their Apply card
       # would sit after a turn whose `objectives propose` call is not in the
-      # history (a rollback after Ctrl-C drops it).
+      # history (a rollback after Ctrl-C drops it). The caller
+      # (Engine#show_objective_proposals) shows the cards.
+      # @return [Array<Hash>] the completed turn's cards (Engine#show_card's
+      #   arguments); none for any other ending
       def finally(turn)
-        turn.completed? ? show_proposals : discard_proposals(turn)
+        return proposal_cards if turn.completed?
+
+        discard_proposals(turn)
+        []
       end
 
       # For specs: the audit's asks' thread for +kind+ (ObjectivesAudit's
@@ -122,15 +112,13 @@ module Samagotchi
 
       private
 
-      def show_proposals
-        drain_proposals.each do |proposal|
+      def proposal_cards
+        drain_proposals.map do |proposal|
           id = "objectives-#{SecureRandom.hex(4)}"
-          @show_card.call(source: Samagotchi::Objectives::SOURCE, id: id, title: proposal.title, body: proposal.body,
-                          actions: [{ label: "Apply", command: proposal.action_line(id) },
-                                    { label: "Dismiss", command: "/objectives --card #{id} dismiss" }])
+          { source: Samagotchi::Objectives::SOURCE, id: id, title: proposal.title, body: proposal.body,
+            actions: [{ label: "Apply", command: proposal.action_line(id) },
+                      { label: "Dismiss", command: "/objectives --card #{id} dismiss" }] }
         end
-      rescue StandardError => e
-        Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
       end
 
       def discard_proposals(turn)
@@ -140,6 +128,22 @@ module Samagotchi
 
       def drain_proposals
         @proposals_mutex.synchronize { @proposals.slice!(0..) }
+      end
+
+      # The audit for one call, over the values it is given: nothing of it
+      # is kept. Its client is asked for only once an active objective is
+      # there (ObjectivesAudit#ask), and with saving off nothing would come
+      # of an ask, so none is made.
+      def audit(state_dir, recorder)
+        ObjectivesAudit.new(
+          side: @side_judgments, state_dir: state_dir,
+          client_for: lambda do |judgment, session|
+            next nil unless recorder.saving?
+
+            recorder.wrap(SystemOne::Client.from_config(host_registry: @host_registry, mode: ObjectivesAudit::MODE, tag: :system_one),
+                          judgment, session, mode: nil)
+          end
+        )
       end
     end
   end

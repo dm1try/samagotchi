@@ -7,7 +7,7 @@ module Samagotchi
     # with, the used memories it publishes, and the turn-end warm-up of the
     # next one (TurnStages::Warmup, built here). Writes @next_turn_waiting;
     # reads @model_settings, @kernel, @prompt_warmup, @thinking_notices,
-    # @turn_state, @turn_warmup.
+    # @turn_state, @reminder_queue, @turn_warmup.
     module TurnHelpersPart
       # The turn's settings for the kernel (LLM::TurnSettings): vision,
       # sampling and thinking, the thinking resolved before the hooks run.
@@ -40,13 +40,13 @@ module Samagotchi
       private :turn_warmup
 
       # The stage over the kernel and the Engine's PromptWarmup (built in
-      # #initialize, once the kernel is).
+      # #initialize, once the kernel and the reminder queue are). Its one
+      # callable is the system prompt, built late (side effects); the
+      # host's probe goes with each call (#next_turn_waiting, set after).
       def build_turn_warmup
-        TurnStages::Warmup.new(
-          prompt_warmup: @prompt_warmup, kernel: @kernel, turn_state: @turn_state, model_settings: @model_settings,
-          model: -> { effective_model }, system_prompt: ->(model) { system_prompt(model) },
-          reminders_due: -> { reminders_due? }, next_turn_waiting: -> { next_turn_waiting&.call }
-        )
+        TurnStages::Warmup.new(prompt_warmup: @prompt_warmup, kernel: @kernel, turn_state: @turn_state,
+                               model_settings: @model_settings, reminder_queue: @reminder_queue,
+                               system_prompt: ->(model) { system_prompt(model) })
       end
       private :build_turn_warmup
 

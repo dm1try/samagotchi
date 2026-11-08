@@ -16,14 +16,14 @@ RSpec.describe Samagotchi::TurnStages::Warmup do
   let(:waiting) { false }
   let(:stage) do
     described_class.new(prompt_warmup: prompt_warmup, kernel: kernel, turn_state: double("turn_state", carried_steers?: false),
-                        model_settings: double("model_settings", turn_llm_context: nil), model: -> { model },
-                        system_prompt: ->(_model) { "SYS" }, reminders_due: -> { false }, next_turn_waiting: -> { waiting })
+                        model_settings: double("model_settings", turn_llm_context: nil, effective_model: model),
+                        reminder_queue: double("reminder_queue", due?: false), system_prompt: ->(_model) { "SYS" })
   end
 
   before { allow(Samagotchi::PromptWarmup).to receive(:enabled?).and_return(true) }
 
   it "warms up from the turn's settings on the last slot" do
-    stage.after(turn, result)
+    stage.after(turn, result, next_turn_waiting: -> { waiting })
 
     expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: nil, vision: :vision)
     expect(prompt_warmup).to have_received(:start).with(hash_including(prompt: "PROMPT", model: "m", slot: 2))
@@ -31,14 +31,14 @@ RSpec.describe Samagotchi::TurnStages::Warmup do
   end
 
   it "sends nothing after a canceled turn" do
-    stage.after(turn, double("result", canceled?: true, resumable?: false))
+    stage.after(turn, double("result", canceled?: true, resumable?: false), next_turn_waiting: nil)
 
     expect(prompt_warmup).not_to have_received(:start)
     expect(kernel).not_to have_received(:warmup_prompt)
   end
 
   it "sends nothing after a resumable turn (its continue offer differs)" do
-    stage.after(turn, double("result", canceled?: false, resumable?: true))
+    stage.after(turn, double("result", canceled?: false, resumable?: true), next_turn_waiting: nil)
 
     expect(prompt_warmup).not_to have_received(:start)
     expect(kernel).not_to have_received(:warmup_prompt)
@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::TurnStages::Warmup do
     let(:waiting) { true }
 
     it "sends nothing" do
-      stage.after(turn, result)
+      stage.after(turn, result, next_turn_waiting: -> { waiting })
 
       expect(prompt_warmup).not_to have_received(:start)
       expect(kernel).not_to have_received(:warmup_prompt)

@@ -60,11 +60,12 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def turn(session, prompt, author: nil)
-    Struct.new(:session, :prompt, :origin).new(session, prompt, Struct.new(:author).new(author))
+    Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author).new(author),
+                                                         Struct.new(:state_dir).new(state_dir))
   end
 
   def judge(engine, session, prompt, author: nil)
-    engine.send(:context_judge).start(turn(session, prompt, author: author))
+    engine.send(:context_judge).start(turn(session, prompt, author: author), recorder: engine.send(:system_one_recorder))
     thread = engine.send(:context_judge).asks_thread
     join!(thread, "the context asks") if thread
   end
@@ -293,7 +294,7 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine
       allow(engine).to receive(:show_card).and_call_original
       running = true
-      allow(engine).to receive(:turn_running?) { running }
+      allow(engine.instance_variable_get(:@turn_state)).to receive(:running?) { running }
       session = new_session
       propose(session, "pr-412")
       answers.push([0.7, 0.9])
@@ -307,6 +308,27 @@ RSpec.describe Samagotchi::Engine do
       expect(engine).to have_received(:show_card).once.with(hash_including(id: "context-candidate-pr-412"))
       engine.send(:context_judge).show_cards_after_turn
       expect(engine).to have_received(:show_card).once
+    end
+
+    it "shows no card and holds none when the Engine moved to another session before the answer came" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      other = new_session
+      engine.instance_variable_set(:@session, session)
+      propose(session, "pr-412")
+      allow(system_one).to receive(:ask) do |state:, questions:, **|
+        engine.instance_variable_set(:@session, other)
+        asked << [state, questions]
+        { "about" => Samagotchi::SystemOne::Answer.new(id: "about", type: :noul, noul: 0.7),
+          "task" => Samagotchi::SystemOne::Answer.new(id: "task", type: :noul, noul: 0.9) }
+      end
+
+      judge(engine, session, "Fix the login redirect")
+      engine.send(:context_judge).show_cards_after_turn
+
+      expect(pop!(asked, "the ask")).not_to be_nil
+      expect(engine).not_to have_received(:show_card)
     end
 
     it "leaves a candidate under the offer threshold proposed" do

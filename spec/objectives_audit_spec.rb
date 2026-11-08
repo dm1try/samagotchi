@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::ObjectivesAudit do
     end
   end
   let(:host_gone) { false }
-  let(:audit) { described_class.new(client_for: client_for, side: side, state_dir: -> { tmpdir }) }
+  let(:audit) { described_class.new(client_for: client_for, side: side, state_dir: tmpdir) }
   let(:prompt) { "We also need the coffee order to go through a new payment provider" }
   let(:answer_text) { "I changed the checkout and ran the specs. #{"It holds. " * 60}" }
 
@@ -95,7 +95,7 @@ RSpec.describe Samagotchi::ObjectivesAudit do
     on
     with_list("active")
     allow(audit).to receive(:warn)
-    audit2 = described_class.new(client_for: ->(_j, _s) {}, side: side, state_dir: -> { tmpdir })
+    audit2 = described_class.new(client_for: ->(_j, _s) {}, side: side, state_dir: tmpdir)
 
     audit2.incoming(session, prompt)
     settle
@@ -181,7 +181,7 @@ RSpec.describe Samagotchi::ObjectivesAudit do
       Samagotchi::SystemOne::Recording.new(Samagotchi::SystemOne::Client.new(backend: slow, mode: "audit", host: "h", model: "jev", tag: :system_one),
                                            judgment: judgment, runs: runs)
     end
-    held = described_class.new(client_for: client, side: side, state_dir: -> { tmpdir })
+    held = described_class.new(client_for: client, side: side, state_dir: tmpdir)
 
     held.incoming(session, prompt)
     held.incoming(session, "#{prompt} again")
@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::ObjectivesAudit do
       Samagotchi::SystemOne::Recording.new(Samagotchi::SystemOne::Client.new(backend: slow, mode: "audit", host: "h", model: "jev", tag: :system_one),
                                            judgment: judgment, runs: runs)
     end
-    held = described_class.new(client_for: client, side: side, state_dir: -> { tmpdir })
+    held = described_class.new(client_for: client, side: side, state_dir: tmpdir)
 
     held.outgoing(session, answer_text) # would block here if it weren't apart
     expect(store.lines).to be_empty
@@ -223,7 +223,7 @@ RSpec.describe Samagotchi::ObjectivesAudit do
       Samagotchi::SystemOne::Recording.new(Samagotchi::SystemOne::Client.new(backend: failing, mode: "audit", host: "h", model: "jev", tag: :system_one),
                                            judgment: judgment, runs: runs)
     end
-    broken = described_class.new(client_for: client, side: side, state_dir: -> { tmpdir })
+    broken = described_class.new(client_for: client, side: side, state_dir: tmpdir)
 
     expect { broken.incoming(session, prompt) }.not_to raise_error
     settle

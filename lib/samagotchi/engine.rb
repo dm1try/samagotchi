@@ -55,6 +55,7 @@ require_relative "context_judge"
 require_relative "objectives_audit"
 require_relative "owner_prompt"
 require_relative "side_judgments"
+require_relative "system_one/recorder"
 require_relative "toolkit_suggest"
 require_relative "turn_stages/context_judge"
 require_relative "turn_stages/objectives"
@@ -727,7 +728,7 @@ module Samagotchi
         event[:verdict] = verdict if verdict
         event[:revises] = revises.to_h if revises
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
-        @objectives_stage.announce(turn.session)
+        announce_objectives(turn.session)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
@@ -911,7 +912,7 @@ module Samagotchi
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
         complete_turn(turn, result)
-        @turn_warmup.after(turn, result)
+        @turn_warmup.after(turn, result, next_turn_waiting: next_turn_waiting)
         result
       rescue Interrupt => e
         # After the end event (in the after_turn/session_end hooks) the
@@ -941,7 +942,7 @@ module Samagotchi
         @context_judge.show_cards_after_turn
         # Only a completed turn shows its proposal cards; any other's are
         # dropped, so the next turn does not show them either.
-        @objectives_stage.finally(turn)
+        show_objective_proposals(turn)
       end
     end
 
@@ -954,7 +955,7 @@ module Samagotchi
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
       origin = session.verify_fresh.origin_for(origin) if session.respond_to?(:verify_fresh) && session.verify_fresh
-      verify = @verify_anchors.verified(session, VerifyAnchor.from(verify))
+      verify = @verify_anchors.verified(session, VerifyAnchor.from(verify), state_dir: session_state_dir)
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1044,7 +1045,7 @@ module Samagotchi
       # On mode's ask starts here too; the turn joins it before
       # apply_toolkit! below, so its latency hides behind the probes and
       # the init wait.
-      @toolkit_suggestion.start(turn)
+      @toolkit_suggestion.start(turn, recorder: system_one_recorder)
 
       # The window and the profile probes run after run_turn's probe-cancel
       # swap, so a Stop cuts them; a failure ends the turn as turn_failed.
@@ -1081,8 +1082,8 @@ module Samagotchi
       @toolkit_suggestion.settle(turn)
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
-      @context_judge.start(turn)
-      @objectives_stage.incoming(turn)
+      @context_judge.start(turn, recorder: system_one_recorder)
+      @objectives_stage.incoming(turn, recorder: system_one_recorder)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
       # A Stop during the waits above: the turn ends here,

@@ -4,16 +4,13 @@ require "tmpdir"
 require "samagotchi/side_judgments"
 require "samagotchi/turn_stages/objectives"
 
-# The stage keeps a turn's proposals until that turn is over, then shows
-# them (a completed turn) or drops them (any other ending): none outlives
-# the turn.
+# The stage keeps a turn's proposals until that turn is over, then gives
+# their cards (a completed turn) or drops them (any other ending): none
+# outlives the turn. The announced view is the last one's: the event only
+# when it changed.
 RSpec.describe Samagotchi::TurnStages::Objectives do
   let(:cards) { [] }
-  let(:stage) do
-    described_class.new(side_judgments: Samagotchi::SideJudgments.new, host_registry: nil, state_dir: -> { Dir.tmpdir },
-                        recording: ->(client, *, **) { client }, runs: -> {}, synchronize: ->(&block) { block.call },
-                        announce: ->(_event) {}, running: -> {}, show_card: ->(**card) { cards << card })
-  end
+  let(:stage) { described_class.new(side_judgments: Samagotchi::SideJudgments.new, host_registry: nil) }
 
   def proposal(id) = Samagotchi::Objectives::Proposal.new(change: "done", id: id, text: "", note: "n")
   def turn(outcome) = Struct.new(:outcome) { def completed? = outcome == "completed" }.new(outcome)
@@ -22,18 +19,19 @@ RSpec.describe Samagotchi::TurnStages::Objectives do
     stage.propose(proposal("O1"))
     stage.propose(proposal("O1"))
 
-    stage.finally(turn("completed"))
-    stage.finally(turn("completed"))
+    cards.concat(stage.finally(turn("completed")))
+    cards.concat(stage.finally(turn("completed")))
 
     expect(cards.size).to eq(1)
+    expect(cards.first).to include(source: Samagotchi::Objectives::SOURCE, id: start_with("objectives-"))
     expect(stage.proposals).to be_empty
   end
 
   it "drops another ending's proposals without a card, so the next turn shows none" do
     stage.propose(proposal("O1"))
 
-    stage.finally(turn("canceled"))
-    stage.finally(turn("completed"))
+    cards.concat(stage.finally(turn("canceled")))
+    cards.concat(stage.finally(turn("completed")))
 
     expect(cards).to be_empty
     expect(stage.proposals).to be_empty
@@ -45,5 +43,16 @@ RSpec.describe Samagotchi::TurnStages::Objectives do
 
     stage.finally(turn("failed"))
     expect(stage.propose(proposal("O9"))).to be(true)
+  end
+
+  it "gives the view's event only when it changed, and keeps the last one" do
+    session = Struct.new(:id, :messages).new("s1", [])
+    view = { items: [{ id: "O1" }] }
+    allow(Samagotchi::Objectives).to receive(:view).and_return(view, view, { items: [] })
+
+    expect(stage.announce(session, state_dir: Dir.tmpdir, running: nil)).to eq(type: :objectives_updated, session_id: "s1", **view)
+    expect(stage.announce(session, state_dir: Dir.tmpdir, running: nil)).to be_nil
+    expect(stage.announce(session, state_dir: Dir.tmpdir, running: [{ role: "user" }])).to include(items: [])
+    expect(Samagotchi::Objectives).to have_received(:view).with("s1", [], state_dir: Dir.tmpdir, running: [{ role: "user" }])
   end
 end

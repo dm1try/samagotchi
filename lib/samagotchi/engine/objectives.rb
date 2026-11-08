@@ -9,8 +9,22 @@ module Samagotchi
     # @host_registry, @session.
     module ObjectivesPart
       # The session's objectives as the page draws them, when that differs
-      # from the last announced (TurnStages::Objectives#announce).
-      def announce_objectives(session = @session) = @objectives_stage.announce(session)
+      # from the last announced (TurnStages::Objectives#announce), from any
+      # thread: end_turn's step, a command, Check this's thread, a note,
+      # a rollback. Under the event lock, which guards the last view: the
+      # sessions dir and the running turn's conversation read there, the
+      # event announced in the same step. It only informs: a failure is
+      # logged, never raised.
+      def announce_objectives(session = @session)
+        return unless session
+
+        synchronize_events do
+          event = @objectives_stage.announce(session, state_dir: session_state_dir, running: live_conversation)
+          announce(event) if event
+        end
+      rescue StandardError => e
+        Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
+      end
 
       # Check this (ObjectivesCheck)'s one side request. Its usage is in the
       # session's side line. Raises as ctx.ask_model's request does.
@@ -32,16 +46,20 @@ module Samagotchi
       # The objectives' stage (TurnStages::Objectives).
       attr_reader :objectives_stage
 
-      # The stage over this Engine's side asks and its event lock (built in
-      # #initialize, once the host registry is).
+      # However +turn+ ended (run_turn's ensure, after the turn flag is
+      # released): a completed turn's proposal cards shown
+      # (TurnStages::Objectives#finally). A card that fails is logged.
+      def show_objective_proposals(turn)
+        @objectives_stage.finally(turn).each { |card| show_card(**card) }
+      rescue StandardError => e
+        Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
+      end
+
+      # The stage over this Engine's side asks (built in #initialize, once
+      # the host registry is). Each call takes its values: the recorder,
+      # the sessions dir, the running conversation.
       def build_objectives_stage
-        TurnStages::Objectives.new(
-          side_judgments: @side_judgments, host_registry: @host_registry, state_dir: -> { session_state_dir },
-          recording: ->(client, judgment, session, mode:) { system_one_recording(client, judgment, session, mode: mode) },
-          runs: -> { system_one_runs }, synchronize: ->(&block) { synchronize_events(&block) },
-          announce: ->(event) { announce(event) }, running: -> { live_conversation },
-          show_card: ->(**card) { show_card(**card) }
-        )
+        TurnStages::Objectives.new(side_judgments: @side_judgments, host_registry: @host_registry)
       end
     end
   end
