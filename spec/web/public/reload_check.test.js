@@ -92,6 +92,13 @@ test("it skips a hand-off another turn forced, a running turn, a turn with no id
   assert.deepEqual(moved.posts, []);
 });
 
+test("a shape that can't be read is dropped too, no rejection", async () => {
+  const { check, reads } = setup();
+  const broken = { matches: () => { throw new Error("detached"); } };
+  await check.handedOff({ pieces: [...pieces(PROMPT), broken] });
+  assert.deepEqual(reads, []);
+});
+
 test("a read or a post that fails is dropped", async () => {
   const check = createReloadCheck({
     enabled: () => true, sessionId: () => "s1", running: () => false,
