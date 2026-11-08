@@ -63,8 +63,11 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def turn(prompt, author: nil, client_id: nil)
-    Struct.new(:session, :prompt, :origin).new(session, prompt, Samagotchi::TurnOrigin.new(author: author, client_id: client_id))
+    Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Samagotchi::TurnOrigin.new(author: author, client_id: client_id),
+                                                         Struct.new(:state_dir).new(state_dir))
   end
+
+  def recorder = engine.send(:system_one_recorder)
 
   def result(text) = Struct.new(:text).new(text)
 
@@ -74,9 +77,9 @@ RSpec.describe Samagotchi::Engine do
   end
 
   it "saves an owner's message and answer as runs chi judgments reads, on their own judgments" do
-    stage.incoming(turn(long_prompt))
+    stage.incoming(turn(long_prompt), recorder: recorder)
     settle
-    stage.outgoing(turn(long_prompt), result(long_answer))
+    stage.outgoing(turn(long_prompt), result(long_answer), recorder: recorder)
     settle
 
     expect(runs("objectives.incoming").map { |run| run["state"] }).to eq([{ "objective" => "aim", "message" => long_prompt }])
@@ -94,8 +97,8 @@ RSpec.describe Samagotchi::Engine do
   end
 
   it "a participant's turn is never sent and never saved" do
-    stage.incoming(turn(long_prompt, author: "p:abc"))
-    stage.outgoing(turn(long_prompt, author: "p:abc"), result(long_answer))
+    stage.incoming(turn(long_prompt, author: "p:abc"), recorder: recorder)
+    stage.outgoing(turn(long_prompt, author: "p:abc"), result(long_answer), recorder: recorder)
     settle
 
     expect(asks).to be_empty
@@ -103,12 +106,12 @@ RSpec.describe Samagotchi::Engine do
   end
 
   it "a reminder's or a delegate's turn prompt isn't a person's message" do
-    stage.incoming(turn(long_prompt, client_id: "reminder"))
-    stage.incoming(turn(long_prompt, client_id: "delegate"))
+    stage.incoming(turn(long_prompt, client_id: "reminder"), recorder: recorder)
+    stage.incoming(turn(long_prompt, client_id: "delegate"), recorder: recorder)
     settle
     expect(asks).to be_empty
 
-    stage.incoming(turn(long_prompt, client_id: "web:tab"))
+    stage.incoming(turn(long_prompt, client_id: "web:tab"), recorder: recorder)
     settle
     expect(asks.size).to eq(1)
   end
@@ -124,7 +127,7 @@ RSpec.describe Samagotchi::Engine do
   it "with saving off, no ask is made" do
     allow(Samagotchi::Config).to receive(:get).with("system_one.runs").and_return("off")
 
-    stage.incoming(turn(long_prompt))
+    stage.incoming(turn(long_prompt), recorder: recorder)
     settle
 
     expect(asks).to be_empty
@@ -134,8 +137,8 @@ RSpec.describe Samagotchi::Engine do
     let(:mode) { "off" }
 
     it "asks nothing and builds no client" do
-      stage.incoming(turn(long_prompt))
-      stage.outgoing(turn(long_prompt), result(long_answer))
+      stage.incoming(turn(long_prompt), recorder: recorder)
+      stage.outgoing(turn(long_prompt), result(long_answer), recorder: recorder)
       engine.add_context_note(session, { note_id: "a", text: long_prompt, source: "peer" })
       settle
 

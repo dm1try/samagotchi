@@ -55,9 +55,12 @@ module Samagotchi
 
       # +client+ (nil for none) saving its asks as +judgment+'s runs
       # (SystemOne::Recorder#wrap, over a recorder built now): the
-      # guardrails' System 1 client.
+      # guardrails' System 1 client. No client or a scratch session: the
+      # client as it is, with nothing read (no recorder built).
       # @param mode [String, nil] the use's mode, for its runs (Recording.wrap)
       def system_one_recording(client, judgment, session, mode: nil)
+        return client if client.nil? || session&.scratch
+
         system_one_recorder.wrap(client, judgment, session, mode: mode)
       end
       private :system_one_recording

@@ -46,7 +46,7 @@ module Samagotchi
                      from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
                      created_at: note[:created_at], objectives: entry }.compact)
           announce_objectives(session) if entry
-          @objectives_stage.note(session, note)
+          @objectives_stage.note(session, note, recorder: system_one_recorder, state_dir: session_state_dir)
           message
         end
       end

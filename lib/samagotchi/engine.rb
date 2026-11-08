@@ -728,7 +728,7 @@ module Samagotchi
         event[:verdict] = verdict if verdict
         event[:revises] = revises.to_h if revises
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
-        @objectives_stage.announce(turn.session)
+        announce_objectives(turn.session)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
@@ -942,7 +942,7 @@ module Samagotchi
         @context_judge.show_cards_after_turn
         # Only a completed turn shows its proposal cards; any other's are
         # dropped, so the next turn does not show them either.
-        @objectives_stage.finally(turn)
+        show_objective_proposals(turn)
       end
     end
 
@@ -1083,7 +1083,7 @@ module Samagotchi
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
       @context_judge.start(turn, recorder: system_one_recorder)
-      @objectives_stage.incoming(turn)
+      @objectives_stage.incoming(turn, recorder: system_one_recorder)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
       # A Stop during the waits above: the turn ends here,

@@ -278,7 +278,12 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
     expect(result.text).to eq(answer_text)
     expect(store.lines).to be_empty
     expect(Samagotchi::Log).to have_received(:warn).with(:system_one, "system_one_recording_failed", anything).at_least(:once)
-    expect(backend.calls).to be >= 2 # the toolkit's ask and the judge's
+    # The toolkit's ask and the judge's; no audit ask (Recorder::NONE saves
+    # nothing, so the audit builds no client).
+    expect(backend.calls).to eq(2)
+    tags = []
+    expect(Samagotchi::SystemOne::Client).to have_received(:from_config).at_least(:once) { |tag: nil, **| tags << tag }
+    expect(tags).not_to include(:system_one)
   end
 
   it "judges a late candidate from a plugin's thread on the session's owner prompts" do

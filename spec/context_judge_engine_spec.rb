@@ -310,6 +310,27 @@ RSpec.describe Samagotchi::Engine do
       expect(engine).to have_received(:show_card).once
     end
 
+    it "shows no card and holds none when the Engine moved to another session before the answer came" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      other = new_session
+      engine.instance_variable_set(:@session, session)
+      propose(session, "pr-412")
+      allow(system_one).to receive(:ask) do |state:, questions:, **|
+        engine.instance_variable_set(:@session, other)
+        asked << [state, questions]
+        { "about" => Samagotchi::SystemOne::Answer.new(id: "about", type: :noul, noul: 0.7),
+          "task" => Samagotchi::SystemOne::Answer.new(id: "task", type: :noul, noul: 0.9) }
+      end
+
+      judge(engine, session, "Fix the login redirect")
+      engine.send(:context_judge).show_cards_after_turn
+
+      expect(pop!(asked, "the ask")).not_to be_nil
+      expect(engine).not_to have_received(:show_card)
+    end
+
     it "leaves a candidate under the offer threshold proposed" do
       engine = build_engine
       allow(engine).to receive(:show_card).and_call_original

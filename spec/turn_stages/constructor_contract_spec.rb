@@ -31,15 +31,13 @@ RSpec.describe "turn stages' constructor contract" do
     Samagotchi::TurnStages::VerifyAnchors => [],
     Samagotchi::TurnStages::ToolkitSuggestion => %i[side_judgments host_registry toolkit_binding tools],
     Samagotchi::TurnStages::ContextJudge => %i[side_judgments host_registry turn_state show_card current_session],
-    Samagotchi::TurnStages::Objectives => %i[side_judgments host_registry state_dir recording runs synchronize announce running show_card],
+    Samagotchi::TurnStages::Objectives => %i[side_judgments host_registry],
     Samagotchi::TurnStages::Warmup => %i[prompt_warmup kernel turn_state model_settings model system_prompt reminders_due next_turn_waiting]
   }.freeze
 
   # The callables a built Engine's stages hold, as "Stage#@ivar".
   HELD = %w[
     ContextJudge#@show_card ContextJudge#@current_session
-    Objectives#@state_dir Objectives#@synchronize Objectives#@announce Objectives#@running Objectives#@show_card
-    ObjectivesAudit#@client_for ObjectivesAudit#@state_dir
     Warmup#@model Warmup#@system_prompt Warmup#@reminders_due Warmup#@next_turn_waiting
   ].freeze
 

@@ -40,9 +40,10 @@ module Samagotchi
     # Whether this use is on: config.yml, read at each ask.
     def self.on? = Config.get("objectives.system_one").to_s.strip.downcase == MODE
 
-    # @param client_for [#call] (judgment, session) → a recording client, nil with no host or no saving
+    # @param client_for [#call] (judgment, session) → a recording client, nil with no host or no saving;
+    #   asked only once an active objective is there
     # @param side [SideJudgments]
-    # @param state_dir [#call] → the sessions folder
+    # @param state_dir [String] the sessions folder
     def initialize(client_for:, side:, state_dir:)
       @client_for = client_for
       @side = side
@@ -82,7 +83,7 @@ module Samagotchi
     def ask(judgment, session, message)
       return if session.nil? || session.id.nil? || session.scratch || session.review?
 
-      items = Objectives.current(session.id, session.messages, state_dir: @state_dir.call).items
+      items = Objectives.current(session.id, session.messages, state_dir: @state_dir).items
                         .select { |item| item.status == Objectives::ACTIVE }.first(MAX_OBJECTIVES)
       return if items.empty?
 
