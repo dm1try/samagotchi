@@ -139,6 +139,9 @@ RSpec.describe "Cross-version worker contract" do
     expect(drawings::FILE).to eq("turn_drawings.jsonl")
     expect(drawings::VERSION).to eq(1)
     expect(drawings::Line.members).to eq(%i[v turn_id kind from to from_digest to_digest drawing end])
+    # chi web draws a live worker's turns only when its sidecar names it.
+    expect(Samagotchi::Bridge::FEATURES).to include(drawings::FEATURE)
+    expect(drawings::FEATURE).to eq("turn_drawings")
     Dir.mktmpdir do |dir|
       messages = [{ role: "system", content: "head" }, { role: "user", content: "hi" }, { role: "model", content: "ok" }]
       drawings.new(path: File.join(dir, drawings::FILE), messages: -> { messages })

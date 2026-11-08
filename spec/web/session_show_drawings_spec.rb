@@ -43,11 +43,14 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     end.new
   end
 
-  def app_for(messages, live: nil)
+  # +features+: the live worker's sidecar features (a worker that draws
+  # names TurnDrawings::FEATURE).
+  def app_for(messages, live: nil, features: [Samagotchi::Bridge::TurnDrawings::FEATURE])
     app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader_for(messages), bridge_wait_timeout: 0,
                               markdown: false)
     allow(app).to receive(:bridge_get_json).and_call_original
     allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+    allow(app).to receive(:worker_draws?).with("s1").and_return(features.include?(Samagotchi::Bridge::TurnDrawings::FEATURE))
     app
   end
 
@@ -93,6 +96,30 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
       expect(data["messages"].none? { |m| m.key?("parts") }).to be(true)
       expect(data["turn_drawings"].keys).to eq(["turn-tools"])
     end
+  end
+
+  # A worker from before turn drawings lists no of_turn on its cards (the
+  # page would place a drawn turn's rows again): its session reads as before.
+  it "draws nothing for a live worker that doesn't name turn_drawings in its features, as a stopped session's file does" do
+    saved = fixture("tools_answer")
+    write_lines(saved["lines"])
+
+    old = show(app_for([], live: { "snapshot" => { "messages" => saved["messages"] } }, features: %w[restart]))
+
+    expect(old).not_to have_key("turn_drawings")
+    expect(old["messages"].none? { |m| m.key?("drawn") }).to be(true)
+    expect(old["messages"][1]).to have_key("parts")
+  end
+
+  it "reads whether the live worker draws from its sidecar's features" do
+    app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader_for([]), bridge_wait_timeout: 0)
+    sidecar = Samagotchi::WorkerSidecar.new(port: 1, features: [Samagotchi::Bridge::TurnDrawings::FEATURE])
+    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+    expect(app.send(:worker_draws?, "s1")).to be(true)
+    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::Live.new(sidecar: Samagotchi::WorkerSidecar.new(port: 1, features: [])))
+    expect(app.send(:worker_draws?, "s1")).to be(false)
+    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::None.new)
+    expect(app.send(:worker_draws?, "s1")).to be(false)
   end
 
   it "drops a rolled-back turn: its items keep their parts and no stamp" do

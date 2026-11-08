@@ -86,7 +86,8 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   {events, end}}`: `TurnAccumulator.replay_events(drawing, cards: true)`, the one unfold, in Ruby. A context note in
   a range and a `!cmd`'s record are not stamped. Without `drawings=1` (an older page) the read is what it was.
   CardStore lists an in-turn entry's turn as `of_turn`, so the page leaves a drawn turn's own rows and cards to its
-  drawing (`cards_place.js`).
+  drawing (`cards_place.js`). A live worker whose sidecar features lack `turn_drawings` (`TurnDrawings::FEATURE`:
+  an older one lists no `of_turn`) gets no drawings in the show: its turns all draw as before.
 - **Compat.** An older worker writes nothing (its turns fall back); an older chi web never opens the file. A fork
   or a continue copies no drawings: its turns fall back. A one-shot run (no Bridge) writes none.
 

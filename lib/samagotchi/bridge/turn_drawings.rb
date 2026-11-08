@@ -33,6 +33,11 @@ module Samagotchi
     # as CardStore's save does: one append per turn end.
     class TurnDrawings
       FILE = "turn_drawings.jsonl"
+      # In the sidecar's features (Bridge::FEATURES): this worker's CardStore
+      # lists an in-turn entry's of_turn, which a page drawing the turn needs
+      # to leave that entry to the drawing. chi web draws no drawings for a
+      # live worker without it (an older one: its rows would show twice).
+      FEATURE = "turn_drawings"
       VERSION = 1
       # The end event's keys the page draws a finished turn's end from (not
       # the answer: its text, html and refs stay the message's; not the range:

@@ -73,7 +73,10 @@ module Samagotchi
         # A page that draws finished turns from their drawings (drawings=1,
         # with parts=1): the valid lines stamp their items, which lose their
         # parts. An older page (no drawings=1) reads what it always did.
-        drawn = parts && req.params["drawings"] == "1" ? drawn_lines(id, raw_messages) : []
+        # A live worker from before turn drawings lists no of_turn on its
+        # cards: its turns all draw as before.
+        drawings = parts && req.params["drawings"] == "1" && (!live || worker_draws?(id))
+        drawn = drawings ? drawn_lines(id, raw_messages) : []
         messages = messages_for_display(raw_messages, parts: parts, cwd: session.working_directory,
                                                       drawings: drawn, strip_drawn: true)
         json_response(200, {
@@ -134,6 +137,14 @@ module Samagotchi
         Bridge::TurnAccumulator.join_events(current_turn: wire[:current_turn], queued: wire[:queued],
                                             queued_commands: wire[:queued_commands],
                                             started_at: active.is_a?(Hash) ? active["started_at"] : nil)
+      end
+
+      # Whether the session's live worker names turn drawings in its
+      # sidecar's features (Bridge::TurnDrawings::FEATURE); false when its
+      # link can't be read as live.
+      def worker_draws?(id)
+        link = worker_link(id)
+        link.live? && Array(link.sidecar.features).include?(Bridge::TurnDrawings::FEATURE)
       end
 
       # The session's turn drawings that hold against +messages+ (the live
