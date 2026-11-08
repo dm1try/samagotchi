@@ -74,15 +74,17 @@ module Samagotchi
       #   source-less kinds
       # @param claimants [#call, nil] key => other bundles listing it
       #   (Provenance.claimants), called at most once
+      # @param shipped [Boolean] false: the bundle no longer ships the key
+      #   (a dropped kind), whatever its source dir holds by that name
       # @return [FileState]
-      def of(key, record:, provenance:, target_dir:, source_dir:, claimants: nil)
+      def of(key, record:, provenance:, target_dir:, source_dir:, claimants: nil, shipped: true)
         entry = record&.files&.fetch(key, nil)
         paths = { base: provenance.base_path(key), current: File.join(target_dir, key),
                   incoming: source_dir && File.join(source_dir, key) }
         mark = mark_of(entry)
         digests = FileState::Digests.new(
           disk: digest(paths[:current]), base: entry ? digest(paths[:base]) : nil,
-          incoming: source_dir ? digest(paths[:incoming]) : nil, recorded: entry && Provenance.recorded_sha(entry[:checksum]),
+          incoming: source_dir && shipped ? digest(paths[:incoming]) : nil, recorded: entry && Provenance.recorded_sha(entry[:checksum]),
           marked_incoming: mark == :none ? nil : entry[:incoming_sha]
         )
         shared = nil

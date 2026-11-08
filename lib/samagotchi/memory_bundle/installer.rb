@@ -720,32 +720,52 @@ module Samagotchi
         update_target_index(scope, target_path, file_key, owned: owned) unless @dry_run
       end
 
-      # A file the previous version installed that this one doesn't ship is
-      # moved to the trash (with its index line removed) when it still
-      # matches what was installed, or with --force; one the user edited is
-      # kept with a note.
+      # A file the previous version installed that this one doesn't ship:
+      # its FileState's dropped kind and the UPGRADE (or FORCE) row. An
+      # unedited one is moved to the trash (with its index line removed), as
+      # is any with --force; an edited one is kept with a note, and one
+      # another bundle lists too stays.
       def prune_dropped_files(previous_files, bundle_files, target_dir, scope, provenance)
-        previous_files.each do |key, meta|
+        previous_files.each_key do |key|
           next if bundle_files.include?(key)
 
           target = File.join(target_dir, key)
-          next unless File.exist?(target)
-
-          others = Provenance.claimants(key, scope: scope, except: @name)
-          if others.any?
-            @results[key] = FileResult.new(word: :kept_shared, note: "bundle #{others.join(", ")} has it too")
-            @warnings << "Kept #{key}: no longer in the bundle, but bundle #{others.join(", ")} has it too"
-          elsif @force || Provenance.unchanged?(target, meta, provenance.base_path(key))
-            @results[key] = FileResult.new(word: @dry_run ? :would_remove : :removed, note: "no longer in the bundle")
+          state = FileState.of(key, record: @existing, provenance: provenance, target_dir: target_dir, source_dir: @bundle_dir,
+                                    shipped: false, claimants: ->(k) { Provenance.claimants(k, scope: scope, except: @name) })
+          action = if state.kind == :unreadable
+                     unreadable_dropped(state, target)
+                   else
+                     FileActions.for(@force ? :force : :upgrade, state)
+                   end
+          result = FileResult.new(word: action.word, state: state, action: action)
+          case action.word
+          when :kept_shared
+            others = state.shared_with.join(", ")
+            @results[key] = result.with(note: "bundle #{others} has it too")
+            @warnings << "Kept #{key}: no longer in the bundle, but bundle #{others} has it too"
+          when :removed
+            @results[key] = result.with(word: @dry_run ? :would_remove : :removed, note: "no longer in the bundle")
             next if @dry_run
 
             @trash.move(target)
             remove_target_index(scope, key)
-          else
-            @results[key] = FileResult.new(word: :kept_pruned, note: "local edits preserved")
+          when :kept_pruned
+            @results[key] = result.with(note: "local edits preserved")
             @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{FileStanding::FORCE_MOVES})"
           end
         end
+      end
+
+      # A dropped file chi can't read, in the order the rows are asked: kept
+      # when another bundle lists it, moved unread with --force; otherwise
+      # whether it was edited can't be told, and the read raises (the run
+      # stops, nothing lost).
+      def unreadable_dropped(state, target)
+        return FileActions::KEPT_SHARED if state.shared_with.any?
+        return FileActions::REMOVE if @force
+
+        FileDigest.hex(target)
+        raise InstallError, "#{state.key} can't be read"
       end
 
       # One warning per manifest key this chi's parser never reads (docs/cli.md's
