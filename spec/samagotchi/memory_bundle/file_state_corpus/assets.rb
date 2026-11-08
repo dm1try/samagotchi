@@ -7,7 +7,7 @@ module BundleStateCorpus
   HOOK_META = { "event" => "before_tool_call" }.freeze
 
   AssetCase = Data.define(:id, :asset, :state, :file, :recorded, :installed, :incoming, :beside, :listed_missing,
-                          :unlisted, :linked, :fix, :fixed, :divergent, :note) do
+                          :unlisted, :linked, :fix, :fixed, :divergent, :changed, :note) do
     def dev? = recorded == "dev"
 
     # Where it lives in the source.
@@ -36,7 +36,7 @@ module BundleStateCorpus
                       recorded: text.call(row["recorded"]), installed: text.call(row["installed"]), incoming: text.call(row["incoming"]),
                       beside: row.fetch("beside", false), listed_missing: row.fetch("listed_missing", false),
                       unlisted: row.fetch("unlisted", false), linked: row.fetch("linked", false), fix: row.fetch("fix", []),
-                      fixed: row["fixed"], divergent: row["divergent"], note: row["note"])
+                      fixed: row["fixed"], divergent: row["divergent"], changed: row["changed"], note: row["note"])
       end
     end
   end

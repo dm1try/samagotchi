@@ -171,13 +171,15 @@ module Samagotchi
         end
       end
 
-      # Strict mode: an installed hook whose sha256 differs from the one its
-      # manifest declares warns (as verify_memory_checksums does).
+      # Strict mode: a hook whose sha256 differs from the one its manifest
+      # declares warns (as verify_memory_checksums does). The bundle's file is
+      # checked, the one the install copies, so a dry run checks what it
+      # would install, not the old hook in place.
       def verify_hook_checksums
         @bundle_hooks.each do |basename|
           next if @conflicts.key?(basename)
 
-          warning = FileDigest.mismatch("hook #{basename}", File.join(@provenance.hooks_dir, basename),
+          warning = FileDigest.mismatch("hook #{basename}", File.join(@bundle_dir, "hooks", basename),
                                         @manifest.checksum_for_hook(basename))
           @warnings << warning if warning
         end
