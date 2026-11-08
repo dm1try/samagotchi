@@ -433,13 +433,17 @@
     "type": "function",
     "function": {
       "name": "list_schedules",
-      "description": "List this machine's durable schedules: id, mode, recurrence, next due and target.",
+      "description": "List the durable schedules of this chain (all: true for every schedule on this machine): id, mode, recurrence, next due and target.",
       "parameters": {
         "type": "object",
         "properties": {
           "include_disabled": {
             "type": "boolean",
             "description": "Include the disabled schedules and the fired one-offs"
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Every schedule on this machine, not just this chain"
           }
         },
         "additionalProperties": false
@@ -450,13 +454,17 @@
     "type": "function",
     "function": {
       "name": "cancel_schedule",
-      "description": "Cancel a durable schedule by its id, a unique prefix of it, or its title.",
+      "description": "Cancel a durable schedule of this chain by its id, a unique prefix of it, or its title (all: true for one from another chain).",
       "parameters": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "description": "The schedule's id or title"
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Allow cancelling a schedule of another session's chain"
           }
         },
         "required": [

@@ -61,7 +61,7 @@
       "ask_user_question",
       "objectives"
     ],
-    "digest": "sha256:560a84fe169c7b0cddf14a9ea1333368bce06b234a33aa62a1e54aa7343a5317"
+    "digest": "sha256:316a47cd401d7c46c7ad21c2ecc65dc06d099677895a84c159c834f0d7763c4c"
   },
   "tool_choice": "auto",
   "chat_template_kwargs": {

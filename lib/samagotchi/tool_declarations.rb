@@ -325,18 +325,18 @@ module Samagotchi
       },
       {
         name: "list_schedules",
-        description: "List the durable schedules of this session's chain (all: true for every schedule on this machine): id, mode, recurrence, next due and target.",
+        description: "List the durable schedules of this chain (all: true for every schedule on this machine): id, mode, recurrence, next due and target.",
         parameters: {
           type: "object",
           properties: {
             include_disabled: { type: "boolean", description: "Include the disabled schedules and the fired one-offs" },
-            all: { type: "boolean", description: "Every schedule on this machine, not just this session's chain" }
+            all: { type: "boolean", description: "Every schedule on this machine, not just this chain" }
           }
         }
       },
       {
         name: "cancel_schedule",
-        description: "Cancel a durable schedule of this session's chain by its id, a unique prefix of it, or its title (all: true for one from another chain).",
+        description: "Cancel a durable schedule of this chain by its id, a unique prefix of it, or its title (all: true for one from another chain).",
         parameters: {
           type: "object",
           properties: {

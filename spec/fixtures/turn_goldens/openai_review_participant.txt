@@ -461,7 +461,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
       "type": "function",
       "function": {
         "name": "list_schedules",
-        "description": "List the durable schedules of this session's chain (all: true for every schedule on this machine): id, mode, recurrence, next due and target.",
+        "description": "List the durable schedules of this chain (all: true for every schedule on this machine): id, mode, recurrence, next due and target.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -471,7 +471,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
             },
             "all": {
               "type": "boolean",
-              "description": "Every schedule on this machine, not just this session's chain"
+              "description": "Every schedule on this machine, not just this chain"
             }
           },
           "additionalProperties": false
@@ -482,7 +482,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
       "type": "function",
       "function": {
         "name": "cancel_schedule",
-        "description": "Cancel a durable schedule of this session's chain by its id, a unique prefix of it, or its title (all: true for one from another chain).",
+        "description": "Cancel a durable schedule of this chain by its id, a unique prefix of it, or its title (all: true for one from another chain).",
         "parameters": {
           "type": "object",
           "properties": {
