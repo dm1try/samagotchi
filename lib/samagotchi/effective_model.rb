@@ -146,7 +146,7 @@ module Samagotchi
     # [seconds, source] a cut waits for thinking (SteerCutAfter.resolve);
     # the global and its name when it can't be resolved.
     def steer_cut_after_explained
-      SteerCutAfter.resolve(target, names: names)
+      SteerCutAfter.resolve(lookup)
     rescue StandardError => e
       unresolved(:steer_cut_after_unresolved, e, [SteerCut.cut_after, "steer.cut_after"])
     end
