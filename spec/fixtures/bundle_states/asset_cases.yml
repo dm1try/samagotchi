@@ -20,8 +20,9 @@
 #   linked      the source's hooks/h.rb is a symlink out of the source
 #   fix, fixed, divergent, changed, note   as in memory_cases.yml; asset tags:
 #               dry-checksum (changed: the hook check reads the source),
+#               new-updated (changed: a file new to the record is Installed),
 #               dry-dropped, dry-trash, hook-stray-left, hook-sha-dropped, hook-status,
-#               new-updated, rule-installed, uninstall-unnamed
+#               rule-installed, uninstall-unnamed
 texts:
   v1: "# v1\n"
   v2: "# v2\n"
@@ -102,8 +103,8 @@ cases:
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    changed: new-updated
+    note: "new-updated: upgrade listed a file the bundle never had before under Updated (the dry run: Would update); it lists it under Installed since"
   - id: plugin_unchanged
     asset: plugin
     state: unchanged
@@ -189,8 +190,8 @@ cases:
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    changed: new-updated
+    note: "new-updated: upgrade listed a file the bundle never had before under Updated (the dry run: Would update); it lists it under Installed since"
   - {id: script_unchanged, asset: script, state: unchanged, recorded: v1, installed: v1, incoming: v1}
   - {id: script_pristine, asset: script, state: pristine, recorded: v1, installed: v1, incoming: v2}
   - id: script_edited_sha
@@ -244,8 +245,8 @@ cases:
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    changed: new-updated
+    note: "new-updated: upgrade listed a file the bundle never had before under Updated (the dry run: Would update); it lists it under Installed since"
   - id: hook_unchanged
     asset: hook
     state: unchanged

@@ -13,10 +13,10 @@ module BundleStateCorpus
     DIVERGENT = %w[U4 dry-trash].freeze
     # Divergent tags a later commit changed the cells of (the plan's P1.9 …).
     CHANGED = %w[D4 U4 U7 dry-noop edited-rule restore-unchecked dry-source merge-checked].freeze
-    ASSET_DIVERGENT = %w[dry-dropped dry-trash hook-stray-left hook-sha-dropped hook-status new-updated rule-installed
+    ASSET_DIVERGENT = %w[dry-dropped dry-trash hook-stray-left hook-sha-dropped hook-status rule-installed
                          uninstall-unnamed].freeze
     # Asset tags a later commit changed the cells of.
-    ASSET_CHANGED = %w[dry-checksum].freeze
+    ASSET_CHANGED = %w[dry-checksum new-updated].freeze
     # What a cell's do says when the file's bytes changed or went.
     WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze
     ASSET_WRITES = %w[wrote_incoming wrote_other removed].freeze

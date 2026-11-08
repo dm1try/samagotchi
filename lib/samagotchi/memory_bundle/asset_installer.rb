@@ -289,11 +289,11 @@ module Samagotchi
 
       # What the real run reports for +src+ over +dest+: up to date when the
       # bytes are the same, else updated (+updated+: an upgrade over an
-      # install) or installed. A dry run records #planned of it, so the two
+      # install, of a file that is there) or installed. A dry run records #planned of it, so the two
       # can't drift.
       def result_for(src, dest, updated:)
         word = if File.file?(dest) && FileUtils.identical?(src, dest) then :up_to_date
-               elsif updated then :updated
+               elsif updated && File.exist?(dest) then :updated
                else :installed
                end
         Installer::FileResult.new(word: word)

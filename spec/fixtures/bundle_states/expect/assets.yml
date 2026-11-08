@@ -58,8 +58,8 @@ rule_dropped_edited:
   status: {label: null}
 plugin_new:
   install: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: "Plugin: plugin.rb [ok]", warns: []}
-  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Updated, label: "Plugin: plugin.rb [ok]", warns: []}
-  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would update, label: "-", warns: []}
+  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: "Plugin: plugin.rb [ok]", warns: []}
+  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would install, label: "-", warns: []}
   uninstall: {do: none, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: none, word: would_update, warns: []}
   status: {label: "-"}
@@ -114,8 +114,8 @@ plugin_dropped_edited:
   status: {label: "Plugin: plugin.rb [modified] (edited after install: not loaded; reinstall the bundle)"}
 script_new:
   install: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: null, warns: []}
-  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Updated, label: null, warns: []}
-  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would update, label: null, warns: []}
+  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: null, warns: []}
+  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would install, label: null, warns: []}
   uninstall: {do: none, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: none, word: would_update, warns: []}
   status: {label: null}
@@ -170,8 +170,8 @@ script_dropped_edited:
   status: {label: null}
 hook_new:
   install: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
-  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Updated, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
-  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would update, label: "-", warns: []}
+  upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
+  upgrade_dry: {do: none, save_first: false, recorded: none, word: Would install, label: "-", warns: []}
   uninstall: {do: none, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: none, word: would_update, warns: []}
   status: {label: "-"}

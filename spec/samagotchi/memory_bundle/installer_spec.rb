@@ -1311,6 +1311,23 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  it "lists a plugin and a script an upgrade's new version adds under Installed, not Updated" do
+    first = write_bundle(File.join(tmpdir, "v1"), { "a.md" => "# A\n" }, name: "adds", version: "1.0.0")
+    described_class.new(source: first, name: "adds", scope: "system", strict: false).run
+    second = write_bundle(File.join(tmpdir, "v2"), { "a.md" => "# A\n" }, name: "adds", version: "1.1.0")
+    File.write(File.join(second, "plugin.rb"), "class Plugin; def register(chi) = nil; end\n")
+    FileUtils.mkdir_p(File.join(second, "scripts"))
+    File.write(File.join(second, "scripts", "s.sh"), "#!/bin/sh\n")
+    manifest = YAML.safe_load_file(File.join(second, "manifest.yml"))
+    File.write(File.join(second, "manifest.yml"), YAML.dump(manifest.merge("plugin" => { "file" => "plugin.rb" }, "scripts" => { "s.sh" => "" })))
+
+    dry = described_class.new(source: second, name: "adds", scope: "system", strict: false, upgrade: true, dry_run: true).tap(&:run)
+    expect(dry.summary).to include("Would install: plugin.rb, scripts/s.sh\n")
+    up = described_class.new(source: second, name: "adds", scope: "system", strict: false, upgrade: true).tap(&:run)
+    expect(up.summary).to include("Installed: plugin.rb, scripts/s.sh\n")
+    expect(up.summary).not_to include("Updated:")
+  end
+
   # A manifest can take any name; the source decides who may install under it.
   describe "a bundle of the same name from another source" do
     let(:plugin_fixture) { File.expand_path("../../fixtures/sample_plugin_bundle", __dir__) }

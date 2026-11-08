@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.
 - A damaged turn-drawings file no longer stops a terminal from joining a session or chi web from showing it; the turn is drawn from the saved messages instead.
 - `chi bundle try --json` no longer crashes when the answer or the trace holds non-ASCII text.
+- `chi bundle upgrade` (and `chi update`) list a plugin or script that the new version adds under Installed, not Updated.
 
 ## [0.157.0] - 2026-11-08
 
