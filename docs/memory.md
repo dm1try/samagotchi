@@ -17,7 +17,8 @@ A folder in no git repository becomes a project with `chi project init [DIR]` (s
 `.chi/` dir, is the marker), and DIR and every subfolder share one project memories folder, group their
 sessions (`chi sessions list`, the web's project picker) and take `chi context --project`. Nothing
 chi-specific has to be committed anywhere: a repository never needs the file. It can also be created
-from chi web's project picker.
+from chi web's project picker (a folder inside a git repository opens that repository's project, and
+the folder is left as is: it is created when missing, nothing is marked).
 
 - **Git wins.** chi looks up a folder's `.git` first; only when there is none does it look for the
   nearest marker above it, so a marker inside a repository is ignored (`chi project` says so) and a
