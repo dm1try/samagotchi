@@ -348,11 +348,11 @@ module Samagotchi
     # The full id +given+ names (an id or the start of one), or nil after
     # saying why there is none.
     def resolve_session(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
-      Session.load(id, state_dir: @state_dir) # raises ArgumentError when there is no such session
+      id = Session.resolve!(given, state_dir: @state_dir)
+      Session.load(id, state_dir: @state_dir) # a file that won't load is refused here too
       id
     rescue ArgumentError => e
-      error_line("chi broadcast: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+      error_line("chi broadcast: #{e.message}")
       nil
     rescue SystemCallError => e
       error_line("chi broadcast: session #{given} can't be read: #{e.message}")

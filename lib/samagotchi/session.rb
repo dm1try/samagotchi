@@ -559,9 +559,12 @@ module Samagotchi
       valid_id?(session_id) && File.exist?(session_path(session_id, state_dir: state_dir))
     end
 
+    # @raise [NotFound] no such session (an id that isn't one too)
     def self.load(session_id, state_dir: default_state_dir)
+      raise NotFound, session_id unless valid_id?(session_id)
+
       path = session_path(session_id, state_dir: state_dir)
-      raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(path)
+      raise NotFound, session_id unless File.exist?(path)
 
       session = from_h(JSON.parse(File.read(path)))
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: state_dir)
@@ -667,8 +670,34 @@ module Samagotchi
       end
     end
 
+    # What every surface says when an id (or a prefix) names no session:
+    # this class owns the words, callers add their context around
+    # #message. +given+ is what was asked for, as given.
+    class NotFound < ArgumentError
+      attr_reader :given
+
+      def initialize(given)
+        @given = given.to_s
+        super("no session #{@given[0, 80]}")
+      end
+    end
+
+    # The full id of an existing session that +given+ (an id or a unique
+    # prefix) names: the one lookup the commands, SessionAccess::Local, chi
+    # web's routes and the tools share.
+    # @raise [NotFound] none (an id that isn't one too)
+    # @raise [AmbiguousId] a prefix of several
+    def self.resolve!(given, state_dir: default_state_dir)
+      raise NotFound, given unless valid_id?(given.to_s)
+
+      id = resolve_id(given, state_dir: state_dir)
+      raise NotFound, given unless exist?(id, state_dir: state_dir)
+
+      id
+    end
+
     # A session id or a unique prefix of one (like git's): the full id. An
-    # unknown one comes back as is, for the caller's own "not found"; one that
+    # unknown one comes back as is (resolve! raises NotFound for it); one that
     # names several sessions raises AmbiguousId, which lists them.
     def self.resolve_id(id_or_prefix, state_dir: default_state_dir)
       id = id_or_prefix.to_s
@@ -832,9 +861,9 @@ module Samagotchi
 
     # Mark a session as stopped (STOPPED_FILE); its session file stays as
     # it is.
-    # @raise [ArgumentError] when there is no such session
+    # @raise [NotFound] when there is no such session
     def self.mark_stopped(session_id, state_dir: default_state_dir)
-      raise ArgumentError, "Session not found: #{session_id}" unless exist?(session_id, state_dir: state_dir)
+      raise NotFound, session_id unless exist?(session_id, state_dir: state_dir)
 
       dir = session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)

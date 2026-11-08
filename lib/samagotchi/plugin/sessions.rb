@@ -212,11 +212,8 @@ module Samagotchi
       end
 
       def resolve(id, state_dir)
-        sid = Session.resolve_id(id.to_s.strip, state_dir: state_dir)
-        raise Error, "no session #{id}" unless sid && Session.exist?(sid, state_dir: state_dir)
-
-        sid
-      rescue Session::AmbiguousId, ArgumentError => e
+        Session.resolve!(id.to_s.strip, state_dir: state_dir)
+      rescue ArgumentError => e
         raise Error, e.message
       end
 

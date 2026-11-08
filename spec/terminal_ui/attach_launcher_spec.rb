@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
     end
 
     it "rejects an unknown session" do
-      expect { connect(attach: "nope") }.to raise_error(described_class::Error, "Session not found: nope")
+      expect { connect(attach: "nope") }.to raise_error(described_class::Error, "no session nope")
     end
   end
 
@@ -556,7 +556,7 @@ RSpec.describe "bin/chi --attach flags" do
     expect(err).not_to include("can't be combined")
     # The attach itself: s1 is no session here.
     expect(status.exitstatus).to eq(1)
-    expect(err).to include("Session not found: s1")
+    expect(err).to include("no session s1")
   end
 end
 

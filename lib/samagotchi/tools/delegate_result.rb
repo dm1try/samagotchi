@@ -29,7 +29,7 @@ module Samagotchi
                      newest_running_child(peers.session_id, state_dir: sd) ||
                        (return "No running delegate; list_sessions shows finished ones.")
                    else
-                     id = Session.resolve_id(session.to_s.strip, state_dir: sd)
+                     id = Session.resolve!(session.to_s.strip, state_dir: sd)
                      child = Session.load(id, state_dir: sd)
                      unless child.parent_id == peers.session_id
                        return "Error: #{id[0, 8]} is not a delegate of this session (list_sessions marks them child)"
@@ -38,10 +38,10 @@ module Samagotchi
                      id
                    end
         DelegateWait.call(child_id, peers: peers, timeout: Delegate.parse_timeout(timeout))
-      rescue Session::AmbiguousId => e
+      rescue Session::NotFound => e
+        "Error: #{e.message} (list_sessions shows them)"
+      rescue ArgumentError => e
         "Error: #{e.message}"
-      rescue ArgumentError
-        "Error: no session #{session.to_s.strip} (list_sessions shows them)"
       end
 
       def self.newest_running_child(parent_id, state_dir:)

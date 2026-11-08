@@ -185,7 +185,7 @@ module Samagotchi
       end
 
       def unknown_session(id)
-        error_response(404, "not_found", "Session not found: #{id.to_s[0, 80]}")
+        session_not_found(id)
       end
 
       # 403 not_permitted for a participant (the owner is never refused by
@@ -388,7 +388,7 @@ module Samagotchi
       def participant_resolve(grant, given)
         return json_response(200, { id: grant.session_id }) if grant.session_id.start_with?(given)
 
-        error_response(404, "not_found", "no session #{given[0, 80]}")
+        session_not_found(given)
       end
 
       # POST …/wait/prepare for a participant (an agent's chi --remote

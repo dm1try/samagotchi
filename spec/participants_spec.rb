@@ -58,7 +58,7 @@ RSpec.describe Samagotchi::Participants do
 
     it "refuses an unknown session and an archived one" do
       expect { described_class.invite(grants, session_id: "nope", name: "A", state_dir: state_dir) }
-        .to raise_error(ArgumentError, /Session not found: nope/)
+        .to raise_error(Samagotchi::Session::NotFound, "no session nope")
       FileUtils.mkdir_p(dir)
       Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
       expect { described_class.invite(grants, session_id: session.id, name: "A", state_dir: state_dir) }

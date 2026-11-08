@@ -47,7 +47,7 @@ module Samagotchi
 
       def handle_question_answer(req, id)
         session = @session_class.load(id, state_dir: default_state_dir) rescue nil
-        return error_response(404, "not_found", "Session not found: #{id}") unless session
+        return session_not_found(id) unless session
 
         body = parse_json(request_body(req))
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
@@ -239,7 +239,7 @@ module Samagotchi
         return [] if raw.nil?
 
         session_dir = image_session_dir(id)
-        return "unknown session" unless session_dir
+        return Session::NotFound.new(id).message unless session_dir
 
         ImageStore.check_refs(session_dir, raw)
       end
@@ -259,7 +259,7 @@ module Samagotchi
       # (converted, downscaled); answers the ref the turn then names.
       def handle_image_upload(req, id)
         session_dir = image_session_dir(id)
-        return error_response(404, "not_found", "unknown session") unless session_dir
+        return session_not_found(id) unless session_dir
 
         length = req.content_length.to_i
         if length > MAX_IMAGE_UPLOAD_BYTES

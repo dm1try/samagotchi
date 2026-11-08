@@ -120,15 +120,7 @@ module Samagotchi
         { id: id, unarchived: unarchived }
       end
 
-      private def archive_target(id_or_prefix, state_dir)
-        given = id_or_prefix.to_s
-        raise ArgumentError, "no session #{given}" unless Session.valid_id?(given)
-
-        id = Session.resolve_id(given, state_dir: state_dir)
-        raise ArgumentError, "no session #{given}" unless Session.exist?(id, state_dir: state_dir)
-
-        id
-      end
+      private def archive_target(id_or_prefix, state_dir) = Session.resolve!(id_or_prefix.to_s, state_dir: state_dir)
 
       # The retention sweep (SessionRetention.sweep_if_due), here for the web
       # app and hub, which take this class as their manager.
@@ -152,12 +144,13 @@ module Samagotchi
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         # Only a plain id: anything else could name a path outside the state dir.
-        raise ArgumentError, "no session #{given}" unless Session.valid_id?(given)
+        raise Session::NotFound, given unless Session.valid_id?(given)
 
         id = Session.resolve_id(given, state_dir: sd)
         path = Session.session_file(id, state_dir: sd)
         dir = Session.session_dir(id, state_dir: sd)
-        raise ArgumentError, "no session #{given}" unless File.exist?(path) || Dir.exist?(dir)
+        # A folder with no file left is still deleted (not resolve!).
+        raise Session::NotFound, given unless File.exist?(path) || Dir.exist?(dir)
 
         owner = refuse_tui!(id, state_dir: sd)
         if owner

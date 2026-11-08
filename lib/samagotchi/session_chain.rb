@@ -62,15 +62,16 @@ module Samagotchi
     # A session to continue as the CLI and the web name it: an id, a unique
     # prefix, or `last:<id or prefix>` for that chain's latest link.
     # @return [String] the full id of an existing session
-    # @raise [ArgumentError] none such (Session::AmbiguousId for a prefix of several)
+    # @raise [Session::NotFound] none such (Session::AmbiguousId for a prefix of several)
     def resolve(ref, state_dir:)
       given = ref.to_s.strip
       last = given.start_with?(LAST_PREFIX)
       given = given.delete_prefix(LAST_PREFIX) if last
-      raise ArgumentError, "no session #{ref}" unless Session.valid_id?(given)
-
-      id = Session.resolve_id(given, state_dir: state_dir)
-      raise ArgumentError, "no session #{ref}" unless Session.exist?(id, state_dir: state_dir)
+      id = begin
+        Session.resolve!(given, state_dir: state_dir)
+      rescue Session::NotFound
+        raise Session::NotFound, ref # as given, last: and all
+      end
 
       last ? latest(id, state_dir: state_dir) : id
     end

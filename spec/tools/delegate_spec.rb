@@ -1123,7 +1123,7 @@ RSpec.describe "delegate tools" do
     end
 
     it "says so when the child's session is gone" do
-      expect(described_class.call("no-such-id", peers: peers, timeout: 1)).to eq("Error: Session not found: no-such-id")
+      expect(described_class.call("no-such-id", peers: peers, timeout: 1)).to eq("Error: no session no-such-id")
     end
 
     # A timeout or a cancel leaves the cursor where it was, so the reply

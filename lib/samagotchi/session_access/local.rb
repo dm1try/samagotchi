@@ -63,11 +63,11 @@ module Samagotchi
       # @raise [Session::AmbiguousId]
       def resolve_id(given) = Session.resolve_id(given, **dir)
 
-      # The full id of +given+, of a session that exists.
-      # @raise [ArgumentError] no such session (Session::AmbiguousId: a
+      # The full id of +given+, of a session that exists (and loads).
+      # @raise [Session::NotFound] no such session (Session::AmbiguousId: a
       #   prefix of several)
       def resolve(given)
-        id = resolve_id(given)
+        id = Session.resolve!(given, **dir)
         show(id)
         id
       end

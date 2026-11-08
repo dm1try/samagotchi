@@ -78,14 +78,14 @@ module Samagotchi
       # 404 not_found; 400 ambiguous_id with ids (the sessions it names).
       def handle_resolve(req)
         given = req.params["id"].to_s
-        return error_response(404, "not_found", "no session #{given[0, 80]}") unless Session.valid_id?(given)
+        return session_not_found(given) unless Session.valid_id?(given)
         return participant_resolve(principal(req).grant, given) unless principal(req).owner?
 
         json_response(200, { id: session_access.resolve(given) })
       rescue Session::AmbiguousId => e
         refusal_response(400, "ambiguous_id", e, ids: e.ids)
-      rescue ArgumentError
-        error_response(404, "not_found", "no session #{given[0, 80]}")
+      rescue ArgumentError # NotFound, a file that won't load
+        session_not_found(given)
       end
 
       # GET /api/sessions/:id?brief=1: the session as a session command

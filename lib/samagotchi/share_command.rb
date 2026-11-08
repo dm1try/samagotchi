@@ -101,7 +101,7 @@ module Samagotchi
       error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     rescue ArgumentError => e
-      error_line("#{command_name}: #{e.is_a?(Session::AmbiguousId) ? e.message : e.message.sub(/\ASession not found: /, "no session ")}")
+      error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     end
 

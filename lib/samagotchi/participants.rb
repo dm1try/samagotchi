@@ -106,10 +106,10 @@ module Samagotchi
     # @return [Grants::Issued]
     # @raise [Grants::Invalid] an archived session, or bad values
     #   (Unbindable: an identity without such a public_url)
-    # @raise [ArgumentError] no such session
+    # @raise [Session::NotFound] no such session
     def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, identity: nil, public_url: nil,
                mode: nil, state_dir: Session.default_state_dir)
-      raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
+      raise Session::NotFound, session_id unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
 
       identity = Grants.clean_identity(identity) unless identity.nil?
       raise Grants::Unbindable if !identity.nil? && public_url&.identity_header.nil?

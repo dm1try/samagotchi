@@ -38,7 +38,7 @@ RSpec.describe "TerminalUI session ownership" do
 
   it "refuses an unknown session before claiming it" do
     expect { Samagotchi::TerminalUI.new(client: client, session_id: "deadbeef") }
-      .to raise_error(Samagotchi::TerminalUI::SessionNotFound, "Session not found: deadbeef")
+      .to raise_error(Samagotchi::Session::NotFound, "no session deadbeef")
     expect(Dir.exist?(Samagotchi::Session.session_dir("deadbeef"))).to be false
   end
 

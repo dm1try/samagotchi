@@ -428,8 +428,7 @@ module Samagotchi
       session = @access.show(id)
       Target.new(session_id: id, project_root: session.project_root, cwd: session.working_directory, label: id[0, 8])
     rescue ArgumentError => e
-      message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
-      error_line("#{command_name}: #{message}")
+      error_line("#{command_name}: #{e.message}")
       nil
     end
 

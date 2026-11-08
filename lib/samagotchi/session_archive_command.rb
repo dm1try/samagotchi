@@ -82,7 +82,7 @@ module Samagotchi
       @stdout.puts("#{short}  refused: #{e.message}")
       false
     rescue ArgumentError => e
-      error_line("chi sessions archive: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+      error_line("chi sessions archive: #{e.message}")
       false
     rescue SystemCallError => e
       @stdout.puts("#{short}  failed: #{e.message}")
@@ -96,7 +96,7 @@ module Samagotchi
       @stdout.puts(result[:unarchived].empty? ? "#{short}  not archived" : "#{short}  unarchived")
       true
     rescue ArgumentError => e
-      error_line("chi sessions unarchive: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+      error_line("chi sessions unarchive: #{e.message}")
       false
     rescue SystemCallError => e
       @stdout.puts("#{short}  failed: #{e.message}")

@@ -60,7 +60,7 @@ module Samagotchi
       end
 
       def read(id)
-        answer(:read, [id], {}) { raise Plugin::Sessions::Error, "no session #{id}" }
+        answer(:read, [id], {}) { raise Plugin::Sessions::Error, Session::NotFound.new(id).message }
       end
 
       def children(all: false)

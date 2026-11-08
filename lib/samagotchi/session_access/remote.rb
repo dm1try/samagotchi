@@ -137,11 +137,11 @@ module Samagotchi
         end
       end
 
-      # @raise [ArgumentError] no such session (Session::AmbiguousId: a
+      # @raise [Session::NotFound] no such session (Session::AmbiguousId: a
       #   prefix of several)
       def resolve(given)
         id = resolve_id(given)
-        raise ArgumentError, "Session not found: #{given}" if id == given.to_s && !exists?(id)
+        raise Session::NotFound, given if id == given.to_s && !exists?(id)
 
         id
       end
@@ -704,6 +704,20 @@ module Samagotchi
         reply.json["detail"].to_s.start_with?("no installed bundle resolves")
       end
 
+      # chi web's 404 not_found detail for a session it doesn't have:
+      # "no session X" (Session::NotFound), or "Session not found: X" from
+      # chi web 0.155.0 and older (compat N-1: the same line either way).
+      SESSION_NOT_FOUND = /\A(?:no session |Session not found: )(.+)\z/m
+
+      # Session::NotFound for a missing session's 404, else an
+      # ArgumentError with chi web's words (another route's 404). chi web
+      # never answers Session::NONE_YET ("no session yet") as a 404
+      # not_found; were it to, the pattern would read it as NotFound("yet").
+      def not_found_error(detail)
+        given = detail[SESSION_NOT_FOUND, 1]
+        given ? Session::NotFound.new(given) : ArgumentError.new(detail)
+      end
+
       # Raises what Local's callee raises for this refusal (chi web sends
       # the fields each class is built from; see docs/architecture.md, chi
       # web's routes for the session commands), else RemoteFailed.
@@ -714,7 +728,7 @@ module Samagotchi
         sid = json["session_id"]
         reason = json["reason"]&.to_sym
         case error
-        when "not_found" then raise ArgumentError, message.to_s
+        when "not_found" then raise not_found_error(message.to_s)
         when "ambiguous_id" then raise Session::AmbiguousId.new(message, ids: Array(json["ids"]))
         when "owned_by_tui"
           raise SessionManager::ScratchSession, sid if json["scratch"] == true

@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- An id or prefix that names no session is refused in one wording everywhere: `no session ID` (the CLI commands, `chi --resume`/`--attach`, chi web's 404s and the session tools), where some said `Session not found: ID`. A `chi --remote` command shows it the same against an older chi web.
+
 ## [0.155.0] - 2026-11-07
 
 ### Added

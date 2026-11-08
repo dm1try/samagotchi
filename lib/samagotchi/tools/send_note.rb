@@ -22,7 +22,7 @@ module Samagotchi
         return "Error: this session's id is not known here" unless peers&.session_id
         return "Error: give the target session's id (list_sessions shows them)" if session.to_s.strip.empty?
 
-        id = Session.resolve_id(session.to_s.strip, state_dir: peers.state_dir)
+        id = Session.resolve!(session.to_s.strip, state_dir: peers.state_dir)
         Session.load(id, state_dir: peers.state_dir)
         return "Error: #{id[0, 8]} is this session; send_note is for other sessions" if id == peers.session_id
 
@@ -33,12 +33,10 @@ module Samagotchi
 
         where = result.status == :queued ? "its worker adds it before its next turn" : "it has no worker now, so it waits for its next start"
         "Queued a note for session #{id[0, 8]}: #{where}. It does not start a turn there."
-      rescue Session::AmbiguousId => e
+      rescue Session::NotFound => e
+        "Error: #{e.message} (list_sessions shows them)"
+      rescue ArgumentError => e # AmbiguousId, SessionInbox::NoteRejected, a file that won't load
         "Error: #{e.message}"
-      rescue SessionInbox::NoteRejected => e
-        "Error: #{e.message}"
-      rescue ArgumentError
-        "Error: no session #{session.to_s.strip} (list_sessions shows them)"
       end
     end
   end
