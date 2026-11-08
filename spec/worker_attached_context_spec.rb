@@ -211,7 +211,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       prompt, kwargs, last = pop!(wake_turns, "the wake turn")
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "context:pr-7"))
+      expect(kwargs).to include(continue: true, origin: have_attributes(client_id: "context:pr-7", enqueued_id: /\Awake-\h{16}\z/))
       expect(last).to include(role: "system", kind: "note", context_source: "pr-7", turn_start: true, turn_id: kwargs[:id])
       expect(last[:content]).to include("> review: changes requested by @bob\nchi started this turn because the source changed")
       expect(own.subscription("pr-7").wakes_at).to be_truthy
@@ -227,7 +227,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       prompt, kwargs, last = pop!(wake_turns, "the wake turn")
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "context:claude-outbox"))
+      expect(kwargs).to include(continue: true, origin: have_attributes(client_id: "context:claude-outbox", enqueued_id: /\Awake-\h{16}\z/))
       expect(last).to include(role: "system", kind: "note", context_source: "claude-outbox", turn_start: true)
       expect(last[:content]).to include("\nAttached: claude-outbox.\n")
         .and end_with("\n#{Samagotchi::ContextAbsorber::WAKE_LAST_LINE}\n[END NOTE]")
@@ -302,7 +302,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
         answer("v1")
         _, kwargs, last = wake_turn
-        expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "context:codex-outbox"))
+        expect(kwargs).to include(continue: true, origin: have_attributes(client_id: "context:codex-outbox", enqueued_id: /\Awake-\h{16}\z/))
         expect(last[:content]).to include("What your peer agent Codex answered", "After 2 such turns in a row")
         answer("v2")
         expect(wake_turn&.last&.dig(:content)).to include("What changed, as your peer agent Codex reports it")
@@ -329,7 +329,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
         type("go on", "web:tab1")
         answer("v3")
-        expect(wake_turn&.dig(1, :origin)).to eq(Samagotchi::TurnOrigin.new(client_id: "context:codex-outbox"))
+        expect(wake_turn&.dig(1, :origin)).to have_attributes(client_id: "context:codex-outbox", enqueued_id: /\Awake-\h{16}\z/)
       end
 
       it "wakes once with the closing line for an answer that agrees, outside context.peer_turns" do

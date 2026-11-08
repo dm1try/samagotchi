@@ -292,7 +292,10 @@ RSpec.describe Samagotchi::Worker do
 
       prompt, started_at, kwargs = next_turn
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "system:reminder"))
+      expect(kwargs).to include(continue: true)
+      # Its own id, minted as it runs; the constant keeps none.
+      expect(kwargs[:origin]).to have_attributes(client_id: "system:reminder", enqueued_id: /\Awake-\h{16}\z/)
+      expect(described_class::REMINDER_ORIGIN.enqueued_id).to be_nil
       expect(started_at - called_at).to be < time_bound(5, below: 60)
       expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty

@@ -589,6 +589,56 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       end
     end
 
+    # A turn nobody typed (a reminder, a wake) runs under an id its worker
+    # mints (wake-…): a wait with no message binds it, names it, and ends
+    # when its worker dies in it and the next one settles it.
+    describe "no message, on a wake turn (its worker-minted id)" do
+      let(:wake_id) { "wake-0123456789abcdef" }
+
+      def run_wake(session)
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 1, enqueued_id: wake_id)
+        s.save(state_dir: tmpdir)
+      end
+
+      it "names its turn_id in --format json" do
+        busy = make(status: "running")
+        run_wake(busy)
+
+        expect(run("--wait", "--format", "json", "--timeout", "0.1", busy.id)).to eq(4)
+        expect(JSON.parse(out.string)).to include("status" => "running", "turn_id" => wake_id)
+      end
+
+      it "ends canceled (worker_stopped) when its worker died in it and the next one settled it" do
+        busy = make(status: "running")
+        run_wake(busy)
+        dir = Samagotchi::Session.session_dir(busy.id, state_dir: tmpdir)
+        later do
+          s = Samagotchi::Session.load(busy.id, state_dir: tmpdir)
+          Samagotchi::TurnCheckpoint.settle(s, session_dir: dir)
+          s.save(state_dir: tmpdir)
+        end
+
+        expect(run("--wait", "--format", "json", "--timeout", "5", busy.id)).to eq(1), err.string
+        expect(JSON.parse(out.string)).to include("status" => "canceled", "cancel_reason" => "worker_stopped",
+                                                  "turn_id" => wake_id)
+      end
+
+      it "waits for it by --turn" do
+        busy = make(status: "running")
+        run_wake(busy)
+        dir = Samagotchi::Session.session_dir(busy.id, state_dir: tmpdir)
+        later do
+          Samagotchi::SessionInbox.write_output(dir, "woke and did it", enqueued_id: wake_id)
+          update(busy, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                                           enqueued_id: wake_id))
+        end
+
+        expect(run("--wait", "--turn", wake_id, "--format", "json", busy.id)).to eq(0), err.string
+        expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "woke and did it", "turn_id" => wake_id)
+      end
+    end
+
     describe "a session command as the message (no reply comes for it)" do
       before do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|

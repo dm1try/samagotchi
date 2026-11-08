@@ -911,13 +911,30 @@ module Samagotchi
       # A failure has no prompt to hand back (the Engine announced
       # :turn_failed). The offer went before the turn
       # (ContinueOffer#drop); either way the rollback window closes.
-      run_engine_turn(nil, continue: true, origin: REMINDER_ORIGIN,
+      run_engine_turn(nil, continue: true, origin: wake_origin(REMINDER_ORIGIN),
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
     end
 
-    # A reminder turn's origin: chi's own (system:reminder).
+    # A reminder turn's origin: chi's own (system:reminder). Its run gets
+    # an id of its own (#wake_origin); this constant has none.
     REMINDER_ORIGIN = TurnOrigin.new(client_id: ClientId::REMINDER)
+
+    # A turn nobody typed (a reminder, a wake) with an enqueued_id of its
+    # own, minted here as it runs, so its checkpoint mark, last_turn, reply
+    # file and settle name it (a wait with no message binds it:
+    # ReplyWait.own_turn). Never on the origin constants nor on
+    # ChildReports::Report#origin: a report merged into a turn keeps an
+    # id-less origin, which the web page reads as a report (turn_events.js
+    # promptOps), not as an unmatched steer.
+    # @return [TurnOrigin] +origin+ with an id ("wake-<16 hex>")
+    def wake_origin(origin)
+      origin.enqueued_id ? origin : origin.with(enqueued_id: "#{WAKE_ID_PREFIX}#{SecureRandom.hex(8)}")
+    end
+
+    # A wake turn's minted enqueued_id starts with this
+    # (SessionInbox::ENQUEUED_ID_NAME).
+    WAKE_ID_PREFIX = "wake-"
 
     # :due when an idle parent should run a turn for its delegate
     # children's reports now (session.delegate_reports: wake): rings wait,
@@ -977,7 +994,7 @@ module Samagotchi
     def run_wake(origin:, failed:, kept: nil, mark: nil)
       @turn_flow.before_prompt_turn
       restores = @turn_flow.restores
-      run_engine_turn(nil, continue: true, origin: origin, id: mark&.turn_id,
+      run_engine_turn(nil, continue: true, origin: wake_origin(origin), id: mark&.turn_id,
                            max_iterations: IterationLimit.for) do |result, error|
         if error
           steps_kept = @turn_flow.prompt_turn_failed(error: error, wake: failed, wake_kept: kept) == :kept
