@@ -302,7 +302,7 @@ module Samagotchi
         waiting = s.waiting_question(live: !!live)
         status = if waiting&.dig(:relayed_to) then "waiting (in parent #{waiting[:relayed_to]})"
                  elsif waiting then "waiting"
-                 else s.status
+                 else s.displayed_status(owner: Samagotchi::SessionManager.session_owner(s.id, state_dir: state_dir))
                  end
         "#{s.id}  #{status.ljust(8)}  #{ctx.call(s).ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
       end

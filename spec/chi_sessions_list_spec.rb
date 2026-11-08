@@ -51,10 +51,12 @@ RSpec.describe "chi sessions list" do
     [out, err, status.exitstatus]
   end
 
-  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false, last_turn: nil)
+  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false, last_turn: nil,
+           status: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id,
                                     now: next_stamp).tap do |s|
       s.last_prompt = prompt
+      s.status = status if status
       s.test_run = test_run
       s.scratch = scratch
       s.last_turn = last_turn
@@ -114,6 +116,18 @@ RSpec.describe "chi sessions list" do
       expect(oldest_first).to eq([first.id, second.id])
       out, = run_chi("--cwd", "/work", "--format", "tsv", "--sort", "created_at", "--order", "asc")
       expect(out.lines.map { |line| line.split("\t").first }).to eq([first.id, second.id])
+    end
+
+    it "shows a crashed worker's 'running' (no owner left) as idle, as chi web does, in the plain and the --cwd listings" do
+      crashed = make("died mid-turn", status: Samagotchi::Session::STATUS_RUNNING)
+      repl = make("one-shot turn", status: Samagotchi::Session::STATUS_RUNNING, owner: "tui")
+
+      [[], %w[--cwd /work], %w[--format text]].each do |args|
+        out, err, status = run_chi(*args)
+        expect(status).to eq(0), err
+        expect(out).to match(/^#{crashed.id}  idle      /), "#{args.join(" ")}: #{out}"
+        expect(out).to match(/^#{repl.id}  running   /), "#{args.join(" ")}: #{out}"
+      end
     end
 
     it "marks a session whose last turn loop-guard stopped [looped], and no other", local_only: plain do
@@ -253,8 +267,9 @@ RSpec.describe "chi sessions list" do
       expect(status).to eq(0), err
       expect(out).to match(/^#{asking.id}  waiting  .* which file\?\n/)
       expect(out).to match(/^#{approving.id}  waiting  .* run it\n/)
-      # A question a dead worker left in the file waits for no one.
-      expect(out).to match(/^#{orphaned.id}  running  .* crashed while asking\n/)
+      # A question a dead worker left in the file waits for no one, and its
+      # "running" runs nothing: idle, as chi web shows it.
+      expect(out).to match(/^#{orphaned.id}  idle  .* crashed while asking\n/)
 
       out, _err, _status = run_chi("--live")
       expect(out).to match(/^#{asking.id}  waiting  /)

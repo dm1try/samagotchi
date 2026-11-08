@@ -146,13 +146,12 @@ module Samagotchi
       private_class_method :budget_resolver
 
       # status is turn state (idle/running). The live worker's snapshot is the
-      # truth; on disk, a "running" with no live owner was left by a worker
-      # that died mid-turn.
+      # truth; on disk, Session#displayed_status (a "running" with no live
+      # owner was left by a worker that died mid-turn).
       def displayed_status(session, snapshot = nil, owner:)
         return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
-        return session.status unless session.status == Session::STATUS_RUNNING
 
-        owner ? session.status : Session::STATUS_IDLE
+        session.displayed_status(owner: owner)
       end
 
       def first_preview_for(session)

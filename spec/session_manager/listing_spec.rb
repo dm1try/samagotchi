@@ -181,6 +181,19 @@ RSpec.describe Samagotchi::SessionManager do
         .to include(live: false, busy: false)
     end
 
+    it "shows a crashed worker's 'running' as idle, as chi web does (Session#displayed_status); saved_status keeps the file's" do
+      crashed = make(updated: "2026-09-24T10:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
+      worker = make(updated: "2026-09-24T11:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
+      repl = make(updated: "2026-09-24T12:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
+      own(worker)
+      own(repl, kind: "tui")
+
+      rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s] }
+      expect(rows[crashed.id]).to include(status: "idle", saved_status: "running", live: false, busy: false)
+      expect(rows[worker.id]).to include(status: "running", saved_status: "running", busy: true)
+      expect(rows[repl.id]).to include(status: "running", live: false)
+    end
+
     it "filters before it takes the limit" do
       live_one = make(updated: "2026-09-24T09:00:00Z")
       make(updated: "2026-09-24T10:00:00Z")

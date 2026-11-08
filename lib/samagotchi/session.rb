@@ -452,6 +452,20 @@ module Samagotchi
       @preloaded_memory_names.include?(DELEGATE_MEMORY)
     end
 
+    # The turn state (idle/running/…) the lists show: the saved status,
+    # except a "running" with no live +owner+ (an OwnerLock::Owner, or nil):
+    # the worker that saved it died mid-turn, so nothing runs. The one rule
+    # behind chi web's rows and pages (Web::SessionSummary.displayed_status,
+    # which prefers a live worker's snapshot) and `chi sessions list`
+    # (SessionManager.session_summaries and the plain table).
+    # @param owner [OwnerLock::Owner, nil] the session's owner now
+    # @return [String]
+    def displayed_status(owner:)
+      return status unless status == STATUS_RUNNING
+
+      owner ? status : STATUS_IDLE
+    end
+
     # The question this session waits on, as the lists show it: {id:, kind:}
     # with kind "question" (the model's), "approval", "hook" or "continue"
     # (the step-limit question, asked between turns), +relayed_to+ and

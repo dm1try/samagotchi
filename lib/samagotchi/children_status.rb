@@ -113,7 +113,7 @@ module Samagotchi
     # session counts loaded itself.
     def summary_of(session, state_dir:)
       live = WorkerLink.resolve(Session.session_dir(session.id, state_dir: state_dir), unlink: false).worker_owned?
-      { live: live, busy: live && session.status == Session::STATUS_RUNNING, status: session.status,
+      { live: live, busy: live && session.status == Session::STATUS_RUNNING, saved_status: session.status,
         updated_at: session.updated_at, waiting: session.waiting_question(live: live)&.dig(:kind),
         preview: session.last_prompt.to_s }
     end
