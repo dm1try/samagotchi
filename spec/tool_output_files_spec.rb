@@ -97,14 +97,14 @@ RSpec.describe Samagotchi::ToolOutputFiles do
         next original.call(*args, **kwargs) if raised
 
         raised = true
-        raise Samagotchi::Session::InvalidId, "bad"
+        raise Samagotchi::SessionPaths::InvalidId, "bad"
       end
       allow(Samagotchi::Log).to receive(:warn).and_call_original
 
       engine.run_turn(session, "hi")
 
       expect(seen.session_dir).to be_nil
-      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "tool_output_save_failed", error: "Samagotchi::Session::InvalidId")
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "tool_output_save_failed", error: "Samagotchi::SessionPaths::InvalidId")
     end
   end
 end

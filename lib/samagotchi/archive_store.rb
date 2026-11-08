@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require "time"
 require_relative "atomic_file"
+require_relative "session_paths"
 
 require_relative "session"
 
@@ -46,7 +47,7 @@ module Samagotchi
 
     # @return [Boolean] whether it was archived (and is not now)
     def self.unarchive(session_id, state_dir:)
-      return false unless archived?(Session.session_dir(session_id, state_dir: state_dir))
+      return false unless archived?(SessionPaths.session_dir(session_id, state_dir: state_dir))
 
       write(session_id, { "unarchived_at" => Time.now.iso8601(3) }, state_dir: state_dir)
     end
@@ -63,9 +64,9 @@ module Samagotchi
     end
 
     def self.write(session_id, record, state_dir:)
-      return false unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
+      return false unless File.exist?(SessionPaths.session_file(session_id, state_dir: state_dir))
 
-      dir = Session.session_dir(session_id, state_dir: state_dir)
+      dir = SessionPaths.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, FILE)
       AtomicFile.write(path, JSON.generate(record))

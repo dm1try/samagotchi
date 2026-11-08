@@ -186,7 +186,7 @@ module Samagotchi
         end
 
         def leftover_workers
-          sessions = File.join(state_home, Session::STATE_SUBDIR)
+          sessions = File.join(state_home, SessionPaths::STATE_SUBDIR)
           Dir.glob(File.join(sessions, "*", OwnerLock::FILE)).filter_map do |lock|
             pid = OwnerLock.owner(File.dirname(lock))&.pid
             pid if ProcessGroup.leader?(pid)

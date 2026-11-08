@@ -95,6 +95,8 @@ RSpec.describe "loading session_manager and terminal_ui" do
   { "samagotchi/sessions_command" => "Samagotchi::SessionsCommand",
     # A leaf: the row every listing builds, never session_manager or web.
     "samagotchi/session_row" => "Samagotchi::SessionRow",
+    # A leaf: a session's paths and id rule (Paths only), never Session.
+    "samagotchi/session_paths" => "Samagotchi::SessionPaths",
     "samagotchi/bundle_command" => "Samagotchi::BundleCommand" }.each do |file, constant|
     it "loads #{file} on its own with no warning from lib" do
       _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", "require '#{file}'; p #{constant}")

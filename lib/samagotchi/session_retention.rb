@@ -78,7 +78,7 @@ module Samagotchi
       Dir.children(state_dir).filter_map do |name|
         dir = File.join(state_dir, name)
         next unless Session.valid_id?(name) && File.directory?(dir)
-        next if File.exist?(File.join(state_dir, "#{name}#{Session::FILE_EXT}"))
+        next if File.exist?(File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}"))
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
         next if SessionManager.session_owner(name, state_dir: state_dir)
 
@@ -203,7 +203,7 @@ module Samagotchi
       passed_over = 0
 
       all.each_with_index do |session, idx|
-        path = File.join(state_dir, "#{session.id}#{Session::FILE_EXT}")
+        path = File.join(state_dir, "#{session.id}#{SessionPaths::FILE_EXT}")
         # Only when json present
         unless File.exist?(path)
           skipped << session.id

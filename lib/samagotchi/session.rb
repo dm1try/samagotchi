@@ -14,9 +14,9 @@ require_relative "session_setup"
 require_relative "prompt_note"
 require_relative "working_set_pin"
 require_relative "session_review"
+require_relative "session_paths"
 require_relative "version"
 
-require_relative "paths"
 require_relative "project_scope"
 require_relative "guardrails/parent_levels"
 
@@ -29,9 +29,11 @@ module Samagotchi
   autoload :ArchiveStore, File.expand_path("archive_store", __dir__)
 
   class Session
+    # The paths and the id rule (SessionPaths): Session.session_dir,
+    # .session_file, .default_state_dir, .valid_id?, .check_id!.
+    extend SessionPaths
+
     METADATA_VERSION = 3
-    STATE_SUBDIR = File.join("samagotchi", "sessions")
-    FILE_EXT = ".json"
 
     STATUS_IDLE = "idle"
     STATUS_RUNNING = "running"
@@ -717,7 +719,8 @@ module Samagotchi
       id = id_or_prefix.to_s
       return id unless valid_id?(id) && !File.exist?(session_path(id, state_dir: state_dir))
 
-      matches = Dir.glob(File.join(state_dir, "#{id}*#{FILE_EXT}")).map { |path| File.basename(path, FILE_EXT) }.sort
+      matches = Dir.glob(File.join(state_dir, "#{id}*#{SessionPaths::FILE_EXT}"))
+                    .map { |path| File.basename(path, SessionPaths::FILE_EXT) }.sort
       return matches.fetch(0, id) if matches.size <= 1
 
       lines = matches.map do |match|
@@ -743,7 +746,7 @@ module Samagotchi
       sort_key = SORT_KEYS.include?(sort.to_s) ? sort.to_s : "updated_at"
       sort_order = SORT_ORDERS.include?(order.to_s) ? order.to_s : "desc"
 
-      sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map { |path| summary_from_file(path) }
+      sessions = Dir.glob(File.join(state_dir, "*#{SessionPaths::FILE_EXT}")).filter_map { |path| summary_from_file(path) }
       sessions.each { |s| s.archived = ArchiveStore.archived?(session_dir(s.id, state_dir: state_dir)) }
       sessions.reject!(&:archived) unless include_archived
       if project_root
@@ -914,45 +917,6 @@ module Samagotchi
       valid_id?(id) ? id : nil
     rescue JSON::ParserError, SystemCallError
       nil
-    end
-
-    # An id that is not a session id: it could name a path outside the
-    # sessions dir ("../x", "/etc", "a/b", a NUL), or is empty.
-    class InvalidId < ArgumentError; end
-
-    # Ids are SecureRandom.uuid; anything made of letters, digits, "-" and
-    # "_" (up to 128, not starting with "-") is taken, so a UUID prefix the
-    # CLI resolves passes too. This is the one check every id from outside
-    # (the bridge, the web routes, chi send/note, delegate) meets before it
-    # becomes a path: session_dir and the session file path refuse others.
-    VALID_ID = /\A[A-Za-z0-9_][A-Za-z0-9_-]{0,127}\z/
-
-    def self.valid_id?(session_id)
-      session_id.is_a?(String) && VALID_ID.match?(session_id)
-    end
-
-    # @raise [InvalidId] unless valid_id?(session_id)
-    def self.check_id!(session_id)
-      return session_id if valid_id?(session_id)
-
-      raise InvalidId, "invalid session id: #{session_id.to_s[0, 80].inspect}"
-    end
-
-    # Directory for a specific session (holds IPC files alongside session.json).
-    # @raise [InvalidId] for an id that isn't one (valid_id?)
-    def self.session_dir(session_id, state_dir: default_state_dir)
-      File.join(state_dir, check_id!(session_id))
-    end
-
-    # A session's <id>.json.
-    # @raise [InvalidId] for an id that isn't one (valid_id?)
-    def self.session_file(session_id, state_dir: default_state_dir)
-      File.join(state_dir, "#{check_id!(session_id)}#{FILE_EXT}")
-    end
-
-    # XDG-aware sessions directory.
-    def self.default_state_dir(env: ENV)
-      File.join(Paths.state_home(env: env), STATE_SUBDIR)
     end
 
     # What names the session: its #title when it has one, else its

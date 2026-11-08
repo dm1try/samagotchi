@@ -112,13 +112,13 @@ module Samagotchi
       # no turn id (an older session) or a session with no analytics.
       def saved_tool_records(turn_id)
         SessionMetrics.saved_tool_records(session_dir, turn_id)
-      rescue Session::InvalidId
+      rescue SessionPaths::InvalidId
         []
       end
 
       def saved_turn_record(turn_id)
         SessionMetrics.saved_turn_record(session_dir, turn_id)
-      rescue Session::InvalidId
+      rescue SessionPaths::InvalidId
         nil
       end
 
