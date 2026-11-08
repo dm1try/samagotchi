@@ -135,6 +135,20 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(trash_files).to be_empty
     end
 
+    it "warns when the incoming file it merges doesn't match its manifest checksum" do
+      data = YAML.safe_load_file(File.join(source, "manifest.yml"))
+      data["files"]["a.md"]["sha256"] = "sha256:#{"0" * 64}"
+      File.write(File.join(source, "manifest.yml"), YAML.dump(data))
+
+      dry = remerge(dry_run: true)
+      expect(dry.merged).to eq(["a.md"])
+      expect(dry.warnings).to include(start_with("Checksum mismatch for a.md: expected 00000000..."))
+
+      result = remerge
+      expect(result.merged).to eq(["a.md"])
+      expect(result.warnings).to include(start_with("Checksum mismatch for a.md: expected 00000000..."))
+    end
+
     it "keeps a write that came in during the merge, with the mark on" do
       allow_any_instance_of(Samagotchi::MemoryBundle::Trash).to receive(:copy).and_wrap_original do |copy, *args, **opts|
         File.write(target, "a live memory_write\n")
