@@ -177,6 +177,34 @@ RSpec.describe Samagotchi::MemoryPaths do
       expect(look(File.join(real_tmp, "notes", "sub")).root).to eq(root)
     end
 
+    it "gives a symlinked spelling of the marked folder its realpath root" do
+      notes = mark(File.join(@tmp, "notes"))
+      FileUtils.mkdir_p(File.join(notes, "sub"))
+      link = File.join(@tmp, "link")
+      File.symlink(notes, link)
+
+      expect(look(File.join(link, "sub")).root).to eq(File.realpath(notes))
+    end
+
+    it "walks the real path: a link into the middle of a marked project is in it" do
+      notes = mark(File.join(@tmp, "notes"))
+      deep = File.join(notes, "deep").tap { |dir| FileUtils.mkdir_p(File.join(dir, "x")) }
+      link = File.join(@tmp, "into-deep")
+      File.symlink(deep, link)
+
+      expect(look(File.join(link, "x"))).to eq(look(File.realpath(File.join(link, "x"))))
+      expect(look(File.join(link, "x")).root).to eq(File.realpath(notes))
+    end
+
+    it "walks the real path: a link from inside a marked project out to another folder is not in it" do
+      marked = mark(File.join(@tmp, "mk"))
+      target = File.join(@tmp, "other", "target").tap { |dir| FileUtils.mkdir_p(dir) }
+      File.symlink(target, File.join(marked, "lnk"))
+
+      expect(look(File.join(marked, "lnk")).kind).to eq(:none)
+      expect(look(File.join(marked, "lnk")).kind).to eq(look(File.realpath(target)).kind)
+    end
+
     it "is none outside a repo and a marker: the folder itself as root, no top" do
       plain = File.join(@tmp, "plain").tap { |dir| FileUtils.mkdir_p(dir) }
 

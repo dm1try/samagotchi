@@ -36,8 +36,10 @@ module Samagotchi
     # (git is the identity wherever it exists); only when there is none, the
     # nearest MARKER above it, ignoring one in $HOME or any folder above it
     # (and /), so a marker in ~ never makes every folder under home one
-    # project. The marked root is a realpath, as git's root is, so a
-    # symlinked spelling of the folder (/tmp, /var on macOS) is one project.
+    # project. The marker walk starts from +cwd+'s real path and the marked
+    # root is a realpath, as git's root is, so every spelling of a folder
+    # (/tmp, /var on macOS, a symlink into or out of a marked tree) gets the
+    # answer the worker's physical Dir.pwd gets.
     # @param home [String, nil] $HOME by default; nil or blank ignores only /
     # @return [ProjectLookup]
     def lookup(cwd = Dir.pwd, home: default_home)
@@ -51,15 +53,12 @@ module Samagotchi
     end
 
     # Whether a marker at +dir+ is ignored: +dir+ is / or holds $HOME (both
-    # resolved).
+    # resolved; Guardrails::PathResolve.home_root?).
     def above_home?(dir, home: default_home)
-      real = Guardrails::PathResolve.real(dir)
-      return true if real == "/"
-      return false if home.to_s.empty?
-
-      Guardrails::PathResolve.under?(Guardrails::PathResolve.real(home), real)
+      Guardrails::PathResolve.real(dir) == "/" || Guardrails::PathResolve.home_root?(dir, home)
     end
 
+    # $HOME, or nil when it can't be found (no HOME, no passwd entry).
     def default_home
       Dir.home
     rescue ArgumentError
@@ -170,7 +169,7 @@ module Samagotchi
     # (#above_home?) ends the walk with nil: every folder above it is above
     # home too.
     def nearest_marker(start, home: default_home)
-      dir = File.expand_path(start)
+      dir = Guardrails::PathResolve.real(start)
       loop do
         if File.file?(File.join(dir, MARKER))
           return nil if above_home?(dir, home: home)
@@ -205,7 +204,7 @@ module Samagotchi
     rescue SystemCallError
       gitdir
     end
-    private_class_method :find_dot_git, :git_root, :default_home, :gitdir_from_file, :common_dir
+    private_class_method :find_dot_git, :git_root, :gitdir_from_file, :common_dir
 
     def project_dir(env: ENV, cwd: Dir.pwd)
       File.join(projects_dir(env: env), project_key(cwd))

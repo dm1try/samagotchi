@@ -608,6 +608,35 @@ RSpec.describe "delegate tools" do
         child = (session_files - [parent.id, session.id]).first
         expect(Samagotchi::Session.load(child, state_dir: tmpdir).working_directory).to eq(File.join(marked, "b"))
       end
+
+      it "in a marked project reached through a symlink takes a subfolder of the parent's folder" do
+        marked = File.join(File.realpath(tmpdir), "notes")
+        FileUtils.mkdir_p(File.join(marked, ".chi"))
+        File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+        FileUtils.mkdir_p(File.join(marked, "a", "sub"))
+        link = File.join(File.realpath(tmpdir), "into-a")
+        File.symlink(File.join(marked, "a"), link)
+        session = make(cwd: link, prompt: "plan")
+        peers = Samagotchi::Tools::Peers.new(session_id: session.id, cwd: link, state_dir: tmpdir)
+
+        expect(described_class.call("x", cwd: "sub", wait: false, peers: peers)).to include("status: running")
+        child = (session_files - [parent.id, session.id]).first
+        expect(Samagotchi::Session.load(child, state_dir: tmpdir).working_directory).to eq(File.join(marked, "a", "sub"))
+      end
+
+      it "from a link inside a marked project out to another folder takes a subfolder of that folder" do
+        marked = File.join(File.realpath(tmpdir), "mk")
+        FileUtils.mkdir_p(File.join(marked, ".chi"))
+        File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+        target = File.join(File.realpath(tmpdir), "other", "target").tap { |dir| FileUtils.mkdir_p(File.join(dir, "sub")) }
+        link = File.join(marked, "lnk").tap { |path| File.symlink(target, path) }
+        session = make(cwd: link, prompt: "plan")
+        peers = Samagotchi::Tools::Peers.new(session_id: session.id, cwd: link, state_dir: tmpdir)
+
+        expect(described_class.call("x", cwd: "sub", wait: false, peers: peers)).to include("status: running")
+        child = (session_files - [parent.id, session.id]).first
+        expect(Samagotchi::Session.load(child, state_dir: tmpdir).working_directory).to eq(File.join(target, "sub"))
+      end
     end
 
     describe "a task that names another checkout while the child has no cwd:" do

@@ -41,7 +41,8 @@ module Samagotchi
     # @param home [String, nil] $HOME (markers at or above it are ignored)
     # @param sessions [#call, nil] () → this machine's SessionRows (for
     #   init's restart note; SessionManager.session_rows by default)
-    def initialize(argv, stdout: $stdout, stderr: $stderr, cwd: Dir.pwd, env: ENV, home: default_home, sessions: nil)
+    def initialize(argv, stdout: $stdout, stderr: $stderr, cwd: Dir.pwd, env: ENV, home: MemoryPaths.default_home,
+                   sessions: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
@@ -70,12 +71,6 @@ module Samagotchi
 
     def command_name = @sub ? "chi project #{@sub}" : "chi project"
     def usage_on_error = nil
-
-    def default_home
-      Dir.home
-    rescue ArgumentError
-      nil
-    end
 
     def lookup(dir) = MemoryPaths.lookup(dir, home: @home)
 

@@ -71,6 +71,24 @@ RSpec.describe Samagotchi::ProjectScope do
       expect(described_class.root_for(repo)).to eq(repo_root)
     end
 
+    it "gives every spelling of a folder the worker's answer: links into and out of a marked tree" do
+      marked = File.join(@tmp, "mk")
+      FileUtils.mkdir_p(File.join(marked, ".chi"))
+      FileUtils.mkdir_p(File.join(marked, "deep"))
+      File.write(File.join(marked, Samagotchi::MemoryPaths::MARKER), "")
+      target = File.join(@tmp, "other").tap { |dir| FileUtils.mkdir_p(dir) }
+      into = File.join(@tmp, "into-deep").tap { |link| File.symlink(File.join(marked, "deep"), link) }
+      out = File.join(marked, "out").tap { |link| File.symlink(target, link) }
+      named = File.join(@tmp, "named").tap { |link| File.symlink(marked, link) }
+
+      expect(described_class.root_for(into)).to eq(File.realpath(marked))
+      expect(described_class.root_for(named)).to eq(File.realpath(marked))
+      expect(described_class.root_for(out)).to be_nil
+      [into, out, named].each do |link|
+        expect(described_class.root_for(link)).to eq(described_class.root_for(File.realpath(link)))
+      end
+    end
+
     it "reuses a cache across calls" do
       cache = {}
       described_class.root_for(repo, cache: cache)

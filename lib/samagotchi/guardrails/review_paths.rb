@@ -59,11 +59,7 @@ module Samagotchi
       # review turn reads nothing there (#refusal: HOME_ROOT); a pair turn
       # asks the owner before every write (PairBoundary).
       # @param root [String] @param home [String, nil]
-      def self.home_root?(root, home)
-        return false if home.to_s.empty? || root.to_s.empty?
-
-        PathResolve.under?(PathResolve.real(home.to_s), PathResolve.real(root.to_s))
-      end
+      def self.home_root?(root, home) = PathResolve.home_root?(root, home)
 
       # @param root [String, nil] the session's project root (the work tree
       #   top of its folder); nil or blank refuses every path
