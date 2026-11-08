@@ -16,6 +16,7 @@ rescues its own errors: an observer must never break the running turn.
 | `RingBuffer` | `ring_buffer.rb` | The last `ring_capacity` (256) raw events by `event_seq`, in memory, for a reconnect's replay. The capture observer feeds it. |
 | `TurnAccumulator` | `turn_accumulator.rb` | The turn in progress, folded from events. |
 | `CardStore` | `card_store.rb` | The last cards and notices, saved in `cards.json`, each anchored to its turn. |
+| `TurnDrawings` | `turn_drawings.rb` | Each finished turn as live drew it (`turn_drawings.jsonl`): written by the accumulator's `on_turn_end` hook, read by chi web's show. |
 | `CardPlaces` | `card_places.rb` | Pure: where `CardStore`'s entries sit in the messages the page draws (`turns_since`, and the `opening_id` stamp). |
 | `PendingCard` | `pending_card.rb` | `pending_card.json` `{id:, bundle:}`: the running turn's open card with actions (check-in's Nudge), written and removed with that card, so chi web's hub, which watches files and not workers, can notify. |
 
@@ -55,6 +56,32 @@ snapshot (`from_wire` symbolizes it), so any worker's snapshot gives the page th
 release); `messages_of` gives a
 plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_turn?` tells `POST /turn` that
 a participant's review turn runs, so the owner's input queues behind it.
+
+## TurnDrawings
+
+A reload or a reconnect draws a finished turn from what live drew, not rebuilt from its saved messages: the
+accumulator's final fold of the turn (its parts in order, in-turn cards included) and the end event's display keys
+(`TurnDrawings::END_KEYS`), one JSON line per turn in `<session dir>/turn_drawings.jsonl`
+(`{v: 1, turn_id, kind, from, to, from_digest, to_digest, drawing, end}`, `TurnDrawings::Line`).
+
+- **The range comes from the Engine.** The end event's `kept_from`/`kept_to` (`Engine#end_turn`) name the turn's own
+  messages, `kept[from...to]`. No range (an older worker, a turn that kept nothing) or an empty one writes no line,
+  and the turn draws as before.
+- **Validity.** A line holds while the messages reach `to` and `messages[from]` and `messages[to - 1]` digest as the
+  line says (`TurnDrawings.digest`: role, content and time, one canonical form for the live symbol-keyed messages
+  and the saved, scrubbed ones). A rollback, a rolled-back failure or a prompt handed back drops it. Of overlapping
+  valid lines (a rollback, then a re-run that said the same) and of one turn id's lines, the newest wins
+  (`TurnDrawings.valid`).
+- **Writing.** The accumulator calls `TurnDrawings#append` at the end event, inside the observer delivery, so the
+  line is on disk before a stream writer (subscribed later) gets the end frame. That departs from SessionObserver's
+  "enqueue-only" note, as CardStore's save does: one append per turn end. It writes `"\n"` first when the file's last
+  byte isn't one (a torn line from a crash), then the line in one write; a failure is logged (`turn_drawing_failed`).
+  A part's output is the accumulator's cut (`WEB_PREVIEW_CHARS`); a diff is the one the saved `tool_diffs` have
+  (`TextDiff`'s cut); images are refs.
+- **Reading.** `TurnDrawings.read(dir)` skips an unknown `v`, a torn or broken line and one missing a field, and is
+  cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
+- **Compat.** An older worker writes nothing (its turns fall back); an older chi web never opens the file. A fork
+  or a continue copies no drawings: its turns fall back. A one-shot run (no Bridge) writes none.
 
 ## CardStore
 

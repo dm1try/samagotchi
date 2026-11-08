@@ -1,0 +1,242 @@
+{
+  "description": "Canceled after a tool step and a partial text.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "run the tests",
+      "turn_id": "turn-cancel",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Starting.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"rake\"",
+      "tool_id": "t1",
+      "title": "rake"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t1",
+      "output": "[execute]\nok",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"rake\"",
+        "action": "running command",
+        "title": "rake"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Halfway",
+      "thinking": ""
+    },
+    {
+      "type": "turn_canceled",
+      "turn_id": "turn-cancel",
+      "duration_ms": 3100,
+      "cancellation_reason": "user",
+      "kept_from": 1,
+      "kept_to": 6
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "run the tests",
+      "turn_id": "turn-cancel",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Starting.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "execute",
+          "arguments": "{\"command\":\"rake\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nok",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "Halfway"
+    },
+    {
+      "role": "system",
+      "content": "[SYSTEM: the previous turn was cancelled (user) after 3s; no answer had been shown.]",
+      "kind": "turn_note"
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-cancel",
+      "kind": "canceled",
+      "from": 1,
+      "to": 6,
+      "from_digest": "3001a714df2ab5145bef35180547a8254484b94f",
+      "to_digest": "b7b7a7546a7c50787cd19da3a2cd20d205f8e58b",
+      "drawing": {
+        "prompt": "run the tests",
+        "turn_id": "turn-cancel",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Starting."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "params": "command=\"rake\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "rake",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "Halfway"
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_canceled",
+        "turn_id": "turn-cancel",
+        "duration_ms": 3100,
+        "cancellation_reason": "user"
+      }
+    }
+  ],
+  "drawn": {
+    "turn-cancel": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "run the tests",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-cancel"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Starting.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "params": "command=\"rake\"",
+          "title": "rake"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "output": "[execute]\nok",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"rake\"",
+            "title": "rake",
+            "action": "running command"
+          },
+          "duration_ms": 120
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Halfway",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_canceled",
+        "turn_id": "turn-cancel",
+        "duration_ms": 3100,
+        "cancellation_reason": "user"
+      }
+    }
+  }
+}

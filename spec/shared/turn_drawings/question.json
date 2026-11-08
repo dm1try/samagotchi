@@ -1,0 +1,314 @@
+{
+  "description": "A question asked and answered mid-turn.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "pick one",
+      "turn_id": "turn-question",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Which one do you want?",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "ask_user_question",
+      "params": "question=\"Which one?\"",
+      "tool_id": "t1"
+    },
+    {
+      "type": "question_requested",
+      "pending_question": {
+        "id": "q1",
+        "question": "Which one?",
+        "options": [
+          {
+            "label": "A"
+          },
+          {
+            "label": "B"
+          }
+        ],
+        "status": "pending"
+      }
+    },
+    {
+      "type": "question_answered",
+      "id": "q1",
+      "answer": {
+        "selected": [
+          "A"
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "ask_user_question",
+      "tool_id": "t1",
+      "output": "[ask_user_question]\nA",
+      "output_truncated": false,
+      "duration_ms": 900,
+      "activity": {
+        "tool": "ask_user_question",
+        "status": "ok",
+        "params": "question=\"Which one?\""
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "A it is.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-question",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 5,
+      "turn_summary": {
+        "output": "A it is."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "pick one",
+      "turn_id": "turn-question",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Which one do you want?",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "ask_user_question",
+          "arguments": "{\"question\":\"Which one?\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[ask_user_question]\nA",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "A it is."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-question",
+      "kind": "completed",
+      "from": 1,
+      "to": 5,
+      "from_digest": "b53f761e73fd2756e93b6332806ef5c6121d8d2a",
+      "to_digest": "dd1d02754dd9fbda9725e314d3fef1d6e8a1b1de",
+      "drawing": {
+        "prompt": "pick one",
+        "turn_id": "turn-question",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Which one do you want?"
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "params": "question=\"Which one?\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "output": "[ask_user_question]\nA",
+            "output_truncated": false,
+            "duration_ms": 900
+          },
+          {
+            "kind": "notice",
+            "event": {
+              "type": "question_requested",
+              "pending_question": {
+                "id": "q1",
+                "question": "Which one?",
+                "options": [
+                  {
+                    "label": "A"
+                  },
+                  {
+                    "label": "B"
+                  }
+                ],
+                "status": "pending"
+              }
+            }
+          },
+          {
+            "kind": "notice",
+            "event": {
+              "type": "question_answered",
+              "id": "q1",
+              "answer": {
+                "selected": [
+                  "A"
+                ]
+              }
+            }
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "A it is."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-question",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-question": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "pick one",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-question"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Which one do you want?",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "ask_user_question",
+          "tool_id": "t1",
+          "params": "question=\"Which one?\""
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "ask_user_question",
+          "tool_id": "t1",
+          "output": "[ask_user_question]\nA",
+          "output_truncated": false,
+          "activity": {
+            "tool": "ask_user_question",
+            "status": "ok",
+            "params": "question=\"Which one?\""
+          },
+          "duration_ms": 900
+        },
+        {
+          "type": "question_requested",
+          "pending_question": {
+            "id": "q1",
+            "question": "Which one?",
+            "options": [
+              {
+                "label": "A"
+              },
+              {
+                "label": "B"
+              }
+            ],
+            "status": "pending"
+          }
+        },
+        {
+          "type": "question_answered",
+          "id": "q1",
+          "answer": {
+            "selected": [
+              "A"
+            ]
+          }
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "A it is.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-question",
+        "duration_ms": 2400
+      }
+    }
+  }
+}

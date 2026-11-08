@@ -1,0 +1,154 @@
+{
+  "description": "A reminder turn: no prompt, its reminder line and its answer.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": null,
+      "turn_id": "turn-reminder-only",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "kind": "reminder"
+      }
+    },
+    {
+      "type": "reminder_injected",
+      "reminders": [
+        {
+          "name": "tea"
+        }
+      ],
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Tea time.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-reminder-only",
+      "duration_ms": 2400,
+      "kept_from": 3,
+      "kept_to": 5,
+      "turn_summary": {
+        "output": "Tea time."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "earlier",
+      "turn_id": "turn-0",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Earlier answer."
+    },
+    {
+      "role": "system",
+      "content": "[SYSTEM: REMINDERS DUE 2026-11-08 10:00 local]\n- tea: brew",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Tea time."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-reminder-only",
+      "kind": "completed",
+      "from": 3,
+      "to": 5,
+      "from_digest": "a1b0333ec5a2e3ba7aa203ca1da82e0cd4f02cbc",
+      "to_digest": "9ac8435f8aab2d3b15ecda108103530cfce4f678",
+      "drawing": {
+        "prompt": null,
+        "turn_id": "turn-reminder-only",
+        "origin": {
+          "kind": "reminder"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "reminder",
+            "reminders": [
+              {
+                "name": "tea"
+              }
+            ]
+          },
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Tea time."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-reminder-only",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-reminder-only": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": null,
+          "origin": {
+            "kind": "reminder"
+          },
+          "continue": false,
+          "turn_id": "turn-reminder-only"
+        },
+        {
+          "type": "reminder_injected",
+          "reminders": [
+            {
+              "name": "tea"
+            }
+          ]
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Tea time.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-reminder-only",
+        "duration_ms": 2400
+      }
+    }
+  }
+}

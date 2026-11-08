@@ -1,0 +1,230 @@
+{
+  "description": "Failed after a tool step, its work kept: the step the error ended is drawn too.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "fix it",
+      "turn_id": "turn-failed",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Step one.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"b.rb\"",
+      "tool_id": "t1",
+      "title": "b.rb"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t1",
+      "output": "[read]\nb",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"b.rb\"",
+        "action": "reading file",
+        "title": "b.rb"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "turn_failed",
+      "turn_id": "turn-failed",
+      "duration_ms": 5000,
+      "summary": "the model server is unreachable",
+      "message": "connection refused",
+      "error_class": "Errno::ECONNREFUSED",
+      "kept_steps": 1,
+      "kept_from": 1,
+      "kept_to": 5
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "fix it",
+      "turn_id": "turn-failed",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Step one.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "read",
+          "arguments": "{\"path\":\"b.rb\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[read]\nb",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "system",
+      "content": "[SYSTEM: the previous turn failed after 1 tool step: the model server is unreachable. Its work so far (tool calls, file changes) stays; the user's last message is not answered yet.]",
+      "kind": "turn_note"
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-failed",
+      "kind": "failed",
+      "from": 1,
+      "to": 5,
+      "from_digest": "fa65e5ef28092fd241cf6c939ccdaba37805f599",
+      "to_digest": "12c6b4b214ee35610bebc459a169c9c4b3e6d389",
+      "drawing": {
+        "prompt": "fix it",
+        "turn_id": "turn-failed",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Step one."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "params": "path=\"b.rb\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "b.rb",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "action": "reading file",
+            "duration_ms": 120
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_failed",
+        "turn_id": "turn-failed",
+        "duration_ms": 5000,
+        "summary": "the model server is unreachable",
+        "message": "connection refused",
+        "error_class": "Errno::ECONNREFUSED",
+        "kept_steps": 1
+      }
+    }
+  ],
+  "drawn": {
+    "turn-failed": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "fix it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-failed"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Step one.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "params": "path=\"b.rb\"",
+          "title": "b.rb"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "output": "[read]\nb",
+          "output_truncated": false,
+          "activity": {
+            "tool": "read",
+            "status": "ok",
+            "params": "path=\"b.rb\"",
+            "title": "b.rb",
+            "action": "reading file"
+          },
+          "duration_ms": 120
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_failed",
+        "turn_id": "turn-failed",
+        "duration_ms": 5000,
+        "summary": "the model server is unreachable",
+        "message": "connection refused",
+        "error_class": "Errno::ECONNREFUSED",
+        "kept_steps": 1
+      }
+    }
+  }
+}

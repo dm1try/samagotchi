@@ -10,7 +10,8 @@ module Samagotchi
     # other entry (or a file in one of the EMPTY_DIRS) is something the
     # session keeps. "pid" is the pid file workers wrote until 2026-10-01:
     # nothing writes or reads it now, but a folder from before still has one
-    # and is still empty.
+    # and is still empty. A turn's drawing (Bridge::TurnDrawings::FILE)
+    # exists only after a turn that kept messages: never a skeleton file.
     EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze

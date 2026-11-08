@@ -1,0 +1,120 @@
+{
+  "description": "A plain answer: one step, text only.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "hi",
+      "turn_id": "turn-plain",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Hello there.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-plain",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "Hello there."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "hi",
+      "turn_id": "turn-plain",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Hello there."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-plain",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "67eac2e479f230141ab81202f8ad424a24b7fe85",
+      "to_digest": "f119ca54e70f545756d0cd5f890a08a7cd39456c",
+      "drawing": {
+        "prompt": "hi",
+        "turn_id": "turn-plain",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Hello there."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-plain",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-plain": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "hi",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-plain"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Hello there.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-plain",
+        "duration_ms": 2400
+      }
+    }
+  }
+}

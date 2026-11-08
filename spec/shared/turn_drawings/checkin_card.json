@@ -1,0 +1,288 @@
+{
+  "description": "A check-in card shown mid-turn (it asks: under the block, live).",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "long task",
+      "turn_id": "turn-card",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Working.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"sleep 1\"",
+      "tool_id": "t1",
+      "title": "sleep 1"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t1",
+      "output": "[execute]\n",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"sleep 1\"",
+        "action": "running command",
+        "title": "sleep 1"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in",
+      "source": "check-in",
+      "title": "Check in",
+      "body": "Still on it?",
+      "level": "info",
+      "actions": [
+        {
+          "label": "Nudge",
+          "command": "/check-in nudge"
+        }
+      ],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Finished.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-card",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 5,
+      "turn_summary": {
+        "output": "Finished."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "long task",
+      "turn_id": "turn-card",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Working.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "execute",
+          "arguments": "{\"command\":\"sleep 1\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\n",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "Finished."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-card",
+      "kind": "completed",
+      "from": 1,
+      "to": 5,
+      "from_digest": "8a8678b943b329b665bdea30f04c5352f51499e0",
+      "to_digest": "3c1d6b92342df6db3aa446888051f287daaa97a3",
+      "drawing": {
+        "prompt": "long task",
+        "turn_id": "turn-card",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Working."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "params": "command=\"sleep 1\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "sleep 1",
+            "output": "[execute]\n",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "card",
+            "id": "check-in",
+            "event": {
+              "id": "check-in",
+              "source": "check-in",
+              "title": "Check in",
+              "body": "Still on it?",
+              "level": "info",
+              "actions": [
+                {
+                  "label": "Nudge",
+                  "command": "/check-in nudge"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "Finished."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-card",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-card": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "long task",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-card"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Working.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "params": "command=\"sleep 1\"",
+          "title": "sleep 1"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "output": "[execute]\n",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"sleep 1\"",
+            "title": "sleep 1",
+            "action": "running command"
+          },
+          "duration_ms": 120
+        },
+        {
+          "id": "check-in",
+          "source": "check-in",
+          "title": "Check in",
+          "body": "Still on it?",
+          "level": "info",
+          "actions": [
+            {
+              "label": "Nudge",
+              "command": "/check-in nudge"
+            }
+          ],
+          "type": "card",
+          "in_turn": true
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Finished.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-card",
+        "duration_ms": 2400
+      }
+    }
+  }
+}
