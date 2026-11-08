@@ -68,14 +68,14 @@ module Samagotchi
 
     # The configured request parameters (hosts: and models: sampling).
     def sampling
-      SamplingSettings.for(target, names: names)
+      SamplingSettings.for(lookup)
     rescue StandardError => e
       unresolved(:sampling_unresolved, e, SamplingSettings::EMPTY)
     end
 
     # "temperature=0.6 (hosts.work)", nil when none.
     def sampling_summary
-      SamplingSettings.summary(target, names: names)
+      SamplingSettings.summary(lookup)
     rescue StandardError => e
       unresolved(:sampling_unresolved, e, nil)
     end

@@ -1159,11 +1159,9 @@ module Samagotchi
           settings = ModelSettings.all
           models.each do |model|
             effective = EffectiveModel.of(registry, ModelChoice.new(name: model[:name], typed: model[:name]), models: settings)
-            target = effective.target
-            names = effective.names
-            summary = SamplingSettings.summary(target, names: names, models: settings)
+            summary = SamplingSettings.summary(effective.lookup)
             model[:sampling] = summary if summary
-            add_llm_context(model, target, names, settings)
+            add_llm_context(model, effective.target, effective.names, settings)
             add_thinking(model, effective)
           end
         end
