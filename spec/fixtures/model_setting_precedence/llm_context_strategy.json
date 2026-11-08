@@ -5,7 +5,7 @@
       "effective": {
         "strategy": "forget",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -34,7 +34,7 @@
       "saved_chip": {
         "strategy": "forget",
         "strategy_source": "session",
-        "strategy_where": "the session",
+        "strategy_where": "session",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -97,7 +97,7 @@
       "effective": {
         "strategy": "forget",
         "strategy_source": "host_setting",
-        "strategy_where": "hosts entry 'box'",
+        "strategy_where": "hosts.box",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -110,7 +110,7 @@
       "api_models": {
         "strategy": "forget",
         "strategy_source": "host_setting",
-        "strategy_where": "hosts entry 'box'",
+        "strategy_where": "hosts.box",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",
@@ -122,7 +122,7 @@
       "saved_chip": {
         "strategy": "forget",
         "strategy_source": "host_setting",
-        "strategy_where": "hosts entry 'box'",
+        "strategy_where": "hosts.box",
         "apply": "payoff",
         "apply_source": "config",
         "apply_where": "llm_context.apply",

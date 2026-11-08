@@ -8,10 +8,10 @@
         "strategy_where": "models: small",
         "apply": "turn_end",
         "apply_source": "host_setting",
-        "apply_where": "hosts entry 'box'",
+        "apply_where": "hosts.box",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       },
       "session_budget": 80000,
@@ -21,10 +21,10 @@
         "strategy_where": "models: small",
         "apply": "turn_end",
         "apply_source": "host_setting",
-        "apply_where": "hosts entry 'box'",
+        "apply_where": "hosts.box",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       },
       "saved_chip": {
@@ -33,10 +33,10 @@
         "strategy_where": "models: small",
         "apply": "turn_end",
         "apply_source": "host_setting",
-        "apply_where": "hosts entry 'box'",
+        "apply_where": "hosts.box",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       }
     }

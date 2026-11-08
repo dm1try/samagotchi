@@ -1805,8 +1805,8 @@ its own). The first target is a long session such as a day-long coordinator, whe
   budget don't ask: they only decide when a batch goes in, and each batch's break comes as designed (`next_request`
   with staged edits pending moves a break the old rule makes by the end of the next turn anyway). The chip's Set and
   `--llm-context` on an attached or resumed session send `--yes`.
-- **Where to see it:** `/llm-context` (each value and where it came from: `the session`, `models: <key>`,
-  `hosts entry '<name>'`, `llm_context.*`), `/stats` (`llm context:`), the turn log (an `llm_context` record per
+- **Where to see it:** `/llm-context` (each value and where it came from: `session`, `models: <key>`,
+  `hosts.<name>`, `llm_context.*`), `/stats` (`llm context:`), the turn log (an `llm_context` record per
   turn that runs a layer or whose session set its strategy) and the web's chip. A woken worker's status line counts
   its saved context against the session's budget.
 

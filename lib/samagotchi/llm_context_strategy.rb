@@ -148,10 +148,10 @@ module Samagotchi
     end
 
     # Where one value came from: :session, :model_setting, :host_setting
-    # or :config, and the place as a warning names it ("the session",
-    # "models: deepseek", "hosts entry 'box'", "llm_context.apply").
+    # or :config, and the place, named as the other settings name theirs
+    # ("session", "models: deepseek", "hosts.box", "llm_context.apply").
     Origin = Data.define(:source, :where)
-    SESSION_ORIGIN = Origin.new(source: :session, where: "the session")
+    SESSION_ORIGIN = Origin.new(source: :session, where: "session")
 
     # What a turn's strategy, apply rule and budget are, each with its
     # Origin (/llm-context, /stats, the web's info bar).
@@ -202,7 +202,7 @@ module Samagotchi
       end
 
       budget = lookup.host(:llm_context_budget_tokens)
-      return [budget, Origin.new(source: :host_setting, where: "hosts entry '#{lookup.host_name}'")] if budget
+      return [budget, Origin.new(source: :host_setting, where: "hosts.#{lookup.host_name}")] if budget
 
       [parse_budget(lookup.global(BUDGET_SETTING).first, BUDGET_SETTING), Origin.new(source: :config, where: BUDGET_SETTING)]
     end
@@ -215,7 +215,7 @@ module Samagotchi
       end
 
       layers = lookup.host(:llm_context_strategy)
-      return [layers, :host_setting, "hosts entry '#{lookup.host_name}'"] if layers
+      return [layers, :host_setting, "hosts.#{lookup.host_name}"] if layers
 
       [parse(lookup.global(SETTING).first, SETTING) || [], :config, SETTING]
     end
@@ -229,7 +229,7 @@ module Samagotchi
       end
 
       apply = lookup.host(:llm_context_apply)
-      return [apply, Origin.new(source: :host_setting, where: "hosts entry '#{lookup.host_name}'")] if apply
+      return [apply, Origin.new(source: :host_setting, where: "hosts.#{lookup.host_name}")] if apply
 
       [parse_apply(lookup.global(APPLY_SETTING).first, APPLY_SETTING) || DEFAULT_APPLY,
        Origin.new(source: :config, where: APPLY_SETTING)]

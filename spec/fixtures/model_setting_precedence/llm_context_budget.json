@@ -11,7 +11,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": null,
         "budget_source": "session",
-        "budget_where": "the session",
+        "budget_where": "session",
         "own": {
           "budget_tokens": 0
         }
@@ -38,7 +38,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": null,
         "budget_source": "session",
-        "budget_where": "the session",
+        "budget_where": "session",
         "own": {
           "budget_tokens": 0
         }
@@ -57,7 +57,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": 50000,
         "budget_source": "session",
-        "budget_where": "the session",
+        "budget_where": "session",
         "own": {
           "budget_tokens": 50000
         }
@@ -84,7 +84,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": 50000,
         "budget_source": "session",
-        "budget_where": "the session",
+        "budget_where": "session",
         "own": {
           "budget_tokens": 50000
         }
@@ -145,7 +145,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       },
       "session_budget": 80000,
@@ -158,7 +158,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       },
       "saved_chip": {
@@ -170,7 +170,7 @@
         "apply_where": "llm_context.apply",
         "budget_tokens": 80000,
         "budget_source": "host_setting",
-        "budget_where": "hosts entry 'box'",
+        "budget_where": "hosts.box",
         "own": null
       }
     }

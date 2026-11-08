@@ -11,8 +11,8 @@ const fromModel = {
   budget_tokens: null, budget_source: "config", budget_where: "llm_context.budget_tokens", own: null,
 };
 const own = {
-  ...fromModel, strategy: "stale,forget", strategy_source: "session", strategy_where: "the session",
-  budget_tokens: 64000, budget_source: "session", budget_where: "the session",
+  ...fromModel, strategy: "stale,forget", strategy_source: "session", strategy_where: "session",
+  budget_tokens: 64000, budget_source: "session", budget_where: "session",
   own: { strategy: ["stale", "forget"], budget_tokens: 64000 },
 };
 

@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
 
       expect(explained.resolved).to eq(described_class.resolve(lookup(target(apply: :turn_end), %w[m], models)))
       expect(explained.strategy.to_h).to eq(source: :model_setting, where: "models: m")
-      expect(explained.apply.to_h).to eq(source: :host_setting, where: "hosts entry 'box'")
+      expect(explained.apply.to_h).to eq(source: :host_setting, where: "hosts.box")
       expect(explained.budget_tokens.to_h).to eq(source: :model_setting, where: "models: m")
       expect(described_class.explain(lookup(target, %w[x], {})).apply.to_h)
         .to eq(source: :config, where: "llm_context.apply")

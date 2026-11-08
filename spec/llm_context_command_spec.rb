@@ -65,9 +65,9 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
                                                                          budget_tokens: 64_000))
     expect(saved).to eq([session.llm_context])
     expect(result.output).to start_with(<<~TEXT.chomp)
-      llm context: stale, forget (the session)
-        apply:  turn_end (the session)
-        budget: 64000 tokens (the session)
+      llm context: stale, forget (session)
+        apply:  turn_end (session)
+        budget: 64000 tokens (session)
         this session's own: strategy stale, forget; apply turn_end; budget 64000
       From the next turn's start (a running turn keeps its own).
     TEXT
@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
                                      "the next request re-reads the whole prompt (a full cache break).")
     expect(engine.llm_context_explained.resolved.forget?).to be(true)
     # /stats shows the same budget (/stats' snapshot feeds it).
-    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "the session")
+    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "session")
   end
 
   it "takes none and off as values, unsets one with default, and goes back to the model's with reset" do

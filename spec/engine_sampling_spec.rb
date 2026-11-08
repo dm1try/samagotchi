@@ -185,7 +185,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
     expect(logged).to eq([{ strategy: "stale", strategy_source: "session", apply: "payoff", apply_source: "config",
                             budget_tokens: 64_000, budget_source: "session" }])
     expect(engine.session_state_snapshot[:llm_context])
-      .to include(strategy: "stale", strategy_where: "the session", budget_tokens: 64_000,
+      .to include(strategy: "stale", strategy_where: "session", budget_tokens: 64_000,
                   own: { "strategy" => ["stale"], "budget_tokens" => 64_000 })
   end
 end

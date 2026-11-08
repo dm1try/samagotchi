@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
+
 ### Fixed
 
 - `chi bundle uninstall` asks for `--force` before taking a memory you edited that has no base copy (chi compares it with the checksum its install recorded; with neither, it counts as edited), as it does for any edited file; it used to move it to the trash without asking.

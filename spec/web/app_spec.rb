@@ -1669,7 +1669,7 @@ RSpec.describe Samagotchi::Web::App do
 
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload.dig("session", "llm_context")).to include(
-        "strategy" => "stale,forget", "strategy_source" => "session", "apply" => "turn_end", "apply_where" => "the session",
+        "strategy" => "stale,forget", "strategy_source" => "session", "apply" => "turn_end", "apply_where" => "session",
         "own" => { "strategy" => %w[stale forget], "apply" => "turn_end" }
       )
 

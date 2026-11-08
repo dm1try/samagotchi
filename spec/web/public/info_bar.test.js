@@ -57,7 +57,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
     parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
     kids: { text: "2 delegates", title: "2 delegates", waitingText: "1 waiting" },
     settings: {
-      llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
+      llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "session", apply: "payoff",
                     apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens", own: { strategy: ["stale"] } },
       thinking: { level: "low", source: "session", own: "low" },
       reasoningHistory: { level: "all", source: "session", own: "all" },
@@ -93,7 +93,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   const gear = div.querySelector(".settings-chip");
   assert.ok(gear.hasAttribute("data-settings-chip"));
   assert.equal(gear.textContent, "⚙ think low · reasoning all · ctx stale");
-  assert.match(gear.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(the session\)/);
+  assert.match(gear.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(session\)/);
   assert.equal(div.querySelector(".mem-chip").textContent, "mem 2");
   assert.equal(div.querySelector(".session-time").textContent, "5s");
   const restart = div.querySelector(".worker-restart");

@@ -237,11 +237,11 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows the LLM context strategy, apply rule and budget, each with where it came from, in /stats" do
-      summary = { "strategy" => "stale,forget", "strategy_where" => "the session", "apply" => "turn_end",
+      summary = { "strategy" => "stale,forget", "strategy_where" => "session", "apply" => "turn_end",
                   "apply_where" => "models: ds", "budget_tokens" => nil, "budget_where" => "llm_context.budget_tokens" }
 
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: summary }))
-        .to include("llm context:      stale,forget (the session); apply turn_end (models: ds); budget off " \
+        .to include("llm context:      stale,forget (session); apply turn_end (models: ds); budget off " \
                     "(llm_context.budget_tokens)")
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({})).not_to include("llm context")
     end
@@ -263,12 +263,12 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "names a set budget with its tokens and where it came from, string keys or symbol ones" do
-      stringy = { "strategy" => "stale", "strategy_where" => "the session", "apply" => "turn_end",
-                  "apply_where" => "llm_context.apply", "budget_tokens" => 64_000, "budget_where" => "the session" }
-      symbolic = { strategy: "stale", strategy_where: "the session", apply: "turn_end",
-                   apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
+      stringy = { "strategy" => "stale", "strategy_where" => "session", "apply" => "turn_end",
+                  "apply_where" => "llm_context.apply", "budget_tokens" => 64_000, "budget_where" => "session" }
+      symbolic = { strategy: "stale", strategy_where: "session", apply: "turn_end",
+                   apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "session" }
 
-      line = "llm context:      stale (the session); apply turn_end (llm_context.apply); budget 64000 tokens (the session)"
+      line = "llm context:      stale (session); apply turn_end (llm_context.apply); budget 64000 tokens (session)"
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: stringy })).to include(line)
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ llm_context: symbolic })).to include(line)
     end
@@ -277,8 +277,8 @@ RSpec.describe Samagotchi::TerminalUI do
     # session's llm_context budget, as the live meter does, and says which.
     it "counts context used against a budget smaller than the window, and names it" do
       context = { used_tokens: 16_000, window_tokens: 128_000, window_source: "server" }
-      summary = { strategy: "stale", strategy_where: "the session", apply: "turn_end",
-                  apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
+      summary = { strategy: "stale", strategy_where: "session", apply: "turn_end",
+                  apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "session" }
       stringy = summary.transform_keys(&:to_s)
 
       expect(Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: summary }))
@@ -291,7 +291,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
     it "keeps the plain percentage without a budget, for one larger than the window, and for 0" do
       context = { used_tokens: 16_000, window_tokens: 64_000, window_source: "server" }
-      base = { strategy: "stale", strategy_where: "the session", apply: "turn_end", apply_where: "llm_context.apply" }
+      base = { strategy: "stale", strategy_where: "session", apply: "turn_end", apply_where: "llm_context.apply" }
 
       [{}, { budget_tokens: nil }, { budget_tokens: 128_000 }, { budget_tokens: 0 }].each do |extra|
         output = Samagotchi::TerminalUI::Formatting.format_session_metrics({ context: context, llm_context: base.merge(extra) })
