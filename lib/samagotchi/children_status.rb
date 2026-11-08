@@ -66,13 +66,14 @@ module Samagotchi
     # @return [Counts]
     def counts(parent_id, state_dir:)
       cursors = Tools::DelegateCursors.read(parent_id, state_dir: state_dir)
+      budgets = SessionRow.budgets
       children = cursors.keys.filter_map do |id|
         session = load(id, state_dir: state_dir)
         next unless session&.delegate? && session.parent_id == parent_id
         next if ArchiveStore.archived?(Session.session_dir(id, state_dir: state_dir))
 
         dir = Session.session_dir(id, state_dir: state_dir)
-        child(session, SessionRow.build(session, session_dir: dir, owner: OwnerLock.owner(dir)), cursors,
+        child(session, SessionRow.build(session, session_dir: dir, owner: OwnerLock.owner(dir), budgets: budgets), cursors,
               state_dir: state_dir)
       end
       Counts.new(running: children.count { |c| c.state == "running" },
