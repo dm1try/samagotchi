@@ -40,7 +40,8 @@ RSpec.describe ReleaseTools do
         [File.basename(dir), changes.map(&:first)]
       end
       expect(files).to include("btw" => ["plugin.rb"], "mcp" => ["plugin.rb"], "guardrails" => ["guardrails.md"],
-                               "known-names" => ["known_names.md", "hooks/known_names.rb"])
+                               "known-names" => ["known_names.md", "plugin.rb"],
+                               "source-links" => ["source_links.md", "hooks/source_links.rb"])
       expect(files["system"]).to include("identity.md", "delegated.md")
     end
 

@@ -24,10 +24,11 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   # A copy of a shipped bundle as an older gem shipped it: under
   # <root>/lib/samagotchi/bundles/<dir>, at +version+, each .md replaced
   # by +md+ (so the shipped one differs).
-  def old_copy(dir, version: "0.0.1", md: nil, root: File.join(tmp, "gems", "samagotchi-0.0.1"), manifest: {})
+  # +from+: the shipped dir it is copied from (default chi's).
+  def old_copy(dir, version: "0.0.1", md: nil, root: File.join(tmp, "gems", "samagotchi-0.0.1"), manifest: {}, from: shipped)
     dest = File.join(root, "lib", "samagotchi", "bundles", dir)
     FileUtils.mkdir_p(File.dirname(dest))
-    FileUtils.cp_r(File.join(shipped, dir), dest)
+    FileUtils.cp_r(File.join(from, dir), dest)
     data = YAML.load_file(File.join(dest, "manifest.yml"))
     data["version"] = version
     if md
@@ -45,6 +46,20 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     # its own shipped dir.
     Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: "system", strict: true, force: force,
                                             shipped_dir: File.dirname(source)).run
+  end
+
+  # A bundle with a class-file hook (spec/fixtures/bundles/hooked), shipped
+  # with +also+ (chi's own bundles copied beside it) under a temp gem dir: no
+  # shipped bundle has hooks since known-names moved to its plugin, and these
+  # keep testing hook upgrades while chi loads them.
+  HOOKED = File.expand_path("../../fixtures/bundles/hooked", __dir__)
+
+  def ship_hooked(also: [])
+    root = File.join(tmp, "hooked-gem", "lib", "samagotchi", "bundles")
+    FileUtils.mkdir_p(root)
+    FileUtils.cp_r(HOOKED, root) unless File.exist?(File.join(root, "hooked"))
+    also.each { |dir| FileUtils.cp_r(File.join(shipped, dir), root) unless File.exist?(File.join(root, dir)) }
+    root
   end
 
   def version_of(name) = Samagotchi::MemoryBundle::Provenance.new(name: name).read[:version]
@@ -95,20 +110,67 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   end
 
   it "keeps an edited .md that conflicts, and the hook still loads (its sha is recorded)" do
-    install(old_copy("known-names", md: "old words\n"), "known-names")
-    File.write(File.join(system_dir, "known_names.md"), "old words\nmy note\n")
+    root = ship_hooked
+    install(old_copy("hooked", md: "old words\n", from: root), "hooked")
+    File.write(File.join(system_dir, "hooked.md"), "old words\nmy note\n")
 
-    rows = described_class.plan
-    expect(rows.first).to have_attributes(status: :would_update, kept: ["known_names.md"])
+    rows = described_class.plan(shipped_dir: root)
+    expect(rows.first).to have_attributes(status: :would_update, kept: ["hooked.md"])
 
     row = described_class.apply(rows).first
-    expect(row).to have_attributes(status: :updated, kept: ["known_names.md"])
-    expect(File.read(File.join(system_dir, "known_names.md"))).to eq("old words\nmy note\n")
-    data = Samagotchi::MemoryBundle::Provenance.new(name: "known-names").read
-    expect(data[:version]).to eq(shipped_version("known-names"))
-    hook = File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb")
-    expect("sha256:#{Digest::SHA256.hexdigest(File.read(hook))}").to eq(data[:hooks][:"known_names.rb"][:sha256])
-    expect(described_class.plan.first.status).to eq(:up_to_date)
+    expect(row).to have_attributes(status: :updated, kept: ["hooked.md"])
+    expect(File.read(File.join(system_dir, "hooked.md"))).to eq("old words\nmy note\n")
+    data = Samagotchi::MemoryBundle::Provenance.new(name: "hooked").read
+    expect(data[:version]).to eq("1.0.0")
+    hook = File.join(Samagotchi::MemoryBundle::Provenance.new(name: "hooked").hooks_dir, "hooked.rb")
+    expect("sha256:#{Digest::SHA256.hexdigest(File.read(hook))}").to eq(data[:hooks][:"hooked.rb"][:sha256])
+    expect(described_class.plan(shipped_dir: root).first.status).to eq(:up_to_date)
+  end
+
+  # known-names as 0.1.9 shipped it: a hooks/known_names.rb hook, no plugin.
+  def install_hooked_known_names
+    hook = "class KnownNames\n  def call(_event) = nil\nend\n"
+    source = old_copy("known-names", manifest: { "hooks" => { "known_names.rb" => {
+      "sha256" => "sha256:#{Digest::SHA256.hexdigest(hook)}", "event" => "before_tool_call", "on_error" => "log", "priority" => 50
+    } } })
+    data = YAML.load_file(File.join(source, "manifest.yml"))
+    data.delete("plugin")
+    File.write(File.join(source, "manifest.yml"), YAML.dump(data))
+    FileUtils.rm_f(File.join(source, "plugin.rb"))
+    FileUtils.mkdir_p(File.join(source, "hooks"))
+    File.write(File.join(source, "hooks", "known_names.rb"), hook)
+    install(source, "known-names")
+    Samagotchi::MemoryBundle::Provenance.new(name: "known-names")
+  end
+
+  def expect_on_the_plugin(names)
+    record = names.read
+    expect(record[:version]).to eq(shipped_version("known-names"))
+    expect(record[:hooks].to_h).to eq({})
+    expect(File.exist?(File.join(names.hooks_dir, "known_names.rb"))).to be(false)
+    expect(File.exist?(File.join(names.bundle_dir, "bases", "known_names.rb"))).to be(false)
+    expect(plugin_loads?("known-names")).to be(true)
+  end
+
+  it "moves a known-names that hooked through hooks/ (0.1.9) to its plugin: the hook and its base go" do
+    names = install_hooked_known_names
+    expect(File.file?(File.join(names.hooks_dir, "known_names.rb"))).to be(true)
+
+    row = described_class.apply(described_class.plan).first
+    expect(row).to have_attributes(status: :updated, replaced: [])
+    expect_on_the_plugin(names)
+  end
+
+  it "moves a 0.1.9 known-names whose hook you edited to its plugin, the hook copied to the trash first" do
+    names = install_hooked_known_names
+    File.write(File.join(names.hooks_dir, "known_names.rb"), "# mine\n")
+
+    rows = described_class.plan
+    expect(rows.first.replaced).to eq(["hooks/known_names.rb"])
+    row = described_class.apply(rows).first
+    expect(row).to have_attributes(status: :updated, replaced: ["hooks/known_names.rb"])
+    expect(File.read(File.join(row.trash_copy[/\((.*)\)/, 1], "hooks", "known_names.rb"))).to eq("# mine\n")
+    expect_on_the_plugin(names)
   end
 
   describe "a shipped bundle an older chi installed at this version, without its manifest.yml" do
@@ -382,15 +444,16 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   end
 
   it "reports an edited hook it replaces" do
-    install(old_copy("known-names"), "known-names")
-    File.write(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb"), "# mine\n")
+    root = ship_hooked
+    install(old_copy("hooked", from: root), "hooked")
+    File.write(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "hooked").hooks_dir, "hooked.rb"), "# mine\n")
 
-    row = described_class.apply(described_class.plan).first
-    expect(row).to have_attributes(status: :updated, replaced: ["hooks/known_names.rb"])
-    expect(row.trash_copy).to match(%r{\ACopied to the trash first: hooks/known_names\.rb \(.*/\.trash/known-names-\d{8}-\d{6}\)\z})
-    expect(File.read(File.join(row.trash_copy[/\((.*)\)/, 1], "hooks", "known_names.rb"))).to eq("# mine\n")
-    expect(File.read(File.join(shipped, "known-names", "hooks", "known_names.rb")))
-      .to eq(File.read(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb")))
+    row = described_class.apply(described_class.plan(shipped_dir: root)).first
+    expect(row).to have_attributes(status: :updated, replaced: ["hooks/hooked.rb"])
+    expect(row.trash_copy).to match(%r{\ACopied to the trash first: hooks/hooked\.rb \(.*/\.trash/hooked-\d{8}-\d{6}\)\z})
+    expect(File.read(File.join(row.trash_copy[/\((.*)\)/, 1], "hooks", "hooked.rb"))).to eq("# mine\n")
+    expect(File.read(File.join(root, "hooked", "hooks", "hooked.rb")))
+      .to eq(File.read(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "hooked").hooks_dir, "hooked.rb")))
   end
 
   # The kind/file names of a trash_copy line ("Copied to the trash first:
@@ -400,19 +463,20 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   end
 
   it "the plan names every file the upgrade copies to the trash" do
-    install(old_copy("known-names"), "known-names")
-    install(old_copy("github-pr"), "github-pr")
-    names = Samagotchi::MemoryBundle::Provenance.new(name: "known-names")
+    root = ship_hooked(also: ["github-pr"])
+    install(old_copy("hooked", from: root), "hooked")
+    install(old_copy("github-pr", from: root), "github-pr")
+    names = Samagotchi::MemoryBundle::Provenance.new(name: "hooked")
     record = JSON.parse(File.read(File.join(names.bundle_dir, "manifest.json")))
-    record["hooks"]["known_names.rb"].delete("sha256")
+    record["hooks"]["hooked.rb"].delete("sha256")
     File.write(File.join(names.bundle_dir, "manifest.json"), JSON.generate(record))
-    File.write(File.join(names.hooks_dir, "known_names.rb"), "# mine\n")
+    File.write(File.join(names.hooks_dir, "hooked.rb"), "# mine\n")
     File.write(File.join(names.hooks_dir, "extra.rb"), "# a stray file the upgrade leaves\n")
     File.write(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "github-pr").scripts_dir, "pr_context.rb"), "# mine\n")
 
-    rows = described_class.plan
+    rows = described_class.plan(shipped_dir: root)
     expect(rows.to_h { |row| [row.name, row.replaced] })
-      .to eq("github-pr" => ["scripts/pr_context.rb"], "known-names" => ["hooks/known_names.rb"])
+      .to eq("github-pr" => ["scripts/pr_context.rb"], "hooked" => ["hooks/hooked.rb"])
 
     described_class.apply(rows).each do |row|
       expect(asset_copies(row.trash_copy)).to eq(rows.find { |r| r.name == row.name }.replaced.sort)

@@ -486,7 +486,7 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/bridge/turn_accumulator.rb
     - lib/samagotchi/bundle_command.rb
     - lib/samagotchi/bundles/github-pr/plugin.rb
-    - lib/samagotchi/bundles/known-names/hooks/known_names.rb
+    - lib/samagotchi/bundles/known-names/plugin.rb
     - lib/samagotchi/bundles/mcp/plugin.rb
     - lib/samagotchi/bundles/slow-commands/plugin.rb
     - lib/samagotchi/cancellation_controller.rb

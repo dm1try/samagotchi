@@ -7,6 +7,7 @@ require "digest"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
 require "samagotchi/tool_call_parser"
+require "samagotchi/testing"
 
 # The known-names bundle (lib/samagotchi/bundles/known-names): a near miss
 # of a protected name in a tool call's command or paths is rejected with
@@ -22,11 +23,10 @@ RSpec.describe "The known-names bundle" do
   let(:notices) { [] }
   let(:asked) { [] }
   let(:answer) { nil }
+  let(:bundle) { @bundle = Samagotchi::Testing::Bundle.shipped("known-names", settings: settings) }
   let(:registry) do
-    registry = Samagotchi::Hooks::Registry.new
-    loaded = Samagotchi::Hooks::BundleLoader.load(bundle_name: "known-names", hooks_dir: File.join(bundle_dir, "hooks"),
-                                                  metadata: manifest["hooks"], registry: registry, settings: settings)
-    raise "the hook did not load" unless loaded == 1
+    registry = bundle.hooks
+    raise "the hook did not load" unless bundle.hook_names(:before_tool_call) == [["known-names", "plugin.rb", 50]]
 
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
@@ -36,6 +36,11 @@ RSpec.describe "The known-names bundle" do
     registry
   end
   let(:gate) { Samagotchi::Guardrails::Gate.new(hooks: registry, context_for: ->(_turn) { context }) }
+
+  # The shipped plugin through the bundle test kit (Testing::Bundle), its
+  # hooks given this spec's runtime, in a sandbox entered before anything
+  # else an example sets in ENV (it puts back the ENV it found).
+  around { |example| Samagotchi::Testing::Sandbox.with { example.run } }
 
   # The repo and its GitInfo, made once: the examples only read the repo, so a repo
   # and rev-parse probes each gave the same answers.
@@ -50,6 +55,8 @@ RSpec.describe "The known-names bundle" do
   end
 
   after(:context) { FileUtils.rm_rf(File.dirname(@shared_repo)) }
+
+  after { @bundle&.shutdown }
 
   before do
     allow(Dir).to receive(:home).and_return("/home/johndoe")
@@ -91,7 +98,7 @@ RSpec.describe "The known-names bundle" do
         "The user was not asked. Retry with \"#{name}\". If \"#{miss}\" is really what you meant, say so to the user instead of retrying."
       )
       expect(notices).to eq([{ text: "rejected execute: \"#{miss}\" looks like \"#{name}\"", level: :info,
-                               hook: "known_names.rb (bundle known-names)" }])
+                               hook: "plugin.rb (bundle known-names)" }])
     end
   end
 
@@ -215,7 +222,7 @@ RSpec.describe "The known-names bundle" do
       expect(v).to be_allow
       expect(v.call[:content]).to eq("ls /home/johndoe/a /home/johndoe-old; echo johndeox")
       expect(notices).to eq([{ text: 'corrected "johndeo" → "johndoe" in execute', level: :info,
-                               hook: "known_names.rb (bundle known-names)" }])
+                               hook: "plugin.rb (bundle known-names)" }])
     end
 
     it "keeps the separators around a near miss it corrects" do
@@ -251,7 +258,7 @@ RSpec.describe "The known-names bundle" do
       expect(asked).to eq([Samagotchi::HookQuestion.new(
         question: "execute: execute ls /home/johndeo\n\"johndeo\" looks like a misspelling of \"johndoe\".",
         options: ["Correct it and run", "Run as is", "Deny"], header: "known-names", allow_freeform: false,
-        hook: "known_names.rb (bundle known-names)"
+        hook: "plugin.rb (bundle known-names)"
       )])
     end
 
@@ -292,14 +299,14 @@ RSpec.describe "The known-names bundle" do
   end
 
   it "never raises out: a failure inside becomes one warn notice and the call runs" do
-    klass = registry && Samagotchi::Hooks::BundleLoader.namespace_for("known-names").const_get(:KnownNames)
+    klass = registry && bundle.namespace.const_get(:KnownNames)
     allow(klass).to receive(:distance).and_raise(RuntimeError, "boom")
     expect(shell("ls /home/johndeo")).to be_allow
-    expect(notices).to eq([{ text: "known-names failed: RuntimeError: boom", level: :warn, hook: "known_names.rb (bundle known-names)" }])
+    expect(notices).to eq([{ text: "known-names failed: RuntimeError: boom", level: :warn, hook: "plugin.rb (bundle known-names)" }])
   end
 
   describe "the distance" do
-    let(:klass) { registry && Samagotchi::Hooks::BundleLoader.namespace_for("known-names").const_get(:KnownNames) }
+    let(:klass) { registry && bundle.namespace.const_get(:KnownNames) }
 
     { %w[jdoe jdeo] => 1, %w[johndoe johndeo] => 1, %w[samagotchi samagothci] => 1, %w[johnny johnni] => 1,
       %w[jonathandoe jonathndoe] => 1, %w[jonathandoe jonathendou] => 2, %w[abc abc] => 0, %w[abc xyz] => 3,
@@ -310,13 +317,13 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
-  it "has a manifest whose file and hook checksums match" do
+  it "has a manifest whose file and plugin checksums match, and no class-file hooks" do
     manifest["files"].each do |file, sha|
       expect(sha).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, file)))}")
     end
-    manifest["hooks"].each do |file, meta|
-      expect(meta["sha256"]).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, "hooks", file)))}")
-      expect(meta).to include("event" => "before_tool_call", "on_error" => "log")
-    end
+    plugin = manifest.fetch("plugin")
+    expect(plugin["sha256"]).to eq("sha256:#{Digest::SHA256.hexdigest(File.binread(File.join(bundle_dir, plugin["file"])))}")
+    expect(manifest).not_to have_key("hooks")
+    expect(Dir.glob(File.join(bundle_dir, "hooks", "*.rb"))).to eq([])
   end
 end
