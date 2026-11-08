@@ -396,10 +396,11 @@ module Samagotchi
       # busy (a worker runs its turn), or running with a worker on its way
       # (ChildrenStatus asks it too).
       # @param summary [Hash] a children_of row, or the same keys: busy,
-      #   status, live, updated_at
+      #   saved_status (the file's: the displayed status shows a worker on
+      #   its way as idle), live, updated_at
       def self.running?(summary)
         return true if summary[:busy]
-        return false unless summary[:status] == Session::STATUS_RUNNING && !summary[:live]
+        return false unless summary[:saved_status] == Session::STATUS_RUNNING && !summary[:live]
 
         Time.now - Time.iso8601(summary[:updated_at].to_s) < STARTING_GRACE_SECONDS
       rescue ArgumentError

@@ -35,9 +35,12 @@ module Samagotchi
       # @param exclude [String, nil] a session id to leave out (the asker)
       # @param include_archived [Boolean] archived sessions too
       # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
-      #   updated_at:, status:, live:, busy:, owner:, recap:, auto_title:, parent_id:,
+      #   updated_at:, status:, saved_status:, live:, busy:, owner:, recap:, auto_title:, parent_id:,
       #   parent_short_id:, continues:, continues_short_id:, delegate:, archived:, scratch:, test_run:, waiting:,
-      #   waiting_id:, stopped_by:}; busy =
+      #   waiting_id:, stopped_by:}; status = Session#displayed_status (a dead
+      #   worker's "running" is idle, as chi web shows it), saved_status = the
+      #   file's (a "running" with no owner yet is also a worker on its way:
+      #   Tools::Delegate.running?), busy =
       #   live with a turn running, delegate = started by the delegate tool
       #   (Session#delegate?; a fork has a parent_id but isn't one), continues = the session it continues (the
       #   previous link of its chain, Session#continues), recap = the saved recap's first sentence, auto_title =
@@ -66,7 +69,7 @@ module Samagotchi
           next if live && !owned
 
           { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), title: s.title, cwd: s.working_directory,
-            project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
+            project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.displayed_status(owner: owner), saved_status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
             owner: owner&.kind, **recap_fields(Session.session_dir(s.id, state_dir: sd)),
             ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd),
                                                       budget_tokens: -> { budgets.call(s) })&.round(1),

@@ -112,6 +112,16 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(rows.find { |r| r["id"] == idle.id }).to include("live" => false, "waiting" => nil, "preview" => "later")
     end
 
+    # The remote chi sessions list's rows: the same status as the web's own
+    # list (app_spec: "a 'running' left behind by a dead worker as idle").
+    it "shows a crashed worker's 'running' (no owner left) as idle, as the web's session list does" do
+      crashed = make(status: "running")
+
+      _status, rows = call("/api/sessions/summaries")
+
+      expect(rows.find { |r| r["id"] == crashed.id }).to include("status" => "idle", "live" => false, "busy" => false)
+    end
+
     it "filters as chi sessions list's flags: live, cwd, dir (a project), archived, tests, limit, sort" do
       live = make.tap do |s|
         s.created_at = "2020-01-01T00:00:00Z"
