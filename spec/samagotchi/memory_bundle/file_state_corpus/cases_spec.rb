@@ -16,8 +16,12 @@ module BundleStateCorpus
     WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze
     ASSET_WRITES = %w[wrote_incoming wrote_other removed].freeze
     # A cell either invariant may break, with why: [case id, column] => note.
-    # Expected empty; a new entry goes to the user as a finding first.
-    INVARIANT_ALLOWLIST = {}.freeze
+    # Each entry is a finding the user has seen; a new one goes to them first.
+    INVARIANT_ALLOWLIST = {
+      %w[recorded_other upgrade] => "edited-rule: the checksum calls the file edited (status: modified, uninstall " \
+                                    "refuses), Merger reads the base and fast-forwards it with no trash copy; the bytes " \
+                                    "are lost when that base is the user's own text (an older chi's legacy base)"
+    }.freeze
   end
 end
 
@@ -114,12 +118,13 @@ RSpec.describe "Bundle state corpus: the cases" do
     end
   end
 
-  # Invariant 1 (review check 1): bytes that are neither the base nor the
-  # bundle's text are never changed or removed unless the trash has them.
+  # Invariant 1 (review check 1): the user's bytes (MemoryCase#users_bytes?:
+  # neither the bundle's text nor vouched for by the record, checksum first)
+  # are never changed or removed unless the trash has them.
   it "never changes or removes the user's own bytes without a copy in the trash" do
     lost = memory_cells.filter_map do |kase, column, shape, cell|
       next unless BundleStateCorpus::Checks::WRITES.include?(cell["do"].to_s.split(",").first) && !cell["save_first"]
-      next unless kase.disk && kase.disk != kase.base && kase.disk != kase.incoming
+      next unless kase.users_bytes?
       next if BundleStateCorpus::Checks::INVARIANT_ALLOWLIST.key?([kase.id, column])
 
       "#{kase.id} #{column} (#{shape}): #{cell["do"]} with no save"

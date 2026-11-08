@@ -62,6 +62,17 @@ module BundleStateCorpus
   MemoryCase = Data.define(:id, :kind, :installed, :owned, :key, :base, :disk, :incoming, :recorded, :sha, :mark,
                            :marked_incoming, :shipped_history, :claimants, :unreadable, :fix, :fixed, :divergent, :note) do
     def marked? = mark != "none"
+
+    # Whether the file holds bytes of the user's: there, not the bundle's
+    # incoming text, and not vouched for by the record as D1 reads it
+    # (Provenance.unchanged?: the checksum first, then the base).
+    def users_bytes?
+      return false if disk.nil? || disk == incoming
+
+      vouched = recorded == "disk" || (recorded == "base" && disk == base) || (recorded == "none" && disk == base)
+      !vouched
+    end
+
     def marked_text = marked_incoming == "older" || incoming.nil? ? OLDER : incoming
   end
 
