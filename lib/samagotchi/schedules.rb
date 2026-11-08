@@ -292,30 +292,40 @@ module Samagotchi
       value.positive? ? value : 5
     end
 
-    # A recurrence from the CLI's or the tool's flags.
+    # A recurrence from the CLI's flags or the tool's arguments. Blank strings
+    # (what a model sends for the fields it did not use) count as absent.
     # @return [Hash] {kind:, ...}
-    # @raise [Usage] none or more than one kind given
+    # @raise [Usage] none or more than one kind given, or an interval that is
+    #   not a positive amount of time
     def self.recurrence(every: nil, weekday: nil, time: nil, date: nil)
-      kinds = [every, weekday, date].compact.reject { |value| value.to_s.strip.empty? }
-      raise Usage, "a schedule needs one of --every, --weekday or --date" if kinds.empty?
-      raise Usage, "give one of --every, --weekday or --date, not more" if kinds.size > 1
+      every = nil if every.to_s.strip.empty?
+      weekday = nil if weekday.to_s.strip.empty?
+      time = nil if time.to_s.strip.empty?
+      date = nil if date.to_s.strip.empty?
+
+      kinds = [every, weekday, date].compact
+      raise Usage, "a schedule needs one of every, weekday or date" if kinds.empty?
+      raise Usage, "give one of every, weekday or date, not more" if kinds.size > 1
 
       if every
-        raise Usage, "--time is only for --weekday" if time && !weekday
+        raise Usage, "time is only for a weekday schedule" if time && !weekday
 
         interval = every.to_s.strip
-        raise Usage, "every must be like 30m, 2h or 1d, got #{every}" unless interval.match?(/\A\d+[smhd]?\z/)
+        raise Usage, "every needs an interval like 30m, 2h or 1d, got #{every}" unless interval.match?(/\A\d+[smhd]?\z/)
+
+        seconds = interval_seconds(interval)
+        raise Usage, "every must be at least 1s, got #{every}" if seconds.nil? || seconds.zero?
 
         { kind: "every", interval: interval }
       elsif weekday
-        raise Usage, "--weekday needs --time HH:MM" if time.to_s.strip.empty?
+        raise Usage, "weekday needs time HH:MM" if time.nil?
 
-        day = weekday.to_i
-        raise Usage, "weekday must be 1 (Mon) to 7 (Sun), got #{weekday}" unless (1..7).cover?(day)
+        day = weekday.to_s.strip
+        raise Usage, "weekday must be 1 (Mon) to 7 (Sun), got #{weekday}" unless day.match?(/\A[1-7]\z/)
 
-        { kind: "weekday", weekday: day, time: time.to_s.strip }
+        { kind: "weekday", weekday: day.to_i, time: time.to_s.strip }
       else
-        { kind: "date", at: Schedules.local_moment(*Schedules.parse_local(date)).utc.iso8601 }
+        { kind: "date", at: local_moment(*parse_local(date)).utc.iso8601 }
       end
     end
 
@@ -352,11 +362,14 @@ module Samagotchi
       def continues(id) = @by_id[id]&.continues
     end
 
+    # The length of an interval in seconds; nil for something that is not an
+    # interval, and nil for zero so a `0m` schedule can never fire every tick.
     def self.interval_seconds(interval)
       match = interval.to_s.strip.match(/\A(\d+)(s|m|h|d)?\z/)
       return nil unless match
 
-      { "s" => 1, "m" => 60, "h" => 3600, "d" => 86_400, nil => 60 }[match[2]] * match[1].to_i
+      seconds = { "s" => 1, "m" => 60, "h" => 3600, "d" => 86_400, nil => 60 }[match[2]] * match[1].to_i
+      seconds.positive? ? seconds : nil
     end
 
     def self.parse_clock(time)

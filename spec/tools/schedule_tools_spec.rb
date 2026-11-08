@@ -52,15 +52,29 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
     end
   end
 
+  it "treats an empty argument as absent, the way models send unused fields" do
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      answer = described_class.call(nil, prompt: "Audit", every: "", weekday: 3, time: "10:00", peers: peers(dir, id))
+
+      entry = store(dir).entries.first
+      expect(answer).to include("Wed 10:00")
+      expect(entry.recurrence).to eq({ kind: "weekday", weekday: 3, time: "10:00" })
+    end
+  end
+
   it "answers an error for a bad recurrence, a blank prompt and a session it cannot name" do
     Dir.mktmpdir("schedule-task") do |root|
       dir = File.join(root, "sessions")
       id = session(dir).id
 
       expect(described_class.call(nil, every: "1d", weekday: 1, time: "09:00", prompt: "x", peers: peers(dir, id)))
-        .to eq("Error: give one of --every, --weekday or --date, not more")
+        .to eq("Error: give one of every, weekday or date, not more")
       expect(described_class.call(nil, every: "1x", prompt: "x", peers: peers(dir, id)))
-        .to eq("Error: every must be like 30m, 2h or 1d, got 1x")
+        .to eq("Error: every needs an interval like 30m, 2h or 1d, got 1x")
+      expect(described_class.call(nil, every: "0m", prompt: "x", peers: peers(dir, id)))
+        .to eq("Error: every must be at least 1s, got 0m")
       expect(described_class.call(nil, prompt: "   ", every: "1h", peers: peers(dir, id)))
         .to eq("Error: a schedule needs a prompt")
       expect(described_class.call(nil, prompt: "x", every: "1h", peers: peers(dir, nil)))

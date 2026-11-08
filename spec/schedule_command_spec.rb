@@ -90,14 +90,16 @@ RSpec.describe Samagotchi::ScheduleCommand do
 ")
     end
 
-    it "refuses --weekday without --time, two recurrence kinds, a bad interval and --time alone" do
+    it "refuses a weekday without a time, two recurrence kinds, a bad or zero interval and --time alone" do
       id = session
       {
-        ["--weekday", "1"] => "need a schedule to run against|--weekday needs --time HH:MM",
-        ["--every", "1h", "--weekday", "1", "--time", "09:00"] => "give one of --every, --weekday or --date, not more",
-        ["--every", "3x"] => "every must be like 30m, 2h or 1d",
-        ["--every", "1h", "--time", "09:00"] => "--time is only for --weekday",
-        ["--weekday", "9", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)"
+        ["--weekday", "1"] => "need a schedule to run against|weekday needs time HH:MM",
+        ["--every", "1h", "--weekday", "1", "--time", "09:00"] => "give one of every, weekday or date, not more",
+        ["--every", "3x"] => "every needs an interval like 30m, 2h or 1d",
+        ["--every", "0m"] => "every must be at least 1s, got 0m",
+        ["--every", "1h", "--time", "09:00"] => "time is only for a weekday schedule",
+        ["--weekday", "9", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)",
+        ["--weekday", "1abc", "--time", "09:00"] => "weekday must be 1 \\(Mon\\) to 7 \\(Sun\\)"
       }.each do |argv, reason|
         status, _, error = run("add", "--session", id, *argv, "-m", "x")
         expect(status).to eq(2), argv.join(" ")

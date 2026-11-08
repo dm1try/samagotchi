@@ -120,13 +120,42 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  it "takes one recurrence kind, and --weekday needs --time" do
+  it "takes one recurrence kind, and weekday needs a time" do
     expect { described_class.recurrence }.to raise_error(described_class::Usage, /needs one of/)
     expect { described_class.recurrence(every: "1h", weekday: 1, time: "09:00") }.to raise_error(described_class::Usage, /not more/)
-    expect { described_class.recurrence(weekday: 1) }.to raise_error(described_class::Usage, /needs --time/)
+    expect { described_class.recurrence(weekday: 1) }.to raise_error(described_class::Usage, /needs time/)
     expect { described_class.recurrence(weekday: 9, time: "09:00") }.to raise_error(described_class::Usage, /1 \(Mon\) to 7/)
-    expect { described_class.recurrence(every: "1w") }.to raise_error(described_class::Usage, /every must be/)
+    expect { described_class.recurrence(weekday: "1abc", time: "09:00") }.to raise_error(described_class::Usage, /1 \(Mon\) to 7/)
+    expect { described_class.recurrence(every: "1w") }.to raise_error(described_class::Usage, /every needs an interval/)
     expect { described_class.recurrence(date: "2026-13-01") }.to raise_error(described_class::Usage, /date must be/)
+  end
+
+  it "refuses an empty or zero interval rather than firing at every tick" do
+    expect { described_class.recurrence(every: "") }.to raise_error(described_class::Usage, /needs one of every, weekday or date/)
+    expect { described_class.recurrence(every: "  ") }.to raise_error(described_class::Usage, /needs one of every, weekday or date/)
+    expect { described_class.recurrence(every: "0m") }.to raise_error(described_class::Usage, /every must be at least 1s, got 0m/)
+    expect { described_class.recurrence(every: "0") }.to raise_error(described_class::Usage, /at least 1s/)
+    expect { described_class.recurrence(every: "-5m") }.to raise_error(described_class::Usage, /every needs an interval/)
+
+    # The guard behind the message: a zero never reaches next_due_for.
+    expect(described_class.interval_seconds("0m")).to be_nil
+    expect(described_class.interval_seconds("0")).to be_nil
+    expect(described_class.interval_seconds("30m")).to eq(1800)
+
+    # A field a model left empty is not a second recurrence kind.
+    expect(described_class.recurrence(every: "", weekday: 1, time: "09:00")).to eq({ kind: "weekday", weekday: 1, time: "09:00" })
+    expect(described_class.recurrence(every: "1h", weekday: "", time: "")).to eq({ kind: "every", interval: "1h" })
+  end
+
+  it "adds nothing when the interval is zero" do
+    Dir.mktmpdir("schedules-zero") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      schedules = store(dir)
+      expect { schedules.add(target: id, prompt: "Audit", recurrence: described_class.recurrence(every: "0m")) }
+        .to raise_error(described_class::Usage, /at least 1s/)
+      expect(schedules.entries).to eq([])
+    end
   end
 
   it "keeps a weekday schedule on its wall clock across a DST change" do
