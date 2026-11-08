@@ -49,12 +49,15 @@ module Samagotchi
     end
 
     # Load the installed bundles' plugins into +registries+; one that fails
-    # goes to +failures+, and the rest still load. The block runs after them,
-    # still loading: what it shows is held with theirs.
+    # goes to +failures+, a required one (a guardrail plugin) to the hook
+    # failures, where it denies every tool call, and the rest still load.
+    # The block runs after them, still loading: what it shows is held with
+    # theirs.
     def load_plugins(registries, failures:)
       @held_events = []
       @loading = true
-      Plugin::Loader.load_installed(registries, failures: failures, settings: bundle_settings).tap { yield if block_given? }
+      Plugin::Loader.load_installed(registries, failures: failures, guardrail_failures: @hook_failures, settings: bundle_settings)
+                    .tap { yield if block_given? }
     ensure
       @loading = false
     end

@@ -159,7 +159,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin or hook load failure at
   the source `file:line`; skipped while a placeholder sha is unfilled), `registered` (info: each command, tool,
   hook with its priority, init, toolkit, tool source, peer source and prompt section), `hook-event` (warn: a `chi.on` event chi
-  never fires), `settings` (warn: a `--set` the manifest's `settings:` rules out, as config.yml's `bundles:` is told), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
+  never fires), `fail-closed` (warn: a `chi.on(..., on_error: :fail_closed)` in a plugin whose manifest `plugin:` lacks `required: true`, so a load failure would not deny tool calls; not on an installed bundle's re-check), `settings` (warn: a `--set` the manifest's `settings:` rules out, as config.yml's `bundles:` is told), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
   Prism against the API's own classes, on a path that never runs too; written on a local `ctx` / `chi` itself, so a
   `s = ctx.sessions` variable isn't followed; a name the plugin guards with `respond_to?` is left), `boundary` (warn: a `Samagotchi::` name outside "Stable for bundles"; a shipped bundle's listed
   exceptions aside. On an installed bundle (`chi update`) only a name this chi no longer has is a row: the constant

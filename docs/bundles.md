@@ -4,7 +4,9 @@ What each shipped bundle does for you, its commands, settings and files. A bundl
 the plugin API ([plugins.md](plugins.md)); install, upgrade and the `chi bundle` commands are in
 [plugins.md](plugins.md#the-bundle-commands) and [cli.md](cli.md). Two shipped bundles are documented with the
 feature they belong to: **source-links** in [hooks.md](hooks.md#the-source-links-bundle) and **known-names** in
-[guardrails.md](guardrails.md#the-known-names-bundle).
+[guardrails.md](guardrails.md#the-known-names-bundle). Both hook events from their `plugin.rb` with `chi.on`
+(known-names on `before_tool_call`, priority 50; source-links on `after_turn` and `question_asked`, priority 90), as
+every shipped bundle with code does; before known-names 0.2.0 and source-links 0.7.0 they shipped a `hooks/*.rb` file.
 
 ## The btw bundle
 

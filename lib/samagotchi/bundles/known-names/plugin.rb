@@ -243,3 +243,20 @@ class KnownNames
     Array(value).map { |name| name.to_s.strip }.reject(&:empty?)
   end
 end
+
+# What chi loads: one KnownNames, built once from config.yml
+# `bundles: known-names:` when the plugin loads, on before_tool_call at
+# priority 50. A raise in the handler is logged and the call goes on
+# (chi.on's log policy); KnownNames#call turns its own errors into a
+# notice first.
+class Plugin
+  PRIORITY = 50
+
+  def initialize(settings = {})
+    @names = KnownNames.new(settings)
+  end
+
+  def register(chi)
+    chi.on(:before_tool_call, priority: PRIORITY) { |event, _ctx| @names.call(event) }
+  end
+end

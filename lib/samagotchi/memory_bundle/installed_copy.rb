@@ -93,7 +93,8 @@ module Samagotchi
         return nil unless bundle.plugin
 
         file = bundle.plugin.file
-        { file: file, sha256: copy(provenance.plugin_path(bundle), File.join(dir, file), bundle.plugin.sha256) }
+        { file: file, sha256: copy(provenance.plugin_path(bundle), File.join(dir, file), bundle.plugin.sha256),
+          required: bundle.manifest.plugin_required }
       end
       private_class_method :plugin
 

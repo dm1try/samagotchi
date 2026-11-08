@@ -34,13 +34,15 @@ RSpec.describe ReleaseTools do
       expect(described_class.stale_shas(repo_root)).to eq([])
     end
 
-    it "are read in all three manifest shapes: files, hooks and plugin" do
+    # The hooks shape (no shipped bundle has hooks now) is shas_spec's.
+    it "are read in both shipped manifest shapes: files and plugin" do
       files = described_class.bundle_dirs(repo_root).to_h do |dir|
         _, changes = described_class.refresh_manifest(File.read(File.join(dir, "manifest.yml")).gsub(/sha256:\h+/, "sha256:0"), dir)
         [File.basename(dir), changes.map(&:first)]
       end
       expect(files).to include("btw" => ["plugin.rb"], "mcp" => ["plugin.rb"], "guardrails" => ["guardrails.md"],
-                               "known-names" => ["known_names.md", "hooks/known_names.rb"])
+                               "known-names" => ["known_names.md", "plugin.rb"],
+                               "source-links" => ["source_links.md", "plugin.rb"])
       expect(files["system"]).to include("identity.md", "delegated.md")
     end
 

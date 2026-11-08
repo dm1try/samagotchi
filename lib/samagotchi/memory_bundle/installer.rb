@@ -596,6 +596,7 @@ module Samagotchi
           hooks_files: installed.hook_files,
           guardrails_files: installed.guardrail_files,
           plugin_file: installed.plugin_file,
+          plugin_required: @manifest.plugin&.dig(:required) == true,
           requires_chi: @manifest.requires_chi,
           needs: @manifest.needs,
           marks: @behind + held_conflict_marks,

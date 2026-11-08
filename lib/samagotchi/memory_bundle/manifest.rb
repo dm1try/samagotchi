@@ -26,6 +26,8 @@ module Samagotchi
     #   plugin:                # optional — the bundle's plugin.rb (docs/plugins.md)
     #     file: plugin.rb
     #     sha256: sha256:0a1b...
+    #     required: true       # optional: a guardrail; when it fails to load
+    #                          #   chi denies every tool call (docs/hooks.md)
     #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
     #   requires_chi_next: true     # optional, shipped bundles — ignored here:
     #                          #   `rake release:bump` raises requires_chi to
@@ -101,6 +103,7 @@ module Samagotchi
         "hooks.events" => "0.98.0",
         "settings" => "0.143.0",
         "block_renderers" => "0.151.0"
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "plugin.required".
       }.freeze
 
       # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
@@ -249,6 +252,7 @@ module Samagotchi
         found["scripts"] = SINCE["scripts"] unless @scripts.empty?
         found["context_providers"] = SINCE["context_providers"] unless @context_providers.empty?
         found["block_renderers"] = SINCE["block_renderers"] unless @block_renderers.empty?
+        found["plugin.required"] = SINCE["plugin.required"] if @plugin&.dig(:required) && SINCE.key?("plugin.required")
         found["session_settings"] = SINCE["session_settings"] unless @session_settings.empty?
         found["settings"] = SINCE["settings"] unless @settings.nil?
         found["files.description"] = SINCE["files.description"] if raw["files"].is_a?(Hash) && raw["files"].values.any?(Hash)
@@ -281,6 +285,7 @@ module Samagotchi
         if plugin
           sha = plugin[:sha256].to_s
           manifest["plugin"] = { "file" => plugin[:file].to_s, "sha256" => sha.start_with?("sha256:") ? sha : "sha256:#{sha}" }
+          manifest["plugin"]["required"] = true if plugin[:required]
         end
         manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         needs = parse_needs(needs)
@@ -471,8 +476,10 @@ module Samagotchi
         end
       end
 
-      # plugin: {file:, sha256:} → {file:, sha256:} (sha "" when not given),
-      # or nil; a file that isn't a plain .rb name is a validation error.
+      # plugin: {file:, sha256:, required:} → {file:, sha256:} (sha "" when
+      # not given) with required: true when it says so, or nil; a file that
+      # isn't a plain .rb name, or a required: that isn't true or false, is a
+      # validation error.
       def parse_plugin(raw)
         return nil if raw.nil?
         raise ValidationError, "plugin: must be a mapping with file: and sha256:" unless raw.is_a?(Hash)
@@ -484,7 +491,10 @@ module Samagotchi
 
         sha = (raw["sha256"] || raw[:sha256]).to_s.strip
         sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
-        { file: file, sha256: sha }
+        required = raw.key?("required") ? raw["required"] : raw[:required]
+        raise ValidationError, "plugin required: must be true or false, not #{required.inspect}" unless [nil, true, false].include?(required)
+
+        required ? { file: file, sha256: sha, required: true } : { file: file, sha256: sha }
       end
 
       # scripts: {file => sha256} → the same, "sha256:" prefixed; {} when absent.

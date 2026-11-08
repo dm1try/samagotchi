@@ -25,7 +25,8 @@ module Samagotchi
     # +prompt_changed+ rebuilds its system prompts (chi.prompt_changed!),
     # +judgments+ the Engine's SystemOne::Judgments (chi.judgment),
     # +hook_failed+ is (label, "Class: message") when a chi.on handler
-    # raises (HookRoutes#plugin_hook_failed).
+    # raises, with effect: :deny for a fail-closed one
+    # (HookRoutes#plugin_hook_failed).
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools, :init,
                             :toolkits, :tool_index, :peer_sources, :prompt_sections, :prompt_changed, :judgments,
                             :hook_failed, keyword_init: true)
@@ -42,7 +43,12 @@ module Samagotchi
     # fails adds nothing.
     #
     # A failure is logged and added to +failures+ (not required: tool calls
-    # still run), which the Engine announces once. Not fail-closed.
+    # still run), which the Engine announces once. A guardrail plugin's
+    # (the manifest's plugin: required: true, read from the kept manifest:
+    # InstalledManifest#plugin_required) goes to +guardrail_failures+ as
+    # required instead: every tool call is denied, as for a fail-closed
+    # config hook. Its chi.on(..., on_error: :fail_closed) hooks deny the
+    # call they raise on (Api#on).
     module Loader
       TAG = :plugins
 
@@ -50,12 +56,16 @@ module Samagotchi
 
       # @param registries [Registries]
       # @param failures [Guardrails::LoadFailures, nil]
+      # @param guardrail_failures [Guardrails::LoadFailures, nil] where a
+      #   required plugin's failure goes (the Engine's guardrail failures);
+      #   nil: +failures+, still required
       # @param settings [Hash{String => Hash}] config.yml `bundles:`
       # @return [Array<String>] the bundles whose plugin loaded
-      def load_installed(registries, failures: nil, settings: {})
+      def load_installed(registries, failures: nil, guardrail_failures: nil, settings: {})
         loaded = []
         MemoryBundle::Provenance.each_installed(holding: :plugin) do |bundle_name, bundle|
-          ok = load_bundle(bundle_name, bundle, registries, failures: failures, settings: settings[bundle_name.to_s] || {})
+          ok = load_bundle(bundle_name, bundle, registries, failures: failures, guardrail_failures: guardrail_failures,
+                                                            settings: settings[bundle_name.to_s] || {})
           loaded << bundle_name if ok
         end
         loaded
@@ -66,20 +76,33 @@ module Samagotchi
       end
 
       # @return [Boolean] whether the plugin loaded
-      def load_bundle(bundle_name, bundle, registries, failures: nil, settings: {})
+      def load_bundle(bundle_name, bundle, registries, failures: nil, guardrail_failures: nil, settings: {})
         file = MemoryBundle::Provenance.new(name: bundle_name).plugin_path(bundle) unless bundle.error?
         basename = file ? File.basename(file) : "plugin"
+        # Known before it registers anything: a guardrail that fails to load
+        # (its sha, requires_chi, a raise) denies every tool call.
+        required = !bundle.error? && bundle.manifest.plugin_required
+        into = required ? guardrail_failures || failures : failures
         reason = bundle.error || unloadable_reason(file, bundle)
-        return failed(bundle_name, basename, reason, failures) if reason
+        return failed(bundle_name, basename, reason, into, required: required) if reason
 
         api = register_file(bundle_name, file, registries, settings: settings)
+        warn_unrequired(bundle_name, basename) if api.fail_closed? && !required
         Log.info(TAG, "plugin_loaded", bundle: bundle_name, file: basename, **api.counts)
         true
       rescue Exception => e # rubocop:disable Lint/RescueException -- a plugin's SyntaxError or exit must not stop chi
         raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 
-        failed(bundle_name, basename, "#{e.class}: #{e.message}", failures,
+        failed(bundle_name, basename, "#{e.class}: #{e.message}", into || failures, required: required == true,
                location: file && Guardrails::LoadFailures.location(e, File.dirname(file)))
+      end
+
+      # A fail-closed hook from a plugin its manifest doesn't call required:
+      # it denies the call it raises on, but a load failure would not deny.
+      def warn_unrequired(bundle_name, basename)
+        text = "#{label(bundle_name, basename)} has a fail-closed hook but its manifest's plugin: has no required: true, " \
+               "so a failure to load it would not deny tool calls"
+        Log.warn(TAG, "plugin_fail_closed_unrequired", bundle: bundle_name, file: basename, msg: text)
       end
 
       # Build +file+'s plugin with +settings+ and commit what its #register
@@ -144,10 +167,10 @@ module Samagotchi
         end
       end
 
-      def failed(bundle_name, basename, reason, failures, location: nil)
+      def failed(bundle_name, basename, reason, failures, required: false, location: nil)
         Log.warn(TAG, "plugin_not_loaded", echo: "[samagotchi:plugins] bundle '#{bundle_name}' plugin '#{basename}' not loaded: #{reason}",
-                                           bundle: bundle_name, file: basename)
-        failures&.add("plugin #{basename} (bundle #{bundle_name})", reason, required: false, location: location)
+                                           bundle: bundle_name, file: basename, required: required)
+        failures&.add("plugin #{basename} (bundle #{bundle_name})", reason, required: required, location: location)
         false
       end
     end

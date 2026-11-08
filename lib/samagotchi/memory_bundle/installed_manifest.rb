@@ -50,6 +50,11 @@ module Samagotchi
     #                               as Manifest reads them (settings nil when
     #                               the manifest said nothing of them)
     #   file_descriptions           file key => the memory's description
+    #   plugin_required             plugin: required: true (a guardrail plugin:
+    #                               one that fails to load denies every tool
+    #                               call): the record's (PluginRef#required,
+    #                               recorded at install) or the kept manifest's,
+    #                               so a lost or edited kept file keeps it
     #   includes                    a profile's recorded members (the record's
     #                               identity, never the kept file's), nil for a plain bundle
     #   unknown_keys                the kept manifest's keys this chi doesn't know
@@ -59,7 +64,7 @@ module Samagotchi
     class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :hooks, :needs,
                                           :script_names, :context_providers, :block_renderers, :session_settings,
                                           :session_setting_types, :settings, :setting_types, :file_descriptions,
-                                          :includes, :unknown_keys, :floor_keys, :problems, :origin)
+                                          :plugin_required, :includes, :unknown_keys, :floor_keys, :problems, :origin)
       # The key problems names the kept file's standing under.
       KEPT_FILE = "manifest.yml"
       # How many manifests the cache holds before it starts again.
@@ -133,6 +138,7 @@ module Samagotchi
             session_settings: session.session_settings, session_setting_types: session.session_setting_types,
             settings: settings.settings, setting_types: settings.setting_types,
             file_descriptions: pick.call("files", kept.file_descriptions, mirrored.file_descriptions),
+            plugin_required: kept.plugin&.dig(:required) == true || mirrored.plugin_required,
             includes: bundle.includes,
             unknown_keys: kept.unknown_keys.map(&:to_s), floor_keys: floors(kept), problems: problems.freeze, origin: :kept)
       end
@@ -168,6 +174,7 @@ module Samagotchi
             settings: list(raw["settings"]),
             setting_types: types(raw["setting_types"]),
             file_descriptions: file_descriptions(bundle.files),
+            plugin_required: bundle.plugin&.required == true,
             includes: bundle.includes, unknown_keys: [], floor_keys: {}, problems: problems.freeze, origin: :record)
       end
 

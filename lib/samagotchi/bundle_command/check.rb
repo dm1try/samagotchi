@@ -91,6 +91,7 @@ module Samagotchi
           check_settings(manifest) unless @installed
           check_install(manifest) unless missing || placeholders? || manifest.session_settings_clash
           check_api(manifest)
+          check_fail_closed(manifest) unless @installed
           check_boundary(manifest)
           check_tests unless @installed
         end
@@ -437,6 +438,23 @@ module Samagotchi
         ApiCalls.new(File.read(path(file))).findings.each do |finding|
           add(:warn, :api, file, finding.message, line: finding.line, fix: finding.fix)
         end
+      end
+
+      # A chi.on(..., on_error: :fail_closed) guard denies the call it raises
+      # on; only the manifest's plugin: required: true makes its failing to
+      # load deny every call (chi knows it before the plugin registers).
+      FAIL_CLOSED = /on_error:\s*(?::fail_closed\b|["']fail_closed["'])/
+
+      def check_fail_closed(manifest)
+        file = manifest.plugin && manifest.plugin[:file]
+        return if !file || manifest.plugin[:required] || !File.file?(path(file))
+
+        source = File.read(path(file))
+        return unless (index = source =~ FAIL_CLOSED)
+
+        add(:warn, :"fail-closed", file, "a fail-closed chi.on hook, but the manifest's plugin: has no required: true: " \
+                                         "if the plugin fails to load, tool calls still run",
+            line: source[0, index].count("\n") + 1, fix: "add required: true under plugin: in manifest.yml")
       end
 
       def check_boundary(manifest)

@@ -58,7 +58,12 @@ module Samagotchi
         "ctx.session_dir" => "0.143.0", "ctx.session_dir(create:)" => "0.144.0",
         "ctx.objectives" => "0.149.0", "ctx.turn_running?" => "0.149.0",
         "ctx.last_answer" => "0.154.0"
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "chi.on(on_error:)".
       }.freeze
+
+      # chi.on's on_error: values. :log (the default) logs a raise and goes
+      # on; :fail_closed (before_tool_call only) denies the call it raised on.
+      ON_ERROR = %i[log fail_closed].freeze
 
       # @param bundle [String]
       # @param label [String] "<file> (bundle <name>)": what hooks and
@@ -222,13 +227,30 @@ module Samagotchi
       # logged and skipped; its first failure in this worker also tells the
       # user, once (Registries#hook_failed).
       # @param priority [Integer] lower runs first among bundle hooks
-      def on(event, priority: 100, &block)
+      # @param on_error [Symbol] :log, or :fail_closed for a before_tool_call
+      #   guard: a raise denies that call. A plugin that registers one is a
+      #   guardrail (#fail_closed?): if it then fails to load, every tool call
+      #   is denied (Loader; the manifest's plugin: required: true says so
+      #   before it registers anything).
+      def on(event, priority: 100, on_error: :log, &block)
         raise ArgumentError, "on(#{event.inspect}) needs a block" unless block
         raise ArgumentError, "on: the event must be a Symbol or String" unless event.is_a?(Symbol) || event.is_a?(String)
 
-        @hooks << { event: event.to_sym, priority: Integer(priority), block: block }
+        event = event.to_sym
+        policy = on_error.is_a?(String) ? on_error.to_sym : on_error
+        raise ArgumentError, "on(#{event.inspect}): on_error: must be :log or :fail_closed, not #{on_error.inspect}" unless ON_ERROR.include?(policy)
+        if policy == :fail_closed && event != :before_tool_call
+          raise ArgumentError, "on(#{event.inspect}): on_error: :fail_closed is for :before_tool_call only"
+        end
+
+        @hooks << { event: event, priority: Integer(priority), on_error: policy, block: block }
         nil
       end
+
+      # Whether #register staged a fail-closed hook (chi.on(on_error:
+      # :fail_closed)): the plugin is a guardrail, so its failing to load
+      # denies every tool call (Loader).
+      def fail_closed? = @hooks.any? { |hook| hook[:on_error] == :fail_closed }
 
       # A long-lived thing the plugin keeps (a server process): the block
       # starts it and returns what #value gives; in it, svc.on_stop { }
@@ -451,10 +473,13 @@ module Samagotchi
         @tools.each { |tool| @registries.tools.register(tool.name, source: @bundle, **tool.entry_fields(context)) }
         @hooks.each do |hook|
           block = hook[:block]
-          # Never stderr (echo: false): a turn's live region is on screen.
-          handler = Hooks.wrap(label: "#{@label} #{hook[:event]} hook", event: hook[:event], policy: :log,
+          # Never stderr (echo: false): a turn's live region is on screen. A
+          # fail-closed one denies the call it raised on (Hooks.wrap's :deny).
+          policy = hook[:on_error] == :fail_closed ? :deny : :log
+          label = "#{"guardrail " if policy == :deny}#{@label} #{hook[:event]} hook"
+          handler = Hooks.wrap(label: label, event: hook[:event], policy: policy,
                                log: [:plugins, "plugin_hook_failed"], echo: false, fields: { bundle: @bundle },
-                               on_failure: @registries.hook_failed) do |event|
+                               on_failure: hook_failed(policy)) do |event|
             # ctx's helpers act as this event's while the block runs.
             context ? context.with_event(event) { block.call(event, context) } : block.call(event, context)
           end
@@ -477,6 +502,16 @@ module Samagotchi
         @judgments.each { |declaration| @registries.judgments.declare(declaration) }
         @committed = true
       end
+
+      # Registries#hook_failed for a hook under +policy+: a fail-closed one's
+      # notice says it denies (effect: :deny).
+      def hook_failed(policy)
+        told = @registries.hook_failed
+        return told unless told && policy == :deny
+
+        ->(label, failed) { told.call(label, failed, effect: :deny) }
+      end
+      private :hook_failed
 
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,

@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 require "yaml"
+require "json"
 require "digest"
 
 require "samagotchi/memory_bundle/installer"
@@ -167,6 +168,17 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
         .to raise_error(described_class::ValidationError, "session_settings: cap's type is number, boolean, string or any, not \"money\"")
     end
 
+    it "reads plugin: required: true (a guardrail plugin), its floor, and refuses a required: that isn't a boolean" do
+      manifest = described_class.read(dir: write_source(plugin: { "file" => "plugin.rb", "required" => true }))
+      expect(manifest.plugin).to include(file: "plugin.rb", required: true)
+      # Its floor waits as Manifest::SINCE's Unreleased comment until the release (docs/releasing.md).
+      floor = described_class::SINCE.slice("plugin.required")
+      expect(manifest.floor_keys).to eq(floor)
+      expect(described_class.read(dir: write_source(plugin: { "file" => "plugin.rb", "required" => false })).plugin).not_to have_key(:required)
+      src = write_source(plugin: { "file" => "plugin.rb", "required" => "yes" })
+      expect { described_class.read(dir: src) }.to raise_error(described_class::ValidationError, 'plugin required: must be true or false, not "yes"')
+    end
+
     it "has no plugin when the manifest names none" do
       manifest = described_class.read(dir: write_source(plugin: nil))
       expect(manifest.plugin).to be_nil
@@ -202,6 +214,8 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       data = YAML.load_file(File.join(dir, "manifest.yml"))
       expect(data["plugin"]).to eq("file" => "plugin.rb", "sha256" => "sha256:abc")
       expect(data["requires_chi"]).to eq(">= 0.1")
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, plugin: { file: "plugin.rb", sha256: "abc", required: true })
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))["plugin"]).to include("required" => true)
     end
   end
 
@@ -350,6 +364,35 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       manifest = Samagotchi::MemoryBundle::Manifest.read(dir: out)
       expect(manifest.plugin).to eq(file: "plugin.rb", sha256: "sha256:#{Digest::SHA256.hexdigest(plugin_source)}")
       expect(manifest.requires_chi).to eq(">= 0.1.0")
+    end
+
+    it "keeps a required plugin required in the built bundle" do
+      install(write_source(plugin: { "file" => "plugin.rb", "required" => true }))
+      out = File.join(tmpdir, "built")
+      Samagotchi::MemoryBundle::Builder.new(scope: "system", name: "plug", out: out).run
+      expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).plugin).to include(required: true)
+    end
+  end
+
+  describe "the installed manifest" do
+    def installed = Samagotchi::MemoryBundle::Provenance.new(name: "plug").record.manifest
+
+    it "says a plugin is required from the kept manifest.yml, and not without the flag" do
+      install(write_source(plugin: { "file" => "plugin.rb", "required" => true }))
+      expect([installed.origin, installed.plugin_required]).to eq([:kept, true])
+      install(write_source, upgrade: true)
+      expect([installed.origin, installed.plugin_required]).to eq([:kept, false])
+    end
+
+    it "records it with the plugin, so the record alone still says required (a lost or edited kept manifest.yml)" do
+      install(write_source(plugin: { "file" => "plugin.rb", "required" => true }))
+      prov = Samagotchi::MemoryBundle::Provenance.new(name: "plug")
+      expect(JSON.parse(File.read(File.join(prov.bundle_dir, "manifest.json")))["plugin"]).to include("required" => true)
+      kept = prov.record.kept_manifest_path
+      File.write(kept, File.read(kept).sub("required: true", "required: false"))
+      expect([installed.standing, installed.plugin_required]).to eq([:edited, true])
+      FileUtils.rm_f(kept)
+      expect([installed.origin, installed.plugin_required]).to eq([:record, true])
     end
   end
 end
