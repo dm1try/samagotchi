@@ -276,7 +276,7 @@ module Samagotchi
       state_dir = Samagotchi::Session.default_state_dir
       list_text = lambda do |s|
         card = s.title ? nil : Samagotchi::RecapStore.card(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
-        (card&.title || card&.preview || Samagotchi::SessionManager.summary_text(s))[0, 60]
+        (card&.title || card&.preview || Samagotchi::SessionRow.summary_text(s))[0, 60]
       end
       # How full the context was after the last turn: "ctx 12%", counted
       # against the session's llm_context budget when one is set and smaller
