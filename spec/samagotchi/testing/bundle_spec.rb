@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::Testing::Bundle do
 
   it "keeps hook classes isolated between loads without adding constants to the shared namespace" do
     write_bundle(hooks: { "guard.rb" => ["after_turn", "class Guard; def call(e) = e[:first] = true; end"] })
-    shared_namespace = Samagotchi::Hooks::BundleLoader.namespace_for("kit-test")
+    shared_namespace = Samagotchi::Plugin::Loader.namespace_for("kit-test")
     constants_before = shared_namespace.constants(false)
     first = load
     File.write(File.join(dir, "hooks", "guard.rb"), "class Guard; def call(e) = e[:second] = true; end\n")

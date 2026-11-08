@@ -1,19 +1,12 @@
 # frozen_string_literal: true
 
 require_relative "registry"
-require "digest"
 require_relative "../log"
 require_relative "../guardrails/load_failures"
 require_relative "../memory_bundle/bundle_hook"
 require_relative "../memory_bundle/provenance"
 
 module Samagotchi
-  # Namespace that wraps hook plugin classes per-bundle. Each bundle's hooks are
-  # evaluated inside `Samagotchi::Bundles::<BundleName>` so that two bundles
-  # shipping a file with the same basename (e.g. `guardrails.rb`) cannot collide
-  # on a top-level constant.
-  module Bundles; end
-
   module Hooks
     # Loads bundle-owned hook plugins into a Registry.
     #
@@ -140,18 +133,13 @@ module Samagotchi
           nil
         end
 
-        # Why the file doesn't match the sha256 recorded at install, or nil.
-        # With none recorded, only a required hook counts as a mismatch.
+        # Why the file doesn't match the sha256 recorded at install, or nil
+        # (Plugin::Loader.sha_mismatch). With none recorded, only a required
+        # hook counts as a mismatch.
         def sha_mismatch(file, recorded, required:)
-          return nil if MemoryBundle::Provenance.unchecked?(recorded)
+          return nil if !required && MemoryBundle::Provenance.recorded_sha(recorded).empty?
 
-          expected = MemoryBundle::Provenance.recorded_sha(recorded)
-          return (required ? "no sha256 recorded for it (reinstall the bundle)" : nil) if expected.empty?
-
-          actual = MemoryBundle::Provenance.file_sha(file)
-          return nil if actual == expected
-
-          "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"
+          plugin_loader.sha_mismatch(file, recorded)
         end
 
         # Evaluate a plugin file inside the bundle's namespace module (or
@@ -170,20 +158,15 @@ module Samagotchi
           instance
         end
 
-        # The (lazily created) namespace module for a bundle.
-        # Sanitization is made injective by appending a short digest so that
-        # `my-bundle` and `my_bundle` do not collide.
-        def namespace_for(bundle_name)
-          raw = bundle_name.to_s
-          base = raw.gsub(/[^A-Za-z0-9_]/, "_")
-          base = "B_#{base}" unless base.match?(/\A[A-Z]/)
-          digest = Digest::MD5.hexdigest(raw)[0, 4]
-          ns_name = "#{base}_#{digest}"
-          if Samagotchi::Bundles.const_defined?(ns_name.to_sym, false)
-            Samagotchi::Bundles.const_get(ns_name.to_sym)
-          else
-            Samagotchi::Bundles.const_set(ns_name.to_sym, Module.new)
-          end
+        # The bundle's namespace module (Plugin::Loader.namespace_for).
+        def namespace_for(bundle_name) = plugin_loader.namespace_for(bundle_name)
+
+        private
+
+        # Plugin::Loader requires hooks.rb, which requires this file.
+        def plugin_loader
+          require_relative "../plugin/loader"
+          Plugin::Loader
         end
       end
     end

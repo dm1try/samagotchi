@@ -110,15 +110,6 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect(ns1).not_to eq(ns2)
     end
 
-    it "gives hyphen vs underscore bundle names distinct namespaces (injective)" do
-      ns_hyphen = described_class.namespace_for("my-bundle")
-      ns_under = described_class.namespace_for("my_bundle")
-      expect(ns_hyphen).not_to eq(ns_under)
-      # Also ensure both are valid constants
-      expect(ns_hyphen.to_s).to start_with("Samagotchi::Bundles::")
-      expect(ns_under.to_s).to start_with("Samagotchi::Bundles::")
-    end
-
     it "fails fast when file does not define expected class (const_get false)" do
       hooks_dir = File.join(tmpdir, "hooks")
       # File is array.rb but defines no Array class inside bundle namespace; should raise and warn, not resolve ::Array
@@ -354,14 +345,6 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect { described_class.load(bundle_name: "no-notice", hooks_dir: hooks_dir, metadata: { "silent.rb" => { "event" => "after_tool_call" } }, registry: registry) }
         .not_to raise_error
       expect { registry.fire(:after_tool_call, { type: :after_tool_call }) }.not_to raise_error
-    end
-  end
-
-  describe ".namespace_for" do
-    it "creates distinct modules per bundle" do
-      ns1 = described_class.namespace_for("a")
-      ns2 = described_class.namespace_for("b")
-      expect(ns1).not_to eq(ns2)
     end
   end
 

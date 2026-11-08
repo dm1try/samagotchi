@@ -225,7 +225,7 @@ RSpec.configure do |config|
     # one fixed time (SpecStamps#message_at), so whole-message expectations
     # name it; a spec of time gaps sets its own source.
     Samagotchi::MessageTime.source = -> { SpecStamps::MESSAGE_TIME }
-    # Hooks::BundleLoader evals each bundle hook into a Samagotchi::Bundles
+    # Plugin::Loader evals each bundle's code into a Samagotchi::Bundles
     # module that lives for the process: chi builds one Engine, the suite
     # hundreds. Fresh modules, or each load redefines the last one's constants
     # and methods ("already initialized constant" warnings).
