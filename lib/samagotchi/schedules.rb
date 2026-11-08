@@ -70,8 +70,10 @@ module Samagotchi
     # root and the provenance of the schedule); `head` is the chain's current
     # link, re-anchored after every successful chain firing — that is what
     # makes keep_links pruning provably safe: everything deleted is behind it.
+    # `due_was` is the occurrence the last tick attempted: a skip or a failure
+    # puts the clock back to it.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
-                        :keep_links, :max_failures, :max_skips, :next_due, :last_fired, :last_result,
+                        :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
                         :firing_since, :failures, :skips, :enabled, :created_at) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once.
@@ -183,7 +185,7 @@ module Samagotchi
         keep_links: int_or_default(keep_links, "schedule.default_keep_links", 5, min: 0),
         max_failures: int_or_default(max_failures, "schedule.default_max_failures", 3, min: 1),
         max_skips: int_or_default(max_skips, "schedule.default_max_skips", 12, min: 1),
-        next_due: next_due_for(recurrence, from: now).utc.iso8601,
+        next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil,
         failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601
       )
@@ -267,7 +269,7 @@ module Samagotchi
                            detail: verdict.last, entry: entry)
       end
 
-      fire_and_record(advance(entry, @clock.call), index, attempted_due: entry.next_due)
+      fire_and_record(advance(entry, @clock.call), index)
     end
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
@@ -492,10 +494,17 @@ module Samagotchi
     end
 
     # The clock advances and the entry is marked firing before the action: a
-    # tick killed mid-continue cannot fire the same entry twice.
+    # tick killed mid-continue cannot fire the same entry twice. The occurrence
+    # it tried is kept as due_was, so a skip or a failure puts it back: the
+    # schedule was not late, it just could not run now. A `date` one-off has no
+    # next occurrence, so advancing it spends it — the entry is disabled until
+    # a skip or a failure puts its moment back.
     def advance(entry, now)
-      entry.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601,
-                 last_fired: now.utc.iso8601, firing_since: now.utc.iso8601, last_result: nil)
+      one_off = entry.recurrence[:kind] == "date"
+      entry.with(due_was: entry.next_due,
+                 next_due: one_off ? nil : next_due_for(entry.recurrence, from: now).utc.iso8601,
+                 last_fired: now.utc.iso8601, firing_since: now.utc.iso8601, last_result: nil,
+                 enabled: one_off ? false : entry.enabled)
     end
 
     def skipped(entry, reason)
@@ -607,11 +616,9 @@ module Samagotchi
       nil
     end
 
-    # +attempted_due+ is the occurrence the tick tried: a skip keeps it, so a
-    # schedule that could not run now is tried at that same time next tick.
-    def fire_and_record(entry, index, attempted_due: nil)
+    def fire_and_record(entry, index)
       outcome = fire(entry, index)
-      record(entry, outcome, attempted_due: attempted_due)
+      record(entry, outcome)
       prune(outcome.entry, index) if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       outcome
     end
@@ -662,34 +669,31 @@ module Samagotchi
 
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
-    def record(entry, outcome, attempted_due: nil)
+    def record(entry, outcome)
       write_under_lock do |list|
         position = list.index { |candidate| candidate.id == entry.id }
         next if position.nil?
 
         stored = list[position]
-        list[position] = if outcome.status == "fired"
-                           # Any success clears the skip and failure counters: twelve skips
-                           # spread over months do not kill a healthy schedule. A `date`
-                           # schedule is a one-off: it has no next occurrence, so after it
-                           # fires it is disabled rather than left due at its own moment.
-                           one_off = stored.recurrence[:kind] == "date"
-                           stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
-                                       failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601,
-                                       enabled: one_off ? false : stored.enabled,
-                                       next_due: one_off ? nil : stored.next_due)
-                         elsif outcome.status == "skipped"
-                           # The clock goes back to the occurrence this tick
-                           # tried: the schedule is not late, it just could not
-                           # run now — the same as a skip from the busy check.
-                           # The skip counter still grows, so max_skips bounds
-                           # the retries.
-                           back = skipped(stored, outcome.detail).with(firing_since: nil)
-                           back = back.with(next_due: attempted_due) unless attempted_due.nil?
-                           back
-                         else
-                           failed(stored, outcome.detail)
-                         end
+        stored = list[position]
+        updated = if outcome.status == "fired"
+                    # Any success clears the skip and failure counters: twelve
+                    # skips spread over months do not kill a healthy schedule.
+                    # A `date` schedule is a one-off: `advance` already left it
+                    # with no next_due and disabled, and a firing keeps it so.
+                    stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
+                                failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                  elsif outcome.status == "skipped"
+                    skipped(stored, outcome.detail).with(firing_since: nil)
+                  else
+                    failed(stored, outcome.detail)
+                  end
+
+        # A skip or a failure is "not now", not "late": the occurrence the tick
+        # tried comes back, so the next tick tries it again. max_skips and
+        # max_failures bound how often that happens.
+        updated = updated.with(next_due: stored.due_was) if outcome.status != "fired" && !stored.due_was.nil?
+        list[position] = updated
       end
     end
 

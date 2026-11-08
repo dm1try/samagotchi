@@ -484,7 +484,7 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  it "marks an entry firing before the action, so a killed tick cannot double-fire" do
+  it "records a failure when the firing itself blows up, and puts the clock back" do
     Dir.mktmpdir("schedules-firing") do |dir|
       allow(Process).to receive(:spawn).and_raise(Errno::ENOSPC)
       allow(Samagotchi::Log).to receive(:warn)
@@ -496,7 +496,68 @@ RSpec.describe Samagotchi::Schedules do
       expect(outcome.detail).to include("Errno::ENOSPC")
       after = schedules.lookup(entry.id)
       expect(after.firing_since).to be_nil
-      expect(Time.iso8601(after.next_due)).to be > Time.now
+      expect(after.failures).to eq(1)
+      # The occurrence this tick tried comes back: it failed, it was not late.
+      expect(Time.iso8601(after.next_due)).to eq(Time.iso8601(after.due_was))
+      expect(Time.iso8601(after.next_due)).to eq(Time.iso8601(entry.next_due))
+    end
+  end
+
+  it "marks an entry firing before the action, so a tick killed mid-continue cannot fire it again" do
+    [
+      ["every", every("1m")],
+      ["weekday", described_class.recurrence(weekday: 1, time: "09:00")],
+      ["date", described_class.recurrence(date: "2026-01-01T09:00")]
+    ].each do |kind, recurrence|
+      Dir.mktmpdir("schedules-killed") do |dir|
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: recurrence)
+        now = Time.iso8601(entry.next_due) + 60
+        # Interrupt is not a StandardError: `fire` does not rescue it, so the
+        # tick dies between the advance and the action.
+        allow(Samagotchi::SessionContinue).to receive(:run).and_raise(Interrupt)
+
+        expect { schedules.tick(now: now) }.to raise_error(Interrupt)
+
+        after = schedules.lookup(entry.id)
+        expect(after.firing_since).to match(/\d{4}-\d{2}-\d{2}T/)
+        expect(after.due_was).to eq(entry.next_due)
+        expect(schedules.entries).to be_empty if kind == "date" # a one-off is spent
+        # The tick that died already moved the clock: a tick at the same
+        # instant finds nothing due, and nothing was archived.
+        expect(schedules.tick(now: now).outcomes).to be_empty
+        expect(archived?(dir, anchor)).to be(false)
+      end
+    end
+  end
+
+  it "keeps the occurrence when the firing is refused, and fires it at the next tick" do
+    Dir.mktmpdir("schedules-race-skip") do |dir|
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      child = session(dir, parent: anchor, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)
+      # A terminal owns the running delegate: the continue of the anchor
+      # refuses it (open_children) rather than move it under a new link.
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(child.id, state_dir: dir), kind: "tui")
+      monday = Time.local(2026, 11, 9, 9, 0)
+      schedules = store(dir, now: monday - 60)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: described_class.recurrence(weekday: 1, time: "09:00"))
+      expect(Time.iso8601(entry.next_due)).to eq(monday)
+
+      outcome = schedules.tick(now: monday).outcomes.first
+      expect(outcome.status).to eq("skipped")
+      expect(outcome.detail).to include(child.id[0, 8])
+
+      after = schedules.lookup(entry.id)
+      expect([after.skips, after.enabled, Time.iso8601(after.next_due)]).to eq([1, true, monday])
+
+      # The terminal on the delegate goes; the next tick fires the Monday run
+      # the skipped one tried.
+      lock.release
+      fired = schedules.tick(now: monday + 120).outcomes.first
+      expect(fired.status).to eq("fired")
+      expect(Time.iso8601(schedules.lookup(entry.id).next_due)).to eq(Time.local(2026, 11, 16, 9, 0))
     end
   end
 end
