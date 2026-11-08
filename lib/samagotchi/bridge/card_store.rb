@@ -147,6 +147,9 @@ module Samagotchi
         stamp = places&.opening_of(entry)
         out[:opening_id] = stamp if stamp
         out[:current] = current
+        # Whose row it is (its turn's id, +of_turn+): the page leaves a drawn
+        # turn's own rows and cards to its drawing (Bridge::TurnDrawings).
+        out[:of_turn] = entry[:turn_id] if shown[:in_turn] && entry[:turn_id]
         out[:during] = true if entry[:during]
         out[:after_failed] = true if entry[:after_failed] && entry[:turn_id] == @failed_turn
         out[:label] = "from #{entry[:command]}" if entry[:command]

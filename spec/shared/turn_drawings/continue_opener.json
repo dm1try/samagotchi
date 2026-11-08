@@ -1,0 +1,180 @@
+{
+  "description": "The first turn of a continue link, head-less, its opener note before it (outside the range).",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "carry on",
+      "turn_id": "turn-continue",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Carrying on.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-continue",
+      "duration_ms": 2400,
+      "kept_from": 2,
+      "kept_to": 4,
+      "turn_summary": {
+        "output": "Carrying on."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "system",
+      "kind": "note",
+      "note_id": "n1",
+      "source": "continue",
+      "content": "[CONTEXT NOTE from continue, 10:00]\nfrom the parent\n[END NOTE]",
+      "at": "2026-11-08T09:00:00.000Z"
+    },
+    {
+      "role": "user",
+      "content": "carry on",
+      "turn_id": "turn-continue",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Carrying on."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-continue",
+      "kind": "completed",
+      "from": 2,
+      "to": 4,
+      "from_digest": "3648c543a6902109ab3fa0041067bf838a26a438",
+      "to_digest": "561c0e822fcc1f745cb3cdddbdecbb5a278dd28a",
+      "drawing": {
+        "prompt": "carry on",
+        "turn_id": "turn-continue",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Carrying on."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-continue",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-continue": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "carry on",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-continue"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Carrying on.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-continue",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "note",
+        "content": "from the parent",
+        "label": "continue",
+        "at": "2026-11-08T09:00:00.000Z"
+      },
+      {
+        "role": "user",
+        "content": "carry on",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-continue",
+        "drawn": "turn-continue"
+      },
+      {
+        "role": "assistant",
+        "content": "Carrying on.",
+        "drawn": "turn-continue"
+      }
+    ],
+    "turn_drawings": {
+      "turn-continue": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "carry on",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-continue"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Carrying on.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-continue",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "description": "A rollback, then a re-run that said the same at the same boundaries: the newest line wins.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "again",
+      "turn_id": "turn-first",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Same.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-first",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "Same."
+      }
+    },
+    {
+      "type": "turn_started",
+      "prompt": "again",
+      "turn_id": "turn-second",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Same.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-second",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "Same."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "again",
+      "turn_id": "turn-second",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Same."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-first",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "0cf95b7743732590a46db0e02452144ac0e75613",
+      "to_digest": "e8b27532258b993c88699073bbc10dae7417ec3f",
+      "drawing": {
+        "prompt": "again",
+        "turn_id": "turn-first",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Same."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-first",
+        "duration_ms": 2400
+      }
+    },
+    {
+      "v": 1,
+      "turn_id": "turn-second",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "0cf95b7743732590a46db0e02452144ac0e75613",
+      "to_digest": "e8b27532258b993c88699073bbc10dae7417ec3f",
+      "drawing": {
+        "prompt": "again",
+        "turn_id": "turn-second",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Same."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-second",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-second": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "again",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-second"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Same.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-second",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "again",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-second",
+        "drawn": "turn-second"
+      },
+      {
+        "role": "assistant",
+        "content": "Same.",
+        "drawn": "turn-second"
+      }
+    ],
+    "turn_drawings": {
+      "turn-second": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "again",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-second"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Same.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-second",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

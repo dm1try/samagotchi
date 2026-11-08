@@ -132,6 +132,26 @@ RSpec.describe "Cross-version worker contract" do
     end
   end
 
+  # A worker writes a finished turn's drawing; chi web reads it (a newer
+  # one, an older one's file). A line another version wrote is skipped.
+  it "writes turn_drawings.jsonl lines with v: 1 and these keys, from the end event's kept_from/kept_to" do
+    drawings = Samagotchi::Bridge::TurnDrawings
+    expect(drawings::FILE).to eq("turn_drawings.jsonl")
+    expect(drawings::VERSION).to eq(1)
+    expect(drawings::Line.members).to eq(%i[v turn_id kind from to from_digest to_digest drawing end])
+    # chi web draws a live worker's turns only when its sidecar names it.
+    expect(Samagotchi::Bridge::FEATURES).to include(drawings::FEATURE)
+    expect(drawings::FEATURE).to eq("turn_drawings")
+    Dir.mktmpdir do |dir|
+      messages = [{ role: "system", content: "head" }, { role: "user", content: "hi" }, { role: "model", content: "ok" }]
+      drawings.new(path: File.join(dir, drawings::FILE), messages: -> { messages })
+              .append({ prompt: "hi", parts: [] }, { type: :turn_completed, turn_id: "t1", kept_from: 1, kept_to: 3 })
+      line = JSON.parse(File.read(File.join(dir, drawings::FILE)))
+      expect(line.keys).to eq(%w[v turn_id kind from to from_digest to_digest drawing end])
+      expect(line).to include("v" => 1, "from" => 1, "to" => 3)
+    end
+  end
+
   it "keeps the routes and client ids one session's worker uses on another's" do
     expect(Samagotchi::Bridge::ROUTES).to include(%w[POST relay/status] => :handle_relay_status)
     expect(Samagotchi::Bridge::ROUTES.keys).to include(%w[POST relay])

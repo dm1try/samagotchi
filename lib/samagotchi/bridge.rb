@@ -21,6 +21,7 @@ require_relative "bridge/pending_card"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
+require_relative "bridge/turn_drawings"
 require_relative "session"
 require_relative "engine"
 require_relative "system_one/log"
@@ -134,7 +135,10 @@ module Samagotchi
       @bind = bind
       @port = port
       @ring = RingBuffer.new(capacity: ring_capacity)
-      @accumulator = TurnAccumulator.new
+      # A finished turn's drawing (TurnDrawings), written by the accumulator
+      # at the end event, before any stream gets it.
+      @drawings = TurnDrawings.new(path: File.join(session_dir, TurnDrawings::FILE), messages: -> { @engine.session&.messages })
+      @accumulator = TurnAccumulator.new(on_turn_end: @drawings.method(:append))
       # Saved in the session's folder: a later worker, and the web without
       # one, show the cards where they were.
       @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE), messages: -> { @engine.session&.messages })
@@ -664,7 +668,7 @@ module Samagotchi
     # review turn, and chi web says so (Delivery::PAIR_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
-                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE].freeze
+                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

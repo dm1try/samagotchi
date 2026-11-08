@@ -5,6 +5,7 @@ require "uri"
 
 require_relative "../analytics_file"
 require_relative "../bridge/turn_accumulator"
+require_relative "../bridge/turn_drawings"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
 require_relative "../objectives"
@@ -68,11 +69,21 @@ module Samagotchi
         session_json = shown_session_json(session, snapshot, owner, persisted)
         raw_messages = live_or_saved(turn_snapshot, "messages") { session.messages }
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
+        parts = req.params["parts"] == "1"
+        # A page that draws finished turns from their drawings (drawings=1,
+        # with parts=1): the valid lines stamp their items, which lose their
+        # parts. An older page (no drawings=1) reads what it always did.
+        # A live worker from before turn drawings lists no of_turn on its
+        # cards: its turns all draw as before.
+        drawings = parts && req.params["drawings"] == "1" && (!live || worker_draws?(id))
+        drawn = drawings ? drawn_lines(id, raw_messages) : []
+        messages = messages_for_display(raw_messages, parts: parts, cwd: session.working_directory,
+                                                      drawings: drawn, strip_drawn: true)
         json_response(200, {
           session: session_json,
           history: read_history(id),
-          messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1",
-                                                       cwd: session.working_directory),
+          messages: messages,
+          **turn_drawings_field(drawn, messages),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
           # The page's join: the turn in progress and the queue behind it as
@@ -126,6 +137,39 @@ module Samagotchi
         Bridge::TurnAccumulator.join_events(current_turn: wire[:current_turn], queued: wire[:queued],
                                             queued_commands: wire[:queued_commands],
                                             started_at: active.is_a?(Hash) ? active["started_at"] : nil)
+      end
+
+      # Whether the session's live worker names turn drawings in its
+      # sidecar's features (Bridge::TurnDrawings::FEATURE); false when its
+      # link can't be read as live.
+      def worker_draws?(id)
+        link = worker_link(id)
+        link.live? && Array(link.sidecar.features).include?(Bridge::TurnDrawings::FEATURE)
+      end
+
+      # The session's turn drawings that hold against +messages+ (the live
+      # snapshot's, else the file's): Bridge::TurnDrawings, cached by the
+      # file's size and mtime; the newest SHOWN_MAX of them.
+      # A drawing that can't be read draws its turn as before.
+      def drawn_lines(id, messages)
+        Degrade.call(:web, "turn_drawings_unreadable", fallback: []) do
+          dir = @session_class.session_dir(id, state_dir: default_state_dir)
+          Bridge::TurnDrawings.valid(Bridge::TurnDrawings.read(dir), messages).last(Bridge::TurnDrawings::SHOWN_MAX)
+        end
+      end
+
+      # {turn_drawings: {turn_id => {events:, end:}}} for the stamped turns
+      # (chi web's one unfold of a drawing, its cards too); nothing without
+      # one.
+      def turn_drawings_field(lines, messages)
+        stamped = messages.filter_map { |item| item[:drawn] }.uniq
+        shown = lines.select { |line| stamped.include?(line.turn_id) }
+        return {} if shown.empty?
+
+        { turn_drawings: shown.to_h do |line|
+          turn = Bridge::TurnAccumulator.from_wire(line.drawing)
+          [line.turn_id, { events: Bridge::TurnAccumulator.replay_events(turn, cards: true), end: line.end }]
+        end }
       end
 
       # A list in the worker's turn +snapshot+ (queued prompts, commands,

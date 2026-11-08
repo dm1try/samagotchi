@@ -1016,6 +1016,27 @@ RSpec.describe Samagotchi::Bridge do
       expect(seqs).to eq(seqs.sort)
     end
 
+    # A stream's writer subscribes after the Bridge's own observers: the
+    # accumulator's hook has written the turn's drawing when the end event
+    # reaches it (TurnDrawings).
+    it "has the turn's drawing on disk before a stream gets the end event" do
+      start_bridge
+      allow(kernel).to receive(:run) do |messages, **|
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }], exhausted: false,
+                                         pending_tool_calls: false, tool_activity: [])
+      end
+      path = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), Samagotchi::Bridge::TurnDrawings::FILE)
+      seen = nil
+      @engine.subscribe(observer: ->(event) { seen = File.exist?(path) if event[:type] == :turn_completed })
+
+      run_turn_sync(@engine, @session, "hi")
+
+      expect(seen).to be(true)
+      line = Samagotchi::Bridge::TurnDrawings.read(File.dirname(path)).fetch(0)
+      expect(Samagotchi::Bridge::TurnDrawings.valid([line], @session.messages)).to eq([line])
+      expect(line.drawing).to include("prompt" => "hi")
+    end
+
     it "delivers live events across a turn without a hanging client stalling it" do
       start_bridge
       client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start

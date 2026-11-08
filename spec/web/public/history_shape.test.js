@@ -114,28 +114,11 @@ test("compareShapes: the same lists are the same; a changed or missing item is a
 });
 
 test("compareShapes: an ACCEPTED entry explains its difference only when allowed", () => {
-  const live = [item("prompt", "p"), item("block", "2 steps"), item("step", "thinking"),
-    item("notice", "↻ empty answer, asking again (1/1)"), item("step", "thinking"), item("answer", "PONG")];
-  const reloaded = [item("prompt", "p"), item("thinking"), item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
-  // Strict (none allowed): the differences stay, each named by the entry that would excuse it.
-  const strict = compareShapes(live, reloaded);
-  assert.deepEqual([strict.same, strict.kinds, strict.excused, strict.explained],
-    [false, ["block", "step", "thinking"], ["failed-step", "retry-row"], true]);
-  assert.deepEqual(compareShapes(live, reloaded, { allow: ["retry-row"] }),
-    { same: true, kinds: [], excused: [], explained: true, differences: [] });
-
-  // Only the retried empty step's shape: without a retry row live, or for a
-  // step the row doesn't follow, the entry excuses nothing.
-  const noRetry = live.filter((it) => it.kind !== "notice");
-  assert.equal(compareShapes(noRetry, reloaded.filter((it) => it.kind !== "notice"), { allow: ["retry-row"] }).same, false);
-  const unrelated = [item("prompt", "p"), item("block", "2 steps"), item("step", "read a"), item("step", "thinking"),
-    item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
-  const kept = [item("prompt", "p"), item("block", "1 step"), item("step", "read a"), item("notice", "↻ empty answer, asking again (1/1)"),
-    item("answer", "PONG")];
-  assert.equal(compareShapes(unrelated, kept, { allow: ["retry-row"] }).same, true);
-  const stray = [item("prompt", "p"), item("block", "2 steps"), item("step", "thinking"), item("step", "read a"),
-    item("notice", "↻ empty answer, asking again (1/1)"), item("answer", "PONG")];
-  assert.equal(compareShapes(stray, kept, { allow: ["retry-row"] }).same, false);
+  // A drawn turn's empty retry reads the same: the bugs turn drawings closed have no entry left.
+  assert.deepEqual(ACCEPTED.map((entry) => entry.id).filter((id) => ["retry-row", "failed-step", "in-turn-card"].includes(id)), []);
+  const live = [item("prompt", "p"), item("command", "/model x")];
+  const strict = compareShapes(live, [item("prompt", "p")]);
+  assert.deepEqual([strict.same, strict.kinds, strict.excused, strict.explained], [false, ["command"], ["command-bubble"], true]);
 
   // A command's reply bubble, dropped on a reload; one that came back is not.
   const command = [item("prompt", "p"), item("command", "/model x")];
@@ -146,22 +129,14 @@ test("compareShapes: an ACCEPTED entry explains its difference only when allowed
   const row = item("row", "read · a · 1ms");
   assert.equal(compareShapes([row], [{ ...row, edit: "✂ stubbed: stale" }], { allow: ["edit-mark"] }).same, true);
   assert.equal(compareShapes([row], [{ ...row, text: "read · b · 1ms", edit: "✂" }], { allow: ["edit-mark"] }).same, false);
-
-  // A card placed after the turn on a reload: moved, not lost.
-  const card = item("card", "c-1");
-  const moved = compareShapes([item("prompt", "p"), card, item("answer", "a")], [item("prompt", "p"), item("answer", "a"), card],
-    { allow: ["in-turn-card"] });
-  assert.equal(moved.same, true);
-  assert.equal(compareShapes([item("prompt", "p"), card], [item("prompt", "p")], { allow: ["in-turn-card"] }).same, false);
 });
 
-test("ACCEPTED: each entry has an id and a reason; the found ones name their test; P2 closes the bugs", () => {
+test("ACCEPTED: each entry has an id and a reason; only the deliberate ones are left", () => {
   const ids = ACCEPTED.map((entry) => entry.id);
-  assert.deepEqual(ids, ["retry-row", "command-bubble", "edit-mark", "failed-step", "in-turn-card"]);
+  assert.deepEqual(ids, ["command-bubble", "edit-mark"]);
   for (const entry of ACCEPTED) {
     assert.ok(entry.reason.length > 20, entry.id);
     assert.equal(typeof entry.match, "function");
   }
-  assert.deepEqual(ACCEPTED.filter((entry) => entry.found).map((entry) => entry.id), ["failed-step", "in-turn-card"]);
-  assert.deepEqual(ACCEPTED.filter((entry) => entry.closedBy).map((entry) => entry.id), ["retry-row", "failed-step", "in-turn-card"]);
+  assert.deepEqual(ACCEPTED.filter((entry) => entry.closedBy), []);
 });

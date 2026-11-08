@@ -159,7 +159,12 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   (the report names the one that failed: web.spec.js's notifications). A turn test ends with
   `expectSameAfterReload` (spec/e2e/support/history_shape.js): the history's shape live, then after a reload, the
   same (live is the truth). Its allowlist is `history_shape.js ACCEPTED`, each entry with its reason; a test names
-  the entries its scenario has. The `lan` project's chi web is on the LAN only
+  the entries its scenario has (only deliberate ones are left). A drawn turn's variants are node's: the shared
+  scenarios in `spec/shared/turn_drawings/` (written from `spec/support/turn_drawing_scenarios.rb`;
+  `UPDATE_TURN_DRAWINGS=1 bundle exec rspec spec/bridge/turn_drawings_spec.rb spec/web/session_show_drawings_spec.rb`
+  rewrites their lines and show after an intended change) feed `turn_drawing_parity.test.js`, which draws each one
+  live (the real stream handlers and stage) and from its drawing and compares the shapes with no allow list. The
+  `lan` project's chi web is on the LAN only
   when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
   loopback.
 

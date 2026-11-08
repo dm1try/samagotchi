@@ -1,0 +1,385 @@
+{
+  "description": "A plugin's steer between steps: the next step's first row.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "build it",
+      "turn_id": "turn-steer",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Building.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"make\"",
+      "tool_id": "t1",
+      "title": "make"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t1",
+      "output": "[execute]\nbuilt",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"make\"",
+        "action": "running command",
+        "title": "make"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "pending_input_merged",
+      "iteration": 2,
+      "count": 0,
+      "content": null,
+      "steers": [
+        {
+          "source": "check-in",
+          "text": "keep going"
+        }
+      ]
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Built.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-steer",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 6,
+      "turn_summary": {
+        "output": "Built."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "build it",
+      "turn_id": "turn-steer",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Building.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "execute",
+          "arguments": "{\"command\":\"make\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nbuilt",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "user",
+      "kind": "steer",
+      "source": "check-in",
+      "content": "keep going",
+      "step": 2
+    },
+    {
+      "role": "model",
+      "content": "Built."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-steer",
+      "kind": "completed",
+      "from": 1,
+      "to": 6,
+      "from_digest": "262ed9c54d6f76795cdf65115ea27f4bf3ac7f7a",
+      "to_digest": "b17edfec19e881c09a6ab8b414f527757ec76583",
+      "drawing": {
+        "prompt": "build it",
+        "turn_id": "turn-steer",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Building."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "params": "command=\"make\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "make",
+            "output": "[execute]\nbuilt",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "steer",
+            "iteration": 2,
+            "source": "check-in",
+            "text": "keep going"
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "Built."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-steer",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-steer": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "build it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-steer"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Building.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "params": "command=\"make\"",
+          "title": "make"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "output": "[execute]\nbuilt",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"make\"",
+            "title": "make",
+            "action": "running command"
+          },
+          "duration_ms": 120
+        },
+        {
+          "type": "pending_input_merged",
+          "count": 0,
+          "content": null,
+          "steers": [
+            {
+              "source": "check-in",
+              "text": "keep going"
+            }
+          ]
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Built.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-steer",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "build it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-steer",
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "assistant",
+        "content": "Building.",
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "steer",
+        "content": "keep going",
+        "source": "check-in",
+        "step": 2,
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "assistant",
+        "content": "Built.",
+        "drawn": "turn-steer"
+      }
+    ],
+    "turn_drawings": {
+      "turn-steer": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "build it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-steer"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Building.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"make\"",
+            "title": "make"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nbuilt",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"make\"",
+              "title": "make",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "pending_input_merged",
+            "count": 0,
+            "content": null,
+            "steers": [
+              {
+                "source": "check-in",
+                "text": "keep going"
+              }
+            ]
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Built.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-steer",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,263 @@
+{
+  "description": "No answer after a retry: two empty steps, the empty-answer notice.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "say something",
+      "turn_id": "turn-none",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "",
+      "thinking": "first try"
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "empty_answer_retry",
+      "iteration": 1,
+      "attempt": 1,
+      "of": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "",
+      "thinking": "second try"
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-none",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 4,
+      "turn_summary": {
+        "output": "",
+        "empty_answer": {
+          "retries": 1
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "say something",
+      "turn_id": "turn-none",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": ""
+    },
+    {
+      "role": "system",
+      "content": "[SYSTEM: the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.]",
+      "kind": "turn_note",
+      "empty_answer": {
+        "retries": 1
+      }
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-none",
+      "kind": "completed",
+      "from": 1,
+      "to": 4,
+      "from_digest": "3a4d769fda468887f52d08ed8e72c20083c82217",
+      "to_digest": "5f10cb773632d536e40a16a2a4f1bcac51aec122",
+      "drawing": {
+        "prompt": "say something",
+        "turn_id": "turn-none",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "thinking",
+            "iteration": 1,
+            "text": "first try"
+          },
+          {
+            "kind": "notice",
+            "event": {
+              "type": "empty_answer_retry",
+              "iteration": 1,
+              "attempt": 1,
+              "of": 1
+            }
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "thinking",
+            "iteration": 2,
+            "text": "second try"
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-none",
+        "duration_ms": 2400,
+        "turn_summary": {
+          "empty_answer": {
+            "retries": 1
+          }
+        }
+      }
+    }
+  ],
+  "drawn": {
+    "turn-none": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "say something",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-none"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "",
+          "thinking": "first try",
+          "iteration": 1
+        },
+        {
+          "type": "empty_answer_retry",
+          "iteration": 1,
+          "attempt": 1,
+          "of": 1
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "",
+          "thinking": "second try",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-none",
+        "duration_ms": 2400,
+        "turn_summary": {
+          "empty_answer": {
+            "retries": 1
+          }
+        }
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "say something",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-none",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "empty_answer",
+        "content": "",
+        "retries": 1,
+        "drawn": "turn-none"
+      }
+    ],
+    "turn_drawings": {
+      "turn-none": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "say something",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-none"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "first try",
+            "iteration": 1
+          },
+          {
+            "type": "empty_answer_retry",
+            "iteration": 1,
+            "attempt": 1,
+            "of": 1
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "second try",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-none",
+          "duration_ms": 2400,
+          "turn_summary": {
+            "empty_answer": {
+              "retries": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

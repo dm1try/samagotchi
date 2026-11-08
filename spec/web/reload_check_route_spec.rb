@@ -47,11 +47,11 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
 
   it "logs reload_mismatch too, its kinds sorted from the shape's vocabulary only: content and unknown tokens dropped" do
     post({ turn_id: "T1", same: false, kinds: ["row", "answer", "secret text", "row", "<script>"],
-           excused: %w[retry-row made-up command-bubble], explained: true, drawn: true })
+           excused: %w[edit-mark made-up command-bubble], explained: true, drawn: true })
 
     expect(lines.map(&:first)).to eq(%w[reload_checked reload_mismatch])
     expect(lines.last.last).to eq(sid: session.id, turn_id: "T1", drawn: true, worker_version: nil, kinds: "answer,row",
-                                  excused: "command-bubble,retry-row", explained: true)
+                                  excused: "command-bubble,edit-mark", explained: true)
   end
 
   it "drops a turn id that isn't one, and keeps none of the body's other fields" do

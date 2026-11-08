@@ -244,7 +244,7 @@ passes `working_set_updated` to it, and does nothing when the flag is off. A new
 - the session bar's chip and the open list;
 - the footprints, in place (`refreshFootprints`, the same node; a `data-ws-sig` of the items' states skips an
   unchanged one). A footprint is a `<span>` in its block's summary line, `.turn-work > summary > .tw-sum`, before the
-  steps' `.turn-steps`: drawn in the reload's template (`turnHistoryNodes`), prepended at the hand-off
+  steps' `.turn-steps`: drawn in the reload's template (`turnHistoryNodes`; a drawn turn's from its drawing's rows, `turnGroups`' steps), prepended at the hand-off
   (`stage_view.js handOff`, while the stage still hides the summary). A click there must not toggle the block:
   `details_motion.js` skips `.ws-foot`, and `footClick` cancels the click;
 - the rail (`onServer`, the stage's `scheduleRefresh`).

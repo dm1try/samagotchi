@@ -485,6 +485,70 @@ exit: 0"
     end
   end
 
+  describe "the turn-end hook (on_turn_end)" do
+    let(:ends) { [] }
+    let(:hooked) { described_class.new(clock: -> { clock[0] }, on_turn_end: ->(turn, event) { ends << [turn, event] }) }
+
+    it "gets the turn's final fold and its end event, before the turn is cleared" do
+      hooked.call({ type: :turn_started, prompt: "hi", turn_id: "t1" })
+      hooked.call({ type: :generation_chunk, iteration: 1, text: "done", thinking: "" })
+      hooked.call({ type: :turn_completed, turn_id: "t1", kept_from: 1, kept_to: 3 })
+
+      expect(ends.size).to eq(1)
+      turn, event = ends.first
+      expect(turn).to include(prompt: "hi", turn_id: "t1", parts: [{ kind: "text", iteration: 1, text: "done" }])
+      expect(event).to include(type: :turn_completed, kept_from: 1, kept_to: 3)
+      expect(hooked.current_turn).to be_nil
+    end
+
+    it "keeps folding and clears the turn when the hook raises" do
+      raising = described_class.new(on_turn_end: ->(*) { raise "disk full" })
+      allow(Samagotchi::Log).to receive(:warn)
+      raising.call({ type: :turn_started, prompt: "hi" })
+      raising.call({ type: :turn_failed })
+
+      expect(raising.current_turn).to be_nil
+      expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "turn_end_hook_failed", error: "RuntimeError: disk full")
+      raising.call({ type: :turn_started, prompt: "again" })
+      expect(raising.current_turn).to include(prompt: "again")
+    end
+
+    it "is not called without a turn" do
+      hooked.call({ type: :turn_completed })
+      expect(ends).to eq([])
+    end
+  end
+
+  describe "a card the turn shows (in_turn)" do
+    let(:card) { { type: :card, id: "check-in", source: "check-in", title: "Check in", body: "how is it going?", level: "info", actions: [] } }
+
+    it "is a part of the turn in its place, replaced in place by a card with its id" do
+      feed({ type: :turn_started, prompt: "hi" }, { type: :generation_started, iteration: 1 },
+           card.merge(in_turn: true),
+           { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", params: "a" },
+           card.merge(in_turn: true, body: "still there?"))
+
+      parts = acc.current_turn[:parts]
+      expect(parts.map { |part| part[:kind] }).to eq(%w[generation card tool])
+      expect(parts[1]).to eq(kind: "card", id: "check-in", event: card.except(:type).merge(body: "still there?"))
+    end
+
+    it "leaves out a card shown beside the turn (not in_turn), and any card between turns" do
+      feed({ type: :turn_started, prompt: "hi" }, card.merge(in_turn: false))
+      expect(acc.current_turn[:parts]).to eq([])
+    end
+
+    it "is skipped by the replay unless asked for (a running turn's join takes cards from CardStore), and never a message" do
+      feed({ type: :turn_started, prompt: "hi", turn_id: "t1" }, { type: :generation_started, iteration: 1 }, card.merge(in_turn: true))
+      turn = acc.current_turn
+
+      expect(described_class.replay_events(turn).map { |e| e[:type] }).to eq(%i[turn_started generation_started])
+      expect(described_class.replay_events(turn, cards: true).last).to eq(card.merge(in_turn: true))
+      expect(described_class.join_events(current_turn: turn).map { |e| e[:type] }).not_to include(:card)
+      expect(described_class.messages_of(turn)).to eq([{ role: "user", content: "hi", turn_id: "t1" }])
+    end
+  end
+
   it "keeps the last idle recap until the next turn starts" do
     expect(acc.recap).to be_nil
     feed({ type: :recap_ready, recap: "We talked about cats.", generation: 1 })

@@ -20,7 +20,7 @@ module Samagotchi
                  empty-answer timing cancel failed other].freeze
       # history_shape.js ACCEPTED's ids: the only tokens an excused list may
       # carry (the same spec reads the JS list).
-      ACCEPTED_IDS = %w[retry-row command-bubble edit-mark failed-step in-turn-card].freeze
+      ACCEPTED_IDS = %w[command-bubble edit-mark].freeze
       # A turn id the line may name (a uuid, a test's id); anything else is
       # dropped.
       TURN_ID = /\A[0-9A-Za-z_-]{1,64}\z/

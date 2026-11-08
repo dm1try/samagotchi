@@ -1,0 +1,182 @@
+{
+  "description": "A pair participant's turn: the prompt keeps its author keys.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "can you check",
+      "turn_id": "turn-pair",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      },
+      "author": "p:abc",
+      "author_name": "Ana",
+      "participant_mode": "pair"
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Checked.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-pair",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "Checked."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "can you check",
+      "turn_id": "turn-pair",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "author": "p:abc",
+      "author_name": "Ana",
+      "participant_mode": "pair"
+    },
+    {
+      "role": "model",
+      "content": "Checked."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-pair",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "af17df3416ae4b0d548085fc5e7f442c44dff143",
+      "to_digest": "13c0376e51582daff2eea8976a14b35f12dc62f3",
+      "drawing": {
+        "prompt": "can you check",
+        "turn_id": "turn-pair",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Checked."
+          }
+        ],
+        "author": "p:abc",
+        "author_name": "Ana",
+        "participant_mode": "pair"
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-pair",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-pair": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "can you check",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-pair",
+          "author": "p:abc",
+          "author_name": "Ana"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Checked.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-pair",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "can you check",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-pair",
+        "author": "p:abc",
+        "author_name": "Ana",
+        "participant_mode": "pair",
+        "drawn": "turn-pair"
+      },
+      {
+        "role": "assistant",
+        "content": "Checked.",
+        "drawn": "turn-pair"
+      }
+    ],
+    "turn_drawings": {
+      "turn-pair": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "can you check",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-pair",
+            "author": "p:abc",
+            "author_name": "Ana"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Checked.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-pair",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

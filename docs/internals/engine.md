@@ -51,7 +51,9 @@ goes IDLE, records `last_turn` (its `enqueued_id` from the origin; a continue tu
 turn's, `ContinueOffer#run_continue_turn`), the working set and the objectives' view (`announce_objectives`) go out, and the end
 event is emitted (`:turn_completed` / `:turn_canceled`, every one carrying `turn_id`). Before the replace,
 `@verify_anchors.stamp_opening` puts `verify` / `revises` on the opening message (metadata, never sent) and
-`record_verdict` adds a Verify turn's verdict. `complete_turn` then runs `@objectives_stage.outgoing` (not for a
+`record_verdict` adds a Verify turn's verdict. When the turn keeps messages, the end event names their range,
+`kept_from` (`turn.history_size`, noted in `turn_messages` right after `ContextNote.with_system_head`) and `kept_to`
+(`kept.size`): display-side only, no message gains a key. `complete_turn` then runs `@objectives_stage.outgoing` (not for a
 canceled or exhausted turn), the `:after_turn` hook (with `present:` and `refs:`, see "Hooks"),
 `store_answer_display` (one replace; `:answer_display` to the observers when a hook changed the answer or attached
 refs) and the `:session_end` hook. `TurnEndings` (`turn_endings.rb`) holds the pure builders (`kept_messages`,

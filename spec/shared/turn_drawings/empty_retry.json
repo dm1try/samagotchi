@@ -1,0 +1,236 @@
+{
+  "description": "An empty answer asked again: the retried step's row stays in its step (bug 1).",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "answer please",
+      "turn_id": "turn-retry",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "",
+      "thinking": "hmm"
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "empty_answer_retry",
+      "iteration": 1,
+      "attempt": 1,
+      "of": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Here it is.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-retry",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "Here it is."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "answer please",
+      "turn_id": "turn-retry",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Here it is."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-retry",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "68ed7c9bd90f6ab87f92ca317e78212b794392e7",
+      "to_digest": "344d2b7772a0547e9c00f47d626c8308713fc3f5",
+      "drawing": {
+        "prompt": "answer please",
+        "turn_id": "turn-retry",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "thinking",
+            "iteration": 1,
+            "text": "hmm"
+          },
+          {
+            "kind": "notice",
+            "event": {
+              "type": "empty_answer_retry",
+              "iteration": 1,
+              "attempt": 1,
+              "of": 1
+            }
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "Here it is."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-retry",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-retry": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "answer please",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-retry"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "",
+          "thinking": "hmm",
+          "iteration": 1
+        },
+        {
+          "type": "empty_answer_retry",
+          "iteration": 1,
+          "attempt": 1,
+          "of": 1
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Here it is.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-retry",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "answer please",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-retry",
+        "drawn": "turn-retry"
+      },
+      {
+        "role": "assistant",
+        "content": "Here it is.",
+        "drawn": "turn-retry"
+      }
+    ],
+    "turn_drawings": {
+      "turn-retry": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "answer please",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-retry"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "hmm",
+            "iteration": 1
+          },
+          {
+            "type": "empty_answer_retry",
+            "iteration": 1,
+            "attempt": 1,
+            "of": 1
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Here it is.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-retry",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

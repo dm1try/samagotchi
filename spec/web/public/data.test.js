@@ -245,7 +245,7 @@ test("getSession({ parts: true }) asks for what each saved step did (the turn bl
   };
   await getSession("abc", { parts: true, fetchImpl });
   await getSession("abc", { parts: false, fetchImpl });
-  assert.deepEqual(calls, [["/api/sessions/abc?parts=1", false], ["/api/sessions/abc", false]]);
+  assert.deepEqual(calls, [["/api/sessions/abc?parts=1&drawings=1", false], ["/api/sessions/abc", false]]);
 });
 
 test("getSession({ cards: true }) asks for the cards alone (their rendered bodies)", async () => {
