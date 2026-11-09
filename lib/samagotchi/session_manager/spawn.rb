@@ -122,12 +122,12 @@ module Samagotchi
           setup_session_directory(session_dir, session, state_dir: sd)
           SessionInbox.write_note(session.id, text: note, source: note_source, state_dir: sd) if note
           before_spawn&.call(session)
+          spawn_worker_for_session(session, state_dir: sd)
         rescue StandardError
           # Nothing is starting: a caller's cleanup (a continue's failed link) may delete it.
           StartingMarker.clear(session.id, state_dir: sd)
           raise
         end
-        spawn_worker_for_session(session, state_dir: sd)
         session
       end
 

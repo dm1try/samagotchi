@@ -40,6 +40,14 @@ RSpec.describe Samagotchi::SessionManager do
       expect(empty?).to be true
     end
 
+    # Every spawn writes the marker; one a start left behind is skeleton
+    # (a fresh one keeps the session from the deleters on its own).
+    it "is true with a starting marker left in its directory, or a claim's temp files a kill left" do
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+      %w[starting.123.ab12cd34 starting.old.123.ab12cd34].each { |name| File.write(File.join(session_dir, name), "{}") }
+      expect(empty?).to be true
+    end
+
     it "is false with no session file" do
       FileUtils.rm_f(File.join(tmpdir, "#{session.id}.json"))
 

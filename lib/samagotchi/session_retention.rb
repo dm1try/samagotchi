@@ -88,7 +88,7 @@ module Samagotchi
         next unless Session.valid_id?(name) && File.directory?(dir)
         next if File.exist?(File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}"))
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
-        next if owned?(name, state_dir)
+        next if owned?(name, state_dir) || starting?(name, state_dir)
 
         unless dry_run
           FileUtils.rm_rf(dir)
@@ -106,6 +106,13 @@ module Samagotchi
     # runs it.
     private_class_method def self.starting?(session_id, state_dir)
       StartingMarker.fresh?(session_id, state_dir: state_dir)
+    end
+
+    # Being started or owned now (+alive_check+, when given, reads the owner).
+    private_class_method def self.held?(session_id, state_dir, alive_check)
+      starting?(session_id, state_dir) || alive_check&.call(session_id) == true
+    rescue StandardError
+      true
     end
 
     # Lazy sweep guard: runs prune at most once per SWEEP_INTERVAL_HOURS
@@ -283,6 +290,10 @@ module Samagotchi
         # Eligible for deletion
         if dry_run
           deleted << session.id
+        # Looked at again right before its files go (the list was read
+        # once, at the start): resumed or taken by a worker since, it stays.
+        elsif held?(session.id, state_dir, alive_check)
+          kept << session.id
         else
           begin
             FileUtils.rm_f(path)

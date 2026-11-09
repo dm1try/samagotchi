@@ -37,6 +37,8 @@ module Samagotchi
         when :queued_child then "its delegate #{@busy_id[0, 8]} has a prompt queued, which a resume would run; let it run first"
         when :offer then "the step-limit question waits for an answer; answer Continue or Stop first"
         when :offer_child then "its delegate #{@busy_id[0, 8]} waits for an answer to its step-limit question; answer it first"
+        when :starting then "its worker is starting; try again in a moment"
+        when :starting_child then "its delegate #{@busy_id[0, 8]}'s worker is starting; try again in a moment"
         else "a turn is running; wait for it or cancel it first"
         end
       end
@@ -97,7 +99,9 @@ module Samagotchi
         [tree, presences.transform_values(&:owner)]
       end
 
-      # What keeps +sid+ (in an archive's tree) from being archived: :busy (a
+      # What keeps +sid+ (in an archive's tree) from being archived:
+      # :starting (a worker is being started for it, holding no lock yet: a
+      # continue's new link, a resume), :busy (a
       # turn runs), :queued (input/ holds a prompt, which outlives the stop and
       # runs on a resume, live worker or not), :offer (a live worker's continue
       # offer, which the stop would drop), or nil.
@@ -105,6 +109,7 @@ module Samagotchi
       # @raise [OwnedByTUI] a one-turn chi run owns it
       private def archive_refusal(sid, presence, state_dir)
         raise OwnedByTUI, sid if presence.tui_owned?
+        return :starting if presence.starting? && !presence.owned?
 
         session = presence.owned? ? Session.load(sid, state_dir: state_dir) : nil
         return :busy if session&.status == Session::STATUS_RUNNING
@@ -138,8 +143,8 @@ module Samagotchi
       # @return [Hash] {id:, removed: [paths], stopped: whether a worker was stopped}
       # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
       # @raise [OwnedByTUI] a one-turn chi run owns it (never stopped from here)
-      # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
-      #   outlived the wait
+      # @raise [DeleteRefused] a worker owns it or is being started for it
+      #   (the starting marker) and +stop+ is false, or it outlived the wait
       # @param purge_runs [Boolean] also delete System 1's saved runs of it and
       #   its candidate-log lines; a session a worker left empty has none worth
       #   the read
@@ -158,9 +163,10 @@ module Samagotchi
         presence = WorkerPresence.read(id, state_dir: sd, owner: session_owner(id, state_dir: sd))
         raise OwnedByTUI, id if presence.tui_owned?
 
-        if presence.owned?
+        held = presence.owned? || presence.starting?
+        if held
           raise DeleteRefused.new(id, :worker_running) unless stop
-          raise DeleteRefused.new(id, :still_stopping) unless stop_session(id, state_dir: sd, wait: wait)
+          raise DeleteRefused.new(id, :still_stopping) unless stop_held(id, state_dir: sd, wait: wait)
         end
 
         removed = []
@@ -179,7 +185,23 @@ module Samagotchi
           purge_session_runs(id, sd)
           ContextCandidatesLog.purge_session(id, state_dir: sd)
         end
-        { id: id, removed: removed, stopped: presence.owned? }
+        { id: id, removed: removed, stopped: held }
+      end
+
+      # Stop the worker that owns +id+ or is being started for it (the stop
+      # marker: one that takes the lock leaves at once), and wait for both to
+      # be gone.
+      # @return [Boolean] whether no owner and no start was left within +wait+
+      private def stop_held(id, state_dir:, wait:)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait.to_f
+        return false unless stop_session(id, state_dir: state_dir, wait: wait)
+
+        while StartingMarker.fresh?(id, state_dir: state_dir) || session_owner(id, state_dir: state_dir)
+          return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          sleep(OwnerLock::RETRY_INTERVAL)
+        end
+        true
       end
 
       # Never a reason a delete fails: one warn, and the sweep ages them out.

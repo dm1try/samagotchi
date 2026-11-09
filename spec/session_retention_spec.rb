@@ -334,6 +334,28 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(result[:kept]).to eq([old.id])
     end
 
+    # The list is read once, then each session decided: one resumed (or
+    # taken by a worker) after the first look is looked at again right
+    # before its files go.
+    it "looks again right before deleting, and keeps one being started or owned by then" do
+      resumed, taken = Array.new(2) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+                           .tap { |s| s.save(state_dir: tmpdir, now: Time.now - (30 * 86_400)) }
+      end
+      owned = []
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500,
+                                     alive_check: ->(id) { owned.include?(id) },
+                                     empty_check: lambda { |id|
+                                       Samagotchi::StartingMarker.mark(id, state_dir: tmpdir) if id == resumed.id
+                                       owned << id if id == taken.id
+                                       false
+                                     })
+
+      expect(result[:deleted]).to be_empty
+      expect(result[:kept]).to contain_exactly(resumed.id, taken.id)
+      expect([resumed, taken].map { |s| File.exist?(File.join(tmpdir, "#{s.id}.json")) }).to eq([true, true])
+    end
+
     it "keeps it under chi sessions clean (test_only, any_age) too" do
       starting = scratch_session(starting: true)
 

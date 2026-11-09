@@ -240,7 +240,10 @@ RSpec.describe "Session file goldens (characterization)" do
     before do
       counter = 0
       allow(SecureRandom).to receive(:uuid) { format("00000000-0000-4000-8000-%012d", counter += 1) }
-      allow(manager).to receive(:spawn_worker_for_session)
+      # A worker that takes the lock at once (and clears its starting marker).
+      allow(manager).to receive(:spawn_worker_for_session) do |session, state_dir:|
+        Samagotchi::StartingMarker.clear(session.id, state_dir: state_dir)
+      end
       # A new session's test_run follows the env (CI=true sets it).
       allow(session_class).to receive(:test_session_env?).and_return(true)
     end
