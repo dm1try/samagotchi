@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "b.rb" => "class B; end\n", "a.rb" => "class A; end\n" })
     File.delete(File.join(system_dir, ".bundles", "old-hooks", "hooks", "b.rb"))
 
-    expect(described_class.bundle_status("old-hooks").retired_hooks).to eq("a.rb" => "ok", "b.rb" => "missing")
+    expect(described_class.bundle_status("old-hooks").retired_hooks).to eq("a.rb" => "present", "b.rb" => "missing")
   end
 
   it "calls a file modified when its entry has neither a checksum nor a base: unknown counts as edited" do

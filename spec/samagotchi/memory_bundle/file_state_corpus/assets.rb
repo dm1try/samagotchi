@@ -245,7 +245,7 @@ module BundleStateCorpus
       return "not installed" if out.string.include?("not installed.")
 
       # A hook's, rule's or script's line under its heading ("Hooks (N): not
-      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [ok]".
+      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [present]".
       prefix = @case.asset == "plugin" ? "  Plugin: " : "    #{File.basename(@case.source_rel)} ["
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
       return "-" unless line

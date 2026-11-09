@@ -230,6 +230,20 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Uninstalled bundle 'sample-plugin'\nRemoved: plugin/plugin.rb\n", "", 0])
     end
 
+    it "labels retired hook files present or missing" do
+      hooks = { "present.rb" => "class Present; end\n", "missing.rb" => "class Missing; end\n" }
+      old_hooks!("legacy-hooks", hooks)
+      FileUtils.rm_f(File.join(memories, ".bundles", "legacy-hooks", "hooks", "missing.rb"))
+
+      out, err, code = chi("status", "legacy-hooks")
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include(
+        "  Hooks (2): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}\n    " \
+        "missing.rb [missing]\n    present.rb [present]\n"
+      )
+    end
+
     # A plain install over an installed bundle rewrites its rules, plugin,
     # scripts and record (it is not a skip), and leaves a memory the
     # user wrote; the summary says both.
@@ -1123,7 +1137,7 @@ Removed: hooks/guardrails.rb\n\z})
           Manifest: [kept]
           trust_level: reviewed
           Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}
-            guardrails.rb [ok]
+            guardrails.rb [present]
       TEXT
     end
 

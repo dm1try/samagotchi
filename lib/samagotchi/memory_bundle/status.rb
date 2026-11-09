@@ -84,12 +84,12 @@ module Samagotchi
       private_class_method :digest_or_nil
 
       # The class-file hooks the record still has (a 0.157 install's; chi
-      # loads none, Manifest::HooksRetired), each "ok" or "missing" in
+      # loads none, Manifest::HooksRetired), each "present" or "missing" in
       # hooks/, by name; {} for none.
       # @return [Hash{String => String}]
       def self.retired_hooks(provenance, bundle)
         bundle.hooks.keys.sort.to_h do |file|
-          [file, File.exist?(File.join(provenance.hooks_dir, file)) ? "ok" : "missing"]
+          [file, File.exist?(File.join(provenance.hooks_dir, file)) ? "present" : "missing"]
         end
       end
 
