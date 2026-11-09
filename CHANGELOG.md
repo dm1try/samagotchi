@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi bundle upgrade NAME` and `chi bundle uninstall NAME`, when the bundle's plugin changed (or an upgrade brought
+  one in) and a session running it can be restarted, end with one line naming those sessions and
+  `chi sessions restart ID` for each (nothing on a dry run, with no restartable worker, or when the plugin is
+  unchanged — only the plugin stays in a worker's memory; its rules reload by stamp and its scripts run from disk).
+
 ### Changed
 
 - Core guardrail checks judge what a call's `targets:` say it acts on, not its tool's name: a plugin tool whose

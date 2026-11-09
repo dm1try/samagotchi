@@ -2,6 +2,7 @@
 
 require_relative "cli/flags"
 require_relative "cli/exit"
+require_relative "live_versions"
 require_relative "memory_bundle"
 
 module Samagotchi
@@ -246,7 +247,12 @@ module Samagotchi
         end
       end
       installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, upgrade: true, dry_run: dry_run)
-      run_installer(installer, failed: "Upgrade") do |manifest|
+      # The record and the manifest as they were/are, for the hint below: it
+      # reads which plugin the run touched.
+      before = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).record
+      manifest = nil
+      status = run_installer(installer, failed: "Upgrade") do |run_manifest|
+        manifest = run_manifest
         print_plugin(manifest, plugin: !dry_run)
         next dry_run_done if dry_run
 
@@ -256,8 +262,9 @@ module Samagotchi
 
         print_provenance(bundle_name, manifest)
       end
+      restart_hint(before, manifest, installer) if !dry_run && status != 1
+      status
     end
-
     # The source normalized once (a git clone, a zip or tar extract) and the
     # bundle's name, its manifest's name: for every kind of source, a git URL
     # too. The Installer installs from that extract and removes it. Nil
@@ -338,6 +345,41 @@ module Samagotchi
     def dry_run_done
       @stdout.puts "(dry-run: no changes written)"
       0
+    end
+
+    # A run wrote or took away a file (Installer#results' words).
+    CHANGED_WORDS = %i[installed updated merged removed restored].freeze
+
+    # Only a bundle's plugin stays in a worker's memory: its rules reload by
+    # their stamp (GuardrailWiring#rules_stamp), its scripts run from the files
+    # the install replaced, and chi no longer loads class-file hooks. So an
+    # upgrade or uninstall that changed the plugin -- or brought one in --
+    # leaves the old code in every session already up: one line, after the
+    # result, with how many sessions and the command for each. Nothing when the
+    # plugin is unchanged or there never was one, nothing with no worker that
+    # can be restarted.
+    # @param before [InstalledBundle, nil] the bundle's record as it was before
+    #   the run (an uninstall deletes it, so take it first)
+    # @param manifest [MemoryBundle::Manifest, nil] the manifest this run
+    #   installed; nil for an uninstall
+    # @param installer [Installer, nil] the run, for what it wrote to the plugin
+    def restart_hint(before, manifest = nil, installer = nil)
+      return if before.nil? || before.error?
+
+      plugin_files = [before.plugin&.file, manifest&.plugin&.dig(:file)].compact.uniq
+      changed = if installer
+                  plugin_files.any? { |file| CHANGED_WORDS.include?(installer.results[file]&.word) }
+                else
+                  !before.plugin.nil?
+                end
+      return unless changed
+
+      ids = Samagotchi::LiveVersions.workers.select(&:restart).map { |worker| worker.session_id.to_s[0, 8] }
+      return if ids.empty?
+
+      commands = ids.map { |id| "chi sessions restart #{id}" }
+      @stdout.puts "#{ids.size} session#{ids.size == 1 ? "" : "s"} " \
+                   "#{ids.size == 1 ? "runs" : "run"} the old code: #{commands.join(", ")}"
     end
 
     # An upgrade that kept edited files: launch an agent to merge them
@@ -427,6 +469,7 @@ module Samagotchi
         @stdout.puts uninstaller.trash_copy_line if uninstaller.trash_copy_line
         @stdout.puts "Removed: #{uninstaller.removed_files.join(", ")}" unless uninstaller.removed_files.empty?
         uninstaller.warnings.each { |w| @stdout.puts w }
+        restart_hint(record)
         0
       rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
         @stderr.puts "Uninstall failed: #{e.message}"; 1
