@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.160.0] - 2026-11-09
+
 ### Added
 
 - A folder made a chi project with `chi project init` keeps its memories when you move or rename it (an `id:` in
@@ -15,7 +17,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
-- Schedule-state writes preserve newer format versions, unknown fields and entries missing required members.
+- `schedules.json` keeps what a newer chi wrote (its format version, unknown fields, entries this chi can't read) when
+  an older chi rewrites it.
 - The `SessionManager.run_session_loop` forwarder for older boot strings is gone: a chi web or terminal still
   running 0.158.0 or older must be restarted after updating, because a worker it spawns names that entry.
 
@@ -5919,7 +5922,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.159.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.160.0...HEAD
+[0.160.0]: https://github.com/dm1try/samagotchi/compare/v0.159.0...v0.160.0
 [0.159.0]: https://github.com/dm1try/samagotchi/compare/v0.158.0...v0.159.0
 [0.158.0]: https://github.com/dm1try/samagotchi/compare/v0.157.0...v0.158.0
 [0.157.0]: https://github.com/dm1try/samagotchi/compare/v0.156.0...v0.157.0
