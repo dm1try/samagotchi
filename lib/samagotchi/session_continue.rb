@@ -91,6 +91,9 @@ module Samagotchi
     # @param prompt [String, nil] its first message (nil: it starts idle)
     # @param preview [String, nil] what the lists show before the first turn;
     #   by default the prompt, else the previous link's preview
+    # @param client_id [String, nil] who sends +prompt+ when no person does
+    #   (a schedule's chain firing: ClientId.schedule), the first turn's
+    #   origin (spawn_session's client_id:)
     # @return [Session] the new link (#model_warning as spawn_session's,
     #   #moved_children: the delegates it took over, #moved_context: the
     #   attached context it took (ContextMove), #opener:
@@ -99,7 +102,8 @@ module Samagotchi
     # @raise [Refused] continued already, delegates open that can't
     #   move, or its folder is gone
     # @raise [ArchiveRefused, OwnedByTUI] as archive_session
-    def self.run(id_or_ref, prompt: nil, preview: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5)
+    def self.run(id_or_ref, prompt: nil, preview: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5,
+                 client_id: nil)
       sd = state_dir || Session.default_state_dir
       TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
@@ -108,7 +112,7 @@ module Samagotchi
           next :moved if follow && SessionChain.next_of(id, state_dir: sd)
 
           run_locked(id, prompt: prompt, preview: preview, model: model, state_dir: sd, recap_wait: recap_wait,
-                         archive_wait: archive_wait)
+                         archive_wait: archive_wait, client_id: client_id)
         end
         return result unless result == :moved
       end
@@ -123,7 +127,7 @@ module Samagotchi
       end
     end
 
-    private_class_method def self.run_locked(id, prompt:, preview:, model:, state_dir:, recap_wait:, archive_wait:)
+    private_class_method def self.run_locked(id, prompt:, preview:, model:, state_dir:, recap_wait:, archive_wait:, client_id:)
       previous = Session.load(id, state_dir: state_dir)
       checked = check!(previous, state_dir, model: model)
       plan = checked.plan
@@ -140,7 +144,7 @@ module Samagotchi
       archived = archive.archived - already
       begin
         spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                     move: plan.move)
+                                     move: plan.move, client_id: client_id)
       rescue StandardError
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
@@ -201,7 +205,7 @@ module Samagotchi
 
     # The new link, holding off any worker but its own (StartingMarker.fresh?)
     # while +move+ goes to it.
-    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:)
+    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
@@ -218,7 +222,7 @@ module Samagotchi
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
         model_name: choice.model, setup: SessionSetup.of(previous), review: previous.review,
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap, state_dir: state_dir),
-        note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
+        note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn, client_id: client_id
       )
       link.moved_children = move
       link.moved_context = moved_context

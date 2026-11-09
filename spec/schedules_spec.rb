@@ -368,6 +368,8 @@ RSpec.describe Samagotchi::Schedules do
       expect(stored.head).to eq(fired.entry.head)
       expect(archived?(dir, anchor)).to be(true)
       expect(Samagotchi::Session.load(stored.head, state_dir: dir).continues).to eq(anchor)
+      # The link's first turn is the schedule's (its origin, ClientId.schedule).
+      expect(Samagotchi::Session.load(stored.head, state_dir: dir).first_turn_client_id).to eq("system:schedule:#{entry.id}")
       expect(stored.failures).to eq(0)
       expect(stored.skips).to eq(0)
       expect(Time.iso8601(stored.next_due)).to be > Time.now

@@ -193,6 +193,22 @@ RSpec.describe Samagotchi::WorkerInbound do
     end
   end
 
+  describe "#initial_origin" do
+    it "is the first prompt's turn id and sender; a first command from a delegate is its, a /word its text" do
+      session.first_turn_id = "first-1"
+      session.first_turn_client_id = "delegate:1234abcd"
+
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:1234abcd", enqueued_id: "first-1"))
+      expect(inbound.initial_command?("/model x")).to be(false)
+      expect(inbound.initial_command?("!touch x")).to be(true)
+      expect(queued).to eq([["!touch x", "delegate:1234abcd", "first-1"]])
+    end
+
+    it "names no sender for a session created by a person, or before the field" do
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin::NONE)
+    end
+  end
+
   describe "#take_input" do
     def write(prompt, **opts) = Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, **opts)
 

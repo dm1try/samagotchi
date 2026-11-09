@@ -172,7 +172,8 @@ module Samagotchi
                                  parent_answers: parent.parent_answers)
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
-                                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir)
+                                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir,
+                                             client_id: client_id_of(parent))
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         # The line for a task that names a worktree while the child runs in
         # the parent's folder (no cwd: given): the child still starts.
@@ -358,7 +359,7 @@ module Samagotchi
 
         # Only a reply after this delivery counts as the follow-up's.
         DelegateWait.mark_seen(parent.id, child, state_dir: state_dir)
-        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{ClientId::DELEGATE_PREFIX}#{parent.id[0, 8]}",
+        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: client_id_of(parent),
                                                     state_dir: state_dir)
         case delivered.status
         when :accepted
@@ -378,6 +379,12 @@ module Samagotchi
         "Error: #{e.message}"
       end
       private_class_method :follow_up
+
+      # What the parent's task and follow-ups carry as their sender:
+      # delegate:<parent8> (a turn's origin "delegate"; CommandIntake runs
+      # no command from it).
+      def self.client_id_of(parent) = "#{ClientId::DELEGATE_PREFIX}#{parent.id[0, 8]}"
+      private_class_method :client_id_of
 
       # The child's turn a delivered follow-up's wait is bound to
       # (DelegateCursor#turn): its own, the delivery's +enqueued_id+,

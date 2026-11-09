@@ -846,8 +846,10 @@ module Samagotchi
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the chain is gone", entry: entry) if head.nil?
 
       # `last:<head>` so SessionContinue.run's own TRIES/`:moved` loop follows
-      # a continue a human made between here and its lock.
-      link = SessionContinue.run("last:#{head}", prompt: entry.prompt, state_dir: @state_dir)
+      # a continue a human made between here and its lock. The link's first
+      # turn is the schedule's (its origin), as a same-mode firing's is.
+      link = SessionContinue.run("last:#{head}", prompt: entry.prompt, state_dir: @state_dir,
+                                                 client_id: ClientId.schedule(entry.id))
       Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "new link #{link.id[0, 8]}",
                   entry: entry.with(head: link.id))
     rescue SessionContinue::Refused => e

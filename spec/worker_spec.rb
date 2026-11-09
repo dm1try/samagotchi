@@ -415,6 +415,19 @@ RSpec.describe Samagotchi::Worker do
       expect(result.file).to end_with("-first-1.txt")
     end
 
+    it "runs the first prompt with its sender's origin (a delegating parent's), its turn id kept" do
+      session.last_prompt = "/model Qwen3-14B"
+      session.first_turn_id = "first-1"
+      session.first_turn_client_id = "delegate:1234abcd"
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+      start_worker
+
+      prompt, _, kwargs = next_turn
+      expect(prompt).to eq("/model Qwen3-14B")
+      expect(kwargs[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:1234abcd", enqueued_id: "first-1"))
+    end
+
     it "records a turn that failed before the Engine began it as last_turn, so a wait ends with no_reply" do
       allow(engine).to receive(:run_turn).and_raise(RuntimeError, "boom before the turn")
       start_worker

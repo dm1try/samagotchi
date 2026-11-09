@@ -212,11 +212,20 @@ module Samagotchi
       prompt
     end
 
+    # The first prompt's origin: the turn id spawn_session gave it (a wait
+    # for it, --new --wait, names it) and who sent it when no person did
+    # (Session#first_turn_client_id: a delegating parent, a schedule).
+    # NONE for a person's session from before either field.
+    # @return [TurnOrigin]
+    def initial_origin
+      TurnOrigin.of(client_id: @session.first_turn_client_id, enqueued_id: @session.first_turn_id)
+    end
+
     # The first prompt as a command (queued): the session was saved as
     # running for a turn that won't run.
     # @return [Boolean] whether it was one
     def initial_command?(prompt)
-      return false unless queue_as_command(prompt, TurnOrigin::NONE)
+      return false unless queue_as_command(prompt, initial_origin)
 
       @session.status = Session::STATUS_IDLE
       save(:initial_command, unless_stopped: true)

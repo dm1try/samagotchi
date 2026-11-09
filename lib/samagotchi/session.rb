@@ -276,6 +276,14 @@ module Samagotchi
       # chi web's create) can name it (`--wait --turn T ID`). nil for a
       # session created idle, and for one saved before the field existed.
       SessionField.plain("first_turn_id", nil, optional: true),
+      # Who sent that prompt when no person did (a ClientId: a delegating
+      # parent's delegate:<parent8>, a schedule's chain link
+      # system:schedule:<id>): the first turn's origin, so the command
+      # intake treats it as theirs (CommandIntake) and last_turn names
+      # them. nil for a person's prompt (chi send --new, the web, a TUI, a
+      # continue) and an idle session. Set once, by spawn_session; a
+      # continue and a fork don't carry it.
+      SessionField.plain("first_turn_client_id", nil, optional: true),
       # A Verify fresh child's requester, rules and claim (VerifyFreshOrigin),
       # nil for any other session. Set once, at spawn (VerifyFresh.start).
       # Autoloaded on the first one (the bundle test kit's load budget).
@@ -295,7 +303,7 @@ module Samagotchi
     attr_accessor :id, :metadata_version, :mode, :model_name, :model_typed, :working_directory, :messages,
                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :title, :test_run,
                   :used_memory_names, :preloaded_memory_names, :muted_memory_names, :parent_id, :scratch,
-                  :continues, :first_turn_id, :project_id
+                  :continues, :first_turn_id, :first_turn_client_id, :project_id
     attr_writer :project_root, :delegate
     attr_reader :appended_prompt_files, :written_by
 

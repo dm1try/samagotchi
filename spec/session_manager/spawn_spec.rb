@@ -241,6 +241,20 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Samagotchi::Session.load(idle.id, state_dir: tmpdir).first_turn_id).to be_nil
     end
 
+    # Who sent the first prompt (a delegating parent, a schedule's chain
+    # link): its turn carries that origin, so the intake treats it as theirs.
+    it "keeps the first prompt's sender beside its turn id; none for an idle session or a person's" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      sent = described_class.spawn_session(prompt: "look", model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
+      typed = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir)
+      idle = described_class.spawn_session(prompt: nil, model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
+
+      expect(Samagotchi::Session.load(sent.id, state_dir: tmpdir).first_turn_client_id).to eq("delegate:1234abcd")
+      expect(Samagotchi::Session.load(typed.id, state_dir: tmpdir).first_turn_client_id).to be_nil
+      expect(Samagotchi::Session.load(idle.id, state_dir: tmpdir).first_turn_client_id).to be_nil
+    end
+
     describe "the toolkit, stored as named when the session is created" do
       before do
         allow(Process).to receive(:spawn).and_return(12_345)

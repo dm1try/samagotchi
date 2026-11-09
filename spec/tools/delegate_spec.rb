@@ -144,6 +144,8 @@ RSpec.describe "delegate tools" do
       expect(child.reasoning_history).to be_nil
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
+      # The task's turn is the parent's, as a follow-up is (CommandIntake).
+      expect(child.first_turn_client_id).to eq("delegate:#{parent.id[0, 8]}")
       expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \
                         "when it ends its turn (a delegate report), starting a turn for it if you are idle. Don't wait for it " \
                         "with delegate_result, also not to collect several children's replies: tell your user what started " \

@@ -760,14 +760,15 @@ module Samagotchi
     end
 
     # The first prompt (spawn_session's): a delegate child's task, which is
-    # its parent's although no client sent it. Its turn carries the id
-    # spawn_session gave it, so a wait for it (--new --wait) names it.
+    # its parent's. Its turn carries the id spawn_session gave it, so a
+    # wait for it (--new --wait) names it, and its sender
+    # (WorkerInbound#initial_origin).
     # A Verify fresh child's is a Verify turn on its claim (its verdict is
     # recorded and forwarded to the parent).
     def run_initial_prompt(prompt)
       @initial_turn = true
       fresh = @session.verify_fresh
-      run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: TurnOrigin.new(enqueued_id: @session.first_turn_id),
+      run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: @inbound.initial_origin,
                                            anchors: { verify: fresh&.anchor }))
     ensure
       @initial_turn = false

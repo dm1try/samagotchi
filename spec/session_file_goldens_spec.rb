@@ -141,6 +141,7 @@ RSpec.describe "Session file goldens (characterization)" do
                             Samagotchi::WorkingSetPin.new(kind: "memory", key: "project/notes")]
       s.review = Samagotchi::SessionReview.new(subjects: ["lib/a.rb", "PR #12"], from: "golden-0004-source")
       s.first_turn_id = "22222222-2222-4222-8222-222222222222"
+      s.first_turn_client_id = "delegate:0123abcd"
       s.verify_fresh = { "author" => "p:alice", "mode" => "pair", "of" => "t-1",
                          "anchor" => { "turn_id" => "33333333-3333-4333-8333-333333333333", "quote" => "it holds" } }
     end
@@ -286,7 +287,7 @@ RSpec.describe "Session file goldens (characterization)" do
                                            parent_answers: parent.parent_answers)
       manager.spawn_session(prompt: "check the parser", working_directory: folder, model_name: parent.model_name,
                             memories: Samagotchi::Tools::Delegate::CHILD_MEMORIES, parent_id: parent.id,
-                            delegate: true, setup: setup, state_dir: state_dir).id
+                            delegate: true, setup: setup, state_dir: state_dir, client_id: "delegate:#{parent.id[0, 8]}").id
     end
 
     # What a woken worker does before its first turn.
