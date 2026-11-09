@@ -292,8 +292,9 @@ module Samagotchi
       # Merger::Upgrade#forecast.
       def forecast(row, bundle)
         shipped = Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort
+        files = Provenance.new(name: row.name).files_with_pending(bundle, target_dir: MemoryPaths.scope_dir!(row.scope))
         Merger::Upgrade.new(provenance: Provenance.new(name: row.name), target_dir: MemoryPaths.scope_dir!(row.scope),
-                            source_dir: row.source_dir).forecast(shipped & bundle.files.keys, version: row.to)
+                            source_dir: row.source_dir).forecast(shipped & files.keys, version: row.to)
       end
 
       # What the upgrade from +source_dir+ copies to the trash, as

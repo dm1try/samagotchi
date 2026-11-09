@@ -68,9 +68,18 @@ module Samagotchi
         @chi_version = chi_version
       end
 
+      # Raises for the first plugin or script the manifest names that the
+      # bundle doesn't have (or ships as a link), writing nothing: the
+      # Installer runs it before its first write.
+      # @raise [Installer::InstallError]
+      def check_named_files
+        plugin_source
+        scripts_sources
+      end
+
       # @return [Installed]
-      # @raise [Installer::InstallError] the manifest names a plugin or
-      #   script the bundle doesn't have
+      # @raise [Installer::InstallError] the same, when #check_named_files
+      #   wasn't run first
       def run
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
@@ -137,27 +146,42 @@ module Samagotchi
         plugin = @manifest&.plugin
         return {} unless plugin
 
-        src = File.join(@bundle_dir, plugin[:file])
-        raise Installer::InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
-        raise Installer::InstallError, "plugin #{plugin[:file]} is a symlink (not installed)" if linked?(src)
-
+        src = plugin_source
         if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
         { plugin[:file] => src }
       end
 
-      # The manifest's scripts (a dev install warns of one it can't run).
+      # The manifest's plugin file in the source, checked; nil without one.
+      def plugin_source
+        plugin = @manifest&.plugin
+        return unless plugin
+
+        src = File.join(@bundle_dir, plugin[:file])
+        raise Installer::InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
+        raise Installer::InstallError, "plugin #{plugin[:file]} is a symlink (not installed)" if linked?(src)
+
+        src
+      end
+
+      # The manifest's scripts in the source, checked.
       # @return [Hash{String => String}] file name => the source file
-      def scripts_incoming
-        scripts = @manifest&.scripts || {}
-        scripts.keys.to_h do |file|
+      def scripts_sources
+        (@manifest&.scripts || {}).keys.to_h do |file|
           src = File.join(@bundle_dir, "scripts", file)
           raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have" unless File.file?(src)
           raise Installer::InstallError, "scripts/#{file} is a symlink (not installed)" if linked?(src)
 
-          @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src) && !page_only?(file)
           [file, src]
+        end
+      end
+
+      # The manifest's scripts (a dev install warns of one it can't run).
+      # @return [Hash{String => String}] file name => the source file
+      def scripts_incoming
+        scripts_sources.each do |file, src|
+          @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src) && !page_only?(file)
         end
       end
 

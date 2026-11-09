@@ -233,24 +233,46 @@ module Samagotchi
         line
       end
 
-      # The steps that replace files: memories, the bundle's own folder, then
-      # the files it dropped. The record isn't written yet, so a failed run is
+      # The steps that replace files, after the check of the files the manifest
+      # names: memories, the bundle's own folder, then the files it dropped. The record isn't written yet, so a failed run is
       # retried as the same upgrade.
       # @return [AssetInstaller::Installed]
       # @raise [InstallError] a file system error (a file it can't read, a
       #   .trash it can't write)
       def replace_files
-        install_memories
-
-        installed = AssetInstaller.new(
+        assets = AssetInstaller.new(
           name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
           results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
           force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev, chi_version: @chi_version
-        ).run
+        )
+        # Before the first write: a plugin or script the bundle lacks refuses the run with disk and record as they were.
+        assets.check_named_files
+        write_pending
+        install_memories
+        installed = assets.run
 
         # Files the previous version shipped and this one doesn't.
-        prune_dropped_files(@existing.files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
+        previous_files = @provenance.files_with_pending(@existing, target_dir: @target_dir)
+        prune_dropped_files(previous_files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
         installed
+      rescue SystemCallError => e
+        raise InstallError, Trash.failure_message(e)
+      end
+
+      # The intent journal (Provenance#write_pending): the text of each memory
+      # this run will change, noted before the first write, so a run that
+      # stops before its record leaves files a retry still knows as the
+      # bundle's.
+      def write_pending
+        return if @dry_run || @manifest.nil?
+
+        incoming = memory_files.to_h { |key| [key, FileDigest.hex(File.join(@bundle_dir, key))] }
+        incoming.reject! do |key, sha|
+          sha.nil? || sha == FileDigest.hex(File.join(@target_dir, key))
+        rescue SystemCallError
+          true
+        end
+        @provenance.write_pending(version: @manifest.version, scope: @target_scope, target_dir: @target_dir, files: incoming) unless incoming.empty?
       rescue SystemCallError => e
         raise InstallError, Trash.failure_message(e)
       end
@@ -785,8 +807,8 @@ module Samagotchi
 
       # Not fatal, like update_target_index: a warning says so.
       def remove_target_index(scope, file_key)
-        IndexUpdater.remove_index(scope, file_key.delete_suffix(".md"))
-        IndexUpdater.remove_index(scope, file_key) # legacy "name.md" line
+        IndexUpdater.remove_index(scope, file_key.delete_suffix(".md"), target_dir: @target_dir)
+        IndexUpdater.remove_index(scope, file_key, target_dir: @target_dir) # legacy "name.md" line
       rescue StandardError => e
         @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not removed (#{e.message})"
       end

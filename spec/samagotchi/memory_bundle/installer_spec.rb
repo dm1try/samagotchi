@@ -10,6 +10,7 @@ require "digest"
 
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/status"
+require "samagotchi/memory_bundle/uninstaller"
 
 RSpec.describe Samagotchi::MemoryBundle::Installer do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-installer-") }
@@ -1232,6 +1233,200 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(again.trash_dir).to be_nil
       expect(File.read(target)).to eq("# the source's hook\n")
       expect(Dir.exist?(File.join(bundles_dir, "hb", "hooks"))).to be(false)
+    end
+  end
+
+  describe "a manifest naming files the bundle lacks" do
+    let(:bundle_dir) { File.join(bundles_dir, "pc") }
+    let(:memory) { File.join(system_memories_dir, "a.md") }
+
+    def pc_source(version, memory_text: "# A #{version}\n", plugin: true, script: true)
+      dir = File.join(tmpdir, "pc-#{version}")
+      FileUtils.mkdir_p(File.join(dir, "scripts"))
+      File.write(File.join(dir, "a.md"), memory_text)
+      File.write(File.join(dir, "plugin.rb"), "# plugin #{version}\n") if plugin
+      File.write(File.join(dir, "scripts", "s.sh"), "#!/bin/sh\n") if script
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(
+        "name" => "pc", "version" => version, "scope" => "system", "files" => { "a.md" => "sha256:#{Digest::SHA256.hexdigest(memory_text)}" },
+        "plugin" => { "file" => "plugin.rb" }, "scripts" => { "s.sh" => "sha256:#{Digest::SHA256.hexdigest("#!/bin/sh\n")}" }
+      ))
+      dir
+    end
+
+    def install(source, scope: "system", **opts) = described_class.new(source: source, name: "pc", scope: scope, **opts).tap(&:run)
+
+    it "refuses a fresh install before writing a memory, with one message per file" do
+      { script: %r{scripts/s\.sh, which the bundle doesn't have}, plugin: /plugin plugin\.rb, which the bundle doesn't have/ }.each do |lacks, message|
+        src = pc_source("1.0.0", lacks => false)
+        expect { install(src) }.to raise_error(described_class::InstallError, message)
+        expect(File.exist?(memory)).to be(false)
+        expect(Dir.exist?(bundle_dir)).to be(false)
+        FileUtils.rm_rf(src)
+      end
+    end
+
+    it "refuses an upgrade before it fast-forwards a memory or replaces the plugin, the record unchanged" do
+      install(pc_source("1.0.0"))
+      record = File.read(File.join(bundle_dir, "manifest.json"))
+      plugin = File.join(bundle_dir, "plugin", "plugin.rb")
+
+      [{ script: false }, { plugin: false }].each do |lacks|
+        src = pc_source("2.0.0", **lacks)
+        expect { install(src, upgrade: true) }.to raise_error(described_class::InstallError, /which the bundle doesn't have/)
+        expect(File.read(memory)).to eq("# A 1.0.0\n")
+        expect(File.read(plugin)).to eq("# plugin 1.0.0\n")
+        expect(File.read(File.join(bundle_dir, "manifest.json"))).to eq(record)
+        FileUtils.rm_rf(src)
+      end
+    end
+  end
+
+  describe "a run interrupted between its first write and its record" do
+    let(:bundle_dir) { File.join(bundles_dir, "pc") }
+    let(:memory) { File.join(system_memories_dir, "a.md") }
+    let(:journal) { File.join(bundle_dir, "pending.json") }
+
+    def pc_source(version, files: { "a.md" => "# A #{version}\n" })
+      dir = File.join(tmpdir, "pc-#{version}")
+      FileUtils.mkdir_p(dir)
+      files.each { |key, text| File.write(File.join(dir, key), text) }
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(
+        "name" => "pc", "version" => version, "scope" => "system",
+        "files" => files.transform_values { |text| "sha256:#{Digest::SHA256.hexdigest(text)}" }
+      ))
+      dir
+    end
+
+    def install(source, **opts) = described_class.new(source: source, name: "pc", scope: "system", **opts).tap(&:run)
+
+    before do
+      @failing = false
+      failing = -> { @failing }
+      allow_any_instance_of(Samagotchi::MemoryBundle::AssetInstaller).to receive(:run).and_wrap_original do |original, *args|
+        failing.call ? raise(Errno::EIO) : original.call(*args)
+      end
+    end
+
+    # The memories are written, then the assets step fails: no record write.
+    def interrupted(source, **opts)
+      @failing = true
+      expect { install(source, **opts) }.to raise_error(described_class::InstallError)
+      @failing = false
+    end
+
+    it "lets a retry of a killed fresh install own the memory it copied" do
+      interrupted(pc_source("1.0.0"))
+      expect(File.read(memory)).to eq("# A 1.0.0\n")
+      expect(File.exist?(journal)).to be(true)
+
+      retry_run = install(pc_source("1.0.0"))
+
+      expect(retry_run.results["a.md"].word).not_to eq(:kept_own)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "pc").record.files.keys).to eq(["a.md"])
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("pc").files["a.md"][:modified]).to be(false)
+      expect(File.exist?(journal)).to be(false)
+
+      up = install(pc_source("2.0.0"), upgrade: true)
+      expect(up.results["a.md"].word).to eq(:updated)
+      expect(File.read(memory)).to eq("# A 2.0.0\n")
+    end
+
+    it "keeps the union of files across two interrupted runs for a retry" do
+      interrupted(pc_source("1.0.0"))
+      interrupted(pc_source("2.0.0", files: { "a.md" => "# A 1.0.0\n", "b.md" => "# B 2.0.0\n" }))
+
+      retry_run = install(pc_source("3.0.0", files: { "a.md" => "# A 3.0.0\n", "b.md" => "# B 3.0.0\n" }))
+
+      expect(retry_run.results.values_at("a.md", "b.md").map(&:word)).to all(eq(:updated))
+      expect(File.read(memory)).to eq("# A 3.0.0\n")
+      expect(File.read(File.join(system_memories_dir, "b.md"))).to eq("# B 3.0.0\n")
+      expect(File.exist?(journal)).to be(false)
+    end
+
+    it "does not write a journal for a dry run or files that already match incoming text" do
+      source = pc_source("1.0.0")
+      install(source, dry_run: true)
+      expect(File.exist?(journal)).to be(false)
+
+      FileUtils.mkdir_p(system_memories_dir)
+      File.write(memory, "# A 1.0.0\n")
+      install(source)
+      expect(File.exist?(journal)).to be(false)
+    end
+
+    it "reads a memory fast-forwarded by a failed upgrade as the bundle's text, not an edit" do
+      install(pc_source("1.0.0"))
+      interrupted(pc_source("2.0.0"), upgrade: true)
+      expect(File.read(memory)).to eq("# A 2.0.0\n")
+
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("pc").files["a.md"][:modified]).to be(false)
+
+      up = install(pc_source("3.0.0"), upgrade: true)
+      expect(up.results["a.md"].word).to eq(:updated)
+      expect(up.conflicts).to be_empty
+      expect(File.read(memory)).to eq("# A 3.0.0\n")
+      expect(File.exist?(journal)).to be(false)
+    end
+
+    it "shows and prunes a new memory copied by an interrupted upgrade" do
+      install(pc_source("1.0.0"))
+      interrupted(pc_source("2.0.0", files: { "a.md" => "# A 2.0.0\n", "b.md" => "# B 2.0.0\n" }), upgrade: true)
+
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("pc").files["b.md"]).to include(modified: false, missing: false)
+
+      retry_run = install(pc_source("3.0.0"), upgrade: true)
+
+      expect(File.exist?(File.join(system_memories_dir, "b.md"))).to be(false)
+      expect(File.read(File.join(retry_run.trash_dir, "b.md"))).to eq("# B 2.0.0\n")
+    end
+
+    it "lets uninstall remove the file after a failed upgrade" do
+      install(pc_source("1.0.0"))
+      interrupted(pc_source("2.0.0", files: { "a.md" => "# A 2.0.0\n", "b.md" => "# B 2.0.0\n" }), upgrade: true)
+
+      uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: "pc")
+      uninstaller.run
+      expect(File.exist?(memory)).to be(false)
+      expect(File.exist?(File.join(system_memories_dir, "b.md"))).to be(false)
+      expect(uninstaller.trashed_files).to contain_exactly("a.md", "b.md")
+      expect(Dir.exist?(bundle_dir)).to be(false)
+    end
+
+    it "keeps today's rules for a file that matches no journaled text" do
+      interrupted(pc_source("1.0.0"))
+      File.write(memory, "# my own\n")
+      expect(install(pc_source("1.0.0")).results["a.md"].word).to eq(:kept_own)
+    end
+
+    it "lets the unreadable FileState refusal run before trying to journal the target" do
+      install(pc_source("1.0.0"))
+      FileUtils.mkdir_p(system_memories_dir)
+      allow(Samagotchi::MemoryBundle::FileDigest).to receive(:hex).and_call_original
+      allow(Samagotchi::MemoryBundle::FileDigest).to receive(:hex).with(memory).and_raise(Errno::EACCES, memory)
+      allow(Samagotchi::MemoryBundle::FileActions).to receive(:for).and_call_original
+
+      expect { install(pc_source("2.0.0"), upgrade: true) }.to raise_error(described_class::InstallError, /Permission denied/)
+
+      expect(Samagotchi::MemoryBundle::FileActions).to have_received(:for)
+        .with(:upgrade, have_attributes(kind: :unreadable))
+      expect(File.exist?(journal)).to be(false)
+    end
+
+    it "does not treat a project journal's matching text in another project as owned" do
+      project_one = File.join(tmpdir, "project-one")
+      project_two = File.join(tmpdir, "project-two")
+      FileUtils.mkdir_p([project_one, project_two])
+      source = pc_source("1.0.0")
+      Dir.chdir(project_one) { interrupted(source, scope: "project") }
+      target_dir = Samagotchi::MemoryPaths.project_dir(cwd: project_two)
+      FileUtils.mkdir_p(target_dir)
+      File.write(File.join(target_dir, "a.md"), "# A 1.0.0\n")
+      provenance = Samagotchi::MemoryBundle::Provenance.new(name: "pc")
+
+      state = Samagotchi::MemoryBundle::FileState.of("a.md", record: nil, provenance: provenance,
+                                                     target_dir: target_dir, source_dir: source)
+
+      expect(state.kind).to eq(:user_same)
     end
   end
 
