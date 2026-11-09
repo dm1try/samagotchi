@@ -32,6 +32,7 @@ RSpec.describe "chi bundle (CLI)" do
         Source is the path/URL to the bundle (dir/zip/tar.gz/git).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
         A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+        So is a memory, plugin or script whose bytes disagree with its manifest sha256; --force installs it too.
 
       upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
         Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
@@ -39,6 +40,7 @@ RSpec.describe "chi bundle (CLI)" do
         A bare NAME upgrades the bundle installed under that name from the source it came from.
         --dry-run shows what would change. --agent launches interactive session on conflict.
         A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+        So is a file whose bytes disagree with its manifest sha256; --force installs it too.
 
       uninstall <bundle> [--scope system|project] [--force]
         Remove a bundle and its index entries (--force moves a locally edited file to the trash).
@@ -86,8 +88,8 @@ RSpec.describe "chi bundle (CLI)" do
         Install a memory bundle from a directory, zip, tar archive, or git URL,
         or a bundle shipped with chi by name (see: chi bundle list).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
-        It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
-        refused, and the bundle is not written anywhere.
+        It also installs a bundle whose requires_chi this chi doesn't meet and a file whose bytes disagree with
+        its manifest sha256: without --force both are refused, and the bundle is not written anywhere.
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
@@ -97,8 +99,9 @@ RSpec.describe "chi bundle (CLI)" do
 
   UPGRADE_USAGE = <<~TEXT
     Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
-      --force takes the bundle's file over an edited one, and installs a bundle whose requires_chi this chi
-      doesn't meet (without it such a bundle is refused).
+      --force takes the bundle's file over an edited one, installs a bundle whose requires_chi this chi
+      doesn't meet, and installs a file whose bytes disagree with its manifest sha256 (without it each is
+      refused, nothing written).
   TEXT
 
   BUILD_USAGE = <<~TEXT
@@ -179,6 +182,20 @@ RSpec.describe "chi bundle (CLI)" do
       plugin:
         file: plugin.rb
         sha256: sha256:#{Digest::SHA256.hexdigest(body)}
+    YAML
+    dir
+  end
+
+  # A bundle dir whose manifest's sha256 for a.md is wrong (its bytes are
+  # +content+): what a strict install refuses and --force installs.
+  def self.make_stale_bundle(dir, name:, content: "one\n")
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "a.md"), content)
+    File.write(File.join(dir, "manifest.yml"), <<~YAML)
+      name: #{name}
+      version: 1.0.0
+      files:
+        a.md: sha256:#{"0" * 64}
     YAML
     dir
   end
@@ -273,7 +290,7 @@ RSpec.describe "chi bundle (CLI)" do
       )
     end
 
-    def restart_hint(*ids) = "#{ids.size} session#{ids.size == 1 ? "" : "s"} " \
+    def restart_hint(*ids) = "#{ids.size} session#{"s" unless ids.size == 1} " \
                             "#{ids.size == 1 ? "runs" : "run"} the old code: " \
                             "#{ids.map { |id| "chi sessions restart #{id}" }.join(", ")}\n"
 
@@ -382,6 +399,23 @@ RSpec.describe "chi bundle (CLI)" do
       expect([err, code]).to eq(["", 0])
       expect(out).to start_with("Uninstalled bundle 'memonly'\n")
       expect(out).not_to include("old code")
+    end
+
+    # A file whose bytes disagree with the sha its manifest declares is refused
+    # before anything is written; --force installs it anyway, with the warning.
+    it "refuses an install whose bytes disagree with the manifest's sha, and installs it with --force" do
+      dir = self.class.make_stale_bundle(File.join(@root, "stale"), name: "stale-sha")
+
+      out, err, code = chi("install", dir)
+      expect([out, code]).to eq(["", 1])
+      expect(err).to eq("Install failed: Checksum mismatch for a.md: expected 00000000..., got " \
+                        "#{Digest::SHA256.hexdigest("one\n")[0..7]}...; chi bundle install --force installs it anyway\n")
+      expect(File.exist?(File.join(memories, "a.md"))).to be(false)
+      expect(Dir.exist?(File.join(memories, ".bundles", "stale-sha"))).to be(false)
+
+      out, err, code = chi("install", dir, "--force")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Installed: a.md", "Checksum mismatch for a.md")
     end
 
     it "labels retired hook files present or missing" do

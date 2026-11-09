@@ -385,6 +385,79 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(installer.warnings.any? { |w| w.include?("Checksum mismatch") }).to be true
         end
 
+        # `chi bundle install/upgrade` (Installer#installer_for passes
+        # refuse_mismatch: true) checks the source bytes against the manifest
+        # before its first write; the callers that only warn (chi update,
+        # SystemBundle, a profile) keep doing so, and --force installs anyway.
+        def stale_dir(sub, name, files: { "identity.md" => "# Identity\n" }, plugin: nil, scripts: nil)
+          dir = File.join(tmpdir, sub)
+          FileUtils.mkdir_p(dir)
+          files.each { |key, text| File.write(File.join(dir, key), text) }
+          manifest = { "name" => name, "version" => "1.0", "files" => files.transform_values { "sha256:#{"0" * 64}" } }
+          if plugin
+            File.write(File.join(dir, "plugin.rb"), plugin)
+            manifest["plugin"] = { "file" => "plugin.rb", "sha256" => "sha256:#{"1" * 64}" }
+          end
+          if scripts
+            FileUtils.mkdir_p(File.join(dir, "scripts"))
+            scripts.each { |key, text| File.write(File.join(dir, "scripts", key), text) }
+            manifest["scripts"] = scripts.transform_values { "sha256:#{"2" * 64}" }
+          end
+          File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+          dir
+        end
+
+        it "refuses a memory whose bytes disagree with its manifest sha, writing nothing" do
+          bundle_dir = stale_dir("refuse-memory", "cksum-refuse")
+
+          installer = described_class.new(source: bundle_dir, name: "cksum-refuse", scope: "system", strict: true, refuse_mismatch: true)
+
+          expect { installer.run }.to raise_error(
+            described_class::InstallError,
+            /Checksum mismatch for identity\.md: expected 00000000\.\.\., got #{Digest::SHA256.hexdigest("# Identity\n")[0..7]}\.\.\.; chi bundle install --force installs it anyway\z/
+          )
+          expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be(false)
+          expect(Samagotchi::MemoryBundle::Provenance.new(name: "cksum-refuse").installed?).to be(false)
+        end
+
+        it "installs it anyway with --force, keeping the warning" do
+          bundle_dir = stale_dir("force-memory", "cksum-force")
+          installer = described_class.new(source: bundle_dir, name: "cksum-force", scope: "system", strict: true,
+                                          force: true, refuse_mismatch: true)
+          installer.run
+
+          expect(installer.warnings).to include("Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("# Identity\n")[0..7]}...")
+          expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Identity\n")
+        end
+
+        it "refuses a plugin whose bytes disagree with its manifest sha, before any write" do
+          bundle_dir = stale_dir("refuse-plugin", "cksum-plug", files: {}, plugin: "# plugin\n")
+          installer = described_class.new(source: bundle_dir, name: "cksum-plug", scope: "system", strict: true, refuse_mismatch: true)
+
+          expect { installer.run }.to raise_error(described_class::InstallError, /Checksum mismatch for plugin plugin\.rb/)
+          expect(Dir.exist?(File.join(bundles_dir, "cksum-plug"))).to be(false)
+        end
+
+        it "refuses a script too, and an upgrade says chi bundle upgrade --force" do
+          bundle_dir = stale_dir("refuse-script", "cksum-script", files: {}, scripts: { "s.sh" => "#!/bin/sh\n" })
+          installer = described_class.new(source: bundle_dir, name: "cksum-script", scope: "system", strict: true, refuse_mismatch: true)
+
+          expect { installer.run }.to raise_error(described_class::InstallError, /Checksum mismatch for script s\.sh/)
+          expect(Dir.exist?(File.join(bundles_dir, "cksum-script"))).to be(false)
+
+          up = described_class.new(source: bundle_dir, name: "cksum-script", scope: "system", strict: true, upgrade: true, refuse_mismatch: true)
+          expect { up.run }.to raise_error(described_class::InstallError, /chi bundle upgrade --force installs it anyway/)
+        end
+
+        it "does not refuse a dev install or a non-strict run" do
+          dev_dir = stale_dir("refuse-dev", "cksum-dev")
+          loose_dir = stale_dir("refuse-loose", "cksum-loose")
+
+          expect { described_class.new(source: dev_dir, name: "cksum-dev", scope: "system", strict: true, dev: true, refuse_mismatch: true).run }.not_to raise_error
+          expect { described_class.new(source: loose_dir, name: "cksum-loose", scope: "system", strict: false, refuse_mismatch: true).run }.not_to raise_error
+          expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be(true)
+        end
+
         it "skips memory checksum warnings for a dev install, but not a regular install" do
           dev_source = write_bundle(File.join(tmpdir, "dev"), { "identity.md" => "# Identity\n" }, name: "dev-check")
           regular_source = write_bundle(File.join(tmpdir, "regular"), { "regular.md" => "# Regular\n" }, name: "regular-check")

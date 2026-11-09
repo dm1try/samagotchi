@@ -18,6 +18,7 @@ module Samagotchi
           Source is the path/URL to the bundle (dir/zip/tar.gz/git).
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
           A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+          So is a memory, plugin or script whose bytes disagree with its manifest sha256; --force installs it too.
 
         upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
           Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
@@ -25,6 +26,7 @@ module Samagotchi
           A bare NAME upgrades the bundle installed under that name from the source it came from.
           --dry-run shows what would change. --agent launches interactive session on conflict.
           A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+          So is a file whose bytes disagree with its manifest sha256; --force installs it too.
 
         uninstall <bundle> [--scope system|project] [--force]
           Remove a bundle and its index entries (--force moves a locally edited file to the trash).
@@ -74,8 +76,8 @@ module Samagotchi
           Install a memory bundle from a directory, zip, tar archive, or git URL,
           or a bundle shipped with chi by name (see: chi bundle list).
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
-          It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
-          refused, and the bundle is not written anywhere.
+          It also installs a bundle whose requires_chi this chi doesn't meet and a file whose bytes disagree with
+          its manifest sha256: without --force both are refused, and the bundle is not written anywhere.
         install --dev PATH
           Install the bundle in the local directory PATH as a link to it: its plugin, rules and scripts
           are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
@@ -84,8 +86,9 @@ module Samagotchi
     TEXT
     UPGRADE_HELP = <<~TEXT
       Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
-        --force takes the bundle's file over an edited one, and installs a bundle whose requires_chi this chi
-        doesn't meet (without it such a bundle is refused).
+        --force takes the bundle's file over an edited one, installs a bundle whose requires_chi this chi
+        doesn't meet, and installs a file whose bytes disagree with its manifest sha256 (without it each is
+        refused, nothing written).
     TEXT
     UNINSTALL_HELP = "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
     BUILD_HELP = <<~TEXT
@@ -265,6 +268,7 @@ module Samagotchi
       restart_hint(before, manifest, installer) if !dry_run && status != 1
       status
     end
+
     # The source normalized once (a git clone, a zip or tar extract) and the
     # bundle's name, its manifest's name: for every kind of source, a git URL
     # too. The Installer installs from that extract and removes it. Nil
@@ -307,7 +311,10 @@ module Samagotchi
     end
 
     def installer_for(source, name, scope:, force:, **)
-      Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: scope, force: force, strict: true, **)
+      # A bundle the user installs: a memory, plugin or script whose bytes
+      # disagree with its manifest sha is refused, not warned (--force past it).
+      Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: scope, force: force, strict: true,
+                                              refuse_mismatch: true, **)
     end
 
     # Runs +installer+, prints its summary, then yields the manifest.
@@ -378,7 +385,7 @@ module Samagotchi
       return if ids.empty?
 
       commands = ids.map { |id| "chi sessions restart #{id}" }
-      @stdout.puts "#{ids.size} session#{ids.size == 1 ? "" : "s"} " \
+      @stdout.puts "#{ids.size} session#{"s" unless ids.size == 1} " \
                    "#{ids.size == 1 ? "runs" : "run"} the old code: #{commands.join(", ")}"
     end
 

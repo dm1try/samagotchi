@@ -50,7 +50,8 @@ module Samagotchi
       # @param chi_version [String] the chi this install is for (the Installer's;
       #   a caller that checks its own bundles against another version passes it)
       def initialize(name:, source_dir:, manifest:, provenance:, existing:, results:, warnings:, conflicts:, trash:,
-                     force: false, strict: true, upgrade: false, dry_run: false, dev: false, chi_version: Samagotchi::VERSION)
+                     force: false, strict: true, upgrade: false, dry_run: false, dev: false, chi_version: Samagotchi::VERSION,
+                     refuse_mismatch: false)
         @name = name
         @bundle_dir = source_dir
         @manifest = manifest
@@ -66,6 +67,7 @@ module Samagotchi
         @dry_run = dry_run
         @dev = dev
         @chi_version = chi_version
+        @refuse_mismatch = refuse_mismatch
       end
 
       # Raises for the first plugin or script the manifest names that the
@@ -75,6 +77,27 @@ module Samagotchi
       def check_named_files
         plugin_source
         scripts_sources
+      end
+
+      # The same early pass on the shas: the plugin and each script against the
+      # bundle's own bytes, before anything is written. Only when the caller
+      # refuses a mismatch (`chi bundle install/upgrade`; chi update, a profile
+      # and a dev install keep their warning), and not with --force, which
+      # installs a mismatch anyway.
+      # @raise [Installer::InstallError] one line per mismatched file
+      def check_named_checksums
+        return unless @refuse_mismatch && @strict && !@dev && !@force && @manifest
+
+        lines = []
+        if @manifest.plugin
+          lines << Installer.mismatch_refusal("plugin #{@manifest.plugin[:file]}", plugin_source,
+                                              @manifest.checksum_for_plugin, upgrade: @upgrade)
+        end
+        scripts_sources.each do |name, src|
+          lines << Installer.mismatch_refusal("script #{name}", src, declared_sha(:script, name), upgrade: @upgrade)
+        end
+        lines = lines.compact
+        raise Installer::InstallError, lines.join("\n") unless lines.empty?
       end
 
       # @return [Installed]

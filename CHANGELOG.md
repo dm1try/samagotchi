@@ -17,6 +17,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `chi bundle install` and `chi bundle upgrade` refuse a memory, plugin or script whose bytes disagree with the
+  sha256 its manifest declares, before writing anything (`Checksum mismatch for FILE: ...; chi bundle install
+  --force installs it anyway`, exit 1). `--force` installs it anyway, as it already does for an edited memory (its
+  copy going to the trash first) and for a bundle whose `requires_chi` this chi doesn't meet; a dev install, a
+  non-strict run, `chi update` and a bundle profile keep the warning-only behaviour.
 - Core guardrail checks judge what a call's `targets:` say it acts on, not its tool's name: a plugin tool whose
   targets declare `paths:` it writes (`writes: true`) is checked like `write` and `edit` against the protected
   paths and a delegate child's boundary. A plugin tool whose targets declare a `command:` a delegate child's
