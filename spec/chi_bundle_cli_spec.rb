@@ -402,6 +402,19 @@ RSpec.describe "chi bundle (CLI)" do
       expect(File.read(File.join(broken, "manifest.yml"))).to eq("name: [x\n")
     end
 
+    it "refuses hooks before parsing the manifest, with the Installer's message" do
+      source = File.join(@root, "retired-hooks")
+      FileUtils.mkdir_p(File.join(source, "hooks"))
+      File.write(File.join(source, "hooks", "g.rb"), "class G; end\n")
+      File.write(File.join(source, "manifest.yml"), "name: [x\n")
+      hook_error = "hooks/g.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
+
+      expect(chi("install", source)).to eq(["", "Install failed: #{hook_error}\n", 1])
+      expect do
+        Samagotchi::MemoryBundle::Installer.new(source: source, name: "retired-hooks", scope: "system").run
+      end.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, hook_error)
+    end
+
     # A bundle's name is its manifest's name: for a git URL too (it was the
     # repo's name), so the same bundle from a URL and from a local copy is
     # one install with one record.

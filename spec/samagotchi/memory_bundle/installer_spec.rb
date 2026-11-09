@@ -1147,6 +1147,11 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       [{}, { strict: false }, { dry_run: true }, { force: true }].each do |opts|
         expect { run(src, **opts) }.to raise_error(described_class::InstallError, "hooks/g.rb: #{words}"), opts.inspect
       end
+      manifest_path = File.join(src, "manifest.yml")
+      manifest = File.read(manifest_path)
+      File.write(manifest_path, "name: [x\n")
+      expect { run(src) }.to raise_error(described_class::InstallError, "hooks/g.rb: #{words}")
+      File.write(manifest_path, manifest)
       FileUtils.rm_rf(File.join(src, "hooks"))
       expect { run(src, strict: false) }.to raise_error(described_class::InstallError, "hooks: #{words}")
       expect(Dir.exist?(File.join(bundles_dir, "hb"))).to be(false)
