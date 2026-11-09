@@ -79,14 +79,25 @@ module Samagotchi
           announce({ type: :guardrail_warning, message: message }) if message
           plugins = @plugin_failures.message
           announce({ type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-          memory = MemoryOrphans.message
-          announce({ type: :guardrail_warning, message: memory, label: "memory" }) if memory
+          memory_load_warnings.each { |event| announce(event) }
           @extension_load.held_events.each do |event|
             announce(event[:type] == :card ? event.merge(in_turn: false) : event.merge(between_turns: true))
           end
         end
         nil
       end
+
+      # The session-start memory warnings (label "memory"), for both load
+      # announcements (a worker's, a one-shot's first turn): an orphaned
+      # project memory folder (MemoryOrphans), a copied project sharing its
+      # id (ProjectIdClash, which also claims the id folder for this root).
+      # @return [Array<Hash>] the :guardrail_warning events
+      def memory_load_warnings
+        [MemoryOrphans.message, ProjectIdClash.check&.message].compact.map do |message|
+          { type: :guardrail_warning, message: message, label: "memory" }
+        end
+      end
+      private :memory_load_warnings
 
       # Run the block holding back the cards and between-turns notices it
       # announces on this thread, so the caller announces them after its own

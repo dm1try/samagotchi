@@ -6,7 +6,13 @@ module Samagotchi
   # A project memory folder left behind by a move: memories copied to a
   # machine (or a path) where the project root differs, so its key
   # (MemoryPaths.project_key: basename + MD5 of the root) differs too, and
-  # chi finds no project memories without a word about why.
+  # chi finds no project memories without a word about why. A marked
+  # project with an id is keyed by the id (`<basename>-<8 hex>`, which the
+  # pattern never takes for a path key): it is asked about only while its
+  # id folder holds no *.md, like any other (memories moved before it had
+  # an id). An id folder is a candidate itself for a project keyed by path
+  # with the same basename: a marked folder that `git init` made a
+  # repository.
   #
   # Pure: one listing of the projects dir, no git subprocess. Said at
   # session start (Engine#announce_load_events!, label "memory") and under a
@@ -33,10 +39,14 @@ module Samagotchi
       return nil if File.directory?(computed) && Dir.children(computed).any? { |name| name.end_with?(".md") }
 
       key = File.basename(computed)
-      # The root's basename, never a split of a key on "_" (a basename may hold one).
-      pattern = /\A#{Regexp.escape(File.basename(MemoryPaths.project_root(cwd)))}_\h{8}\z/
+      # The root's basename, never a split of a key on "_" (a basename may hold one): another path's key
+      # (<basename>_<8 hex>), or a marked project's id folder (<basename>-<8 hex>, ProjectId) a `git init`
+      # in the marked folder (git wins: keyed by its path again) left behind.
+      pattern = /\A#{Regexp.escape(File.basename(MemoryPaths.project_root(cwd)))}[_-]\h{8}\z/
       names = Dir.children(projects).select { |name| name != key && name.match?(pattern) }
-      candidates = names.sort.map { |name| File.join(projects, name) }.select { |path| File.directory?(path) }
+      # A link is an adopted project's old name (ProjectInit.adopt), never an orphan.
+      candidates = names.sort.map { |name| File.join(projects, name) }
+                        .select { |path| File.directory?(path) && !File.symlink?(path) }
       return nil if candidates.empty?
 
       Found.new(computed: computed, candidates: candidates, computed_exists: File.directory?(computed))

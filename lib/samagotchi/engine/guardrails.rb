@@ -46,8 +46,8 @@ module Samagotchi
 
       # Once per Engine, on its first turn: what failed to load, so every UI
       # (the attached TUI, the web, a one-shot's stderr) shows it: the guardrails, then the plugins
-      # (label: "plugins"; the UIs say guardrails without one), an orphaned
-      # project memory folder (label: "memory"), then the notices and cards plugins showed as they loaded.
+      # (label: "plugins"; the UIs say guardrails without one), the memory
+      # warnings (label: "memory": #memory_load_warnings), then the notices and cards plugins showed as they loaded.
       def announce_guardrail_failures(on_event)
         return if @guardrail_failures_announced
 
@@ -56,8 +56,7 @@ module Samagotchi
         emit_event(on_event, { type: :guardrail_warning, message: message }) if message
         plugins = @plugin_failures.message
         emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-        memory = MemoryOrphans.message
-        emit_event(on_event, { type: :guardrail_warning, message: memory, label: "memory" }) if memory
+        memory_load_warnings.each { |event| emit_event(on_event, event) }
         @extension_load.held_events.each { |event| emit_event(on_event, event) }
       end
       private :announce_guardrail_failures
