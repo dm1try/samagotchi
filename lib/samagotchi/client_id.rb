@@ -98,6 +98,10 @@ module Samagotchi
     # Whether +client_id+ is a participant's (review:).
     def review?(client_id) = client_id.to_s.start_with?(REVIEW_PREFIX)
 
+    # The client id a delegating parent's task and follow-ups carry:
+    # delegate:<parent8>.
+    def delegate(parent_id) = "#{DELEGATE_PREFIX}#{parent_id.to_s[0, 8]}"
+
     # The client id a durable schedule's turn carries: system:schedule:<id>.
     def schedule(schedule_id) = "#{SCHEDULE_PREFIX}#{schedule_id}"
 

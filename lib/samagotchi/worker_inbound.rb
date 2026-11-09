@@ -214,11 +214,15 @@ module Samagotchi
 
     # The first prompt's origin: the turn id spawn_session gave it (a wait
     # for it, --new --wait, names it) and who sent it when no person did
-    # (Session#first_turn_client_id: a delegating parent, a schedule).
-    # NONE for a person's session from before either field.
+    # (Session#first_turn_client_id: a delegating parent, a schedule). A
+    # delegate child's task is its parent's even without the field (one
+    # spawned by an older chi, or by a caller that names no sender). NONE
+    # for a person's session from before either field.
     # @return [TurnOrigin]
     def initial_origin
-      TurnOrigin.of(client_id: @session.first_turn_client_id, enqueued_id: @session.first_turn_id)
+      client_id = @session.first_turn_client_id
+      client_id ||= ClientId.delegate(@session.parent_id) if @session.delegate? && @session.parent_id
+      TurnOrigin.of(client_id: client_id, enqueued_id: @session.first_turn_id)
     end
 
     # The first prompt as a command (queued): the session was saved as

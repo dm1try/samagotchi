@@ -543,7 +543,8 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`) goes (the
   schedule, a plugin or a wake a `/word` line is a prompt and a `!` line is refused (the Bridge's 403
   `command_not_permitted`; an input file's or a first prompt's is queued and `Worker#run_command_line` answers it with
   the error `command_ran`). A session's first prompt carries its sender too: `WorkerInbound#initial_origin` reads
-  `Session#first_turn_client_id` and `first_turn_id`, for `#initial_command?` and `Worker#run_initial_prompt`.
+  `Session#first_turn_client_id` (a delegate child without it: `ClientId.delegate` of its parent) and `first_turn_id`,
+  for `#initial_command?` and `Worker#run_initial_prompt`.
 - **Delivery**: a participant's input always waits for a turn of its own (`SessionInbox.waits_for_turn_end?`), so
   the drain never merges it; their turns count against chi web's `pending_limit` (429 `too_many_turns`).
   `Worker#run_prompt` checks their link and cap (`participant_refusal`) before the turn and after it.

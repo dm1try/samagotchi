@@ -207,6 +207,16 @@ RSpec.describe Samagotchi::WorkerInbound do
     it "names no sender for a session created by a person, or before the field" do
       expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin::NONE)
     end
+
+    it "names the parent for a delegate child's task without the field (an older chi spawned it)" do
+      session.parent_id = "0123abcd-ffff-4fff-8fff-ffffffffffff"
+      session.delegate = true
+      session.first_turn_id = "first-1"
+
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:0123abcd", enqueued_id: "first-1"))
+      expect(inbound.initial_command?("!touch x")).to be(true)
+      expect(queued).to eq([["!touch x", "delegate:0123abcd", "first-1"]])
+    end
   end
 
   describe "#take_input" do
