@@ -87,23 +87,26 @@ module Samagotchi
         raise ArchiveRefused.new(id, :scratch) if Session.load(id, state_dir: state_dir).scratch
 
         tree = [id, *descendant_ids(id, state_dir, except: except)]
-        owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: state_dir)] }
+        presences = tree.to_h do |sid|
+          [sid, WorkerPresence.read(sid, state_dir: state_dir, owner: session_owner(sid, state_dir: state_dir))]
+        end
         tree.each do |sid|
-          refusal = archive_refusal(sid, owners[sid], state_dir)
+          refusal = archive_refusal(sid, presences[sid], state_dir)
           raise ArchiveRefused.new(id, sid == id ? refusal : :"#{refusal}_child", busy_id: sid) if refusal
         end
-        [tree, owners]
+        [tree, presences.transform_values(&:owner)]
       end
 
       # What keeps +sid+ (in an archive's tree) from being archived: :busy (a
       # turn runs), :queued (input/ holds a prompt, which outlives the stop and
       # runs on a resume, live worker or not), :offer (a live worker's continue
       # offer, which the stop would drop), or nil.
+      # The status is read only while someone owns it (+presence+'s owner).
       # @raise [OwnedByTUI] a one-turn chi run owns it
-      private def archive_refusal(sid, owner, state_dir)
-        raise OwnedByTUI, sid if owner&.tui?
+      private def archive_refusal(sid, presence, state_dir)
+        raise OwnedByTUI, sid if presence.tui_owned?
 
-        session = owner && Session.load(sid, state_dir: state_dir)
+        session = presence.owned? ? Session.load(sid, state_dir: state_dir) : nil
         return :busy if session&.status == Session::STATUS_RUNNING
         return :queued unless SessionInbox.find_new_input_files(Session.session_dir(sid, state_dir: state_dir)).empty?
 
@@ -152,8 +155,10 @@ module Samagotchi
         # A folder with no file left is still deleted (not resolve!).
         raise Session::NotFound, given unless File.exist?(path) || Dir.exist?(dir)
 
-        owner = refuse_tui!(id, state_dir: sd)
-        if owner
+        presence = WorkerPresence.read(id, state_dir: sd, owner: session_owner(id, state_dir: sd))
+        raise OwnedByTUI, id if presence.tui_owned?
+
+        if presence.owned?
           raise DeleteRefused.new(id, :worker_running) unless stop
           raise DeleteRefused.new(id, :still_stopping) unless stop_session(id, state_dir: sd, wait: wait)
         end
@@ -174,7 +179,7 @@ module Samagotchi
           purge_session_runs(id, sd)
           ContextCandidatesLog.purge_session(id, state_dir: sd)
         end
-        { id: id, removed: removed, stopped: !owner.nil? }
+        { id: id, removed: removed, stopped: presence.owned? }
       end
 
       # Never a reason a delete fails: one warn, and the sweep ages them out.
