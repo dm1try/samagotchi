@@ -376,7 +376,7 @@ module Samagotchi
         when :accepted
           DelegateWait.mark_turn(parent.id, id, follow_up_turn(id, delivered.enqueued_id, state_dir: state_dir), state_dir: state_dir)
           id
-        when :refused then "Error: session #{id[0, 8]} refused the message (#{delivered.error})"
+        when :refused then "Error: session #{id[0, 8]} #{delivered.refusal_text}"
         when :timeout then "Error: the worker of session #{id[0, 8]} did not answer in time, so the message was not sent"
         else "Error: the message to session #{id[0, 8]} could not be written"
         end

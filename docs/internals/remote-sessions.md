@@ -134,7 +134,8 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `parent_continue_refused`, `no_vision`, exit 1) or `BadRequest` (the other `invalid_*`, `missing_fields`, `bad_images`,
   exit 2, the usage-error path). That is for the routes `raise_refusal` reads (create, uploads, …). `POST …/turn` is
   mapped in `Remote#deliver_turn`: any 4xx but 404 and `owned_by_tui` becomes a refused `DeliverResult` with the
-  server's `ack`, which `SendCommand` prints as `<id>  refused: <detail>` (`refused_word`, `REMOTE_REFUSALS`), exit 1.
+  server's `ack`, which `SendCommand` prints as `<id>  <refused|failed>: <detail>` (`DeliverResult#refusal_text`,
+  whose refused codes are `DeliverResult::REMOTE_REFUSALS`), exit 1.
   A per-method mapping covers the rest (`Remote#deliver_turn`, `#note`, `#context_push`, `#context_remove`,
   `#bridge_reply` for answer/dismiss: chi web's 503 `not_live` or 404 `not_found` → nil, i.e. no worker; 504 → the
   Bridge's 408; 501 → its 404). `#context_push` maps 409 to `:not_push` and 410 `context_continued` (a continued

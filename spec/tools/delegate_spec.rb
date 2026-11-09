@@ -886,7 +886,8 @@ RSpec.describe "delegate tools" do
         git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
         child = make(parent_id: parent.id, cwd: repo, prompt: "first task", status: "idle")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
-          Struct.new(:status, :enqueued_id, :error).new(:refused, nil, "not running")
+          Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, code: 409,
+                                                        ack: { "error" => "not_running" })
         )
 
         out = described_class.call("now in ../app-fix", session: child.id, wait: false, peers: worker_peers)
@@ -1097,9 +1098,19 @@ RSpec.describe "delegate tools" do
         expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 1, peers: peers)).to include("status: running")
       end
 
+      it "says why a refused follow-up was refused, in chi send's words" do
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, code: 409,
+                                                        ack: Samagotchi::Delivery::QUEUE_UNAVAILABLE)
+        )
+
+        expect(described_class.call("more", session: child.id, peers: peers))
+          .to eq("Error: session #{child.id[0, 8]} refused: #{Samagotchi::Delivery::QUEUE_UNAVAILABLE["detail"]}")
+      end
+
       it "names a delivery that did not go through" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, ack: { "error" => "bad_images" }))
-        expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: session #{child.id[0, 8]} refused the message (bad_images)")
+        expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: session #{child.id[0, 8]} failed: could not queue it")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, via: :bridge))
         expect(described_class.call("x", session: child.id, peers: peers))
           .to eq("Error: the worker of session #{child.id[0, 8]} did not answer in time, so the message was not sent")
