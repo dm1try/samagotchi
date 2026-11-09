@@ -28,8 +28,9 @@ module Samagotchi
     # The Bridge's error code for it (403).
     REFUSED_ERROR = "command_not_permitted"
 
-    # chi answer's marker: a parent agent's /continue yes and
-    # /parent-answers (Worker#as_parent? holds it to its own rules).
+    # chi answer's marker (a parent agent's /continue yes and
+    # /parent-answers; Worker#as_parent? holds those to its own rules): any
+    # command, with chi send's trust.
     ALLOWED_IDS = [ClientId::CLI_ANSWER].freeze
 
     module_function

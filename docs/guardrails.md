@@ -301,7 +301,8 @@ sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 A message that is a session command (`/model x`, `!cmd`, `!rollback`) runs as the command only when a person sends
 it: a web tab, an attached chi TUI, `chi send` (yours, or one a model runs from `execute`: the trust model above), a
-message with no sender named, and `chi answer`'s `/continue yes` and `/parent-answers`, which a parent agent sends.
+message with no sender named, and `chi answer`'s lines (`cli:answer`: a parent agent's `/continue yes` and
+`/parent-answers`), which may send any session command, with the same trust as `chi send`.
 `!cmd` runs its shell line with no rule or ask (it is yours), so from anyone else it is refused: a delegating parent's
 task or follow-up, a schedule's firing (both modes), a plugin's message, a context or task wake. Chi web's Bridge answers
 `403 command_not_permitted` with one message, an input file's line shows as the command's error, and nothing runs.
