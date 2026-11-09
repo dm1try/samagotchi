@@ -142,7 +142,9 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(200)
       expect(JSON.parse(body)).to eq("outcome" => "created", "root" => target, "dir" => target)
-      expect(File.read(File.join(target, Samagotchi::MemoryPaths::MARKER))).to eq(Samagotchi::ProjectInit::MARKER_TEXT)
+      id = Samagotchi::MemoryPaths.lookup(target).id
+      expect(id).to match(/\Anotes-\h{8}\z/)
+      expect(File.read(File.join(target, Samagotchi::MemoryPaths::MARKER))).to eq("#{Samagotchi::ProjectInit::MARKER_TEXT}id: #{id}\n")
     end
 
     it "does not mark a git folder" do

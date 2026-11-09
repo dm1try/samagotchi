@@ -1030,7 +1030,7 @@ module Samagotchi
 
         # One normal form for the decision, the mkdir and the realpath (a `..` after a symlink would differ).
         dir = File.expand_path(dir)
-        outcome = ProjectInit.call(dir, home: home)
+        outcome = ProjectInit.call(dir, home: home, state_dir: default_state_dir)
         return error_response(422, outcome.reason.to_s, outcome.message) if outcome.kind == :refused
 
         if outcome.kind == :git
