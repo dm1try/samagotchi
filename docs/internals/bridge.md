@@ -235,6 +235,13 @@ The Bridge exposes:
   sends its requests there (`worker_changed`); it gives up after ~12 s, or at once when the session
   was stopped.
 
+  **Adding an event type.** Assign every emitted type a lifetime in `Events::CLASSIFICATION`
+  (`row`, `state`, `transient` or `internal`); keep stream frames and synthetic replay types in
+  `Events::STREAM_FRAMES` and `Events::SYNTHETIC`. `spec/events_drift_spec.rb` checks event coverage
+  and names the live web/TUI handlers; for rows it also checks the reload owner (`TurnAccumulator`
+  or `CardStore`) and TUI join replay. Follow any documented exception there when a row reloads
+  through session messages or a fallback path instead.
+
   The wire chunk (the contract; the engine's own event keeps the provider's `payload` and the raw `content`):
 
   ```
