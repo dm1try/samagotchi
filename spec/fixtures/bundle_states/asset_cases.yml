@@ -21,8 +21,7 @@
 #   fix, fixed, divergent, changed, note   as in memory_cases.yml; asset tags:
 #               new-updated (changed: a file new to the record is Installed),
 #               hook-retired (changed: an install or upgrade removes an old
-#               record's class-file hooks), dry-dropped, dry-trash,
-#               rule-installed, uninstall-unnamed
+#               record's class-file hooks), dry-dropped
 texts:
   v1: "# v1\n"
   v2: "# v2\n"
@@ -44,21 +43,12 @@ cases:
     recorded: v1
     installed: v1
     incoming: v2
-    divergent: rule-installed
-    note: >-
-      rule-installed: an upgrade that replaces a rule lists it under Installed (the dry run: Would install), where the
-      plugin, scripts and hooks read Updated.
   - id: rule_edited_sha
     asset: rule
     state: edited_sha
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: [dry-trash, rule-installed]
-    note: >-
-      dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). rule-installed: an upgrade that replaces a rule lists it under Installed
-      (the dry run: Would install), where the plugin, scripts and hooks read Updated.
     fix:
       - "44 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited file an upgrade replaces, in its own subfolder, and says so"
       - "45 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited hook, rule, plugin and script to the trash, with --force or without"
@@ -68,11 +58,6 @@ cases:
     recorded: ""
     installed: mine
     incoming: v2
-    divergent: [dry-trash, rule-installed]
-    note: >-
-      dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). rule-installed: an upgrade that replaces a rule lists it under Installed
-      (the dry run: Would install), where the plugin, scripts and hooks read Updated.
   - {id: rule_dev_link, asset: rule, state: dev_link, recorded: dev, installed: v2, incoming: v2}
   - id: rule_dropped_pristine
     asset: rule
@@ -80,22 +65,12 @@ cases:
     recorded: v1
     installed: v1
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
   - id: rule_dropped_edited
     asset: rule
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
 
   - id: plugin_new
     asset: plugin
@@ -111,10 +86,6 @@ cases:
     recorded: v1
     installed: v1
     incoming: v1
-    divergent: uninstall-unnamed
-    note: >-
-      chi bundle uninstall of a bundle with no memories and no hooks (the short path) names no Removed: plugin/...,
-      where the long path does
     fix:
       - "587 spec/samagotchi/memory_bundle/plugin_manifest_spec.rb: an upgrade with an identical plugin reports it up to date, not Updated"
   - id: plugin_pristine
@@ -123,66 +94,36 @@ cases:
     recorded: v1
     installed: v1
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_edited_sha
     asset: plugin
     state: edited_sha
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: [dry-trash, uninstall-unnamed]
-    note: >-
-      dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle
-      uninstall takes the short path and names no Removed: plugin/plugin.rb.
   - id: plugin_edited_no_sha
     asset: plugin
     state: edited_no_sha
     recorded: ""
     installed: mine
     incoming: v2
-    divergent: [dry-trash, uninstall-unnamed]
-    note: >-
-      dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle
-      uninstall takes the short path and names no Removed: plugin/plugin.rb.
   - id: plugin_dev_link
     asset: plugin
     state: dev_link
     recorded: dev
     installed: v2
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_dropped_pristine
     asset: plugin
     state: dropped_pristine
     recorded: v1
     installed: v1
     incoming: null
-    divergent: [dry-dropped, uninstall-unnamed]
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook". uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path
-      and names no Removed: plugin/plugin.rb.
   - id: plugin_dropped_edited
     asset: plugin
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: [dry-dropped, uninstall-unnamed]
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook". uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path
-      and names no Removed: plugin/plugin.rb.
 
   - id: script_new
     asset: script
@@ -201,20 +142,13 @@ cases:
     installed: mine
     incoming: v2
     fixed: D2
-    note: >-
-      P3: chi update's plan names the edited script it copies to the trash dry-trash: upgrade copies the edited file
-      to the trash ("Copied to the trash first"); its dry run never says so (chi update's plan does: replaces).
-    divergent: dry-trash
+    note: "P3: chi update's plan names the edited script it copies to the trash."
   - id: script_edited_no_sha
     asset: script
     state: edited_no_sha
     recorded: ""
     installed: mine
     incoming: v2
-    divergent: dry-trash
-    note: >-
-      dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces).
   - {id: script_dev_link, asset: script, state: dev_link, recorded: dev, installed: v2, incoming: v2}
   - id: script_dropped_pristine
     asset: script
@@ -222,22 +156,12 @@ cases:
     recorded: v1
     installed: v1
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
   - id: script_dropped_edited
     asset: script
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
 
   # Class-file hooks are retired: the record's (an older chi's install)
   # stays until an install or upgrade of a source without hooks removes them,
@@ -273,12 +197,10 @@ cases:
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-trash
     changed: hook-retired
     note: >-
       hook-retired: install and upgrade remove the edited hook, copied to the trash first; chi update's plan names it
-      (replaces). dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run
-      never says so (chi update's plan does: replaces).
+      (replaces).
   - id: hook_edited_no_sha
     asset: hook
     state: edited_no_sha
@@ -286,12 +208,10 @@ cases:
     installed: mine
     incoming: null
     fixed: D2
-    divergent: dry-trash
     changed: hook-retired
     note: >-
       P3: chi update's plan names an edited hook installed with no recorded sha. hook-retired: removed, copied to the
-      trash first. dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run
-      never says so (chi update's plan does: replaces).
+      trash first.
   - {id: hook_dev_link, asset: hook, state: dev_link, recorded: dev, installed: v2, incoming: v2, note: "retired: refused (the source ships the hook)"}
   - id: hook_dropped_pristine
     asset: hook
@@ -310,12 +230,10 @@ cases:
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-trash
     changed: hook-retired
     note: >-
       hook-retired: removed, copied to the trash first, by a plain install too (hook-stray-left: it used to stay);
-      the dry run says it would remove it (dry-dropped: it used to say nothing). dry-trash: its dry run never says
-      it would copy it to the trash (chi update's plan does: replaces).
+      the dry run says it would remove it (dry-dropped: it used to say nothing), and would copy it to the trash.
   # The selection retire_hooks and ShippedUpdate#trash_bound share
   # (Trash.edits over hooks/): their plan and upgrade cells agree.
   - id: hook_stray
@@ -362,8 +280,6 @@ cases:
     recorded: ""
     installed: v1
     incoming: null
-    divergent: dry-trash
     changed: hook-retired
     note: >-
-      hook-retired: removed; with no sha recorded it counts as edited, so it is copied to the trash first. dry-trash:
-      its dry run never says so (chi update's plan does: replaces).
+      hook-retired: removed; with no sha recorded it counts as edited, so it is copied to the trash first.

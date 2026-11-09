@@ -180,14 +180,13 @@ module Samagotchi
         %i[missing any] => ASSET_GONE
       }.freeze
 
-      # An upgrade (--force too) over the record: a file it replaces is
-      # updated, except a rule (an upgrade lists a replaced rule as installed:
-      # the corpus's rule-installed).
+      # An upgrade (--force too) over the record: a file it replaces is updated.
       ASSET_UPGRADE = ASSET_INSTALL.merge(
         %i[pristine any] => ASSET_WRITE.with(word: :updated),
         %i[edited any] => ASSET_WRITE.with(word: :updated, save_first: true),
         %i[linked any] => ASSET_WRITE.with(word: :updated),
-        %i[pristine rule] => ASSET_WRITE, %i[edited rule] => ASSET_WRITE.with(save_first: true),
+        %i[pristine rule] => ASSET_WRITE.with(word: :updated),
+        %i[edited rule] => ASSET_WRITE.with(word: :updated, save_first: true),
         %i[linked rule] => ASSET_WRITE
       ).freeze
 

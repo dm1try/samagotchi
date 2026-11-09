@@ -20,7 +20,7 @@ module Samagotchi
     # Installs a bundle into a scoped memories directory.
     #
     # Flow (#run):
-    #   1. Normalize source → directory, read manifest.yml (load_source)
+    #   1. Normalize source → directory, refuse retired hooks, read manifest.yml (load_source)
     #   2. Refuse a bundle whose requires_chi this chi doesn't meet,
     #      unless force (refuse_too_new)
     #   3. Copy .md files to the target scope dir and update index.md
@@ -356,7 +356,7 @@ module Samagotchi
         @bundle_dir = @source_dir = prepared.dir
         @source_owned = prepared.owned
         @source_commit = prepared.commit
-        refuse_hooks
+        Manifest::HooksRetired.refuse_source_files(@bundle_dir)
         @manifest = Manifest.read(dir: @bundle_dir)
         clash = @manifest.session_settings_clash
         raise InstallError, clash if clash
@@ -369,15 +369,6 @@ module Samagotchi
         raise InstallError, e.message if @strict
 
         @warnings << "No manifest found — proceeding without strict manifest validation"
-      end
-
-      # A source that ships class-file hooks (hooks/*.rb, listed or not) is
-      # refused before its manifest is read; its manifest's hooks: is
-      # Manifest.read's refusal (Manifest::HooksRetired either way).
-      # @raise [Manifest::HooksRetired]
-      def refuse_hooks
-        files = Manifest::HooksRetired.files_in(@bundle_dir)
-        raise Manifest::HooksRetired.for_files(files) unless files.empty?
       end
 
       # A bundle whose requires_chi this chi doesn't meet is not installed at
@@ -557,6 +548,7 @@ module Samagotchi
       # cell's text merge runs on temp copies). --force would install every
       # file, unread.
       def preview_memory(file_key, state, action)
+        preview_trash_copy(file_key, state, action)
         return @results[file_key] = FileResult.new(word: :would_install, state: state, action: action) if @force
         return refuse_unreadable(file_key, state.paths[:current]) if action.do == :refuse
 
@@ -564,7 +556,18 @@ module Samagotchi
         action = decision.action if decision
         return note_conflict(file_key, decision.outcome, state) if action.behind?
 
+        preview_trash_copy(file_key, state, action)
         @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
+      end
+
+      def preview_trash_copy(file_key, state, action)
+        return unless action.save_first
+
+        current = state.paths[:current]
+        incoming = state.paths[:incoming]
+        return unless File.file?(current) && !FileUtils.identical?(incoming, current)
+
+        @warnings << "Would copy to the trash first: #{file_key}"
       end
 
       # Strict mode: a memory that takes the bundle's text (Action#takes_source?:

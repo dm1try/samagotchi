@@ -141,6 +141,30 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(out.string).to end_with("everything is up to date\n")
   end
 
+  it "names a memory file a shipped bundle adds in the dry-run row" do
+    root = File.join(tmp, "new", "lib", "samagotchi", "bundles")
+    old_source = File.join(tmp, "old", "lib", "samagotchi", "bundles", "demo")
+    write_bundle = lambda do |dir, version, files|
+      FileUtils.mkdir_p(dir)
+      files.each { |name, text| File.write(File.join(dir, name), text) }
+      checksums = files.to_h { |name, text| [name, "sha256:#{Digest::SHA256.hexdigest(text)}"] }
+      File.write(File.join(dir, "manifest.yml"),
+                 YAML.dump("name" => "demo", "version" => version, "scope" => "system", "files" => checksums))
+    end
+    write_bundle.call(old_source, "1.0.0", { "old.md" => "# Old\n" })
+    write_bundle.call(File.join(root, "demo"), "2.0.0", { "old.md" => "# Old\n", "new.md" => "# Added\n" })
+    Samagotchi::MemoryBundle::Installer.new(source: old_source, name: "demo", scope: "system", strict: true).run
+
+    command = described_class.new(["--dry-run", "--no-gem"], stdout: out, stderr: err, gem_spec: gem_spec,
+                                  platform: ->(register:) { helper }, supported: supported, state_dir: state_dir,
+                                  web: web, gem_update: gem_update, exec: ->(argv) { execs << argv }, bundler: bundler,
+                                  shipped_dir: root, home: chi_home)
+
+    expect(command.run).to eq(0)
+    expect(line("demo")).to match(/\Ademo\s+1\.0\.0\s+2\.0\.0\s+would update \(\+ new\.md\)\z/)
+    expect(File.exist?(File.join(system_dir, "new.md"))).to be(false)
+  end
+
   it "installs a bundle new to an installed profile and says so on its row" do
     root = File.join(tmp, "new", "lib", "samagotchi", "bundles")
     FileUtils.mkdir_p(root)

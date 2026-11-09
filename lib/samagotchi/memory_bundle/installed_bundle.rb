@@ -26,7 +26,7 @@ module Samagotchi
     #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?);
     #               why, missed, missed_places: FileStanding::Behind's, nil on an older mark;
     #               merged_version, merged_at, merged_trash: a merge no report has shown (Provenance#note_merged)
-    #   hooks       basename => BundleHook
+    #   hooks       basename => BundleHook (sha256; other legacy fields ignored)
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
     #   plugin      PluginRef, nil without one

@@ -664,7 +664,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
       up.run
       expect(up.results["guardrails/a.yml"].word).to eq(:up_to_date)
-      expect(up.results["guardrails/b.yml"].word).to eq(:installed)
+      expect(up.results["guardrails/b.yml"].word).to eq(:updated)
       expect(File.read(File.join(bundles_dir, "test-bundle", "guardrails", "b.yml"))).to eq("rules: [] # v2\n")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read[:guardrails].keys.map(&:to_s))
         .to contain_exactly("a.yml", "b.yml")
@@ -1147,6 +1147,11 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       [{}, { strict: false }, { dry_run: true }, { force: true }].each do |opts|
         expect { run(src, **opts) }.to raise_error(described_class::InstallError, "hooks/g.rb: #{words}"), opts.inspect
       end
+      manifest_path = File.join(src, "manifest.yml")
+      manifest = File.read(manifest_path)
+      File.write(manifest_path, "name: [x\n")
+      expect { run(src) }.to raise_error(described_class::InstallError, "hooks/g.rb: #{words}")
+      File.write(manifest_path, manifest)
       FileUtils.rm_rf(File.join(src, "hooks"))
       expect { run(src, strict: false) }.to raise_error(described_class::InstallError, "hooks: #{words}")
       expect(Dir.exist?(File.join(bundles_dir, "hb"))).to be(false)
@@ -1287,6 +1292,29 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(dry.results.slice(*assets).transform_values(&:word)).to eq(assets.to_h { |asset| [asset, :would_install] })
       expect(dry.results.slice(*assets).values.map { |result| result.state.state }).to eq(%i[new new new])
       expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
+    end
+
+    it "names an asset the new version drops in install summaries and dry runs" do
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
+      FileUtils.rm_f(File.join(v2, "guardrails", "r.yml"))
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+      real = run_assets(v2, upgrade: true)
+
+      expect(dry.summary).to include("Would remove (no longer in the bundle): guardrails/r.yml")
+      expect(real.summary).to include("Removed (no longer in the bundle): guardrails/r.yml")
+    end
+
+    it "names edited assets a dry run would copy to the trash without creating it" do
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      File.write(File.join(bundles_dir, "assets", "plugin", "plugin.rb"), "# mine\n")
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+
+      expect(dry.summary).to include("Would copy to the trash first: plugin/plugin.rb")
+      expect(dry.trash_dir).to be_nil
     end
   end
 

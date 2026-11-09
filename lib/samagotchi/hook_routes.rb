@@ -24,7 +24,6 @@ module Samagotchi
     # (a chi.on handler :log, or :deny for an on_error: :fail_closed one).
     HOOK_FAILURE_EFFECTS = {
       log: "it's skipped, and only the log has its next failures",
-      skip: "it's skipped, and its next failures are silent",
       deny: "it denies every tool call it guards, and its next failures are in each denial's reason"
     }.freeze
 

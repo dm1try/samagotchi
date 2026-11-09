@@ -117,7 +117,10 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
       command = { "install" => :install, "upgrade" => :upgrade, "upgrade_dry" => :upgrade, "uninstall" => :uninstall }.fetch(column)
       action = asset && described_class.for_asset(command, asset)
       there = !kase.installed.nil? || kase.dev?
-      return { "do" => there ? "kept" : "none", "save_first" => false, "word" => action && dry_words[action.word] } if column == "upgrade_dry"
+      if column == "upgrade_dry"
+        word = action&.do == :remove ? "Would remove (no longer in the bundle)" : action && dry_words[action.word]
+        return { "do" => there ? "kept" : "none", "save_first" => false, "word" => word }
+      end
 
       did = case action&.do
             when :write_incoming then asset.state == :unchanged ? "kept" : "wrote_incoming"
@@ -125,7 +128,14 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
             else "none"
             end
       did += " (link)" if kase.dev? && action&.do == :write_incoming
-      { "do" => did, "save_first" => action&.save_first || false, "word" => column == "uninstall" ? nil : action && asset_words[action.word] }
+      word = if column == "uninstall"
+               "Removed" if kase.asset == "plugin" && action&.do == :remove
+             elsif action&.do == :remove
+               "Removed (no longer in the bundle)"
+             else
+               action && asset_words[action.word]
+             end
+      { "do" => did, "save_first" => action&.save_first || false, "word" => word }
     end
 
     it "predicts every install, upgrade, upgrade --dry-run and uninstall cell" do
@@ -151,6 +161,11 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
         expect(states - described_class::ASSET_TABLES.fetch(command).keys.map(&:first)).to eq([]), command.to_s
       end
       expect(%i[dropped_pristine dropped_edited linked missing] - described_class::ASSET_UNINSTALL.keys.map(&:first)).to eq([])
+    end
+
+    it "calls replaced rules updated during an upgrade" do
+      expect(described_class::ASSET_UPGRADE.fetch(%i[pristine rule]).word).to eq(:updated)
+      expect(described_class::ASSET_UPGRADE.fetch(%i[edited rule]).word).to eq(:updated)
     end
   end
 end

@@ -245,7 +245,7 @@ module BundleStateCorpus
       return "not installed" if out.string.include?("not installed.")
 
       # A hook's, rule's or script's line under its heading ("Hooks (N): not
-      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [ok]".
+      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [present]".
       prefix = @case.asset == "plugin" ? "  Plugin: " : "    #{File.basename(@case.source_rel)} ["
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
       return "-" unless line
@@ -280,7 +280,8 @@ module BundleStateCorpus
       label, list = line.split(": ", 2)
       return false unless list && !label.start_with?("Copied to the trash first")
 
-      list.sub(/ \(#{Regexp.escape(@sandbox.root)}.*\)\z/, "").split(", ").include?(name)
+      list.sub(/ \(moved to #{Regexp.escape(@sandbox.root)}.*\)\z/, "")
+          .sub(/ \(#{Regexp.escape(@sandbox.root)}.*\)\z/, "").split(", ").include?(name)
     end
 
     def run_uninstall

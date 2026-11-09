@@ -223,6 +223,27 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
     end
 
+    it "names the plugin removed by an uninstall with no memories or hooks" do
+      expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"))[2]).to eq(0)
+
+      expect(chi("uninstall", "sample-plugin"))
+        .to eq(["Uninstalled bundle 'sample-plugin'\nRemoved: plugin/plugin.rb\n", "", 0])
+    end
+
+    it "labels retired hook files present or missing" do
+      hooks = { "present.rb" => "class Present; end\n", "missing.rb" => "class Missing; end\n" }
+      old_hooks!("legacy-hooks", hooks)
+      FileUtils.rm_f(File.join(memories, ".bundles", "legacy-hooks", "hooks", "missing.rb"))
+
+      out, err, code = chi("status", "legacy-hooks")
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include(
+        "  Hooks (2): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}\n    " \
+        "missing.rb [missing]\n    present.rb [present]\n"
+      )
+    end
+
     # A plain install over an installed bundle rewrites its rules, plugin,
     # scripts and record (it is not a skip), and leaves a memory the
     # user wrote; the summary says both.
@@ -393,6 +414,19 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("upgrade", broken)).to eq(["", "Upgrade failed: #{error}", 1])
       expect(Dir.exist?(File.join(memories, ".bundles"))).to be(false)
       expect(File.read(File.join(broken, "manifest.yml"))).to eq("name: [x\n")
+    end
+
+    it "refuses hooks before parsing the manifest, with the Installer's message" do
+      source = File.join(@root, "retired-hooks")
+      FileUtils.mkdir_p(File.join(source, "hooks"))
+      File.write(File.join(source, "hooks", "g.rb"), "class G; end\n")
+      File.write(File.join(source, "manifest.yml"), "name: [x\n")
+      hook_error = "hooks/g.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
+
+      expect(chi("install", source)).to eq(["", "Install failed: #{hook_error}\n", 1])
+      expect do
+        Samagotchi::MemoryBundle::Installer.new(source: source, name: "retired-hooks", scope: "system").run
+      end.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, hook_error)
     end
 
     # A bundle's name is its manifest's name: for a git URL too (it was the
@@ -1103,7 +1137,7 @@ Removed: hooks/guardrails.rb\n\z})
           Manifest: [kept]
           trust_level: reviewed
           Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}
-            guardrails.rb [ok]
+            guardrails.rb [present]
       TEXT
     end
 

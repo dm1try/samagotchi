@@ -24,7 +24,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
         name: "full", version: "1.2.0", scope: "project", source: "/src/full", installed_at: "2026-10-10T10:00:00+02:00",
         source_commit: "abc123", error: nil,
         files: { "a.md" => { checksum: "aa", conflict: true, description: "A" } },
-        hooks: { "g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call", on_error: "fail_closed", priority: 10) },
+        hooks: { "g.rb" => hook.new(sha256: "sha256:hh") },
         guardrails: { "r.yml" => "sha256:rr" }, scripts: { "s.rb" => "sha256:ss" },
         plugin: Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb", sha256: "sha256:pp"), includes: %w[a b],
         mirror: { "trust_level" => "reviewed", "requires_chi" => ">= 0.50", "needs" => [{ "command" => "gh" }],
@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
     it "reads symbol keys too (a record read with symbolize_names)" do
       bundle = described_class.parse("s", { version: "1", files: { "x.md": { checksum: "c" } }, hooks: { "k.rb": { event: "e" } } })
       expect(bundle.files).to eq("x.md" => { checksum: "c" })
-      expect(bundle.hooks).to eq("k.rb" => hook.new(event: "e"))
+      expect(bundle.hooks).to eq("k.rb" => hook.new)
     end
 
     it "reads a minimal record: empty mappings, nil for the rest, system scope, experimental" do
@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
       bundle = described_class.parse("old", raw)
       expect(bundle).to have_attributes(version: "3", files: { "old.md" => {} }, guardrails: { "r.yml" => "" },
                                         plugin: nil, includes: nil, mirror: { "needs" => "gh", "context_providers" => {} })
-      expect(bundle.hooks).to eq("h.rb" => hook.new(event: "before_turn"), "odd.rb" => hook.new)
+      expect(bundle.hooks).to eq("h.rb" => hook.new, "odd.rb" => hook.new)
       expect(bundle.effective_scope).to eq("system")
     end
 

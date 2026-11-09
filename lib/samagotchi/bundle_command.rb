@@ -266,6 +266,7 @@ module Samagotchi
     # @return [Array(MemoryBundle::PreparedSource, String), nil]
     def prepare_or_fail(expanded_source, word)
       prepared = Samagotchi::MemoryBundle::PreparedSource.prepare(expanded_source)
+      Samagotchi::MemoryBundle::Manifest::HooksRetired.refuse_source_files(prepared.dir)
       named = [prepared, Samagotchi::MemoryBundle::Manifest.read(dir: prepared.dir).name]
     rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError,
            Samagotchi::MemoryBundle::Manifest::ValidationError => e

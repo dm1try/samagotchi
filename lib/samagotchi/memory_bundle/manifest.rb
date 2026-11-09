@@ -83,6 +83,12 @@ module Samagotchi
 
         # The source's hooks/*.rb, relative and sorted ([] for none).
         def self.files_in(dir) = Dir.glob(File.join(dir, "hooks", "*.rb")).map { |f| "hooks/#{File.basename(f)}" }.sort
+
+        # Refuse a source's class-file hooks before parsing its manifest.
+        def self.refuse_source_files(dir)
+          files = files_in(dir)
+          raise for_files(files) unless files.empty?
+        end
       end
 
       # A plugin file is a plain .rb name in the bundle's top directory.

@@ -11,10 +11,10 @@ module BundleStateCorpus
     # each is at least one case, its start lifted from the example that fixed it
     # (424, a hook's, went with class-file hooks).
     B_FIXES = [705, 703, 704, 633, 634, 587, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
-    DIVERGENT = %w[U4 dry-trash].freeze
+    DIVERGENT = %w[U4].freeze
     # Divergent tags a later commit changed the cells of (the plan's P1.9 …).
     CHANGED = %w[D4 U4 U7 dry-noop edited-rule restore-unchecked dry-source merge-checked plan-checksum].freeze
-    ASSET_DIVERGENT = %w[dry-dropped dry-trash rule-installed uninstall-unnamed].freeze
+    ASSET_DIVERGENT = [].freeze
     # Asset tags a later commit changed the cells of.
     ASSET_CHANGED = %w[new-updated hook-retired].freeze
     # What a cell's do says when the file's bytes changed or went.

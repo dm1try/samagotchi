@@ -115,7 +115,11 @@ module Samagotchi
         files.each do |file|
           @results["hooks/#{file}"] = @dry_run ? retired.with(word: :would_remove) : retired
         end
-        return if @dry_run
+        if @dry_run
+          edits = Trash.edits(dir, "hooks", @existing&.hooks&.transform_values(&:sha256))
+          @warnings << "Would copy to the trash first: #{edits.join(", ")}" unless edits.empty?
+          return
+        end
 
         @trash.copy_edits(dir, "hooks", @existing&.hooks&.transform_values(&:sha256))
         FileUtils.rm_rf(dir)
@@ -162,9 +166,9 @@ module Samagotchi
       # (FileActions' ASSET_INSTALL, or ASSET_UPGRADE over an installed
       # bundle), one result per incoming file (a dry run's DRY_WORDS of it,
       # and nothing written), an edit copied to the trash first (save_first),
-      # then the folder replaced. A file the source dropped goes without a
-      # word. A plugin or script whose sha256 differs from the declared one
-      # warns (not a dev link: it is the source).
+      #   then the folder replaced. A removed file is named in the summary.
+      #   A plugin or script whose sha256 differs from the declared one warns
+      #   (not a dev link: it is the source).
       # @param incoming [Hash{String => String}] name => the source file, in
       #   the order the results list them
       # @return [Hash{String => String}] name => installed path ({} on a dry run)
@@ -173,21 +177,36 @@ module Samagotchi
         command = @upgrade && @provenance.installed? ? :upgrade : :install
         states = AssetState.in(dir, kind_of_file: kind_of_file, recorded: recorded, incoming: incoming)
                            .to_h { |asset| [asset.name, [asset, FileActions.for_asset(command, asset)]] }
+        if @dry_run
+          copies = states.filter_map { |_, (asset, action)| asset.label if action&.save_first }
+          @warnings << "Would copy to the trash first: #{copies.join(", ")}" unless copies.empty?
+        end
         results = incoming.keys.to_h do |name|
           asset, action = states.fetch(name)
           [name, Installer::FileResult.new(word: @dry_run ? DRY_WORDS.fetch(action.word) : action.word, state: asset, action: action)]
         end
+        dropped = states.filter_map do |name, (asset, action)|
+          next unless action&.do == :remove
+
+          [result_key(kind_of_file, name),
+           Installer::FileResult.new(word: @dry_run ? :would_remove : :removed, state: asset, action: action,
+                                     note: "no longer in the bundle")]
+        end
         if @dry_run
           results.each { |name, result| @results[result_key(kind_of_file, name)] = result }
+          dropped.each { |key, result| @results[key] = result }
           return {}
         end
 
         states.each_value { |asset, action| @trash.copy(asset.path, as: asset.label) if action.save_first }
         FileUtils.rm_rf(dir)
-        return {} if incoming.empty?
+        if incoming.empty?
+          dropped.each { |key, result| @results[key] = result }
+          return {}
+        end
 
         FileUtils.mkdir_p(dir)
-        incoming.to_h do |name, src|
+        installed = incoming.to_h do |name, src|
           dest = File.join(dir, name)
           place(src, dest)
           @results[result_key(kind_of_file, name)] = results[name]
@@ -198,6 +217,8 @@ module Samagotchi
           end
           [name, dest]
         end
+        dropped.each { |key, result| @results[key] = result }
+        installed
       end
 
       # The kind's folder and the record's shas for it.
