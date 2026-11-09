@@ -185,7 +185,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(Process).to have_received(:spawn)
       args_str = spawned_args.map(&:to_s).join(" ")
-      expect(args_str).to include("require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop")
+      expect(args_str).to include("require 'samagotchi/worker_boot'; Samagotchi::WorkerBoot.run_session_loop")
       expect(spawned_args).to include(RbConfig.ruby)
       expect(spawned_args).to include("-I")
 
@@ -195,7 +195,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     describe "the worker command" do
-      let(:boot) { "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('abc', state_dir: \"/s\")" }
+      let(:boot) { "require 'samagotchi/worker_boot'; Samagotchi::WorkerBoot.run_session_loop('abc', state_dir: \"/s\")" }
 
       it "is a plain -I lib from a source checkout (this suite runs from one, under Bundler's gemspec)" do
         expect(Samagotchi::InstalledGem.spec).to be_nil
@@ -229,9 +229,9 @@ RSpec.describe Samagotchi::SessionManager do
           expect(command.size).to eq(3)
           expect(command[2]).to start_with("#{home.prelude}; begin; begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
                                            "ENV['SAMAGOTCHI_BOOT_FALLBACK'] = e.message; gem 'samagotchi', '= 9.9.9'; end; " \
-                                           "require 'samagotchi/session_manager'; rescue ScriptError, StandardError => e; ")
+                                           "require 'samagotchi/worker_boot'; rescue ScriptError, StandardError => e; ")
           expect(command[2]).to include("sid=abc boot_failed")
-          expect(command[2]).to end_with("exit 1; end; Samagotchi::SessionManager.run_session_loop('abc', state_dir: \"/s\")")
+          expect(command[2]).to end_with("exit 1; end; Samagotchi::WorkerBoot.run_session_loop('abc', state_dir: \"/s\")")
           expect(RubyVM::InstructionSequence.compile(command[2])).to be_a(RubyVM::InstructionSequence)
         end
 

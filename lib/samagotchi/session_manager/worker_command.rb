@@ -3,8 +3,8 @@
 module Samagotchi
   class SessionManager
     # CROSS-VERSION CONTRACT: this boot string, the entry it names
-    # (run_session_loop(id, state_dir:), the forwarder below), the env keys
-    # spawn_options sets and the input/ file
+    # (WorkerBoot.run_session_loop(id, state_dir:)), the legacy forwarder
+    # below, the env keys spawn_options sets and the input/ file
     # format are read by a NEWER chi than the one writing them. Change them
     # only additively (spec/worker_contract_spec.rb).
     BOOT_FALLBACK_ENV = "SAMAGOTCHI_BOOT_FALLBACK"
@@ -28,9 +28,9 @@ module Samagotchi
 
     # WorkerCommand: the worker's command line and env (CROSS-VERSION
     # CONTRACT: spec/worker_contract_spec.rb); the worker process itself is
-    # WorkerBoot (worker_boot.rb), which only the forwarder (run_session_loop)
-    # loads, as a worker boots. Calls no other part. Meant to be loaded
-    # through samagotchi/session_manager.
+    # WorkerBoot (worker_boot.rb). The boot command loads it directly; the
+    # forwarder (run_session_loop) remains for older boot strings. Calls no
+    # other part. Meant to be loaded through samagotchi/session_manager.
     module WorkerCommandPart
       # Build the opts hash passed to Process.spawn for a forked worker. The
       # child inherits this process's ENV and reads config.yml itself (as it
@@ -94,13 +94,13 @@ module Samagotchi
         opts
       end
 
-      # The worker's entry, the one every boot string names (CROSS-VERSION
-      # CONTRACT: spec/worker_contract_spec.rb): it only forwards to
+      # The worker's legacy entry for boot strings written by older chi
+      # (CROSS-VERSION CONTRACT: spec/worker_contract_spec.rb): it forwards to
       # WorkerBoot.run_session_loop, which runs the worker process. Looked up
       # by name on purpose: a constant reference here would put SessionManager
       # back into one cycle with Worker, Engine and Bridge (the class map).
-      # REMOVE one release after the boot string switches (see
-      # ~/.claude/plans/arch-worker-boot.md).
+      # REMOVE in the next release: boot strings name WorkerBoot since this
+      # one (see ~/.claude/plans/arch-worker-boot.md).
       def run_session_loop(session_id, state_dir: nil, **)
         require_relative "../worker_boot"
         Samagotchi.const_get(:WorkerBoot).run_session_loop(session_id, state_dir: state_dir, **)
@@ -118,8 +118,8 @@ module Samagotchi
       # there) keeps the plain -I lib: a worktree's bin/chi spawns its own code.
       def worker_command(session_id, state_dir:, gem_spec: InstalledGem.spec,
                          home: ChiHome.current(gem_spec: gem_spec))
-        boot = "require 'samagotchi/session_manager'; " \
-               "Samagotchi::SessionManager.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})"
+        boot = "require 'samagotchi/worker_boot'; " \
+               "Samagotchi::WorkerBoot.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})"
         return [RbConfig.ruby, "-I", File.expand_path("../..", __dir__), "-e", boot] unless gem_spec
         return home_worker_command(session_id, state_dir: state_dir, gem_spec: gem_spec, home: home) if home
 
@@ -146,9 +146,9 @@ module Samagotchi
                    else
                      "gem 'samagotchi', '>= 0.a'"
                    end
-        home.boot_argv(run: "begin; #{activate}; require 'samagotchi/session_manager'; " \
+        home.boot_argv(run: "begin; #{activate}; require 'samagotchi/worker_boot'; " \
                              "#{HOME_BOOT_FAILED.sub("SID", session_id)}; end; " \
-                             "Samagotchi::SessionManager.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})")
+                             "Samagotchi::WorkerBoot.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})")
       end
     end
 
