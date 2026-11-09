@@ -12,8 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - Core guardrail checks judge what a call's `targets:` say it acts on, not its tool's name: a plugin tool whose
   targets declare `paths:` it writes (`writes: true`) is checked like `write` and `edit` against the protected
-  paths and a delegate child's boundary, and one whose targets declare a `command:` like `execute` against the
-  child's boundary.
+  paths and a delegate child's boundary. A plugin tool whose targets declare a `command:` a delegate child's
+  boundary checks for what chi can read for sure only: git that changes what every checkout shares, and a `cwd:`
+  outside the child's folder.
 
 ### Fixed
 

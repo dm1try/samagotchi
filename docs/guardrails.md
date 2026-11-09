@@ -314,7 +314,9 @@ as before ([their review boundary](#a-participants-review-boundary)). The rule i
 
 ## Protected paths
 
-Built in, for `write`, `edit` and `memory_write` (symlinks resolved; see
+Built in, for a call whose [targets](plugins.md#guardrails) say it writes
+its paths: `write`, `edit`, `memory_write`, and a plugin tool's `targets:`
+with `writes: true` (symlinks resolved; see
 [How paths resolve](#how-paths-resolve)):
 
 - deny: the approval store's dir, installed bundles (`memories/.bundles/`),
@@ -334,7 +336,9 @@ bundle: a child asks before it changes anything outside its folder, the work
 tree top of the folder it was started in (a worktree from `delegate cwd:`,
 else the parent's checkout). Rule `child-boundary`, source `core`; it asks when
 
-- `write` or `edit` names a path outside it (tmp dirs and memory files don't count);
+- a call whose [targets](plugins.md#guardrails) say it writes its paths —
+  `write`, `edit`, and a plugin tool's `targets:` with `writes: true` —
+  names a path outside it (tmp dirs and memory files don't count);
 - `execute` or `task_create` runs mutating git in another dir (`git -C`, `cd`,
   `GIT_DIR`: what `git: outside_repo` matches), or a command that isn't
   read-only starts outside it (its `cwd:`) or names a path in the repository's
@@ -344,7 +348,12 @@ else the parent's checkout). Rule `child-boundary`, source `core`; it asks when
   even from its own worktree: a `git config` write (not `--get`, `--list`,
   `--worktree`), `update-ref`, `worktree add|remove|move|prune`, `stash
   drop|clear|pop`, creating or deleting a tag, and deleting, forcing or
-  overwriting a branch other than its own.
+  overwriting a branch other than its own;
+- any call whose `targets:` carry a `command:` (a plugin tool's) is checked
+  for git that changes what every checkout shares, and for a `cwd:` outside
+  the child's folder. Its command's text may not be shell, so the reads a
+  shell call gets (its `git -C`/`cd` dirs, its redirects, its read-only test)
+  are left out.
 
 Read-only commands (`git -C ../app log`, `cat ../app/x`) and paths elsewhere
 (`/usr/bin`, `~/.gem`) never ask, nor does a read-only command that writes only
