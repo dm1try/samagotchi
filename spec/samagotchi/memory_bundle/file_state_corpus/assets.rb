@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "samagotchi/memory_bundle/asset_state"
+
 module BundleStateCorpus
   ASSET_COLUMNS = %w[install upgrade upgrade_dry uninstall plan status].freeze
   ASSET_STATES = %w[new unchanged pristine edited_sha edited_no_sha dev_link dropped_pristine dropped_edited].freeze
@@ -305,5 +307,37 @@ module BundleStateCorpus
     end
 
     def run_status = {}
+  end
+end
+
+module BundleStateCorpus
+  # An asset case's AssetState on its own starting tree (no command run):
+  # its file among AssetState.in of its folder, against the case's source or
+  # (source: false, as uninstall and status read it) none. asset_state_spec
+  # and file_actions_spec read it.
+  module AssetStates
+    KIND_OF_FILE = { "rule" => :rule, "plugin" => :plugin, "script" => :script }.freeze
+
+    module_function
+
+    # @return [Samagotchi::MemoryBundle::AssetState, nil] nil: no file of that name
+    def state(sandbox, kase, shape, source: true)
+      run = sandbox.run_copy(kase, shape, "install")
+      BundleStateCorpus.at_home(run) do
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: NAME)
+        record = provenance.record
+        kind = KIND_OF_FILE.fetch(kase.asset)
+        dir, recorded = case kind
+                        when :rule then [provenance.guardrails_dir, record.guardrails]
+                        when :plugin then [provenance.plugin_dir, record.plugin_shas]
+                        else [provenance.scripts_dir, record.scripts]
+                        end
+        name = File.basename(kase.label)
+        src = File.join(sandbox.source(kase), kase.source_rel)
+        incoming = source && File.file?(src) ? { name => src } : {}
+        Samagotchi::MemoryBundle::AssetState.in(dir, kind_of_file: kind, recorded: recorded, incoming: incoming)
+                                            .find { |asset| asset.name == name }
+      end
+    end
   end
 end
