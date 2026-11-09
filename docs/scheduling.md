@@ -42,8 +42,8 @@ and the web label it as such rather than as something you typed. For the same re
 schedule's prompt is never a session command: a `/word` prompt reaches the model as
 text, and one that starts with `!` is refused by `chi schedule add` and `schedule_task`
 ([guardrails.md, Who may run a session command](guardrails.md#who-may-run-a-session-command)).
-An entry stored with one before that fails when it fires (toward its `max_failures`):
-a chain one starts no link, a same one is refused by the session's Bridge. A chi web
+An entry stored with one before that fails when it fires (toward its `max_failures`),
+before anything is started or delivered. A chi web
 (or cron tick) still running an older chi starts chain links without the origin, so
 restart it after updating. Like `register_reminder`, the schedule tools are owner-voiced:
 a participant's review or pair turn is denied them ([guardrails.md](guardrails.md)).

@@ -30,7 +30,7 @@ and commands may change between minor versions. How releases are made:
   still running the older chi starts chain links whose first message runs as yours.
 - `delegate`, `schedule_task` and `chi schedule add` refuse a task or prompt that starts with `!`, saying why, so the
   model can write it as an instruction. A schedule stored with one before this fails when it fires (counted toward
-  its `max_failures`; a chain one starts no new link).
+  its `max_failures`; nothing is started or delivered).
 - A command you allow "for this session" is allowed again only in the same worktree or folder, with the same `env:`
   (kept as a digest); the same text run in another checkout asks again. Session approvals stored before this ask one
   more time.

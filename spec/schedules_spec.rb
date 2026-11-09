@@ -399,6 +399,26 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # Its Bridge would refuse it, but a delivery that falls back to the input
+  # file is accepted: it fails before any delivery instead.
+  it "fails a stored same-mode entry whose prompt is a shell line, delivering nothing" do
+    Dir.mktmpdir("schedules-same-shell") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "touch x", recurrence: every("1m"), mode: "same")
+      file = File.join(root, "schedules.json")
+      File.write(file, File.read(file).sub('"prompt": "touch x"', '"prompt": "!touch x"'))
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+
+      fired = schedules.tick(now: Time.now + 60).outcomes.first
+
+      expect(fired).to have_attributes(status: "failed", detail: Samagotchi::CommandIntake::REFUSED)
+      expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, head: anchor)
+    end
+  end
+
   it "fires one entry per chain per tick, and retries the other at the next one" do
     Dir.mktmpdir("schedules-chain-once") do |root|
       dir = File.join(root, "sessions")

@@ -875,6 +875,11 @@ module Samagotchi
       # listing and this moment archives the target it just resolved to.
       dir = Session.session_dir(target, state_dir: @state_dir)
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "archived", entry: entry) if ArchiveStore.archived?(dir)
+      # One stored before #add refused it: the Bridge would refuse it, but a
+      # delivery that falls back to the input file is accepted.
+      if CommandIntake.shell_line?(entry.prompt)
+        return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: CommandIntake::REFUSED, entry: entry)
+      end
 
       result = SessionManager.deliver_turn(target, prompt: entry.prompt,
                                           client_id: ClientId.schedule(entry.id),
