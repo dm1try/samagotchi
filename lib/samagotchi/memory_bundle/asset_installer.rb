@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "asset_state"
+require_relative "file_actions"
 require_relative "file_digest"
 require_relative "manifest"
 require_relative "provenance"
@@ -20,8 +22,11 @@ module Samagotchi
     # warnings, and #run returns what the record (Provenance#write) keeps.
     # A dev install (+dev+, `chi bundle install --dev`) links each file to
     # the source instead of copying it, and warns of no checksum mismatch.
-    # An edited file it replaces or removes is copied to the trash first,
-    # under its subfolder (Trash#copy_edits); a link never is.
+    # Each folder is one loop over its files' AssetStates (#install_set):
+    # FileActions' asset tables say what each gets, the dry run reading the
+    # same row. An edited file it replaces or removes is copied to the trash
+    # first, under its subfolder (AssetState#edited?, Trash.edit?'s rule); a
+    # link never is.
     class AssetInstaller
       # What was installed: the paths Provenance#write records (each
       # empty / nil on a dry run).
@@ -31,6 +36,10 @@ module Samagotchi
 
       # The retire's summary words (Installer#summary): why the hooks went.
       RETIRED = "chi no longer loads class-file bundle hooks"
+
+      # A dry run's word for a real run's (Installer#summary): nothing would
+      # be written to a file already up to date.
+      DRY_WORDS = { installed: :would_install, updated: :would_update, up_to_date: :up_to_date }.freeze
 
       # @param source_dir [String] the normalized bundle source
       # @param manifest [Manifest, nil] nil for a non-strict install without one
@@ -65,9 +74,9 @@ module Samagotchi
       def run
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
-        guardrail_files = install_guardrails(incoming_rules)
-        plugin_file = install_plugin
-        script_files = install_scripts
+        guardrail_files = install_set(:rule, rules_incoming(incoming_rules))
+        plugin_file = install_set(:plugin, plugin_incoming).values.first
+        script_files = install_set(:script, scripts_incoming)
         # After the plugin and scripts, which raise for a file the manifest
         # names and the bundle lacks: a refused install leaves hooks/ as it was.
         retire_hooks
@@ -95,8 +104,8 @@ module Samagotchi
       # load): every file in it goes, an edited one (or one the record
       # doesn't know) copied to the trash first, a dev link never (it points
       # at the source, which stays). Each is a :removed result (a dry run's
-      # :would_remove, through #planned) with the RETIRED note; an empty
-      # hooks/ dir goes without a word. The record keeps no hooks
+      # :would_remove) with the RETIRED note; an empty hooks/ dir goes
+      # without a word. The record keeps no hooks
       # (Provenance#write).
       def retire_hooks
         dir = @provenance.hooks_dir
@@ -104,7 +113,7 @@ module Samagotchi
 
         files = File.symlink?(dir) ? [] : Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).sort.reject { |f| File.directory?(File.join(dir, f)) }
         files.each do |file|
-          @results["hooks/#{file}"] = @dry_run ? planned(retired) : retired
+          @results["hooks/#{file}"] = @dry_run ? retired.with(word: :would_remove) : retired
         end
         return if @dry_run
 
@@ -114,44 +123,15 @@ module Samagotchi
 
       def retired = Installer::FileResult.new(word: :removed, note: RETIRED)
 
-      # The bundle's guardrails/*.yml into <bundle_dir>/guardrails/: the
-      # set replaces what an earlier version installed. Same bytes as
-      # installed are reported up to date, not "Installed".
-      # @return [Hash{String => String}] basename => installed path ({} on a dry run)
-      def install_guardrails(incoming_rules)
-        target = @provenance.guardrails_dir
-        results = incoming_rules.to_h { |src| [src, result_for(src, File.join(target, File.basename(src)), updated: false)] }
-        if @dry_run
-          results.each { |src, result| @results["guardrails/#{File.basename(src)}"] = planned(result) }
-          return {}
-        end
+      # The bundle's guardrails/*.yml, by basename.
+      def rules_incoming(incoming_rules) = incoming_rules.to_h { |src| [File.basename(src), src] }
 
-        @trash.copy_edits(target, "guardrails", @existing&.guardrails, incoming_rules.to_h { |src| [File.basename(src), src] })
-        FileUtils.rm_rf(target)
-        return {} if incoming_rules.empty?
-
-        FileUtils.mkdir_p(target)
-        incoming_rules.to_h do |src|
-          dest = File.join(target, File.basename(src))
-          place(src, dest)
-          @results["guardrails/#{File.basename(src)}"] = results[src]
-          [File.basename(src), dest]
-        end
-      end
-
-      # Copy the manifest's plugin file into the bundle's plugin/ dir,
-      # warning when its sha256 differs from the declared one or this chi
-      # doesn't meet requires_chi (the Engine then won't load it).
-      # @return [String, nil] the installed file (nil: none, or a dry run)
-      def install_plugin
+      # The manifest's plugin file, warning when this chi doesn't meet
+      # requires_chi (the Engine then won't load it). {} without one.
+      # @return [Hash{String => String}] its file => the source file
+      def plugin_incoming
         plugin = @manifest&.plugin
-        unless plugin
-          unless @dry_run
-            @trash.copy_edits(@provenance.plugin_dir, "plugin", @existing&.plugin_shas)
-            FileUtils.rm_rf(@provenance.plugin_dir)
-          end
-          return nil
-        end
+        return {} unless plugin
 
         src = File.join(@bundle_dir, plugin[:file])
         raise Installer::InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
@@ -160,83 +140,84 @@ module Samagotchi
         if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
-        dest = File.join(@provenance.plugin_dir, plugin[:file])
-        result = result_for(src, dest, updated: @upgrade && @provenance.installed?)
-        if @dry_run
-          @results[plugin[:file]] = planned(result)
-          return nil
-        end
-
-        @trash.copy_edits(@provenance.plugin_dir, "plugin", @existing&.plugin_shas, { plugin[:file] => src })
-        FileUtils.rm_rf(@provenance.plugin_dir)
-        FileUtils.mkdir_p(@provenance.plugin_dir)
-        place(src, dest)
-        @results[plugin[:file]] = result
-        warning = FileDigest.mismatch("plugin #{plugin[:file]}", dest, @manifest.checksum_for_plugin) if @strict && !@dev
-        @warnings << warning if warning
-        dest
+        { plugin[:file] => src }
       end
 
-      # The manifest's scripts, copied into <bundle_dir>/scripts/ (the
-      # folder replaced: a script the new version dropped goes). A declared
-      # sha256 that differs warns, as a plugin's does.
-      # @return [Hash{String => String}] file name => installed path
-      def install_scripts
+      # The manifest's scripts (a dev install warns of one it can't run).
+      # @return [Hash{String => String}] file name => the source file
+      def scripts_incoming
         scripts = @manifest&.scripts || {}
-        scripts.each_key do |file|
+        scripts.keys.to_h do |file|
           src = File.join(@bundle_dir, "scripts", file)
           raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have" unless File.file?(src)
           raise Installer::InstallError, "scripts/#{file} is a symlink (not installed)" if linked?(src)
 
           @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src) && !page_only?(file)
+          [file, src]
         end
-        results = scripts.keys.to_h do |file|
-          [file, result_for(File.join(@bundle_dir, "scripts", file), File.join(@provenance.scripts_dir, file),
-                            updated: @upgrade && @provenance.installed?)]
+      end
+
+      # One folder of the bundle's own dir (guardrails/, plugin/, scripts/),
+      # replaced whole by +incoming+: each file's AssetState and its action
+      # (FileActions' ASSET_INSTALL, or ASSET_UPGRADE over an installed
+      # bundle), one result per incoming file (a dry run's DRY_WORDS of it,
+      # and nothing written), an edit copied to the trash first (save_first),
+      # then the folder replaced. A file the source dropped goes without a
+      # word. A plugin or script whose sha256 differs from the declared one
+      # warns (not a dev link: it is the source).
+      # @param incoming [Hash{String => String}] name => the source file, in
+      #   the order the results list them
+      # @return [Hash{String => String}] name => installed path ({} on a dry run)
+      def install_set(kind_of_file, incoming)
+        dir, recorded = folder(kind_of_file)
+        command = @upgrade && @provenance.installed? ? :upgrade : :install
+        states = AssetState.in(dir, kind_of_file: kind_of_file, recorded: recorded, incoming: incoming)
+                           .to_h { |asset| [asset.name, [asset, FileActions.for_asset(command, asset)]] }
+        results = incoming.keys.to_h do |name|
+          asset, action = states.fetch(name)
+          [name, Installer::FileResult.new(word: @dry_run ? DRY_WORDS.fetch(action.word) : action.word, state: asset, action: action)]
         end
         if @dry_run
-          results.each { |file, result| @results["scripts/#{file}"] = planned(result) }
+          results.each { |name, result| @results[result_key(kind_of_file, name)] = result }
           return {}
         end
 
-        @trash.copy_edits(@provenance.scripts_dir, "scripts", @existing&.scripts,
-                          scripts.keys.to_h { |file| [file, File.join(@bundle_dir, "scripts", file)] })
-        FileUtils.rm_rf(@provenance.scripts_dir)
-        return {} if scripts.empty?
+        states.each_value { |asset, action| @trash.copy(asset.path, as: asset.label) if action.save_first }
+        FileUtils.rm_rf(dir)
+        return {} if incoming.empty?
 
-        FileUtils.mkdir_p(@provenance.scripts_dir)
-        scripts.to_h do |file, declared|
-          dest = File.join(@provenance.scripts_dir, file)
-          place(File.join(@bundle_dir, "scripts", file), dest)
-          @results["scripts/#{file}"] = results[file]
-          FileUtils.chmod(0o755, dest) unless @dev
-          warning = FileDigest.mismatch("script #{file}", dest, declared.to_s.delete_prefix("sha256:")) if @strict && !@dev
-          @warnings << warning if warning
-          [file, dest]
+        FileUtils.mkdir_p(dir)
+        incoming.to_h do |name, src|
+          dest = File.join(dir, name)
+          place(src, dest)
+          @results[result_key(kind_of_file, name)] = results[name]
+          FileUtils.chmod(0o755, dest) if kind_of_file == :script && !@dev
+          if (declared = declared_sha(kind_of_file, name)) && results[name].action.do == :write_incoming && @strict && !@dev
+            warning = FileDigest.mismatch("#{kind_of_file} #{name}", dest, declared)
+            @warnings << warning if warning
+          end
+          [name, dest]
         end
       end
 
-      # What the real run reports for +src+ over +dest+: up to date when the
-      # bytes are the same, else updated (+updated+: an upgrade over an
-      # install, of a file that is there) or installed. A dry run records #planned of it, so the two
-      # can't drift.
-      def result_for(src, dest, updated:)
-        word = if File.file?(dest) && FileUtils.identical?(src, dest) then :up_to_date
-               elsif updated && File.exist?(dest) then :updated
-               else :installed
-               end
-        Installer::FileResult.new(word: word)
+      # The kind's folder and the record's shas for it.
+      def folder(kind_of_file)
+        case kind_of_file
+        when :rule then [@provenance.guardrails_dir, @existing&.guardrails]
+        when :plugin then [@provenance.plugin_dir, @existing&.plugin_shas]
+        else [@provenance.scripts_dir, @existing&.scripts]
+        end
       end
 
-      # A dry run's word for a result: would_install, would_update,
-      # would_remove, or the up to date result as it is (nothing would be
-      # written).
-      def planned(result)
-        case result.word
-        when :installed then result.with(word: :would_install)
-        when :updated then result.with(word: :would_update)
-        when :removed then result.with(word: :would_remove)
-        else result
+      # Its key in the Installer's results (the summary's name): a rule's
+      # guardrails/r.yml, the plugin's own file name, a script's scripts/s.sh.
+      def result_key(kind_of_file, name) = kind_of_file == :plugin ? name : "#{AssetState::FOLDERS.fetch(kind_of_file)}/#{name}"
+
+      # The manifest's sha256 for a plugin or script (hex), nil for a rule.
+      def declared_sha(kind_of_file, name)
+        case kind_of_file
+        when :plugin then @manifest.checksum_for_plugin
+        when :script then @manifest.scripts[name].to_s.delete_prefix("sha256:")
         end
       end
 

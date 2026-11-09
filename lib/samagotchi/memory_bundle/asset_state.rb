@@ -70,8 +70,10 @@ module Samagotchi
 
       # Where the trash keeps its copy, and the plan names it: guardrails/r.yml,
       # plugin/plugin.rb, scripts/s.sh.
-      def label = "#{FOLDERS.fetch(kind_of_file)}/#{name}"
+      def label = "#{self.class::FOLDERS.fetch(kind_of_file)}/#{name}"
+    end
 
+    class AssetState
       # Each kind's folder in the bundle's own dir (and in the trash).
       FOLDERS = { rule: "guardrails", plugin: "plugin", script: "scripts" }.freeze
     end
