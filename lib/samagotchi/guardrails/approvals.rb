@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require "fileutils"
 require "time"
@@ -13,7 +14,9 @@ module Samagotchi
     # written aside and renamed under an exclusive flock (several chi
     # processes share it). An entry relaxes an ask, never a deny:
     #   session — this exact call (tool + normalized command / paths) in
-    #             this session;
+    #             this session; a command's in its place too (the
+    #             worktree or folder it ran in, and a digest of its env:),
+    #             since the same text acts on whatever they point at;
     #   repo    — this exact call in this repo (the cwd outside a repo);
     #   rule    — anything this rule (from this source) asks about here.
     # "This repo" is the repository (repo: its common git dir), so an
@@ -74,11 +77,14 @@ module Samagotchi
         here = ->(e) { e["repo"] ? e["repo"] == repo : e["repo_root"] == place }
         session_id = verdict.context&.session_id
         session_only = SESSION_ONLY_RULES.include?(verdict.rule.to_s)
+        command_place = session_place(verdict)
         list.find do |e|
           next false if session_only && e["scope"] != "session"
 
           case e["scope"]
-          when "session" then session_id && e["session_id"] == session_id && e["key"] == key
+          when "session"
+            session_id && e["session_id"] == session_id && e["key"] == key &&
+              (command_place.nil? || e.slice("repo_root", "env") == command_place)
           when "repo" then here.call(e) && e["key"] == key
           when "rule"
             # One rule's grant can't answer for a second rule's ask on the call.
@@ -94,7 +100,9 @@ module Samagotchi
         entry = { "scope" => scope, "tool" => verdict.targets&.tool || verdict.call[:name].to_s,
                   "acts_as" => verdict.targets&.acts_as, "rule" => verdict.rule, "source" => verdict.source, "created_at" => Time.now.utc.iso8601 }
         case scope
-        when "session" then entry.merge!("session_id" => verdict.context&.session_id, "key" => key_for(verdict))
+        when "session"
+          entry.merge!("session_id" => verdict.context&.session_id, "key" => key_for(verdict))
+          entry.merge!(session_place(verdict) || {})
         when "repo"
           entry.merge!("repo_root" => place_for(verdict), "repo" => verdict.targets&.repo, "key" => key_for(verdict))
         when "rule" then entry.merge!("repo_root" => place_for(verdict), "repo" => verdict.targets&.repo)
@@ -129,6 +137,22 @@ module Samagotchi
       def self.place_for(verdict)
         t = verdict.targets
         t&.repo_root || t&.cwd || verdict.context&.cwd
+      end
+
+      # Where a session entry of a command holds: the call's worktree root
+      # (or folder: #place_for; never the common git dir, which every
+      # worktree shares) and, when it sets one, a sha256 of its env: (never
+      # the env: it may hold a secret). nil for a call with no command:
+      # its paths are its place. An entry without them (stored before) no
+      # longer matches: one more ask.
+      # @return [Hash, nil]
+      def self.session_place(verdict)
+        t = verdict.targets
+        return nil unless t&.command
+
+        env = t.env.to_h
+        digest = env.empty? ? nil : Digest::SHA256.hexdigest(JSON.generate(env.map { |k, v| [k.to_s, v.to_s] }.sort))
+        { "repo_root" => place_for(verdict), "env" => digest }.compact
       end
 
       private

@@ -18,8 +18,9 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
 
   after { FileUtils.rm_rf(state) }
 
-  def ask(command: "git push  origin main", cwd: repo, session: "s1", rule: "git-push", source: "config", tool: "execute")
+  def ask(command: "git push  origin main", cwd: repo, session: "s1", rule: "git-push", source: "config", tool: "execute", env: nil)
     call = { name: tool, content: command }
+    call[:env] = env if env
     ctx = Samagotchi::Guardrails::Context.new(cwd: cwd, session_id: session)
     v = Samagotchi::Guardrails::Verdict.new(call: call).ask!("pushes", rule: rule, source: source)
     v.context = ctx
@@ -43,6 +44,42 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(store.match(ask(command: "git push origin   main"))).to include("scope" => "session")
     expect(store.match(ask(session: "s2"))).to be_nil
     expect(store.match(ask(command: "git push origin other"))).to be_nil
+  end
+
+  # The same command text acts on whatever its folder and env: point at.
+  it "keeps a session entry of a command to the folder it was given in" do
+    store.add(ask, "session")
+    expect(store.entries.first).to include("scope" => "session", "repo_root" => repo)
+    expect(store.match(ask)).to include("scope" => "session")
+    expect(store.match(ask(cwd: other_repo))).to be_nil
+  end
+
+  it "keys a session entry of a command by a digest of its env:, never the env itself" do
+    env = { "GIT_DIR" => "/elsewhere/.git", "TOKEN" => "s3cret" }
+    entry = store.add(ask(env: env), "session")
+    expect(entry["env"]).to match(/\A[0-9a-f]{64}\z/)
+    expect(File.read(store.path)).not_to include("s3cret", "/elsewhere/.git")
+    expect(store.match(ask(env: env.to_a.reverse.to_h))).to include("scope" => "session")
+    expect(store.match(ask)).to be_nil
+    expect(store.match(ask(env: { "GIT_DIR" => "/other/.git" }))).to be_nil
+
+    store.revoke(0)
+    store.add(ask, "session")
+    expect(store.entries.first).not_to have_key("env")
+    expect(store.match(ask(env: env))).to be_nil
+  end
+
+  it "no longer matches a session entry of a command from before the folder was kept (one more ask)" do
+    old = { "scope" => "session", "tool" => "execute", "session_id" => "s1", "key" => "execute:git push origin main" }
+    expect(described_class.find_in([old], ask)).to be_nil
+  end
+
+  it "keeps a session entry of a file tool's call as it was: its paths are its place" do
+    v = ask(tool: "write", command: nil)
+    v.targets = Samagotchi::Guardrails::Targets.for({ name: "write", path: "a.txt" }, v.context)
+    store.add(v, "session")
+    expect(store.entries.first.keys).not_to include("repo_root", "env")
+    expect(store.match(v)).to include("scope" => "session")
   end
 
   it "matches a repo entry in that repo (the cwd outside one) from any session" do
@@ -93,6 +130,15 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
         expect(store.match(ask(cwd: elsewhere))).to be_nil
         store.revoke(0)
       end
+    end
+
+    # A session entry is the worktree's, not the repository's: another
+    # checkout of it is another place for the same command.
+    it "keeps a session approval of a command to its worktree, not the repository's others" do
+      store.add(ask(cwd: wt1), "session")
+      expect(store.match(ask(cwd: wt1))).to include("scope" => "session", "repo_root" => wt1)
+      expect(store.match(ask(cwd: wt2))).to be_nil
+      expect(store.match(ask(cwd: main))).to be_nil
     end
 
     it "stores the repository and the worktree it was given in" do

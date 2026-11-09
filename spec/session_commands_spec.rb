@@ -1178,7 +1178,7 @@ RSpec.describe Samagotchi::SessionCommands do
       store_approval("session", "git push")
       out = commands.run("/guardrails").output
       expect(out).to include("approvals (2):", "  1. repo: execute:git push origin main — in #{repo} (rule git-push, config)",
-                             "  2. session: execute:git push — session abcdef12", "revoke one with /guardrails revoke N")
+                             "  2. session: execute:git push — session abcdef12 in #{repo} (rule git-push, config)", "revoke one with /guardrails revoke N")
       result = commands.run("/guardrails revoke 1")
       expect(result.output).to start_with("revoked approval 1: repo: execute:git push origin main")
       expect(engine.guardrail_approvals.entries.map { |e| e["scope"] }).to eq(%w[session])
