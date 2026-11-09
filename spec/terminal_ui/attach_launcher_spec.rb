@@ -32,7 +32,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
   describe "--attach ID" do
     it "connects to the live Bridge of the session's worker" do
       allow(Samagotchi::WorkerLink).to receive(:resolve)
-        .with(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), unlink: true).and_return(live_link(client: client))
+        .with(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), unlink: true, owner: nil)
+        .and_return(live_link(client: client))
 
       expect(connect(attach: session.id)).to be(client)
     end

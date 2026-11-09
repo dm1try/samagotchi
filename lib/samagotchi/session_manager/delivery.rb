@@ -164,7 +164,8 @@ module Samagotchi
         # still holding the session with its Bridge gone (exiting) may be an
         # older one, which would run it without the review boundary.
         # (A one-turn chi run holding it is refused as for anyone, below.)
-        if Steer.participant_author?(author) && (holder = delivery_owner(manager, session_id, state_dir)) && !holder.tui?
+        if Steer.participant_author?(author) && (holder = delivery_presence(manager, session_id, state_dir)).owned? &&
+           !holder.tui_owned?
           return DeliverResult.new(status: :timeout, via: :file,
                                    ack: { "error" => "worker_timeout",
                                           "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
@@ -189,17 +190,17 @@ module Samagotchi
         end
         return DeliverResult.new(status: :failed) unless path
 
-        owner = delivery_owner(manager, session_id, state_dir)
+        presence = delivery_presence(manager, session_id, state_dir)
         # A TUI that took the session between the resume and the write never
         # reads input files; a later worker would replay this one.
-        if owner&.tui?
+        if presence.tui_owned?
           FileUtils.rm_f(path) if path.is_a?(String)
           raise OwnedByTUI, session_id
         end
         # A worker that idle-exited since the resume never reads it either:
         # wake a new one. (The exiting worker also looks for input it left;
         # one the first resume spawned that is still starting is left be.)
-        manager.resume_session(session_id, state_dir: state_dir) if owner.nil?
+        manager.resume_session(session_id, state_dir: state_dir) unless presence.owned?
         DeliverResult.new(status: :accepted, via: :file,
                           ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
       end
@@ -244,8 +245,11 @@ module Samagotchi
                                  "detail" => "the session's worker did not answer, so the message was not sent" })
       end
 
-      private def delivery_owner(manager, session_id, state_dir)
-        Degrade.call(:worker, "owner_unreadable", sid: session_id) { manager.session_owner(session_id, state_dir: state_dir) }
+      # The session's WorkerPresence, its owner read through +manager+ (a
+      # stand-in's #session_owner is optional: then none).
+      private def delivery_presence(manager, session_id, state_dir)
+        owner = Degrade.call(:worker, "owner_unreadable", sid: session_id) { manager.session_owner(session_id, state_dir: state_dir) }
+        WorkerPresence.read(session_id, state_dir: state_dir, owner: owner)
       end
     end
 

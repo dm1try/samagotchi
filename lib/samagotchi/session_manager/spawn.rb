@@ -130,17 +130,21 @@ module Samagotchi
         session = Session.load(session_id, state_dir: sd)
         # Its terminal's worker came from spawn_session; nothing wakes another.
         raise ScratchSession, session.id if session.scratch
-        return session if refuse_tui!(session.id, state_dir: sd)
+
+        presence = WorkerPresence.read(session.id, state_dir: sd, owner: session_owner(session.id, state_dir: sd),
+                                                   spawned: method(:spawn_waiting?))
+        raise OwnedByTUI, session.id if presence.tui_owned?
+        return session if presence.owned?
 
         # status is turn state, not liveness: a new worker runs no turn yet,
         # and must not find the session stopped (it would exit): neither the
         # marker nor a status field from before it.
         # One this process just spawned may not hold the lock yet (a slow
-        # start, deliver_turn's second resume): it would only lose it.
-        return session if still_starting?(session.id, state_dir: sd)
-        # A continue moving delegates to it spawns its worker once they are
-        # moved; one spawned now (a moved child's ring) would race the move.
-        return session if StartingMarker.fresh?(session.id, state_dir: sd)
+        # start, deliver_turn's second resume): it would only lose it
+        # (#start_pending?). A continue moving delegates to it spawns its
+        # worker once they are moved; one spawned now (a moved child's ring)
+        # would race the move (#starting?).
+        return session if presence.resume_held_off?
 
         Session.clear_stopped(session.id, state_dir: sd)
         session.status = Session::STATUS_IDLE
@@ -175,20 +179,19 @@ module Samagotchi
                               event: :context_woke_session)
       end
 
+      # Its checks in order: WorkerPresence#wake_refusal (gone, owned, the
+      # stop marker, archived, a continue starting), then the loaded
+      # session's (#wake_refusal_by_session: the turn status, scratch).
       private def wake_existing_session(session_id, state_dir:, forward:, event:)
-        return :gone unless Session.exist?(session_id, state_dir: state_dir)
-        return :owned if session_owner(session_id, state_dir: state_dir)
-        return :stopped if Session.stopped_marker?(session_id, state_dir: state_dir)
-
-        if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
+        presence = WorkerPresence.read(session_id, state_dir: state_dir, owner: -> { session_owner(session_id, state_dir: state_dir) })
+        if (why = presence.wake_refusal) == :archived
           following = forward && SessionChain.next_of(session_id, state_dir: state_dir)
           return following ? wake_existing_session(following, state_dir: state_dir, forward: false, event: event) : :archived
         end
-        return :starting if StartingMarker.fresh?(session_id, state_dir: state_dir)
+        return why if why
 
-        session = Session.load(session_id, state_dir: state_dir)
-        return :stopped if session.status == Session::STATUS_STOPPED
-        return :scratch if session.scratch
+        why = presence.with_session(Session.load(session_id, state_dir: state_dir)).wake_refusal_by_session
+        return why if why
 
         resume_session(session_id, state_dir: state_dir)
         details = event == :delegate_woke_parent ? { parent: session_id[0, 8] } : { sid: session_id[0, 8] }
@@ -199,10 +202,9 @@ module Samagotchi
       end
 
       # A worker this process spawned for the session within
-      # WORKER_START_GRACE is still running, and no stop came since.
-      private def still_starting?(session_id, state_dir:)
-        return false if Session.stopped_marker?(session_id, state_dir: state_dir)
-
+      # WORKER_START_GRACE is still running (WorkerPresence's spawned_here;
+      # #start_pending? adds "and no stop came since").
+      private def spawn_waiting?(session_id, state_dir)
         at, waiter = @spawns_mutex.synchronize { @spawns[[state_dir, session_id]] }
         return false unless at && waiter.respond_to?(:alive?) && waiter.alive?
 
@@ -216,7 +218,7 @@ module Samagotchi
         end
       end
 
-      # Forget the spawns #still_starting? remembers (specs).
+      # Forget the spawns #spawn_waiting? remembers (specs).
       def forget_spawns
         @spawns_mutex.synchronize { @spawns.clear }
       end

@@ -7,6 +7,7 @@ require_relative "../session_manager"
 require_relative "../thinking_command"
 require_relative "../bridge_client"
 require_relative "../worker_link"
+require_relative "../worker_presence"
 require_relative "../parent_report"
 require_relative "../cli/exit"
 require_relative "../launch_mode"
@@ -154,7 +155,7 @@ module Samagotchi
       def worker_running?(session_id, state_dir)
         return false unless session_id && Session.valid_id?(session_id)
 
-        WorkerLink.resolve(Session.session_dir(session_id, state_dir: state_dir), unlink: false).live?
+        WorkerPresence.read(session_id, state_dir: state_dir, link: :look).live?
       end
 
       # The session's debug records, dim, above the live region.
@@ -319,7 +320,7 @@ module Samagotchi
       # @raise [Error] its worker is newer than this chi (Skew)
       def connect_existing(session_id, state_dir)
         Session.load(session_id, state_dir: state_dir)
-        link = WorkerLink.resolve(Session.session_dir(session_id, state_dir: state_dir), unlink: true)
+        link = WorkerPresence.read(session_id, state_dir: state_dir, link: :unlink).link
         raise Error, link.message(session_id) if link.is_a?(WorkerLink::Skew)
 
         link.live? ? link.client(session_id) : nil

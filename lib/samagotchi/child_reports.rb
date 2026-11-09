@@ -14,6 +14,10 @@ require_relative "tools/delegate_wait"
 require_relative "tools/delegate_cursor"
 
 module Samagotchi
+  # Loaded on first use (a ring): keeps the bundle test kit's load budget
+  # (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :WorkerPresence, File.expand_path("worker_presence", __dir__)
+
   # Loaded on first use: this autoload keeps SessionManager and its ~80
   # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
@@ -86,7 +90,8 @@ module Samagotchi
     # A live parent worker sees the ring on its next pass; one with no
     # worker is woken.
     def wake_parent(parent_id, state_dir:, wake:)
-      return if SessionManager.session_owner(parent_id, state_dir: state_dir)
+      owner = SessionManager.session_owner(parent_id, state_dir: state_dir)
+      return if WorkerPresence.read(parent_id, state_dir: state_dir, owner: owner).owned?
 
       return wake.call(parent_id) if wake
 

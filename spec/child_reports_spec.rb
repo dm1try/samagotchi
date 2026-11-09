@@ -246,6 +246,12 @@ RSpec.describe "delegate reports" do
 
       expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
     end
+
+    it "answers :gone for an id that isn't one, as for a ring" do
+      expect(Samagotchi::SessionManager.wake_for_context("../bogus", state_dir: tmpdir)).to eq(:gone)
+      expect(Samagotchi::SessionManager.wake_for_report("../bogus", state_dir: tmpdir)).to eq(:gone)
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
   end
 
   describe Samagotchi::ChildReports do

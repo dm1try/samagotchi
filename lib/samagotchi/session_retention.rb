@@ -4,6 +4,7 @@ require "fileutils"
 require "time"
 require_relative "session"
 require_relative "archive_store"
+require_relative "worker_presence"
 require_relative "config"
 require_relative "log"
 require_relative "model_profile"
@@ -53,11 +54,17 @@ module Samagotchi
         dry_run: dry_run,
         test_only: test_only,
         any_age: any_age,
-        alive_check: ->(sid) { !SessionManager.session_owner(sid, state_dir: sd).nil? },
+        alive_check: ->(sid) { owned?(sid, sd) },
         empty_check: discard ? ->(sid) { left_empty?(sid, state_dir: sd, default_model: default_model) } : nil
       )
       result[:deleted].concat(prune_orphan_dirs(sd, dry_run: dry_run)) if discard && !test_only
       result
+    end
+
+    # Someone holds the session's owner lock (a worker, a one-turn run).
+    private_class_method def self.owned?(session_id, state_dir)
+      WorkerPresence.read(session_id, state_dir: state_dir,
+                                      owner: SessionManager.session_owner(session_id, state_dir: state_dir)).owned?
     end
 
     private_class_method def self.left_empty?(session_id, state_dir:, default_model:)
@@ -80,7 +87,7 @@ module Samagotchi
         next unless Session.valid_id?(name) && File.directory?(dir)
         next if File.exist?(File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}"))
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
-        next if SessionManager.session_owner(name, state_dir: state_dir)
+        next if owned?(name, state_dir)
 
         unless dry_run
           FileUtils.rm_rf(dir)

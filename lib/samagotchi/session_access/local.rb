@@ -19,6 +19,7 @@ require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
 require_relative "../worker_link"
+require_relative "../worker_presence"
 require_relative "../review_start"
 require_relative "../launch_mode"
 require_relative "../participants"
@@ -103,7 +104,7 @@ module Samagotchi
         session = show(id)
         raise Refused.new(Session::SCRATCH_REFUSED, code: "scratch") if session.scratch
 
-        link = WorkerLink.resolve(session_dir(id), unlink: true)
+        link = WorkerPresence.read(id, state_dir: state_dir!, link: :unlink).link
         case link
         when WorkerLink::Live then return Woken.new(woke: false, sidecar: link.sidecar)
         when WorkerLink::Skew then raise Refused.new(link.message(id), code: "worker_newer")
@@ -126,8 +127,8 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def worker(id)
         show(id)
-        WorkerState.new(link: WorkerLink.resolve(session_dir(id), unlink: true),
-                        stopped: Session.stopped_marker?(id, state_dir: state_dir!))
+        presence = WorkerPresence.read(id, state_dir: state_dir!, link: :unlink)
+        WorkerState.new(link: presence.link, stopped: presence.stop_marked?)
       end
 
       # --- create and send
