@@ -126,8 +126,8 @@ module Samagotchi
       # Cancel the currently running turn, if any.
       # @param reason [Symbol] cancellation reason
       # @return [Boolean] whether a cancellation was triggered
-      def cancel_current_turn!(reason = :manual)
-        @turn_state.cancel!(reason)
+      def cancel_current_turn!(reason = :manual, turn_id: nil)
+        @turn_state.cancel!(reason, turn_id: turn_id)
       end
     end
   end

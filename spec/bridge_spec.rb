@@ -327,6 +327,48 @@ RSpec.describe Samagotchi::Bridge do
       end
     end
 
+    # A cold connect (no cursor) on a ring that has wrapped would replay from
+    # the middle of a turn: it resets like a cursor behind the window.
+    { 600 => true, 100 => false }.each do |last, resets|
+      it "#{resets ? "resets" : "replays the whole window for"} a cold connect on a ring holding #{last - 255 > 1 ? "345..600" : "1..100"}" do
+        engine = make_engine
+        allow(engine).to receive(:event_count).and_return(last)
+        ring = Samagotchi::Bridge::RingBuffer.new(capacity: 256)
+        last.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
+        io = ControllableIO.new
+        writer = Samagotchi::Bridge::SSEWriter.new(
+          engine:, ring:, session_id: "s1", heartbeat_interval: 0.05
+        )
+        writer_thread = Thread.new { writer.serve!(io) }
+        wait_for("the last frame or the reset") { io.buffer.include?("id: #{last}\r\n") }
+        writer_thread.kill
+
+        ids = io.buffer.scan(/^id: (.*)\r$/).flatten
+        if resets
+          expect(io.buffer.scan(/^event: (.*)\r$/).flatten).to eq(["reset"])
+          expect(ids).to eq([last.to_s])
+        else
+          expect(io.buffer).not_to include("event: reset")
+          expect(ids).to eq((1..last).map(&:to_s))
+        end
+      end
+    end
+
+    it "replays a cold connect whole when the ring starts at seq 5 but never evicted" do
+      engine = make_engine
+      allow(engine).to receive(:event_count).and_return(8)
+      ring = Samagotchi::Bridge::RingBuffer.new(capacity: 256)
+      (5..8).each { |seq| ring.push(seq:, data: { type: :k, event_seq: seq }) }
+      io = ControllableIO.new
+      writer = Samagotchi::Bridge::SSEWriter.new(engine:, ring:, session_id: "s1", heartbeat_interval: 0.05)
+      writer_thread = Thread.new { writer.serve!(io) }
+      wait_for("the last frame") { io.buffer.include?("id: 8\r\n") }
+      writer_thread.kill
+
+      expect(io.buffer).not_to include("event: reset")
+      expect(io.buffer.scan(/^id: (.*)\r$/).flatten).to eq(%w[5 6 7 8])
+    end
+
     describe "with a worker epoch" do
       # The ring holds seqs 1..10 of the worker whose epoch is "e2".
       def serve_from(cursor)
@@ -519,6 +561,18 @@ RSpec.describe Samagotchi::Bridge do
       expect(status).to eq(202)
       expect(body[:reason]).to eq("manual")
       expect(engine).to have_received(:cancel_current_turn!).with(:manual)
+    end
+
+    it "hands the turn id to the engine when the client names one" do
+      bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t1"))
+      expect(engine).to have_received(:cancel_current_turn!).with(:user, turn_id: "t1")
+    end
+
+    it "answers 409 turn_mismatch when the running turn is not the one named" do
+      allow(engine).to receive(:cancel_current_turn!).and_return(:turn_mismatch)
+      _, status, body = bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t0"))
+      expect(status).to eq(409)
+      expect(body[:error]).to eq("turn_mismatch")
     end
   end
 

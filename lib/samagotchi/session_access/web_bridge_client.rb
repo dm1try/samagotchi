@@ -141,8 +141,8 @@ module Samagotchi
 
       # POST …/cancel.
       # @return [BridgeClient::Response]
-      def cancel(reason:)
-        post(:cancel, "cancel", { reason: reason })
+      def cancel(reason:, turn_id: nil)
+        post(:cancel, "cancel", { reason: reason, turn_id: turn_id }.compact)
       end
 
       # POST …/exit: the worker asked to exit (chi web passes client_id on

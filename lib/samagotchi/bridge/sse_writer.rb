@@ -161,16 +161,19 @@ module Samagotchi
       def replay!(io, snapshot_seq)
         from_seq = @high_water
         oldest = @ring.oldest_seq
-        if @foreign_cursor || from_seq > snapshot_seq || (from_seq.positive? && oldest && from_seq < oldest - 1)
+        if @foreign_cursor || from_seq > snapshot_seq || (oldest && from_seq < oldest - 1 && (from_seq.positive? || @ring.dropped?))
           # Cursor is from another worker (epoch), ahead of the engine (a
           # worker restarted, plain cursor) or behind the
           # ring's buffered window (overflow): the server cannot replay the
           # gap, so it emits a reset marker and the client re-syncs. A cursor
           # at oldest - 1 has seen everything before the window, so it
-          # replays. A cold
-          # connect (from_seq == 0) replays the whole served window, and a
-          # fully caught-up cursor (from_seq == snapshot_seq) is NOT a reset
-          # case — it gets an empty replay and holds for live events.
+          # replays. A cold connect (from_seq == 0) is behind the window too
+          # once the ring has evicted an event (it would start mid-turn), so
+          # it resets; on a ring that never evicted (its first seq may be
+          # above 1: events before the Bridge started) it replays the whole
+          # window. A fully caught-up cursor (from_seq == snapshot_seq)
+          # is NOT a reset case — it gets an empty replay and holds for live
+          # events.
           emit_reset(io)
         else
           @ring.events_in_range(after_seq: from_seq, to_seq: snapshot_seq).each { |record| write_event(io, record[:data]) }

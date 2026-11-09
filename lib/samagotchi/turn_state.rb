@@ -179,11 +179,22 @@ module Samagotchi
       @lock.synchronize { !@input_waiting_warned.tap { @input_waiting_warned = true } }
     end
 
-    # Cancel the running turn, if any (outside the lock).
-    # @return [Boolean] whether a cancellation was triggered
-    def cancel!(reason)
-      ctrl = controller
+    # Cancel the running turn, if any (the controller is taken, and the turn
+    # id compared, under the lock; it is cancelled outside it).
+    # @param turn_id [String, nil] the turn the caller means: another turn
+    #   running (a Stop that arrived as its turn ended) is left alone; nil
+    #   cancels whichever runs
+    # @return [Boolean, Symbol] whether a cancellation was triggered, or
+    #   :turn_mismatch when +turn_id+ is not the running turn's
+    def cancel!(reason, turn_id: nil)
+      ctrl = @lock.synchronize do
+        next nil unless @controller
+        next :mismatch if turn_id && @context&.id != turn_id
+
+        @controller
+      end
       return false unless ctrl
+      return :turn_mismatch if ctrl == :mismatch
 
       ctrl.cancel!(reason)
     end

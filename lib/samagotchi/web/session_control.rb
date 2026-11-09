@@ -301,13 +301,19 @@ module Samagotchi
         reason = (parsed["reason"] if parsed.is_a?(Hash)).to_s.strip
         reason = "user" if reason.empty?
 
-        request = ->(client) { client.cancel(reason: reason) }
+        turn_id = (parsed["turn_id"] if parsed.is_a?(Hash)).to_s.strip
+        request = ->(client) { turn_id.empty? ? client.cancel(reason: reason) : client.cancel(reason: reason, turn_id: turn_id) }
         relay(id, bridge_client(id), request, what: "the turn was not cancelled", cant: "cancel turns") do |reply|
           case reply.status
           when 202
             json_response(202, { status: "cancel_requested", session_id: id, reason: reply.json&.dig("reason"), via: "bridge" })
-          # No active turn to cancel.
-          when 409 then json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
+          when 409
+            if reply.json&.dig("error") == "turn_mismatch"
+              json_response(409, { error: "turn_mismatch", detail: "the running turn is not the one named", session_id: id })
+            else
+              # No active turn to cancel.
+              json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
+            end
           end
         end
       end

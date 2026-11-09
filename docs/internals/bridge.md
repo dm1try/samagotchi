@@ -195,8 +195,11 @@ ring holds the event. `serve!` orders a join so that nothing is missed or double
 
 A **`reset`** frame (the same content, numbered with its own seq) is written when a cursor cannot be replayed: it is
 from another epoch, ahead of the engine (a restarted worker), behind the ring's window (a cursor at `oldest - 1` has
-seen everything before the window and replays), or the queue overflowed since the last drain. A cold connect replays
-the whole window. Replay state is in memory per worker; there is no durable resume.
+seen everything before the window and replays), or the queue overflowed since the last drain. A cold connect (no
+cursor) is behind the window too once the ring has evicted an event (`RingBuffer#dropped?`: a replay would start mid-turn), so
+it gets the `reset`; on a ring that never evicted (its first seq can be above 1: events before the Bridge started) it
+replays the whole window. The clients re-sync on a `reset` and
+reconnect with the snapshot's own id, which is inside the window (the web `resync`, the TUI's `follow`). Replay state is in memory per worker; there is no durable resume.
 
 Each frame is `id: <seq>-<epoch>` (`EventId`: the seq first so a reader that takes it as a number still gets the
 seq), `event: <type>`, `data: <json>`. A `: ping` goes out after `heartbeat_interval` (15 s) of silence. A watcher
@@ -307,7 +310,10 @@ The Bridge exposes:
   timeout is `504 worker_timeout`; a Bridge 404 for a route an older worker lacks is
   `501 not_supported` with the restart hint; a Bridge `404 unknown_session`, no bridge or a
   refused connection is `503 not_live`.
-- `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
+- `POST /session/:id/cancel` — cancel the running turn; `202`, or `409 not_running` when none runs. The optional
+  `turn_id` names the turn the Stop means (the web page and the TUI send the one they show): `TurnState#cancel!` compares
+  it to the running turn's id under its lock, and another turn running is `409 turn_mismatch`, nothing cancelled, so a
+  Stop pressed as a turn ends can't cancel the queued next one. No `turn_id` (an older client) cancels whichever runs.
 - `POST /session/:id/recap` — `/recap` in an attached TUI: `200 {enabled, saved, request,
   min_user_turns}` (`{enabled: false, session_off}` without recaps; `session_off` when the session's own
   `/recap off` turned it off); a new recap is asked for at once and

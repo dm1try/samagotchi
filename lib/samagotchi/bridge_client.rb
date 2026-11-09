@@ -246,10 +246,11 @@ module Samagotchi
     end
 
     # POST /session/:id/cancel. 202 = requested (body names the reason the
-    # Bridge took), 409 = no active turn.
+    # Bridge took), 409 = no active turn, or (error "turn_mismatch") not the
+    # +turn_id+ named: nothing was cancelled.
     # @return [Response]
-    def cancel(reason:)
-      post("cancel", { reason: reason }, read_body: true)
+    def cancel(reason:, turn_id: nil)
+      post("cancel", { reason: reason, turn_id: turn_id }.compact, read_body: true)
     end
 
     # POST /session/:id/tasks/stop: stop a background task this session's

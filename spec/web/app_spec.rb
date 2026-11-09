@@ -4120,6 +4120,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(sent).to eq(["ctrl_c", "<img src=x onerror=alert(1)>", "user", "user"])
     end
 
+    it "passes a turn id on and answers a mismatch as 409 turn_mismatch" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
+      allow(bridge).to receive(:cancel).with(reason: "user", turn_id: "t0")
+                                       .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"turn_mismatch"}'))
+
+      status, _headers, out = app.call(env_for("/api/sessions/s1/cancel", method: "POST", body: '{"reason":"user","turn_id":"t0"}'))
+
+      expect(status).to eq(409)
+      expect(JSON.parse(out.first)["error"]).to eq("turn_mismatch")
+    end
+
     it "takes a POST with no body and no Content-Length as empty (curl -X POST)" do
       app = build_app(state_dir: Dir.mktmpdir)
       bridge = instance_double(Samagotchi::BridgeClient)
