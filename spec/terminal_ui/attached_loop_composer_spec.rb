@@ -153,6 +153,50 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
     expect(client).to have_received(:cancel).with(reason: "ctrl_c")
   end
 
+  it "names the turn it shows when cancelling on Ctrl-C, so a late Stop can't hit the next turn" do
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "queued" => [], "event_seq" => 1,
+                                                       "current_turn" => { "prompt" => "p", "parts" => [], "turn_id" => "t7" } })
+      double("stream", close: nil)
+    end
+
+    attached.run(input: lambda do |_prompt, _prefill|
+      wait_for("the turn running") { attached.running? }
+      allow(Reline).to receive(:line_buffer).and_return("")
+      Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+      nil
+    end)
+
+    expect(client).to have_received(:cancel).with(reason: "ctrl_c", turn_id: "t7")
+  end
+
+  it "says a new turn started when the Stop named an older one (turn_mismatch)" do
+    allow(client).to receive(:cancel).and_return(
+      Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"turn_mismatch"}')
+    )
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "queued" => [], "event_seq" => 1,
+                                                       "current_turn" => { "prompt" => "p", "parts" => [], "turn_id" => "t7" } })
+      double("stream", close: nil)
+    end
+
+    attached.run(input: lambda do |_prompt, _prefill|
+      wait_for("the turn running") { attached.running? }
+      allow(Reline).to receive(:line_buffer).and_return("")
+      Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+      nil
+    end)
+
+    expect(screen.lines).to include("a new turn started; Ctrl-C again stops it")
+  end
+
+  it "sets the running turn id when a turn starts and clears it when the turn ends" do
+    attached.send(:start_turn, { turn_id: "t9" })
+    expect(attached.instance_variable_get(:@running_turn_id)).to eq("t9")
+    attached.send(:end_turn)
+    expect(attached.instance_variable_get(:@running_turn_id)).to be_nil
+  end
+
   it "asks the worker to exit on a bare exit, any case" do
     allow(client).to receive(:request_exit).and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"exiting"}'))
 

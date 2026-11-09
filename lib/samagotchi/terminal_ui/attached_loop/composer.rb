@@ -12,7 +12,7 @@ module Samagotchi
       # Input composition and Ctrl-C handling for the attached loop.
       # Reads @client, @clock, @command_registry, @continue_offer, @exit_ask,
       # @gaps, @link, @prefilled, @question, @queue, @queued_ids, @reader,
-      # @running, @scratch, @screen; writes @prefilled, @last_idle_interrupt_at.
+      # @running, @running_turn_id, @scratch, @screen; writes @prefilled, @last_idle_interrupt_at.
       # Calls the loop helpers #answer_continue, #answer_exit_ask, #answer_question,
       # #archive_after_turn, #command_registry, #detach, #echo_answer, #exit_and_archive,
       # #end_scratch, #exit_and_delete, #exit_worker, #refuse_scratch_archive, #gap_divider,
@@ -185,7 +185,10 @@ module Samagotchi
           typed = pressed&.fetch(:text, nil).to_s
           if @running
             begin
-              @client.cancel(reason: "ctrl_c")
+              # Names the turn this terminal shows, so a Ctrl-C as it ends
+              # doesn't stop the next one; a snapshot without an id sends none.
+              reply = @client.cancel(reason: "ctrl_c", **{ turn_id: @running_turn_id }.compact)
+              @screen.commit("a new turn started; Ctrl-C again stops it") if reply&.status == 409 && reply.json&.dig("error") == "turn_mismatch"
             rescue SystemCallError, IOError => e
               @screen.commit("could not cancel the turn (#{worker_down(e)})")
             end

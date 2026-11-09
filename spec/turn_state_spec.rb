@@ -63,6 +63,27 @@ RSpec.describe Samagotchi::TurnState do
 
     it "cancel! is false with no turn" do
       expect(state.cancel!(:manual)).to be(false)
+      expect(state.cancel!(:manual, turn_id: "t1")).to be(false)
+    end
+
+    describe "cancel! naming a turn" do
+      let(:running) { Samagotchi::TurnContext.none(id: "t1", settings: nil) }
+
+      before { state.begin!(context: running, controller: controller, sink: nil) }
+
+      it "cancels the running turn when the id matches" do
+        expect(state.cancel!(:user, turn_id: "t1")).to be(true)
+        expect(controller.reason).to eq(:user)
+      end
+
+      it "refuses another turn's id and cancels nothing" do
+        expect(state.cancel!(:user, turn_id: "t0")).to eq(:turn_mismatch)
+        expect(controller.cancelled?).to be(false)
+      end
+
+      it "cancels whichever turn runs when no id is given" do
+        expect(state.cancel!(:user)).to be(true)
+      end
     end
   end
 

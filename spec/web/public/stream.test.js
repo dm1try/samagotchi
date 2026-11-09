@@ -297,3 +297,30 @@ test("openStream closes and reports a dropped stream instead of letting the brow
   assert.deepEqual(closed, [true]);
   assert.equal(es.readyState, 2);
 });
+
+test("a reset resyncs and the stream reopens from the snapshot's id, without another reset", () => {
+  const connects = [];
+  class Server extends FakeEventSource {
+    constructor(url) {
+      super(url);
+      connects.push(this);
+    }
+  }
+  const open = (cursor) => {
+    const stream = openStream("abc", cursor, {
+      reset: () => {
+        stream.close();
+        open("5-e1"); // the resync read says the snapshot's id is 5-e1
+      },
+    }, { EventSourceImpl: Server });
+    return stream;
+  };
+  open(0);
+  connects[0].dispatch("reset", { data: "{}" });
+  assert.deepEqual(connects.map((es) => es.url), [
+    "/api/sessions/abc/stream?from_seq=0",
+    "/api/sessions/abc/stream?from_seq=5-e1",
+  ]);
+  assert.equal(connects[0].closed, true);
+  assert.equal(connects[1].closed, false);
+});

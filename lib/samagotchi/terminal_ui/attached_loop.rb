@@ -138,6 +138,7 @@ module Samagotchi
         @renderer = EventRenderer.new(@view)
         @shown_enqueued = Set.new
         @running = false
+        @running_turn_id = nil
         @joined_mid_turn = false
         @attached = false
         # The stream moved to a new worker; its snapshot resyncs (#switch_worker).
@@ -593,6 +594,7 @@ module Samagotchi
 
       def render_current_turn(turn)
         @running = !turn.nil?
+        @running_turn_id = turn&.dig(:turn_id)
         @joined_mid_turn = @running
         # A turn running at the join: the status row's steer hint.
         @status.update(running: @running)
@@ -628,6 +630,7 @@ module Samagotchi
 
       def start_turn(event)
         @running = true
+        @running_turn_id = event[:turn_id]
         @joined_mid_turn = false
         origin = origin_of(event[:origin])
         @my_queued.delete(origin.enqueued_id)
@@ -663,12 +666,14 @@ module Samagotchi
         # The turn's summary carries its last context estimate.
         @status.update(context: @view.context_status) if @view.context_status
         @running = false
+        @running_turn_id = nil
         @joined_mid_turn = false
         close_question("(the turn ended)") if @question
       end
 
       def end_turn
         @running = false
+        @running_turn_id = nil
         @joined_mid_turn = false
         close_question("(the turn ended)") if @question
       end

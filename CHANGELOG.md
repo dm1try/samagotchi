@@ -26,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   folder whose memories stayed in its id folder after `git init` is described correctly).
 - A browser tab or terminal that connects to a worker with no cursor, after its event ring has wrapped, is re-synced
   from the session instead of replaying from the middle of a turn.
+- Stop (the web button, Ctrl-C in the terminal) names the turn it was pressed for, so one pressed as that turn ends no
+  longer cancels the queued turn that starts next.
 
 ## [0.160.0] - 2026-11-09
 

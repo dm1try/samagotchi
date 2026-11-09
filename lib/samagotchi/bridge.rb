@@ -767,14 +767,23 @@ module Samagotchi
     def handle_cancel(_session_id, body)
       # Optional reason from JSON body
       reason = :manual
+      turn_id = nil
       if body && !body.strip.empty?
         parsed = parse_json(body)
         r = parsed.is_a?(Hash) ? (fetched(parsed, "reason") || fetched(parsed, "cancellation_reason")) : nil
         reason = CANCEL_REASONS.include?(r.to_s.strip) ? r.to_s.strip.to_sym : :manual
+        turn_id = fetched(parsed, "turn_id").to_s.strip if parsed.is_a?(Hash)
+        turn_id = nil if turn_id && turn_id.empty?
       end
 
       if @engine.turn_running? && @engine.active_cancel_controller
-        ok = @engine.cancel_current_turn!(reason)
+        # With a turn_id the engine compares it to the running turn's under
+        # its lock; clients that send none (older ones) cancel whichever runs.
+        ok = turn_id ? @engine.cancel_current_turn!(reason, turn_id: turn_id) : @engine.cancel_current_turn!(reason)
+        if ok == :turn_mismatch
+          return [{}, 409, { error: "turn_mismatch", detail: "the running turn is not the one named", session_id: @session_id }]
+        end
+
         return [{}, 202, { status: "cancel_requested", session_id: @session_id, reason: reason.to_s }] if ok
 
         [{}, 409, { error: "cancel_failed", detail: "could not cancel", session_id: @session_id }]

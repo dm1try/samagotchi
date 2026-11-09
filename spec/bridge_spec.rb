@@ -562,6 +562,18 @@ RSpec.describe Samagotchi::Bridge do
       expect(body[:reason]).to eq("manual")
       expect(engine).to have_received(:cancel_current_turn!).with(:manual)
     end
+
+    it "hands the turn id to the engine when the client names one" do
+      bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t1"))
+      expect(engine).to have_received(:cancel_current_turn!).with(:user, turn_id: "t1")
+    end
+
+    it "answers 409 turn_mismatch when the running turn is not the one named" do
+      allow(engine).to receive(:cancel_current_turn!).and_return(:turn_mismatch)
+      _, status, body = bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t0"))
+      expect(status).to eq(409)
+      expect(body[:error]).to eq("turn_mismatch")
+    end
   end
 
   describe "integration" do

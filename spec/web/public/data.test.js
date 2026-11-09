@@ -9,6 +9,7 @@ import {
   getSession,
   sendTurn,
   cancelTurn,
+  stopTurn,
   stopSession,
   stopTask,
   dequeueTurn,
@@ -378,6 +379,46 @@ test("cancelTurn posts a user reason", async () => {
     "POST",
     JSON.stringify({ reason: "user" }),
   ]);
+});
+
+test("cancelTurn names the turn it means when it has one", async () => {
+  const bodies = [];
+  await cancelTurn("abc", {
+    turnId: "t1",
+    fetchImpl: (_path, opts) => {
+      bodies.push(opts.body);
+      return Promise.resolve(okResponse({}));
+    },
+  });
+  assert.deepEqual(bodies, [JSON.stringify({ reason: "user", turn_id: "t1" })]);
+});
+
+function refusing(status, error) {
+  return () => Promise.resolve({
+    ok: false, status,
+    text: () => Promise.resolve(JSON.stringify({ error, detail: error })),
+    json: () => Promise.resolve({ error, detail: error }),
+  });
+}
+
+test("stopTurn names the turn it is given", async () => {
+  const bodies = [];
+  await stopTurn("abc", "t1", {
+    fetchImpl: (_path, opts) => {
+      bodies.push(opts.body);
+      return Promise.resolve(okResponse({}));
+    },
+  });
+  assert.deepEqual(bodies, [JSON.stringify({ reason: "user", turn_id: "t1" })]);
+});
+
+test("stopTurn resyncs on turn_mismatch, stays quiet on not_running, reports other errors", async () => {
+  const seen = [];
+  const hooks = { resync: () => seen.push("resync"), onError: (e) => seen.push(`error:${e.code}`) };
+  await stopTurn("abc", "t0", { ...hooks, fetchImpl: refusing(409, "turn_mismatch") });
+  await stopTurn("abc", "t0", { ...hooks, fetchImpl: refusing(409, "not_running") });
+  await stopTurn("abc", "t0", { ...hooks, fetchImpl: refusing(500, "boom") });
+  assert.deepEqual(seen, ["resync", "error:boom"]);
 });
 
 test("stopTask posts to the task's stop route", async () => {
