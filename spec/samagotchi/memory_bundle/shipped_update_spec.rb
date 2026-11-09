@@ -456,6 +456,36 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     end
   end
 
+  it "forecasts a file first copied by an interrupted version" do
+    root = File.join(tmp, "gem", "lib", "samagotchi", "bundles")
+    dir = File.join(root, "listed")
+    ship = lambda do |version, files|
+      FileUtils.mkdir_p(dir)
+      files.each { |key, text| File.write(File.join(dir, key), text) }
+      File.write(File.join(dir, "manifest.yml"),
+                 YAML.dump({ "name" => "listed", "version" => version, "scope" => "system",
+                             "files" => files.transform_values { |text| "sha256:#{Digest::SHA256.hexdigest(text)}" } }))
+    end
+    ship.call("1.0.0", "a.md" => "a1\n")
+    Samagotchi::MemoryBundle::Installer.new(source: dir, name: "listed", scope: "system", strict: true, shipped_dir: root).run
+    ship.call("2.0.0", "a.md" => "a2\n", "b.md" => "b2\n")
+    allow_any_instance_of(Samagotchi::MemoryBundle::AssetInstaller).to receive(:run).and_raise(Errno::EIO)
+    expect do
+      Samagotchi::MemoryBundle::Installer.new(source: dir, name: "listed", scope: "system", strict: true, upgrade: true,
+                                              shipped_dir: root).run
+    end.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError)
+    ship.call("3.0.0", "a.md" => "a3\n", "b.md" => "b3\n")
+    forecasted_files = []
+    allow(Samagotchi::MemoryBundle::FileState).to receive(:of).and_wrap_original do |original, key, **opts|
+      forecasted_files << key
+      original.call(key, **opts)
+    end
+
+    described_class.plan(shipped_dir: root)
+
+    expect(forecasted_files).to include("b.md")
+  end
+
   it "doesn't plan a user's own same-name memory as kept: the bundle never installed it" do
     FileUtils.mkdir_p(system_dir)
     File.write(File.join(system_dir, "known_names.md"), "my own\n")

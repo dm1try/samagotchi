@@ -39,7 +39,7 @@ module Samagotchi
 
         scope = (scope_override ? bundle.with(scope: scope_override) : bundle).effective_scope
         target_dir = MemoryPaths.scope_dir(scope)
-        files = bundle.files
+        files = provenance.files_with_pending(bundle, target_dir: target_dir)
         details = {}
         behind = bundle.behind_files(target_dir).to_h { |file| [file.file, file] }
         notes = bundle.merge_notes.to_h { |note| [note.file, note] }

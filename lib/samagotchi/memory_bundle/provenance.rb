@@ -65,6 +65,55 @@ module Samagotchi
         File.join(@bundle_dir, "scripts")
       end
 
+      # The intent journal of a run that has not written its record yet
+      # (#write_pending): its scope and target dir, plus the files and sha256s
+      # of the texts a run meant to put there. #write removes it.
+      def pending_path
+        File.join(@bundle_dir, "pending.json")
+      end
+
+      # Notes, before an install's first write, the texts it is about to put
+      # in the memories dir, atomically. A journal an earlier interrupted run
+      # left keeps its shas (that run's files are still on disk).
+      # @param files [Hash{String => String}] memory => the incoming sha256
+      def write_pending(version:, scope:, target_dir:, files:)
+        shas = pending_files(target_dir: target_dir)
+        files.each { |key, sha| shas[key] = (shas.fetch(key, []) + [sha]).uniq }
+        FileUtils.mkdir_p(@bundle_dir)
+        AtomicFile.write(pending_path, JSON.pretty_generate(
+          "version" => version.to_s, "scope" => scope.to_s, "target_dir" => File.expand_path(target_dir), "files" => shas
+        ))
+      end
+
+      # The shas the journal names for +file_key+ (none without a journal, or
+      # with one that doesn't read or belongs to another target).
+      def pending_shas(file_key, target_dir:)
+        pending_files(target_dir: target_dir).fetch(file_key.to_s, [])
+      end
+
+      def pending_scope
+        pending_metadata&.fetch("scope")
+      end
+
+      def pending_target_dir
+        pending_metadata&.fetch("target_dir")
+      end
+
+      # The record's files plus interrupted files whose current bytes match a
+      # journaled sha. Files whose bytes no longer match are not claimed.
+      def files_with_pending(record, target_dir:)
+        files = record&.files&.dup || {}
+        pending_files(target_dir: target_dir).each do |key, shas|
+          next if files.key?(key)
+
+          disk_sha = FileDigest.hex(File.join(target_dir, key))
+          files[key] = {} if shas.include?(disk_sha)
+        rescue SystemCallError
+          next
+        end
+        files
+      end
+
       # The bundle's manifest.yml as installed (InstalledBundle#kept_manifest_path).
       def kept_manifest_path
         File.join(@bundle_dir, "manifest.yml")
@@ -316,6 +365,7 @@ module Samagotchi
         manifest_data.merge!(kept_manifest_fields(existing, manifest_from, dev))
 
         write_manifest(manifest_data)
+        FileUtils.rm_f(pending_path)
         marked.each_key { |key| save_incoming(key, incoming_dir) }
         prune_incoming(marked.keys)
       end
@@ -462,6 +512,28 @@ module Samagotchi
       def record
         InstalledBundle.read(@name, File.join(@bundle_dir, "manifest.json"))
       end
+
+      # The journal's memory => shas, {} when it doesn't belong to this target
+      # or doesn't read.
+      def pending_files(target_dir:)
+        return {} if target_dir.to_s.empty?
+
+        metadata = pending_metadata
+        return {} unless metadata && File.expand_path(target_dir.to_s) == metadata["target_dir"]
+
+        files = metadata["files"]
+        files.is_a?(Hash) ? files.to_h { |key, shas| [key, Array(shas).grep(String)] } : {}
+      end
+
+      def pending_metadata
+        data = JSON.parse(File.read(pending_path))
+        return unless data.is_a?(Hash) && data["scope"].is_a?(String) && data["target_dir"].is_a?(String)
+
+        data
+      rescue JSON::ParserError, EncodingError, SystemCallError
+        nil
+      end
+      private :pending_files, :pending_metadata
 
       # manifest.json as it is on disk, symbol keys (nil if not installed).
       # Readers take #record.

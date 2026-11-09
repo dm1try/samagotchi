@@ -75,6 +75,23 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     expect(Dir.exist?(File.join(bundles_dir, "dev-trash"))).to be(false)
   end
 
+  it "uninstalls a fresh install interrupted after copying memories, before its record exists" do
+    src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, name: "interrupted-fresh")
+    allow_any_instance_of(Samagotchi::MemoryBundle::AssetInstaller).to receive(:run).and_raise(Errno::EIO)
+    installer = Samagotchi::MemoryBundle::Installer.new(source: src, name: "interrupted-fresh", scope: "system", strict: true)
+
+    expect { installer.run }.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError)
+    expect(File.exist?(File.join(system_dir, "notes.md"))).to be(true)
+    expect(Samagotchi::MemoryBundle::Provenance.new(name: "interrupted-fresh").record).to be_nil
+
+    uninstaller = described_class.new(name: "interrupted-fresh")
+    uninstaller.run
+
+    expect(File.exist?(File.join(system_dir, "notes.md"))).to be(false)
+    expect(uninstaller.trashed_files).to eq(["notes.md"])
+    expect(Dir.exist?(File.join(bundles_dir, "interrupted-fresh"))).to be(false)
+  end
+
   it "removes the entry's index line, including a legacy name.md line" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "index-uninstall")
     install_bundle(src, "index-uninstall")

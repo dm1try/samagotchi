@@ -11,6 +11,10 @@ module Samagotchi
     # the record's entry (R). Derived, never stored. FileActions says what each
     # acting command does in each state.
     #
+    # A file whose disk bytes are the text an interrupted run journaled
+    # (Provenance#write_pending) reads as the bundle's, at that run's
+    # version: owned (an entry made up if the record has none), its own base.
+    #
     # kind, with a source (install, upgrade, remerge, restore, plan):
     #   :new               not the bundle's, not on disk
     #   :user_same         not the bundle's, on disk with I's bytes
@@ -82,6 +86,7 @@ module Samagotchi
       # @return [FileState]
       def of(key, record:, provenance:, target_dir:, source_dir:, claimants: nil, shipped: true)
         entry = record&.files&.fetch(key, nil)
+        pending = provenance.pending_shas(key, target_dir: target_dir)
         paths = { base: provenance.base_path(key), current: File.join(target_dir, key),
                   incoming: source_dir && File.join(source_dir, key) }
         mark = mark_of(entry)
@@ -90,6 +95,12 @@ module Samagotchi
           incoming: source_dir && shipped ? digest(paths[:incoming]) : nil, recorded: entry && Provenance.recorded_sha(entry[:checksum]),
           marked_incoming: mark == :none ? nil : entry[:incoming_sha]
         )
+        if !pending.empty? && pending.include?(digests.disk)
+          # An interrupted run put this text here (Provenance#write_pending): it is the bundle's at
+          # that version, owned and its own base, not the user's file or an edit of the recorded one.
+          entry = (entry || {}).merge(checksum: digests.disk)
+          digests = digests.with(base: digests.disk, recorded: digests.disk)
+        end
         shared = nil
         lookup = -> { shared ||= claimants ? claimants.call(key) : [] }
         state = FileState.new(key: key, kind: nil, mark: mark, digests: digests, entry: entry, paths: paths, claimants: lookup)

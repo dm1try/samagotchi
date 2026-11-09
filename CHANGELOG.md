@@ -28,6 +28,11 @@ and commands may change between minor versions. How releases are made:
   from the session instead of replaying from the middle of a turn.
 - Stop (the web button, Ctrl-C in the terminal) names the turn it was pressed for, so one pressed as that turn ends no
   longer cancels the queued turn that starts next.
+- `chi bundle install` and `upgrade` check that the plugin and scripts the manifest names are in the bundle before
+  they write anything, so a bundle that lacks one is refused with your memories, plugin and record as they were.
+- A bundle install or upgrade that is killed or fails after it copied memories (a `pending.json` journal in
+  `.bundles/NAME/`) no longer leaves them as your own files or local edits: a retry owns them, `chi bundle status`
+  shows no edit, the next upgrade fast-forwards them and uninstall removes them.
 
 ## [0.160.0] - 2026-11-09
 

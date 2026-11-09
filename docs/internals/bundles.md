@@ -131,8 +131,8 @@ has the bundle's own manifest at the recorded version (`Provenance#adopt_manifes
 
 ## Installer#run, in order
 
-The order matters: warnings print in it, and a plugin/script the manifest names but the bundle lacks raises
-`InstallError` after the memories are already copied.
+The order matters: warnings print in it. Before the first write, `AssetInstaller#check_named_files` raises `InstallError`
+for a plugin or script the manifest names but the bundle lacks (or ships as a link): nothing is written then.
 
 1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning). Then `refuse_too_new`: a bundle whose `requires_chi` this chi doesn't meet raises `InstallError` unless `force` — nothing is written, dry run included (docs/plugins.md, "Loading, and when it fails").
 2. `resolve_target`: scope = CLI > manifest > `system`; then `check_source` against the existing record
@@ -171,7 +171,21 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 A file system error in steps 3 to 5 (`Installer#replace_files`; a `.trash` it can't write, an edited file it can't read) is an
 `InstallError` in `Trash.failure_message`'s words, as it is an `UninstallError` in `Uninstaller#run`. Each save comes before
 its removal, so no edit is lost, and the record isn't written, so a retry is the same upgrade. Not atomic: files the
-failed run already placed stay.
+failed run already placed stay, and the intent journal says they are the bundle's.
+
+**The intent journal.** After `check_named_files` and before the first write, a real run with a manifest writes
+`.bundles/<name>/pending.json` (`Provenance#write_pending`, atomically like the record): `{"version": "2.0.0",
+"scope": "project", "target_dir": "/path/to/project-memories", "files": {"a.md": ["<sha256>"]}}`: the target
+`version` is the latest run's target version, while `files` holds the union of incoming shas recorded by interrupted
+runs for that scope/target directory. A retry of another version in the same target adds its incoming shas; a journal
+for another scope directory is ignored. `Provenance#write` removes it with the record write; an uninstall's `rm_rf`
+sweeps it. `FileState.of` reads it:
+a file whose disk sha is one of its shas is that bundle's text at the pending version, owned and its own base (an entry
+made up when the record has none), so a killed fresh install's copy isn't `:user_same` (kept as the user's for good) and
+a killed upgrade's fast-forward isn't `:edited` (a conflict at the next version). Install, upgrade, uninstall and
+`chi bundle status` all go through it. A file matching none of its shas follows the usual rules; a merged file isn't
+journaled (its bytes are no bundle text). Not covered: a journal left by a run that failed before writing a file whose
+text the user already had is read the same way.
 
 Which files a plan asks `Merger::Upgrade` about is the caller's, and the lists differ, each less the files the bundle
 doesn't own: the Installer's `MemoryFiles.select`; `ShippedUpdate.forecast`' every shipped `*.md`, so `chi update`'s plan

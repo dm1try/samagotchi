@@ -39,8 +39,8 @@ module Samagotchi
         /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
       end
 
-      def self.remove_index(scope, entry_name)
-        index_path = index_path_for(scope)
+      def self.remove_index(scope, entry_name, target_dir: nil)
+        index_path = target_dir ? File.join(target_dir, "#{MEMORY_INDEX}.md") : index_path_for(scope)
         return true unless index_path && File.exist?(index_path)
 
         locked_write(File.dirname(index_path)) do |content|

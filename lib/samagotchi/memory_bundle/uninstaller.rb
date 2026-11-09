@@ -44,14 +44,24 @@ module Samagotchi
       def run
         provenance = Provenance.new(name: @name)
         bundle = provenance.record
-        raise UninstallError.not_installed(@name) unless bundle
+        if bundle
+          target_scope = @scope.to_s.strip.empty? ? bundle.effective_scope : @scope
+          target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
+        else
+          target_scope = @scope.to_s.strip.empty? ? provenance.pending_scope : @scope
+          pending_target = provenance.pending_target_dir
+          raise UninstallError.not_installed(@name) unless target_scope && pending_target
 
-        # The scope from the flag, else the record's
-        target_scope = @scope.to_s.strip.empty? ? bundle.effective_scope : @scope
-        target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
+          target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
+          if @scope.to_s.strip.empty?
+            target_dir = pending_target
+          elsif File.expand_path(target_dir) != pending_target
+            raise UninstallError.not_installed(@name)
+          end
+        end
 
-        files = bundle.files
-        hooks = bundle.hooks
+        files = provenance.files_with_pending(bundle, target_dir: target_dir)
+        hooks = bundle&.hooks || {}
         if files.empty? && hooks.empty?
           # No file list, just remove provenance (rules, a plugin and scripts
           # live there too)
@@ -108,8 +118,8 @@ module Samagotchi
           end
           # Remove index line (not fatal: a warning says so)
           begin
-            IndexUpdater.remove_index(target_scope, file_key_str.delete_suffix(".md"))
-            IndexUpdater.remove_index(target_scope, file_key_str) # legacy "name.md" line
+            IndexUpdater.remove_index(target_scope, file_key_str.delete_suffix(".md"), target_dir: target_dir)
+            IndexUpdater.remove_index(target_scope, file_key_str, target_dir: target_dir) # legacy "name.md" line
           rescue StandardError => e
             @warnings << "index.md: line for #{file_key_str.delete_suffix(".md")} not removed (#{e.message})"
           end
@@ -151,6 +161,8 @@ module Samagotchi
       # scripts by their source-less AssetState and ASSET_UNINSTALL's
       # save_first; an older chi's hooks/ by Trash#copy_edits.
       def save_edits(provenance, bundle)
+        return unless bundle
+
         @trash.copy_edits(provenance.hooks_dir, "hooks", bundle.hooks.transform_values(&:sha256))
         { rule: [provenance.guardrails_dir, bundle.guardrails], plugin: [provenance.plugin_dir, bundle.plugin_shas],
           script: [provenance.scripts_dir, bundle.scripts] }.each do |kind_of_file, (dir, recorded)|
