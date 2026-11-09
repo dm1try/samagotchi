@@ -17,6 +17,12 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle status NAME` lists the bundle's guardrail rules and scripts, and says which you edited (an edited one is
   replaced by the next install, its copy kept in the trash).
 
+### Fixed
+
+- A peer's wake push now starts a session that went idle (never one you stopped).
+- Continuing a session carries a peer's pushed text the old session hadn't absorbed or read yet, as a separate
+  third-party context note.
+
 ## [0.158.0] - 2026-11-08
 
 ### Added

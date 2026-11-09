@@ -6,6 +6,8 @@ require "samagotchi/worker_link"
 require "samagotchi/session_access/local"
 require "samagotchi/session_manager"
 require "samagotchi/reply_wait"
+require "samagotchi/context_command"
+require "samagotchi/context_sources"
 require "socket"
 require_relative "support/worker_links"
 require_relative "support/worker_fixtures"
@@ -25,6 +27,90 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap do |session|
       attrs.each { |key, value| session.public_send(:"#{key}=", value) }
       session.save(state_dir: tmpdir)
+    end
+  end
+
+  def context_target(session_id)
+    Samagotchi::ContextCommand::Target.new(session_id: session_id, project_root: tmpdir, cwd: tmpdir, label: "session")
+  end
+
+  def push_source(location, name, scope: "session")
+    location.add(Samagotchi::ContextSources::Source.new(name: name, cmd: nil, every_seconds: nil, why: nil, hint: nil,
+                                                        scope: scope, added_by: "spec", created_at: nil))
+  end
+
+  def fetched(text, wake: true)
+    Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: wake, hint: nil)
+  end
+
+  describe "#context_push" do
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(true)
+    end
+
+    it "wakes for a changed session-scoped push that asks" do
+      session = saved_session
+      location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(location, "notes")
+      allow(Samagotchi::SessionManager).to receive(:wake_for_context).and_return(:woken)
+
+      pushed = access.context_push(context_target(session.id), "notes", fetched("new answer"))
+
+      expect(pushed).to have_attributes(status: :pushed, before: nil, revision: Samagotchi::ContextSources.revision_of("new answer"))
+      expect(Samagotchi::SessionManager).to have_received(:wake_for_context).with(session.id, state_dir: tmpdir).once
+    end
+
+    it "does not wake for an unchanged revision or a push without wake" do
+      session = saved_session
+      location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(location, "notes")
+      location.record_text("notes", fetched("same"))
+      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+
+      access.context_push(context_target(session.id), "notes", fetched("same"))
+      access.context_push(context_target(session.id), "notes", fetched("another", wake: false))
+
+      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+    end
+
+    it "does not wake project sources or when context.wake is off" do
+      session = saved_session
+      project = Samagotchi::ContextSources.project_location_for(tmpdir, state_dir: tmpdir)
+      push_source(project, "project-notes", scope: "project")
+      push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "session-notes")
+      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+
+      project_target = Samagotchi::ContextCommand::Target.new(session_id: nil, project_root: tmpdir, cwd: tmpdir,
+                                                              label: "project")
+      access.context_push(project_target, "project-notes", fetched("project text"))
+      allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(false)
+      access.context_push(context_target(session.id), "session-notes", fetched("session text"))
+
+      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+    end
+
+    it "respects the session source's wake window" do
+      session = saved_session
+      location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(location, "notes")
+      location.update_subscription("notes") { |sub| sub.with(wakes_at: Time.now.iso8601) }
+      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+
+      access.context_push(context_target(session.id), "notes", fetched("new answer"))
+
+      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+    end
+
+    it "logs a failed wake without changing the successful push result" do
+      session = saved_session
+      push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "notes")
+      failure = RuntimeError.new("spawn failed")
+      allow(Samagotchi::SessionManager).to receive(:wake_for_context).and_raise(failure)
+      expect(Samagotchi::Log).to receive(:exception).with(:context, "context_push_wake_failed", failure,
+                                                          sid: session.id, source: "notes")
+
+      expect(access.context_push(context_target(session.id), "notes", fetched("new answer"))).to have_attributes(status: :pushed)
     end
   end
 

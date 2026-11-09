@@ -250,7 +250,9 @@ you're away from the terminal. All of these must hold:
   project source's first text may predate the session, so neither wakes;
 - `context.wake` is on (default `true`);
 - the session's worker is up and idle: no turn running, nothing queued, no
-  question or continue offer waiting, not just started;
+  question or continue offer waiting, not just started. A changed push from a
+  session-scoped source can start an idle-exited worker; it never restarts an
+  explicitly stopped session;
 - under `session.max_wakes` turns in a row with no message from you (the
   budget delegate reports and finished background tasks use too; a turn that
   failed, or was stopped before the model call, pauses wakes until you write);
@@ -342,6 +344,10 @@ source that changed since gets an *Updated* note. A second chi note, after
 the chain's, names what moved and what stayed:
 
 > Context moved with this session: pr-412, ci. Left with 3f2a9c1e: notes (pushed).
+
+On a continue, text from a pushed source that the old session had not absorbed
+or read is also carried in a separate note, clearly framed as third-party
+text. The source itself stays with its old link; forks do not carry this text.
 
 `chi send --new --continues` and the web's Continue toast say the same in a
 few words, and `chi context ls` marks a session's source that stays

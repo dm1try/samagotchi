@@ -106,6 +106,7 @@ module Samagotchi
       @stopped = stopped
       @queue_command = queue_command
       @initial_prompt_taken = false
+      @context_wake_waiting = false
     end
 
     # Add the queued context notes to the conversation (between turns only,
@@ -148,11 +149,17 @@ module Samagotchi
     # @return [ContextWake, nil] the wake turn to run now
     # @raise [SystemCallError, IOError] the caller logs it (context_failed)
     def absorb_context(before_turn: false, wake: false)
+      @context_wake_waiting = false
       return nil unless before_turn || conversation_started?
       return nil if @stopped.call
 
       batch = @context_absorber.pending
       return nil unless batch
+
+      if wake && context_wake_waiting_for?(batch)
+        @context_wake_waiting = true
+        return nil
+      end
 
       waking = wake ? context_wake_for(batch) : nil
       turn_id = SecureRandom.uuid if waking
@@ -169,6 +176,10 @@ module Samagotchi
       @context_absorber.commit(waking ? woken(batch, waking) : batch)
       waking && ContextWake.new(delivery: waking, turn_id: turn_id)
     end
+
+    # Whether #absorb_context left an eligible wake batch uncommitted for
+    # the start grace, so the idle loop can revisit it when grace expires.
+    def context_wake_waiting? = @context_wake_waiting
 
     # A failed wake turn kept nothing but its note: the note goes back to
     # a plain note (no turn start, the background wording), so a reload
@@ -298,6 +309,18 @@ module Samagotchi
       end
       peer_held(held.first, WorkerWakes::PEER_TURNS_KEY)
       waking.first
+    end
+
+    def context_wake_waiting_for?(batch)
+      return false unless @wakes.in_grace?
+
+      candidates = batch.deliveries.select(&:wake_note)
+      return false if candidates.empty? || !context_wakes_on?
+      return false unless @wakes.context_ready?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
+
+      candidates.any? do |delivery|
+        delivery.peer ? @wakes.peer_in_a_row < @wakes.peer_turns : !woke_lately?(delivery.subscription, Time.now)
+      end
     end
 
     # A peer's answer waits as a note: the UIs hear it once per

@@ -101,7 +101,15 @@ module Samagotchi
     # not paused, past the start grace and under the budget. +names+: the
     # sources asking, for the log line when the budget holds them.
     def context_open?(awaiting_continue:, names:)
-      return false if @paused || awaiting_continue || in_grace?
+      return false if in_grace?
+
+      context_ready?(awaiting_continue:, names:)
+    end
+
+    # The context wake gates apart from start grace; used to decide whether
+    # a wake must remain pending until that grace ends.
+    def context_ready?(awaiting_continue:, names:)
+      return false if @paused || awaiting_continue
 
       if @in_a_row >= max
         Log.info(:worker, "context_wake_held", reason: "max_wakes", names: names.join(","))

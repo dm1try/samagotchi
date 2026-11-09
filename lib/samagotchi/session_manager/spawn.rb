@@ -155,23 +155,37 @@ module Samagotchi
       # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
       #   :scratch, :owned, :starting)
       def wake_for_report(session_id, state_dir: nil, forward: true)
-        sd = state_dir || Session.default_state_dir
-        return :gone unless Session.exist?(session_id, state_dir: sd)
-        return :owned if session_owner(session_id, state_dir: sd)
-        return :stopped if Session.stopped_marker?(session_id, state_dir: sd)
+        wake_existing_session(session_id, state_dir: state_dir || Session.default_state_dir, forward: forward,
+                              event: :delegate_woke_parent)
+      end
 
-        if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
-          following = forward && SessionChain.next_of(session_id, state_dir: sd)
-          return following ? wake_for_report(following, state_dir: sd, forward: false) : :archived
+      # A pushed context source asked for a wake: start an idle-exited
+      # session, but never clear a stop or forward an archived link.
+      # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
+      #   :scratch, :owned, :starting)
+      def wake_for_context(session_id, state_dir: nil)
+        wake_existing_session(session_id, state_dir: state_dir || Session.default_state_dir, forward: false,
+                              event: :context_woke_session)
+      end
+
+      private def wake_existing_session(session_id, state_dir:, forward:, event:)
+        return :gone unless Session.exist?(session_id, state_dir: state_dir)
+        return :owned if session_owner(session_id, state_dir: state_dir)
+        return :stopped if Session.stopped_marker?(session_id, state_dir: state_dir)
+
+        if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
+          following = forward && SessionChain.next_of(session_id, state_dir: state_dir)
+          return following ? wake_existing_session(following, state_dir: state_dir, forward: false, event: event) : :archived
         end
-        return :starting if StartingMarker.fresh?(session_id, state_dir: sd)
+        return :starting if StartingMarker.fresh?(session_id, state_dir: state_dir)
 
-        session = Session.load(session_id, state_dir: sd)
+        session = Session.load(session_id, state_dir: state_dir)
         return :stopped if session.status == Session::STATUS_STOPPED
         return :scratch if session.scratch
 
-        resume_session(session_id, state_dir: sd)
-        Log.info(:worker, "delegate_woke_parent", parent: session_id[0, 8])
+        resume_session(session_id, state_dir: state_dir)
+        details = event == :delegate_woke_parent ? { parent: session_id[0, 8] } : { sid: session_id[0, 8] }
+        Log.info(:worker, event, **details)
         :woken
       rescue OwnedByTUI
         :owned
