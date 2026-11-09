@@ -62,7 +62,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
-- **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`, one per project: a git repository (shared by its worktrees) or a `chi project init` folder) and system memories (`~/.config/samagotchi/memories`) for long-term state.
+- **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<key>/`, one per project: a git repository (shared by its worktrees; `<name>_<hash>`) or a `chi project init` folder (its marker's id, kept when it moves)) and system memories (`~/.config/samagotchi/memories`) for long-term state.
 - **Single Mode (Assist)**: The harness currently runs in **Assist Mode** only (human-AI collaboration). Persisted state lives in memories; see Memory Scopes.
 
 ## Operational Instructions

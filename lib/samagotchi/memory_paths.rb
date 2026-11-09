@@ -3,6 +3,7 @@
 require "digest"
 require_relative "config"
 require_relative "guardrails/path_resolve"
+require_relative "project_id"
 
 module Samagotchi
   # Where memories live: <config dir>/memories, i.e. $XDG_CONFIG_HOME/samagotchi/memories
@@ -23,8 +24,12 @@ module Samagotchi
     # :none; +root+ is what memories are keyed on (#project_root: git's
     # common-dir checkout, the marked folder's realpath, or the folder
     # itself); +top+ is the folder a session reads its AGENTS.md chain from
-    # (the work tree's top, the marked root; nil for :none).
-    ProjectLookup = Data.define(:kind, :root, :top) do
+    # (the work tree's top, the marked root; nil for :none); +id+ is the
+    # marker's id (ProjectId), set only for kind :marker with a valid one
+    # (a git repository, and a marker #lookup ignores, never give one).
+    ProjectLookup = Data.define(:kind, :root, :top, :id) do
+      def initialize(kind:, root:, top:, id: nil) = super
+
       def project? = kind != :none
       def git? = kind == :git
       def marker? = kind == :marker
@@ -47,7 +52,7 @@ module Samagotchi
       return ProjectLookup.new(kind: :git, root: git_root(dot_git), top: File.dirname(dot_git)) if dot_git
 
       marked = nearest_marker(cwd, home: home)
-      return ProjectLookup.new(kind: :marker, root: marked, top: marked) if marked
+      return ProjectLookup.new(kind: :marker, root: marked, top: marked, id: marker_id(marked)) if marked
 
       ProjectLookup.new(kind: :none, root: cwd, top: nil)
     end
@@ -73,11 +78,29 @@ module Samagotchi
       File.join(system_dir(env: env), "projects")
     end
 
-    # One folder per project root: basename + 8 hex chars of MD5(full root path).
-    def project_key(cwd = Dir.pwd) = key_for_root(project_root(cwd))
+    # One folder per project: a marked project's id (ProjectId), else its
+    # root's path key (#key_for_root).
+    def project_key(cwd = Dir.pwd)
+      found = lookup(cwd)
+      key_for(root: found.root, id: found.id)
+    end
 
-    # #project_key for a root already resolved (a session's project_root).
+    # The key of a project already resolved: +id+ (a ProjectLookup's, a
+    # session's project_id) when there is one, else +root+'s path key. Every
+    # caller holding a root keys here, with the id that came with it.
+    def key_for(root:, id:) = id || key_for_root(root)
+
+    # The path key: basename + 8 hex chars of MD5(full root path). Pure: it
+    # reads no file (#key_for adds the id).
     def key_for_root(root) = "#{File.basename(root)}_#{Digest::MD5.hexdigest(root)[0..7]}"
+
+    # The id in the marker at +root+, or nil (none, or not a valid one: one
+    # debug line says why).
+    def marker_id(root)
+      read = ProjectId.read(root)
+      ProjectId.log_problem(root, read)
+      read.id
+    end
 
     # The project root (#lookup): in a repository, its common git directory
     # identifies the project; every linked worktree shares it. Returns the

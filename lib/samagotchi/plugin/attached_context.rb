@@ -152,7 +152,8 @@ module Samagotchi
         return [] unless id && Session.exist?(id, state_dir: state_dir)
 
         session = Session.load(id, state_dir: state_dir)
-        ContextSources.attached(id, project_root: session.project_root, state_dir: state_dir).map do |attached|
+        ContextSources.attached(id, project_root: session.project_root, project_id: session.project_id,
+                                    state_dir: state_dir).map do |attached|
           snapshot = attached.snapshot
           { name: attached.name, scope: attached.location.scope, why: attached.source.why,
             hint: snapshot.hint || attached.source.hint, fetched_at: snapshot.fetched_at, error: snapshot.error,
@@ -192,6 +193,7 @@ module Samagotchi
 
       def attached?(candidate, session)
         ContextSources.attached(session&.id || @host.session_id.call, project_root: session&.project_root,
+                                                                      project_id: session&.project_id,
                                                                       state_dir: state_dir, shadowed: true)
                       .any? { |a| a.name == candidate.name || (candidate.url && a.source.hint == candidate.url) }
       end

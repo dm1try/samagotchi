@@ -81,6 +81,35 @@ RSpec.describe Samagotchi::MemoryOrphans do
       expect(described_class.find(env: env, cwd: File.join(root, "sub")).candidates).to eq([orphan])
     end
 
+    it "keys a marked project with an id by the id: asks while the id folder has no *.md, never lists links" do
+      root = File.join(tmp, "src", "notes")
+      FileUtils.mkdir_p(File.join(root, ".chi"))
+      File.write(File.join(root, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
+      earlier = folder("notes_0123abcd")
+      other_id = folder("notes-99999999")
+      File.symlink("notes-99999999", File.join(projects, "notes_4567abcd"))
+
+      found = described_class.find(env: env, cwd: root)
+      expect(found).to eq(described_class::Found.new(computed: File.join(projects, "notes-0a1b2c3d"),
+                                                     candidates: [other_id, earlier], computed_exists: false))
+      folder("notes-0a1b2c3d")
+      expect(described_class.find(env: env, cwd: root)).to be_nil
+    end
+
+    it "names a marked project's id folder once git init made the folder a repository (keyed by its path again)" do
+      root = File.join(tmp, "src", "notes")
+      FileUtils.mkdir_p(File.join(root, ".chi"))
+      File.write(File.join(root, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
+      id_folder = folder("notes-0a1b2c3d")
+      expect(described_class.find(env: env, cwd: root)).to be_nil
+
+      FileUtils.mkdir_p(File.join(root, ".git"))
+      expect(described_class.find(env: env, cwd: root))
+        .to eq(described_class::Found.new(computed: File.join(projects, key(root)), candidates: [id_folder],
+                                          computed_exists: false))
+      expect(described_class.message(env: env, cwd: root)).to include(id_folder, "`mv #{id_folder} #{File.join(projects, key(root))}`")
+    end
+
     it "is nil outside a project" do
       cwd = File.join(tmp, "plain", "app")
       FileUtils.mkdir_p(cwd)

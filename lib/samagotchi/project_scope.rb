@@ -18,10 +18,19 @@ module Samagotchi
       return nil if dir.empty?
       return cache[dir] if cache&.key?(dir)
 
-      found = MemoryPaths.lookup(File.expand_path(dir))
-      root = found.project? ? found.root : nil
+      root = project_for(dir)&.root
       cache[dir] = root if cache
       root
+    end
+
+    # +dir+'s project (MemoryPaths::ProjectLookup: its root and, for a
+    # marked project, its id), or nil in none.
+    def project_for(dir)
+      dir = dir.to_s
+      return nil if dir.empty?
+
+      found = MemoryPaths.lookup(File.expand_path(dir))
+      found.project? ? found : nil
     end
   end
 end

@@ -124,7 +124,11 @@ module Samagotchi
       # The project the report is for, as MemoryPaths keys it (a worktree
       # resolves to its repository's root; both spellings of a path, /var and
       # /private/var, mean the same project).
-      @root = expand(MemoryPaths.project_root(File.expand_path(root.to_s)))
+      found = MemoryPaths.lookup(File.expand_path(root.to_s))
+      @root = expand(found.root)
+      # A marked project's id: its sessions from before a move (another
+      # stored root, the same id) are its sessions too.
+      @project_id = found.id
       @env = env
       @chars_per_token = chars_per_token.positive? ? chars_per_token.to_f : 4.0
       @warn_limit = warn_limit.to_i
@@ -331,23 +335,30 @@ module Samagotchi
       File.expand_path(dir)
     end
 
-    # The project a session belongs to: the root its file stores, or (a file
-    # from before the field, or a folder in no repository) the root of the
-    # folder it works in.
-    def session_project_root(session)
-      root = session.project_root ||
-             (session.working_directory.to_s.empty? ? nil : MemoryPaths.project_root(File.expand_path(session.working_directory.to_s)))
-      root && expand(root)
+    # The project a session belongs to, [root, id]: the root (and id) its
+    # file stores, or (a file from before the field, or a folder in no
+    # repository) the lookup of the folder it works in; [nil, nil] for none.
+    def session_project(session)
+      if session.project_root
+        [expand(session.project_root), session.project_id]
+      elsif !session.working_directory.to_s.empty?
+        found = MemoryPaths.lookup(File.expand_path(session.working_directory.to_s))
+        [expand(found.root), found.id]
+      else
+        [nil, nil]
+      end
     end
 
     def project_dir_of(session)
-      root = session_project_root(session)
-      root ? File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for_root(root)) : nil
+      root, id = session_project(session)
+      root ? File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: root, id: id)) : nil
     end
 
-    # A session of this folder's project (worktrees of one repository share it).
+    # A session of this folder's project (worktrees of one repository share
+    # it; a marked project's sessions from before a move share its id).
     def project_session?(session)
-      session_project_root(session) == @root
+      root, id = session_project(session)
+      root == @root || (!@project_id.nil? && id == @project_id)
     end
 
     # "system/delegated" is the memory named delegated.

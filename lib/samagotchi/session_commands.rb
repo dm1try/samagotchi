@@ -473,7 +473,8 @@ module Samagotchi
 
       peers = Tools::Peers.new(session_id: session.id, cwd: session.working_directory, state_dir: @engine.peer_state_dir)
       listing = Tools::ContextRead.call("", peers: peers)
-      candidates = ContextCandidates.listing(session.id, project_root: session.project_root, state_dir: @engine.peer_state_dir)
+      candidates = ContextCandidates.listing(session.id, project_root: session.project_root, project_id: session.project_id,
+                                                         state_dir: @engine.peer_state_dir)
       candidates ? "#{listing}\n\n#{candidates}" : listing
     end
 

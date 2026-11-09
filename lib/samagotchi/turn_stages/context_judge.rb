@@ -89,7 +89,8 @@ module Samagotchi
       def pass(session, texts, phase:, state_dir:, recorder:)
         return if session.id.nil? || session.scratch
 
-        rows = ContextCandidates.with_status(session.id, project_root: session.project_root, state_dir: state_dir)
+        rows = ContextCandidates.with_status(session.id, project_root: session.project_root,
+                                                         project_id: session.project_id, state_dir: state_dir)
         return if rows.empty?
 
         log = ContextCandidatesLog.log_for(state_dir)
@@ -134,6 +135,7 @@ module Samagotchi
       def choice(session, log, settings, state_dir)
         session_id = session.id
         project_root = session.project_root
+        project_id = session.project_id
         show = lambda do |**card|
           current = @current_session.call
           next nil unless current.nil? || current.id == session_id
@@ -146,6 +148,7 @@ module Samagotchi
         end
         lambda do |job, fields|
           ContextCandidateChoice.after_judged(job: job, fields: fields, settings: settings, project_root: project_root,
+                                              project_id: project_id,
                                               state_dir: state_dir, log: log, show_card: show)
         end
       end
@@ -156,12 +159,9 @@ module Samagotchi
       def parent_attached(session, state_dir)
         return nil unless session.delegate? && session.parent_id
 
-        parent_root = if Session.exist?(session.parent_id, state_dir: state_dir)
-                        Session.load(session.parent_id, state_dir: state_dir).project_root
-                      else
-                        session.project_root
-                      end
-        ContextSources.attached(session.parent_id, project_root: parent_root, state_dir: state_dir)
+        parent = Session.exist?(session.parent_id, state_dir: state_dir) ? Session.load(session.parent_id, state_dir: state_dir) : session
+        ContextSources.attached(session.parent_id, project_root: parent.project_root, project_id: parent.project_id,
+                                                   state_dir: state_dir)
                       .map { |attached| attached.source.title || attached.name }
       rescue StandardError => e
         Log.warn(:context, "context_parent_attached_failed", error: e.class.name, msg: e.message.to_s[0, 200])

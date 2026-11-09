@@ -19,33 +19,40 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi project [init [DIR]]
+      Usage: chi project [init [--new-id] [DIR]]
         (none)       this folder's project: how it was found (git, marker or none), its root, its
-                     top and its project memories folder
+                     top, its id and its project memories folder
         init [DIR]   make DIR (default: this folder; created when missing) a chi project: writes
-                     DIR/#{MemoryPaths::MARKER}, so DIR and every subfolder share one project memories
-                     folder and group their sessions. Not in a git repository (it already is the
-                     project), nor $HOME or a folder above it
+                     DIR/#{MemoryPaths::MARKER} with an id, so DIR and every subfolder share one project
+                     memories folder (kept when DIR moves) and group their sessions. Not in a git
+                     repository (it already is the project), nor $HOME or a folder above it. On a
+                     marked folder with no id: adopts one, moving its folders to it
+        --new-id     a marked folder's own new id (a copied folder going its own way): its
+                     memories and project context copied to it
     TEXT
 
     SUBCOMMANDS = %w[init].freeze
     FLAGS = {
       nil => CLI::Flags.new(help: HELP_WORDS, args: false),
-      "init" => CLI::Flags.new(help: HELP_WORDS)
+      "init" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--new-id" }
     }.freeze
 
     # @param cwd [String] the folder asked about (Dir.pwd)
     # @param home [String, nil] $HOME (markers at or above it are ignored)
     # @param sessions [#call, nil] () → this machine's SessionRows (for
-    #   init's restart note; SessionManager.session_rows by default)
+    #   init's restart note and its adoption's running check;
+    #   SessionManager.session_rows by default)
+    # @param state_dir [String, nil] the sessions dir (an adoption moves the
+    #   project context folders beside it)
     def initialize(argv, stdout: $stdout, stderr: $stderr, cwd: Dir.pwd, env: ENV, home: MemoryPaths.default_home,
-                   sessions: nil)
+                   sessions: nil, state_dir: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @cwd = cwd
       @env = env
       @home = home
+      @state_dir = state_dir
       @sessions = sessions || lambda {
         require_relative "session_manager"
         SessionManager.session_rows
@@ -61,7 +68,8 @@ module Samagotchi
       return run_show unless @sub
       return usage_error("init takes one folder") if parsed.args.size > 1
 
-      run_init(parsed.args.first || @cwd)
+      dir = File.expand_path(parsed.args.first || @cwd, @cwd)
+      parsed.options[:new_id] ? run_new_id(dir) : run_init(dir)
     end
 
     private
@@ -78,15 +86,17 @@ module Samagotchi
         row("root", found.root)
         row("top", found.top)
       end
-      row("memories", memories_line(found.root))
+      row("id", found.id) if found.id
+      row("memories", memories_line(found))
       notes(found).each { |note| row("note", note) }
       CLI::Exit::OK
     end
 
     def row(label, value) = @stdout.puts("#{label.ljust(9)}#{value}")
 
-    def memories_line(root)
-      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for_root(root))
+    # @param found [MemoryPaths::ProjectLookup] the project (its root and id key the folder)
+    def memories_line(found)
+      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: found.root, id: found.id))
       count = memory_count(dir)
       "#{Paths.tilde(dir)}#{" (#{count} #{count == 1 ? "memory" : "memories"})" if count.positive?}"
     end
@@ -115,8 +125,7 @@ module Samagotchi
     end
 
     def run_init(dir)
-      dir = File.expand_path(dir, @cwd)
-      outcome = ProjectInit.call(dir, home: @home)
+      outcome = ProjectInit.adopt(dir, home: @home, env: @env, state_dir: @state_dir, sessions: adopt_rows(dir))
       case outcome.kind
       when :git
         found = MemoryPaths::ProjectLookup.new(kind: :git, root: outcome.root, top: outcome.top)
@@ -130,7 +139,10 @@ module Samagotchi
         @stdout.puts(outcome.message)
         CLI::Exit::OK
       when :created
-        report_init(outcome.root, nested_in: outcome.nested_in)
+        report_init(outcome)
+        CLI::Exit::OK
+      when :adopted
+        @stdout.puts(outcome.message)
         CLI::Exit::OK
       end
     rescue SystemCallError => e
@@ -138,10 +150,34 @@ module Samagotchi
       CLI::Exit::FAILED
     end
 
-    def report_init(root, nested_in:)
-      nested = nested_in ? ", its own project nested in #{Paths.tilde(nested_in)}" : ""
+    def run_new_id(dir)
+      outcome = ProjectInit.new_id(dir, home: @home, env: @env, state_dir: @state_dir)
+      if outcome.kind == :refused
+        error_line("#{command_name} --new-id: #{outcome.message}")
+        return CLI::Exit::FAILED
+      end
+
+      @stdout.puts(outcome.message)
+      sessions_note(outcome.root, restart: "keep the id they started with until restarted")
+      CLI::Exit::OK
+    end
+
+    # The rows an adoption checks for running sessions: only for a marked
+    # folder (a listing is a walk of every session file).
+    def adopt_rows(dir)
+      found = lookup(dir)
+      return [] if found.git? || found.id
+
+      @sessions.call
+    end
+
+    def report_init(outcome)
+      root = outcome.root
+      nested = outcome.nested_in ? ", its own project nested in #{Paths.tilde(outcome.nested_in)}" : ""
       @stdout.puts("#{Paths.tilde(root)} is now a chi project#{nested} (#{Paths.tilde(File.join(root, MemoryPaths::MARKER))})")
-      row("memories", memories_line(root))
+      row("id", outcome.id) if outcome.id
+      row("memories", memories_line(lookup(root)))
+      @stdout.puts(outcome.message) if outcome.message
       sessions_note(root)
     end
 
@@ -150,15 +186,17 @@ module Samagotchi
     # prompt (the memories folder line, the AGENTS.md chain) until it
     # restarts; a running chi web groups the older ones after its restart
     # (SessionHub looked their project up once).
-    def sessions_note(root)
+    def sessions_note(root, restart: nil)
       rows = @sessions.call.select { |r| !r.cwd.to_s.empty? && lookup(r.cwd.to_s).root == root }
       return if rows.empty?
 
       live = rows.select(&:live)
       unless live.empty?
-        @stdout.puts("running sessions in it keep the old project in their prompt until restarted " \
+        @stdout.puts("running sessions in it #{restart || "keep the old project in their prompt until restarted"} " \
                      "(chi sessions restart ID): #{live.map { |r| r.id[0, 8] }.join(", ")}")
       end
+      return if restart
+
       @stdout.puts("#{rows.size} saved session(s) in it join the project in a running chi web after its restart")
     rescue StandardError => e
       error_line("#{command_name}: couldn't list this machine's sessions (#{e.message})")

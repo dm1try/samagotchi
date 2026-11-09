@@ -23,12 +23,14 @@ module Samagotchi
     TICK_SECONDS = 5
 
     # @param project_root [String, nil] Session#project_root
+    # @param project_id [String, nil] Session#project_id
     # @param cwd [String] the session's folder (a session source runs there)
     # @param on_change [#call] after a fetch brought a new text or failed
-    def initialize(session_id:, state_dir:, project_root:, cwd:, on_change:, tick: TICK_SECONDS)
+    def initialize(session_id:, state_dir:, project_root:, cwd:, on_change:, project_id: nil, tick: TICK_SECONDS)
       @session_id = session_id
       @state_dir = state_dir
       @project_root = project_root
+      @project_id = project_id
       @cwd = cwd
       @on_change = on_change
       @tick = tick
@@ -56,7 +58,8 @@ module Samagotchi
     # One pass (the thread's loop body; specs call it).
     # @param first [Boolean] the worker's first pass
     def poll(first: false)
-      ContextSources.attached(@session_id, project_root: @project_root, state_dir: @state_dir).each do |attached|
+      ContextSources.attached(@session_id, project_root: @project_root, project_id: @project_id,
+                                          state_dir: @state_dir).each do |attached|
         break if @stopping
         next if attached.source.push? || @own.muted?(attached.name)
 

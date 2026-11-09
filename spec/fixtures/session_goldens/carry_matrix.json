@@ -107,6 +107,12 @@
     "respawn": "same",
     "continue": "default"
   },
+  "project_id": {
+    "fork": "absent",
+    "delegate": "absent",
+    "respawn": "same",
+    "continue": "absent"
+  },
   "preloaded_memory_names": {
     "fork": "default",
     "delegate": "same",

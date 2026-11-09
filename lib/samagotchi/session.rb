@@ -166,6 +166,11 @@ module Samagotchi
       # deleted folder no longer leads to its repository. nil outside a repo,
       # and in files written before the field existed (see #project_root).
       SessionField.plain("project_root", nil),
+      # The project's id (ProjectId: a marked project's `id:`), saved beside
+      # project_root at creation, else nil: its memories and project context
+      # sources are keyed by it (MemoryPaths.key_for), so a session resumed
+      # after its folder moved finds them under the id, not its dead path.
+      SessionField.plain("project_id", nil, optional: true),
       # Memories the session was started with (--memory) and memories hidden
       # from it (--mute): the worker rebuilds the same prompt on a respawn.
       # Names as given; the engine normalizes them.
@@ -290,7 +295,7 @@ module Samagotchi
     attr_accessor :id, :metadata_version, :mode, :model_name, :model_typed, :working_directory, :messages,
                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :title, :test_run,
                   :used_memory_names, :preloaded_memory_names, :muted_memory_names, :parent_id, :scratch,
-                  :continues, :first_turn_id
+                  :continues, :first_turn_id, :project_id
     attr_writer :project_root, :delegate
     attr_reader :appended_prompt_files, :written_by
 
@@ -572,6 +577,7 @@ module Samagotchi
                          review: nil, now: Time.now)
       own = setup.to_h
       own = own.merge(toolkit_origin: own[:toolkit_origin] || "chosen")
+      project = ProjectScope.project_for(working_directory)
       Toolkit.check_new!(own[:toolkit] || Toolkit.configured(delegate: delegate))
       now = now.iso8601(3)
       resolved_test = if test_run.nil?
@@ -591,7 +597,8 @@ module Samagotchi
         status: STATUS_IDLE,
         first_preview: "",
         test_run: resolved_test,
-        project_root: ProjectScope.root_for(working_directory),
+        project_root: project&.root,
+        project_id: project&.id,
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: muted_memory_names,
         parent_id: parent_id,

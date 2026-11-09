@@ -17,6 +17,7 @@ module Samagotchi
       def session_id = engine.session&.id
       def cwd = engine.session&.working_directory
       def project_root = engine.session&.project_root
+      def project_id = engine.session&.project_id
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
       def cancel_reason = engine.active_cancel_controller&.reason

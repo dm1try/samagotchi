@@ -338,7 +338,7 @@ module Samagotchi
                                         predecessor: @session.continues)
       # Its attached context's notes (ContextSources).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
-                                              project_root: @session.project_root,
+                                              project_root: @session.project_root, project_id: @session.project_id,
                                               peer_sources: @engine.peer_sources, peer_turns: -> { @wakes.peer_turns })
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
@@ -468,8 +468,8 @@ module Samagotchi
       # Attached context's commands, in the background; a new text wakes
       # the loop to absorb it. Not activity: the idle exit stops it.
       @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
-                                          project_root: @session.project_root, cwd: @session.working_directory,
-                                          on_change: -> { @waker.wake }).start
+                                          project_root: @session.project_root, project_id: @session.project_id,
+                                          cwd: @session.working_directory, on_change: -> { @waker.wake }).start
       @scratch_watch = start_scratch_watch if @session.scratch
     end
 

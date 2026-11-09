@@ -113,6 +113,7 @@ RSpec.describe "Session file goldens (characterization)" do
       )
       s.used_memory_names = %w[system/style project/notes]
       s.project_root = "/work/project"
+      s.project_id = "project-0a1b2c3d"
       s.preloaded_memory_names = ["system/delegated"]
       s.muted_memory_names = ["system/noisy"]
       s.prompt_notes = [{ "name" => "model_notes_gemma", "scope" => "system", "chars" => 612, "digest" => "abc123" },

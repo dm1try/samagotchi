@@ -56,11 +56,12 @@ module Samagotchi
     # @param show_card [#call] (**card) → shows it; false/nil: it wasn't
     #   shown (the UI is on another session), so no carded line
     # @return [Symbol, nil] :attached, :carded or nil
-    def after_judged(job:, fields:, settings:, project_root:, state_dir:, log:, show_card:)
+    def after_judged(job:, fields:, settings:, project_root:, state_dir:, log:, show_card:, project_id: nil)
       return nil unless settings.mode == "on" && fields && fields["stated"]
       return nil unless %w[attach offer].include?(fields["would"])
 
-      candidate = proposed(job.session_id, job.name, project_root: project_root, state_dir: state_dir) or return nil
+      candidate = proposed(job.session_id, job.name, project_root: project_root, project_id: project_id,
+                                                     state_dir: state_dir) or return nil
       if fields["would"] == "attach"
         judge_attach(candidate, job: job, p: fields["p"], state_dir: state_dir, log: log, show_card: show_card)
       else
@@ -72,8 +73,9 @@ module Samagotchi
     end
 
     # The candidate +name+ when it is still proposed in the session.
-    def proposed(session_id, name, project_root:, state_dir:)
-      rows = ContextCandidates.with_status(session_id, project_root: project_root, state_dir: state_dir)
+    def proposed(session_id, name, project_root:, state_dir:, project_id: nil)
+      rows = ContextCandidates.with_status(session_id, project_root: project_root, project_id: project_id,
+                                                       state_dir: state_dir)
       rows.find { |candidate, status| candidate.name == name && status == "proposed" }&.first
     end
 
@@ -128,7 +130,8 @@ module Samagotchi
     end
 
     def find(session, name, state_dir:)
-      ContextCandidates.with_status(session.id, project_root: session.project_root, state_dir: state_dir)
+      ContextCandidates.with_status(session.id, project_root: session.project_root, project_id: session.project_id,
+                                                state_dir: state_dir)
                        .find { |candidate, _status| candidate.name == name }
     end
 
