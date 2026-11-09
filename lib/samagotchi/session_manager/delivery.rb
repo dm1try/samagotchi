@@ -37,6 +37,17 @@ module Samagotchi
 
       def detail = ack["detail"]
 
+      # How a delivery that did not go in reads, as one line: the word for it
+      # (refused: a worker older than queueing would steer the running turn,
+      # or a remote refused it as chi send refuses it here; failed: it simply
+      # did not get in) and its reason. chi send prints it, and the delegate
+      # tool's follow-up says it after "Error: session <id8>".
+      # @return [String]
+      def refusal_text
+        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || DeliverResult::REMOTE_REFUSALS.include?(error)
+        "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
+      end
+
       # What the worker applied (a Bridge ack only): the delivery asked for,
       # or next_step for a --queue that found no turn running; nil from the
       # input file or a worker older than delivery.
@@ -48,6 +59,13 @@ module Samagotchi
       # The steer cut-after seconds, with a cut that waits only.
       def cut_after = ack["cut_after"]
     end
+
+    # A remote's refusals of what this machine checks before sending (a
+    # parent's /continue yes, a loosening /parent-answers, images to a
+    # model that can't see them): its turn route's error codes. Named on
+    # DeliverResult, not inside its Data.define block, where a constant
+    # would land on SessionManager.
+    DeliverResult::REMOTE_REFUSALS = %w[parent_answers_refused parent_continue_refused no_vision].freeze
 
     # The unclaimed input files +author+ wrote.
     PARTICIPANT_QUEUE_LOCK = "participants.lock"

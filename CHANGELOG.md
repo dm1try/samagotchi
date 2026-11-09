@@ -33,6 +33,9 @@ and commands may change between minor versions. How releases are made:
 - A bundle install or upgrade that is killed or fails after it copied memories (a `pending.json` journal in
   `.bundles/NAME/`) no longer leaves them as your own files or local edits: a retry owns them, `chi bundle status`
   shows no edit, the next upgrade fast-forwards them and uninstall removes them.
+- A `delegate` follow-up the child's worker refuses says why, in the same sentence `chi send` prints for a delivery
+  that did not go in (`DeliverResult#refusal_text`): "Error: session abc12345 refused: this session's worker predates
+  queueing ... and send again" rather than the bare error code.
 
 ## [0.160.0] - 2026-11-09
 

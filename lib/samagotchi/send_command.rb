@@ -673,7 +673,7 @@ module Samagotchi
         return false
       end
       unless result.accepted?
-        @info.puts("#{session.id}  #{refused_word(result)}: #{result.detail || "could not queue it"}")
+        @info.puts("#{session.id}  #{result.refusal_text}")
         return false
       end
 
@@ -684,19 +684,6 @@ module Samagotchi
     end
 
     SENT_COMMAND = "sent as a session command"
-
-    # A remote's refusals of what this machine checks before sending (a
-    # parent's /continue yes, a loosening /parent-answers, images to a
-    # model that can't see them): its turn route's error codes.
-    REMOTE_REFUSALS = %w[parent_answers_refused parent_continue_refused no_vision].freeze
-
-    # How a delivery that didn't go in reads: refused (a worker older than
-    # queueing would steer it; a remote refused it as chi send refuses it
-    # here) or failed.
-    def refused_word(result)
-      refused = result.error == Delivery::QUEUE_UNAVAILABLE["error"] || REMOTE_REFUSALS.include?(result.error)
-      refused ? "refused" : "failed"
-    end
 
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
@@ -773,7 +760,7 @@ module Samagotchi
                  end
       result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery)
       unless result.accepted?
-        @info.puts("#{short}  #{refused_word(result)}: #{result.detail || "could not queue it"}")
+        @info.puts("#{short}  #{result.refusal_text}")
         return false
       end
 
