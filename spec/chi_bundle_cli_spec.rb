@@ -32,6 +32,7 @@ RSpec.describe "chi bundle (CLI)" do
         Source is the path/URL to the bundle (dir/zip/tar.gz/git).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
         A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+        So is a memory, plugin or script whose bytes disagree with its manifest sha256; --force installs it too.
 
       upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
         Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
@@ -39,6 +40,7 @@ RSpec.describe "chi bundle (CLI)" do
         A bare NAME upgrades the bundle installed under that name from the source it came from.
         --dry-run shows what would change. --agent launches interactive session on conflict.
         A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
+        So is a file whose bytes disagree with its manifest sha256; --force installs it too.
 
       uninstall <bundle> [--scope system|project] [--force]
         Remove a bundle and its index entries (--force moves a locally edited file to the trash).
@@ -86,8 +88,8 @@ RSpec.describe "chi bundle (CLI)" do
         Install a memory bundle from a directory, zip, tar archive, or git URL,
         or a bundle shipped with chi by name (see: chi bundle list).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
-        It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
-        refused, and the bundle is not written anywhere.
+        It also installs a bundle whose requires_chi this chi doesn't meet and a file whose bytes disagree with
+        its manifest sha256: without --force both are refused, and the bundle is not written anywhere.
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
@@ -97,8 +99,9 @@ RSpec.describe "chi bundle (CLI)" do
 
   UPGRADE_USAGE = <<~TEXT
     Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
-      --force takes the bundle's file over an edited one, and installs a bundle whose requires_chi this chi
-      doesn't meet (without it such a bundle is refused).
+      --force takes the bundle's file over an edited one, installs a bundle whose requires_chi this chi
+      doesn't meet, and installs a file whose bytes disagree with its manifest sha256 (without it each is
+      refused, nothing written).
   TEXT
 
   BUILD_USAGE = <<~TEXT
@@ -168,6 +171,52 @@ RSpec.describe "chi bundle (CLI)" do
     dir
   end
 
+  # A bundle dir with a plugin only, at +version+; the manifest's sha is the
+  # bytes written.
+  def self.make_plugin_bundle(dir, name:, version:, body: "chi.on(:turn) { }\n")
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "plugin.rb"), body)
+    File.write(File.join(dir, "manifest.yml"), <<~YAML)
+      name: #{name}
+      version: #{version}
+      plugin:
+        file: plugin.rb
+        sha256: sha256:#{Digest::SHA256.hexdigest(body)}
+    YAML
+    dir
+  end
+
+  # A bundle dir whose manifest's sha256 for a.md is wrong (its bytes are
+  # +content+): what a strict install refuses and --force installs.
+  def self.make_stale_bundle(dir, name:, content: "one\n")
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "a.md"), content)
+    File.write(File.join(dir, "manifest.yml"), <<~YAML)
+      name: #{name}
+      version: 1.0.0
+      files:
+        a.md: sha256:#{"0" * 64}
+    YAML
+    dir
+  end
+
+  # A bundle dir with memories, guardrail rules and a plugin, at +version+;
+  # nil +plugin+ ships none.
+  def self.make_code_bundle(dir, name:, version:, memories: {}, rules: {}, plugin: nil)
+    FileUtils.mkdir_p(dir)
+    FileUtils.mkdir_p(File.join(dir, "guardrails")) unless rules.empty?
+    memories.each { |key, text| File.write(File.join(dir, key), text) }
+    rules.each { |key, text| File.write(File.join(dir, "guardrails", key), text) }
+    File.write(File.join(dir, "plugin.rb"), plugin) if plugin
+    manifest = {
+      "name" => name, "version" => version, "scope" => "system",
+      "files" => memories.transform_values { |text| "sha256:#{Digest::SHA256.hexdigest(text)}" }
+    }
+    manifest["plugin"] = { "file" => "plugin.rb", "sha256" => "sha256:#{Digest::SHA256.hexdigest(plugin)}" } if plugin
+    File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+    dir
+  end
+
   def chi(*args, **opts) = self.class.run_in(@root, *args, **opts)
   def memories = File.join(@root, "cfg", "samagotchi", "memories")
 
@@ -228,6 +277,145 @@ RSpec.describe "chi bundle (CLI)" do
 
       expect(chi("uninstall", "sample-plugin"))
         .to eq(["Uninstalled bundle 'sample-plugin'\nRemoved: plugin/plugin.rb\n", "", 0])
+    end
+
+    # A worker that is already running keeps the plugin it loaded in memory (its
+    # rules reload by stamp and its scripts run from the replaced files): an
+    # upgrade or uninstall that changed the plugin names the sessions to restart,
+    # one line after the result. Nothing on a dry run, on an upgrade that changed
+    # nothing, with no worker running, or for a bundle with no plugin.
+    def live_workers(*ids)
+      allow(Samagotchi::LiveVersions).to receive(:workers).and_return(
+        ids.map { |id| Samagotchi::LiveVersions::Worker.new(session_id: id, version: Samagotchi::VERSION, restart: true) }
+      )
+    end
+
+    def restart_hint(*ids) = "#{ids.size} session#{"s" unless ids.size == 1} " \
+                            "#{ids.size == 1 ? "runs" : "run"} the old code: " \
+                            "#{ids.map { |id| "chi sessions restart #{id}" }.join(", ")}\n"
+
+    it "after an upgrade or uninstall that changed a bundle with a plugin, names the sessions to restart" do
+      live_workers("aaaa1111", "bbbb2222")
+      v1 = self.class.make_plugin_bundle(File.join(@root, "p1"), name: "live", version: "1.0.0")
+      v2 = self.class.make_plugin_bundle(File.join(@root, "p2"), name: "live", version: "2.0.0", body: "chi.on(:turn) { puts 1 }\n")
+      hint = restart_hint("aaaa1111", "bbbb2222")
+      plugin_line = "Plugin: plugin.rb (loads at the next chi start)\n"
+
+      expect(chi("install", v1)).to eq(["Installed: plugin.rb\n#{plugin_line}#{provenance_line("live")}", "", 0])
+      # Nothing changed: no line.
+      expect(chi("upgrade", "live"))
+        .to eq(["Upgrading live from #{v1}\nUp to date: plugin.rb\n#{plugin_line}#{provenance_line("live")}", "", 0])
+      # A dry run writes nothing: no line either.
+      expect(chi("upgrade", v2, "--dry-run"))
+        .to eq(["Source changes: #{v1} → #{v2}\nWould update: plugin.rb\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", v2))
+        .to eq(["Source changes: #{v1} → #{v2}\nUpdated: plugin.rb\n#{plugin_line}#{provenance_line("live")}#{hint}", "", 0])
+      expect(chi("uninstall", "live"))
+        .to eq(["Uninstalled bundle 'live'\nRemoved: plugin/plugin.rb\n#{hint}", "", 0])
+    end
+
+    # Only the plugin stays in a worker's memory: its rules reload by their
+    # stamp and its scripts run from the replaced files, so a bundle without a
+    # plugin, or an upgrade that touched only its memories or rules, needs no
+    # restart. A worker whose chi can't restart is left out.
+    it "says nothing when only a memory or a rule changed, or the bundle has no plugin" do
+      live_workers("dddd4444")
+      v1 = self.class.make_code_bundle(File.join(@root, "c1"), name: "mix", version: "1.0.0",
+                                       memories: { "a.md" => "one\n" }, rules: { "r.yml" => "rule one\n" },
+                                       plugin: "chi.on(:turn) { }\n")
+      v2 = self.class.make_code_bundle(File.join(@root, "c2"), name: "mix", version: "2.0.0",
+                                       memories: { "a.md" => "two\n" }, rules: { "r.yml" => "rule two\n" },
+                                       plugin: "chi.on(:turn) { }\n")
+      expect(chi("install", v1)[2]).to eq(0)
+
+      out, err, code = chi("upgrade", v2)
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Updated: a.md, guardrails/r.yml")
+      expect(out).not_to include("old code")
+
+      rules = self.class.make_code_bundle(File.join(@root, "r1"), name: "rules-only", version: "1.0.0",
+                                         rules: { "r.yml" => "rule one\n" })
+      expect(chi("install", rules)[2]).to eq(0)
+      out, err, code = chi("upgrade", self.class.make_code_bundle(File.join(@root, "r2"), name: "rules-only",
+                                                                  version: "2.0.0", rules: { "r.yml" => "rule two\n" }))
+      expect([err, code]).to eq(["", 0])
+      expect(out).not_to include("old code")
+      out, err, code = chi("uninstall", "rules-only")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to start_with("Uninstalled bundle 'rules-only'\n")
+      expect(out).not_to include("old code")
+    end
+
+    it "names the sessions when an upgrade adds a plugin they never loaded" do
+      live_workers("eeee5555")
+      plain = self.class.make_code_bundle(File.join(@root, "n1"), name: "added", version: "1.0.0", memories: { "a.md" => "one\n" })
+      with = self.class.make_code_bundle(File.join(@root, "n2"), name: "added", version: "2.0.0", memories: { "a.md" => "one\n" },
+                                        plugin: "chi.on(:turn) { }\n")
+      expect(chi("install", plain)[2]).to eq(0)
+
+      out, err, code = chi("upgrade", with)
+      expect([err, code]).to eq(["", 0])
+      expect(out).to end_with(restart_hint("eeee5555"))
+
+      out, err, code = chi("uninstall", "added")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Removed: plugin/plugin.rb")
+      expect(out).to end_with(restart_hint("eeee5555"))
+    end
+
+    it "leaves out a worker whose chi cannot restart it" do
+      allow(Samagotchi::LiveVersions).to receive(:workers).and_return(
+        [Samagotchi::LiveVersions::Worker.new(session_id: "ffff6666", version: Samagotchi::VERSION, restart: false)]
+      )
+      src = self.class.make_plugin_bundle(File.join(@root, "no"), name: "norestart", version: "1.0.0")
+      expect(chi("install", src)[2]).to eq(0)
+      out, err, code = chi("upgrade", self.class.make_plugin_bundle(File.join(@root, "no2"), name: "norestart",
+                                                                    version: "2.0.0", body: "chi.on(:turn) { puts 1 }\n"))
+      expect([err, code]).to eq(["", 0])
+      expect(out).not_to include("old code")
+
+      allow(Samagotchi::LiveVersions).to receive(:workers).and_return(
+        [Samagotchi::LiveVersions::Worker.new(session_id: "ffff6666", version: Samagotchi::VERSION, restart: false),
+         Samagotchi::LiveVersions::Worker.new(session_id: "gggg7777", version: Samagotchi::VERSION, restart: true)]
+      )
+      out, _err, code = chi("uninstall", "norestart")
+      expect(code).to eq(0)
+      expect(out).to end_with(restart_hint("gggg7777"))
+    end
+
+    it "says nothing about restarting with no live worker, or a bundle with no plugin" do
+      live_workers
+      src = self.class.make_plugin_bundle(File.join(@root, "q"), name: "qplug", version: "1.0.0")
+      expect(chi("install", src))
+        .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
+      expect(chi("upgrade", src))
+        .to eq(["Up to date: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
+      expect(chi("uninstall", "qplug")).to eq(["Uninstalled bundle 'qplug'\nRemoved: plugin/plugin.rb\n", "", 0])
+
+      live_workers("cccc3333")
+      mem = self.class.make_bundle(File.join(@root, "mem"), name: "memonly", version: "1.0.0", content: "one\n")
+      expect(chi("install", mem)).to eq(["Installed: a.md\n#{provenance_line("memonly")}", "", 0])
+      out, err, code = chi("uninstall", "memonly")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to start_with("Uninstalled bundle 'memonly'\n")
+      expect(out).not_to include("old code")
+    end
+
+    # A file whose bytes disagree with the sha its manifest declares is refused
+    # before anything is written; --force installs it anyway, with the warning.
+    it "refuses an install whose bytes disagree with the manifest's sha, and installs it with --force" do
+      dir = self.class.make_stale_bundle(File.join(@root, "stale"), name: "stale-sha")
+
+      out, err, code = chi("install", dir)
+      expect([out, code]).to eq(["", 1])
+      expect(err).to eq("Install failed: Checksum mismatch for a.md: expected 00000000..., got " \
+                        "#{Digest::SHA256.hexdigest("one\n")[0..7]}...; chi bundle install --force installs it anyway\n")
+      expect(File.exist?(File.join(memories, "a.md"))).to be(false)
+      expect(Dir.exist?(File.join(memories, ".bundles", "stale-sha"))).to be(false)
+
+      out, err, code = chi("install", dir, "--force")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Installed: a.md", "Checksum mismatch for a.md")
     end
 
     it "labels retired hook files present or missing" do

@@ -463,14 +463,14 @@ RSpec.describe "Kept edits in a bundle" do
 
     before do
       write_source("1.0.0", { "a.md" => "a one\n", "b.md" => "b one\n" },
-                   extra: { "files" => { "a.md" => { "sha256" => "fake", "description" => "A" },
-                                         "b.md" => { "sha256" => "fake", "description" => "B" } } })
+                   extra: { "files" => { "a.md" => { "sha256" => Digest::SHA256.hexdigest("a one\n"), "description" => "A" },
+                                         "b.md" => { "sha256" => Digest::SHA256.hexdigest("b one\n"), "description" => "B" } } })
       run_installer
       File.write(target, "a edited\n")
       File.write(b_target, "b edited\n")
       write_source("2.0.0", { "a.md" => "a two\n", "b.md" => "b two\n" },
-                   extra: { "files" => { "a.md" => { "sha256" => "fake", "description" => "A" },
-                                         "b.md" => { "sha256" => "fake", "description" => "B" } } })
+                   extra: { "files" => { "a.md" => { "sha256" => Digest::SHA256.hexdigest("a two\n"), "description" => "A" },
+                                         "b.md" => { "sha256" => Digest::SHA256.hexdigest("b two\n"), "description" => "B" } } })
     end
 
     # An upgrade whose agent step (the attached TUI) does +agent+.
@@ -782,7 +782,7 @@ RSpec.describe "Kept edits in a bundle" do
       File.write(File.join(source, file), "#{text.chomp} #{version}\n")
     end
     manifest = YAML.safe_load_file(File.join(source, "manifest.yml"))
-    manifest.merge!("plugin" => { "file" => "plugin.rb", "sha256" => "" }, "scripts" => { "s.sh" => { "sha256" => "" } })
+    manifest.merge!("plugin" => { "file" => "plugin.rb", "sha256" => "" }, "scripts" => { "s.sh" => "" })
     File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
     source
   end

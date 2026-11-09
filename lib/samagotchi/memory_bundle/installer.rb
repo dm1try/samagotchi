@@ -61,7 +61,8 @@ module Samagotchi
       # chi_version: the chi this install is for (Profile and ShippedUpdate
       # check their bundles against a version they are given); default this chi.
       def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil,
-                     shipped_dir: SourceNormalizer::SHIPPED_DIR, dev: false, chi_version: Samagotchi::VERSION)
+                     shipped_dir: SourceNormalizer::SHIPPED_DIR, dev: false, chi_version: Samagotchi::VERSION,
+                     refuse_mismatch: false)
         @source = source
         @shipped_dir = shipped_dir
         @prepared = prepared
@@ -73,6 +74,10 @@ module Samagotchi
         @dry_run = dry_run
         @dev = dev
         @chi_version = chi_version
+        # `chi bundle install/upgrade` refuses a file whose bytes disagree with
+        # its manifest sha before writing anything; the callers that only warn
+        # (ShippedUpdate, SystemBundle, Profile) leave it unset.
+        @refuse_mismatch = refuse_mismatch
         @results = {}
         @warnings = []
         @placeholder_warnings = []
@@ -212,6 +217,18 @@ module Samagotchi
           "(to leave dev mode: chi bundle uninstall #{name}, then chi bundle install without --dev)"
       end
 
+      # The line a refused install names one file with: the checksum warning and
+      # the way past it. Only `chi bundle install/upgrade` refuses a mismatch
+      # (--force skips the early check and keeps the post-write warning); the
+      # callers that only warn (chi update, SystemBundle, a profile) never reach
+      # this.
+      # @param label [String] "a.md", "plugin plugin.rb", "script s.sh"
+      # @param upgrade [Boolean] which command the hint names
+      def self.mismatch_refusal(label, path, expected, upgrade:)
+        warning = FileDigest.mismatch(label, path, expected)
+        warning && "#{warning}; chi bundle #{upgrade ? "upgrade" : "install"} --force installs it anyway"
+      end
+
       private
 
       # The files whose result has one of +words+, in the order they ran.
@@ -243,10 +260,15 @@ module Samagotchi
         assets = AssetInstaller.new(
           name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
           results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
-          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev, chi_version: @chi_version
+          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev, chi_version: @chi_version,
+          refuse_mismatch: @refuse_mismatch
         )
         # Before the first write: a plugin or script the bundle lacks refuses the run with disk and record as they were.
         assets.check_named_files
+        # And, for the commands that refuse it (--force aside), a file whose
+        # bytes disagree with the sha its manifest declares.
+        refuse_memory_mismatches
+        assets.check_named_checksums
         write_pending
         install_memories
         installed = assets.run
@@ -275,6 +297,22 @@ module Samagotchi
         @provenance.write_pending(version: @manifest.version, scope: @target_scope, target_dir: @target_dir, files: incoming) unless incoming.empty?
       rescue SystemCallError => e
         raise InstallError, Trash.failure_message(e)
+      end
+
+      # Before the first write, the bundle's own bytes against the sha its
+      # manifest declares for each memory: `chi bundle install/upgrade` refuses
+      # a mismatch (--force skips the check, and #verify_memory_checksums keeps
+      # the post-write warning for the callers that only warn). A dev install
+      # follows its own tree; a non-strict run has no shas to trust.
+      # @raise [InstallError] one line per mismatched file
+      def refuse_memory_mismatches
+        return unless @refuse_mismatch && @strict && !@dev && !@force && @manifest
+
+        lines = memory_files.filter_map do |file_key|
+          self.class.mismatch_refusal(file_key, File.join(@bundle_dir, file_key),
+                                      @manifest.checksum_for(file_key), upgrade: @upgrade)
+        end
+        raise InstallError, lines.join("\n") unless lines.empty?
       end
 
       # Who may install under this name (a manifest can take any name: a

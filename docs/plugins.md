@@ -1696,7 +1696,9 @@ gem.
 
 - `chi bundle install <dir>`: copies the plugin to
   `<memories>/.bundles/<name>/plugin/`. It records the plugin's sha256 and
-  `requires_chi`, and warns about a wrong declared sha256. A bundle whose
+  `requires_chi`, and refuses a plugin or script whose bytes disagree with its
+  declared sha256 (`--force` installs it anyway, with the `Checksum mismatch`
+  warning; an automatic `chi update` of a shipped bundle only warns). A bundle whose
   `requires_chi` this chi doesn't meet is **refused**: `Install failed: NAME
   can't be installed: it requires chi >= X (this is chi Y)`, exit 1, nothing
   written. `--force` installs it anyway, with the warnings that its plugin,
