@@ -3,9 +3,8 @@
 require_relative "session_manager"
 
 module Samagotchi
-  # WorkerBoot: the worker process, from run_session_loop (what the boot
-  # string SessionManager#worker_command writes runs, through
-  # SessionManager.run_session_loop) to what it does as it leaves (CROSS-VERSION
+  # WorkerBoot: the worker process, from the entry the boot string names
+  # (WorkerBoot.run_session_loop) to what it does as it leaves (CROSS-VERSION
   # CONTRACT: spec/worker_contract_spec.rb). It takes the session's OwnerLock,
   # leaves the spawner's process tree, installs the signals and the project
   # env, and runs the Worker (worker.rb loads only then, after the lock). Calls
@@ -14,7 +13,7 @@ module Samagotchi
   module WorkerBoot
     class << self
       # Run the session loop inside the forked process: the worker's main,
-      # which the boot string reaches through SessionManager.run_session_loop.
+      # which the boot string names directly.
       #
       # Every worker starts its per-session Bridge (the single live client
       # transport) on a port bound to 127.0.0.1 before the loop and stops it on

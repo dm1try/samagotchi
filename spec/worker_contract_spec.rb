@@ -14,8 +14,8 @@ require "samagotchi/client_id"
 # These pins fail when one of those shared names changes. Change them only
 # additively, and keep reading the old form (SessionManager.worker_command).
 RSpec.describe "Cross-version worker contract" do
-  # Every boot string names SessionManager.run_session_loop today; the
-  # WorkerBoot one is the entry the string switches to.
+  # Boot strings name WorkerBoot.run_session_loop; the SessionManager
+  # forwarder serves older spawners until it is removed.
   { "SessionManager" => -> { Samagotchi::SessionManager }, "WorkerBoot" => -> { Samagotchi::WorkerBoot } }
     .each do |name, entry|
     it "boots through #{name}.run_session_loop(id, state_dir:)" do
