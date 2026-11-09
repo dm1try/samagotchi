@@ -115,13 +115,23 @@ RSpec.describe Samagotchi::WorkerPresence do
       expect(File.exist?(sidecar)).to be(false)
     end
 
-    it "resolves a live worker's link with the owner it read" do
+    it "resolves a live worker's link with the owner it read, reading the lock once" do
       live_sidecar_fixture(dir, port: 5001)
+      allow(Samagotchi::OwnerLock).to receive(:owner).and_call_original
 
       presence = read(link: :look)
       expect(presence.link).to be_a(Samagotchi::WorkerLink::Live)
       expect(presence).to have_attributes(live?: true, worker_owned?: true, owned?: true)
       expect(presence.link.owner).to eq(presence.owner)
+      expect(Samagotchi::OwnerLock).to have_received(:owner).once
+    end
+
+    it "resolves the link with the owner the caller read" do
+      owner = Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", started_at: Time.now.iso8601)
+
+      presence = read(owner: owner, link: :look)
+      expect(presence.link).to eq(Samagotchi::WorkerLink::Starting.new(owner: owner, stuck: false))
+      expect(presence).to have_attributes(live?: false, worker_owned?: true)
     end
   end
 

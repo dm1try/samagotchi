@@ -48,7 +48,8 @@ module Samagotchi
     #   manager's), or a reader of it called only for a valid id; :read reads
     #   it here (OwnerLock.owner)
     # @param link [nil, :look, :unlink] also resolve the WorkerLink:
-    #   :look leaves a stale sidecar, :unlink removes it (WorkerLink.resolve)
+    #   :look leaves a stale sidecar, :unlink removes it (WorkerLink.resolve,
+    #   given the owner read here or by the caller: one moment's snapshot)
     # @param spawned [#call, nil] ->(session_id, state_dir) { Boolean }: the
     #   in-process spawn memo (SpawnPart); nil: false
     # @return [WorkerPresence]
