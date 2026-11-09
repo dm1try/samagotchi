@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../worker_link"
+require_relative "../starting_marker"
 
 module Samagotchi
   class SessionManager
@@ -244,13 +245,38 @@ module Samagotchi
         opts = spawn_options(session)
         env = opts.delete(:env)
         command = worker_command(session.id, state_dir: state_dir)
-        pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
-        # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
+        # Starting from here (WorkerPresence#starting?), for as long as this
+        # process runs, until the spawn below names its starter.
+        StartingMarker.mark(session.id, state_dir: state_dir)
+        begin
+          pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
+        rescue StandardError
+          StartingMarker.clear(session.id, state_dir: state_dir)
+          raise
+        end
         # +pid+ is the worker's starter, which exits once the worker it forked
-        # holds the lock (WorkerBoot.detach_from_spawner): the lock's pid is the worker's.
-        note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
+        # holds the lock (WorkerBoot.detach_from_spawner): the lock's pid is
+        # the worker's, and the marker holds exactly while the starter runs
+        # (most spawners exit right after this). The worker removes it once it
+        # holds the lock (Worker#start).
+        if starter_running?(pid)
+          StartingMarker.mark(session.id, state_dir: state_dir, pid: pid)
+          # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
+          note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
+        else
+          # It failed to exec or boot: nothing is starting.
+          StartingMarker.clear(session.id, state_dir: state_dir)
+        end
         Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
         pid
+      end
+
+      # Whether the starter just spawned still runs (reaped here if it
+      # already exited). Not a child of this process: nothing to wait for.
+      private def starter_running?(pid)
+        Process.waitpid(pid, Process::WNOHANG).nil?
+      rescue Errno::ECHILD
+        false
       end
     end
 

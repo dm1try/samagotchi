@@ -24,8 +24,8 @@ module Samagotchi
   #   worker, a one-turn chi run (kind tui) or nil when free
   # @!attribute stop_marked [Boolean] the `stopped` marker (Session.stopped_marker?)
   # @!attribute starting_marked [Boolean] the `starting` marker, fresh
-  #   (StartingMarker.fresh?): its writer spawns the worker itself (today
-  #   only a continue writes it, on its new link)
+  #   (StartingMarker.fresh?): a worker is being started for it (every spawn
+  #   writes it, until the worker holds the lock)
   # @!attribute spawned_here [Boolean] this process spawned a worker for it
   #   whose starter still waits, within SessionManager::WORKER_START_GRACE:
   #   SpawnPart's in-process memo, read through the injected +spawned:+
@@ -115,9 +115,8 @@ module Samagotchi
     # The loaded session is a `chi scratch` one. False before #with_session.
     def scratch? = scratch == true
 
-    # A worker is being started for it by whoever wrote the fresh
-    # `starting` marker (StartingMarker; today a continue moving delegates
-    # to its new link).
+    # A worker is being started for it: the fresh `starting` marker
+    # (StartingMarker) a spawn writes until its worker holds the lock.
     def starting? = starting_marked
 
     # A worker this process spawned may not hold the lock yet, and no stop

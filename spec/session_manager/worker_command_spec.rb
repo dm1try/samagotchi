@@ -124,6 +124,8 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "reaps the worker when it exits, so a long-lived spawner (chi web) keeps no zombies" do
       allow(Process).to receive(:spawn).and_return(12_345)
+      # Still running (a starter that already exited is reaped at once).
+      allow(Process).to receive(:waitpid).and_return(nil)
       allow(Process).to receive(:detach)
 
       described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)

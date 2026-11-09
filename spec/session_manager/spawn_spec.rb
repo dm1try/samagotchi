@@ -23,6 +23,79 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  # Every spawn marks the session starting (StartingMarker) until its
+  # worker holds the owner lock: the writer's pid before the spawn, the
+  # starter's (Process.spawn's child, which lives until then) after.
+  describe "the starting marker of a spawn" do
+    def marker(id)
+      JSON.parse(File.read(File.join(Samagotchi::Session.session_dir(id, state_dir: tmpdir), "starting")))
+    rescue Errno::ENOENT
+      nil
+    end
+
+    def fresh?(id) = Samagotchi::StartingMarker.fresh?(id, state_dir: tmpdir)
+
+    after do
+      if @starter
+        Process.kill("KILL", @starter)
+        Process.wait(@starter)
+      end
+    rescue Errno::ESRCH, Errno::ECHILD
+      nil
+    end
+
+    # A stand-in starter: a real child that runs until the example ends.
+    def spawn_starter(seen = nil)
+      allow(Process).to receive(:spawn).and_wrap_original do |original, *|
+        seen&.call
+        @starter = original.call("sleep", "30")
+      end
+    end
+
+    it "is written before a new session's worker spawns and names its starter after" do
+      at_spawn = nil
+      spawn_starter(-> { at_spawn = Dir.glob(File.join(tmpdir, "*", "starting")).map { |f| JSON.parse(File.read(f))["pid"] } })
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+
+      expect(at_spawn).to eq([Process.pid])
+      expect(marker(session.id)).to include("pid" => @starter)
+      expect(fresh?(session.id)).to be(true)
+    end
+
+    it "is written for a resume too, naming its starter" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      spawn_starter
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(marker(session.id)).to include("pid" => @starter)
+      expect(fresh?(session.id)).to be(true)
+    end
+
+    it "holds nothing once the starter is gone (a spawn that failed to boot)" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Process).to receive(:spawn).and_wrap_original do |original, *|
+        original.call("true").tap { |pid| Process.wait(pid) }
+      end
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(fresh?(session.id)).to be(false)
+    end
+
+    it "is removed when the spawn itself raises" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Process).to receive(:spawn).and_raise(Errno::ENOENT, "chi")
+
+      expect { described_class.resume_session(session.id, state_dir: tmpdir) }.to raise_error(Errno::ENOENT)
+      expect(marker(session.id)).to be_nil
+    end
+  end
+
   describe ".resume_session" do
     it "wakes an idle session by spawning a worker" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
@@ -73,6 +146,8 @@ RSpec.describe Samagotchi::SessionManager do
 
       before do
         allow(Process).to receive(:spawn).and_return(20_002)
+        # The stand-in starter still runs.
+        allow(Process).to receive(:waitpid).and_return(nil)
         allow(Process).to receive(:detach).and_return(waiter)
       end
 

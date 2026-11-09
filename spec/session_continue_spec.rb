@@ -687,6 +687,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
 
     it "moves running, live and unreported delegates and an open grandchild's delegate; archives the finished one" do
+      # The stand-in starter (12_345) still runs.
+      allow(Process).to receive(:waitpid).and_return(nil)
       previous = make
       running = make(prompt: "a", parent_id: previous.id, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)
       own(running.id)
@@ -722,10 +724,11 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(cursors(previous.id).keys).to include(finished.id, unreported.id)
       expect(ring_ids(link.id)).to eq([unreported.id])
       expect(rings(previous.id)).to be_empty
-      # The move is done: no intent. The starting marker stays until the
-      # spawned worker holds the link (Worker#start clears it).
+      # The move is done: no intent. The starting marker stays, naming the
+      # worker's starter, until the spawned worker holds the link
+      # (Worker#start clears it).
       expect(Samagotchi::ChildMove.read_intent(link.id, state_dir: tmpdir)).to be_nil
-      expect(Samagotchi::StartingMarker.fresh?(link.id, state_dir: tmpdir)).to be(true)
+      expect(JSON.parse(File.read(File.join(dir_of(link.id), Samagotchi::StartingMarker::FILE)))).to include("pid" => 12_345)
       expect(Process).to have_received(:spawn).once
       expect(Samagotchi::ChildrenStatus.counts(link.id, state_dir: tmpdir))
         .to have_attributes(running: 1, unreported: 1)
