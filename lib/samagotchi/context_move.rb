@@ -70,13 +70,18 @@ module Samagotchi
         reserve = CARRY_MORE_TRUNCATION.bytesize
         text_limit = [CARRY_SOURCE_MAX_BYTES, remaining - heading.bytesize - reserve].min
         if text_limit < CARRY_SOURCE_TRUNCATION.bytesize
+          # Not even room for a trimmed source: this one is dropped, so the
+          # note says text is missing even when it was the last.
           truncated = true
           break
         end
 
         bounded, source_truncated = bound_source_text(text, text_limit)
         note << heading << bounded
-        if source_truncated
+        # Only a cut by the note's own budget ends the note: a source trimmed to
+        # CARRY_SOURCE_MAX_BYTES still leaves room for the next one, and one that
+        # fits the smaller room left is carried whole.
+        if source_truncated && text_limit < CARRY_SOURCE_MAX_BYTES
           truncated = more
           break
         end

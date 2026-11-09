@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The continue's carry note of unabsorbed pushed context keeps the sources after one trimmed to the per-source 4 KiB
+  cap: a source that fits the room left is carried whole even when that room is under the cap, the note ends only at a
+  source it has no room for, and "[additional pushed text omitted]" is added whenever text is left out.
 - The memory-orphan hint says how the other folder is keyed: a `chi project init` folder is named by its project id
   instead of "another path's hash", and a project keyed by an id is named by its folder, not by that id (so a marked
   folder whose memories stayed in its id folder after `git init` is described correctly).

@@ -546,6 +546,76 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(note[:text].valid_encoding?).to be(true)
     end
 
+    it "carries the next pushed source after one is cut by the per-source cap" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[a b].each { |name| add_context_source(old, name) }
+      old.record_text("a", fetched("answer " * 1500))
+      old.record_text("b", fetched("the short answer"))
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text]).to include("Source: a", "Source: b", "the short answer")
+      expect(note[:text]).not_to include("additional pushed text omitted")
+      first_source = note[:text].split("\nSource: b\n").first
+      expect(first_source).to end_with(Samagotchi::ContextMove::CARRY_SOURCE_TRUNCATION)
+      expect(note[:text].bytesize).to be <= Samagotchi::ContextMove::CARRY_NOTE_MAX_BYTES
+    end
+
+    it "stops at the source that does not fit the note and marks the rest as omitted" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[a b c d e].each do |name|
+        add_context_source(old, name)
+        old.record_text(name, fetched("x" * 5000))
+      end
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text].bytesize).to be <= Samagotchi::ContextMove::CARRY_NOTE_MAX_BYTES
+      expect(note[:text]).to end_with(Samagotchi::ContextMove::CARRY_MORE_TRUNCATION)
+      expect(note[:text]).not_to include("Source: e")
+    end
+
+    it "keeps the small sources that fit the room left after the big ones fill the note" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[a b c d e].each { |name| add_context_source(old, name) }
+      %w[a b c].each { |name| old.record_text(name, fetched("answer " * 1500)) }
+      %w[d e].each { |name| old.record_text(name, fetched("tail of #{name}")) }
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text]).to include("Source: a", "Source: b", "Source: c", "Source: d", "Source: e")
+      expect(note[:text]).to include("tail of d", "tail of e")
+      expect(note[:text]).not_to include("additional pushed text omitted")
+      expect(note[:text].bytesize).to be <= Samagotchi::ContextMove::CARRY_NOTE_MAX_BYTES
+    end
+
+    it "marks the omitted line when the last source has no room left in the note" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[a b c d tail].each { |name| add_context_source(old, name) }
+      %w[a b d].each { |name| old.record_text(name, fetched("z" * 4096)) }
+      old.record_text("c", fetched("c" * 2869))
+      old.record_text("tail", fetched("the last source"))
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text]).to end_with(Samagotchi::ContextMove::CARRY_MORE_TRUNCATION)
+      expect(note[:text]).not_to include("Source: tail")
+      expect(note[:text]).to include("Source: d")
+      expect(note[:text].bytesize).to be <= Samagotchi::ContextMove::CARRY_NOTE_MAX_BYTES
+    end
+
     it "keeps the ordinary moved-context note when carrying pushed text fails" do
       ids << previous.id
       old = location(previous.id)
