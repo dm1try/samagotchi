@@ -22,10 +22,11 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
 
   after { FileUtils.rm_rf(root) }
 
-  def verdict_for(call)
+  def verdict_for(call = nil, registry: nil, **fields)
+    call ||= fields
     v = Samagotchi::Guardrails::Verdict.new(call: call)
     v.context = context
-    v.targets = Samagotchi::Guardrails::Targets.for(call, context)
+    v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
     checks.check(v)
   end
 
@@ -152,6 +153,53 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect(verdict_for(name: "execute", content: "cat config/config.yml")).to be_allow
     expect(verdict_for(name: "write", path: "src/a.rb", content: "x")).to be_allow
     expect(verdict_for(name: "write", path: "config/config.yml.bak", content: "x")).to be_allow
+  end
+
+  # A plugin tool whose targets: say it writes its paths is judged on them
+  # like write and edit: the check follows what a call acts on, not its name.
+  describe "a plugin tool's writes:" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                targets: ->(call) { { paths: [call[:args]["path"]], writes: call[:args]["writes"] } })
+      end
+    end
+
+    def save_note(path, writes)
+      verdict_for({ name: "save_note", args: { "path" => path, "writes" => writes } }, registry: registry)
+    end
+
+    it "denies a write to the approval store and to installed bundles" do
+      v = save_note("state/guardrails/approvals.json", true)
+      expect([v.decision, v.rule, v.source]).to eq([:deny, "guardrail-store", "core"])
+      expect(save_note("config/memories/.bundles/b/hooks/g.rb", true)).to be_deny
+    end
+
+    it "asks (once or for the session) for config.yml, home.json, the chi shim and the hooks dir" do
+      v = save_note("config/config.yml", true)
+      expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-config", %w[once session]])
+      expect(save_note("config/home.json", true).rule).to eq("chi-home")
+      expect(save_note("state/bin/chi", true).rule).to eq("chi-shim")
+      expect(save_note("config/hooks/new.rb", true).rule).to eq("chi-hooks")
+    end
+
+    it "takes a protected path through a symlink, and leaves other paths and reads alone" do
+      FileUtils.mkdir_p(File.join(config_dir, "memories", ".bundles", "b"))
+      File.symlink(File.join(config_dir, "memories", ".bundles", "b"), File.join(root, "sneaky"))
+      expect(save_note("sneaky/new.yml", true)).to be_deny
+      expect(save_note("src/a.rb", true)).to be_allow
+      expect(save_note("config/config.yml.bak", true)).to be_allow
+    end
+
+    # A plugin tool that doesn't say its paths are written keeps the old
+    # verdict exactly: guardrails ask about what a tool declares, never
+    # about a name chi guessed.
+    it "leaves a plugin tool without writes: alone, and one whose writes: isn't a literal true" do
+      expect(save_note("config/config.yml", nil)).to be_allow
+      expect(save_note("state/guardrails/approvals.json", nil)).to be_allow
+      expect(save_note("config/config.yml", "true")).to be_allow
+      expect(save_note("config/config.yml", false)).to be_allow
+    end
   end
 end
 
