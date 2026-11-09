@@ -74,22 +74,12 @@ cases:
     recorded: v1
     installed: v1
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
   - id: rule_dropped_edited
     asset: rule
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
 
   - id: plugin_new
     asset: plugin
@@ -159,24 +149,20 @@ cases:
     recorded: v1
     installed: v1
     incoming: null
-    divergent: [dry-dropped, uninstall-unnamed]
+    divergent: uninstall-unnamed
     note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook". uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path
-      and names no Removed: plugin/plugin.rb.
+      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
+      names no Removed: plugin/plugin.rb.
   - id: plugin_dropped_edited
     asset: plugin
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: [dry-dropped, uninstall-unnamed]
+    divergent: uninstall-unnamed
     note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook". uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path
-      and names no Removed: plugin/plugin.rb.
+      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
+      names no Removed: plugin/plugin.rb.
 
   - id: script_new
     asset: script
@@ -216,22 +202,12 @@ cases:
     recorded: v1
     installed: v1
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
   - id: script_dropped_edited
     asset: script
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: dry-dropped
-    note: >-
-      dry-dropped: install and upgrade remove the file with no summary line naming it (an edited one only gets the
-      trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
-      hook".
 
   # Class-file hooks are retired: the record's (an older chi's install)
   # stays until an install or upgrade of a source without hooks removes them,

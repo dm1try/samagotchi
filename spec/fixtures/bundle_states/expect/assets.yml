@@ -43,16 +43,16 @@ rule_dev_link:
   plan: {do: kept (link), word: would_update, warns: []}
   status: {label: "r.yml [ok]"}
 rule_dropped_pristine:
-  install: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "r.yml [ok]", warns: []}
+  install: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "r.yml [ok]", warns: []}
   uninstall: {do: removed, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: kept, word: would_update, warns: []}
   status: {label: "r.yml [ok]"}
 rule_dropped_edited:
-  install: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "r.yml [modified] (edited after install: not loaded; reinstall the bundle)", warns: []}
+  install: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "r.yml [modified] (edited after install: not loaded; reinstall the bundle)", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: null, label: not installed, warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "r.yml [modified] (edited after install: not loaded; reinstall the bundle)"}
@@ -99,16 +99,16 @@ plugin_dev_link:
   plan: {do: kept (link), word: would_update, warns: []}
   status: {label: "Plugin: plugin.rb [ok]"}
 plugin_dropped_pristine:
-  install: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "Plugin: plugin.rb [ok]", warns: []}
+  install: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "Plugin: plugin.rb [ok]", warns: []}
   uninstall: {do: removed, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: kept, word: would_update, warns: []}
   status: {label: "Plugin: plugin.rb [ok]"}
 plugin_dropped_edited:
-  install: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: plugin/plugin.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: plugin/plugin.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "Plugin: plugin.rb [modified] (edited after install: not loaded; reinstall the bundle)", warns: []}
+  install: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: plugin/plugin.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: plugin/plugin.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "Plugin: plugin.rb [modified] (edited after install: not loaded; reinstall the bundle)", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: null, label: not installed, warns: ["Copied to the trash first: plugin/plugin.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "Plugin: plugin.rb [modified] (edited after install: not loaded; reinstall the bundle)"}
@@ -155,16 +155,16 @@ script_dev_link:
   plan: {do: kept (link), word: would_update, warns: []}
   status: {label: "s.sh [ok]"}
 script_dropped_pristine:
-  install: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade: {do: removed, save_first: false, recorded: none, word: null, label: "-", warns: []}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "s.sh [ok]", warns: []}
+  install: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade: {do: removed, save_first: false, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: []}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "s.sh [ok]", warns: []}
   uninstall: {do: removed, save_first: false, recorded: none, word: null, label: not installed, warns: []}
   plan: {do: kept, word: would_update, warns: []}
   status: {label: "s.sh [ok]"}
 script_dropped_edited:
-  install: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade: {do: removed, save_first: true, recorded: none, word: null, label: "-", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: null, label: "s.sh [modified] (edited after install: the next install replaces it, a copy kept in the trash)", warns: []}
+  install: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade: {do: removed, save_first: true, recorded: none, word: Removed (no longer in the bundle), label: "-", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would remove (no longer in the bundle), label: "s.sh [modified] (edited after install: the next install replaces it, a copy kept in the trash)", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: null, label: not installed, warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "s.sh [modified] (edited after install: the next install replaces it, a copy kept in the trash)"}

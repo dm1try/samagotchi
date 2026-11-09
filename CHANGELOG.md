@@ -37,6 +37,7 @@ and commands may change between minor versions. How releases are made:
   (kept as a digest); the same text run in another checkout asks again. Session approvals stored before this ask one
   more time.
 - `chi bundle upgrade` and `chi update` report a replaced guardrail rule as Updated, like other bundle assets.
+- Bundle install, upgrade and dry runs now name the guardrail, plugin and script files a new version drops.
 
 ## [0.159.0] - 2026-11-09
 

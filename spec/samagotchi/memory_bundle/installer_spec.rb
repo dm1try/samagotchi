@@ -1288,6 +1288,18 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(dry.results.slice(*assets).values.map { |result| result.state.state }).to eq(%i[new new new])
       expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
     end
+
+    it "names an asset the new version drops in install summaries and dry runs" do
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
+      FileUtils.rm_f(File.join(v2, "guardrails", "r.yml"))
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+      real = run_assets(v2, upgrade: true)
+
+      expect(dry.summary).to include("Would remove (no longer in the bundle): guardrails/r.yml")
+      expect(real.summary).to include("Removed (no longer in the bundle): guardrails/r.yml")
+    end
   end
 
   describe "needs" do
