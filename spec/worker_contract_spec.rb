@@ -14,26 +14,11 @@ require "samagotchi/client_id"
 # These pins fail when one of those shared names changes. Change them only
 # additively, and keep reading the old form (SessionManager.worker_command).
 RSpec.describe "Cross-version worker contract" do
-  # Boot strings name WorkerBoot.run_session_loop; the SessionManager
-  # forwarder serves older spawners until it is removed.
-  { "SessionManager" => -> { Samagotchi::SessionManager }, "WorkerBoot" => -> { Samagotchi::WorkerBoot } }
-    .each do |name, entry|
-    it "boots through #{name}.run_session_loop(id, state_dir:)" do
-      params = entry.call.method(:run_session_loop).parameters
-      expect(params).to include(%i[req session_id], %i[key state_dir])
-      expect(params.select { |kind, _| %i[req keyreq].include?(kind) }).to eq([%i[req session_id]])
-    end
-  end
-
-  it "forwards SessionManager.run_session_loop to WorkerBoot.run_session_loop, args and result" do
-    allow(Samagotchi::WorkerBoot).to receive(:run_session_loop).and_return(:idle_exit)
-
-    result = Samagotchi::SessionManager.run_session_loop("abc", state_dir: "/s", owner_wait: 0.5,
-                                                                idle_exit_minutes: 2, poll_interval: 0.01)
-
-    expect(result).to eq(:idle_exit)
-    expect(Samagotchi::WorkerBoot).to have_received(:run_session_loop)
-      .with("abc", state_dir: "/s", owner_wait: 0.5, idle_exit_minutes: 2, poll_interval: 0.01)
+  # Boot strings name WorkerBoot.run_session_loop, the worker's main.
+  it "boots through WorkerBoot.run_session_loop(id, state_dir:)" do
+    params = Samagotchi::WorkerBoot.method(:run_session_loop).parameters
+    expect(params).to include(%i[req session_id], %i[key state_dir])
+    expect(params.select { |kind, _| %i[req keyreq].include?(kind) }).to eq([%i[req session_id]])
   end
 
   it "takes the env keys a spawner sets" do

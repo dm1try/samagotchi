@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - Schedule-state writes preserve newer format versions, unknown fields and entries missing required members.
+- The `SessionManager.run_session_loop` forwarder for older boot strings is gone: a chi web or terminal still
+  running 0.158.0 or older must be restarted after updating, because a worker it spawns names that entry.
 
 ## [0.159.0] - 2026-11-09
 
