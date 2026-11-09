@@ -1051,9 +1051,9 @@ module Samagotchi
                kept: "Its note stays for the user's next message.", mark: task_wake)
     end
 
-    # The idle loop's sleep: the fallback tick, or less while reports wait
-    # out the start grace.
-    def idle_wait = @wakes.idle_wait(@poll_interval) { wake_state == :due }
+    # The idle loop's sleep: the fallback tick, or less while reports or
+    # attached-context wakes wait out the start grace.
+    def idle_wait = @wakes.idle_wait(@poll_interval) { wake_state == :due || @inbound.context_wake_waiting? }
 
     # The wake budget is spent: the parent's UIs hear once that reports
     # wait for the next message.

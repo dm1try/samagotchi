@@ -206,6 +206,48 @@ RSpec.describe "delegate reports" do
     end
   end
 
+  describe "SessionManager.wake_for_context" do
+    before { allow(Samagotchi::SessionManager).to receive(:resume_session) }
+
+    def wake(session = parent) = Samagotchi::SessionManager.wake_for_context(session.id, state_dir: tmpdir)
+
+    it "resumes an idle session" do
+      expect(wake).to eq(:woken)
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(parent.id, state_dir: tmpdir)
+    end
+
+    it "does not wake stopped, archived, scratch, owned, starting, or missing sessions" do
+      Samagotchi::Session.mark_stopped(parent.id, state_dir: tmpdir)
+      expect(wake).to eq(:stopped)
+
+      archived = make
+      Samagotchi::ArchiveStore.archive(archived.id, state_dir: tmpdir)
+      link = make
+      link.continues = archived.id
+      link.save(state_dir: tmpdir)
+      expect(wake(archived)).to eq(:archived)
+
+      scratch = make
+      scratch.scratch = true
+      scratch.save(state_dir: tmpdir)
+      expect(wake(scratch)).to eq(:scratch)
+
+      owned = make
+      own(owned, kind: "worker")
+      expect(wake(owned)).to eq(:owned)
+
+      starting = make
+      Samagotchi::StartingMarker.mark(starting.id, state_dir: tmpdir)
+      expect(wake(starting)).to eq(:starting)
+
+      gone = make
+      File.delete(Samagotchi::Session.session_file(gone.id, state_dir: tmpdir))
+      expect(wake(gone)).to eq(:gone)
+
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
+  end
+
   describe Samagotchi::ChildReports do
     before { started }
 

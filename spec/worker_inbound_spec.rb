@@ -277,6 +277,35 @@ RSpec.describe Samagotchi::WorkerInbound do
       end
     end
 
+    it "keeps a wake batch uncommitted through start grace, then wakes it" do
+      now = [0]
+      grace_wakes = Samagotchi::WorkerWakes.new(grace: 2, clock: -> { now[0] }, max: -> { 10 })
+      grace_inbound = described_class.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: engine,
+                                          context_absorber: absorber, wakes: grace_wakes,
+                                          awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] },
+                                          queue_command: ->(*) {})
+      allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(true)
+
+      expect(grace_inbound.absorb_context(wake: true)).to be_nil
+      expect(grace_inbound.context_wake_waiting?).to be(true)
+      expect(session.messages.map { |message| message[:note_id] }).not_to include("ctx-ci-1")
+      expect(absorber).not_to have_received(:commit)
+
+      now[0] = 3
+      expect(grace_inbound.absorb_context(wake: true)).to have_attributes(name: "ci")
+      expect(grace_inbound.context_wake_waiting?).to be(false)
+      expect(absorber).to have_received(:commit).once
+    end
+
+    it "does not defer a wake held by a continue offer" do
+      awaiting[0] = true
+
+      expect(inbound.context_wake_waiting?).to be(false)
+      expect(inbound.absorb_context(wake: true)).to be_nil
+      expect(absorber).to have_received(:commit).with(batch)
+      expect(session.messages.last).not_to have_key(:turn_start)
+    end
+
     it "wakes nothing while the wake budget is closed or the source woke lately" do
       awaiting[0] = true
       expect(inbound.absorb_context(wake: true)).to be_nil

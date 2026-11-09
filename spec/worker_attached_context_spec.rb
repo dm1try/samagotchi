@@ -234,6 +234,23 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(own.subscription("claude-outbox").wakes_at).to be_truthy
     end
 
+    it "keeps a pushed wake unseen during start grace and wakes it after grace" do
+      stub_const("Samagotchi::Worker::WAKE_START_GRACE", 0.5)
+      start_worker(poll_interval: 0.01)
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-outbox", cmd: nil, every_seconds: nil, why: nil,
+                                                     hint: nil, scope: "session", added_by: "cli", created_at: nil))
+      push("claude-outbox", "looks good", wake: true)
+      loop_rounds
+
+      expect(saved_context_notes).to be_empty
+      expect(own.subscription("claude-outbox").seen).to be_nil
+
+      prompt, kwargs, = pop!(wake_turns, "the wake after start grace")
+      expect(prompt).to be_nil
+      expect(kwargs[:origin]).to have_attributes(client_id: "context:claude-outbox")
+      expect(own.subscription("claude-outbox").seen).to eq(Samagotchi::ContextSources.revision_of("looks good"))
+    end
+
     it "wakes once per source in 10 minutes: a second change arrives as a plain note" do
       start_worker
       attach_seen("pr-7")

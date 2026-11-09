@@ -11,6 +11,7 @@ require_relative "../parent_report"
 require_relative "../note_delivery"
 require_relative "../image_store"
 require_relative "../context_candidates"
+require_relative "../worker_inbound"
 require_relative "../context_sources"
 require_relative "../archive_store"
 require_relative "../session_chain"
@@ -24,6 +25,7 @@ require_relative "../participants"
 require_relative "../config"
 require_relative "../live_versions"
 require_relative "../grants"
+require_relative "../log"
 require_relative "../web/info_probe"
 require_relative "../web/public_url"
 require_relative "../web/link_codes"
@@ -314,6 +316,16 @@ module Samagotchi
         before, written = attached.location.locked(name) do
           [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
         end
+        if fetched.wake && before != written.revision && !target.project? && attached.location.session? &&
+           attached.source.scope == "session"
+          begin
+            subscription = attached.location.subscription(name)
+            recent_wake = context_wake_recent?(subscription)
+            SessionManager.wake_for_context(target.session_id, **dir) unless recent_wake || Config.get("context.wake") == false
+          rescue StandardError => e
+            Log.exception(:context, "context_push_wake_failed", e, sid: target.session_id, source: name)
+          end
+        end
         ContextPush.new(status: :pushed, before: before, revision: written.revision)
       end
 
@@ -512,6 +524,14 @@ module Samagotchi
 
       def state_dir! = @state_dir || Session.default_state_dir
       def session_dir(id) = Session.session_dir(id, state_dir: state_dir!)
+
+      def context_wake_recent?(subscription)
+        return false unless subscription.wakes_at
+
+        Time.now - Time.iso8601(subscription.wakes_at) < WorkerInbound::CONTEXT_WAKE_WINDOW
+      rescue ArgumentError
+        false
+      end
 
       def attached_to(target, shadowed: false)
         ContextSources.attached(target.session_id, project_root: target.project_root, state_dir: @state_dir,

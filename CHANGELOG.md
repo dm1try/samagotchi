@@ -32,6 +32,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A peer's wake push now starts a session that went idle (never one you stopped).
 - `chi bundle install --dev` no longer warns of a checksum mismatch for the bundle's memories (stale shas while you edit); `chi bundle check` still flags them.
 - `chi update --dry-run` now shows the same memory checksum warnings as the update itself.
 - A conflicted memory that chi retries at the same version (at start, or in `chi update`) now warns when the bundle's file doesn't match its manifest's sha256, as an install or an upgrade does.

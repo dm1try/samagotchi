@@ -250,7 +250,9 @@ you're away from the terminal. All of these must hold:
   project source's first text may predate the session, so neither wakes;
 - `context.wake` is on (default `true`);
 - the session's worker is up and idle: no turn running, nothing queued, no
-  question or continue offer waiting, not just started;
+  question or continue offer waiting, not just started. A changed push from a
+  session-scoped source can start an idle-exited worker; it never restarts an
+  explicitly stopped session;
 - under `session.max_wakes` turns in a row with no message from you (the
   budget delegate reports and finished background tasks use too; a turn that
   failed, or was stopped before the model call, pauses wakes until you write);
