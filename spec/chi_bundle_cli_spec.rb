@@ -223,6 +223,13 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
     end
 
+    it "names the plugin removed by an uninstall with no memories or hooks" do
+      expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"))[2]).to eq(0)
+
+      expect(chi("uninstall", "sample-plugin"))
+        .to eq(["Uninstalled bundle 'sample-plugin'\nRemoved: plugin/plugin.rb\n", "", 0])
+    end
+
     # A plain install over an installed bundle rewrites its rules, plugin,
     # scripts and record (it is not a skip), and leaves a memory the
     # user wrote; the summary says both.

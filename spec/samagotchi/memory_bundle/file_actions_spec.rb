@@ -128,9 +128,12 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
             else "none"
             end
       did += " (link)" if kase.dev? && action&.do == :write_incoming
-      word = if column == "uninstall" then nil
-             elsif action&.do == :remove then "Removed (no longer in the bundle)"
-             else action && asset_words[action.word]
+      word = if column == "uninstall"
+               "Removed" if kase.asset == "plugin" && action&.do == :remove
+             elsif action&.do == :remove
+               "Removed (no longer in the bundle)"
+             else
+               action && asset_words[action.word]
              end
       { "do" => did, "save_first" => action&.save_first || false, "word" => word }
     end

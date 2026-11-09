@@ -39,6 +39,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle upgrade` and `chi update` report a replaced guardrail rule as Updated, like other bundle assets.
 - Bundle install, upgrade and dry runs now name the guardrail, plugin and script files a new version drops.
 - `chi bundle upgrade --dry-run` names edited files it would copy to the trash, including marked memories.
+- `chi bundle uninstall` names a plugin it removes even when the bundle has no memories or hooks.
 
 ## [0.159.0] - 2026-11-09
 

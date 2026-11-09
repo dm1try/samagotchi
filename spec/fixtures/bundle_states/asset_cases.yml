@@ -21,7 +21,7 @@
 #   fix, fixed, divergent, changed, note   as in memory_cases.yml; asset tags:
 #               new-updated (changed: a file new to the record is Installed),
 #               hook-retired (changed: an install or upgrade removes an old
-#               record's class-file hooks), dry-dropped, uninstall-unnamed
+#               record's class-file hooks), dry-dropped
 texts:
   v1: "# v1\n"
   v2: "# v2\n"
@@ -86,10 +86,6 @@ cases:
     recorded: v1
     installed: v1
     incoming: v1
-    divergent: uninstall-unnamed
-    note: >-
-      chi bundle uninstall of a bundle with no memories and no hooks (the short path) names no Removed: plugin/...,
-      where the long path does
     fix:
       - "587 spec/samagotchi/memory_bundle/plugin_manifest_spec.rb: an upgrade with an identical plugin reports it up to date, not Updated"
   - id: plugin_pristine
@@ -98,60 +94,36 @@ cases:
     recorded: v1
     installed: v1
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_edited_sha
     asset: plugin
     state: edited_sha
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_edited_no_sha
     asset: plugin
     state: edited_no_sha
     recorded: ""
     installed: mine
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_dev_link
     asset: plugin
     state: dev_link
     recorded: dev
     installed: v2
     incoming: v2
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_dropped_pristine
     asset: plugin
     state: dropped_pristine
     recorded: v1
     installed: v1
     incoming: null
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
   - id: plugin_dropped_edited
     asset: plugin
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: uninstall-unnamed
-    note: >-
-      uninstall-unnamed: the bundle has no memories and no hooks, so chi bundle uninstall takes the short path and
-      names no Removed: plugin/plugin.rb.
 
   - id: script_new
     asset: script

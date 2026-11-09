@@ -56,6 +56,8 @@ module Samagotchi
           # No file list, just remove provenance (rules, a plugin and scripts
           # live there too)
           save_edits(provenance, bundle)
+          plugin_path = provenance.plugin_path(bundle)
+          @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
           FileUtils.rm_rf(provenance.bundle_dir)
           return true
         end
