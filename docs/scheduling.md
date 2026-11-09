@@ -35,9 +35,17 @@ depends on whether the worker has to be running.
 | Longest interval | 1440 minutes | unlimited (`every`, `weekday`, `date`) |
 | What it produces | a turn in the same session | a new chain link, or a queued turn in the same session |
 
-A schedule turn carries `client_id: "system:schedule:<id>"`, so `ClientId.origin`
-says `schedule` and the terminal and the web label it as such rather than as
-something you typed. Like `register_reminder`, the schedule tools are owner-voiced:
+A schedule turn carries `client_id: "system:schedule:<id>"` in both modes (a chain
+link's first turn through `Session#first_turn_client_id`, which `Schedules#fire_chain`
+passes to `SessionContinue.run`), so `ClientId.origin` says `schedule` and the terminal
+and the web label it as such rather than as something you typed. For the same reason a
+schedule's prompt is never a session command: a `/word` prompt reaches the model as
+text, and one that starts with `!` is refused by `chi schedule add` and `schedule_task`
+([guardrails.md, Who may run a session command](guardrails.md#who-may-run-a-session-command)).
+An entry stored with one before that fails when it fires (toward its `max_failures`):
+a chain one starts no link, a same one is refused by the session's Bridge. A chi web
+(or cron tick) still running an older chi starts chain links without the origin, so
+restart it after updating. Like `register_reminder`, the schedule tools are owner-voiced:
 a participant's review or pair turn is denied them ([guardrails.md](guardrails.md)).
 
 ## The two modes

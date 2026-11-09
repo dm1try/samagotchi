@@ -92,9 +92,12 @@ Allowing beyond "once" is stored in `$XDG_STATE_HOME/samagotchi/guardrails/appro
 
 | Scope | Allows |
 |---|---|
-| session | this exact call in this session: the tool + command, or for a file tool its paths, so its label names them (`Allow edits to config.yml for the session`) and a later edit of that file needs no ask |
+| session | this exact call in this session: the tool + command, or for a file tool its paths, so its label names them (`Allow edits to config.yml for the session`) and a later edit of that file needs no ask. A command's holds only where it was given: the same worktree or folder (`repo_root`, never the repository's other checkouts) and the same `env:` (a sha256 of it is stored as `env`, never the values) |
 | repo | this exact call in this repo (the cwd outside a repo), any session |
 | rule | anything this rule asks about in this repo |
+
+A session entry of a command from before chi kept its place (no `repo_root`) no longer matches: the call asks once
+more. `/guardrails` shows a session entry with its folder (`session 3fa2c1d0 in /work/app`, `with its env:`).
 
 "This repo" is the git repository, not the folder: an approval given in one
 worktree holds in the main checkout and every other worktree of it (it is
@@ -293,6 +296,20 @@ loosen a session's own level by posting `/parent-answers` with a forged
 by editing the session file, or by running `chi --attach` on a PTY with the
 markers cleared. chi's instructions for parents ([chi as a
 sub-agent](sub-agent.md)) tell them to use `chi answer` only.
+
+## Who may run a session command
+
+A message that is a session command (`/model x`, `!cmd`, `!rollback`) runs as the command only when a person sends
+it: a web tab, an attached chi TUI, `chi send` (yours, or one a model runs from `execute`: the trust model above), a
+message with no sender named, and `chi answer`'s `/continue yes` and `/parent-answers`, which a parent agent sends.
+`!cmd` runs its shell line with no rule or ask (it is yours), so from anyone else it is refused: a delegating parent's
+task or follow-up, a schedule's firing (both modes), a plugin's message, a context or task wake. Chi web's Bridge answers
+`403 command_not_permitted` with one message, an input file's line shows as the command's error, and nothing runs.
+Their `/word` line is plain text: the model reads it. `delegate`, `schedule_task` and `chi schedule add` refuse a task
+or prompt that starts with `!` with the same message, so the model can rewrite it. A participant's command is refused
+as before ([their review boundary](#a-participants-review-boundary)). The rule is `CommandIntake`
+(`lib/samagotchi/command_intake.rb`), asked by `Bridge#handle_post_turn` and `WorkerInbound#queue_as_command`;
+`POST /command` (a UI's or a card's explicit command line) is not a message and is not covered.
 
 ## Protected paths
 
@@ -1508,6 +1525,7 @@ the text a rule sees, and a function or alias shadowing a reader in the same
 command isn't seen at all. `outside_repo` covers the file tools and git
 only: `sed -i`, `cp` or `cat > file` into another folder from the shell aren't
 asked about, and neither is git run through `sh -c`, a script, an alias, `make`
-or a folder in a variable. `!cmd` lines typed by you are not checked. The only
+or a folder in a variable. `!cmd` lines typed by you are not checked (see
+[Who may run a session command](#who-may-run-a-session-command)). The only
 real defence against an adversarial model is isolation (a sandbox, a git
 identity without push rights).
