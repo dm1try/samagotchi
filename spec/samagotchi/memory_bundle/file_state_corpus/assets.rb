@@ -160,8 +160,7 @@ module BundleStateCorpus
   #   word       the summary line naming it (the Installer's #summary, chi
   #              bundle uninstall's Removed:); a plan's row status, and
   #              "replaces" when its replaced lists the file
-  #   label      chi bundle status NAME's line for it (hooks and the plugin
-  #              have one; rules and scripts none: nil)
+  #   label      chi bundle status NAME's line for it ("-": none)
   #   warns      the other lines naming it, paths masked
   class AssetObserver
     def self.entry(raw, kase)
@@ -239,20 +238,19 @@ module BundleStateCorpus
       "other"
     end
 
-    # chi bundle status NAME's line for the hook or the plugin.
+    # chi bundle status NAME's line for the file.
     def status_label
       out = StringIO.new
       Samagotchi::BundleCommand.new(["status", NAME], stdout: out, stderr: StringIO.new).run
       return "not installed" if out.string.include?("not installed.")
 
-      # A hook's line under "Hooks (N): not loaded: …", whole: "h.rb [ok]".
-      prefix = @case.asset == "hook" ? "    #{@case.file} [" : ("  Plugin: " if @case.asset == "plugin")
-      return nil unless prefix
-
+      # A hook's, rule's or script's line under its heading ("Hooks (N): not
+      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [ok]".
+      prefix = @case.asset == "plugin" ? "  Plugin: " : "    #{File.basename(@case.source_rel)} ["
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
       return "-" unless line
 
-      @sandbox.mask(@case.asset == "hook" ? line.strip : line.delete_prefix(prefix.lstrip).strip)
+      @sandbox.mask(@case.asset == "plugin" ? line.delete_prefix(prefix.lstrip).strip : line.strip)
     end
 
     def names?(line) = line.include?(File.basename(@case.source_rel))

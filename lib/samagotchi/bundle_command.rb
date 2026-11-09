@@ -30,7 +30,8 @@ module Samagotchi
 
         status [<bundle>]
           Show provenance and each file's status for bundles. issues= counts what
-          needs you: a file that stays behind, is missing or can't be read, not one you edited.
+          needs you: a file that stays behind, is missing or can't be read, or a rule that won't load;
+          not a memory or script you edited.
 
         diff <bundle> [file]
           Show diffs between base/current/incoming for a bundle.
@@ -525,6 +526,8 @@ module Samagotchi
           @stdout.puts "  Hooks (#{st.retired_hooks.size}): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
           st.retired_hooks.each { |file, state| @stdout.puts "    #{file} [#{state}]" }
         end
+        print_assets("Rules", st.rules, " (edited after install: not loaded; reinstall the bundle)")
+        print_assets("Scripts", st.scripts, " (edited after install: the next install replaces it, a copy kept in the trash)")
         if (plugin = st.plugin)
           note = plugin[:state] == "modified" ? " (edited after install: not loaded; reinstall the bundle)" : ""
           @stdout.puts "  Plugin: #{plugin[:file]} [#{plugin[:state]}]#{note}"
@@ -548,6 +551,8 @@ module Samagotchi
           plugin = st.plugin
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
           mods += 1 unless st.retired_hooks.empty?
+          # A rule that is missing or edited doesn't load; a script runs edited.
+          mods += st.rules.values.count { |state| state != "ok" } + st.scripts.values.count("missing")
           mods += 1 if st.scope_error
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st.provenance.includes
@@ -556,6 +561,15 @@ module Samagotchi
         end
       end
       0
+    end
+
+    # A bundle's rules or scripts (MemoryBundle::Status.asset_states), one
+    # line each, +modified+ said after an edited one.
+    def print_assets(heading, states, modified)
+      return if states.empty?
+
+      @stdout.puts "  #{heading} (#{states.size}):"
+      states.each { |file, state| @stdout.puts "    #{file} [#{state}]#{modified if state == "modified"}" }
     end
 
     # "Manifest: [kept]", or "[from the install record]", and what its case
@@ -602,6 +616,8 @@ module Samagotchi
           diff_memory(prov, target_dir, file_arg)
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
           diff_plugin(prov, record, plugin_path)
+        elsif (asset = asset_states(prov, record).find { |a| a.label == file_arg })
+          diff_asset(asset)
         else
           @stdout.puts "=== #{file_arg} ==="
           @stdout.puts "(not found in bundle)"
@@ -616,8 +632,29 @@ module Samagotchi
           diff_plugin(prov, record, plugin_path)
           @stdout.puts ""
         end
+        asset_states(prov, record).select(&:edited?).each do |a|
+          diff_asset(a)
+          @stdout.puts ""
+        end
       end
       0
+    end
+
+    # The recorded rules and scripts (no source: an edited one is
+    # MemoryBundle::AssetState#edited?), for diff.
+    def asset_states(prov, record)
+      state = Samagotchi::MemoryBundle::AssetState
+      { rule: [prov.guardrails_dir, record.guardrails], script: [prov.scripts_dir, record.scripts] }.flat_map do |kind, (dir, recorded)|
+        recorded.keys.sort.map { |name| state.of(File.join(dir, name), kind_of_file: kind, recorded: recorded[name], name: name) }
+      end
+    end
+
+    # A rule or script keeps no base text: its recorded and current sha256.
+    def diff_asset(asset)
+      @stdout.puts "=== #{asset.label} ==="
+      current = File.file?(asset.path) ? Samagotchi::MemoryBundle::Provenance.file_sha(asset.path) : "(missing)"
+      edited = asset.edited? ? " (edited after install: the next install replaces it, a copy kept in the trash)" : ""
+      @stdout.puts "--- recorded sha256=#{Samagotchi::MemoryBundle::Provenance.recorded_sha(asset.recorded)} current sha256=#{current}#{edited}"
     end
 
     # The base and the file; a marked one also the bundle's text it stays

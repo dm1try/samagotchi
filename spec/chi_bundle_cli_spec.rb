@@ -45,7 +45,8 @@ RSpec.describe "chi bundle (CLI)" do
 
       status [<bundle>]
         Show provenance and each file's status for bundles. issues= counts what
-        needs you: a file that stays behind, is missing or can't be read, not one you edited.
+        needs you: a file that stays behind, is missing or can't be read, or a rule that won't load;
+        not a memory or script you edited.
 
       diff <bundle> [file]
         Show diffs between base/current/incoming for a bundle.
@@ -1111,6 +1112,31 @@ Removed: hooks/guardrails.rb\n\z})
 
       expect([err, code]).to eq(["", 0])
       expect(out.lines.drop(1).join).to eq("Target: #{memories}\n  Manifest: [kept]\n  trust_level: reviewed\n  Plugin: plugin.rb [ok]\n    requires_chi: >= 0.1.28\n")
+    end
+
+    it "status NAME lists the rules and scripts, an edited one marked, and diff names it by sha" do
+      src = File.join(@root, "src", "assets")
+      FileUtils.mkdir_p(File.join(src, "guardrails"))
+      FileUtils.mkdir_p(File.join(src, "scripts"))
+      File.write(File.join(src, "guardrails", "r.yml"), "rules: []\n")
+      File.write(File.join(src, "scripts", "s.sh"), "#!/bin/sh\n")
+      File.write(File.join(src, "manifest.yml"), YAML.dump("name" => "assets", "version" => "1.0.0", "scope" => "system",
+                                                           "scripts" => { "s.sh" => "" }))
+      expect(chi("install", src)[2]).to eq(0)
+      dir = File.join(memories, ".bundles", "assets")
+      File.write(File.join(dir, "guardrails", "r.yml"), "rules: [mine]\n")
+      File.delete(File.join(dir, "scripts", "s.sh"))
+
+      out, = chi("status", "assets")
+      expect(out).to include("  Rules (1):\n    r.yml [modified] (edited after install: not loaded; reinstall the bundle)\n  " \
+                             "Scripts (1):\n    s.sh [missing]\n")
+      expect(chi("status")[0].lines.grep(/assets/)).to eq(["  assets v1.0.0 scope=system files=0 issues=2\n"])
+      diff, = chi("diff", "assets")
+      expect(diff).to include("=== guardrails/r.yml ===\n--- recorded sha256=#{Digest::SHA256.hexdigest("rules: []\n")} " \
+                              "current sha256=#{Digest::SHA256.hexdigest("rules: [mine]\n")} (edited after install")
+      expect(diff).not_to include("scripts/s.sh")
+    ensure
+      chi("uninstall", "assets")
     end
 
     # quirk: status takes the first non --arg as the name, a flag's value too
