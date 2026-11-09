@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
+require_relative "log"
 require_relative "context_note"
 require_relative "interrupted_turn"
 require_relative "last_turn"
@@ -485,6 +486,10 @@ module Samagotchi
       @archived = false
       # #save's lock: one snapshot-and-write at a time (see #save).
       @save_lock = Mutex.new
+      # Read from its file (.load, .summary_from_file) or saved once: its
+      # file is there to rewrite, and one gone was deleted (#save doesn't
+      # bring it back).
+      @persisted = false
     end
 
     # Whether a chi newer than this one saved the loaded file: its
@@ -633,6 +638,7 @@ module Samagotchi
       raise NotFound, session_id unless File.exist?(path)
 
       session = from_h(JSON.parse(File.read(path)))
+      session.persisted!
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: state_dir)
       session.parent_id = parent_override(session.id, state_dir: state_dir) || session.parent_id
       session
@@ -761,12 +767,17 @@ module Samagotchi
       return nil unless valid_id?(data["id"])
 
       session = from_h(data, messages: false)
+      session.persisted!
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: File.dirname(path))
       session.parent_id = parent_override(session.id, state_dir: File.dirname(path)) || session.parent_id
       session
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
     end
+
+    # This session was read from its file (#save then refuses to recreate
+    # a deleted one).
+    def persisted! = (@persisted = true)
 
     # Persist the session atomically. Updates +updated_at+ in place.
     #
@@ -779,6 +790,11 @@ module Samagotchi
     # Never call it from a trap handler (Mutex#lock raises ThreadError
     # there; WorkerSignals saves on a thread of its own) or from inside a
     # save (the lock isn't re-entrant).
+    #
+    # A session read from its file, or saved once, whose file is gone was
+    # deleted (SessionManager.delete_session, the retention sweep): the save
+    # is skipped (and logged) rather than bring it back. Only a new
+    # session's first save creates the file.
     # @param now [Time, nil] the updated_at to stamp (a spec's clock); nil,
     #   the time the lock is taken
     def save(state_dir: self.class.default_state_dir, now: nil)
@@ -793,7 +809,13 @@ module Samagotchi
         # Auto-compute first_preview if not yet cached and messages contain a user entry.
         compute_first_preview!
 
+        if @persisted && !File.exist?(path)
+          Log.warn(:worker, "save_skipped_deleted", sid: @id)
+          return self
+        end
+
         AtomicFile.write(path, JSON.pretty_generate(to_h) + "\n")
+        @persisted = true
       end
       self
     end

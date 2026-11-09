@@ -296,12 +296,13 @@ module Samagotchi
           kept << session.id
         else
           begin
-            FileUtils.rm_f(path)
-            sidecar = File.join(state_dir, session.id)
-            FileUtils.rm_rf(sidecar)
+            # Under the owner lock, the start read again (as a delete).
+            SessionManager.remove_session_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir)
             PluginSessionState.remove(session.id)
             ContextSources.remove_session(session.id, state_dir: state_dir)
             deleted << session.id
+          rescue SessionManager::DeleteRefused
+            kept << session.id
           rescue StandardError
             skipped << session.id
           end

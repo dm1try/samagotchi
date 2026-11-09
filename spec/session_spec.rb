@@ -839,6 +839,35 @@ RSpec.describe Samagotchi::Session do
     end
   end
 
+  # H10: a session deleted under a worker (or any writer holding a loaded
+  # copy) is not brought back by that writer's next save.
+  describe "#save of a deleted session" do
+    def path_of(session) = File.join(tmpdir, "#{session.id}.json")
+
+    it "doesn't recreate the file of a loaded session that was deleted, and says so in the log" do
+      described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
+      loaded = described_class.load(described_class.list(state_dir: tmpdir).first.id, state_dir: tmpdir)
+      FileUtils.rm_f(path_of(loaded))
+      allow(Samagotchi::Log).to receive(:warn)
+
+      expect(loaded.save(state_dir: tmpdir)).to be(loaded)
+
+      expect(File.exist?(path_of(loaded))).to be(false)
+      expect(Samagotchi::Log).to have_received(:warn).with(:worker, "save_skipped_deleted", sid: loaded.id)
+    end
+
+    it "creates a new session's file on its first save, and refuses once it was saved and deleted" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      session.save(state_dir: tmpdir)
+      expect(File.exist?(path_of(session))).to be(true)
+
+      FileUtils.rm_f(path_of(session))
+      session.save(state_dir: tmpdir)
+      expect(File.exist?(path_of(session))).to be(false)
+    end
+  end
+
   describe ".load" do
     it "raises NotFound (an ArgumentError) when session_id does not exist, or isn't an id" do
       expect do

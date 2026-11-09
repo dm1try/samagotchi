@@ -220,7 +220,8 @@ module Samagotchi
         # A stop drops the reminders: a restart's hand-off no successor took
         # yet must not bring them back on the next resume.
         ReminderCarry.remove(Session.session_dir(session_id, state_dir: sd))
-        pid = owner&.pid.to_i
+        # A deleter holding the lock (chi web, the CLI) is no worker to stop.
+        pid = owner&.deleting? ? 0 : owner&.pid.to_i
         begin
           Process.kill("TERM", pid) if pid && pid > 0
         rescue Errno::ESRCH

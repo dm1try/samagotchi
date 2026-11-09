@@ -169,6 +169,34 @@ module Samagotchi
           raise DeleteRefused.new(id, :still_stopping) unless stop_held(id, state_dir: sd, wait: wait)
         end
 
+        removed = remove_session_files(id, path, dir, state_dir: sd)
+        PluginSessionState.remove(id)
+        removed.concat(ContextSources.remove_session(id, state_dir: sd))
+        Participants.end_sessions([id], by: "delete", state_dir: sd)
+        if purge_runs
+          purge_session_runs(id, sd)
+          ContextCandidatesLog.purge_session(id, state_dir: sd)
+        end
+        { id: id, removed: removed, stopped: held }
+      end
+
+      # The session's file and directory, removed while this process holds
+      # its owner lock (kind deleting, which a stop never signals), so no
+      # worker takes the session in the middle; the starting marker is read
+      # again under it (a resume that claimed the start since the caller's
+      # check keeps the session; one after it sees the lock held). Taken
+      # without waiting: one that took it since the check keeps the session.
+      # The lock file goes with the directory; a worker starting after that
+      # makes a new one, and finds no session (Session.load). The delete and
+      # the retention sweep remove through here.
+      # @return [Array<String>] the paths removed
+      # @raise [DeleteRefused] a worker took the lock, or a start was
+      #   claimed, after the caller's check
+      def remove_session_files(id, path, dir, state_dir:)
+        lock = Dir.exist?(dir) ? OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: 0) : nil
+        raise DeleteRefused.new(id, :worker_running) if Dir.exist?(dir) && lock.nil?
+        raise DeleteRefused.new(id, :worker_running) if StartingMarker.fresh?(id, state_dir: state_dir)
+
         removed = []
         if File.exist?(path)
           FileUtils.rm_f(path)
@@ -178,14 +206,9 @@ module Samagotchi
           FileUtils.rm_rf(dir)
           removed << dir
         end
-        PluginSessionState.remove(id)
-        removed.concat(ContextSources.remove_session(id, state_dir: sd))
-        Participants.end_sessions([id], by: "delete", state_dir: sd)
-        if purge_runs
-          purge_session_runs(id, sd)
-          ContextCandidatesLog.purge_session(id, state_dir: sd)
-        end
-        { id: id, removed: removed, stopped: held }
+        removed
+      ensure
+        lock&.release
       end
 
       # Stop the worker that owns +id+ or is being started for it (the stop

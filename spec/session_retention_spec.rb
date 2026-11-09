@@ -356,6 +356,29 @@ RSpec.describe Samagotchi::SessionRetention do
       expect([resumed, taken].map { |s| File.exist?(File.join(tmpdir, "#{s.id}.json")) }).to eq([true, true])
     end
 
+    # The files go under owner.lock, like a delete's, and the marker is
+    # read again under it: a resume that claimed the start between the last
+    # look and the lock keeps the session.
+    it "removes under the owner lock, and keeps one whose start was claimed just before it" do
+      gone, claimed = Array.new(2) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+                           .tap { |s| s.save(state_dir: tmpdir, now: Time.now - (30 * 86_400)) }
+                           .tap { |s| FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: tmpdir)) }
+      end
+      seen = nil
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, dir, **kwargs|
+        Samagotchi::StartingMarker.mark(claimed.id, state_dir: tmpdir) if dir.end_with?(claimed.id)
+        original.call(dir, **kwargs).tap { seen = Samagotchi::OwnerLock.owner(dir) if dir.end_with?(gone.id) }
+      end
+
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false })
+
+      expect(result[:deleted]).to eq([gone.id])
+      expect(result[:kept]).to eq([claimed.id])
+      expect(seen).to have_attributes(kind: "deleting")
+      expect(File.exist?(File.join(tmpdir, "#{claimed.id}.json"))).to be(true)
+    end
+
     it "keeps it under chi sessions clean (test_only, any_age) too" do
       starting = scratch_session(starting: true)
 
