@@ -18,13 +18,17 @@ module Samagotchi
         @capacity = [1, capacity].max
         @mutex = Monitor.new
         @events = [] # Array<{seq:, data:}>
+        @dropped = false
       end
 
       # Append +data+ keyed by +seq+ (drop oldest beyond capacity).
       def push(seq:, data:)
         @mutex.synchronize do
           @events << { seq: seq, data: data }
-          @events.shift until @events.size <= @capacity
+          while @events.size > @capacity
+            @events.shift
+            @dropped = true
+          end
           nil
         end
       end
@@ -43,6 +47,12 @@ module Samagotchi
       # @return [Integer, nil] the lowest seq buffered so far.
       def oldest_seq
         @mutex.synchronize { @events.first&.[](:seq) }
+      end
+
+      # @return [Boolean] whether a push has ever evicted an event: the window
+      # no longer starts where the capture did.
+      def dropped?
+        @mutex.synchronize { @dropped }
       end
 
       def empty?

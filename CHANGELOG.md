@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
 - The memory-orphan hint says how the other folder is keyed: a `chi project init` folder is named by its project id
   instead of "another path's hash", and a project keyed by an id is named by its folder, not by that id (so a marked
   folder whose memories stayed in its id folder after `git init` is described correctly).
+- A browser tab or terminal that connects to a worker with no cursor, after its event ring has wrapped, is re-synced
+  from the session instead of replaying from the middle of a turn.
 
 ## [0.160.0] - 2026-11-09
 
