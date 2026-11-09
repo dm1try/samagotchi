@@ -11,7 +11,8 @@ module Samagotchi
   # continue moves delegates there (ChildMove) and spawns the link's worker,
   # removed by that worker once it holds the owner lock (Worker#start). While
   # it is #fresh?, nothing else spawns a worker for the link (SpawnPart's
-  # resume_session and wake_for_report): a ring from a moved child must not
+  # resume_session and wake_for_report, through
+  # WorkerPresence#starting?): a ring from a moved child must not
   # start a second one. CROSS-VERSION: the file name and its {pid, at} are
   # read and cleared by other chi versions (spec/worker_contract_spec.rb).
   module StartingMarker
