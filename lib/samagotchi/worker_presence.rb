@@ -69,6 +69,14 @@ module Samagotchi
           link: link && WorkerLink.resolve(dir, unlink: link == :unlink, owner: owner))
     end
 
+    # The stop marker alone, for a decider that asks nothing else (WorkerBoot's
+    # restart leave, after the lock's release): no lock probe, no other file.
+    # Same reader as #stop_marked?.
+    def self.stop_marked?(session_id, state_dir: nil)
+      Session.valid_id?(session_id) &&
+        Session.stopped_marker?(session_id, state_dir: state_dir || Session.default_state_dir)
+    end
+
     # An id that isn't one names no session: nothing on disk is read
     # (Session.session_dir would raise), and a link asked for is None.
     # @return [WorkerPresence]

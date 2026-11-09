@@ -125,6 +125,18 @@ RSpec.describe Samagotchi::WorkerPresence do
     end
   end
 
+  describe ".stop_marked?" do
+    it "reads the stop marker alone" do
+      expect(Samagotchi::OwnerLock).not_to receive(:owner)
+      expect(Samagotchi::StartingMarker).not_to receive(:fresh?)
+      expect(described_class.stop_marked?(id, state_dir: state_dir)).to be(false)
+
+      Samagotchi::Session.mark_stopped(id, state_dir: state_dir)
+      expect(described_class.stop_marked?(id, state_dir: state_dir)).to be(true)
+      expect(described_class.stop_marked?("../x", state_dir: state_dir)).to be(false)
+    end
+  end
+
   describe "#with_session" do
     it "adds the loaded session's status and scratch flag" do
       presence = read.with_session(session)
