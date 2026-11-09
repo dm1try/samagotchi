@@ -7,6 +7,7 @@ require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/turn_context"
 require "samagotchi/tools/memory"
+require "samagotchi/tools/builtins"
 require "support/hard_link"
 
 RSpec.describe Samagotchi::Guardrails::ChildBoundary do
@@ -48,12 +49,12 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
   end
 
   # The verdict for +call+ in a child rooted at +root+, the process in +cwd+.
-  def verdict_for(call = nil, root: child, cwd: root, **fields)
+  def verdict_for(call = nil, root: child, cwd: root, registry: nil, **fields)
     call ||= fields
     context = Samagotchi::Guardrails::Context.new(cwd: cwd, git: git)
     v = Samagotchi::Guardrails::Verdict.new(call: call)
     v.context = context
-    v.targets = Samagotchi::Guardrails::Targets.for(call, context)
+    v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
     boundary(root).check(v)
   end
 
@@ -114,6 +115,83 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       FileUtils.rm_rf(child)
       expect(verdict_for({ name: "write", path: File.join(main, "a.txt"), content: "x" }, cwd: main)).to be_ask
       expect(run("make", cwd: main)).to be_ask
+    end
+  end
+
+  # A plugin tool is judged by what its targets: say, not by its name: a
+  # call whose targets carry paths it writes, or a command, crosses like
+  # the built-in tool that acts the same way.
+  describe "a plugin tool" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                targets: ->(call) { { paths: [call[:args]["path"]], writes: call[:args]["writes"] } })
+        r.register("push_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                targets: ->(call) { { command: call[:args]["command"], cwd: call[:args]["cwd"] } })
+      end
+    end
+
+    def save_note(path, writes: true, **opts)
+      verdict_for({ name: "save_note", args: { "path" => path, "writes" => writes } }, registry: registry, **opts)
+    end
+
+    def push_note(command, cwd: nil, **opts)
+      verdict_for({ name: "push_note", args: { "command" => command, "cwd" => cwd } }, registry: registry, **opts)
+    end
+
+    it "asks for a path outside its folder when its targets say it writes it" do
+      v = save_note(File.join(main, "a.txt"))
+      expect([v.decision, v.rule, v.source, v.decided_by, v.scopes]).to eq([:ask, "child-boundary", "core", "core", %w[once session]])
+      expect(save_note("../sibling/a.txt")).to be_ask
+      expect(save_note("lib/new.rb")).to be_allow
+    end
+
+    it "asks for a path whose `..` climbs out of a symlinked dir's target" do
+      FileUtils.mkdir_p(File.join(base, "elsewhere", "deep"))
+      File.symlink(File.join(base, "elsewhere", "deep"), File.join(child, "link"))
+      expect(save_note("link/../x.txt")).to be_ask
+      expect(save_note("sub/../x.txt")).to be_allow
+    end
+
+    it "leaves tmp dirs and memory files alone for a writing plugin tool too" do
+      tmp = Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) }
+      expect(save_note(File.join(tmp, "child-boundary-plugin.txt"))).to be_allow if tmp
+      memory = File.join(Samagotchi::Tools::MemoryRead.memories_dir("system"), "boundary-spec.md")
+      expect(save_note(memory)).to be_allow
+    end
+
+    # A plugin tool's command isn't read as shell (rule_command): only what
+    # chi can tell for sure is used — git that every checkout shares, and
+    # where the call runs. Nothing here asks twice for a built-in tool.
+    it "asks for a command that changes what every checkout shares, from its own folder too" do
+      expect(push_note("git worktree add ../x")).to be_ask
+      expect(push_note("git config user.email t@t")).to be_ask
+      expect(push_note("git branch -D other")).to be_ask
+      expect(push_note("git stash pop")).to be_ask
+      expect(push_note("git log --oneline")).to be_allow
+      expect(push_note("git diff main...feat")).to be_allow
+    end
+
+    it "asks for a command that runs in another checkout, read-only or not" do
+      expect(push_note("git push -f", cwd: main)).to be_ask
+      expect(push_note("git log --oneline", cwd: main)).to be_ask
+      expect(push_note("git push -f", cwd: child)).to be_allow
+      expect(push_note("git push -f", cwd: sibling)).to be_ask
+    end
+
+    # Guardrails ask about what a plugin declares, never about a name chi
+    # guessed: a plugin tool without writes: keeps today's verdict.
+    it "leaves a plugin tool without writes: and one without a command alone" do
+      expect(save_note(File.join(main, "a.txt"), writes: false)).to be_allow
+      expect(save_note("../sibling/a.txt", writes: nil)).to be_allow
+      expect(verdict_for({ name: "save_note", args: { "path" => File.join(main, "a.txt") } }, registry: registry)).to be_allow
+    end
+
+    # A built-in's verdicts are unchanged: memory_write still isn't path-checked
+    # here (its `..` entry names are Outside's memory exemption, kept as it is).
+    it "keeps memory_write out of the path check" do
+      expect(verdict_for(name: "memory_write", path: "../app/x", scope: "system", content: "x")).to be_allow
+      expect(verdict_for(name: "memory_write", path: "/elsewhere/x", scope: "system", content: "x")).to be_allow
     end
   end
 

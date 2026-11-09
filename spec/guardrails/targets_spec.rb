@@ -303,4 +303,42 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
       expect(t.rule_command).to eq("cat <<'EOF'\nrake release\nEOF")
     end
   end
+
+  describe "#writes?: whether the call's targets say it writes its paths" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                targets: ->(call) { { paths: [call[:args]["path"]], writes: call[:args]["writes"] } })
+        r.register("plain_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                 targets: ->(call) { { paths: [call[:args]["path"]] } })
+      end
+    end
+
+    it "is true for the built-in write, edit and memory_write" do
+      expect(targets(name: "write", path: "a.txt")).to be_writes
+      expect(targets(name: "edit", path: "a.txt", old_string: "a", new_string: "b")).to be_writes
+      expect(targets(name: "memory_write", path: "n", scope: "system", content: "x")).to be_writes
+    end
+
+    it "is a plugin tool's writes: true, and only a literal true" do
+      expect(targets({ name: "save_note", args: { "path" => "n.md", "writes" => true } }, registry: registry)).to be_writes
+      expect(targets({ name: "save_note", args: { "path" => "n.md", "writes" => "true" } }, registry: registry)).not_to be_writes
+      expect(targets({ name: "save_note", args: { "path" => "n.md", "writes" => 1 } }, registry: registry)).not_to be_writes
+      expect(targets({ name: "save_note", args: { "path" => "n.md" } }, registry: registry)).not_to be_writes
+    end
+
+    it "is false for a tool that only reads, a shell command, or a plugin tool without writes:" do
+      expect(targets(name: "read", content: "a.txt")).not_to be_writes
+      expect(targets(name: "execute", content: "cp a.txt #{File.join(@sibling, "b.txt")}")).not_to be_writes
+      expect(targets({ name: "plain_note", args: { "path" => "n.md" } }, registry: registry)).not_to be_writes
+    end
+
+    # The hook event's targets (to_h) is unchanged: no check reads writes:
+    # from a hook, and the event's shape is a contract.
+    it "keeps writes: out of the hook event's targets" do
+      expect(targets(name: "write", path: "a.txt").to_h).not_to have_key(:writes)
+      expect(targets({ name: "save_note", args: { "path" => "a.md", "writes" => true } }, registry: registry)
+        .to_h).not_to have_key(:writes)
+    end
+  end
 end

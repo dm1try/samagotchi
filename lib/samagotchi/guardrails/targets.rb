@@ -90,6 +90,15 @@ module Samagotchi
       #   reads it)
       attr_reader :label
 
+      # @return [Boolean] whether the call writes the paths its targets name:
+      #   chi's own write, edit and memory_write, and a plugin tool whose
+      #   targets: say writes: true (a literal true only). The checks that
+      #   guard a write (ProtectedPaths, ChildBoundary) ask this rather than
+      #   the tool's name, so a plugin tool that acts like one is judged
+      #   like one.
+      attr_reader :writes
+      alias writes? writes
+
       # @return [Boolean] a memory_write call that removes a memory (remove:
       #   true), for a rule's memory: remove
       attr_reader :memory_remove
@@ -126,6 +135,7 @@ module Samagotchi
         args = nil
         acts_as = nil
         label = nil
+        writes = false
         env = {}
         case tool
         when *SHELL_TOOLS
@@ -134,14 +144,17 @@ module Samagotchi
           given = call[:cwd].to_s.strip
           cwd = File.expand_path(given, base) unless given.empty?
         when "write", "edit"
+          writes = true
           paths.concat(absolutes(call[:path], base))
         when "read"
           paths.concat(absolutes(call[:content], base))
         when "memory_write"
+          writes = true
           paths << memory_path(call, model_key)
         else
           given = plugin_targets(call, registry, surface)
           command = given[:command]
+          writes = given[:writes]
           given_cwd = given[:cwd].to_s.strip
           cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
           paths.concat(given[:paths].flat_map { |path| absolutes(path, cwd) })
@@ -154,25 +167,29 @@ module Samagotchi
         memory_overlay = tool == "memory_write" && !memory_remove && call[:current_model_only].to_s.strip.downcase == "true"
         memory = tool == "memory_write" ? memory_facts(call) : nil
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, env: env, repo_root: context.repo_root(cwd),
-            repo: context.repo(cwd), args: args, acts_as: acts_as, label: label, memory_remove: memory_remove,
+            repo: context.repo(cwd), args: args, acts_as: acts_as, label: label, writes: writes,
+            memory_remove: memory_remove,
             memory_overlay: memory_overlay, memory: memory,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
             chi_dirs: -> { chi_dirs(context, base) })
       end
 
       # What a plugin tool's targets: callable says the call acts on:
-      # {command:, paths:, cwd:, acts_as:, args:, label:}, each optional; a callable
+      # {command:, paths:, writes:, cwd:, acts_as:, args:, label:}, each
+      # optional; a callable
       # that raises or gives something else counts as nothing (and is
       # logged). args: counts when it is a Hash; acts_as: is dropped (and
       # logged) when it names a core tool or another bundle's tool, so a
       # call can't pass for one and match (or reuse the approvals of) its
-      # rules. label: counts when it is one short line (.label_of). A
+      # rules. label: counts when it is one short line (.label_of). writes:
+      # counts only for a literal true: the tool says its paths are written,
+      # and the checks that guard write/edit judge them (.writes?). A
       # missing surface (Tools::MissingSurface) is raised, never taken as
       # nothing: call_tool's acts_as would go missing, and with it the
       # mcp_* rules on the call (fail-open).
       def self.plugin_targets(call, registry, surface = nil)
         entry = entry_of(call[:name], registry, surface)
-        none = { command: nil, paths: [], cwd: nil, acts_as: nil, args: nil, label: nil }
+        none = { command: nil, paths: [], writes: false, cwd: nil, acts_as: nil, args: nil, label: nil }
         return none unless entry && !entry.core? && entry.targets
 
         given = entry.targets_of(call, surface)
@@ -180,7 +197,8 @@ module Samagotchi
 
         given = given.transform_keys(&:to_sym)
         command = given[:command].to_s
-        { command: command.empty? ? nil : command, paths: Array(given[:paths]).map(&:to_s), cwd: given[:cwd],
+        { command: command.empty? ? nil : command, paths: Array(given[:paths]).map(&:to_s), writes: given[:writes] == true,
+          cwd: given[:cwd],
           acts_as: acts_as_of(given[:acts_as], entry, registry, surface), args: given[:args].is_a?(Hash) ? given[:args] : nil,
           label: label_of(given[:label], entry) }
       rescue Tools::MissingSurface
@@ -318,10 +336,11 @@ module Samagotchi
       # @param env [Hash{String=>String}] the call's env: (.env_of)
       def initialize(tool:, command:, paths:, cwd:, repo_root:, env: {}, repo: nil, args: nil, acts_as: nil,
                      label: nil, model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil,
-                     memory_remove: false, memory_overlay: false, memory: nil)
+                     memory_remove: false, memory_overlay: false, memory: nil, writes: false)
         @env = env
         @acts_as = acts_as
         @label = label
+        @writes = writes
         @memory_remove = memory_remove
         @memory_overlay = memory_overlay
         @memory = memory

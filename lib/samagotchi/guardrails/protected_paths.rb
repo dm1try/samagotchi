@@ -4,7 +4,8 @@ require_relative "path_resolve"
 
 module Samagotchi
   module Guardrails
-    # Core checks on what the file tools (write, edit, memory_write) touch,
+    # Core checks on what a call writes (Targets#writes?: write, edit,
+    # memory_write, and a plugin tool whose targets: say writes: true),
     # after the hooks and before the rules. Paths are compared with
     # symlinks resolved (on the longest existing parent, `..` taken
     # physically, a dangling symlink followed: PathResolve.reals, the
@@ -14,7 +15,8 @@ module Samagotchi
     #         hooks, rules, manifests), attached context (a source's
     #         command runs later, outside the gate; chi context writes
     #         it) and System 1's saved runs (a label there may train a
-    #         model); nothing legitimate writes there through the file tools.
+    #         model); nothing legitimate writes there through a tool
+    #         that says it writes.
     #   ask (once / session): config.yml, home.json (the chi home: the
     #         Ruby every chi launch boots), the chi shim (ChiShim: the
     #         `chi` every tool runs) and the plain hooks dir. The
@@ -24,7 +26,6 @@ module Samagotchi
     # execute can still write all of them (the guardrails bundle adds a
     # text match for that).
     class ProtectedPaths
-      FILE_TOOLS = %w[write edit memory_write].freeze
       SOURCE = "core"
 
       # @param store_dir [String] <state dir>/guardrails
@@ -50,10 +51,12 @@ module Samagotchi
         ].select { |_, root, _| root }
       end
 
-      # Vote on +verdict+ (its targets).
+      # Vote on +verdict+ (its targets): a call whose targets say it writes
+      # (Targets#writes?: write, edit, memory_write, or a plugin tool's
+      # targets: writes: true) is judged on its paths.
       def check(verdict)
         targets = verdict.targets
-        return verdict unless targets && FILE_TOOLS.include?(targets.tool)
+        return verdict unless targets&.writes?
 
         paths = targets.paths.flat_map { |p| PathResolve.reals(p) }
         @deny.each do |rule, root, reason|

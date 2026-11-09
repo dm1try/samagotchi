@@ -264,7 +264,7 @@ run by `call_tool` as the tool itself ([the chi group](#chitool_sourcecall-acts_
   it raises, the default is shown. Both are saved with the call's result, so
   a web page reloaded later shows the same row: the web server doesn't run
   plugins.
-- `targets`: `->(args) { { paths: [...], command: "…", cwd: "…", acts_as: "…", args: {…}, label: "…" } }`,
+- `targets`: `->(args) { { paths: [...], writes: true, command: "…", cwd: "…", acts_as: "…", args: {…}, label: "…" } }`,
   each key optional, says what a call acts on, for [guardrails](#guardrails).
 - `refs`: `->(args) { [{ kind:, target:, label:, actions: [] }, …] }`, what the call's row traces to in the web
   (display only, the model never sees them). See [Refs on a tool's row](#refs-on-a-tools-row).
@@ -335,8 +335,15 @@ is what `targets:` says:
 - `paths:`: files the call reads or writes, absolute or relative to `cwd:`
   (else the session's directory). `path:` globs, `outside_repo` (measured
   from the session's repo, whatever the call's `cwd:`) and the protected
-  paths (chi's config, …) match them.
-- `command:`: a shell command the call runs; `command:` rules match it.
+  paths (chi's config, …) match them. A call that writes them adds
+  `writes: true` (what `write` and `edit` carry): the protected paths and a
+  delegate child's boundary then judge its paths as they do a write's. Say
+  it when the call writes, never when it only reads (a read's paths are
+  `path:` rule material, not a write); a tool without it is judged as
+  today.
+- `command:`: a shell command the call runs; `command:` rules match it, and
+  a delegate child's boundary checks where it runs and whether it changes
+  what every checkout shares (as for `execute`).
 - `cwd:`: where it runs, for the repo root and relative paths.
 - `acts_as:`: the tool a call stands for, when the tool runs other tools
   (chi's `call_tool`, which calls a tool a [source](#chitool_sourcecall-acts_as-label-wait-prefix) published). Rules keyed by that tool's name match the
