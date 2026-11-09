@@ -248,7 +248,7 @@ module Samagotchi
       # GuardrailWiring#bundle_rules doesn't read the rules of a bundle whose
       # requires_chi this chi doesn't meet, and a session that never loaded
       # them records a required load failure (the gate refuses guarded calls
-      # until chi is updated): say so at install, as install_plugin does.
+      # until chi is updated): say so at install, as #plugin_incoming does.
       def warn_rules_requires_chi(rule_files)
         return if @manifest.nil? || rule_files.empty?
 
