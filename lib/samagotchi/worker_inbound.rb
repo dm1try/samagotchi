@@ -6,6 +6,7 @@ require "time"
 
 require_relative "child_reports"
 require_relative "client_id"
+require_relative "command_intake"
 require_relative "config"
 require_relative "context_note"
 require_relative "log"
@@ -264,7 +265,11 @@ module Samagotchi
     # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
     # pass runs it. A participant's is refused (dropped, with its audit
     # line): commands and shell lines are the owner's (chi web and the
-    # Bridge refuse them first; this is the worker's own layer).
+    # Bridge refuse them first; this is the worker's own layer). From a
+    # sender that may not send commands (CommandIntake.allowed?: a
+    # delegate, a schedule, a plugin...) a /word line is a prompt, and a
+    # shell line is queued for Worker#run_command_line to refuse, so its
+    # sender and the UIs see the refusal as the command's error.
     # @return [Boolean] whether +text+ was one
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
@@ -275,6 +280,7 @@ module Samagotchi
                                                 what: "command", reason: "not_permitted")
         return true
       end
+      return false unless CommandIntake.allowed?(origin.client_id) || CommandIntake.shell_line?(text)
 
       @queue_command.call(text, origin.client_id, after_file, origin.enqueued_id)
       true

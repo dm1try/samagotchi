@@ -4,6 +4,7 @@ require "fileutils"
 require "securerandom"
 
 require_relative "client_id"
+require_relative "command_intake"
 require_relative "config"
 require_relative "engine"
 require_relative "guardrails/parent_policy"
@@ -1215,11 +1216,21 @@ module Samagotchi
     #   the cards and notices it showed, held: they follow its command_ran,
     #   as its output
     def run_command_line(command)
+      return [shell_refused(command), []] if CommandIntake.refused?(command.line, command.client_id)
+
       @engine.holding_announcements do
         command_result(command) do
           @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
         end
       end
+    end
+
+    # A shell line from a sender that may not run one (CommandIntake: a
+    # delegate's task, a schedule's prompt, a plugin's message): not run,
+    # its command_ran an error with the one refusal text.
+    def shell_refused(command)
+      Log.warn(:worker, "shell_line_refused", client_id: command.client_id)
+      SessionCommands::Result.new(status: :error, output: CommandIntake::REFUSED, changed: [])
     end
 
     # Whether +command+ asks before a costly /thinking or /reasoning-history

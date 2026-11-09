@@ -19,6 +19,12 @@ and commands may change between minor versions. How releases are made:
 - The `SessionManager.run_session_loop` forwarder for older boot strings is gone: a chi web or terminal still
   running 0.158.0 or older must be restarted after updating, because a worker it spawns names that entry.
 
+### Fixed
+
+- A message that starts with `!` runs as a shell command only when a person sends it (a web tab, a chi TUI, `chi send`):
+  from a delegating parent, a schedule or a plugin it is refused and nothing runs, and a `/command` line from them is
+  plain text for the model. `chi answer`'s `/continue yes` and `/parent-answers` still run.
+
 ## [0.159.0] - 2026-11-09
 
 Update with `chi update`.
