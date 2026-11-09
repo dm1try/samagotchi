@@ -557,6 +557,7 @@ module Samagotchi
       # cell's text merge runs on temp copies). --force would install every
       # file, unread.
       def preview_memory(file_key, state, action)
+        preview_trash_copy(file_key, state, action)
         return @results[file_key] = FileResult.new(word: :would_install, state: state, action: action) if @force
         return refuse_unreadable(file_key, state.paths[:current]) if action.do == :refuse
 
@@ -564,7 +565,18 @@ module Samagotchi
         action = decision.action if decision
         return note_conflict(file_key, decision.outcome, state) if action.behind?
 
+        preview_trash_copy(file_key, state, action)
         @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
+      end
+
+      def preview_trash_copy(file_key, state, action)
+        return unless action.save_first
+
+        current = state.paths[:current]
+        incoming = state.paths[:incoming]
+        return unless File.file?(current) && !FileUtils.identical?(incoming, current)
+
+        @warnings << "Would copy to the trash first: #{file_key}"
       end
 
       # Strict mode: a memory that takes the bundle's text (Action#takes_source?:

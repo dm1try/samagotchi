@@ -27,8 +27,7 @@
 #   fix         "<tsv id> <spec file>: <example description>": the example
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
-#               wrong today (one tag or a list): U4 (the plan's),
-#               dry-trash; note says which
+#               wrong today (one tag or a list): U4 (the plan's); note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
 #               P1.9, edited-rule, D4: P1.10, U4, U7,
 #               restore-unchecked, dry-source, merge-checked); note says how
@@ -110,8 +109,6 @@ cases:
       text (Updated; the dry run Fast-forward)
   - id: pristine_marked
     kind: pristine
-    divergent: dry-trash
-    note: "0.155: upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
     base: abc
     disk: abc
     incoming: abC
@@ -505,16 +502,12 @@ cases:
   # ShippedHistory proves the base.
   - id: pristine_legacy_gains
     kind: pristine
-    divergent: dry-trash
-    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
     base: abc
     disk: abc
     incoming: abcd
     mark: legacy
   - id: pristine_legacy_gains_proved
     kind: pristine
-    divergent: dry-trash
-    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
     base: abc
     disk: abc
     incoming: abcd
@@ -528,8 +521,6 @@ cases:
     mark: legacy
   - id: pristine_legacy_removes_proved
     kind: pristine
-    divergent: dry-trash
-    note: "upgrade copies the marked file to the trash and warns; its dry run says only Fast-forward"
     base: abc
     disk: abc
     incoming: ab

@@ -115,7 +115,11 @@ module Samagotchi
         files.each do |file|
           @results["hooks/#{file}"] = @dry_run ? retired.with(word: :would_remove) : retired
         end
-        return if @dry_run
+        if @dry_run
+          edits = Trash.edits(dir, "hooks", @existing&.hooks&.transform_values(&:sha256))
+          @warnings << "Would copy to the trash first: #{edits.join(", ")}" unless edits.empty?
+          return
+        end
 
         @trash.copy_edits(dir, "hooks", @existing&.hooks&.transform_values(&:sha256))
         FileUtils.rm_rf(dir)
@@ -173,6 +177,10 @@ module Samagotchi
         command = @upgrade && @provenance.installed? ? :upgrade : :install
         states = AssetState.in(dir, kind_of_file: kind_of_file, recorded: recorded, incoming: incoming)
                            .to_h { |asset| [asset.name, [asset, FileActions.for_asset(command, asset)]] }
+        if @dry_run
+          copies = states.filter_map { |_, (asset, action)| asset.label if action&.save_first }
+          @warnings << "Would copy to the trash first: #{copies.join(", ")}" unless copies.empty?
+        end
         results = incoming.keys.to_h do |name|
           asset, action = states.fetch(name)
           [name, Installer::FileResult.new(word: @dry_run ? DRY_WORDS.fetch(action.word) : action.word, state: asset, action: action)]

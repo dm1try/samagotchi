@@ -1300,6 +1300,17 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(dry.summary).to include("Would remove (no longer in the bundle): guardrails/r.yml")
       expect(real.summary).to include("Removed (no longer in the bundle): guardrails/r.yml")
     end
+
+    it "names edited assets a dry run would copy to the trash without creating it" do
+      run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"))
+      File.write(File.join(bundles_dir, "assets", "plugin", "plugin.rb"), "# mine\n")
+      v2 = asset_bundle("2.0.0", plugin: "# plugin 2\n")
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+
+      expect(dry.summary).to include("Would copy to the trash first: plugin/plugin.rb")
+      expect(dry.trash_dir).to be_nil
+    end
   end
 
   describe "needs" do
