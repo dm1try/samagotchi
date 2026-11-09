@@ -5,16 +5,20 @@ require_relative "../starting_marker"
 
 module Samagotchi
   class SessionManager
-    # How long after a spawn a resume trusts that worker to take the
-    # session, while it runs (and the session wasn't stopped since).
+    # How long a worker's starter waits for it to take the session
+    # (WorkerBoot.detach_from_spawner): the starting marker naming the
+    # starter holds that long at most.
     WORKER_START_GRACE = WorkerLink::START_LIMIT
 
-    @spawns = {}
-    @spawns_mutex = Mutex.new
+    # The starters this process spawned (their Process.detach waiters), for
+    # chi web's restart to adopt (#live_spawn_pids). Decides nothing: the
+    # starting marker is what holds a second spawn off.
+    @starters = []
+    @starters_mutex = Mutex.new
 
     # Spawn: deciding to start a session's worker (a new session, a resume, a
-    # delegate's report waking its parent) and the spawns this process
-    # remembers. Calls WorkerCommandPart's spawn_options and worker_command and
+    # delegate's report waking its parent) and the starters this process
+    # spawned. Calls WorkerCommandPart's spawn_options and worker_command and
     # the facade's ownership checks. Meant to be loaded through samagotchi/session_manager.
     module SpawnPart
       # Spawn a new background session that processes the given prompt (or,
@@ -106,13 +110,23 @@ module Samagotchi
         session.first_preview = Session.preview_of(preview.to_s.strip.empty? ? prompt : preview)
         session.title = title
         session_dir = Session.session_dir(session.id, state_dir: sd)
-        unless session.messages.empty?
-          session.messages, dropped = ImageStore.copy_refs(session.messages, from: images_from, to: session_dir)
-          session.seed_images_dropped = dropped
+        # Starting before its file exists: the file is never there unowned and
+        # unmarked (a sweep would take a scratch session from under its
+        # worker). spawn_worker_for_session hands it to the starter.
+        StartingMarker.mark(session.id, state_dir: sd)
+        begin
+          unless session.messages.empty?
+            session.messages, dropped = ImageStore.copy_refs(session.messages, from: images_from, to: session_dir)
+            session.seed_images_dropped = dropped
+          end
+          setup_session_directory(session_dir, session, state_dir: sd)
+          SessionInbox.write_note(session.id, text: note, source: note_source, state_dir: sd) if note
+          before_spawn&.call(session)
+        rescue StandardError
+          # Nothing is starting: a caller's cleanup (a continue's failed link) may delete it.
+          StartingMarker.clear(session.id, state_dir: sd)
+          raise
         end
-        setup_session_directory(session_dir, session, state_dir: sd)
-        SessionInbox.write_note(session.id, text: note, source: note_source, state_dir: sd) if note
-        before_spawn&.call(session)
         spawn_worker_for_session(session, state_dir: sd)
         session
       end
@@ -126,21 +140,20 @@ module Samagotchi
         # Its terminal's worker came from spawn_session; nothing wakes another.
         raise ScratchSession, session.id if session.scratch
 
-        presence = WorkerPresence.read(session.id, state_dir: sd, owner: session_owner(session.id, state_dir: sd),
-                                                   spawned: method(:spawn_waiting?))
+        presence = WorkerPresence.read(session.id, state_dir: sd, owner: session_owner(session.id, state_dir: sd))
         raise OwnedByTUI, session.id if presence.tui_owned?
         return session if presence.owned?
+
+        # A worker being started for it, by this process or another (chi web,
+        # a `chi send`, a child's ring; a continue moving delegates to its new
+        # link), may not hold the lock yet: a second one would only lose it,
+        # or race the move (#resume_held_off?).
+        return session if presence.resume_held_off?
+        return session unless claim_start(session.id, state_dir: sd, stopped: presence.stop_marked?)
 
         # status is turn state, not liveness: a new worker runs no turn yet,
         # and must not find the session stopped (it would exit): neither the
         # marker nor a status field from before it.
-        # One this process just spawned may not hold the lock yet (a slow
-        # start, deliver_turn's second resume): it would only lose it
-        # (#start_pending?). A continue moving delegates to it spawns its
-        # worker once they are moved; one spawned now (a moved child's ring)
-        # would race the move (#starting?).
-        return session if presence.resume_held_off?
-
         Session.clear_stopped(session.id, state_dir: sd)
         session.status = Session::STATUS_IDLE
         session.save(state_dir: sd)
@@ -196,36 +209,42 @@ module Samagotchi
         :owned
       end
 
-      # A worker this process spawned for the session within
-      # WORKER_START_GRACE is still running (WorkerPresence's spawned_here;
-      # #start_pending? adds "and no stop came since").
-      private def spawn_waiting?(session_id, state_dir)
-        at, waiter = @spawns_mutex.synchronize { @spawns[[state_dir, session_id]] }
-        return false unless at && waiter.respond_to?(:alive?) && waiter.alive?
+      # Take the start for resume_session: the marker claimed (of resumes
+      # racing from any processes, one claims it), then the owner read
+      # again: a worker that took the lock since the first read cleared an
+      # earlier start's marker, and keeps the session. After a stop the
+      # marker is written over (a stop cancels the hold-off).
+      # @return [Boolean] whether this resume spawns
+      private def claim_start(session_id, state_dir:, stopped:)
+        if stopped
+          StartingMarker.mark(session_id, state_dir: state_dir)
+        else
+          return false unless StartingMarker.claim(session_id, state_dir: state_dir)
+        end
+        return true unless session_owner(session_id, state_dir: state_dir)
 
-        Process.clock_gettime(Process::CLOCK_MONOTONIC) - at < WORKER_START_GRACE
+        StartingMarker.clear(session_id, state_dir: state_dir)
+        false
       end
 
-      private def note_spawn(session_id, state_dir:, waiter:)
-        @spawns_mutex.synchronize do
-          @spawns.delete_if { |_, (_, w)| !(w.respond_to?(:alive?) && w.alive?) }
-          @spawns[[state_dir, session_id]] = [Process.clock_gettime(Process::CLOCK_MONOTONIC), waiter]
+      private def note_starter(waiter)
+        @starters_mutex.synchronize do
+          @starters.select! { |w| w.respond_to?(:alive?) && w.alive? }
+          @starters << waiter
         end
       end
 
-      # Forget the spawns #spawn_waiting? remembers (specs).
+      # Forget the starters this process spawned (specs).
       def forget_spawns
-        @spawns_mutex.synchronize { @spawns.clear }
+        @starters_mutex.synchronize { @starters.clear }
       end
 
       # Starter processes are children of chi web, unlike the detached workers
       # they launch; the web restart adopts these pids before replacing itself.
       def live_spawn_pids
-        @spawns_mutex.synchronize do
-          @spawns.delete_if { |_, (_, waiter)| !(waiter.respond_to?(:alive?) && waiter.alive?) }
-          @spawns.values.filter_map do |_, waiter|
-            waiter.pid if waiter.respond_to?(:pid) && waiter.alive?
-          end.uniq.sort
+        @starters_mutex.synchronize do
+          @starters.select! { |waiter| waiter.respond_to?(:alive?) && waiter.alive? }
+          @starters.filter_map { |waiter| waiter.pid if waiter.respond_to?(:pid) }.uniq.sort
         end
       end
 
@@ -262,7 +281,7 @@ module Samagotchi
         if starter_running?(pid)
           StartingMarker.mark(session.id, state_dir: state_dir, pid: pid)
           # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
-          note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
+          note_starter(Process.detach(pid))
         else
           # It failed to exec or boot: nothing is starting.
           StartingMarker.clear(session.id, state_dir: state_dir)

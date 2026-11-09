@@ -275,7 +275,7 @@ RSpec.describe Samagotchi::SessionRetention do
         s.messages << { role: "user", content: "hi" }
         s.scratch = true
       end
-      past_start = Time.now - described_class::SCRATCH_START_GRACE - 1
+      past_start = Time.now - 60
       leftover = saved(age: past_start, &scratch)
       running = saved(age: past_start, &scratch)
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(running.id, state_dir: tmpdir), kind: "tui")
@@ -294,45 +294,51 @@ RSpec.describe Samagotchi::SessionRetention do
     end
   end
 
-  # `chi scratch` saves its session, then spawns the worker that takes its
-  # owner lock: a sweep in between (chi web starting at that moment) must
-  # not take the session from under it.
-  describe ".apply and a scratch session being started" do
-    def scratch_saved_at(time)
+  # A session whose worker is being started (StartingMarker: every spawn
+  # marks it, `chi scratch`'s before its file is saved) has no owner yet: a
+  # sweep in between (chi web starting at that moment) must not take it
+  # from under its worker. No file-age grace: the marker decides.
+  describe ".apply and a session being started" do
+    def scratch_session(starting:)
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
                                                 scratch: true)
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir) if starting
       session.save(state_dir: tmpdir)
-      File.utime(time, time, File.join(tmpdir, "#{session.id}.json"))
       session
     end
 
-    let(:saved_at) { Time.at(1_800_000_000) }
-    let(:grace) { described_class::SCRATCH_START_GRACE }
+    it "keeps an unowned scratch session marked starting, and takes no count slot for it" do
+      starting = scratch_session(starting: true)
 
-    it "keeps an unowned scratch session saved within the worker start grace" do
-      starting = scratch_saved_at(saved_at)
-
-      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false },
-                                     now: saved_at + grace - 1)
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false })
 
       expect(result[:kept]).to eq([starting.id])
       expect(File.exist?(File.join(tmpdir, "#{starting.id}.json"))).to be(true)
     end
 
-    it "deletes it once the grace has passed and still nobody owns it" do
-      leftover = scratch_saved_at(saved_at)
+    it "deletes one just saved once nothing is starting it and nobody owns it" do
+      leftover = scratch_session(starting: false)
 
-      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false },
-                                     now: saved_at + grace + 1)
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false })
 
       expect(result[:deleted]).to eq([leftover.id])
     end
 
+    it "keeps an expired session marked starting (a resume of a two-week-old one)" do
+      old = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      old.save(state_dir: tmpdir, now: Time.now - (30 * 86_400))
+      Samagotchi::StartingMarker.mark(old.id, state_dir: tmpdir)
+
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false })
+
+      expect(result[:kept]).to eq([old.id])
+    end
+
     it "keeps it under chi sessions clean (test_only, any_age) too" do
-      starting = scratch_saved_at(saved_at)
+      starting = scratch_session(starting: true)
 
       result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, test_only: true, any_age: true,
-                                     alive_check: ->(_) { false }, now: saved_at + 1)
+                                     alive_check: ->(_) { false })
 
       expect(result[:deleted]).to be_empty
       expect(result[:kept]).to eq([starting.id])
@@ -407,8 +413,6 @@ RSpec.describe Samagotchi::SessionRetention do
       scratch = aged(status: Samagotchi::Session::STATUS_IDLE, days_old: 0)
       path = File.join(tmpdir, "#{scratch.id}.json")
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scratch" => true)))
-      past_start = Time.now - described_class::SCRATCH_START_GRACE - 1
-      File.utime(past_start, past_start, path)
 
       result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 1)
 

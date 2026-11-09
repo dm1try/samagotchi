@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "securerandom"
 require "time"
 require_relative "atomic_file"
 require_relative "session"
@@ -34,6 +35,32 @@ module Samagotchi
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
       AtomicFile.write(File.join(dir, FILE), JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(3) }))
+    end
+
+    # Claim the start of +session_id+'s worker: write the marker only when
+    # no fresh one is there (a link(2) of a written temp file: of starters
+    # racing, one wins). A stale or dead one is taken over; two takers of
+    # one stale marker can both win (rare: both spawn, and their workers
+    # race the owner lock, one wins).
+    # @param pid [Integer] the process the hold lasts for (#mark)
+    # @return [Boolean] whether this caller holds the start now
+    def claim(session_id, state_dir:, pid: Process.pid)
+      dir = Session.session_dir(session_id, state_dir: state_dir)
+      FileUtils.mkdir_p(dir)
+      path = File.join(dir, FILE)
+      temp = File.join(dir, "#{FILE}.#{Process.pid}.#{SecureRandom.hex(4)}")
+      File.write(temp, JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(3) }))
+      2.times do
+        File.link(temp, path)
+        return true
+      rescue Errno::EEXIST
+        return false if fresh?(session_id, state_dir: state_dir)
+
+        FileUtils.rm_f(path)
+      end
+      false
+    ensure
+      FileUtils.rm_f(temp) if temp
     end
 
     def clear(session_id, state_dir:)

@@ -5,6 +5,7 @@ require "time"
 require_relative "session"
 require_relative "archive_store"
 require_relative "worker_presence"
+require_relative "starting_marker"
 require_relative "config"
 require_relative "log"
 require_relative "model_profile"
@@ -19,8 +20,8 @@ module Samagotchi
   # (session.retention_days), count (session.max_count, counting only the
   # sessions that stay), statuses kept (session.keep_status), sessions left
   # empty (SessionManager.discardable?, an hour on), leftover scratch
-  # sessions (once past SCRATCH_START_GRACE) and skeleton-only directories; a session with a live owner
-  # always stays.
+  # sessions and skeleton-only directories; a session with a live owner, or
+  # whose worker is being started (StartingMarker), always stays.
   module SessionRetention
     # The session.retention_days / max_count / keep_status defaults.
     DEFAULT_RETENTION_DAYS = 14
@@ -100,14 +101,11 @@ module Samagotchi
       end
     end
 
-    # How long after its save an unowned scratch session may still be
-    # waiting for the worker just spawned for it to take its owner lock.
-    SCRATCH_START_GRACE = SessionManager::WORKER_START_GRACE
-
-    private_class_method def self.scratch_starting?(path, now)
-      now - File.mtime(path) < SCRATCH_START_GRACE
-    rescue SystemCallError
-      false
+    # A worker is being started for it (every spawn marks it, a new
+    # session's before its file is saved): no owner yet doesn't mean nobody
+    # runs it.
+    private_class_method def self.starting?(session_id, state_dir)
+      StartingMarker.fresh?(session_id, state_dir: state_dir)
     end
 
     # Lazy sweep guard: runs prune at most once per SWEEP_INTERVAL_HOURS
@@ -179,9 +177,11 @@ module Samagotchi
     # count (`chi sessions clean` with no --days: test runs are throwaway).
     #
     # A scratch session nobody owns (its terminal and worker were killed) goes whatever its
-    # age, its status and the count; +test_only+ takes it too. One saved
-    # within SCRATCH_START_GRACE (its file's mtime, against +now+) stays: its
-    # worker may not have taken the owner lock yet.
+    # age, its status and the count; +test_only+ takes it too.
+    #
+    # A session whose worker is being started (StartingMarker, fresh) stays,
+    # whatever it is, and takes no count slot: its worker may not have taken
+    # the owner lock yet.
     #
     # +max_count+ counts the sessions that stay: one deleted whatever its
     # place (scratch, left empty, expired, +any_age+) takes no slot.
@@ -235,10 +235,9 @@ module Samagotchi
           end
         end
 
-        # A scratch session saved within SCRATCH_START_GRACE: `chi scratch`
-        # saves it, then spawns the worker that takes its owner lock, so no
-        # owner yet doesn't mean a leftover. Kept, it takes no count slot.
-        if session.scratch && scratch_starting?(path, now)
+        # Being started (a resume, a new or scratch session): its worker
+        # takes the owner lock in a moment. Kept, it takes no count slot.
+        if starting?(session.id, state_dir)
           kept << session.id
           passed_over += 1
           next

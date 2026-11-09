@@ -16,8 +16,9 @@ RSpec.describe Samagotchi::SessionManager do
     it "returns the unique pids of live worker starters" do
       live = double("live waiter", pid: 123, alive?: true)
       dead = double("dead waiter", pid: 456, alive?: false)
-      described_class.send(:note_spawn, "live", state_dir: tmpdir, waiter: live)
-      described_class.send(:note_spawn, "dead", state_dir: tmpdir, waiter: dead)
+      described_class.send(:note_starter, live)
+      described_class.send(:note_starter, dead)
+      described_class.send(:note_starter, live)
 
       expect(described_class.live_spawn_pids).to eq([123])
     end
@@ -140,44 +141,83 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
     end
 
-    describe "a worker it spawned that is still starting (no owner lock yet)" do
+    # The starting marker is the one cross-process starting state: a resume
+    # from this process or any other (chi web, a `chi send`, a child's ring)
+    # holds off while a starter runs (no owner lock yet).
+    describe "a worker being started (no owner lock yet)" do
       let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| s.save(state_dir: tmpdir) } }
-      let(:waiter) { instance_double(Thread, alive?: true) }
+      let(:starters) { [] }
 
       before do
-        allow(Process).to receive(:spawn).and_return(20_002)
-        # The stand-in starter still runs.
-        allow(Process).to receive(:waitpid).and_return(nil)
-        allow(Process).to receive(:detach).and_return(waiter)
+        allow(Process).to receive(:spawn).and_wrap_original do |original, *|
+          original.call("sleep", "30").tap { |pid| starters << pid }
+        end
       end
 
-      after { described_class.forget_spawns }
+      after do
+        starters.each do |pid|
+          Process.kill("KILL", pid)
+        rescue Errno::ESRCH
+          nil
+        end
+      end
+
+      # Killed and reaped (by the spawn's Process.detach waiter).
+      def kill_starters
+        starters.each do |pid|
+          Process.kill("KILL", pid)
+          wait_for("starter #{pid} to be gone") { !Samagotchi::StartingMarker.process_alive?(pid) }
+        end
+      end
 
       it "is not spawned again by a second resume (deliver_turn's after a slow start)" do
         2.times { described_class.resume_session(session.id, state_dir: tmpdir) }
         expect(Process).to have_received(:spawn).once
       end
 
-      it "is spawned again once that worker exited, or after a stop" do
+      it "is not spawned again for another process's start" do
+        other = IO.popen(%w[sleep 30])
+        Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir, pid: other.pid)
+
         described_class.resume_session(session.id, state_dir: tmpdir)
-        allow(waiter).to receive(:alive?).and_return(false)
+        expect(Process).not_to have_received(:spawn)
+      ensure
+        if other
+          Process.kill("KILL", other.pid)
+          other.close
+        end
+      end
+
+      it "is spawned again once that starter exited, or after a stop" do
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        kill_starters
         described_class.resume_session(session.id, state_dir: tmpdir)
         expect(Process).to have_received(:spawn).twice
 
-        allow(waiter).to receive(:alive?).and_return(true)
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
         described_class.resume_session(session.id, state_dir: tmpdir)
         expect(Process).to have_received(:spawn).exactly(3).times
       end
 
-      it "is spawned again after the grace" do
+      it "is spawned again once the marker is stale" do
         described_class.resume_session(session.id, state_dir: tmpdir)
-        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        allow(Process).to receive(:clock_gettime).and_call_original
-        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC)
-                                                 .and_return(now + described_class::WORKER_START_GRACE + 1)
+        File.write(File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "starting"),
+                   JSON.generate({ "pid" => starters.first, "at" => (Time.now - 120).iso8601(3) }))
         described_class.resume_session(session.id, state_dir: tmpdir)
         expect(Process).to have_received(:spawn).twice
+      end
+
+      # Its marker is claimed (StartingMarker.claim), then the owner read
+      # again: a worker that took the lock in between (and cleared the
+      # marker an earlier start wrote) keeps the session.
+      it "spawns nothing and drops its claim when a worker took the lock meanwhile" do
+        owner = Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", started_at: nil)
+        allow(described_class).to receive(:session_owner).and_return(nil, owner)
+
+        described_class.resume_session(session.id, state_dir: tmpdir)
+
+        expect(Process).not_to have_received(:spawn)
+        expect(Samagotchi::StartingMarker.fresh?(session.id, state_dir: tmpdir)).to be(false)
       end
     end
   end

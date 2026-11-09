@@ -59,9 +59,6 @@ RSpec.describe "chi sessions clean" do
 
   it "deletes a chi scratch session its process left behind" do
     leftover = make(test_run: false, scratch: true)
-    # Past the grace a scratch session just being started has.
-    past_start = Time.now - Samagotchi::SessionRetention::SCRATCH_START_GRACE - 1
-    File.utime(past_start, past_start, File.join(state_dir, "#{leftover.id}.json"))
     real = make(test_run: false)
 
     out, err, status = chi_sessions("clean")

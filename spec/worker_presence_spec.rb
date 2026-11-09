@@ -93,17 +93,6 @@ RSpec.describe Samagotchi::WorkerPresence do
       expect(read).to have_attributes(archived?: true)
     end
 
-    it "asks the injected spawn reader, with the id and state dir" do
-      asked = []
-      presence = read(spawned: lambda { |sid, sd|
-        asked << [sid, sd]
-        true
-      })
-
-      expect(asked).to eq([[id, state_dir]])
-      expect(presence).to have_attributes(spawned_here: true, start_pending?: true, resume_held_off?: true)
-    end
-
     it "resolves the link only when asked, looking or unlinking a stale sidecar" do
       Samagotchi::WorkerSidecar.new(port: 5001, pid: 4242).write(dir)
       sidecar = Samagotchi::WorkerSidecar.path(dir)
@@ -166,19 +155,28 @@ RSpec.describe Samagotchi::WorkerPresence do
     end
   end
 
-  describe "#start_pending?" do
-    it "is false once a stop came, though this process spawned one" do
-      Samagotchi::Session.mark_stopped(id, state_dir: state_dir)
+  # One cross-process starting state (StartingMarker): a stop cancels the
+  # hold-off (a resume after a stop clears it and spawns; the starting
+  # worker and the new one race the lock).
+  describe "#start_pending? and #resume_held_off?" do
+    it "holds off while a start is marked and no stop came" do
+      Samagotchi::StartingMarker.mark(id, state_dir: state_dir)
+      expect(read).to have_attributes(starting?: true, start_pending?: true, resume_held_off?: true)
 
-      expect(read(spawned: ->(*) { true })).to have_attributes(spawned_here: true, start_pending?: false,
-                                                               resume_held_off?: false)
+      Samagotchi::Session.mark_stopped(id, state_dir: state_dir)
+      expect(read).to have_attributes(starting?: true, start_pending?: false, resume_held_off?: false)
+    end
+
+    it "reads no in-process memo" do
+      expect(described_class.members).not_to include(:spawned_here)
+      expect { read(spawned: ->(*) { true }) }.to raise_error(ArgumentError)
     end
   end
 
   describe "#wake_refusal" do
     def presence(**facts)
       described_class.new(session_id: "s", exists: true, owner: nil, stop_marked: false, starting_marked: false,
-                          spawned_here: false, archived: false, **facts)
+                          archived: false, **facts)
     end
 
     let(:worker) { Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", started_at: nil) }
@@ -190,10 +188,6 @@ RSpec.describe Samagotchi::WorkerPresence do
       expect(presence(archived: true, starting_marked: true).wake_refusal).to eq(:archived)
       expect(presence(starting_marked: true).wake_refusal).to eq(:starting)
       expect(presence.wake_refusal).to be_nil
-    end
-
-    it "leaves the in-process spawn to resume_session" do
-      expect(presence(spawned_here: true).wake_refusal).to be_nil
     end
 
     it "answers the session's own fields after: the turn status, then scratch" do
