@@ -42,5 +42,6 @@
   "interrupted_turn": null,
   "parent_answers": "soft",
   "working_set_pins": [],
-  "first_turn_id": "00000000-0000-4000-8000-000000000002"
+  "first_turn_id": "00000000-0000-4000-8000-000000000002",
+  "first_turn_client_id": "delegate:golden-0"
 }

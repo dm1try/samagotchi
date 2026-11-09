@@ -19,6 +19,24 @@ and commands may change between minor versions. How releases are made:
 - The `SessionManager.run_session_loop` forwarder for older boot strings is gone: a chi web or terminal still
   running 0.158.0 or older must be restarted after updating, because a worker it spawns names that entry.
 
+### Fixed
+
+- A message that starts with `!` runs as a shell command only when a person sends it (a web tab, a chi TUI, `chi send`):
+  from a delegating parent, a schedule or a plugin it is refused and nothing runs, and a `/command` line from them is
+  plain text for the model. `chi answer`'s lines (a parent agent's `/continue yes`, `/parent-answers`) still run as
+  commands, with the same trust as `chi send`.
+- A delegate's task and a chain schedule's firing now start their session as their sender's turn, not yours: its
+  `last_turn` origin reads `delegate` or `schedule`, the turn counts as automatic in the session's metrics, and the
+  objectives audit skips it as it skips a delegate's follow-up; it no longer counts as your input either (it doesn't
+  unarchive the session or reset its wakes). Restart `chi web` (and any worker) after updating: one
+  still running the older chi starts chain links whose first message runs as yours.
+- `delegate`, `schedule_task` and `chi schedule add` refuse a task or prompt that starts with `!`, saying why, so the
+  model can write it as an instruction. A schedule stored with one before this fails when it fires (counted toward
+  its `max_failures`; nothing is started or delivered).
+- A command you allow "for this session" is allowed again only in the same worktree or folder, with the same `env:`
+  (kept as a digest); the same text run in another checkout asks again. Session approvals stored before this ask one
+  more time.
+
 ## [0.159.0] - 2026-11-09
 
 Update with `chi update`.

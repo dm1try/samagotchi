@@ -26,7 +26,7 @@ RSpec.describe Samagotchi::WorkerInbound do
 
       def announce(**event) = @announced << event
       def command_registry = self
-      def command?(text) = text.start_with?("/model")
+      def command?(text) = text.start_with?("/model", "!")
       def messages_checkpoint = @session.messages.map(&:dup)
       def rollback_to(messages) = (@rolled_back = messages)
 
@@ -193,6 +193,32 @@ RSpec.describe Samagotchi::WorkerInbound do
     end
   end
 
+  describe "#initial_origin" do
+    it "is the first prompt's turn id and sender; a first command from a delegate is its, a /word its text" do
+      session.first_turn_id = "first-1"
+      session.first_turn_client_id = "delegate:1234abcd"
+
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:1234abcd", enqueued_id: "first-1"))
+      expect(inbound.initial_command?("/model x")).to be(false)
+      expect(inbound.initial_command?("!touch x")).to be(true)
+      expect(queued).to eq([["!touch x", "delegate:1234abcd", "first-1"]])
+    end
+
+    it "names no sender for a session created by a person, or before the field" do
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin::NONE)
+    end
+
+    it "names the parent for a delegate child's task without the field (an older chi spawned it)" do
+      session.parent_id = "0123abcd-ffff-4fff-8fff-ffffffffffff"
+      session.delegate = true
+      session.first_turn_id = "first-1"
+
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:0123abcd", enqueued_id: "first-1"))
+      expect(inbound.initial_command?("!touch x")).to be(true)
+      expect(queued).to eq([["!touch x", "delegate:0123abcd", "first-1"]])
+    end
+  end
+
   describe "#take_input" do
     def write(prompt, **opts) = Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, **opts)
 
@@ -224,6 +250,21 @@ RSpec.describe Samagotchi::WorkerInbound do
       expect(queued).to eq([["/model x", "web:1", "e1"]])
       expect(yielded).to eq(["/model y"])
       expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
+    end
+
+    # Only a person's (and chi answer's) line runs as a command: from a
+    # delegate, a schedule or a plugin a /word is the model's text, and a
+    # shell line is queued for the worker to refuse (Worker#run_command_line).
+    it "yields a /word from a sender that may not send commands as a prompt, and queues its shell line to be refused" do
+      yielded = []
+      %w[delegate:1234abcd system:schedule:abc plugin].each do |client_id|
+        inbound.take_input(write("/model x", client_id: client_id)) { |p| yielded << [p.text, p.origin.client_id] }
+      end
+      inbound.take_input(write("!touch x", client_id: "delegate:1234abcd", enqueued_id: "e2")) { |p| yielded << p.text }
+      inbound.take_input(write("/model y", client_id: "cli:answer", enqueued_id: "e3")) { |p| yielded << p.text }
+
+      expect(yielded).to eq([["/model x", "delegate:1234abcd"], ["/model x", "system:schedule:abc"], ["/model x", "plugin"]])
+      expect(queued).to eq([["!touch x", "delegate:1234abcd", "e2"], ["/model y", "cli:answer", "e3"]])
     end
 
     it "yields nothing for a file another reader claimed" do

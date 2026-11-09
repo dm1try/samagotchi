@@ -140,6 +140,16 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                                              status: Samagotchi::Session::STATUS_RUNNING)
   end
 
+  # A schedule's chain firing: the link's first turn is the schedule's, not
+  # the owner's (a person's continue names no sender).
+  it "gives the new link's first prompt the sender it was given, none by default" do
+    scheduled = continue(make.id, prompt: "the Monday audit", client_id: "system:schedule:0123456789abcdef")
+    typed = continue(make.id, prompt: "start the day")
+
+    expect(load(scheduled.id).first_turn_client_id).to eq("system:schedule:0123456789abcdef")
+    expect(load(typed.id).first_turn_client_id).to be_nil
+  end
+
   it "asks the previous link's live worker for a recap and carries the one it writes" do
     previous = make
     save_recap(previous.id, "The old recap.")

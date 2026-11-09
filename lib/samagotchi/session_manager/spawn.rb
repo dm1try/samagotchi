@@ -54,12 +54,16 @@ module Samagotchi
       # @param scratch [Boolean] a `chi scratch` session (its terminal's
       #   AttachLauncher): its worker runs a scratch Engine and deletes it
       #   once its last client is gone
+      # @param client_id [String, nil] who sent +prompt+ when no person did
+      #   (a ClientId: a delegating parent, a schedule's chain link): its
+      #   first turn's origin (Session#first_turn_client_id)
       # @return [Session] with #seed_images_dropped: refs whose file was gone,
       #   and #model_warning: an id its host's saved list doesn't have
       def spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                         memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                         preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                        note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil, scratch: false)
+                        note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil, scratch: false,
+                        client_id: nil)
         sd = state_dir || Session.default_state_dir
         # The resolved ref is stored (a resumed session keeps its model when an
         # alias is retargeted), with the name as typed beside it. A wrong host
@@ -98,7 +102,10 @@ module Samagotchi
         # for it can name it (chi send --new --wait, chi web's create): the
         # worker runs it with that origin, and its reply file and last_turn
         # carry the id.
-        session.first_turn_id = SecureRandom.uuid unless prompt.to_s.strip.empty?
+        unless prompt.to_s.strip.empty?
+          session.first_turn_id = SecureRandom.uuid
+          session.first_turn_client_id = client_id
+        end
         # The worker takes last_prompt and clears it, and messages are saved at
         # the turn's end: until then this is the only preview a list has.
         session.first_preview = Session.preview_of(preview.to_s.strip.empty? ? prompt : preview)

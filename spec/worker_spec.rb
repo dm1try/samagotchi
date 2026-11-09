@@ -415,6 +415,19 @@ RSpec.describe Samagotchi::Worker do
       expect(result.file).to end_with("-first-1.txt")
     end
 
+    it "runs the first prompt with its sender's origin (a delegating parent's), its turn id kept" do
+      session.last_prompt = "/model Qwen3-14B"
+      session.first_turn_id = "first-1"
+      session.first_turn_client_id = "delegate:1234abcd"
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+      start_worker
+
+      prompt, _, kwargs = next_turn
+      expect(prompt).to eq("/model Qwen3-14B")
+      expect(kwargs[:origin]).to eq(Samagotchi::TurnOrigin.new(client_id: "delegate:1234abcd", enqueued_id: "first-1"))
+    end
+
     it "records a turn that failed before the Engine began it as last_turn, so a wait ends with no_reply" do
       allow(engine).to receive(:run_turn).and_raise(RuntimeError, "boom before the turn")
       start_worker
@@ -2163,6 +2176,62 @@ RSpec.describe Samagotchi::Worker do
           .and_return(Samagotchi::SettingExplained.new(level: :all, source: "session", own: :all))
         switched = ran(JSON.parse(post_command("/model clear").body)["command_id"])
         expect(switched[:reasoning_history]).to eq(level: "all", source: "session", own: "all")
+      end
+
+      # Who may send a session command as a message (CommandIntake): a
+      # person and chi answer; a delegate's or a schedule's ! line is
+      # refused (the Bridge's 403, the worker's command_ran error) and its
+      # /word line is the model's text.
+      describe "a command line from a sender that may not send commands" do
+        def turn_from(prompt, client_id)
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
+                         JSON.generate(session_id: session.id, prompt: prompt, client_id: client_id),
+                         "Content-Type" => "application/json", **bridge_auth(sidecar))
+        end
+
+        def ran_line(line)
+          wait_for("#{line} to run") { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == line } }
+          seen.find { |e| e[:type] == :command_ran && e[:line] == line }
+        end
+
+        let(:marker) { File.join(tmpdir, "T1_MARKER") }
+
+        it "refuses a delegate's shell line at the Bridge and in an input file, never running it" do
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "!touch #{marker}", client_id: "system:schedule:abc")
+          start_worker(poll_interval: 5)
+
+          done = ran_line("!touch #{marker}")
+          expect(done).to include(status: "error", output: Samagotchi::CommandIntake::REFUSED, client_id: "system:schedule:abc")
+          expect(File.exist?(marker)).to be(false)
+          expect(turns).to be_empty
+
+          reply = turn_from("!touch #{marker}", "delegate:abcd1234")
+          expect(reply.code).to eq("403")
+          expect(JSON.parse(reply.body)).to eq("error" => "command_not_permitted", "detail" => Samagotchi::CommandIntake::REFUSED)
+          expect(File.exist?(marker)).to be(false)
+        end
+
+        it "runs a delegate's /word line as a turn: the model reads it" do
+          start_worker(poll_interval: 5)
+
+          reply = turn_from("/model Qwen3-14B", "delegate:abcd1234")
+
+          expect(reply.code).to eq("202")
+          expect(JSON.parse(reply.body)).to have_key("enqueued_id")
+          expect(next_turn.first).to eq("/model Qwen3-14B")
+          expect(events_seen.none? { |e| e[:type] == :command_ran }).to be(true)
+        end
+
+        it "still runs a person's shell line (chi send -m, a TUI) and chi answer's command" do
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "!echo from-tui", client_id: "tui:9")
+          start_worker(poll_interval: 5)
+
+          expect(ran_line("!echo from-tui")).to include(status: "ok")
+          expect(turn_from("!echo from-send", "cli:send").code).to eq("202")
+          expect(ran_line("!echo from-send")).to include(status: "ok", output: include("from-send"))
+          expect(turn_from("/parent-answers hard", "cli:answer").code).to eq("202")
+          expect(ran_line("/parent-answers hard")).to include(status: "ok", changed: ["parent_answers"])
+        end
       end
 
       describe "a command's output in its command_ran" do

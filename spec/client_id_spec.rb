@@ -52,6 +52,13 @@ RSpec.describe Samagotchi::ClientId do
     end
   end
 
+  describe ".delegate" do
+    it "makes a delegating parent's id from its first 8 characters" do
+      expect(described_class.delegate("0123abcd-ffff")).to eq("delegate:0123abcd")
+      expect(described_class.origin(described_class.delegate("0123abcd-ffff"))).to eq("delegate")
+    end
+  end
+
   describe ".review" do
     it "makes and tells a participant's id; a participant's is no interactive owner's" do
       expect(described_class.review("p_0123abcd")).to eq("review:p_0123abcd")

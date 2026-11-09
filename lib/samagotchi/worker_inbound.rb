@@ -6,6 +6,7 @@ require "time"
 
 require_relative "child_reports"
 require_relative "client_id"
+require_relative "command_intake"
 require_relative "config"
 require_relative "context_note"
 require_relative "log"
@@ -211,11 +212,24 @@ module Samagotchi
       prompt
     end
 
+    # The first prompt's origin: the turn id spawn_session gave it (a wait
+    # for it, --new --wait, names it) and who sent it when no person did
+    # (Session#first_turn_client_id: a delegating parent, a schedule). A
+    # delegate child's task is its parent's even without the field (one
+    # spawned by an older chi, or by a caller that names no sender). NONE
+    # for a person's session from before either field.
+    # @return [TurnOrigin]
+    def initial_origin
+      client_id = @session.first_turn_client_id
+      client_id ||= ClientId.delegate(@session.parent_id) if @session.delegate? && @session.parent_id
+      TurnOrigin.of(client_id: client_id, enqueued_id: @session.first_turn_id)
+    end
+
     # The first prompt as a command (queued): the session was saved as
     # running for a turn that won't run.
     # @return [Boolean] whether it was one
     def initial_command?(prompt)
-      return false unless queue_as_command(prompt, TurnOrigin::NONE)
+      return false unless queue_as_command(prompt, initial_origin)
 
       @session.status = Session::STATUS_IDLE
       save(:initial_command, unless_stopped: true)
@@ -264,7 +278,11 @@ module Samagotchi
     # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
     # pass runs it. A participant's is refused (dropped, with its audit
     # line): commands and shell lines are the owner's (chi web and the
-    # Bridge refuse them first; this is the worker's own layer).
+    # Bridge refuse them first; this is the worker's own layer). From a
+    # sender that may not send commands (CommandIntake.allowed?: a
+    # delegate, a schedule, a plugin...) a /word line is a prompt, and a
+    # shell line is queued for Worker#run_command_line to refuse, so its
+    # sender and the UIs see the refusal as the command's error.
     # @return [Boolean] whether +text+ was one
     def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
@@ -275,6 +293,7 @@ module Samagotchi
                                                 what: "command", reason: "not_permitted")
         return true
       end
+      return false unless CommandIntake.allowed?(origin.client_id) || CommandIntake.shell_line?(text)
 
       @queue_command.call(text, origin.client_id, after_file, origin.enqueued_id)
       true

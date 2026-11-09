@@ -85,6 +85,20 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
     end
   end
 
+  # A schedule's prompt fires from a schedule, never a person: a shell line
+  # would be refused at every firing (CommandIntake), so the add says so.
+  it "refuses a prompt that starts with ! up front, and takes a /word one (it will be the model's text)" do
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+
+      expect(described_class.call(nil, prompt: "  !touch x", every: "1h", peers: peers(dir, id)))
+        .to eq("Error: #{Samagotchi::CommandIntake::REFUSED}")
+      expect(store(dir).entries).to be_empty
+      expect(described_class.call(nil, prompt: "/model x", every: "1h", peers: peers(dir, id))).not_to start_with("Error:")
+    end
+  end
+
   it "refuses a scratch session up front" do
     Dir.mktmpdir("schedule-task") do |root|
       dir = File.join(root, "sessions")

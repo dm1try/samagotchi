@@ -245,6 +245,12 @@
     "respawn": "same",
     "continue": "absent"
   },
+  "first_turn_client_id": {
+    "fork": "absent",
+    "delegate": "own",
+    "respawn": "same",
+    "continue": "absent"
+  },
   "verify_fresh": {
     "fork": "absent",
     "delegate": "absent",

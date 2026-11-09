@@ -9,6 +9,7 @@ require "openssl"
 require "time"
 require_relative "atomic_file"
 require_relative "bridge_secret"
+require_relative "command_intake"
 require_relative "degrade"
 require_relative "delivery"
 require_relative "session_inbox"
@@ -1195,9 +1196,17 @@ module Samagotchi
       # A session command sent as a message (chi send -m "/model x", chi -p,
       # a UI whose command list lags) runs as the command, as typed in a
       # TUI; an unknown /word stays a prompt. Not with images: those are
-      # for the model.
+      # for the model. Only from a sender that may send commands
+      # (CommandIntake.allowed?: a person, chi answer): a delegate's, a
+      # schedule's or a plugin's /word line is a prompt, its shell line
+      # refused (403, nothing queued).
       if images.empty? && @on_command && command_registry.command?(prompt.to_s)
-        return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline, author: author)
+        if CommandIntake.allowed?(client_id)
+          return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline, author: author)
+        elsif CommandIntake.shell_line?(prompt)
+          Log.warn(:bridge, "shell_line_refused", client_id: client_id)
+          return [{}, 403, { error: CommandIntake::REFUSED_ERROR, detail: CommandIntake::REFUSED }]
+        end
       end
 
       enqueued_id = SecureRandom.uuid

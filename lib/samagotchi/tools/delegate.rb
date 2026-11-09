@@ -13,6 +13,10 @@ require_relative "../child_reports"
 require_relative "../worker_link"
 
 module Samagotchi
+  # Loaded on the first task (a leaf; the bundle test kit's load budget,
+  # spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :CommandIntake, File.expand_path("../command_intake", __dir__)
+
   # Loaded on first use: this autoload keeps SessionManager and its ~80
   # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
@@ -53,6 +57,9 @@ module Samagotchi
 
         task = content.to_s.strip
         return "Error: give the task, the child's first message" if task.empty?
+        # The child's intake takes no shell line from its parent: say so
+        # now, so the model rewrites the task (a /word one is the child's text).
+        return "Error: #{CommandIntake::REFUSED}" if CommandIntake.shell_line?(task)
 
         sd = peers.state_dir || Session.default_state_dir
         parent = Session.load(peers.session_id, state_dir: sd)
@@ -172,7 +179,8 @@ module Samagotchi
                                  parent_answers: parent.parent_answers)
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
-                                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir)
+                                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir,
+                                             client_id: ClientId.delegate(parent.id))
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         # The line for a task that names a worktree while the child runs in
         # the parent's folder (no cwd: given): the child still starts.
@@ -358,7 +366,7 @@ module Samagotchi
 
         # Only a reply after this delivery counts as the follow-up's.
         DelegateWait.mark_seen(parent.id, child, state_dir: state_dir)
-        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{ClientId::DELEGATE_PREFIX}#{parent.id[0, 8]}",
+        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: ClientId.delegate(parent.id),
                                                     state_dir: state_dir)
         case delivered.status
         when :accepted

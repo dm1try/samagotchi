@@ -368,9 +368,54 @@ RSpec.describe Samagotchi::Schedules do
       expect(stored.head).to eq(fired.entry.head)
       expect(archived?(dir, anchor)).to be(true)
       expect(Samagotchi::Session.load(stored.head, state_dir: dir).continues).to eq(anchor)
+      # The link's first turn is the schedule's (its origin, ClientId.schedule).
+      expect(Samagotchi::Session.load(stored.head, state_dir: dir).first_turn_client_id).to eq("system:schedule:#{entry.id}")
       expect(stored.failures).to eq(0)
       expect(stored.skips).to eq(0)
       expect(Time.iso8601(stored.next_due)).to be > Time.now
+    end
+  end
+
+  # An entry stored before the add refused a ! prompt: its firing would be
+  # refused at the link's intake, so it fails here instead, starting no link
+  # and archiving nothing, and counts toward max_failures.
+  it "fails a stored chain entry whose prompt is a shell line, starting no link" do
+    Dir.mktmpdir("schedules-chain-shell") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "touch x", recurrence: every("1m"))
+      file = File.join(root, "schedules.json")
+      File.write(file, File.read(file).sub('"prompt": "touch x"', '"prompt": "!touch x"'))
+      expect(schedules.lookup(entry.id).prompt).to eq("!touch x")
+
+      fired = schedules.tick(now: Time.now + 60).outcomes.first
+
+      expect(fired).to have_attributes(status: "failed", detail: Samagotchi::CommandIntake::REFUSED)
+      expect(Samagotchi::Session.list(state_dir: dir).map(&:id)).to eq([anchor])
+      expect(archived?(dir, anchor)).to be(false)
+      expect(schedules.lookup(entry.id).failures).to eq(1)
+    end
+  end
+
+  # Its Bridge would refuse it, but a delivery that falls back to the input
+  # file is accepted: it fails before any delivery instead.
+  it "fails a stored same-mode entry whose prompt is a shell line, delivering nothing" do
+    Dir.mktmpdir("schedules-same-shell") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "touch x", recurrence: every("1m"), mode: "same")
+      file = File.join(root, "schedules.json")
+      File.write(file, File.read(file).sub('"prompt": "touch x"', '"prompt": "!touch x"'))
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+
+      fired = schedules.tick(now: Time.now + 60).outcomes.first
+
+      expect(fired).to have_attributes(status: "failed", detail: Samagotchi::CommandIntake::REFUSED)
+      expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, head: anchor)
     end
   end
 
