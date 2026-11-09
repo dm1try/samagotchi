@@ -6,6 +6,7 @@ require "samagotchi/session"
 require "support/test_kernel"
 require "digest"
 require "fileutils"
+require "open3"
 require "tmpdir"
 
 RSpec.describe Samagotchi::MemoryOrphans do
@@ -28,6 +29,13 @@ RSpec.describe Samagotchi::MemoryOrphans do
     dir = File.join(projects, name)
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, memory), "x") if memory
+    dir
+  end
+
+  def git_init(dir)
+    output, status = Open3.capture2e("git", "init", "-q", dir)
+    raise "git init failed: #{output}" unless status.success?
+
     dir
   end
 
@@ -143,15 +151,56 @@ RSpec.describe Samagotchi::MemoryOrphans do
                                                               .and include("`mv #{orphan}/* #{computed}/`")
     end
 
-    it "lists several candidates" do
+    it "lists several candidates, each marked with its key" do
       root = repo("app")
       a = folder("app_0123abcd")
       b = folder("app_ffff0000")
-      expect(described_class.message(env: env, cwd: root)).to include("#{a}, #{b}", "`mv <that folder> ")
+      expect(described_class.message(env: env, cwd: root)).to include("#{a} (another path's hash), #{b} (another path's hash)",
+                                                                      "`mv <that folder> ")
+    end
+
+    it "names the project id when the candidate is an id-keyed folder" do
+      root = repo("app")
+      orphan = folder("app-0a1b2c3d")
+      text = described_class.message(env: env, cwd: root)
+
+      expect(text).to include("but #{orphan} has the same project name keyed by a project id (app-0a1b2c3d)")
+      expect(text).not_to include("hash")
+      expect(text).to include("`mv #{orphan} #{File.join(projects, key(root))}`")
+    end
+
+    it "marks each key of a mixed list of candidates" do
+      root = repo("app")
+      id = folder("app-0a1b2c3d")
+      hash = folder("app_0123abcd")
+      text = described_class.message(env: env, cwd: root)
+
+      expect(text).to include("#{id} (project id app-0a1b2c3d), #{hash} (another path's hash)")
     end
 
     it "is nil with nothing orphaned" do
       expect(described_class.message(env: env, cwd: repo("app"))).to be_nil
+    end
+
+    # Characterization: git wins over the marker, so the memories stay in the
+    # id folder and the orphans hint names it by that id (MemoryOrphans.find
+    # already matches an id folder by basename).
+    it "names the id folder a marked folder keeps after git init, by its project id" do
+      root = File.join(tmp, "src", "notes")
+      FileUtils.mkdir_p(File.join(root, ".chi"))
+      File.write(File.join(root, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
+      id_folder = folder("notes-0a1b2c3d")
+      found = described_class.find(env: env, cwd: root)
+      expect(found).to be_nil
+
+      git_init(root)
+
+      expect(described_class.find(env: env, cwd: root))
+        .to eq(described_class::Found.new(computed: File.join(projects, key(root)), candidates: [id_folder],
+                                          computed_exists: false))
+      text = described_class.message(env: env, cwd: root)
+      expect(text).to include("but #{id_folder} has the same project name keyed by a project id (notes-0a1b2c3d)")
+      expect(text).not_to include("hash")
     end
   end
 
@@ -163,6 +212,35 @@ RSpec.describe Samagotchi::MemoryOrphans do
       message = described_class.model_message(env: env, cwd: root)
       expect(message).to include("folder with the same project name", "ask the user")
       expect(message).not_to include("mv")
+    end
+
+    it "names an id-keyed candidate by its project id" do
+      root = repo("app")
+      folder("app-0a1b2c3d")
+
+      message = described_class.model_message(env: env, cwd: root)
+      expect(message).to include("exists, keyed by a project id (app-0a1b2c3d)")
+      expect(message).not_to include("hash")
+    end
+
+    it "marks each key when several candidates share the name" do
+      root = repo("app")
+      a = folder("app_0123abcd")
+      b = folder("app-0a1b2c3d")
+
+      message = described_class.model_message(env: env, cwd: root)
+      expect(message).to include("#{b} (project id app-0a1b2c3d), #{a} (another path's hash)")
+    end
+
+    it "names the project's folder, not its id, when this project is keyed by an id" do
+      root = File.join(tmp, "src", "notes")
+      FileUtils.mkdir_p(File.join(root, ".chi"))
+      File.write(File.join(root, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
+      folder("notes_0123abcd")
+
+      message = described_class.model_message(env: env, cwd: root)
+      expect(message).to include("project name (notes)")
+      expect(message).not_to include("notes-0a1b2c3d")
     end
   end
 

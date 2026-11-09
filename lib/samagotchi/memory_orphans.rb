@@ -19,11 +19,27 @@ module Samagotchi
   # memory_read miss (Tools::MemoryRead); never in the system prompt.
   module MemoryOrphans
     # @!attribute computed [String] the folder chi reads (this project's key)
-    # @!attribute candidates [Array<String>] same-basename folders, other hashes
+    # @!attribute candidates [Array<String>] same-basename folders keyed by
+    #   another path's hash or by a project id
     # @!attribute computed_exists [Boolean] whether +computed+ is a folder (empty of memories)
     Found = Data.define(:computed, :candidates, :computed_exists)
 
+    # A project keyed by its path is <name>_<8 hex>; a marked project's folder is
+    # its id, <name>-<8 hex>.
+    PATH_HASH = /_\h{8}\z/
+
     module_function
+
+    # A candidate folder's key, in words: an earlier path's hash, or a chi project
+    # id (a folder marked by `chi project init`, left behind when `git init` makes
+    # it a repository). +candidate+ is a folder path.
+    def key_note(candidate)
+      hash_keyed?(candidate) ? "another path's hash" : "project id #{File.basename(candidate)}"
+    end
+
+    # Internal: is this candidate keyed by its path rather than by a project id?
+    def hash_keyed?(candidate) = File.basename(candidate).match?(PATH_HASH)
+    private_class_method :hash_keyed?
 
     # The orphan candidates for +cwd+'s project, or nil: only inside a
     # project, a git repository or a marked folder (outside both the root is
@@ -67,9 +83,23 @@ module Samagotchi
       found = find(env: env, cwd: cwd)
       return unless found
 
-      name = File.basename(found.computed).sub(/_\h{8}\z/, "")
-      "a folder with the same project name (#{name}) exists with another path's hash; ask the user whether its " \
-        "memories belong to this project before using them."
+      # The project's name is its root folder's basename: splitting the key would
+      # print a project id as the name when this project is keyed by one.
+      name = File.basename(MemoryPaths.project_root(cwd))
+      if found.candidates.size == 1
+        candidate = found.candidates.first
+        key = if hash_keyed?(candidate)
+                "exists with another path's hash"
+              else
+                "exists, keyed by a project id (#{File.basename(candidate)})"
+              end
+        "a folder with the same project name (#{name}) #{key}; ask the user whether its memories belong to this " \
+          "project before using them."
+      else
+        list = found.candidates.map { |candidate| "#{candidate} (#{key_note(candidate)})" }.join(", ")
+        "folders with the same project name (#{name}) exist under other keys (#{list}); ask the user whether their " \
+          "memories belong to this project before using them."
+      end
     end
 
     def text(found)
@@ -82,13 +112,19 @@ module Samagotchi
               else
                 "`mv #{candidate} #{computed}`"
               end
-        "#{lead}, but #{candidate} has the same project name with another path's hash (memories moved from " \
-          "another machine or path?). A name match can't prove it's this project; if it is, #{fix}."
+        why = if hash_keyed?(candidate)
+                "has the same project name with #{key_note(candidate)} (memories moved from another machine or " \
+                  "path?)"
+              else
+                "has the same project name keyed by a project id (#{File.basename(candidate)}): the folder " \
+                "chi project init marked, keyed by its id instead of its path"
+              end
+        "#{lead}, but #{candidate} #{why}. A name match can't prove it's this project; if it is, #{fix}."
       else
         fix = found.computed_exists ? "move its files into #{computed}" : "`mv <that folder> #{computed}`"
-        "#{lead}, but these have the same project name with another path's hash (memories moved from another " \
-          "machine or path?): #{found.candidates.join(", ")}. A name match can't prove one is this project; if one " \
-          "is, #{fix}."
+        list = found.candidates.map { |candidate| "#{candidate} (#{key_note(candidate)})" }.join(", ")
+        "#{lead}, but these have the same project name (memories moved from another machine or path?): " \
+          "#{list}. A name match can't prove one is this project; if one is, #{fix}."
       end
     end
   end
