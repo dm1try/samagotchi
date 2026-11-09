@@ -18,6 +18,7 @@ require_relative "session_chain"
 require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_row"
+require_relative "state_format"
 require_relative "worker_link"
 
 module Samagotchi
@@ -79,15 +80,20 @@ module Samagotchi
     # puts the clock back to it.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
-                        :firing_since, :failures, :skips, :enabled, :created_at) do
+                        :firing_since, :failures, :skips, :enabled, :created_at, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once.
-      # A file written by a newer chi may carry keys this one does not know:
-      # they are dropped rather than raising in Data#initialize.
-      def self.from_h(hash)
-        fields = hash.transform_keys(&:to_sym).select { |key| Entry.members.include?(key) }
+      def self.from_record(record)
+        fields = record.attributes
         recurrence = fields[:recurrence]
-        new(**fields, recurrence: recurrence.is_a?(Hash) ? recurrence.transform_keys(&:to_sym) : recurrence)
+        fields[:recurrence] = recurrence.transform_keys(&:to_sym) if recurrence.is_a?(Hash)
+        new(**fields, extra: record.extra)
+      end
+
+      def to_h
+        fields = super
+        extra = fields.delete(:extra) || {}
+        extra.transform_keys(&:to_s).merge(fields.transform_keys(&:to_s))
       end
 
       def due?(now)
@@ -110,6 +116,34 @@ module Samagotchi
 
       def target_words = "#{mode} · #{head.to_s[0, 8]}"
     end
+
+    FORMAT = StateFormat.new(
+      version: VERSION,
+      members: [
+        StateFormat.required(:id),
+        StateFormat.added(:title, in_version: VERSION, default: nil),
+        StateFormat.required(:anchor),
+        StateFormat.added(:head, in_version: VERSION, default: ->(values) { values[:anchor] }),
+        StateFormat.required(:mode),
+        StateFormat.required(:prompt),
+        StateFormat.required(:recurrence),
+        StateFormat.added(:busy, in_version: VERSION, default: "skip"),
+        StateFormat.added(:catch_up, in_version: VERSION, default: "once"),
+        StateFormat.added(:keep_links, in_version: VERSION, default: 5),
+        StateFormat.added(:max_failures, in_version: VERSION, default: 3),
+        StateFormat.added(:max_skips, in_version: VERSION, default: 12),
+        StateFormat.required(:next_due),
+        StateFormat.added(:due_was, in_version: VERSION, default: nil),
+        StateFormat.added(:last_fired, in_version: VERSION, default: nil),
+        StateFormat.added(:last_result, in_version: VERSION, default: nil),
+        StateFormat.added(:firing_since, in_version: VERSION, default: nil),
+        StateFormat.added(:failures, in_version: VERSION, default: 0),
+        StateFormat.added(:skips, in_version: VERSION, default: 0),
+        StateFormat.added(:enabled, in_version: VERSION, default: true),
+        StateFormat.added(:created_at, in_version: VERSION, default: nil),
+        StateFormat.extra(:extra, in_version: VERSION)
+      ]
+    )
 
     # What one entry did in a tick: "fired", "skipped", "missed", "failed" or
     # "dry" (a --dry-run's "would fire"). +detail+ is the reason.
@@ -144,7 +178,7 @@ module Samagotchi
     # @param include_disabled [Boolean] the disabled and the fired one-offs too
     # @return [Array<Entry>] every entry, the earliest due first
     def entries(include_disabled: false)
-      list = read.sort_by { |entry| [entry.next_due.to_s, entry.id] }
+      list = read.entries.grep(Entry).sort_by { |entry| [entry.next_due.to_s, entry.id] }
       include_disabled ? list : list.select(&:enabled)
     end
 
@@ -155,7 +189,7 @@ module Samagotchi
       given = id_or_name.to_s.strip
       return nil if given.empty?
 
-      list = read
+      list = read.entries.grep(Entry)
       exact = list.find { |entry| entry.id == given }
       return exact if exact
 
@@ -224,9 +258,9 @@ module Samagotchi
         max_skips: int_or_default(max_skips, "schedule.default_max_skips", 12, min: 1),
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil,
-        failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601
+        failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601, extra: {}
       )
-      write_under_lock { |list| list << entry }
+      write_under_lock { |file| file.entries << entry }
       entry
     end
 
@@ -295,7 +329,8 @@ module Samagotchi
           return Tick.new(locked: true, outcomes: [])
         end
 
-        list = read
+        file = read
+        list = file.entries.grep(Entry)
         # Ordered by the moment each entry is due, then id: with one chain
         # firing per tick, the entries of that chain take turns (a skipped
         # entry keeps its `next_due`, so the earliest waiting one goes next).
@@ -308,14 +343,14 @@ module Samagotchi
         # One session listing for the whole tick: a chain walk re-globbing
         # every session per call is the tick's dominant cost.
         index = Index.new(@state_dir)
-        updated = list.dup
+        updated = file.entries.dup
         # One firing per chain per tick. A second chain entry of the same chain
         # would continue the link the first one just made: that link has no
         # worker lock yet and is not in this tick's index, so the busy check
         # cannot see it, and its prompt would be archived before it ever ran.
         fired_chains = {}
         due.each do |entry|
-          position = updated.index { |candidate| candidate.id == entry.id }
+          position = updated.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
           verdict = check(entry, index)
           if verdict
             kind, reason = verdict
@@ -347,7 +382,7 @@ module Samagotchi
           pending << advanced
           fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
         end
-        write(list: updated) unless dry_run
+        write(file: file.with(entries: updated)) unless dry_run
       end
 
       pending.each { |entry| outcomes << fire_and_record(entry, index) }
@@ -522,21 +557,30 @@ module Samagotchi
     #   than reading as empty: a write starting from an empty list would rewrite
     #   the file and lose every schedule on it. Listing stays lenient.
     def read(strict: false)
-      return [] unless File.exist?(path)
+      return FORMAT.read({}, collection: "schedules") unless File.exist?(path)
 
-      data = JSON.parse(File.read(path))
-      Array(data["schedules"]).map { |hash| Entry.from_h(hash) }
-    rescue JSON::ParserError => e
+      file = FORMAT.read(JSON.parse(File.read(path)), collection: "schedules")
+      file.with(entries: file.entries.map do |record|
+        if record.readable?
+          Entry.from_record(record)
+        else
+          Log.warn(:worker, "schedule_entry_unreadable",
+                   id: record.raw.is_a?(Hash) ? record.raw["id"] : nil,
+                   missing: record.missing.map(&:to_s))
+          record
+        end
+      end)
+    rescue JSON::ParserError, StateFormat::InvalidDocument => e
       Log.warn(:worker, "store_unreadable", error: e.class.name, msg: e.message)
       raise Corrupt, "#{path} is not readable JSON (#{e.message}): fix or remove it before changing schedules" if strict
 
-      []
+      FORMAT.read({}, collection: "schedules")
     end
 
-    def write(list:)
+    def write(file:)
       FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
-      body = { "version" => VERSION, "updated_at" => Time.now.utc.iso8601, "schedules" => list.map(&:to_h) }
+      body = FORMAT.write(file, collection: "schedules", updated_at: Time.now.utc.iso8601)
       AtomicFile.write(path, "#{JSON.pretty_generate(body)}\n")
     end
 
@@ -546,9 +590,9 @@ module Samagotchi
       FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         lock.flock(File::LOCK_EX)
-        list = read(strict: true)
-        yield(list)
-        write(list: list)
+        file = read(strict: true)
+        yield(file)
+        write(file: file)
       end
     end
 
@@ -558,15 +602,15 @@ module Samagotchi
       entry = lookup(id_or_name)
       return nil if entry.nil?
 
-      write_under_lock do |list|
-        position = list.index { |candidate| candidate.id == entry.id }
+      write_under_lock do |file|
+        position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         next if position.nil?
 
         if delete
-          list[position] = nil
-          list.compact!
+          file.entries[position] = nil
+          file.entries.compact!
         else
-          list[position] = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          file.entries[position] = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
         end
       end
       entry
@@ -843,23 +887,23 @@ module Samagotchi
     # moves for a skip or a failure. `due_was` is untouched — run-now is not a
     # scheduled occurrence, so there is no occurrence to put the clock back to.
     def record_refusal(entry, status, reason)
-      write_under_lock do |list|
-        position = list.index { |candidate| candidate.id == entry.id }
+      write_under_lock do |file|
+        position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         next if position.nil?
 
-        stored = list[position]
-        list[position] = status == "skipped" ? skipped(stored, reason) : failed(stored, reason)
+        stored = file.entries[position]
+        file.entries[position] = status == "skipped" ? skipped(stored, reason) : failed(stored, reason)
       end
     end
 
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
     def record(entry, outcome)
-      write_under_lock do |list|
-        position = list.index { |candidate| candidate.id == entry.id }
+      write_under_lock do |file|
+        position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         next if position.nil?
 
-        stored = list[position]
+        stored = file.entries[position]
         updated = if outcome.status == "fired"
                     # Any success clears the skip and failure counters: twelve
                     # skips spread over months do not kill a healthy schedule.
@@ -877,7 +921,7 @@ module Samagotchi
         # tried comes back, so the next tick tries it again. max_skips and
         # max_failures bound how often that happens.
         updated = updated.with(next_due: stored.due_was) if outcome.status != "fired" && !stored.due_was.nil?
-        list[position] = updated
+        file.entries[position] = updated
       end
     end
 
