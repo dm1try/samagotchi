@@ -13,6 +13,10 @@ and commands may change between minor versions. How releases are made:
 - A folder made a chi project with `chi project init` keeps its memories when you move or rename it (an `id:` in
   .chi/project.yml); rerun `chi project init` in an older project to adopt one, `--new-id` to split a copied folder.
 
+### Changed
+
+- Schedule-state writes preserve newer format versions, unknown fields and entries missing required members.
+
 ## [0.159.0] - 2026-11-09
 
 Update with `chi update`.

@@ -37,6 +37,15 @@ RSpec.describe Samagotchi::Schedules do
     described_class.new(state_dir: state_dir, clock: -> { now })
   end
 
+  it "requires a format decision for every entry member" do
+    declarations = described_class::FORMAT.members.to_h { |member| [member.name, member] }
+
+    expect(declarations.keys).to match_array(described_class::Entry.members)
+    expect(declarations.values).to all(satisfy { |member| member.required? || member.defaulted? })
+    expect(declarations.values.select(&:required?).map(&:name))
+      .to match_array(%i[id anchor mode prompt recurrence next_due])
+  end
+
   it "writes every entry under the lock, so two writers in flight lose nothing" do
     Dir.mktmpdir("schedules-lock") do |root|
       dir = File.join(root, "sessions")
@@ -190,19 +199,60 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  it "reads an entry with keys this chi does not know" do
+  it "preserves a newer file and unknown keys through changes and ticks" do
     Dir.mktmpdir("schedules-unknown-keys") do |root|
       dir = File.join(root, "sessions")
       schedules = store(dir)
       id = session(dir).id
-      entry = schedules.add(target: id, prompt: "Audit", recurrence: every("1h"))
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every("1m"), keep_links: 0)
+      allow(Samagotchi::SessionContinue).to receive(:run).and_return(double(id: id))
 
       data = JSON.parse(File.read(schedules.path))
-      data["schedules"].first["future_field"] = "whatever a later chi adds"
+      data["version"] = 2
+      data["future_field"] = { "kept" => true }
+      data["schedules"].first["future_field"] = ["whatever a later chi adds"]
       File.write(schedules.path, JSON.generate(data))
 
-      expect(schedules.lookup(entry.id).prompt).to eq("Audit")
-      expect(schedules.entries.first.id).to eq(entry.id)
+      schedules.disable(entry.id)
+      schedules.enable(entry.id)
+      expect(schedules.tick(now: Time.iso8601(entry.next_due) + 1).outcomes.first.status).to eq("fired")
+
+      rewritten = JSON.parse(File.read(schedules.path))
+      expect(rewritten["version"]).to eq(2)
+      expect(rewritten["future_field"]).to eq("kept" => true)
+      expect(rewritten["schedules"].first["future_field"]).to eq(["whatever a later chi adds"])
+    end
+  end
+
+  it "defaults declared fields and keeps entries missing required fields through writes" do
+    Dir.mktmpdir("schedules-missing-fields") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      id = session(dir).id
+      legacy = schedules.add(target: id, prompt: "Legacy", recurrence: every("1h"))
+      current = schedules.add(target: id, prompt: "Current", recurrence: every("2h"))
+
+      data = JSON.parse(File.read(schedules.path))
+      legacy_data, unreadable_data = data["schedules"]
+      legacy_data.delete("head")
+      legacy_data.delete("skips")
+      unreadable_data.delete("prompt")
+      File.write(schedules.path, JSON.generate(data))
+
+      warnings = []
+      allow(Samagotchi::Log).to receive(:warn) { |*args| warnings << args }
+      entries = schedules.entries
+      expect(warnings.length).to eq(1)
+      expect(warnings.first[0..1]).to eq([:worker, "schedule_entry_unreadable"])
+      expect(warnings.first.last).to include(id: current.id, missing: ["prompt"])
+      expect(entries.map(&:id)).to eq([legacy.id])
+      expect([entries.first.head, entries.first.skips]).to eq([id, 0])
+
+      warnings.clear
+      schedules.disable(legacy.id)
+      expect(warnings.length).to eq(2)
+      rewritten = JSON.parse(File.read(schedules.path))
+      expect(rewritten["schedules"].last).to eq(unreadable_data)
     end
   end
 

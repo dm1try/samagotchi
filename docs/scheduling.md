@@ -8,6 +8,11 @@ chi web's hub can never lose an update to each other). A **tick** — cron, syst
 launchd, `chi schedule tick`, or chi web's hub when `schedule.auto_tick` is on —
 walks the entries whose `next_due` has passed and runs the ones that are not busy.
 
+The file is versioned: each entry member is required or declares the format
+version and default that introduced it. Rewrites preserve unknown keys and
+entries missing required members; those entries are warned about and ignored by
+`list` and `tick`, never erased. A write never lowers the file's version.
+
 Each entry carries `id`, an optional `title`, `anchor` (the session it was made
 against, never rewritten: the chain's root and the id you remember), `head` (the
 chain's current link, re-anchored after every firing: the link a chain continue
