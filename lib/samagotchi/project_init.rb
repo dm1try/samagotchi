@@ -183,9 +183,9 @@ module Samagotchi
       list.each { |place| lines.concat(move_folder(place.path(path_key), place.path(id))) }
       write_id(root, id)
       if orphans
-        lines << "memories from an earlier path: #{orphans.candidates.map { |c| Paths.tilde(c) }.join(", ")} (this " \
-                 "folder's name with another path's hash; if they are this project's, move their files into " \
-                 "#{Paths.tilde(list.first.path(id))})"
+        keys = orphans.candidates.map { |candidate| "#{Paths.tilde(candidate)} (#{MemoryOrphans.key_note(candidate)})" }
+        lines << "memories with this folder's name under another key: #{keys.join(", ")}; if they are this " \
+                 "project's, move their files into #{Paths.tilde(list.first.path(id))}"
       end
       Outcome.new(kind: :adopted, reason: nil, root: root, top: root, nested_in: nil, message: lines.join("\n"), id: id)
     end

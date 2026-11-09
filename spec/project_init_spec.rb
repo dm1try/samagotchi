@@ -265,10 +265,22 @@ RSpec.describe Samagotchi::ProjectInit do
 
       outcome = adopt
 
-      expect(outcome.message.lines.last).to eq("memories from an earlier path: #{earlier} (this folder's name with another " \
-                                               "path's hash; if they are this project's, move their files into " \
-                                               "#{File.join(projects, outcome.id)})")
+      expect(outcome.message.lines.last).to eq("memories with this folder's name under another key: #{earlier} " \
+                                              "(another path's hash); if they are this project's, move their files " \
+                                              "into #{File.join(projects, outcome.id)}")
       expect(File.directory?(earlier)).to be(true)
+    end
+
+    it "names an id-keyed orphan by its project id, not by a hash, when adopting an id" do
+      other = File.join(projects, "notes-0123abcd")
+      remember(other, "old.md")
+
+      outcome = adopt
+
+      expect(outcome.message.lines.last).to eq("memories with this folder's name under another key: #{other} " \
+                                              "(project id notes-0123abcd); if they are this project's, move their " \
+                                              "files into #{File.join(projects, outcome.id)}")
+      expect(File.directory?(other)).to be(true)
     end
 
     it "gives a marked folder a new id with a copy of its folders (--new-id), the old ones kept" do
