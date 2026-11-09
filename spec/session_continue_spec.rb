@@ -412,6 +412,11 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
     def fetched(text) = Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: false, hint: nil)
 
+    def add_context_source(location, name, cmd: nil)
+      location.add(Samagotchi::ContextSources::Source.new(name: name, cmd: cmd, every_seconds: nil, why: nil, hint: nil,
+                                                          scope: "session", added_by: "spec", created_at: nil))
+    end
+
     def notes_of(id)
       Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
     end
@@ -452,6 +457,106 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(notes_of(link.id).last[:text]).to eq(
         "Left with #{previous.id[0, 8]}: claude-inbox (Claude's pairing: chi asks Claude to pair again with this session)."
       )
+    end
+
+    it "carries unabsorbed pushed text as a separate third-party context note" do
+      ids << previous.id
+      old = location(previous.id)
+      add_context_source(old, "notes")
+      old.record_text("notes", fetched("the peer's unanswered answer"))
+      old.update_subscription("notes") { |sub| sub.with(seen: "an older revision") }
+
+      link = continue(previous.id)
+      ids << link.id
+
+      notes = notes_of(link.id)
+      expect(notes.map { |note| note[:source] }).to eq(
+        [Samagotchi::SessionChain::NOTE_SOURCE, Samagotchi::ContextMove::NOTE_SOURCE, Samagotchi::ContextMove::NOTE_SOURCE]
+      )
+      expect(notes.last[:text]).to include("third-party", "not instructions", "Source: notes",
+                                           "the peer's unanswered answer")
+      expect(location(link.id).left.map(&:name)).to eq(["notes"])
+    end
+
+    it "does not carry seen, read, empty, command-source, or forked pushed text" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[seen read empty].each { |name| add_context_source(old, name) }
+      seen = old.record_text("seen", fetched("already absorbed"))
+      read = old.record_text("read", fetched("explicitly read"))
+      old.record_text("command", fetched("command result"))
+      add_context_source(old, "command", cmd: "printf command")
+      old.update_subscription("seen") { |sub| sub.with(seen: seen.revision) }
+      old.update_subscription("read") { |sub| sub.with(read: read.revision) }
+      fork = make
+      ids << fork.id
+
+      Samagotchi::ContextMove.call(from: previous.id, to: fork.id, mode: :fork, state_dir: tmpdir)
+
+      expect(notes_of(fork.id).map { |note| note[:source] }).to eq([Samagotchi::ContextMove::NOTE_SOURCE])
+      expect(notes_of(fork.id).first[:text]).not_to include("explicitly read", "already absorbed")
+
+      link = continue(previous.id)
+      ids << link.id
+
+      expect(notes_of(link.id).map { |note| note[:source] })
+        .to eq([Samagotchi::SessionChain::NOTE_SOURCE, Samagotchi::ContextMove::NOTE_SOURCE])
+    end
+
+    it "bounds pushed text and the aggregate carry note on UTF-8 character boundaries" do
+      ids << previous.id
+      old = location(previous.id)
+      add_context_source(old, "a")
+      old.record_text("a", fetched("é" * 20_000))
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text].bytesize).to be < Samagotchi::SessionInbox::NOTE_MAX_BYTES
+      expect(note[:text].valid_encoding?).to be(true)
+      expect(note[:text]).to include("truncated")
+    end
+
+    it "marks an aggregate cut when many pushed sources exceed the carry-note budget" do
+      ids << previous.id
+      old = location(previous.id)
+      %w[a b c d e f g].each do |name|
+        add_context_source(old, name)
+        old.record_text(name, fetched("answer " * 400))
+      end
+
+      link = continue(previous.id)
+      ids << link.id
+      note = notes_of(link.id).last
+
+      expect(note[:text].bytesize).to be <= Samagotchi::ContextMove::CARRY_NOTE_MAX_BYTES
+      expect(note[:text].bytesize).to be < Samagotchi::SessionInbox::NOTE_MAX_BYTES
+      expect(note[:text]).to include("additional pushed text omitted")
+      expect(note[:text].valid_encoding?).to be(true)
+    end
+
+    it "keeps the ordinary moved-context note when carrying pushed text fails" do
+      ids << previous.id
+      old = location(previous.id)
+      add_context_source(old, "notes")
+      old.record_text("notes", fetched("unabsorbed"))
+      to = make
+      ids << to.id
+      writes = 0
+      allow(Samagotchi::SessionInbox).to receive(:write_note).and_wrap_original do |original, *args, **kwargs|
+        writes += 1
+        raise IOError, "carry failed" if writes == 2
+
+        original.call(*args, **kwargs)
+      end
+      expect(Samagotchi::Log).to receive(:warn)
+        .with(:context, "context_move_carry_failed", hash_including(sid: to.id, error: "IOError"))
+
+      Samagotchi::ContextMove.call(from: previous.id, to: to.id, mode: :continue, state_dir: tmpdir)
+
+      expect(notes_of(to.id).map { |note| note[:source] }).to eq([Samagotchi::ContextMove::NOTE_SOURCE])
+      expect(notes_of(to.id).first[:text]).to include("Left with")
     end
 
     it "writes no second note when there is no context" do

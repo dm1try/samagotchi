@@ -345,6 +345,10 @@ the chain's, names what moved and what stayed:
 
 > Context moved with this session: pr-412, ci. Left with 3f2a9c1e: notes (pushed).
 
+On a continue, text from a pushed source that the old session had not absorbed
+or read is also carried in a separate note, clearly framed as third-party
+text. The source itself stays with its old link; forks do not carry this text.
+
 `chi send --new --continues` and the web's Continue toast say the same in a
 few words, and `chi context ls` marks a session's source that stays
 (`· stays`; `--format json` has the derived `movable`). Project sources are
