@@ -22,6 +22,8 @@ module Samagotchi
       #   :keep            left as it is (already the bundle's, or kept)
       #   :skip            left as it is, the bundle doesn't take it
       #   :move_to_trash   moved to the trash (a removal)
+      #   :remove          deleted (an asset: save_first copies an edit to the
+      #                    trash first)
       #   :refuse          the command stops
       #   :restore         the bundle's text put back (SystemBundle at its version)
       # save_first: a copy of the old bytes goes to the trash before a write
@@ -157,6 +159,55 @@ module Samagotchi
 
       TABLES = { install: INSTALL, force: FORCE, upgrade: UPGRADE, remerge: REMERGE, restore: RESTORE,
                  uninstall: UNINSTALL }.freeze
+
+      # A bundle's own folder (rules, the plugin, scripts: AssetState), which
+      # every install replaces whole: the source's files go in, the rest go,
+      # an edit (AssetState#edited?) copied to the trash first. A cell is keyed
+      # [state, kind_of_file] or [state, :any]. A file the source has is
+      # written even when it has its bytes already (and so checked against the
+      # manifest's sha, as any other).
+      ASSET_WRITE = Action.new(do: :write_incoming, word: :installed, next_base: :on_disk)
+      ASSET_REMOVE = Action.new(do: :remove, word: nil, next_base: :none, record: :drop)
+      ASSET_GONE = Action.new(do: :skip, word: nil, next_base: :none, record: :drop)
+
+      # A plain install, install --force, and an upgrade with no record yet.
+      ASSET_INSTALL = {
+        %i[new any] => ASSET_WRITE, %i[unchanged any] => ASSET_WRITE.with(word: :up_to_date),
+        %i[pristine any] => ASSET_WRITE, %i[edited any] => ASSET_WRITE.with(save_first: true),
+        %i[linked any] => ASSET_WRITE,
+        # The source dropped it: it goes with the folder, without a word.
+        %i[dropped_pristine any] => ASSET_REMOVE, %i[dropped_edited any] => ASSET_REMOVE.with(save_first: true),
+        %i[missing any] => ASSET_GONE
+      }.freeze
+
+      # An upgrade (--force too) over the record: a file it replaces is
+      # updated, except a rule (an upgrade lists a replaced rule as installed:
+      # the corpus's rule-installed).
+      ASSET_UPGRADE = ASSET_INSTALL.merge(
+        %i[pristine any] => ASSET_WRITE.with(word: :updated),
+        %i[edited any] => ASSET_WRITE.with(word: :updated, save_first: true),
+        %i[linked any] => ASSET_WRITE.with(word: :updated),
+        %i[pristine rule] => ASSET_WRITE, %i[edited rule] => ASSET_WRITE.with(save_first: true),
+        %i[linked rule] => ASSET_WRITE
+      ).freeze
+
+      # Uninstall: the folder goes (no source, so every file there is a
+      # dropped_* or a link), an edit copied to the trash first, --force or not.
+      ASSET_UNINSTALL = {
+        %i[dropped_pristine any] => ASSET_REMOVE, %i[dropped_edited any] => ASSET_REMOVE.with(save_first: true),
+        %i[linked any] => ASSET_REMOVE, %i[missing any] => ASSET_GONE
+      }.freeze
+
+      ASSET_TABLES = { install: ASSET_INSTALL, upgrade: ASSET_UPGRADE, uninstall: ASSET_UNINSTALL }.freeze
+
+      # The command's action for an AssetState: [state, kind_of_file], then
+      # [state, :any].
+      # @param command [Symbol] an ASSET_TABLES key
+      # @return [Action, nil] nil: the command never meets the state
+      def self.for_asset(command, asset)
+        table = ASSET_TABLES.fetch(command)
+        table[[asset.state, asset.kind_of_file]] || table[[asset.state, :any]]
+      end
       # The kinds whose row depends on another bundle listing the file.
       SHARED_ASKED = %i[dropped_pristine dropped_edited pristine pristine_no_base edited edited_no_base].freeze
 

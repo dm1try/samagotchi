@@ -3,6 +3,7 @@
 require "spec_helper"
 require_relative "file_state_corpus/support"
 require_relative "file_state_corpus/states"
+require_relative "file_state_corpus/assets"
 
 # The table agrees with the corpus: for every case and every column of a
 # command that acts, FileActions.for (a :decide cell through Merger::Upgrade's
@@ -95,5 +96,61 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
     end
     expect(%i[pristine edited pristine_no_base edited_no_base missing unreadable] -
            described_class::UNINSTALL.keys.map(&:first)).to eq([])
+  end
+
+  # The asset tables against assets.yml: a plain install, an upgrade (its
+  # dry run reading the same row) and uninstall, for every rule, plugin and
+  # script case. A dev install's upgrade is refused before any file is read.
+  describe "assets" do
+    before(:all) { @asset_sandbox = BundleStateCorpus::AssetSandbox.new }
+    after(:all) { @asset_sandbox&.cleanup }
+
+    def asset_words = { installed: "Installed", updated: "Updated", up_to_date: "Up to date" }
+    def dry_words = { installed: "Would install", updated: "Would update", up_to_date: "Up to date" }
+
+    def asset_cell(kase, column, shape)
+      cell = expectations("assets").fetch(kase.id).fetch(column)
+      (cell.key?(shape) ? cell.fetch(shape) : cell).slice("do", "save_first", "word")
+    end
+
+    def asset_prediction(kase, column, asset)
+      command = { "install" => :install, "upgrade" => :upgrade, "upgrade_dry" => :upgrade, "uninstall" => :uninstall }.fetch(column)
+      action = asset && described_class.for_asset(command, asset)
+      there = !kase.installed.nil? || kase.dev?
+      return { "do" => there ? "kept" : "none", "save_first" => false, "word" => action && dry_words[action.word] } if column == "upgrade_dry"
+
+      did = case action&.do
+            when :write_incoming then asset.state == :unchanged ? "kept" : "wrote_incoming"
+            when :remove then "removed"
+            else "none"
+            end
+      did += " (link)" if kase.dev? && action&.do == :write_incoming
+      { "do" => did, "save_first" => action&.save_first || false, "word" => column == "uninstall" ? nil : action && asset_words[action.word] }
+    end
+
+    it "predicts every install, upgrade, upgrade --dry-run and uninstall cell" do
+      got = BundleStateCorpus.asset_cases.reject { |kase| kase.asset == "hook" }.flat_map do |kase|
+        BundleStateCorpus::SHAPES.flat_map do |shape|
+          with_source = BundleStateCorpus::AssetStates.state(@asset_sandbox, kase, shape)
+          source_less = BundleStateCorpus::AssetStates.state(@asset_sandbox, kase, shape, source: false)
+          %w[install upgrade upgrade_dry uninstall].filter_map do |column|
+            observed = asset_cell(kase, column, shape)
+            next if observed["do"] == "refused"
+
+            want = asset_prediction(kase, column, column == "uninstall" ? source_less : with_source)
+            "#{kase.id} #{column} (#{shape}) #{with_source&.state}:\n  table #{want}\n  corpus #{observed}" unless want == observed
+          end
+        end
+      end
+      expect(got).to eq([])
+    end
+
+    it "has a row for every state each command meets" do
+      states = %i[new unchanged pristine edited linked dropped_pristine dropped_edited missing]
+      %i[install upgrade].each do |command|
+        expect(states - described_class::ASSET_TABLES.fetch(command).keys.map(&:first)).to eq([]), command.to_s
+      end
+      expect(%i[dropped_pristine dropped_edited linked missing] - described_class::ASSET_UNINSTALL.keys.map(&:first)).to eq([])
+    end
   end
 end

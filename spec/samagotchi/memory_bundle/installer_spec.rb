@@ -1284,7 +1284,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     it "says would install for each asset of a fresh bundle, and writes nothing" do
       dry = run_assets(asset_bundle("1.0.0", plugin: "# plugin 1\n"), dry_run: true)
 
-      expect(dry.results.slice(*assets)).to eq(assets.to_h { |asset| [asset, Samagotchi::MemoryBundle::Installer::FileResult.new(word: :would_install)] })
+      expect(dry.results.slice(*assets).transform_values(&:word)).to eq(assets.to_h { |asset| [asset, :would_install] })
+      expect(dry.results.slice(*assets).values.map { |result| result.state.state }).to eq(%i[new new new])
       expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
     end
   end

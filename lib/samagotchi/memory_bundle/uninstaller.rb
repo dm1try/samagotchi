@@ -4,6 +4,7 @@ require "fileutils"
 require "digest"
 require_relative "../memory_paths"
 require_relative "provenance"
+require_relative "asset_state"
 require_relative "file_actions"
 require_relative "index_updater"
 require_relative "trash"
@@ -144,12 +145,17 @@ module Samagotchi
       private
 
       # Copies each edited file of the bundle's own folder to the trash: the
-      # rm_rf below takes them, --force or not.
+      # rm_rf below takes them, --force or not. Rules, the plugin and
+      # scripts by their source-less AssetState and ASSET_UNINSTALL's
+      # save_first; an older chi's hooks/ by Trash#copy_edits.
       def save_edits(provenance, bundle)
         @trash.copy_edits(provenance.hooks_dir, "hooks", bundle.hooks.transform_values(&:sha256))
-        @trash.copy_edits(provenance.guardrails_dir, "guardrails", bundle.guardrails)
-        @trash.copy_edits(provenance.plugin_dir, "plugin", bundle.plugin_shas)
-        @trash.copy_edits(provenance.scripts_dir, "scripts", bundle.scripts)
+        { rule: [provenance.guardrails_dir, bundle.guardrails], plugin: [provenance.plugin_dir, bundle.plugin_shas],
+          script: [provenance.scripts_dir, bundle.scripts] }.each do |kind_of_file, (dir, recorded)|
+          AssetState.in(dir, kind_of_file: kind_of_file, recorded: recorded).each do |asset|
+            @trash.copy(asset.path, as: asset.label) if FileActions.for_asset(:uninstall, asset)&.save_first
+          end
+        end
       end
 
       # A kept shared file's index line names the bundle that still has it

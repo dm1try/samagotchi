@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "samagotchi/memory_bundle/asset_state"
+
 module BundleStateCorpus
   ASSET_COLUMNS = %w[install upgrade upgrade_dry uninstall plan status].freeze
   ASSET_STATES = %w[new unchanged pristine edited_sha edited_no_sha dev_link dropped_pristine dropped_edited].freeze
@@ -158,8 +160,7 @@ module BundleStateCorpus
   #   word       the summary line naming it (the Installer's #summary, chi
   #              bundle uninstall's Removed:); a plan's row status, and
   #              "replaces" when its replaced lists the file
-  #   label      chi bundle status NAME's line for it (hooks and the plugin
-  #              have one; rules and scripts none: nil)
+  #   label      chi bundle status NAME's line for it ("-": none)
   #   warns      the other lines naming it, paths masked
   class AssetObserver
     def self.entry(raw, kase)
@@ -237,20 +238,19 @@ module BundleStateCorpus
       "other"
     end
 
-    # chi bundle status NAME's line for the hook or the plugin.
+    # chi bundle status NAME's line for the file.
     def status_label
       out = StringIO.new
       Samagotchi::BundleCommand.new(["status", NAME], stdout: out, stderr: StringIO.new).run
       return "not installed" if out.string.include?("not installed.")
 
-      # A hook's line under "Hooks (N): not loaded: …", whole: "h.rb [ok]".
-      prefix = @case.asset == "hook" ? "    #{@case.file} [" : ("  Plugin: " if @case.asset == "plugin")
-      return nil unless prefix
-
+      # A hook's, rule's or script's line under its heading ("Hooks (N): not
+      # loaded: …", "Rules (N):", "Scripts (N):"), whole: "h.rb [ok]".
+      prefix = @case.asset == "plugin" ? "  Plugin: " : "    #{File.basename(@case.source_rel)} ["
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
       return "-" unless line
 
-      @sandbox.mask(@case.asset == "hook" ? line.strip : line.delete_prefix(prefix.lstrip).strip)
+      @sandbox.mask(@case.asset == "plugin" ? line.delete_prefix(prefix.lstrip).strip : line.strip)
     end
 
     def names?(line) = line.include?(File.basename(@case.source_rel))
@@ -305,5 +305,37 @@ module BundleStateCorpus
     end
 
     def run_status = {}
+  end
+end
+
+module BundleStateCorpus
+  # An asset case's AssetState on its own starting tree (no command run):
+  # its file among AssetState.in of its folder, against the case's source or
+  # (source: false, as uninstall and status read it) none. asset_state_spec
+  # and file_actions_spec read it.
+  module AssetStates
+    KIND_OF_FILE = { "rule" => :rule, "plugin" => :plugin, "script" => :script }.freeze
+
+    module_function
+
+    # @return [Samagotchi::MemoryBundle::AssetState, nil] nil: no file of that name
+    def state(sandbox, kase, shape, source: true)
+      run = sandbox.run_copy(kase, shape, "install")
+      BundleStateCorpus.at_home(run) do
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: NAME)
+        record = provenance.record
+        kind = KIND_OF_FILE.fetch(kase.asset)
+        dir, recorded = case kind
+                        when :rule then [provenance.guardrails_dir, record.guardrails]
+                        when :plugin then [provenance.plugin_dir, record.plugin_shas]
+                        else [provenance.scripts_dir, record.scripts]
+                        end
+        name = File.basename(kase.label)
+        src = File.join(sandbox.source(kase), kase.source_rel)
+        incoming = source && File.file?(src) ? { name => src } : {}
+        Samagotchi::MemoryBundle::AssetState.in(dir, kind_of_file: kind, recorded: recorded, incoming: incoming)
+                                            .find { |asset| asset.name == name }
+      end
+    end
   end
 end

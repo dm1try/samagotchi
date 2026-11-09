@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "asset_installer"
+require_relative "asset_state"
 require_relative "installer"
 require_relative "listing"
 require_relative "manifest"
@@ -28,10 +29,11 @@ module Samagotchi
     #
     # .md files take the Installer's 3-way merge: a clean text merge replaces
     # the file (merged), a real conflict keeps the user's (behind). Rules,
-    # the plugin and scripts are replaced, an older chi's hooks removed; an edited one (Trash.edit?: its
-    # bytes neither the recorded sha, none recorded counting as edited, nor
-    # the incoming file's) is copied to the trash first and listed in
-    # replaced (#trash_bound).
+    # the plugin and scripts are replaced, an older chi's hooks removed; an
+    # edited one (AssetState#edited?, Trash.edit?'s rule: its bytes neither
+    # the recorded sha, none recorded counting as edited, nor the incoming
+    # file's) is copied to the trash first and listed in replaced
+    # (#trash_bound).
     #
     # A profile (a shipped meta bundle) is updated through Profile: its row
     # is :would_update when the shipped version is newer or it has members
@@ -293,21 +295,24 @@ module Samagotchi
       end
 
       # What the upgrade from +source_dir+ copies to the trash, as
-      # hooks/F, guardrails/F, plugin/F, scripts/F: Trash.edits over the
-      # folders AssetInstaller replaces or removes, each file against the one
-      # it puts in its place. Rules, the plugin and scripts: their whole
-      # folder, which the upgrade replaces. hooks/: an older chi's, which the
-      # upgrade removes whole (AssetInstaller#retire_hooks; no incoming).
+      # hooks/F, guardrails/F, plugin/F, scripts/F. Rules, the plugin and
+      # scripts: each file of the folders AssetInstaller replaces, against the
+      # one it puts in its place, that is AssetState#edited? (the upgrade's
+      # save_first: the same files, the same rule). hooks/: an older chi's,
+      # which the upgrade removes whole (AssetInstaller#retire_hooks; no
+      # incoming): Trash.edits over it.
       def trash_bound(name, bundle, manifest, source_dir)
         provenance = Provenance.new(name: name)
         rules = Dir.glob(File.join(source_dir, "guardrails", "*.yml")).sort
                    .reject { |file| AssetInstaller.linked?(file, source_dir) }
         plugin = manifest.plugin ? { manifest.plugin[:file] => File.join(source_dir, manifest.plugin[:file]) } : {}
         scripts = manifest.scripts.keys.to_h { |file| [file, File.join(source_dir, "scripts", file)] }
+        assets = AssetState.in(provenance.guardrails_dir, kind_of_file: :rule, recorded: bundle.guardrails,
+                                                          incoming: rules.to_h { |file| [File.basename(file), file] }) +
+                 AssetState.in(provenance.plugin_dir, kind_of_file: :plugin, recorded: bundle.plugin_shas, incoming: plugin) +
+                 AssetState.in(provenance.scripts_dir, kind_of_file: :script, recorded: bundle.scripts, incoming: scripts)
         Trash.edits(provenance.hooks_dir, "hooks", bundle.hooks.transform_values(&:sha256)) +
-          Trash.edits(provenance.guardrails_dir, "guardrails", bundle.guardrails, rules.to_h { |file| [File.basename(file), file] }) +
-          Trash.edits(provenance.plugin_dir, "plugin", bundle.plugin_shas, plugin) +
-          Trash.edits(provenance.scripts_dir, "scripts", bundle.scripts, scripts)
+          assets.select(&:edited?).map(&:label)
       end
 
       # Installed rules and the plugin whose sha differs from the recorded

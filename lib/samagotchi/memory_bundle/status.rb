@@ -3,6 +3,7 @@
 require_relative "file_digest"
 require_relative "provenance"
 require_relative "file_state"
+require_relative "asset_state"
 require_relative "manifest"
 require_relative "../version"
 require_relative "index_updater"
@@ -23,8 +24,10 @@ module Samagotchi
       # paths at all). An entry's behind is its FileStanding::Behind, nil for a
       # file that isn't; merge_note its FileStanding::MergeNote, nil without one;
       # unreadable: the file is there, but this chi can't read it.
+      # rules and scripts: each recorded one by name, "ok", "modified" or
+      # "missing" (asset_states).
       Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
-                           :retired_hooks, :needs)
+                           :rules, :scripts, :retired_hooks, :needs)
 
       # A scope this chi can't resolve (a newer chi's, a hand edit) isn't
       # guessed: scope_error says so, target_dir is nil and each file is
@@ -70,6 +73,8 @@ module Samagotchi
         end
         Report.new(provenance: bundle, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
                    target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
+                   rules: asset_states(provenance.guardrails_dir, :rule, bundle.guardrails),
+                   scripts: asset_states(provenance.scripts_dir, :script, bundle.scripts),
                    retired_hooks: retired_hooks(provenance, bundle), needs: needs_status(bundle))
       end
 
@@ -85,6 +90,20 @@ module Samagotchi
       def self.retired_hooks(provenance, bundle)
         bundle.hooks.keys.sort.to_h do |file|
           [file, File.exist?(File.join(provenance.hooks_dir, file)) ? "ok" : "missing"]
+        end
+      end
+
+      # Each recorded rule or script: "missing" (not there), "modified" (its
+      # AssetState is edited: the next install replaces it, a copy kept in
+      # the trash; an edited rule doesn't load) or "ok"; {} for none.
+      # @return [Hash{String => String}]
+      def self.asset_states(dir, kind_of_file, recorded)
+        recorded.keys.sort.to_h do |name|
+          asset = AssetState.of(File.join(dir, name), kind_of_file: kind_of_file, recorded: recorded[name], name: name)
+          [name, if asset.state == :missing then "missing"
+                 elsif asset.edited? then "modified"
+                 else "ok"
+                 end]
         end
       end
 
