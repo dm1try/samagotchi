@@ -2,10 +2,11 @@
 
 Samagotchi stores memories in two scopes:
 
-- Project scope: `$XDG_CONFIG_HOME/samagotchi/memories/projects/<name>_<hash>/`, one folder per
-  project (named and hashed by its root): a git repository, shared by all its worktrees and
-  subdirectories, or a folder marked by `chi project init` and its subfolders; outside both, one
-  per working directory
+- Project scope: `$XDG_CONFIG_HOME/samagotchi/memories/projects/<key>/`, one folder per project: a
+  git repository, shared by all its worktrees and subdirectories (`<name>_<hash>`, named and hashed
+  by its root), or a folder marked by `chi project init` and its subfolders (its id,
+  `<name>-<8 hex>`: see [Projects without git](#projects-without-git)); outside both, one per
+  working directory (`<name>_<hash>`)
 - System scope: `$XDG_CONFIG_HOME/samagotchi/memories`
 
 `$XDG_CONFIG_HOME` falls back to `~/.config` when unset.
@@ -13,8 +14,9 @@ Samagotchi stores memories in two scopes:
 ## Projects without git
 
 A folder in no git repository becomes a project with `chi project init [DIR]` (see
-[cli.md](cli.md#commands)): it writes `DIR/.chi/project.yml` (one comment line; the file, not a bare
-`.chi/` dir, is the marker), and DIR and every subfolder share one project memories folder, group their
+[cli.md](cli.md#commands)): it writes `DIR/.chi/project.yml` (a comment line and the project's
+`id:`; the file, not a bare `.chi/` dir, is the marker), and DIR and every subfolder share one
+project memories folder, group their
 sessions (`chi sessions list`, the web's project picker) and take `chi context --project`. Nothing
 chi-specific has to be committed anywhere: a repository never needs the file. It can also be created
 from chi web's project picker (a folder inside a git repository opens that repository's project, and
@@ -26,10 +28,34 @@ the folder is left as is: it is created when missing, nothing is marked).
   at `~` puts every folder under home in that repository, so markers there never apply.
 - **Not at home.** A marker in `$HOME`, in a folder above it, or in `/` is ignored (`chi project init`
   refuses them), so a marker in `~` never makes every folder under home one project.
-- **The key.** The marked root is the folder's real path (as git's root is), so a folder chi already ran
-  in at its top keeps its memories after `init`, and a later `git init` in the same folder keeps the same
-  key. Memories saved from a *subfolder* before `init` stay in that subfolder's own folder: move them by
-  hand if you want them in the project's.
+- **The key is the id.** A marked project's memories folder and its project context sources
+  (`chi context --project`) are named by the marker's `id:` (`<folder name>-<8 random hex>`), not
+  by its path, so moving or renaming the folder keeps them: a session started there after the move
+  finds them, and one saved before it (its file stores `project_id`) keys its context sources by the
+  id too. A folder chi already ran in at its top keeps its memories after `init`: they move to the
+  id. A later `git init` in the folder makes it a repository, keyed by its path again (git wins): its
+  memories stay in the id folder until you move them, and chi names the id folder at session start
+  (and under a `memory_read` miss) while the repository's own folder holds no memories. Memories saved from a *subfolder* before
+  `init` stay in that subfolder's own folder: move them by hand if you want them in the project's.
+  A hand-edited id must be letters, digits, `_`, `.` or `-` (up to 64, a letter or digit first);
+  anything else (or a broken file) is ignored and the project keyed by its path (a debug log line
+  says why, `chi project init` reports it).
+- **Older markers adopt an id** when you rerun `chi project init` in the folder: the folders keyed
+  by its path (memories, project context sources, the skills bundle's kept versions) move to the id,
+  each leaving a link by its old name (an older chi, keying by path, finds the same folder), then the
+  id is written. It refuses while a session of the project runs (stop it first, so nothing writes to
+  the old folder mid-move), and names memories an earlier path left (the same folder name with
+  another hash: a folder moved before it had an id), merging nothing. A link stays behind: a new
+  folder (or git repository) made later at the old path reaches the moved project's memories
+  through it; delete the link to stop that. chi web's project picker marks a new folder with an id
+  but never moves folders: a folder it marks that already has path-keyed memories gets no id until
+  `chi project init`.
+- **A copy shares memories.** A copied marked folder (`cp -R`) keeps the id, so the two share one
+  memories folder; at session start in the copy chi says so (a `memory>` load warning: "… share chi
+  project id … (a copied folder?)"; the id folder's `.root` names the folder that started a session
+  with it last, the original keeps it). `chi project init --new-id` in the copy gives it a fresh id,
+  with a copy of the memories and project context sources it had: each folder goes its own way.
+  After a move, the new path just takes `.root` over, with no warning.
 - **Restart what runs there.** A session running in the folder when it is marked keeps the old memories
   folder and AGENTS.md chain in its prompt until `chi sessions restart ID` (init names them); a running
   `chi web` groups the folder's older sessions under the project after its restart.
@@ -52,13 +78,15 @@ Tool behavior:
 
 ## Moving memories to another machine
 
-A project's folder is keyed by its root's absolute path (`<basename>_<8 hex of MD5(root)>`), so project
+A repository's folder is keyed by its root's absolute path (`<basename>_<8 hex of MD5(root)>`), so project
 memories copied to a machine (or a path) where the repository lives elsewhere sit in a folder chi no
 longer reads. Rename the folder to the new key, or move memories with a bundle zip (see
-[What a bundle owns](#what-a-bundle-owns)).
+[What a bundle owns](#what-a-bundle-owns)). A marked project with an id needs neither: copy its id
+folder along with the marked folder.
 
 Inside a project (a git repository or a marked folder), when this project's folder is missing or holds no `*.md` while the projects
-dir has a folder of the same basename with another hash, chi says so, naming both folders and the
+dir has a folder of the same basename with another hash (`<basename>_<hash>`, or a marked project's id folder
+`<basename>-<8 hex>`; links, an adopted project's old names, are skipped), chi says so, naming both folders and the
 `mv` that fixes it (a name match can't prove it's the same project, so nothing is renamed for you):
 
 - at session start, a `memory>` load warning (a `:guardrail_warning` with label `memory`; the attached

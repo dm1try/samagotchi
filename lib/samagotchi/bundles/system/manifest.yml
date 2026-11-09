@@ -7,5 +7,5 @@ files:
   identity.md: sha256:29c2f7df9f6c5acbc5ec17000a4490741e55e426af15ca0d81c8706edd9bd027
   self_map.md: sha256:750822b3488b302c6e32638e6224f270d8e06b50ea85cd6e0bb5a6ff12eed1d8
   config_modification_protocol.md: sha256:44cf7bdac8e526805bff36b76b54fefecd41db30ca525c2ed661d78fe9155dd8
-  memory_guide.md: sha256:91e8fd248a155afad6b825097d9ee0a0215ba0b79092c8ab25501c0fc19dedfc
+  memory_guide.md: sha256:bdd34f34063df1b4ae74f7cda7c31080986d155e535ee4526d673c70edac8292
   delegated.md: sha256:a0d6ddcd4a8be06526d964898611775fd251cfd9d145a9d16afaccaa503597bd

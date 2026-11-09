@@ -136,6 +136,7 @@ chi sessions clean --dry-run --days 7            # test sessions older than 7 da
 | `pending_question` | The question the worker waits on (`PendingQuestion`), `null` with none. | `QuestionDesk` |
 | `used_memory_names` | The memories the session read. | the Engine |
 | `project_root` | The project the session started in, stored because a worktree may be deleted later; `null` outside a repository or a marked folder (looked up again on read). | creation |
+| `project_id` | A marked project's id (its `.chi/project.yml`'s `id:`), saved beside `project_root`: the session's project context sources are keyed by it, so they follow a moved folder. Absent for any other project. | creation |
 | `preloaded_memory_names`, `muted_memory_names` | `--memory` and `--mute`, written before the worker starts so a respawn builds the same prompt. | creation |
 | `prompt_notes` | The model notes the system prompt carried at its last build (`[{name, scope, chars, digest}]`, see [Memory](memory.md#model-notes)). | the Engine, at each prompt build |
 | `parent_id` | The session that delegated this one or forked it (`ctx.sessions.fork`); `null` otherwise. See [Delegating](#delegating). | `SessionManager.spawn_session`; `ChildMove` writes a `parent.json` beside it instead of this file |

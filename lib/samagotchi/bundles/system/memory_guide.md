@@ -13,7 +13,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 | Scope | Path | Use for |
 |-------|------|---------|
 | `system` | `$XDG_CONFIG_HOME/samagotchi/memories/`, default `~/.config/samagotchi/memories/` (`MemoryPaths.system_dir`) | User-wide preferences, identity, cross-project knowledge |
-| `project` | `<system dir>/projects/<basename>_<hash>/` (`MemoryPaths.project_dir`: `basename(root)` + 8-char `MD5(root)`, root = `MemoryPaths.project_root`) | Repo-specific conventions, workflow, stack decisions |
+| `project` | `<system dir>/projects/<key>/` (`MemoryPaths.project_dir`: a git project's `<basename>_<hash>`, `basename(root)` + 8-char `MD5(root)`, root = `MemoryPaths.project_root`; a marked project's id from its `.chi/project.yml`, `<basename>-<8 hex>`, kept when the folder moves) | Repo-specific conventions, workflow, stack decisions |
 
 - The project root is the git repository: its common git dir, which every linked worktree shares. All worktrees and subdirectories of one repository share one project folder; the system prompt shows that folder (not the root: in a linked worktree, work stays in the worktree). A separate clone is a different project. Outside a repository, a folder marked by `chi project init` (its `.chi/project.yml`) is the project for it and every subfolder; outside both, the root is the working directory.
 - `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`; a memory a bundle installed adds `· from <bundle>` before the description. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write` (and refreshed when `write`/`edit` change a memory's file).
@@ -122,7 +122,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 | `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and an installed bundle's plugin, rules and scripts. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<repo>_memories.zip` (project, named after the project root) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md and the memories other installed bundles own (each named in a `Left out` line) are included. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
 
 **Scope resolution for install/build:**
-- CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`Installer#run`). For `project`, target is the project folder `<system dir>/projects/<basename>_<hash>` of the project root (`MemoryPaths.scope_dir`).
+- CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`Installer#run`). For `project`, target is the project folder `<system dir>/projects/<key>` of the project (`MemoryPaths.scope_dir`).
 
 **Example flows:**
 ```bash

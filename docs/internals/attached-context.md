@@ -51,8 +51,10 @@ comment is the file map and [../context.md](../context.md#storage) lists it for 
   `Candidate`, `Left`, `Moved`/`Stayed`.
 - **Locations.** A `Location` is a folder of sources: a project's (`projects/<project_key>/`, shared by the
   project's workers) or a session's (`sessions/<id>/`, which also holds `subscriptions.json`, the `muted/` and
-  `declined/` markers, `candidates/`, `left.json`). `ContextSources.attached(session_id, project_root:)` is what a
-  session sees: its own, then the project's it doesn't shadow. Names are `NAME_RE`; `subscriptions` and `left` are
+  `declined/` markers, `candidates/`, `left.json`). `ContextSources.attached(session_id, project_root:, project_id:)`
+  is what a session sees: its own, then the project's it doesn't shadow. The project key is
+  `MemoryPaths.key_for(root:, id:)`, the memories folder's key: a marked project's id (`Session#project_id`, saved at
+  creation), else the root's path key; every caller holding a session passes both. Names are `NAME_RE`; `subscriptions` and `left` are
   reserved (`RESERVED_NAMES`) because their files share the folder.
 - **Writes are file replaces** (`AtomicFile`). `Location#locked(name)` takes `<name>.lock`, the lock a fetch holds
   for its whole command; `record_text` and `record_error` run under it, and `remove` leaves the lock file so a fetch
