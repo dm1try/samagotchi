@@ -8,6 +8,7 @@ require "fileutils"
 
 require_relative "atomic_file"
 require_relative "archive_store"
+require_relative "worker_presence"
 require_relative "client_id"
 require_relative "command_intake"
 require_relative "config"
@@ -764,12 +765,13 @@ module Samagotchi
     def busy_reason(entry, index, target)
       dir = Session.session_dir(target, state_dir: @state_dir)
       owner = SessionManager.session_owner(target, state_dir: @state_dir)
-      link = WorkerLink.resolve(dir, unlink: false, owner: owner)
+      presence = WorkerPresence.read(target, state_dir: @state_dir, owner: owner, link: :look)
+      link = presence.link
 
-      if link.worker_owned?
+      if presence.worker_owned?
         # A worker that has not published its Bridge yet (or is closing it):
         # nothing can be read from it, and firing now would race with it.
-        return [:skip, "its worker is starting or leaving"] unless link.live?
+        return [:skip, "its worker is starting or leaving"] unless presence.live?
 
         activity = ask_activity(link, target)
         if activity == :old
