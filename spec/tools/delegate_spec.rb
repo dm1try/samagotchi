@@ -154,6 +154,21 @@ RSpec.describe "delegate tools" do
       expect(Process).to have_received(:spawn)
     end
 
+    # The task arrives at the child's intake from its parent, which may
+    # send no shell line (CommandIntake): refused before any child starts,
+    # so the model can rewrite it. A /word task is the child's text.
+    it "refuses a task or a follow-up that starts with !, and starts a /word one as text" do
+      expect(described_class.call(" !touch x", wait: false, peers: worker_peers))
+        .to eq("Error: #{Samagotchi::CommandIntake::REFUSED}")
+      expect(described_class.call("!ls", session: "abcd", wait: false, peers: worker_peers))
+        .to eq("Error: #{Samagotchi::CommandIntake::REFUSED}")
+      expect(session_files).to eq([parent.id])
+
+      described_class.call("/model x", wait: false, peers: worker_peers)
+      child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+      expect(child.last_prompt).to eq("/model x")
+    end
+
     it "stores the child's model alias resolved, a host prefix kept, and the alias as typed" do
       allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("tiny" => "box:gemma-small")
 

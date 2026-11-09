@@ -9,6 +9,7 @@ require "fileutils"
 require_relative "atomic_file"
 require_relative "archive_store"
 require_relative "client_id"
+require_relative "command_intake"
 require_relative "config"
 require_relative "continue_offer"
 require_relative "delivery"
@@ -222,6 +223,9 @@ module Samagotchi
 
       prompt = prompt.to_s
       raise Usage, "a schedule needs a prompt" if prompt.strip.empty?
+      # It fires from a schedule, never a person: a shell line would be
+      # refused at every firing (CommandIntake); a /word one is the model's text.
+      raise Usage, CommandIntake::REFUSED if CommandIntake.shell_line?(prompt)
       if prompt.bytesize > PROMPT_MAX_BYTES
         raise Usage, "the prompt is #{prompt.bytesize} bytes; the limit is 16 KiB (#{PROMPT_MAX_BYTES} bytes)"
       end
@@ -844,6 +848,11 @@ module Samagotchi
     def fire_chain(entry, index)
       head, _reason = target_of(entry, index)
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the chain is gone", entry: entry) if head.nil?
+      # One stored before #add refused it: its link would refuse the line,
+      # so it fails here, with no link started and nothing archived.
+      if CommandIntake.shell_line?(entry.prompt)
+        return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: CommandIntake::REFUSED, entry: entry)
+      end
 
       # `last:<head>` so SessionContinue.run's own TRIES/`:moved` loop follows
       # a continue a human made between here and its lock. The link's first

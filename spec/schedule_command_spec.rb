@@ -117,6 +117,14 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(schedules.entries.size).to eq(1)
     end
 
+    # A person adds it, but it fires from the schedule: a shell line never runs.
+    it "refuses a prompt that starts with ! (exit 2)" do
+      status, _, error = run("add", "--session", session, "--every", "1h", "-m", "!touch x")
+      expect(status).to eq(2)
+      expect(error.lines.first).to eq("chi schedule add: #{Samagotchi::CommandIntake::REFUSED}\n")
+      expect(schedules.entries).to be_empty
+    end
+
     it "refuses an empty or oversized prompt, naming the limit (exit 2)" do
       id = session
       status, _, error = run("add", "--session", id, "--every", "1h", "-m", "   ")

@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
   `last_turn` origin reads `delegate` or `schedule`, the turn counts as automatic in the session's metrics, and the
   objectives audit skips it as it skips a delegate's follow-up. Restart `chi web` (and any worker) after updating: one
   still running the older chi starts chain links whose first message runs as yours.
+- `delegate`, `schedule_task` and `chi schedule add` refuse a task or prompt that starts with `!`, saying why, so the
+  model can write it as an instruction. A schedule stored with one before this fails when it fires (counted toward
+  its `max_failures`; a chain one starts no new link).
 
 ## [0.159.0] - 2026-11-09
 

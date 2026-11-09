@@ -376,6 +376,29 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # An entry stored before the add refused a ! prompt: its firing would be
+  # refused at the link's intake, so it fails here instead, starting no link
+  # and archiving nothing, and counts toward max_failures.
+  it "fails a stored chain entry whose prompt is a shell line, starting no link" do
+    Dir.mktmpdir("schedules-chain-shell") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "touch x", recurrence: every("1m"))
+      file = File.join(root, "schedules.json")
+      File.write(file, File.read(file).sub('"prompt": "touch x"', '"prompt": "!touch x"'))
+      expect(schedules.lookup(entry.id).prompt).to eq("!touch x")
+
+      fired = schedules.tick(now: Time.now + 60).outcomes.first
+
+      expect(fired).to have_attributes(status: "failed", detail: Samagotchi::CommandIntake::REFUSED)
+      expect(Samagotchi::Session.list(state_dir: dir).map(&:id)).to eq([anchor])
+      expect(archived?(dir, anchor)).to be(false)
+      expect(schedules.lookup(entry.id).failures).to eq(1)
+    end
+  end
+
   it "fires one entry per chain per tick, and retries the other at the next one" do
     Dir.mktmpdir("schedules-chain-once") do |root|
       dir = File.join(root, "sessions")
