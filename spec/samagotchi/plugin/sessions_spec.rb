@@ -106,6 +106,17 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(notes).to eq(["Context moved with this session: pr-1."])
     end
 
+    # A plugin's first prompt is the plugin's, as its send is (CommandIntake):
+    # its ! line is refused and its /word line is text, in the child too.
+    it "gives the child's first prompt the plugin as its sender, none to an idle fork" do
+      allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([])
+      prompted = Samagotchi::Session.load(sessions.fork(messages: [], prompt: "!touch x"), state_dir: tmpdir)
+      idle = Samagotchi::Session.load(sessions.fork(messages: []), state_dir: tmpdir)
+
+      expect(prompted.first_turn_client_id).to eq(Samagotchi::ClientId::PLUGIN)
+      expect(idle.first_turn_client_id).to be_nil
+    end
+
     it "runs a prompt as the child's first turn, within session.max_children" do
       allow(Samagotchi::Tools::Delegate).to receive(:max_children).and_return(1)
       allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([])
