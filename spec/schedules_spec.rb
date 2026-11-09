@@ -37,6 +37,15 @@ RSpec.describe Samagotchi::Schedules do
     described_class.new(state_dir: state_dir, clock: -> { now })
   end
 
+  it "requires a format decision for every entry member" do
+    declarations = described_class::FORMAT.members.to_h { |member| [member.name, member] }
+
+    expect(declarations.keys).to match_array(described_class::Entry.members)
+    expect(declarations.values).to all(satisfy { |member| member.required? || member.defaulted? })
+    expect(declarations.values.select(&:required?).map(&:name))
+      .to match_array(%i[id anchor mode prompt recurrence next_due])
+  end
+
   it "writes every entry under the lock, so two writers in flight lose nothing" do
     Dir.mktmpdir("schedules-lock") do |root|
       dir = File.join(root, "sessions")
