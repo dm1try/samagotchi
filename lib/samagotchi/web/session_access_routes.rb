@@ -101,7 +101,7 @@ module Samagotchi
           brief: true,
           session: { id: session.id, status: session.status, title: session.title,
                      display_title: session.display_title, project_root: session.project_root,
-                     working_directory: session.working_directory, model_name: session.model_name,
+                     project_id: session.project_id, working_directory: session.working_directory, model_name: session.model_name,
                      model_typed: session.model_typed, parent_answers: session.parent_answers,
                      owner: owner&.kind },
           pending_question: session.pending_question&.to_file
@@ -492,8 +492,8 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def context_target(id)
         session = session_access.show(id)
-        ContextCommand::Target.new(session_id: id, project_root: session.project_root, cwd: session.working_directory,
-                                   label: id[0, 8])
+        ContextCommand::Target.new(session_id: id, project_root: session.project_root, project_id: session.project_id,
+                                   cwd: session.working_directory, label: id[0, 8])
       end
     end
   end

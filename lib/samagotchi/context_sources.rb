@@ -634,19 +634,21 @@ module Samagotchi
 
     # The project a session's sources come from: nil when it is in no repo.
     # @param project_root [String, nil] Session#project_root
-    def project_location_for(project_root, state_dir: nil)
+    # @param project_id [String, nil] Session#project_id (a marked project's
+    #   id keys its folder: MemoryPaths.key_for)
+    def project_location_for(project_root, project_id: nil, state_dir: nil)
       return nil if project_root.to_s.empty?
 
-      project_location(MemoryPaths.key_for_root(project_root), state_dir: state_dir)
+      project_location(MemoryPaths.key_for(root: project_root, id: project_id), state_dir: state_dir)
     end
 
     # A session's sources: its own, then the project's it doesn't shadow
     # (+shadowed+ lists those too, marked).
     # @return [Array<Attached>]
-    def attached(session_id, project_root:, state_dir: nil, shadowed: false)
+    def attached(session_id, project_root:, project_id: nil, state_dir: nil, shadowed: false)
       own = session_location(session_id, state_dir: state_dir)
       list = own.sources.map { |source| Attached.new(source: source, location: own, shadowed: false) }
-      project = project_location_for(project_root, state_dir: state_dir)
+      project = project_location_for(project_root, project_id: project_id, state_dir: state_dir)
       return list unless project
 
       names = list.map(&:name)

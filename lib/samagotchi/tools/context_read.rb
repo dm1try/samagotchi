@@ -51,8 +51,13 @@ module Samagotchi
         @own = ContextSources.session_location(peers.session_id, state_dir: @state_dir)
         # The Engine's PeerView knows the session's project; a plain Peers
         # (specs, a bare kernel) has only its folder.
-        root = peers.respond_to?(:project_root) ? peers.project_root : ProjectScope.root_for(peers.cwd)
-        @attached = ContextSources.attached(peers.session_id, project_root: root, state_dir: @state_dir)
+        root, id = if peers.respond_to?(:project_root)
+                     [peers.project_root, peers.project_id]
+                   else
+                     found = ProjectScope.project_for(peers.cwd)
+                     [found&.root, found&.id]
+                   end
+        @attached = ContextSources.attached(peers.session_id, project_root: root, project_id: id, state_dir: @state_dir)
         @max_chars = [max_chars.to_i, MIN_CHARS].max
         @now = now
         # The peer bundles' declared sources (PeerSources), through the

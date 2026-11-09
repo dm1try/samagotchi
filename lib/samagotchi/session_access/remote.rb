@@ -809,7 +809,8 @@ module Samagotchi
         owner = json["owner"] && OwnerLock::Owner.new(pid: nil, kind: json["owner"].to_s, started_at: nil)
         SessionView.new(id: json["id"], status: json["status"], title: json["title"],
                         display_title: json["display_title"] || json["title"] || json["first_preview"].to_s,
-                        project_root: json["project_root"], working_directory: json["working_directory"],
+                        project_root: json["project_root"], project_id: json["project_id"],
+                        working_directory: json["working_directory"],
                         model_name: json["model_name"], model_typed: json["model_typed"],
                         parent_answers: json["parent_answers"], owner: owner,
                         pending_question: PendingQuestion.from_file(pending))

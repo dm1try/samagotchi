@@ -78,15 +78,17 @@ module Samagotchi
         row("root", found.root)
         row("top", found.top)
       end
-      row("memories", memories_line(found.root))
+      row("id", found.id) if found.id
+      row("memories", memories_line(found))
       notes(found).each { |note| row("note", note) }
       CLI::Exit::OK
     end
 
     def row(label, value) = @stdout.puts("#{label.ljust(9)}#{value}")
 
-    def memories_line(root)
-      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for_root(root))
+    # @param found [MemoryPaths::ProjectLookup] the project (its root and id key the folder)
+    def memories_line(found)
+      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: found.root, id: found.id))
       count = memory_count(dir)
       "#{Paths.tilde(dir)}#{" (#{count} #{count == 1 ? "memory" : "memories"})" if count.positive?}"
     end
@@ -141,7 +143,7 @@ module Samagotchi
     def report_init(root, nested_in:)
       nested = nested_in ? ", its own project nested in #{Paths.tilde(nested_in)}" : ""
       @stdout.puts("#{Paths.tilde(root)} is now a chi project#{nested} (#{Paths.tilde(File.join(root, MemoryPaths::MARKER))})")
-      row("memories", memories_line(root))
+      row("memories", memories_line(lookup(root)))
       sessions_note(root)
     end
 

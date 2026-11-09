@@ -58,18 +58,19 @@ module Samagotchi
 
     # The session's candidates with their status, by name.
     # @return [Array<Array(ContextSources::Candidate, String)>]
-    def with_status(session_id, project_root:, state_dir: nil)
+    def with_status(session_id, project_root:, project_id: nil, state_dir: nil)
       own = ContextSources.session_location(session_id, state_dir: state_dir)
       candidates = own.candidates
       return [] if candidates.empty?
 
-      attached = ContextSources.attached(session_id, project_root: project_root, state_dir: state_dir, shadowed: true)
+      attached = ContextSources.attached(session_id, project_root: project_root, project_id: project_id, state_dir: state_dir,
+                                                     shadowed: true)
       candidates.map { |candidate| [candidate, status(candidate, own: own, attached: attached)] }
     end
 
     # The candidates section of /context, nil for none.
-    def listing(session_id, project_root:, state_dir: nil)
-      rows = with_status(session_id, project_root: project_root, state_dir: state_dir)
+    def listing(session_id, project_root:, project_id: nil, state_dir: nil)
+      rows = with_status(session_id, project_root: project_root, project_id: project_id, state_dir: state_dir)
       return nil if rows.empty?
 
       lines = rows.map { |candidate, state| "- #{candidate.name} · #{state} · #{candidate.title}" }
@@ -171,8 +172,8 @@ module Samagotchi
     end
 
     # The proposed candidates (no source of theirs attached, not declined).
-    def proposed(session_id, project_root:, state_dir: nil)
-      with_status(session_id, project_root: project_root, state_dir: state_dir)
+    def proposed(session_id, project_root:, project_id: nil, state_dir: nil)
+      with_status(session_id, project_root: project_root, project_id: project_id, state_dir: state_dir)
         .filter_map { |candidate, state| candidate if state == "proposed" }
     end
 
@@ -194,7 +195,8 @@ module Samagotchi
       # The earlier owner prompts too: a proposal that came while one ran
       # (a one-shot's plugins never see a running turn's prompt).
       texts = owner_texts(session.messages) + (prompt.is_a?(String) ? [prompt] : [])
-      found = hits(texts, proposed(session.id, project_root: session.project_root, state_dir: state_dir))
+      found = hits(texts, proposed(session.id, project_root: session.project_root, project_id: session.project_id,
+                                       state_dir: state_dir))
       names = found.filter_map { |hit| attach(hit, own: own, state_dir: state_dir) }
       first_fetch(own, unfetched(own, names), cwd: session.working_directory, seconds: seconds, cancelled: cancelled)
       names
@@ -213,7 +215,8 @@ module Samagotchi
       names = own.candidates.map(&:name)
       return 0 if names.empty?
 
-      absorber = ContextAbsorber.new(session_id: session.id, state_dir: state_dir, project_root: session.project_root)
+      absorber = ContextAbsorber.new(session_id: session.id, state_dir: state_dir, project_root: session.project_root,
+                                     project_id: session.project_id)
       batch = absorber.pending or return 0
       picked = batch.deliveries.select { |delivery| names.include?(delivery.name) }
       picked.each { |delivery| engine.add_context_note(session, delivery.note) if delivery.note }

@@ -59,17 +59,19 @@ module Samagotchi
     VERDICT = /\bVERDICT:?\s*([A-Z]+)(?![A-Za-z|])/
 
     # @param project_root [String, nil] Session#project_root
+    # @param project_id [String, nil] Session#project_id
     # @param peer_sources [PeerSources, nil] the peer bundles' declared sources
     # @param peer_turns [#call, nil] the peer wake turns in a row
     #   (WorkerWakes#peer_turns); 0 or nil: no source is a peer's
-    def initialize(session_id:, state_dir:, project_root:, peer_sources: nil, peer_turns: nil)
+    def initialize(session_id:, state_dir:, project_root:, project_id: nil, peer_sources: nil, peer_turns: nil)
       @session_id = session_id
       @peer_sources = peer_sources
       @peer_turns = peer_turns
       @state_dir = state_dir
       @own = ContextSources.session_location(session_id, state_dir: state_dir)
-      @project = ContextSources.project_location_for(project_root, state_dir: state_dir)
+      @project = ContextSources.project_location_for(project_root, project_id: project_id, state_dir: state_dir)
       @project_root = project_root
+      @project_id = project_id
       @signature = nil
     end
 
@@ -79,7 +81,8 @@ module Samagotchi
       return nil if signature == @signature
 
       subs = @own.subscriptions
-      visible = ContextSources.attached(@session_id, project_root: @project_root, state_dir: @state_dir)
+      visible = ContextSources.attached(@session_id, project_root: @project_root, project_id: @project_id,
+                                                  state_dir: @state_dir)
       deliveries = visible.filter_map do |attached|
         next if @own.muted?(attached.name)
 

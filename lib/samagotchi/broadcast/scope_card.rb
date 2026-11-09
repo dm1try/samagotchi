@@ -46,7 +46,8 @@ module Samagotchi
         session = Session.load(recipient.id, state_dir: state_dir)
         prompts = user_texts(session.messages)
         branch = GitHead.branch(session.working_directory)
-        sources = ContextSources.attached(session.id, project_root: session.project_root, state_dir: state_dir)
+        sources = ContextSources.attached(session.id, project_root: session.project_root, project_id: session.project_id,
+                                                      state_dir: state_dir)
                                 .map { |attached| [attached.name, attached.source.hint] }
         ScopeCard.new(id: session.id, project: recipient.project && File.basename(recipient.project),
                       folder: folder(session.working_directory, recipient.project), branch: branch,

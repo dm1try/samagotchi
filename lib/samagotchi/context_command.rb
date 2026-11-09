@@ -80,7 +80,12 @@ module Samagotchi
     # Where a command acts: a session (its own sources, then its project's)
     # or a project's sources. +label+ names it in the output, +cwd+ is
     # where its session's sources run (ContextPoller's choice).
-    Target = Data.define(:session_id, :project_root, :cwd, :label) do
+    # +project_id+ is the project's id (Session#project_id, a marked
+    # project's ProjectLookup#id): with +project_root+ it keys the project's
+    # sources (MemoryPaths.key_for).
+    Target = Data.define(:session_id, :project_root, :cwd, :label, :project_id) do
+      def initialize(session_id:, project_root:, cwd:, label:, project_id: nil) = super
+
       def project? = session_id.nil?
     end
 
@@ -421,14 +426,15 @@ module Samagotchi
       root = found.root
       # Its sources run in the root, or in this checkout when the root is a
       # git dir (ContextSources.project_cwd).
-      Target.new(session_id: nil, project_root: root, cwd: found.top || @cwd,
+      Target.new(session_id: nil, project_root: root, project_id: found.id, cwd: found.top || @cwd,
                  label: "project #{File.basename(root)}")
     end
 
     def session_target(given)
       id = @access.resolve_id(given)
       session = @access.show(id)
-      Target.new(session_id: id, project_root: session.project_root, cwd: session.working_directory, label: id[0, 8])
+      Target.new(session_id: id, project_root: session.project_root, project_id: session.project_id,
+                 cwd: session.working_directory, label: id[0, 8])
     rescue ArgumentError => e
       error_line("#{command_name}: #{e.message}")
       nil

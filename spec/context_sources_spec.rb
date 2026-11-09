@@ -200,6 +200,25 @@ RSpec.describe Samagotchi::ContextSources do
       own.add(source("a"))
       expect(described_class.attached(session_id, project_root: nil, state_dir: state_dir).map(&:name)).to eq(["a"])
     end
+
+    it "keys a marked project by its id, so a session saved before its folder moved finds the folder its memories use" do
+      require "samagotchi/session"
+      notes = File.join(tmpdir, "notes")
+      FileUtils.mkdir_p(File.join(notes, ".chi"))
+      File.write(File.join(notes, Samagotchi::MemoryPaths::MARKER), "# chi project marker\nid: notes-0a1b2c3d\n")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: notes)
+      expect([session.project_root, session.project_id]).to eq([File.realpath(notes), "notes-0a1b2c3d"])
+      moved = File.join(tmpdir, "renamed")
+      File.rename(notes, moved)
+
+      location = described_class.project_location_for(session.project_root, project_id: session.project_id,
+                                                                            state_dir: state_dir)
+      expect(location.key).to eq("notes-0a1b2c3d")
+      expect(location.key).to eq(Samagotchi::MemoryPaths.project_key(moved))
+      location.add(source("ci", scope: "project"))
+      expect(described_class.attached(session_id, project_root: session.project_root, project_id: session.project_id,
+                                                  state_dir: state_dir).map(&:name)).to eq(["ci"])
+    end
   end
 
   describe ".move" do

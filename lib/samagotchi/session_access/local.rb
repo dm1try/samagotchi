@@ -353,7 +353,8 @@ module Samagotchi
       def context_candidates(target)
         return [] if target.project?
 
-        ContextCandidates.with_status(target.session_id, project_root: target.project_root, state_dir: @state_dir)
+        ContextCandidates.with_status(target.session_id, project_root: target.project_root, project_id: target.project_id,
+                                                         state_dir: @state_dir)
                          .map { |candidate, status| ContextCandidate.new(candidate: candidate, status: status) }
       end
 
@@ -371,7 +372,9 @@ module Samagotchi
         ContextSources.check_name!(name)
         return :removed if context_location(target).remove(name)
 
-        project = !target.project? && ContextSources.project_location_for(target.project_root, state_dir: @state_dir)
+        project = !target.project? && ContextSources.project_location_for(target.project_root,
+                                                                          project_id: target.project_id,
+                                                                          state_dir: @state_dir)
         project&.source(name) ? :project : :missing
       end
 
@@ -394,7 +397,7 @@ module Samagotchi
       # live in.
       def context_location(target)
         if target.project?
-          ContextSources.project_location_for(target.project_root, state_dir: @state_dir)
+          ContextSources.project_location_for(target.project_root, project_id: target.project_id, state_dir: @state_dir)
         else
           ContextSources.session_location(target.session_id, state_dir: @state_dir)
         end
@@ -534,8 +537,8 @@ module Samagotchi
       end
 
       def attached_to(target, shadowed: false)
-        ContextSources.attached(target.session_id, project_root: target.project_root, state_dir: @state_dir,
-                                                   shadowed: shadowed)
+        ContextSources.attached(target.session_id, project_root: target.project_root, project_id: target.project_id,
+                                                   state_dir: @state_dir, shadowed: shadowed)
       end
 
       # The block's post to the session's live worker, again on a 408 (the

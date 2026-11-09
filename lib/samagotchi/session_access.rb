@@ -166,7 +166,10 @@ module Samagotchi
     # @!attribute owner [OwnerLock::Owner, nil] its worker or one-turn chi run
     # @!attribute pending_question [PendingQuestion, nil] the file's
     SessionView = Data.define(:id, :status, :title, :display_title, :project_root, :working_directory, :model_name,
-                              :model_typed, :parent_answers, :owner, :pending_question)
+                              :model_typed, :parent_answers, :owner, :pending_question, :project_id) do
+      def initialize(id:, status:, title:, display_title:, project_root:, working_directory:, model_name:,
+                     model_typed:, parent_answers:, owner:, pending_question:, project_id: nil) = super
+    end
 
     # What chi send --new created (Remote; Local gives the Session): its
     # id, a model warning, the session it continues, the delegates it took

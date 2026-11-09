@@ -43,9 +43,10 @@ RSpec.describe Samagotchi::MemoryUsage do
   # is left unstored (as in a file from before the field) so the fallback to
   # working_directory is what counts it.
   def save_session(name, working_directory:, messages:, project_root: nil, test_run: false,
-                   used: [], preloaded: [], updated_at: "2026-11-01T10:00:00.000Z")
+                   used: [], preloaded: [], updated_at: "2026-11-01T10:00:00.000Z", project_id: nil)
     FileUtils.mkdir_p(state)
     File.write(File.join(state, "#{name}.json"), JSON.generate({
+      **(project_id ? { "project_id" => project_id } : {}),
       "metadata_version" => 3, "id" => name, "mode" => "assist", "model_name" => "gemma",
       "working_directory" => working_directory, "project_root" => project_root, "messages" => messages,
       "created_at" => updated_at, "updated_at" => updated_at, "status" => "idle", "test_run" => test_run,
@@ -358,6 +359,25 @@ RSpec.describe Samagotchi::MemoryUsage do
     expect(summary.sessions).to eq(1)
     expect(row(summary, "near", "project")).not_to be_nil
     expect(summary.not_read).to eq([])
+  end
+
+  it "counts a marked project's session from before its folder moved: the id it stored, its id-keyed folder" do
+    notes = File.join(tmp, "notes")
+    FileUtils.mkdir_p(File.join(notes, ".chi"))
+    File.write(File.join(notes, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
+    write_index(project_dir(notes), ["- **near** · project · 2026-11-01 · 10 — A memory of the marked project"])
+    remember(project_dir(notes), "near", "n" * 40)
+    save_session("before-move", working_directory: File.join(tmp, "gone"), project_root: File.join(tmp, "gone"),
+                                project_id: "notes-0a1b2c3d", messages: [
+                                  { "role" => "user", "content" => "go" },
+                                  call("c1", "memory_read", { "name" => "near" }),
+                                  result("c1", "[memory_read]\n#{"n" * 40}")
+                                ])
+
+    summary = report(root: notes)
+    expect(File.basename(project_dir(notes))).to eq("notes-0a1b2c3d")
+    expect(summary.sessions).to eq(1)
+    expect(row(summary, "near", "project")).not_to be_nil
   end
 
   it "lists the memories no counted session read, largest first, without a bundle's" do

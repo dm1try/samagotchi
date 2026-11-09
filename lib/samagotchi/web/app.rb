@@ -1455,7 +1455,8 @@ module Samagotchi
         body = { session_id: id, sources: rows, can_add_url: ContextProviders.any? }
         # The candidates too, for chi context ls (no UI shows them yet).
         if full
-          body[:candidates] = ContextCandidates.with_status(id, project_root: session.project_root, state_dir: default_state_dir)
+          body[:candidates] = ContextCandidates.with_status(id, project_root: session.project_root, project_id: session.project_id,
+                                                            state_dir: default_state_dir)
                                                .map { |candidate, status| candidate.to_h.merge("name" => candidate.name, "status" => status) }
         end
         json_response(200, body)
@@ -1573,8 +1574,8 @@ module Samagotchi
       end
 
       def attached_context(session, shadowed: false)
-        ContextSources.attached(session.id, project_root: session.project_root, state_dir: default_state_dir,
-                                            shadowed: shadowed)
+        ContextSources.attached(session.id, project_root: session.project_root, project_id: session.project_id,
+                                            state_dir: default_state_dir, shadowed: shadowed)
       end
 
       # @return [ContextSources::Attached, nil]

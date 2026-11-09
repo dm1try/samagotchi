@@ -76,6 +76,7 @@ RSpec.describe Samagotchi::Session do
 
       session.review = { "subjects" => ["docs/plan.md"], "from" => "abc" }
       session.first_turn_id = "turn-1"
+      session.project_id = "notes-0a1b2c3d"
       session.verdicts = [
         { anchor: { turn_id: "source-turn", quote: "claim" }, verdict: "confirmed", reason: "supported",
           by: nil, check_turn_id: "check-turn", at: "2026-01-01T00:00:00.000Z" }
@@ -91,6 +92,7 @@ RSpec.describe Samagotchi::Session do
                                                        "quote" => "claim" })
       expect(data["review"]).to eq("subjects" => ["docs/plan.md"], "from" => "abc")
       expect(data["first_turn_id"]).to eq("turn-1")
+      expect(data["project_id"]).to eq("notes-0a1b2c3d")
       expect(data["verdicts"]).to eq([
         { "anchor" => { "turn_id" => "source-turn", "quote" => "claim" }, "verdict" => "confirmed",
           "reason" => "supported", "by" => nil, "check_turn_id" => "check-turn", "at" => "2026-01-01T00:00:00.000Z" }

@@ -267,6 +267,67 @@ RSpec.describe Samagotchi::MemoryPaths do
       expect(described_class.project_key(notes)).to eq(before)
     end
 
+    describe "a marker's id" do
+      def mark_id(dir, text)
+        mark(dir)
+        File.write(File.join(dir, described_class::MARKER), text)
+        dir
+      end
+
+      it "carries a valid id in the lookup and keys the project by it, from any subfolder" do
+        notes = mark_id(File.join(@tmp, "notes"), "# chi project marker\nid: notes-0a1b2c3d\n")
+        sub = File.join(notes, "sub").tap { |dir| FileUtils.mkdir_p(dir) }
+        root = File.join(real_tmp, "notes")
+
+        expect(look(sub)).to eq(described_class::ProjectLookup.new(kind: :marker, root: root, top: root, id: "notes-0a1b2c3d"))
+        expect(described_class.project_key(sub)).to eq("notes-0a1b2c3d")
+        expect(described_class.project_dir(env: { "XDG_CONFIG_HOME" => "/xdg" }, cwd: sub))
+          .to eq("/xdg/samagotchi/memories/projects/notes-0a1b2c3d")
+      end
+
+      it "keeps the path key for a marker with no id, an invalid id or bad YAML, and reads the file again after an edit" do
+        notes = mark(File.join(@tmp, "notes"))
+        path_key = described_class.key_for_root(File.join(real_tmp, "notes"))
+        marker = File.join(notes, described_class::MARKER)
+
+        expect([look(notes).id, described_class.project_key(notes)]).to eq([nil, path_key])
+        ["id: ../up\n", "id: 12345678\n", "id: [a\n", "- a list\n", "id: #{"x" * 65}\n"].each do |text|
+          File.write(marker, text)
+          expect([text, look(notes).id, described_class.project_key(notes)]).to eq([text, nil, path_key])
+        end
+        File.write(marker, "id: notes-0a1b2c3d\n")
+        expect(described_class.project_key(notes)).to eq("notes-0a1b2c3d")
+      end
+
+      it "never keys a git repository by an id: a marker with an id beside or above the .git is ignored" do
+        repo = mark_id(File.join(@tmp, "repo"), "id: repo-0a1b2c3d\n")
+        git_init(repo)
+        above = mark_id(File.join(@tmp, "above"), "id: above-0a1b2c3d\n")
+        inner = File.join(above, "inner")
+        git_init(inner)
+
+        expect(look(repo)).to have_attributes(kind: :git, id: nil)
+        expect(described_class.project_key(repo)).to eq(described_class.key_for_root(File.join(real_tmp, "repo")))
+        expect(look(inner)).to have_attributes(kind: :git, id: nil)
+      end
+
+      it "ignores the id of a marker in $HOME or /, as it ignores the marker" do
+        mark_id(home, "id: home-0a1b2c3d\n")
+
+        expect(look(home)).to have_attributes(kind: :none, id: nil)
+        expect(look(File.join(home, "work").tap { |dir| FileUtils.mkdir_p(dir) }).id).to be_nil
+      end
+
+      it "keys by the id a caller holds (.key_for), the path key without one; .key_for_root reads no file" do
+        notes = mark_id(File.join(@tmp, "notes"), "id: notes-0a1b2c3d\n")
+        root = File.realpath(notes)
+
+        expect(described_class.key_for(root: root, id: "notes-0a1b2c3d")).to eq("notes-0a1b2c3d")
+        expect(described_class.key_for(root: root, id: nil)).to eq("notes_#{Digest::MD5.hexdigest(root)[0..7]}")
+        expect(described_class.key_for_root(root)).to eq("notes_#{Digest::MD5.hexdigest(root)[0..7]}")
+      end
+    end
+
     it "answers the readers from the one lookup" do
       notes = mark(File.join(@tmp, "notes"))
       root = File.join(real_tmp, "notes")
