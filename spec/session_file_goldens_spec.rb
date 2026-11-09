@@ -337,12 +337,15 @@ RSpec.describe "Session file goldens (characterization)" do
       expect_path_golden("verify_fresh_child.json", id)
     end
 
-    it "a resume of a stopped, moved session: idle, the marker cleared, parent.json's parent written into the file" do
+    # The file is its worker's: a resume (no lock) only clears the stop
+    # marker; the worker settles the status under the lock (Worker#start).
+    it "a resume of a stopped, moved session leaves the file's bytes as they were, the marker cleared" do
       session_class.mark_stopped(source.id, state_dir: state_dir)
       session_class.reparent(source.id, to: "golden-0012-new-parent", from: nil, state_dir: state_dir)
+      before_bytes = file_text(source.id)
       manager.resume_session(source.id, state_dir: state_dir)
       expect(session_class.stopped_marker?(source.id, state_dir: state_dir)).to be(false)
-      expect_path_golden("resumed.json", source.id)
+      expect(file_text(source.id)).to eq(before_bytes)
     end
 
     it "a respawn: the dead worker's question dropped, the interrupted turn kept until settled" do

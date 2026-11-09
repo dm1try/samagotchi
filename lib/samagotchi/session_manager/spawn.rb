@@ -151,12 +151,10 @@ module Samagotchi
         return session if presence.resume_held_off?
         return session unless claim_start(session.id, state_dir: sd, stopped: presence.stop_marked?)
 
-        # status is turn state, not liveness: a new worker runs no turn yet,
-        # and must not find the session stopped (it would exit): neither the
-        # marker nor a status field from before it.
+        # The new worker must not find the session stopped (it would exit).
+        # Nothing else is written: the file is the worker's, which turns a
+        # status from before it idle under the lock (Worker#settle_stale_status).
         Session.clear_stopped(session.id, state_dir: sd)
-        session.status = Session::STATUS_IDLE
-        session.save(state_dir: sd)
         spawn_worker_for_session(session, state_dir: sd)
         session
       end

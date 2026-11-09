@@ -112,17 +112,37 @@ RSpec.describe Samagotchi::SessionManager do
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)
     end
 
-    it "clears a stopped or stale running status when it wakes a worker" do
+    # H7: the worker owns the file; a resume (any process, no lock) writing
+    # its stale copy would overwrite a worker that saved meanwhile. The
+    # worker resets a status no turn is behind (run_session_loop_spec.rb).
+    it "writes nothing to the session file, whatever its status" do
       [Samagotchi::Session::STATUS_STOPPED, Samagotchi::Session::STATUS_ERROR, Samagotchi::Session::STATUS_RUNNING].each do |status|
         session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
         session.status = status
         session.save(state_dir: tmpdir)
+        path = File.join(tmpdir, "#{session.id}.json")
+        before = File.read(path)
         allow(Process).to receive(:spawn).and_return(20_002)
 
         described_class.resume_session(session.id, state_dir: tmpdir)
 
-        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
+        expect(File.read(path)).to eq(before)
       end
+    end
+
+    it "doesn't overwrite a worker that saved between its load and its spawn" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::Session).to receive(:clear_stopped).and_wrap_original do |original, *args, **kwargs|
+        # A worker (another resume's) took the session and saved a turn.
+        Samagotchi::Session.load(session.id, state_dir: tmpdir).tap { |s| s.title = "the worker's" }.save(state_dir: tmpdir)
+        original.call(*args, **kwargs)
+      end
+      allow(Process).to receive(:spawn).and_return(20_002)
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).title).to eq("the worker's")
     end
 
     it "removes the stop marker before it spawns the worker" do
@@ -138,7 +158,6 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.resume_session(session.id, state_dir: tmpdir)
 
       expect(marker_at_spawn).to be(false)
-      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
     end
 
     # The starting marker is the one cross-process starting state: a resume

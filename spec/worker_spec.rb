@@ -345,7 +345,8 @@ RSpec.describe Samagotchi::Worker do
 
         start_worker(poll_interval: 5)
 
-        expect(failed_saves).to eq([:dead_question])
+        # Then its start's own save (the updated_at stamp).
+        expect(failed_saves).to eq(%i[dead_question worker_start])
         expect(engine.session.pending_question).to be_nil
         expect(@thread).to be_alive
 
@@ -366,7 +367,7 @@ RSpec.describe Samagotchi::Worker do
         # The turn's own saves fail too: the one before it keeps it from
         # beginning (logged as turn_not_begun), the worker stays up.
         wait_for("the turn's save to fail") { failed_saves.include?(:turn) }
-        expect(failed_saves.first).to eq(:initial_prompt)
+        expect(failed_saves.first(2)).to eq(%i[worker_start initial_prompt])
         expect(@thread).to be_alive
 
         saves_fail!(false)

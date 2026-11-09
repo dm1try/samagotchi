@@ -197,14 +197,20 @@ module Samagotchi
     # spawn_session hands the first prompt over in last_prompt, but
     # last_prompt also records every later turn's prompt (and mark_error's
     # reason), so only a session with no conversation yet has one pending; a
-    # resumed session must not replay its last turn. Taken once.
+    # resumed session must not replay its last turn. A context note may
+    # have come before the first prompt ran.
+    # @param session [Session]
+    def self.initial_prompt_pending?(session)
+      session.messages.all? { |m| ContextNote.note?(m) } && !session.last_prompt.to_s.strip.empty?
+    end
+
+    # The first prompt (.initial_prompt_pending?), taken once.
     # @return [String, nil]
     def take_initial_prompt
       return nil if @initial_prompt_taken
 
       @initial_prompt_taken = true
-      # A context note may have come before the first prompt ran.
-      return nil unless @session.messages.all? { |m| ContextNote.note?(m) } && !@session.last_prompt.to_s.strip.empty?
+      return nil unless self.class.initial_prompt_pending?(@session)
 
       prompt = @session.last_prompt
       @session.last_prompt = ""
