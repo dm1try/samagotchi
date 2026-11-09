@@ -41,6 +41,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle upgrade --dry-run` names edited files it would copy to the trash, including marked memories.
 - `chi bundle uninstall` names a plugin it removes even when the bundle has no memories or hooks.
 - `chi bundle status` labels retired hooks as present or missing; they are not loaded.
+- `chi update` plan rows name memory files a shipped bundle adds.
 
 ## [0.159.0] - 2026-11-09
 

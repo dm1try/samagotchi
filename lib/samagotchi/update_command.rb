@@ -356,7 +356,7 @@ module Samagotchi
       notes = file_notes(row, update.name, update.to || update.from, update.merged, update.behind, update.trash_copy, earlier: earlier)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own, update.note].compact
+        notes = [adds(update.added_files), adds(update.adds), *notes, replaced(update.replaced), *update.kept_own, update.note].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note, update.manifest].compact, changed: Array(update.merged).any?)
       when :skipped then skipped(row, [update.note, *notes].join("; "))
@@ -522,7 +522,7 @@ module Samagotchi
       row
     end
 
-    # A profile's new members: "+ btw".
+    # New memory files or profile members: "+ file".
     def adds(members)
       members.nil? || members.empty? ? nil : "+ #{members.join(", ")}"
     end

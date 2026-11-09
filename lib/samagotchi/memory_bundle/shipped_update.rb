@@ -52,7 +52,8 @@ module Samagotchi
       # mismatch warnings. merged and replaced are file
       # names, behind FileStanding::Behind; under plan they are what apply would
       # merge, replace or leave behind.
-      # adds is nil but for a profile: the members it installs.
+      # added_files is the new version's memory files the bundle didn't own
+      # before; adds is nil but for a profile: the members it installs.
       # kept_own is nil but for a profile that installed a member: its
       # Profile.kept_own_line lines.
       # trash_copy is nil but under apply when it saved edited files
@@ -62,8 +63,8 @@ module Samagotchi
       # manifest: what a row at the shipped version says of its manifest.yml
       # (ManifestStanding.keep's line: would keep or kept it, or why not and
       # the command), nil when nothing.
-      Row = Struct.new(:name, :from, :to, :status, :note, :merged, :behind, :replaced, :source_dir, :scope, :adds, :kept_own,
-                       :trash_copy, :earlier, :manifest, keyword_init: true) do
+      Row = Struct.new(:name, :from, :to, :status, :note, :merged, :behind, :replaced, :source_dir, :scope, :added_files, :adds,
+                       :kept_own, :trash_copy, :earlier, :manifest, keyword_init: true) do
         def kept = Array(behind).map(&:file)
       end
 
@@ -208,6 +209,7 @@ module Samagotchi
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
+        row.added_files = (manifest.files.keys - bundle.files.keys).sort
         forecast = forecast(row, bundle)
         row.merged = forecast.merged
         row.behind = forecast.behind
