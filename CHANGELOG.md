@@ -36,6 +36,7 @@ and commands may change between minor versions. How releases are made:
 - A command you allow "for this session" is allowed again only in the same worktree or folder, with the same `env:`
   (kept as a digest); the same text run in another checkout asks again. Session approvals stored before this ask one
   more time.
+- `chi bundle upgrade` and `chi update` report a replaced guardrail rule as Updated, like other bundle assets.
 
 ## [0.159.0] - 2026-11-09
 

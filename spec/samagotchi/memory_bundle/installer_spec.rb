@@ -664,7 +664,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
       up.run
       expect(up.results["guardrails/a.yml"].word).to eq(:up_to_date)
-      expect(up.results["guardrails/b.yml"].word).to eq(:installed)
+      expect(up.results["guardrails/b.yml"].word).to eq(:updated)
       expect(File.read(File.join(bundles_dir, "test-bundle", "guardrails", "b.yml"))).to eq("rules: [] # v2\n")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read[:guardrails].keys.map(&:to_s))
         .to contain_exactly("a.yml", "b.yml")

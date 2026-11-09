@@ -152,5 +152,10 @@ RSpec.describe Samagotchi::MemoryBundle::FileActions do
       end
       expect(%i[dropped_pristine dropped_edited linked missing] - described_class::ASSET_UNINSTALL.keys.map(&:first)).to eq([])
     end
+
+    it "calls replaced rules updated during an upgrade" do
+      expect(described_class::ASSET_UPGRADE.fetch(%i[pristine rule]).word).to eq(:updated)
+      expect(described_class::ASSET_UPGRADE.fetch(%i[edited rule]).word).to eq(:updated)
+    end
   end
 end

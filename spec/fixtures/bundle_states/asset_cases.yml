@@ -44,21 +44,16 @@ cases:
     recorded: v1
     installed: v1
     incoming: v2
-    divergent: rule-installed
-    note: >-
-      rule-installed: an upgrade that replaces a rule lists it under Installed (the dry run: Would install), where the
-      plugin, scripts and hooks read Updated.
   - id: rule_edited_sha
     asset: rule
     state: edited_sha
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: [dry-trash, rule-installed]
+    divergent: dry-trash
     note: >-
       dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). rule-installed: an upgrade that replaces a rule lists it under Installed
-      (the dry run: Would install), where the plugin, scripts and hooks read Updated.
+      (chi update's plan does: replaces).
     fix:
       - "44 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited file an upgrade replaces, in its own subfolder, and says so"
       - "45 spec/samagotchi/memory_bundle/kept_edits_spec.rb: copies each edited hook, rule, plugin and script to the trash, with --force or without"
@@ -68,11 +63,10 @@ cases:
     recorded: ""
     installed: mine
     incoming: v2
-    divergent: [dry-trash, rule-installed]
+    divergent: dry-trash
     note: >-
       dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so
-      (chi update's plan does: replaces). rule-installed: an upgrade that replaces a rule lists it under Installed
-      (the dry run: Would install), where the plugin, scripts and hooks read Updated.
+      (chi update's plan does: replaces).
   - {id: rule_dev_link, asset: rule, state: dev_link, recorded: dev, installed: v2, incoming: v2}
   - id: rule_dropped_pristine
     asset: rule
