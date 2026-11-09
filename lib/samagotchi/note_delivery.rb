@@ -5,6 +5,10 @@ require_relative "owner_lock"
 require_relative "session_inbox"
 
 module Samagotchi
+  # Loaded on first use (a note): keeps the bundle test kit's load budget
+  # (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :WorkerPresence, File.expand_path("worker_presence", __dir__)
+
   # Loaded on first use: this autoload keeps SessionManager and its ~80
   # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
@@ -41,14 +45,14 @@ module Samagotchi
     # @return [Result]
     # @raise [SessionInbox::NoteRejected] an empty note or one over 16 KiB
     def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil)
-      owner = SessionManager.session_owner(id, state_dir: state_dir)
-      return Result.new(id: id, status: :refused, queued: 0) if owner&.tui?
+      presence = WorkerPresence.read(id, state_dir: state_dir, owner: SessionManager.session_owner(id, state_dir: state_dir))
+      return Result.new(id: id, status: :refused, queued: 0) if presence.tui_owned?
       # Its terminal's alone, live or left behind.
       return Result.new(id: id, status: :refused, queued: 0, scratch: true) if Session.load(id, state_dir: state_dir).scratch
 
       path = SessionInbox.write_note(id, text: text, source: source, from_session: from_session, from_cwd: from_cwd,
                                          objectives: objectives, state_dir: state_dir)
-      return Result.new(id: id, status: :queued, queued: 0) if owner
+      return Result.new(id: id, status: :queued, queued: 0) if presence.owned?
 
       Result.new(id: id, status: :waits, queued: SessionInbox.find_new_note_files(File.dirname(path, 2)).size)
     end

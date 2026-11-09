@@ -13,6 +13,10 @@ require_relative "../child_reports"
 require_relative "../worker_link"
 
 module Samagotchi
+  # Loaded on first use (a delegate call): keeps the bundle test kit's load budget
+  # (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :WorkerPresence, File.expand_path("../worker_presence", __dir__)
+
   # Loaded on the first task (a leaf; the bundle test kit's load budget,
   # spec/samagotchi/testing/sandbox_spec.rb).
   autoload :CommandIntake, File.expand_path("../command_intake", __dir__)
@@ -109,7 +113,7 @@ module Samagotchi
       #   the boot limit), :timeout (+timeout+ ran out first) or :canceled
       def self.await_worker(child_id, state_dir:, timeout:, cancelled: -> { false })
         dir = Session.session_dir(child_id, state_dir: state_dir)
-        return :up if OwnerLock.owner(dir)
+        return :up if WorkerPresence.read(child_id, state_dir: state_dir).owned?
 
         limit = [WorkerLink::START_LIMIT, timeout.to_f].min
         link = WorkerLink.await(child_id, session_dir: dir, timeout: limit, unlink: false,
