@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Guardrails: `tool: shell` rules also match plugin tools whose `targets:` declare a command.
 - web: the session bar is one row at every window width. What doesn't fit folds into `⋯` by priority, lowest first
   (the folder and 🧰 first, then the notes, set and participants, the model, the clock…); `⋯` is on the row everywhere,
   with a count of what it holds on a desktop and its dot when a folded item asks for a look. Archive and delete live in

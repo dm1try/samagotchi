@@ -228,6 +228,15 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
       expect([t.git_dirs, t.git_outside_repo?]).to eq([[@sibling], true])
     end
 
+    it "reads a plugin command's mutating git dirs as a shell call" do
+      registry = Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("run_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                               targets: ->(_call) { { command: "git -C #{@sibling} commit -m x" } })
+      end
+      t = targets({ name: "run_note", args: {} }, context, registry: registry)
+      expect([t.shell?, t.git_dirs, t.git_outside_repo?]).to eq([true, [@sibling], true])
+    end
+
     it "is not outside for git in the repo, an unknown dir, or a tmp dir the session doesn't live in" do
       expect(targets(name: "execute", content: "cd lib && git add .")).not_to be_git_outside_repo
       t = targets(name: "execute", content: "cd $REPO && git add .")
@@ -294,13 +303,22 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
       expect(targets(name: "write", path: File.join(@sibling, "x")).rule_command).to be_nil
     end
 
-    it "is a plugin tool's own command, as given" do
+    it "lexes a plugin tool's shell command for rules, keeping the raw command for approvals" do
       registry = Samagotchi::Tools::Builtins.registry.tap do |r|
         r.register("run_note", schema: {}, handler: ->(*) { "" }, source: "notes",
                                targets: ->(_call) { { command: "cat <<'EOF'\nrake release\nEOF" } })
       end
       t = targets({ name: "run_note", args: {} }, context, registry: registry)
-      expect(t.rule_command).to eq("cat <<'EOF'\nrake release\nEOF")
+      expect(t.rule_command).to eq("cat <<'EOF'\nEOF")
+      expect(t.command).to eq("cat <<'EOF'\nrake release\nEOF")
+    end
+
+    it "does not treat a plugin without a command target as a shell call" do
+      registry = Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("plain_note", schema: {}, handler: ->(*) { "" }, source: "notes", targets: ->(_call) { {} })
+      end
+      t = targets({ name: "plain_note", args: {} }, context, registry: registry)
+      expect([t.shell?, t.rule_command, t.git_dirs]).to eq([false, nil, []])
     end
   end
 

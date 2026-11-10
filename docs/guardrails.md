@@ -339,21 +339,18 @@ else the parent's checkout). Rule `child-boundary`, source `core`; it asks when
 - a call whose [targets](plugins.md#guardrails) say it writes its paths —
   `write`, `edit`, and a plugin tool's `targets:` with `writes: true` —
   names a path outside it (tmp dirs and memory files don't count);
-- `execute` or `task_create` runs mutating git in another dir (`git -C`, `cd`,
-  `GIT_DIR`: what `git: outside_repo` matches), or a command that isn't
-  read-only starts outside it (its `cwd:`) or names a path in the repository's
-  other checkouts (the main one and sibling worktrees, read from
-  `<common git dir>/worktrees/*/gitdir`) or in its common git dir;
-- `execute` or `task_create` runs git that changes what every checkout shares,
-  even from its own worktree: a `git config` write (not `--get`, `--list`,
-  `--worktree`), `update-ref`, `worktree add|remove|move|prune`, `stash
-  drop|clear|pop`, creating or deleting a tag, and deleting, forcing or
-  overwriting a branch other than its own;
-- any call whose `targets:` carry a `command:` (a plugin tool's) is checked
-  for git that changes what every checkout shares, and for a `cwd:` outside
-  the child's folder. Its command's text may not be shell, so the reads a
-  shell call gets (its `git -C`/`cd` dirs, its redirects, its read-only test)
-  are left out.
+- a shell call runs mutating git in another dir (`git -C`, `cd`, `GIT_DIR`:
+  what `git: outside_repo` matches), or a command that isn't read-only starts
+  outside it (its `cwd:`) or names a path in the repository's other checkouts
+  (the main one and sibling worktrees, read from
+  `<common git dir>/worktrees/*/gitdir`) or in its common git dir. A shell
+  call is `execute`, `task_create`, or a plugin call whose `targets:` carry a
+  `command:`;
+- a shell call runs git that changes what every checkout shares, even from its
+  own worktree: a `git config` write (not `--get`, `--list`, `--worktree`),
+  `update-ref`, `worktree add|remove|move|prune`, `stash drop|clear|pop`,
+  creating or deleting a tag, and deleting, forcing or overwriting a branch
+  other than its own;
 
 Read-only commands (`git -C ../app log`, `cat ../app/x`) and paths elsewhere
 (`/usr/bin`, `~/.gem`) never ask, nor does a read-only command that writes only
@@ -738,7 +735,7 @@ guardrails:
   mode: auto                 # or strict: also the rules tagged modes: [strict]; config.yml only
   rules:
     - id: git-push
-      tool: shell            # execute + task_create; or a tool name, a glob, or a list
+      tool: shell            # shell calls, including plugin targets with command:; or a name, glob or list
       command: '\bgit\s+push\b'   # Ruby regex on the command (data heredoc bodies left out)
       verdict: ask           # ask | deny
       reason: git push publishes commits

@@ -357,7 +357,7 @@ module Samagotchi
         @repo_root = repo_root
       end
 
-      def shell? = SHELL_TOOLS.include?(@tool)
+      def shell? = SHELL_TOOLS.include?(@tool) || !@command.nil?
 
       # The homes and environments a shell call's words may resolve
       # against, as [home, env] pairs: chi's own, and when the call's env:
@@ -381,9 +381,8 @@ module Samagotchi
         @redefines_shell = self.class.redefines_shell?(@env)
       end
 
-      # What a rule's command: reads: the shell command with the body of each
-      # heredoc its command only reads as data left out (ShellLex.code_text);
-      # a plugin tool's own command as given (its text may not be shell).
+      # What a rule's command: reads: a shell command with the body of each
+      # heredoc its command only reads as data left out (ShellLex.code_text).
       # Approvals, the approval question and hooks keep #command.
       def rule_command
         return @rule_command if defined?(@rule_command)

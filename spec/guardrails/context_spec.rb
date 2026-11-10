@@ -174,10 +174,10 @@ RSpec.describe Samagotchi::Guardrails::Targets do
       expect(targets(name: "save_note", args: { "path" => "/etc/x" })).to be_outside_repo
     end
 
-    it "takes a command, which command rules match (it is not a shell tool)" do
+    it "treats a plugin target command as a shell call" do
       t = targets(name: "run_it", args: { "cmd" => "git push" })
       expect([t.command, t.paths]).to eq(["git push", []])
-      expect(t).not_to be_shell
+      expect(t).to be_shell
     end
 
     it "is nothing for a tool without targets:, one that raises, or no registry" do

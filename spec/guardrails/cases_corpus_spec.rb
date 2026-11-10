@@ -31,8 +31,6 @@ RSpec.describe "The guardrail cases corpus" do
   KEYS = %w[id tool command path cwd expect rule rules source note].freeze
   LABELS = %w[match no_match allow ask deny].freeze
   RULE_SETS = %w[fixture guardrails-bundle].freeze
-  SHELL_TOOLS = %w[execute task_create].freeze
-
   CASES = File.readlines(File.expand_path("../fixtures/guardrails/cases.jsonl", __dir__), chomp: true)
             .each_with_index.map { |line, i| JSON.parse(line).merge("line" => i + 1) }
 
@@ -61,7 +59,7 @@ RSpec.describe "The guardrail cases corpus" do
 
   def call_for(kase)
     tool = kase["tool"]
-    call = if SHELL_TOOLS.include?(tool)
+    call = if Samagotchi::Guardrails::Targets::SHELL_TOOLS.include?(tool)
              { name: tool, content: kase["command"] }
            elsif tool == "read"
              { name: tool, content: kase["path"] }
@@ -93,7 +91,7 @@ RSpec.describe "The guardrail cases corpus" do
       %w[id tool expect source].each { |key| expect(kase[key]).not_to be_nil, "#{where}: no #{key}" }
       expect(LABELS).to include(kase["expect"]), "#{where}: expect #{kase["expect"].inspect}"
       expect(RULE_SETS).to include(kase["rules"]), "#{where}: rules #{kase["rules"].inspect}" if kase["rules"]
-      if SHELL_TOOLS.include?(kase["tool"])
+      if Samagotchi::Guardrails::Targets::SHELL_TOOLS.include?(kase["tool"])
         expect(kase["command"]).to be_a(String), "#{where}: a shell tool needs a command"
       else
         expect(kase["path"]).to be_a(String), "#{where}: #{kase["tool"]} needs a path"

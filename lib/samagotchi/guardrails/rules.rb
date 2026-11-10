@@ -9,10 +9,10 @@ module Samagotchi
   module Guardrails
     # Declarative rules from config.yml's `guardrails:` section (and, later,
     # installed bundles). All the fields a rule gives must match:
-    #   tool:    a tool name, a list, or "shell" (execute + task_create);
-    #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*"); it
-    #            matches the call's name or the tool a plugin tool's call
-    #            acts as (Targets#acts_as: an MCP tool behind call_tool)
+    #   tool:    a tool name, a list, or "shell" (a shell call, including a
+    #            plugin tool whose targets: declare a command); a name may be
+    #            a glob ("mcp_*", "mcp_{git,gh}_*"); it matches the call's
+    #            name or the tool a plugin tool's call acts as (Targets#acts_as)
     #   command: a Ruby regex on a shell tool's command, the body of a
     #            heredoc its command only reads as data left out
     #            (Targets#rule_command, ShellLex.code_text)
@@ -60,12 +60,13 @@ module Samagotchi
       MODES = %w[auto strict].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :git, :touches, :rm, :memory, :models, :modes, :skip_read_only, :verdict, :reason,
+      Rule = Struct.new(:id, :tools, :shell, :command, :path, :git, :touches, :rm, :memory, :models, :modes, :skip_read_only, :verdict, :reason,
                         :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
           return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
-          return false if tools && !tool_matches?(targets.tool) && !(targets.acts_as && tool_matches?(targets.acts_as))
+          return false if tools && !tool_matches?(targets.tool) && !(targets.acts_as && tool_matches?(targets.acts_as)) &&
+                          !(shell && targets.shell?)
           return false if command && !(targets.rule_command && command.match?(targets.rule_command))
           return false if path && !path_matches?(targets)
           return false if git && !targets.git_outside_repo?
@@ -158,7 +159,8 @@ module Samagotchi
           raise ParseError, "#{label}: give at least one of #{MATCH_KEYS.join(", ")}"
         end
 
-        Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
+        tools, shell = tools_of(raw["tool"], label)
+        Rule.new(id: id, tools: tools, shell: shell, command: regex_of(raw["command"], label),
                  path: path_of(raw["path"], label), git: git_of(raw["git"], label),
                  touches: touches_of(raw["touches"], label), rm: rm_of(raw["rm"], label), memory: memory_of(raw["memory"], label),
                  models: models_of(raw["models"], label),
@@ -168,12 +170,12 @@ module Samagotchi
       end
 
       def self.tools_of(value, label)
-        return nil if value.nil?
+        return [nil, false] if value.nil?
 
         names = Array(value).map(&:to_s)
         raise ParseError, "#{label}: tool must be a name or a list of names" if names.empty? || names.any?(&:empty?)
 
-        names.flat_map { |n| n == "shell" ? Targets::SHELL_TOOLS : [n] }.uniq
+        [names.flat_map { |n| n == "shell" ? Targets::SHELL_TOOLS : [n] }.uniq, names.include?("shell")]
       end
 
       # Whether a rule's tool name is a glob.
