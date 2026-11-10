@@ -206,6 +206,17 @@ module Samagotchi
         why = presence.with_session(Session.load(session_id, state_dir: state_dir)).wake_refusal_by_session
         return why if why
 
+        start_for_inbox(session_id, state_dir: state_dir, event: event)
+      end
+
+      # Start a worker for a delivery whose WakePolicy decided :start
+      # (SessionInbox.deliver): resume_session, which keeps its own checks
+      # (a claim on the starting marker: of starts racing, one spawns),
+      # logged as +event+.
+      # @param event [Symbol] :delegate_woke_parent (a ring) or :context_woke_session (a push)
+      # @return [Symbol] :woken, or :owned (a one-turn chi run or its
+      #   terminal's scratch session took it since)
+      def start_for_inbox(session_id, state_dir:, event:)
         resume_session(session_id, state_dir: state_dir)
         details = event == :delegate_woke_parent ? { parent: session_id[0, 8] } : { sid: session_id[0, 8] }
         Log.info(:worker, event, **details)
