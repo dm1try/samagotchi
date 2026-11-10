@@ -53,12 +53,12 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       session = saved_session
       location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
       push_source(location, "notes")
-      allow(Samagotchi::SessionManager).to receive(:wake_for_context).and_return(:woken)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox).and_return(:woken)
 
       pushed = access.context_push(context_target(session.id), "notes", fetched("new answer"))
 
       expect(pushed).to have_attributes(status: :pushed, before: nil, revision: Samagotchi::ContextSources.revision_of("new answer"))
-      expect(Samagotchi::SessionManager).to have_received(:wake_for_context).with(session.id, state_dir: tmpdir).once
+      expect(Samagotchi::SessionManager).to have_received(:start_for_inbox).with(session.id, state_dir: tmpdir, event: :context_woke_session).once
     end
 
     it "does not wake for an unchanged revision or a push without wake" do
@@ -66,12 +66,12 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
       push_source(location, "notes")
       location.record_text("notes", fetched("same"))
-      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox)
 
       access.context_push(context_target(session.id), "notes", fetched("same"))
       access.context_push(context_target(session.id), "notes", fetched("another", wake: false))
 
-      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+      expect(Samagotchi::SessionManager).not_to have_received(:start_for_inbox)
     end
 
     it "does not wake project sources or when context.wake is off" do
@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       project = Samagotchi::ContextSources.project_location_for(tmpdir, state_dir: tmpdir)
       push_source(project, "project-notes", scope: "project")
       push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "session-notes")
-      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox)
 
       project_target = Samagotchi::ContextCommand::Target.new(session_id: nil, project_root: tmpdir, cwd: tmpdir,
                                                               label: "project")
@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(false)
       access.context_push(context_target(session.id), "session-notes", fetched("session text"))
 
-      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+      expect(Samagotchi::SessionManager).not_to have_received(:start_for_inbox)
     end
 
     it "respects the session source's wake window" do
@@ -95,18 +95,43 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
       push_source(location, "notes")
       location.update_subscription("notes") { |sub| sub.with(wakes_at: Time.now.iso8601) }
-      allow(Samagotchi::SessionManager).to receive(:wake_for_context)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox)
 
       access.context_push(context_target(session.id), "notes", fetched("new answer"))
 
-      expect(Samagotchi::SessionManager).not_to have_received(:wake_for_context)
+      expect(Samagotchi::SessionManager).not_to have_received(:start_for_inbox)
+    end
+
+    # Research probe step 1: a wake push into a session with no worker.
+    it "starts no worker for a wake push into a stopped session, keeps the stop, and says so" do
+      session = saved_session
+      push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "notes")
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+
+      pushed = access.context_push(context_target(session.id), "notes", fetched("new answer"))
+
+      expect(pushed).to have_attributes(status: :pushed, wake: :stopped)
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true)
+      expect(Samagotchi::OwnerLock.owner(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))).to be_nil
+    end
+
+    it "starts a worker for a wake push into an idle-exited session, and says so; nothing for a push that asks none" do
+      session = saved_session
+      push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "notes")
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+
+      expect(access.context_push(context_target(session.id), "notes", fetched("new answer")).wake).to eq(:woken)
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: tmpdir).once
+      expect(access.context_push(context_target(session.id), "notes", fetched("again", wake: false)).wake).to be_nil
     end
 
     it "logs a failed wake without changing the successful push result" do
       session = saved_session
       push_source(Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir), "notes")
       failure = RuntimeError.new("spawn failed")
-      allow(Samagotchi::SessionManager).to receive(:wake_for_context).and_raise(failure)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox).and_raise(failure)
       expect(Samagotchi::Log).to receive(:exception).with(:context, "context_push_wake_failed", failure,
                                                           sid: session.id, source: "notes")
 

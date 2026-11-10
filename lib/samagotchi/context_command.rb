@@ -239,7 +239,7 @@ module Samagotchi
         end
 
         @stdout.puts("#{target.label}  #{name}: #{pushed.revision == pushed.before ? "unchanged" : "new text"} " \
-                     "(#{pushed.revision[0, 12]})")
+                     "(#{pushed.revision[0, 12]})#{" · #{pushed.wake_line}" if pushed.wake_line}")
         true
       end
     end

@@ -44,6 +44,20 @@ module Samagotchi
     # NOTE_MAX_BYTES.
     class NoteRejected < ArgumentError; end
 
+    # The one delivery path (session_inbox_delivery.rb), loaded on first
+    # use: the bundle test kit's load budget stays as it was.
+    delivery = File.expand_path("session_inbox_delivery", __dir__)
+    %i[Dispatch Delivered Head Resolved WakePolicy].each { |name| autoload name, delivery }
+
+    # A delivery of +kind+ to session +target+ (Dispatch.deliver: resolve,
+    # refuse, the block's write, one presence read, the WakePolicy's wake).
+    # @return [Delivered]
+    def self.deliver(kind, target, **, &) = Dispatch.deliver(kind, target, **, &)
+
+    # The wake half of #deliver alone (Dispatch.wake).
+    # @return [Delivered]
+    def self.wake(kind, target, **) = Dispatch.wake(kind, target, **)
+
     # Queue a turn's input file: JSON with the prompt and the sender's ids.
     # +delivery+ is only written when it is "queue": a step-boundary
     # message is the default an older worker assumes, and a cut is done by

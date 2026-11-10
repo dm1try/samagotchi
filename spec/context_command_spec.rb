@@ -193,6 +193,28 @@ RSpec.describe Samagotchi::ContextCommand do
         expect(own(a).snapshot("notes")).to have_attributes(text: "bye", summary: "said bye", wake: true, serial: 2)
       end
 
+      it "says whether a wake push woke the session, found it stopped or starting" do
+        a = make
+        run("add", "notes", "--push", a.id)
+        allow(Samagotchi::SessionManager).to receive(:resume_session)
+        reset_out
+
+        Samagotchi::Session.mark_stopped(a.id, state_dir: state_dir)
+        expect(run("push", "notes", "-m", JSON.generate(text: "one", wake: true), a.id)).to eq(0), err.string
+        Samagotchi::Session.clear_stopped(a.id, state_dir: state_dir)
+        Samagotchi::StartingMarker.mark(a.id, state_dir: state_dir)
+        expect(run("push", "notes", "-m", JSON.generate(text: "two", wake: true), a.id)).to eq(0)
+        Samagotchi::StartingMarker.clear(a.id, state_dir: state_dir)
+        expect(run("push", "notes", "-m", JSON.generate(text: "three", wake: true), a.id)).to eq(0)
+        expect(run("push", "notes", "-m", "four", a.id)).to eq(0)
+
+        lines = out.string.lines.map(&:chomp)
+        expect(lines[0]).to match(/notes: new text \(\h{12}\) · chi is stopped: it sees this at its next start\z/)
+        expect(lines[1]).to match(/notes: new text \(\h{12}\) · chi is starting\z/)
+        expect(lines[2]).to match(/notes: new text \(\h{12}\) · chi woken\z/)
+        expect(lines[3]).to match(/notes: new text \(\h{12}\)\z/)
+      end
+
       it "refuses a push into a continued session with the next link's id, writing nothing; an archived one nobody continued takes it" do
         a = make
         run("add", "notes", "--push", a.id)

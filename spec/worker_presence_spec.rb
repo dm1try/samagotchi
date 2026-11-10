@@ -33,7 +33,6 @@ RSpec.describe Samagotchi::WorkerPresence do
       presence = described_class.read(SecureRandom.uuid, state_dir: state_dir)
 
       expect(presence).to have_attributes(exists?: false, owned?: false, stop_marked?: false, archived?: false)
-      expect(presence.wake_refusal).to eq(:gone)
     end
 
     it "reads an id that isn't one as not there, reading nothing" do
@@ -41,7 +40,6 @@ RSpec.describe Samagotchi::WorkerPresence do
       presence = described_class.read("../bogus", state_dir: state_dir, link: :unlink)
 
       expect(presence).to have_attributes(exists?: false, owned?: false, link: Samagotchi::WorkerLink::None.new)
-      expect(presence.wake_refusal).to eq(:gone)
       expect(described_class.read(nil, state_dir: state_dir).link).to be_nil
     end
 
@@ -170,30 +168,6 @@ RSpec.describe Samagotchi::WorkerPresence do
     it "reads no in-process memo" do
       expect(described_class.members).not_to include(:spawned_here)
       expect { read(spawned: ->(*) { true }) }.to raise_error(ArgumentError)
-    end
-  end
-
-  describe "#wake_refusal" do
-    def presence(**facts)
-      described_class.new(session_id: "s", exists: true, owner: nil, stop_marked: false, starting_marked: false,
-                          archived: false, **facts)
-    end
-
-    let(:worker) { Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", started_at: nil) }
-
-    it "answers in its order: gone, owned, the stop marker, archived, starting" do
-      expect(presence(exists: false, owner: worker).wake_refusal).to eq(:gone)
-      expect(presence(owner: worker, stop_marked: true).wake_refusal).to eq(:owned)
-      expect(presence(stop_marked: true, archived: true).wake_refusal).to eq(:stopped)
-      expect(presence(archived: true, starting_marked: true).wake_refusal).to eq(:archived)
-      expect(presence(starting_marked: true).wake_refusal).to eq(:starting)
-      expect(presence.wake_refusal).to be_nil
-    end
-
-    it "answers the session's own fields after: the turn status, then scratch" do
-      expect(presence(turn_status: "stopped", scratch: true).wake_refusal_by_session).to eq(:stopped)
-      expect(presence(turn_status: "idle", scratch: true).wake_refusal_by_session).to eq(:scratch)
-      expect(presence(turn_status: "idle", scratch: false).wake_refusal_by_session).to be_nil
     end
   end
 

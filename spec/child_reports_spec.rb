@@ -92,6 +92,21 @@ RSpec.describe "delegate reports" do
       expect(rings.size).to eq(1)
     end
 
+    it "rings a stopped, a starting or a scratch parent without waking it" do
+      Samagotchi::Session.mark_stopped(parent.id, state_dir: tmpdir)
+      ring
+      Samagotchi::Session.clear_stopped(parent.id, state_dir: tmpdir)
+      Samagotchi::StartingMarker.mark(parent.id, state_dir: tmpdir)
+      ring
+      Samagotchi::StartingMarker.clear(parent.id, state_dir: tmpdir)
+      scratch = Samagotchi::Session.load(parent.id, state_dir: tmpdir)
+      scratch.scratch = true
+      scratch.save(state_dir: tmpdir)
+      ring
+
+      expect([rings.size, wakes]).to eq([3, []])
+    end
+
     it "rings but doesn't wake in queue mode, and does nothing at all when off" do
       mode[0] = "queue"
       ring
@@ -123,13 +138,13 @@ RSpec.describe "delegate reports" do
     end
 
     describe ".await_wakes" do
-      # The default wake: SessionManager.wake_for_report on a thread.
+      # The default start: SessionManager.start_for_inbox on a thread.
       def ring_on_thread
         described_class.ring(Samagotchi::Session.load(child.id, state_dir: tmpdir), why: "crash", state_dir: tmpdir)
       end
 
       it "waits for the wake threads its rings started, once" do
-        allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
+        allow(Samagotchi::SessionManager).to receive(:start_for_inbox) do |id, **|
           sleep(0.1) # sleep-ok: a slow wake, still running when await_wakes joins it
           (@wakes ||= []) << id
         end
@@ -142,7 +157,7 @@ RSpec.describe "delegate reports" do
 
       it "waits at most its timeout for a wake that doesn't end" do
         gate = Queue.new
-        allow(Samagotchi::SessionManager).to receive(:wake_for_report) { gate.pop }
+        allow(Samagotchi::SessionManager).to receive(:start_for_inbox) { gate.pop }
         ring_on_thread
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -196,6 +211,29 @@ RSpec.describe "delegate reports" do
       expect(Samagotchi::Session.stopped_marker?(parent.id, state_dir: tmpdir)).to be(true)
     end
 
+    it "wakes a parent whose file says stopped with no stop marker: the marker alone means stopped" do
+      stale = Samagotchi::Session.load(parent.id, state_dir: tmpdir)
+      stale.status = "stopped"
+      stale.save(state_dir: tmpdir)
+
+      expect(wake).to eq(:woken)
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(parent.id, state_dir: tmpdir)
+    end
+
+    it "wakes no link of a parent continued twice: the head reads only its predecessor's rings" do
+      Samagotchi::ArchiveStore.archive(parent.id, state_dir: tmpdir)
+      second = make
+      second.continues = parent.id
+      second.save(state_dir: tmpdir)
+      Samagotchi::ArchiveStore.archive(second.id, state_dir: tmpdir)
+      head = make
+      head.continues = second.id
+      head.save(state_dir: tmpdir)
+
+      expect(wake).to eq(:archived)
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
+
     it "wakes the chain's next link for an archived parent a continue moved its children from" do
       Samagotchi::ArchiveStore.archive(parent.id, state_dir: tmpdir)
       link = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: parent.id)
@@ -206,10 +244,12 @@ RSpec.describe "delegate reports" do
     end
   end
 
-  describe "SessionManager.wake_for_context" do
+  # A push's wake (SessionInbox.wake :push, as Local#context_push's delivery).
+  describe "a push's wake" do
     before { allow(Samagotchi::SessionManager).to receive(:resume_session) }
 
-    def wake(session = parent) = Samagotchi::SessionManager.wake_for_context(session.id, state_dir: tmpdir)
+    def wake(session = parent) = push_wake(session.id)
+    def push_wake(id) = Samagotchi::SessionInbox.wake(:push, id, state_dir: tmpdir).wake
 
     it "resumes an idle session" do
       expect(wake).to eq(:woken)
@@ -234,7 +274,7 @@ RSpec.describe "delegate reports" do
 
       owned = make
       own(owned, kind: "worker")
-      expect(wake(owned)).to eq(:owned)
+      expect(wake(owned)).to eq(:live)
 
       starting = make
       Samagotchi::StartingMarker.mark(starting.id, state_dir: tmpdir)
@@ -248,7 +288,7 @@ RSpec.describe "delegate reports" do
     end
 
     it "answers :gone for an id that isn't one, as for a ring" do
-      expect(Samagotchi::SessionManager.wake_for_context("../bogus", state_dir: tmpdir)).to eq(:gone)
+      expect(push_wake("../bogus")).to eq(:gone)
       expect(Samagotchi::SessionManager.wake_for_report("../bogus", state_dir: tmpdir)).to eq(:gone)
       expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
     end

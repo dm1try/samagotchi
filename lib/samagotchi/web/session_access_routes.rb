@@ -459,7 +459,8 @@ module Samagotchi
       # POST /api/sessions/:id/context/:name/push {text, summary, wake,
       # hint}: new text for the session's --push source (chi context push;
       # the fields as a source's JSON output gives them, checked the same
-      # way). 200 {status: "pushed", name, before, revision, changed}; 404
+      # way). 200 {status: "pushed", name, before, revision, changed, wake:
+      # what a push that asked for a wake did, absent when it asked none}; 404
       # context_missing (no such source); 409 not_push (a command source); 410
       # context_continued (the session was continued, as next_id: never 409,
       # which an older Remote reads as not_push, nor "continued", which it
@@ -481,7 +482,7 @@ module Samagotchi
           json_response(410, { error: "context_continued", next_id: pushed.next_id,
                                detail: SessionAccess::ContextPush.continued_message(name, id, pushed.next_id) })
         else json_response(200, { status: "pushed", name: name, before: pushed.before, revision: pushed.revision,
-                                  changed: pushed.before != pushed.revision })
+                                  changed: pushed.before != pushed.revision }.merge(pushed.wake ? { wake: pushed.wake } : {}))
         end
       rescue ContextSources::Invalid
         error_response(404, "context_missing", "no source #{name[0, 40]}")

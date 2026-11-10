@@ -314,20 +314,17 @@ module Samagotchi
         return ContextPush.new(status: :missing) unless attached
         return ContextPush.new(status: :not_push) unless attached.source.push?
 
-        before, written = attached.location.locked(name) do
-          [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
-        end
-        if fetched.wake && before != written.revision && !target.project? && attached.location.session? &&
-           attached.source.scope == "session"
-          begin
-            subscription = attached.location.subscription(name)
-            recent_wake = context_wake_recent?(subscription)
-            SessionManager.wake_for_context(target.session_id, **dir) unless recent_wake || Config.get("context.wake") == false
-          rescue StandardError => e
-            Log.exception(:context, "context_push_wake_failed", e, sid: target.session_id, source: name)
+        record = lambda do
+          attached.location.locked(name) do
+            [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
           end
         end
-        ContextPush.new(status: :pushed, before: before, revision: written.revision)
+        unless !target.project? && attached.location.session? && attached.source.scope == "session"
+          before, written = record.call
+          return ContextPush.new(status: :pushed, before: before, revision: written.revision)
+        end
+
+        push_delivery(target.session_id, name, fetched, attached.location, record)
       end
 
       # The target's sources: a session's own, then its project's (shadowed
@@ -468,6 +465,36 @@ module Samagotchi
       end
 
       private
+
+      # A session source's push, as a push delivery (SessionInbox.deliver
+      # :push): the text recorded, then a wake when it asks one (a change
+      # with wake, context.wake on, the source not woken lately) as the
+      # push WakePolicy decides (an idle-exited session starts; a stopped
+      # one never). A failed wake is logged: the push stands.
+      # @return [ContextPush]
+      def push_delivery(session_id, name, fetched, location, record)
+        before = written = asked = nil
+        delivered = begin
+          SessionInbox.deliver(:push, session_id, state_dir: state_dir!) do
+            before, written = record.call
+            asked = fetched.wake && before != written.revision && context_wake_allowed?(location, name)
+          end
+        rescue StandardError => e
+          raise unless written
+
+          Log.exception(:context, "context_push_wake_failed", e, sid: session_id, source: name)
+          nil
+        end
+        # Its session file is gone (:gone): the source's folder takes it, as before.
+        before, written = record.call if delivered&.refused?
+        ContextPush.new(status: :pushed, before: before, revision: written.revision, wake: asked ? delivered&.wake : nil)
+      end
+
+      def context_wake_allowed?(location, name)
+        return false if Config.get("context.wake") == false
+
+        !context_wake_recent?(location.subscription(name))
+      end
 
       def grants = @grants ||= Grants.new(Grants.path(state_dir: state_dir!))
 
