@@ -278,6 +278,49 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["turn_drawings"]["turn-again"]["end"]).to include("turn_id" => "turn-again")
   end
 
+  # A real line written for the messages' [from, to) (a worker's), with no rows.
+  def real_line(messages, id, from, to)
+    digest = ->(m) { Samagotchi::Bridge::TurnDrawings.digest(m) }
+    { "v" => 1, "turn_id" => id, "kind" => "completed", "from" => from, "to" => to, "from_digest" => digest.call(messages[from]),
+      "to_digest" => digest.call(messages[to - 1]), "drawing" => { "turn_id" => id, "parts" => [] },
+      "end" => { "type" => "turn_completed", "turn_id" => id } }
+  end
+
+  # Two turns, the second followed by a Continue's steps (turn t3, no
+  # opening of its own: TurnRanges reads them as t2's), and drawings that
+  # start partway through: only one of t2 and its Continue has a line.
+  describe "drawings that start partway through a session" do
+    let(:messages) do
+      [{ "role" => "system", "content" => "You are chi." },
+       { "role" => "user", "content" => "q1", "turn_id" => "t1" }, { "role" => "model", "content" => "a1" },
+       { "role" => "user", "content" => "q2", "turn_id" => "t2" },
+       { "role" => "model", "content" => "Looking.", "tool_calls" => [{ "id" => "c2", "name" => "read", "arguments" => "{}" }] },
+       { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c2" },
+       { "role" => "model", "content" => "More.", "tool_calls" => [{ "id" => "c3", "name" => "read", "arguments" => "{}" }] },
+       { "role" => "tool_response", "content" => "[read]\ny", "tool_call_id" => "c3" },
+       { "role" => "model", "content" => "done" }]
+    end
+
+    it "makes the turn before a lined Continue from its messages: no item stays unstamped" do
+      write_lines([real_line(messages, "t3", 6, 9)])
+      data = show(app_for(messages))
+
+      expect(data["messages"].map { |m| [m["content"], m["drawn"]] })
+        .to eq([%w[q1 t1], %w[a1 t1], %w[q2 t2], %w[Looking. t2], %w[More. t3], %w[done t3]])
+      expect(all_drawn(data)).to be(true)
+      expect(data["turn_drawings"]["t2"]["events"].first).to include("type" => "turn_started", "prompt" => "q2")
+    end
+
+    it "makes an unlined Continue after a lined turn from its messages, under an id of its own" do
+      write_lines([real_line(messages, "t2", 3, 6)])
+      data = show(app_for(messages))
+
+      expect(data["messages"].map { |m| m["drawn"] }).to eq(%w[t1 t1 t2 t2 t2~6 t2~6])
+      expect(all_drawn(data)).to be(true)
+      expect(data["turn_drawings"]["t2~6"]["end"]).not_to have_key("turn_id")
+    end
+  end
+
   it "gives a turn with no turn record its saved tool records' durations" do
     write_analytics([], [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "read", "status" => "ok", "duration_ms" => 77 }])
     data = show(app_for(long_session(1)))
