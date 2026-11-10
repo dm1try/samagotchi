@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
       if event[:type] == :tool_call_completed
         tools << { "id" => "#{turn_id}:#{event[:call_index]}", "turn_id" => turn_id, "iteration" => event[:iteration],
                    "call_index" => event[:call_index], "tool" => event[:tool], "status" => event.dig(:activity, :status),
-                   "duration_ms" => event[:duration_ms] }
+                   "duration_ms" => event[:duration_ms], **record_flags(event[:activity] || {}) }
       end
       turns << turn_record(event) if Samagotchi::Events::TURN_END.include?(event[:type])
     end
@@ -47,6 +47,16 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
     { lines: lines, entries: JSON.parse(JSON.generate(cards.list(messages: scenario[:messages]))), turns: turns, tools: tools }
   ensure
     FileUtils.rm_rf(dir)
+  end
+
+  # What SessionMetrics keeps on a tool record from the call's activity:
+  # called_as, via, a grep's no_match and System 1's auto-allow.
+  def record_flags(activity)
+    flags = activity.slice(:called_as, :via).transform_keys(&:to_s)
+    flags["no_match"] = true if activity[:no_match]
+    guardrail = activity[:guardrail]
+    flags["guardrail"] = guardrail.slice(:rule, :p).transform_keys(&:to_s) if guardrail.is_a?(Hash) && guardrail[:decided_by] == "system one"
+    flags
   end
 
   def turn_record(event)
@@ -94,7 +104,7 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
 
       public :messages_for_display, :turn_drawings_field
     end.new
-    items = host.messages_for_display(messages, parts: true, markdown: false, drawings: lines, strip_drawn: true)
+    items = host.messages_for_display(messages, markdown: false, drawings: lines)
     JSON.parse(JSON.generate({ messages: items, **host.turn_drawings_field(lines, items) }))
   end
 

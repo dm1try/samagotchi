@@ -243,17 +243,23 @@ module Samagotchi
           messages = Array(messages)
           real = Degrade.call(:web, "turn_drawings_unreadable", fallback: []) { valid(lines, messages) }
           ranges = TurnRanges.of(messages)
-          open = uncovered(ranges, real)
-          ranges = reserve_ids(ranges, open, real)
-          turn_records = list_of(timing, :turn_records)
-          records = TurnRanges.records(ranges, turn_records)
+          records = TurnRanges.records(ranges, list_of(timing, :turn_records))
+          taken = real.to_set(&:turn_id)
           tools = list_of(timing, :tool_records).group_by { |t| field(t, :turn_id) }
           own = Array(entries).select { |e| e.is_a?(Hash) && field(e, :of_turn) }.group_by { |e| field(e, :of_turn) }
-          made = open.filter_map do |i|
-            range = ranges[i]
-            next if skip_turn_id && range.turn_id == skip_turn_id
+          made = uncovered(ranges, real).filter_map do |i, part|
+            next if skip_turn_id && ranges[i].turn_id == skip_turn_id
 
-            record = records[i]
+            # A made range whose id a kept line has (a failed turn's kept
+            # steps, then its re-run under the same turn id: .valid keeps the
+            # newest line for an id) is renamed "<id>~<from>": never two
+            # lines with one id (the page would draw them as one turn), and
+            # not its turn's own (no end turn_id, no record).
+            range = taken.include?(part.id) ? part.with(id: "#{part.id}~#{part.from}") : part
+            # A piece with its turn's opening is that turn's (by its own id,
+            # else by place for a turn saved before turn ids); one without
+            # (a Continue's steps after a lined turn) has no record.
+            record = records[i] if range.opening && (range.turn_id.nil? || range.own_id?)
             # The turn's tool records by its record's id, else its own (a
             # record lost, its tool records saved: the TUI's join does so too).
             tool_id = record ? field(record, :id) : (range.turn_id if range.own_id?)
@@ -263,33 +269,42 @@ module Samagotchi
           (real + made).sort_by(&:from)
         end
 
-        # +ranges+ with each one to be made (+open+, indexes) whose id a kept
-        # line has (a failed turn's kept steps, then its re-run under the same
-        # turn id: .valid keeps the newest line for an id) renamed "<id>~<from>":
-        # never two lines with one id (the page would draw them as one turn),
-        # and not its turn's own (no end turn_id, record or entries).
-        def reserve_ids(ranges, open, lines)
-          taken = lines.to_set(&:turn_id)
-          return ranges if taken.empty?
-
-          made = open.to_set
-          ranges.each_with_index.map do |range, i|
-            made.include?(i) && taken.include?(range.id) ? range.with(id: "#{range.id}~#{range.from}") : range
-          end
-        end
-        private :reserve_ids
-
-        # The indexes of +ranges+ no line of +lines+ (sorted by from, apart)
-        # overlaps: one walk over both.
+        # The parts of +ranges+ no line of +lines+ (sorted by from, apart)
+        # overlaps, as [range index, range]: a range none overlaps whole,
+        # and a range one covers in part (a Continue's steps read as the
+        # turn before's, TurnRanges, with only one of the two lined) split
+        # at the lines' bounds, so no turn item is left without a line. One
+        # walk over both.
         def uncovered(ranges, lines)
           at = 0
-          ranges.each_index.reject do |i|
-            range = ranges[i]
+          ranges.each_with_index.flat_map do |range, i|
             at += 1 while at < lines.size && lines[at].to >= 0 && lines[at].to <= range.from
-            at < lines.size && lines[at].from < range.to
+            from = range.from
+            gaps = []
+            (at...lines.size).each do |k|
+              break unless lines[k].from < range.to
+
+              gaps << [from, lines[k].from] if lines[k].from > from
+              from = [from, lines[k].to].max
+            end
+            gaps << [from, range.to] if from < range.to
+            gaps.map { |a, b| [i, piece(range, a, b)] }
           end
         end
         private :uncovered
+
+        # +range+'s messages [+from+, +to+): the range itself when whole; a
+        # part with its opening keeps its id; one without is made up
+        # ("<id>~<from>", no turn id: no record, no CardStore entries).
+        def piece(range, from, to)
+          return range if from == range.from && to == range.to
+
+          opening = range.opening && (range.opening < range.from ? from == range.from : (from...to).cover?(range.opening))
+          return range.with(from: from, to: to) if opening
+
+          TurnRanges::Range.new(from: from, to: to, id: "#{range.id}~#{from}", turn_id: nil, opening: nil)
+        end
+        private :piece
 
         # A fork's drawings (Plugin::Sessions#fork, before its child's worker
         # spawns: no other writer): the lines of +from_dir+'s file that hold

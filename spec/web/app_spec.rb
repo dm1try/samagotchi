@@ -1311,7 +1311,7 @@ RSpec.describe Samagotchi::Web::App do
 
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
 
-      expect(JSON.parse(body.first)["messages"]).to eq([
+      expect(JSON.parse(body.first)["messages"].map { |m| m.except("drawn") }).to eq([
         { "role" => "user", "content" => "hi" },
         { "role" => "note", "content" => "deploy frozen", "label" => "slack", "at" => message_at },
         { "role" => "note", "content" => "api moved", "label" => "session 3f2a1c (/work/foo)", "at" => message_at }
@@ -1612,7 +1612,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(200)
       payload = JSON.parse(body.first)
-      expect(payload["messages"]).to eq([
+      expect(payload["messages"].map { |m| m.except("drawn") }).to eq([
         { "role" => "user", "content" => "first" },
         { "role" => "assistant", "content" => "answer" },
         { "role" => "user", "content" => "second" }
@@ -1994,8 +1994,9 @@ RSpec.describe Samagotchi::Web::App do
           expect(messages[1]).to include("content" => "Before I go on: JIRA-1?", "display_refs" => [jira]), query
           expect(messages.map { |m| m["content"] }.join).not_to include("call:"), query
         end
-        expect(live_read("").length).to eq(2)
-        parts = live_read("?parts=1")
+        # The show keeps the text-less step (an empty item); its parts are the participant review's.
+        expect(live_read("").map { |m| m["content"] }.last).to eq("")
+        parts = JSON.parse(JSON.generate(build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, live["snapshot"]["messages"], parts: true)))
         expect(parts[2]["content"]).to eq("")
         expect(parts[1]["parts"]).to include("thinking" => "weighing it")
         expect(parts[1]["parts"]["tools"].length).to eq(1)
@@ -2403,7 +2404,11 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
-    describe "?parts=1 (the turn block's reload: what each step did)" do
+    # What each step did (MessageParts) is the participant review's
+    # (messages_for_display with parts: true); the owner's show draws every
+    # finished turn from a drawing: its items are stamped, without parts, a
+    # text-less step kept as an empty item.
+    describe "a step's parts (the participant review's) and the owner show's steps" do
       let(:live) do
         { "snapshot" => { "messages" => [
           { "role" => "system", "content" => "sys" },
@@ -2423,10 +2428,13 @@ RSpec.describe Samagotchi::Web::App do
         JSON.parse(app.call(env_for(path))[2].first)
       end
 
-      it "hands each assistant message its parts and keeps a text-less step" do
-        payload = payload_for(build_app(state_dir: Dir.mktmpdir, markdown: true), "/api/sessions/s1?parts=1")
+      # As JSON has them, the way a payload carries them.
+      def parts_of(app, messages, cwd: Dir.pwd)
+        JSON.parse(JSON.generate(app.send(:messages_for_display, messages, parts: true, cwd: cwd)))
+      end
 
-        steps = payload["messages"].select { |m| m["role"] == "assistant" }
+      it "hands each assistant message its parts and keeps a text-less step" do
+        steps = parts_of(build_app(state_dir: Dir.mktmpdir, markdown: true), live["snapshot"]["messages"]).select { |m| m["role"] == "assistant" }
         expect(steps.map { |m| m["content"] }).to eq(["Let me look.", "", "It says **hello**."])
         expect(steps.map { |m| m["parts"] }).to eq([
           { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "title" => "ls", "view" => { "command" => "ls", "steps" => [{ "text" => "ls" }] },
@@ -2451,21 +2459,22 @@ RSpec.describe Samagotchi::Web::App do
                     { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read",
                                                                              "arguments" => { "path" => "/work/proj/lib/x.rb" } }] },
                     { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c1" }]
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
-                                               .and_return(live.merge("snapshot" => { "messages" => messages }))
-        payload = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)
-        expect(payload["messages"].last["parts"]["tools"].first).to include("title" => "lib/x.rb",
-                                                                            "params" => %(path="/work/proj/lib/x.rb"))
+        expect(parts_of(app, messages, cwd: "/work/proj").last["parts"]["tools"].first).to include("title" => "lib/x.rb",
+                                                                                                   "params" => %(path="/work/proj/lib/x.rb"))
       end
 
-      it "without it the messages are as before: no parts, no text-less step" do
-        payload = payload_for(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1")
+      it "the owner's show (any query): no parts, the text-less step an empty item, every item stamped with its turn" do
+        ["", "?parts=1"].each do |query|
+          shown = payload_for(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1#{query}")["messages"]
 
-        expect(payload["messages"]).to eq([
-          { "role" => "user", "content" => "check" },
-          { "role" => "assistant", "content" => "Let me look." },
-          { "role" => "assistant", "content" => "It says **hello**." }
-        ])
+          expect(shown.map { |m| m.except("drawn") }).to eq([
+            { "role" => "user", "content" => "check" },
+            { "role" => "assistant", "content" => "Let me look." },
+            { "role" => "assistant", "content" => "" },
+            { "role" => "assistant", "content" => "It says **hello**." }
+          ])
+          expect(shown.map { |m| m["drawn"] }.uniq.size).to eq(1)
+        end
       end
 
       it "draws a turn with no answer from its note's marker: the empty steps, then the notice; never the note" do
@@ -2477,14 +2486,16 @@ RSpec.describe Samagotchi::Web::App do
         app = build_app(state_dir: Dir.mktmpdir)
         stub_worker(app, empty)
 
-        turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
+        turn = parts_of(app, empty["snapshot"]["messages"])
         chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
 
         expect(turn).to eq([{ "role" => "user", "content" => "hi" },
                             { "role" => "assistant", "content" => "", "parts" => { "thinking" => "first" } },
                             { "role" => "assistant", "content" => "", "parts" => { "thinking" => "second" } },
                             { "role" => "empty_answer", "content" => "", "retries" => 1 }])
-        expect(chat).to eq([{ "role" => "user", "content" => "hi" }, { "role" => "empty_answer", "content" => "", "retries" => 1 }])
+        expect(chat.map { |m| m.except("drawn") }).to eq([{ "role" => "user", "content" => "hi" },
+                                                          { "role" => "assistant", "content" => "" }, { "role" => "assistant", "content" => "" },
+                                                          { "role" => "empty_answer", "content" => "", "retries" => 1 }])
       end
 
       it "hands a refused turn's notice item its refusal" do
@@ -2496,7 +2507,7 @@ RSpec.describe Samagotchi::Web::App do
 
         chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
 
-        expect(chat.last).to eq("role" => "empty_answer", "content" => "", "retries" => 0, "refusal" => { "category" => "cyber" })
+        expect(chat.last.except("drawn")).to eq("role" => "empty_answer", "content" => "", "retries" => 0, "refusal" => { "category" => "cyber" })
       end
 
       it "hands out the thinking an api: openai step saved; the chat view's messages don't carry it" do
@@ -2510,11 +2521,12 @@ RSpec.describe Samagotchi::Web::App do
         app = build_app(state_dir: Dir.mktmpdir)
         stub_worker(app, openai)
 
-        turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
+        turn = parts_of(app, openai["snapshot"]["messages"])
         chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
 
         expect(turn.filter_map { |m| m.dig("parts", "thinking") }).to eq(["run it", "it passed"])
-        expect(chat).to eq([{ "role" => "user", "content" => "check" }, { "role" => "assistant", "content" => "Passed." }])
+        expect(chat.map { |m| m.except("drawn") }).to eq([{ "role" => "user", "content" => "check" }, { "role" => "assistant", "content" => "" },
+                                                          { "role" => "assistant", "content" => "Passed." }])
       end
 
       it "the turn-end tail stays light (no parts)" do

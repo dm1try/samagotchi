@@ -90,27 +90,31 @@ module Samagotchi
 
       # @param msgs [Array<Hash>] a session's messages; symbol keys from disk,
       #   string keys from a Bridge snapshot
-      # @param parts [Boolean] the turn block's reload (?parts=1): each
-      #   assistant message also carries what it did (MessageParts: thinking,
-      #   tool calls with params and output), and a message with nothing to
-      #   show but that (a text-less step) is kept with empty content
+      # @param parts [Boolean] the participant review's: each assistant
+      #   message also carries what it did (MessageParts: thinking, tool
+      #   calls with params and output), and a message with nothing to show
+      #   but that (a text-less step) is kept with empty content
       # @param cwd [String, nil] the session's working directory (the parts'
       #   tool titles are relative to it)
       # @param markdown [Boolean] false: no html for a delegate report or an
       #   answer (the participant review drops both and renders its replies
       #   from their redacted text, ParticipantReview#with_reply_html)
-      # @param drawings [Array<Bridge::TurnDrawings::Line>] the valid lines
-      #   (TurnDrawings.valid against +msgs+): each item of a kind a drawing
-      #   draws (#drawn_kind?) from a line's range gets `drawn: <turn_id>`
-      # @param strip_drawn [Boolean] a stamped item's parts go (the drawing
-      #   has them); it keeps its ✂ marks as `marks: {tool_id => edit}`
-      def messages_for_display(msgs, parts: false, cwd: nil, markdown: true, drawings: [], strip_drawn: false)
+      # @param drawings [Array<Bridge::TurnDrawings::Line>, nil] the owner
+      #   show's lines (TurnDrawings.cover against +msgs+): each item of a
+      #   kind a drawing draws (#drawn_kind?) from a line's range gets
+      #   `drawn: <turn_id>`, a step its outputs' ✂ marks as `marks:
+      #   {tool_id => edit}` (an overlay on the drawing's rows), and a
+      #   text-less step stays (empty content: its marks, the turn's last
+      #   step); nil: no stamps (the participant review, a lone answer)
+      def messages_for_display(msgs, parts: false, cwd: nil, markdown: true, drawings: nil)
         filtered = []
         list = Array(msgs)
+        steps = !drawings.nil?
         # Each item's message index, for the drawings' stamps.
         origins = []
-        # The outputs' ✂ marks (LLM context edits), by id, for the parts.
-        marks = parts ? MessageParts.edit_marks(list) : {}
+        # The outputs' ✂ marks (LLM context edits), by id, for the parts
+        # and the drawn steps.
+        marks = parts || steps ? MessageParts.edit_marks(list) : {}
         # The list before each objectives note, for what its entry says changed.
         objectives = nil
         list.each_with_index do |m, index|
@@ -145,7 +149,7 @@ module Samagotchi
           # empty steps (with ?parts=1) and the item the page draws its
           # notice from; the note itself stays hidden.
           if (marker = Samagotchi::TurnNote.empty_answer(m))
-            filtered.concat(empty_answer_items(marker, parts: parts, cwd: cwd))
+            filtered.concat(empty_answer_items(marker, parts: parts, steps: steps, cwd: cwd))
             next
           end
           next if role == "system"
@@ -155,8 +159,9 @@ module Samagotchi
           next if Samagotchi::Steer.recovery?(m)
 
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
-          did = parts && %w[model assistant].include?(role) ? message_parts(list, index, cwd, marks) : nil
-          next if stripped.empty? && did.nil?
+          step = %w[model assistant].include?(role)
+          did = parts && step ? message_parts(list, index, cwd, marks) : nil
+          next if stripped.empty? && did.nil? && !(steps && step && did_something?(m, content))
 
           norm_role = role == "model" ? "assistant" : role
           # normalize assistant vs model, keep user as is
@@ -219,12 +224,36 @@ module Samagotchi
             message[:display_refs] = refs unless refs.empty?
           end
           message[:parts] = did if did
+          step_marks = steps && step ? output_marks(list, index, cwd, marks) : {}
+          message[:marks] = step_marks unless step_marks.empty?
           filtered << message
         end
         origins.fill(list.size - 1, origins.size...filtered.size)
-        stamp_drawn(filtered, origins, Array(drawings), strip: strip_drawn)
+        stamp_drawn(filtered, origins, Array(drawings))
       rescue StandardError
         []
+      end
+
+      # Whether a text-less model message did something a drawing draws as
+      # a step: a call or thinking (MessageParts' own read, without
+      # parsing the calls).
+      def did_something?(message, content)
+        calls = message[:tool_calls] || message["tool_calls"]
+        (calls.is_a?(Array) && !calls.empty?) || !content.strip.empty? || !(message[:thinking] || message["thinking"]).to_s.strip.empty?
+      end
+
+      # The ✂ marks of the outputs right after the model message at +index+,
+      # by output id, as its parts have them (a stub's size from its own
+      # output): its parts are read only when +marks+ (the session's, by
+      # output id) names one of them.
+      def output_marks(list, index, cwd, marks)
+        return {} if marks.empty?
+
+        responses = list.drop(index + 1).take_while { |r| (r[:role] || r["role"]).to_s == "tool_response" }
+        return {} unless responses.any? { |r| Array(r[:tool_ids] || r["tool_ids"]).any? { |id| marks.key?(id.to_s) } }
+
+        tools = Array(message_parts(list, index, cwd, marks)&.dig(:tools))
+        tools.filter_map { |tool| [tool[:tool_id], tool[:edit]] if tool[:tool_id] && tool[:edit] }.to_h
       end
 
       # +items+ with a drawn turn's stamp on each item of a kind its drawing
@@ -233,17 +262,14 @@ module Samagotchi
       # place. +origins+: each item's message index.
       # One walk: +drawings+ are sorted apart by range, +origins+ never go
       # back.
-      def stamp_drawn(items, origins, drawings, strip:)
+      def stamp_drawn(items, origins, drawings)
         return items if drawings.empty?
 
         at = 0
         items.each_with_index.map do |item, i|
           at += 1 while at < drawings.size && drawings[at].to <= origins[i]
           line = drawings[at] if at < drawings.size && drawings[at].range.cover?(origins[i])
-          next item unless line && drawn_kind?(item)
-
-          stamped = item.merge(drawn: line.turn_id)
-          strip ? without_parts(stamped) : stamped
+          line && drawn_kind?(item) ? item.merge(drawn: line.turn_id) : item
         end
       end
 
@@ -253,15 +279,6 @@ module Samagotchi
         when "user" then !(item[:turn_id].nil? && item[:content].match?(/\A!\(.*\)\n/))
         else %w[assistant steer empty_answer].include?(item[:role])
         end
-      end
-
-      # A drawn item without its parts: its ✂ marks by output id stay (an
-      # overlay on the drawing's rows: later state, as a card's latest body).
-      def without_parts(item)
-        tools = Array(item.dig(:parts, :tools))
-        marks = tools.filter_map { |tool| [tool[:tool_id], tool[:edit]] if tool[:tool_id] && tool[:edit] }.to_h
-        out = item.except(:parts)
-        marks.empty? ? out : out.merge(marks: marks)
       end
 
       # A turn opening's Revise stamp as {revises: {turn_id:}}, checked again
@@ -280,13 +297,13 @@ module Samagotchi
 
       # A no-answer turn's marker as display items: each empty step that
       # has something to show (its thinking) as a text-less assistant step
-      # (only with +parts+, as other text-less steps), then
-      # { role: "empty_answer", retries: }.
-      def empty_answer_items(marker, parts:, cwd:)
-        steps = parts ? Array(marker[:steps] || marker["steps"]) : []
-        items = steps.filter_map do |step|
+      # (only with +parts+ or +steps+, as other text-less steps; its parts
+      # with +parts+), then { role: "empty_answer", retries: }.
+      def empty_answer_items(marker, parts:, steps:, cwd:)
+        saved = parts || steps ? Array(marker[:steps] || marker["steps"]) : []
+        items = saved.filter_map do |step|
           did = step.is_a?(Hash) ? MessageParts.for_message(step, [], cwd: cwd) : nil
-          { role: "assistant", content: "", parts: did } if did
+          { role: "assistant", content: "", **(parts ? { parts: did } : {}) } if did
         end
         refusal = marker[:refusal] || marker["refusal"]
         items << { role: "empty_answer", content: "", retries: (marker[:retries] || marker["retries"]).to_i, refusal: refusal }.compact

@@ -7,8 +7,13 @@ import { genLabel } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 
-const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
+// A reload's markup, its turns drawn as chi web sends them (drawn_history.js).
+const turnHistoryHtml = (source, timing, opts) => {
+  const { items, drawings } = drawnHistory(source);
+  return htmlOf(turnHistoryNodes(items, timing, { ...opts, drawings }));
+};
 
 // A plugin tool's label ("mcp") stands for its raw name (call_tool) wherever
 // a row, a step title or the tally names it; the MCP tool it calls is in its
@@ -50,7 +55,7 @@ test("a reloaded row and its step title show the label saved with the result", (
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: MCP.tool, status: "ok", duration_ms: 5 }],
   });
   const items = [
-    { role: "user", content: "p" },
+    { role: "user", content: "p", turn_id: "T1" },
     { role: "assistant", content: "", parts: { thinking: "t", tools: [{ ...MCP, params: "chrome/take_screenshot" }] } },
     { role: "assistant", content: "Done." },
   ];
@@ -99,7 +104,7 @@ test("a reloaded row shows the saved title in place of the params, its step is t
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 5 }],
   });
   const items = [
-    { role: "user", content: "p" },
+    { role: "user", content: "p", turn_id: "T1" },
     { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="cd /x && rspec"', title: "rspec" }] } },
     { role: "assistant", content: "Done." },
   ];

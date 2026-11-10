@@ -6,13 +6,15 @@ import assert from "node:assert/strict";
 import { turnElements } from "../../../lib/samagotchi/web/public/turn_range.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 
 const thumbs = () => "";
 const NOW = Date.parse("2026-10-02T00:00:00Z");
 
-function ownerHistory(items, records) {
+function ownerHistory(source, records) {
+  const { items, drawings } = drawnHistory(source);
   const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs, now: NOW }));
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs, now: NOW, drawings }));
   return holder;
 }
 

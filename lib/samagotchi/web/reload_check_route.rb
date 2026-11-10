@@ -51,8 +51,8 @@ module Samagotchi
 
       private
 
-      # {turn_id, same, kinds, excused, explained, drawn} from the page: 204,
-      # whatever it said
+      # {turn_id, same, kinds, excused, explained, drawn, undrawn} from the
+      # page: 204, whatever it said
       # (fire-and-forget); 400 for a body that isn't a JSON object.
       # worker_version is chi web's own view of the session's worker (its
       # sidecar), never the body's.
@@ -66,7 +66,10 @@ module Samagotchi
 
         same = body["same"] == true
         drawn = body["drawn"] == true
-        fields = { sid: id, turn_id: turn_id, same: same, drawn: drawn, worker_version: checked_worker_version(id) }
+        # The reload's rows with no drawing (the page's plain fallback): a
+        # count chi web should keep at 0.
+        undrawn = body["undrawn"].is_a?(Integer) ? body["undrawn"].clamp(0, 10_000) : 0
+        fields = { sid: id, turn_id: turn_id, same: same, drawn: drawn, undrawn: undrawn, worker_version: checked_worker_version(id) }
         Log.info(:web, "reload_checked", **fields)
         unless same
           Log.info(:web, "reload_mismatch", **fields.except(:same), kinds: checked_tokens(body["kinds"], KINDS),

@@ -13,6 +13,11 @@ and commands may change between minor versions. How releases are made:
 - `chi project init` and `chi project` name memories saved from a project's subfolders before init (found from this
   machine's sessions), and `chi project init --merge-subfolders` moves them into the project's memories folder.
 
+### Changed
+
+- One way to draw a finished turn on reload. A tab opened before 0.157 shows turns without their steps until it
+  reloads.
+
 ## [0.162.0] - 2026-11-10
 
 ### Changed

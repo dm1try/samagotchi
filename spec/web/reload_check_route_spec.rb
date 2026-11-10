@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
     expect(post({ turn_id: "8f0c1d2e-aaaa-4bbb-8ccc-0123456789ab", same: true, kinds: [], drawn: false })).to eq([204, ""])
 
     expect(lines).to eq([["reload_checked", { sid: session.id, turn_id: "8f0c1d2e-aaaa-4bbb-8ccc-0123456789ab", same: true,
-                                              drawn: false, worker_version: nil }]])
+                                              drawn: false, undrawn: 0, worker_version: nil }]])
   end
 
   it "logs reload_mismatch too, its kinds sorted from the shape's vocabulary only: content and unknown tokens dropped" do
@@ -50,16 +50,23 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
            excused: %w[edit-mark made-up command-bubble], explained: true, drawn: true })
 
     expect(lines.map(&:first)).to eq(%w[reload_checked reload_mismatch])
-    expect(lines.last.last).to eq(sid: session.id, turn_id: "T1", drawn: true, worker_version: nil, kinds: "answer,row",
+    expect(lines.last.last).to eq(sid: session.id, turn_id: "T1", drawn: true, undrawn: 0, worker_version: nil, kinds: "answer,row",
                                   excused: "command-bubble,edit-mark", explained: true)
   end
 
   it "drops a turn id that isn't one, and keeps none of the body's other fields" do
-    post({ turn_id: "a b/../c", same: false, kinds: "row", drawn: "yes", text: "the answer", worker_version: "9.9.9" })
+    post({ turn_id: "a b/../c", same: false, kinds: "row", drawn: "yes", undrawn: "3", text: "the answer", worker_version: "9.9.9" })
 
-    expect(lines.last.last).to eq(sid: session.id, turn_id: nil, drawn: false, worker_version: nil, kinds: "row", excused: "",
+    expect(lines.last.last).to eq(sid: session.id, turn_id: nil, drawn: false, undrawn: 0, worker_version: nil, kinds: "row", excused: "",
                                   explained: false)
     expect(lines.flatten.map(&:to_s)).not_to include("the answer", "9.9.9")
+  end
+
+  it "counts the reload's rows that came without a drawing (the page's plain fallback), an integer only" do
+    post({ turn_id: "T1", same: true, kinds: [], drawn: true, undrawn: 2 })
+    post({ turn_id: "T2", same: true, kinds: [], drawn: true, undrawn: 10**9 })
+
+    expect(lines.map { |_, fields| fields[:undrawn] }).to eq([2, 10_000])
   end
 
   it "names the worker's version from chi web's view of it (its sidecar), never the body's" do

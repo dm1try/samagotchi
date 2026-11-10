@@ -435,7 +435,7 @@ test("a running turn the reload gets no current_turn for keeps Stop turn in the 
   await send(page, "Take your time");
   await expect(stageEl(page).locator(".ts-cancel")).toBeVisible();
   const id = page.url().match(/#\/s\/([^/?]+)$/)[1];
-  await page.route((url) => url.pathname === `/api/sessions/${id}` && url.search === "?parts=1&drawings=1", async (route) => {
+  await page.route((url) => url.pathname === `/api/sessions/${id}` && url.search === "", async (route) => {
     const res = await route.fetch();
     const body = await res.json();
     delete body.current_turn;

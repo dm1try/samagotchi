@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { ACCEPTED, KINDS, compareShapes, historyShape } from "../../../lib/samagotchi/web/public/history_shape.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 
 const NOW = Date.parse("2026-10-02T00:00:00Z");
 
@@ -16,13 +17,13 @@ function historyOf(markup) {
 }
 
 test("historyShape reads a reloaded turn: prompt, block, steps, rows, answer, timing", () => {
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes([
+  const { items, drawings } = drawnHistory([
     { role: "user", content: "check it", turn_id: "T1", at: "2026-10-01T10:00:00Z" },
     { role: "assistant", content: "Let me look.", parts: { tools: [{ tool: "read", params: 'path="a.rb"', output: "[read]\nok", tool_id: "t1" }] } },
     { role: "assistant", content: "All good." },
-  ], normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 1500 }], tool_records: [{ turn_id: "T1", iteration: 1, call_index: 1, tool: "read", status: "ok", duration_ms: 12 }] }),
-  { thumbs: () => "", now: NOW }));
+  ]);
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 1500 }] }), { thumbs: () => "", now: NOW, drawings }));
 
   const shape = historyShape(holder);
   assert.deepEqual(shape.map((it) => it.kind), ["prompt", "block", "step", "row", "answer", "timing"]);

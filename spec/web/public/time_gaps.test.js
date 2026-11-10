@@ -3,6 +3,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createGapClock, groupGaps, groupTimes, lastActivity, timeGapEl } from "../../../lib/samagotchi/web/public/time_gaps.js";
 import { normalizeTiming, turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
+
+// The groups of +source+ as the page makes them from chi web's show (every
+// turn drawn: drawn_history.js; the items keep their indexes).
+function groupsOf(source, timing) {
+  const { items, drawings } = drawnHistory(source);
+  return turnGroups(items, timing, { drawings });
+}
 
 // Local Date parts: the expectations hold in any time zone.
 const localIso = (h, m, s = 0) => new Date(2026, 9, 24, h, m, s).toISOString();
@@ -16,15 +24,15 @@ test("groupTimes: a turn from its first stamp to the later of its last stamp and
     { role: "assistant", content: "done", at: localIso(9, 2) },
   ];
   const timing = normalizeTiming({ turn_records: [{ id: "T1", started_at: localIso(9, 0), duration_ms: 5 * 60_000 }] });
-  const [group] = turnGroups(items, timing);
+  const [group] = groupsOf(items, timing);
   assert.deepEqual(groupTimes(group, items), { start: ms(9, 0), end: ms(9, 5) });
 });
 
-test("groupTimes: an unstamped turn (saved before stamps) falls back to its record; a note to its own at; none: null", () => {
+test("groupTimes: a turn whose items have no time (saved before stamps) falls back to its record; a note to its own at; none: null", () => {
   const items = [{ role: "user", content: "old", turn_id: "T1" }, { role: "assistant", content: "a" },
     { role: "note", content: "n", label: "slack", at: localIso(10, 0) }, { role: "user", content: "no record" }];
   const timing = normalizeTiming({ turn_records: [{ id: "T1", started_at: localIso(8, 0), duration_ms: 60_000 }] });
-  const groups = turnGroups(items, timing);
+  const groups = groupsOf(items, timing);
   assert.deepEqual(groups.map((g) => groupTimes(g, items)), [
     { start: ms(8, 0), end: ms(8, 1) }, { start: ms(10, 0), end: ms(10, 0) }, { start: null, end: null },
   ]);
@@ -39,7 +47,7 @@ test("groupGaps: a divider where 10+ quiet minutes passed between groups, none d
     { role: "user", content: "unknown" }, { role: "assistant", content: "c" },
     { role: "user", content: "three", at: localIso(12, 0) },
   ];
-  const groups = turnGroups(items, normalizeTiming({}));
+  const groups = groupsOf(items, normalizeTiming({}));
   assert.deepEqual(groupGaps(groups, items, NOW), [null, null, "── 10:30 · 48 min later ──", null, null]);
   assert.equal(lastActivity(groups, items), ms(12, 0));
   assert.equal(lastActivity([], []), null);
@@ -51,7 +59,7 @@ test("groupTimes / groupGaps: a `!cmd`'s record is its own group (its index); sa
     { role: "user", content: "!(ls)\nx" },
     { role: "user", content: "two", at: localIso(10, 0) },
   ];
-  const groups = turnGroups(items, normalizeTiming({}));
+  const groups = groupsOf(items, normalizeTiming({}));
   assert.deepEqual(groups.map((g) => g.kind), ["turn", "command", "turn"]);
   assert.deepEqual(groupTimes(groups[1], items), { start: null, end: null });
   const stamped = items.map((m, i) => (i === 2 ? { ...m, at: localIso(9, 30) } : m));

@@ -1,0 +1,1963 @@
+{
+  "description": "Each kind of row a reload draws: a stopped task_wait, a guardrail's deny, System 1's auto-allow, a grep's no match, an alias's called_as, call_tool's via, a call's images, an edit's diff and a failed call.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "check the rows",
+      "turn_id": "turn-rows",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Checking.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "task_wait",
+      "params": "id=\"t9\"",
+      "tool_id": "t1",
+      "view": {
+        "task_id": "t9"
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "task_wait",
+      "tool_id": "t1",
+      "output": "[task_wait]\nstatus: stopped",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "task_wait",
+        "status": "stopped",
+        "params": "id=\"t9\"",
+        "action": "waiting for task"
+      },
+      "view": {
+        "task_id": "t9"
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 2,
+      "tool": "execute",
+      "params": "command=\"rm -rf x\"",
+      "tool_id": "t2",
+      "title": "rm -rf x",
+      "view": {
+        "command": "rm -rf x",
+        "steps": [
+          {
+            "text": "rm -rf x"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 2,
+      "tool": "execute",
+      "tool_id": "t2",
+      "output": "[execute]\nError: denied by guardrail rule no-rm.",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "blocked",
+        "params": "command=\"rm -rf x\"",
+        "action": "running command",
+        "title": "rm -rf x"
+      },
+      "view": {
+        "command": "rm -rf x",
+        "steps": [
+          {
+            "text": "rm -rf x"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 3,
+      "tool": "execute",
+      "params": "command=\"git push\"",
+      "tool_id": "t3",
+      "title": "git push",
+      "view": {
+        "command": "git push",
+        "steps": [
+          {
+            "text": "git push"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 3,
+      "tool": "execute",
+      "tool_id": "t3",
+      "output": "[execute]\nexit: 0",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"git push\"",
+        "action": "running command",
+        "title": "git push",
+        "guardrail": {
+          "rule": "git-push",
+          "p": 0.97,
+          "decided_by": "system one"
+        }
+      },
+      "view": {
+        "command": "git push",
+        "steps": [
+          {
+            "text": "git push"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 4,
+      "tool": "grep",
+      "params": "pattern=\"zzz\"",
+      "tool_id": "t4"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 4,
+      "tool": "grep",
+      "tool_id": "t4",
+      "output": "[grep]\nNo matches",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "grep",
+        "status": "ok",
+        "params": "pattern=\"zzz\"",
+        "action": "calling tool",
+        "no_match": true
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 5,
+      "tool": "execute",
+      "params": "command=\"ls\"",
+      "tool_id": "t5",
+      "title": "ls",
+      "called_as": "bash",
+      "view": {
+        "command": "ls",
+        "steps": [
+          {
+            "text": "ls"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 5,
+      "tool": "execute",
+      "tool_id": "t5",
+      "output": "[execute]\na.txt",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"ls\"",
+        "action": "running command",
+        "title": "ls",
+        "called_as": "bash"
+      },
+      "view": {
+        "command": "ls",
+        "steps": [
+          {
+            "text": "ls"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 6,
+      "tool": "read",
+      "params": "path=\"a.txt\"",
+      "tool_id": "t6",
+      "title": "a.txt",
+      "via": "call_tool"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 6,
+      "tool": "read",
+      "tool_id": "t6",
+      "output": "[read]\nalpha",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"a.txt\"",
+        "action": "reading file",
+        "title": "a.txt",
+        "via": "call_tool"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "More.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"s.png\"",
+      "tool_id": "t7",
+      "title": "s.png"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t7",
+      "output": "[read]\nimage s.png",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"s.png\"",
+        "action": "reading file",
+        "title": "s.png"
+      },
+      "images": [
+        {
+          "file": "images/aa.png",
+          "name": "s.png"
+        }
+      ]
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 2,
+      "tool": "edit",
+      "params": "path=\"k.conf\"",
+      "tool_id": "t8",
+      "title": "k.conf"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 2,
+      "tool": "edit",
+      "tool_id": "t8",
+      "output": "[edit]\nEdited",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "edit",
+        "status": "ok",
+        "params": "path=\"k.conf\"",
+        "action": "editing file",
+        "title": "k.conf"
+      },
+      "diff": {
+        "text": "@@ -1 +1 @@\n-a\n+b",
+        "added": 1,
+        "removed": 1,
+        "new_file": false
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 3,
+      "tool": "execute",
+      "params": "command=\"ls /x\"",
+      "tool_id": "t9",
+      "title": "ls /x",
+      "view": {
+        "command": "ls /x",
+        "steps": [
+          {
+            "text": "ls /x"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 3,
+      "tool": "execute",
+      "tool_id": "t9",
+      "output": "[execute]\nexit: 1",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "error",
+        "params": "command=\"ls /x\"",
+        "action": "running command",
+        "title": "ls /x"
+      },
+      "view": {
+        "command": "ls /x",
+        "steps": [
+          {
+            "text": "ls /x"
+          }
+        ]
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "generation_started",
+      "iteration": 3
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 3,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 3
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-rows",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 14,
+      "turn_summary": {
+        "output": "Done."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "check the rows",
+      "turn_id": "turn-rows",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Checking.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "task_wait",
+          "arguments": "{\"id\":\"t9\"}"
+        },
+        {
+          "id": "c2",
+          "name": "execute",
+          "arguments": "{\"command\":\"rm -rf x\"}"
+        },
+        {
+          "id": "c3",
+          "name": "execute",
+          "arguments": "{\"command\":\"git push\"}"
+        },
+        {
+          "id": "c4",
+          "name": "grep",
+          "arguments": "{\"pattern\":\"zzz\"}"
+        },
+        {
+          "id": "c5",
+          "name": "bash",
+          "arguments": "{\"command\":\"ls\"}"
+        },
+        {
+          "id": "c6",
+          "name": "call_tool",
+          "arguments": "{\"tool\":\"read\",\"args\":{\"path\":\"a.txt\"}}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[task_wait]\nstatus: stopped",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nError: denied by guardrail rule no-rm.",
+      "tool_call_id": "c2",
+      "tool_ids": [
+        "t2"
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nexit: 0",
+      "tool_call_id": "c3",
+      "tool_ids": [
+        "t3"
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[grep]\nNo matches",
+      "tool_call_id": "c4",
+      "tool_ids": [
+        "t4"
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\na.txt",
+      "tool_call_id": "c5",
+      "tool_ids": [
+        "t5"
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[read]\nalpha",
+      "tool_call_id": "c6",
+      "tool_ids": [
+        "t6"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "More.",
+      "tool_calls": [
+        {
+          "id": "c7",
+          "name": "read",
+          "arguments": "{\"path\":\"s.png\"}"
+        },
+        {
+          "id": "c8",
+          "name": "edit",
+          "arguments": "{\"path\":\"k.conf\",\"old_string\":\"a\",\"new_string\":\"b\"}"
+        },
+        {
+          "id": "c9",
+          "name": "execute",
+          "arguments": "{\"command\":\"ls /x\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[read]\nimage s.png",
+      "tool_call_id": "c7",
+      "tool_ids": [
+        "t7"
+      ],
+      "images": [
+        {
+          "file": "images/aa.png",
+          "name": "s.png"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[edit]\nEdited",
+      "tool_call_id": "c8",
+      "tool_ids": [
+        "t8"
+      ],
+      "tool_diffs": {
+        "text": "@@ -1 +1 @@\n-a\n+b",
+        "added": 1,
+        "removed": 1,
+        "new_file": false
+      }
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nexit: 1",
+      "tool_call_id": "c9",
+      "tool_ids": [
+        "t9"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "Done."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-rows",
+      "kind": "completed",
+      "from": 1,
+      "to": 14,
+      "from_digest": "6dc3b2c6745623a22d958659bfbe75234850df5a",
+      "to_digest": "a0291988e9e0c265580e796a0d4aed6c51efb79d",
+      "drawing": {
+        "prompt": "check the rows",
+        "turn_id": "turn-rows",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Checking."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "task_wait",
+            "params": "id=\"t9\"",
+            "status": "stopped",
+            "tool_id": "t1",
+            "view": {
+              "task_id": "t9"
+            },
+            "output": "[task_wait]\nstatus: stopped",
+            "output_truncated": false,
+            "action": "waiting for task",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 2,
+            "tool": "execute",
+            "params": "command=\"rm -rf x\"",
+            "status": "blocked",
+            "tool_id": "t2",
+            "title": "rm -rf x",
+            "view": {
+              "command": "rm -rf x",
+              "steps": [
+                {
+                  "text": "rm -rf x"
+                }
+              ]
+            },
+            "output": "[execute]\nError: denied by guardrail rule no-rm.",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 3,
+            "tool": "execute",
+            "params": "command=\"git push\"",
+            "status": "ok",
+            "tool_id": "t3",
+            "title": "git push",
+            "view": {
+              "command": "git push",
+              "steps": [
+                {
+                  "text": "git push"
+                }
+              ]
+            },
+            "guardrail": {
+              "rule": "git-push",
+              "p": 0.97,
+              "decided_by": "system one"
+            },
+            "output": "[execute]\nexit: 0",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 4,
+            "tool": "grep",
+            "params": "pattern=\"zzz\"",
+            "status": "ok",
+            "tool_id": "t4",
+            "no_match": true,
+            "output": "[grep]\nNo matches",
+            "output_truncated": false,
+            "action": "calling tool",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 5,
+            "tool": "execute",
+            "params": "command=\"ls\"",
+            "status": "ok",
+            "tool_id": "t5",
+            "title": "ls",
+            "called_as": "bash",
+            "view": {
+              "command": "ls",
+              "steps": [
+                {
+                  "text": "ls"
+                }
+              ]
+            },
+            "output": "[execute]\na.txt",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 6,
+            "tool": "read",
+            "params": "path=\"a.txt\"",
+            "status": "ok",
+            "tool_id": "t6",
+            "title": "a.txt",
+            "via": "call_tool",
+            "output": "[read]\nalpha",
+            "output_truncated": false,
+            "action": "reading file",
+            "duration_ms": 120
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "More."
+          },
+          {
+            "kind": "tool",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "params": "path=\"s.png\"",
+            "status": "ok",
+            "tool_id": "t7",
+            "title": "s.png",
+            "output": "[read]\nimage s.png",
+            "output_truncated": false,
+            "images": [
+              {
+                "file": "images/aa.png",
+                "name": "s.png"
+              }
+            ],
+            "action": "reading file",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 2,
+            "call_index": 2,
+            "tool": "edit",
+            "params": "path=\"k.conf\"",
+            "status": "ok",
+            "tool_id": "t8",
+            "title": "k.conf",
+            "output": "[edit]\nEdited",
+            "output_truncated": false,
+            "diff": {
+              "text": "@@ -1 +1 @@\n-a\n+b",
+              "added": 1,
+              "removed": 1,
+              "new_file": false
+            },
+            "action": "editing file",
+            "duration_ms": 120
+          },
+          {
+            "kind": "tool",
+            "iteration": 2,
+            "call_index": 3,
+            "tool": "execute",
+            "params": "command=\"ls /x\"",
+            "status": "error",
+            "tool_id": "t9",
+            "title": "ls /x",
+            "view": {
+              "command": "ls /x",
+              "steps": [
+                {
+                  "text": "ls /x"
+                }
+              ]
+            },
+            "output": "[execute]\nexit: 1",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "generation",
+            "iteration": 3
+          },
+          {
+            "kind": "text",
+            "iteration": 3,
+            "text": "Done."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-rows",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-rows": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "check the rows",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-rows"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Checking.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "task_wait",
+          "tool_id": "t1",
+          "params": "id=\"t9\"",
+          "view": {
+            "task_id": "t9"
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "task_wait",
+          "tool_id": "t1",
+          "output": "[task_wait]\nstatus: stopped",
+          "output_truncated": false,
+          "activity": {
+            "tool": "task_wait",
+            "status": "stopped",
+            "params": "id=\"t9\"",
+            "action": "waiting for task"
+          },
+          "duration_ms": 120,
+          "view": {
+            "task_id": "t9"
+          }
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 2,
+          "tool": "execute",
+          "tool_id": "t2",
+          "params": "command=\"rm -rf x\"",
+          "title": "rm -rf x",
+          "view": {
+            "command": "rm -rf x",
+            "steps": [
+              {
+                "text": "rm -rf x"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 2,
+          "tool": "execute",
+          "tool_id": "t2",
+          "output": "[execute]\nError: denied by guardrail rule no-rm.",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "blocked",
+            "params": "command=\"rm -rf x\"",
+            "title": "rm -rf x",
+            "action": "running command"
+          },
+          "duration_ms": 120,
+          "view": {
+            "command": "rm -rf x",
+            "steps": [
+              {
+                "text": "rm -rf x"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 3,
+          "tool": "execute",
+          "tool_id": "t3",
+          "params": "command=\"git push\"",
+          "title": "git push",
+          "view": {
+            "command": "git push",
+            "steps": [
+              {
+                "text": "git push"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 3,
+          "tool": "execute",
+          "tool_id": "t3",
+          "output": "[execute]\nexit: 0",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"git push\"",
+            "title": "git push",
+            "action": "running command",
+            "guardrail": {
+              "rule": "git-push",
+              "p": 0.97,
+              "decided_by": "system one"
+            }
+          },
+          "duration_ms": 120,
+          "view": {
+            "command": "git push",
+            "steps": [
+              {
+                "text": "git push"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 4,
+          "tool": "grep",
+          "tool_id": "t4",
+          "params": "pattern=\"zzz\""
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 4,
+          "tool": "grep",
+          "tool_id": "t4",
+          "output": "[grep]\nNo matches",
+          "output_truncated": false,
+          "activity": {
+            "tool": "grep",
+            "status": "ok",
+            "params": "pattern=\"zzz\"",
+            "action": "calling tool",
+            "no_match": true
+          },
+          "duration_ms": 120
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 5,
+          "tool": "execute",
+          "tool_id": "t5",
+          "params": "command=\"ls\"",
+          "title": "ls",
+          "called_as": "bash",
+          "view": {
+            "command": "ls",
+            "steps": [
+              {
+                "text": "ls"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 5,
+          "tool": "execute",
+          "tool_id": "t5",
+          "output": "[execute]\na.txt",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"ls\"",
+            "title": "ls",
+            "called_as": "bash",
+            "action": "running command"
+          },
+          "duration_ms": 120,
+          "view": {
+            "command": "ls",
+            "steps": [
+              {
+                "text": "ls"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 6,
+          "tool": "read",
+          "tool_id": "t6",
+          "params": "path=\"a.txt\"",
+          "title": "a.txt",
+          "via": "call_tool"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 6,
+          "tool": "read",
+          "tool_id": "t6",
+          "output": "[read]\nalpha",
+          "output_truncated": false,
+          "activity": {
+            "tool": "read",
+            "status": "ok",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt",
+            "via": "call_tool",
+            "action": "reading file"
+          },
+          "duration_ms": 120
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "More.",
+          "thinking": "",
+          "iteration": 2
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 2,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t7",
+          "params": "path=\"s.png\"",
+          "title": "s.png"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 2,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t7",
+          "output": "[read]\nimage s.png",
+          "output_truncated": false,
+          "activity": {
+            "tool": "read",
+            "status": "ok",
+            "params": "path=\"s.png\"",
+            "title": "s.png",
+            "action": "reading file"
+          },
+          "duration_ms": 120,
+          "images": [
+            {
+              "file": "images/aa.png",
+              "name": "s.png"
+            }
+          ]
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 2,
+          "call_index": 2,
+          "tool": "edit",
+          "tool_id": "t8",
+          "params": "path=\"k.conf\"",
+          "title": "k.conf"
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 2,
+          "call_index": 2,
+          "tool": "edit",
+          "tool_id": "t8",
+          "output": "[edit]\nEdited",
+          "output_truncated": false,
+          "activity": {
+            "tool": "edit",
+            "status": "ok",
+            "params": "path=\"k.conf\"",
+            "title": "k.conf",
+            "action": "editing file"
+          },
+          "duration_ms": 120,
+          "diff": {
+            "text": "@@ -1 +1 @@\n-a\n+b",
+            "added": 1,
+            "removed": 1,
+            "new_file": false
+          }
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 2,
+          "call_index": 3,
+          "tool": "execute",
+          "tool_id": "t9",
+          "params": "command=\"ls /x\"",
+          "title": "ls /x",
+          "view": {
+            "command": "ls /x",
+            "steps": [
+              {
+                "text": "ls /x"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 2,
+          "call_index": 3,
+          "tool": "execute",
+          "tool_id": "t9",
+          "output": "[execute]\nexit: 1",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "error",
+            "params": "command=\"ls /x\"",
+            "title": "ls /x",
+            "action": "running command"
+          },
+          "duration_ms": 120,
+          "view": {
+            "command": "ls /x",
+            "steps": [
+              {
+                "text": "ls /x"
+              }
+            ]
+          }
+        },
+        {
+          "type": "generation_started",
+          "iteration": 3
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Done.",
+          "thinking": "",
+          "iteration": 3
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-rows",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "check the rows",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-rows",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "Checking.",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "More.",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "Done.",
+        "drawn": "turn-rows"
+      }
+    ],
+    "turn_drawings": {
+      "turn-rows": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "check the rows",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-rows"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Checking.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "task_wait",
+            "tool_id": "t1",
+            "params": "id=\"t9\"",
+            "view": {
+              "task_id": "t9"
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "task_wait",
+            "tool_id": "t1",
+            "output": "[task_wait]\nstatus: stopped",
+            "output_truncated": false,
+            "activity": {
+              "tool": "task_wait",
+              "status": "stopped",
+              "params": "id=\"t9\"",
+              "action": "waiting for task"
+            },
+            "duration_ms": 120,
+            "view": {
+              "task_id": "t9"
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 2,
+            "tool": "execute",
+            "tool_id": "t2",
+            "params": "command=\"rm -rf x\"",
+            "title": "rm -rf x",
+            "view": {
+              "command": "rm -rf x",
+              "steps": [
+                {
+                  "text": "rm -rf x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 2,
+            "tool": "execute",
+            "tool_id": "t2",
+            "output": "[execute]\nError: denied by guardrail rule no-rm.",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "blocked",
+              "params": "command=\"rm -rf x\"",
+              "title": "rm -rf x",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "rm -rf x",
+              "steps": [
+                {
+                  "text": "rm -rf x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t3",
+            "params": "command=\"git push\"",
+            "title": "git push",
+            "view": {
+              "command": "git push",
+              "steps": [
+                {
+                  "text": "git push"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t3",
+            "output": "[execute]\nexit: 0",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"git push\"",
+              "title": "git push",
+              "action": "running command",
+              "guardrail": {
+                "rule": "git-push",
+                "p": 0.97,
+                "decided_by": "system one"
+              }
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "git push",
+              "steps": [
+                {
+                  "text": "git push"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 4,
+            "tool": "grep",
+            "tool_id": "t4",
+            "params": "pattern=\"zzz\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 4,
+            "tool": "grep",
+            "tool_id": "t4",
+            "output": "[grep]\nNo matches",
+            "output_truncated": false,
+            "activity": {
+              "tool": "grep",
+              "status": "ok",
+              "params": "pattern=\"zzz\"",
+              "action": "calling tool",
+              "no_match": true
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 5,
+            "tool": "execute",
+            "tool_id": "t5",
+            "params": "command=\"ls\"",
+            "title": "ls",
+            "called_as": "bash",
+            "view": {
+              "command": "ls",
+              "steps": [
+                {
+                  "text": "ls"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 5,
+            "tool": "execute",
+            "tool_id": "t5",
+            "output": "[execute]\na.txt",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"ls\"",
+              "title": "ls",
+              "called_as": "bash",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "ls",
+              "steps": [
+                {
+                  "text": "ls"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 6,
+            "tool": "read",
+            "tool_id": "t6",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt",
+            "via": "call_tool"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 6,
+            "tool": "read",
+            "tool_id": "t6",
+            "output": "[read]\nalpha",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a.txt\"",
+              "title": "a.txt",
+              "via": "call_tool",
+              "action": "reading file"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "More.",
+            "thinking": "",
+            "iteration": 2
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t7",
+            "params": "path=\"s.png\"",
+            "title": "s.png"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t7",
+            "output": "[read]\nimage s.png",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"s.png\"",
+              "title": "s.png",
+              "action": "reading file"
+            },
+            "duration_ms": 120,
+            "images": [
+              {
+                "file": "images/aa.png",
+                "name": "s.png"
+              }
+            ]
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 2,
+            "tool": "edit",
+            "tool_id": "t8",
+            "params": "path=\"k.conf\"",
+            "title": "k.conf"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 2,
+            "tool": "edit",
+            "tool_id": "t8",
+            "output": "[edit]\nEdited",
+            "output_truncated": false,
+            "activity": {
+              "tool": "edit",
+              "status": "ok",
+              "params": "path=\"k.conf\"",
+              "title": "k.conf",
+              "action": "editing file"
+            },
+            "duration_ms": 120,
+            "diff": {
+              "text": "@@ -1 +1 @@\n-a\n+b",
+              "added": 1,
+              "removed": 1,
+              "new_file": false
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t9",
+            "params": "command=\"ls /x\"",
+            "title": "ls /x",
+            "view": {
+              "command": "ls /x",
+              "steps": [
+                {
+                  "text": "ls /x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t9",
+            "output": "[execute]\nexit: 1",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "error",
+              "params": "command=\"ls /x\"",
+              "title": "ls /x",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "ls /x",
+              "steps": [
+                {
+                  "text": "ls /x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 3
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Done.",
+            "thinking": "",
+            "iteration": 3
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-rows",
+          "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "check the rows",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-rows",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "Checking.",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "More.",
+        "drawn": "turn-rows"
+      },
+      {
+        "role": "assistant",
+        "content": "Done.",
+        "drawn": "turn-rows"
+      }
+    ],
+    "turn_drawings": {
+      "turn-rows": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "check the rows",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-rows"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Checking.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "task_wait",
+            "tool_id": "t1",
+            "params": "id=\"t9\"",
+            "view": {
+              "task_id": "t9"
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "task_wait",
+            "tool_id": "t1",
+            "output": "[task_wait]\nstatus: stopped",
+            "output_truncated": false,
+            "activity": {
+              "tool": "task_wait",
+              "status": "stopped",
+              "params": "id=\"t9\"",
+              "action": "waiting for task"
+            },
+            "duration_ms": 120,
+            "view": {
+              "task_id": "t9"
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 2,
+            "tool": "execute",
+            "tool_id": "t2",
+            "params": "command=\"rm -rf x\"",
+            "title": "rm -rf x",
+            "view": {
+              "command": "rm -rf x",
+              "steps": [
+                {
+                  "text": "rm -rf x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 2,
+            "tool": "execute",
+            "tool_id": "t2",
+            "output": "[execute]\nError: denied by guardrail rule no-rm.",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "blocked",
+              "params": "command=\"rm -rf x\"",
+              "title": "rm -rf x",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "rm -rf x",
+              "steps": [
+                {
+                  "text": "rm -rf x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t3",
+            "params": "command=\"git push\"",
+            "title": "git push",
+            "view": {
+              "command": "git push",
+              "steps": [
+                {
+                  "text": "git push"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t3",
+            "output": "[execute]\nexit: 0",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"git push\"",
+              "title": "git push",
+              "action": "running command",
+              "guardrail": {
+                "rule": "git-push",
+                "p": 0.97,
+                "decided_by": "system one"
+              }
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "git push",
+              "steps": [
+                {
+                  "text": "git push"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 4,
+            "tool": "grep",
+            "tool_id": "t4",
+            "params": "pattern=\"zzz\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 4,
+            "tool": "grep",
+            "tool_id": "t4",
+            "output": "[grep]\nNo matches",
+            "output_truncated": false,
+            "activity": {
+              "tool": "grep",
+              "status": "ok",
+              "params": "pattern=\"zzz\"",
+              "action": "calling tool",
+              "no_match": true
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 5,
+            "tool": "execute",
+            "tool_id": "t5",
+            "params": "command=\"ls\"",
+            "title": "ls",
+            "called_as": "bash",
+            "view": {
+              "command": "ls",
+              "steps": [
+                {
+                  "text": "ls"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 5,
+            "tool": "execute",
+            "tool_id": "t5",
+            "output": "[execute]\na.txt",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"ls\"",
+              "title": "ls",
+              "called_as": "bash",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "ls",
+              "steps": [
+                {
+                  "text": "ls"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 6,
+            "tool": "read",
+            "tool_id": "t6",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt",
+            "via": "call_tool"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 6,
+            "tool": "read",
+            "tool_id": "t6",
+            "output": "[read]\nalpha",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a.txt\"",
+              "title": "a.txt",
+              "via": "call_tool",
+              "action": "reading file"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "More.",
+            "thinking": "",
+            "iteration": 2
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t7",
+            "params": "path=\"s.png\"",
+            "title": "s.png"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t7",
+            "output": "[read]\nimage s.png",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"s.png\"",
+              "title": "s.png",
+              "action": "reading file"
+            },
+            "duration_ms": 120,
+            "images": [
+              {
+                "file": "images/aa.png",
+                "name": "s.png"
+              }
+            ]
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 2,
+            "tool": "edit",
+            "tool_id": "t8",
+            "params": "path=\"k.conf\"",
+            "title": "k.conf"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 2,
+            "tool": "edit",
+            "tool_id": "t8",
+            "output": "[edit]\nEdited",
+            "output_truncated": false,
+            "activity": {
+              "tool": "edit",
+              "status": "ok",
+              "params": "path=\"k.conf\"",
+              "title": "k.conf",
+              "action": "editing file"
+            },
+            "duration_ms": 120,
+            "diff": {
+              "text": "@@ -1 +1 @@\n-a\n+b",
+              "added": 1,
+              "removed": 1,
+              "new_file": false
+            }
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t9",
+            "params": "command=\"ls /x\"",
+            "title": "ls /x",
+            "view": {
+              "command": "ls /x",
+              "steps": [
+                {
+                  "text": "ls /x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 3,
+            "tool": "execute",
+            "tool_id": "t9",
+            "output": "[execute]\nexit: 1",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "error",
+              "params": "command=\"ls /x\"",
+              "title": "ls /x",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "ls /x",
+              "steps": [
+                {
+                  "text": "ls /x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 3
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Done.",
+            "thinking": "",
+            "iteration": 3
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-rows",
+          "duration_ms": 2400,
+          "record_id": "turn-rows"
+        }
+      }
+    }
+  }
+}

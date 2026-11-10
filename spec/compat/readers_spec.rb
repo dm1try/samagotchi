@@ -36,7 +36,7 @@ RSpec.describe "the recorded compatibility corpus" do
 
       public :messages_for_display
     end.new
-    items = host.messages_for_display(session.messages, parts: true, markdown: false, drawings: lines, strip_drawn: true)
+    items = host.messages_for_display(session.messages, markdown: false, drawings: lines)
     expect(items).not_to be_empty
     expect(items.map { |item| item[:drawn] }).to all(be_a(String)), "#{id}: #{items.inspect}"
     lines

@@ -1,3 +1,4 @@
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,8 +10,6 @@ import {
   mergeTiming,
   normalizeTiming,
   sessionDurationNow,
-  turnRecordAt,
-  timedTurnIndexes,
   appendAboveLiveTiming,
   turnTimingText,
 } from "../../../lib/samagotchi/web/public/timing.js";
@@ -48,7 +47,7 @@ test("elapsedSince uses supplied time and rejects invalid dates", () => {
   assert.equal(elapsedSince("not-a-date", Date.now()), null);
 });
 
-test("normalizeTiming keeps usable persisted records and turnRecordAt preserves order", () => {
+test("normalizeTiming keeps usable persisted records, in order", () => {
   const timing = normalizeTiming({
     started_at: "2026-09-21T10:00:00.000Z",
     session_duration_ms: 2500,
@@ -58,160 +57,13 @@ test("normalizeTiming keeps usable persisted records and turnRecordAt preserves 
 
   assert.equal(timing.sessionDurationMs, 2500);
   assert.deepEqual(timing.turnRecords.map((record) => record.id), ["turn-1"]);
-  assert.equal(turnRecordAt(timing, 0).duration_ms, 1000);
-  assert.equal(turnRecordAt(timing, 1), null);
-});
-
-test("timedTurnIndexes marks only each turn's last assistant message", () => {
-  const items = [
-    { role: "user" },
-    { role: "assistant" }, // a tool-calling iteration
-    { role: "assistant" }, // the turn's answer
-    { role: "user" },
-    { role: "assistant" },
-    { role: "user" }, // a turn with no answer: canceled, or still running (no record yet)
-  ];
-
-  assert.deepEqual(timedTurnIndexes(items), [null, null, 0, null, 1, 2]);
-});
-
-test("timedTurnIndexes: a canceled turn that saved only its prompt keeps its timing, on the prompt", () => {
-  const items = [{ role: "user" }, { role: "note" }, { role: "user" }, { role: "assistant" }];
-
-  assert.deepEqual(timedTurnIndexes(items), [0, null, null, 1]);
+  assert.equal(timing.turnRecords[0].duration_ms, 1000);
 });
 
 import { turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
 
-const TIMING = normalizeTiming({
-  turn_records: [{ id: "T1", status: "completed", duration_ms: 18503 }, { id: "T2", status: "canceled", duration_ms: 900 }],
-  tool_records: [
-    { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
-    { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "read", status: "error", duration_ms: 1 },
-  ],
-});
-
-test("turnGroups: a turn's steps come from its iterations (tool records), its texts in order, the last text is the answer", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check." }, // iteration 1's narration; iteration 2 wrote none
-    { role: "assistant", content: "Both fine." },
-    { role: "note", content: "n" },
-    { role: "user", content: "again" }, // canceled before an answer
-  ];
-  assert.deepEqual(turnGroups(items, TIMING), [
-    { kind: "turn", turnIndex: 0, user: 0, answer: 2, record: TIMING.turnRecords[0], steps: [
-      { i: 1, iteration: 1, tools: [{ key: "1:1", tool: "execute", status: "ok", duration_ms: 7 }] },
-      { i: null, iteration: 2, tools: [{ key: "2:1", tool: "read", status: "error", duration_ms: 1 }] },
-    ] },
-    { kind: "note", i: 3 },
-    { kind: "turn", turnIndex: 1, user: 4, answer: null, record: TIMING.turnRecords[1], steps: [] },
-  ]);
-});
-
-test("turnGroups: a context wake turn's note (turn_start) opens its turn, paired with its record by turn_id; a plain note doesn't", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "a" },
-    { role: "note", content: "n" },
-    { role: "note", content: "u", turn_start: true, turn_id: "T2" },
-    { role: "assistant", content: "told" },
-  ];
-  const groups = turnGroups(items, TIMING);
-  assert.deepEqual(groups.map((g) => [g.kind, g.user ?? g.i, g.answer]), [["turn", 0, 1], ["note", 2, undefined], ["turn", 3, 4]]);
-  assert.equal(groups[2].record, TIMING.turnRecords[1]);
-  // The opening's turn id is the group's (its answer's key); a prompt saved
-  // without one leaves the group without.
-  assert.deepEqual(groups.map((g) => g.turnId), [undefined, undefined, "T2"]);
-  assert.deepEqual(timedTurnIndexes(items), [null, 0, null, null, 1]);
-});
-
-test("turnGroups: a plain answer has no steps; an assistant message before any prompt is its own answer", () => {
-  const items = [{ role: "assistant", content: "hello" }, { role: "user", content: "p" }, { role: "assistant", content: "PONG" }];
-  const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }));
-  assert.deepEqual(groups.map((g) => [g.kind, g.user, g.answer, g.steps?.length]), [["answer", undefined, 0, undefined], ["turn", 1, 2, 0]]);
-});
-
 const EXECUTE = { tool: "execute", params: 'command="true"', output: "[execute]\nexit: 0" };
 const READ = { tool: "read", params: 'path="README.md"', output: "[read]\n# T" };
-
-test("turnGroups with parts (?parts=1): one step per saved message, its thinking and its calls with the records' status", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check.", parts: { thinking: "plan", tools: [EXECUTE] } },
-    { role: "assistant", content: "", parts: { tools: [READ] } }, // a text-less step, kept with its parts
-    { role: "assistant", content: "Both fine.", parts: { thinking: "sum up" } },
-  ];
-  assert.deepEqual(turnGroups(items, TIMING)[0], {
-    kind: "turn", turnIndex: 0, user: 0, answer: 3, record: TIMING.turnRecords[0], steps: [
-      { i: 1, iteration: 1, thinking: "plan", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
-      { i: 2, iteration: 2, thinking: "", tools: [{ key: "2:1", status: "error", duration_ms: 1, ...READ }] },
-      // The answer's thinking stays in the block as a step, as it does live.
-      { i: null, iteration: 3, thinking: "sum up", tools: [] },
-    ],
-  });
-});
-
-test("turnGroups with parts: a reloaded row keeps its call's view (the full command)", () => {
-  const view = { command: "cd /p && rg -n foo lib |\n  head -5", cwd: "lib" };
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Checking.", parts: { tools: [{ ...EXECUTE, view }] } },
-  ];
-  assert.deepEqual(turnGroups(items, TIMING)[0].steps[0].tools[0].view, view);
-});
-
-test("turnGroups with parts: a turn that ended on a call has no answer; a call with no record shows done", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE, READ] } },
-  ];
-  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 5 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }] });
-  const group = turnGroups(items, timing)[0];
-  assert.equal(group.answer, null);
-  assert.deepEqual(group.steps, [{ i: 1, iteration: 1, thinking: "", tools: [
-    { key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE },
-    { key: "1:2", status: "ok", duration_ms: undefined, ...READ },
-  ] }]);
-});
-
-test("turnGroups with parts: an empty retry mid-turn (an iteration with no message) shifts no call's record", () => {
-  const items = [
-    { role: "user", content: "p", turn_id: "T1" },
-    { role: "assistant", content: "Let me check.", parts: { tools: [EXECUTE] } },
-    // Iteration 2 was an empty generation, retried: it left no message.
-    { role: "assistant", content: "", parts: { tools: [READ] } },
-    { role: "assistant", content: "Both fine." },
-  ];
-  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
-    tool_records: [
-      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
-      { id: "T1:3:1", turn_id: "T1", iteration: 3, call_index: 1, tool: "read", status: "error", duration_ms: 4 },
-    ] });
-  const group = turnGroups(items, timing)[0];
-  assert.equal(group.answer, 3);
-  assert.deepEqual(group.steps, [
-    { i: 1, iteration: 1, thinking: "", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
-    { i: 2, iteration: 2, thinking: "", tools: [{ key: "2:1", status: "error", duration_ms: 4, ...READ }] },
-  ]);
-});
-
-test("turnGroups with parts: records no saved message took (a generation that saved nothing) are steps after them", () => {
-  const items = [
-    { role: "user", content: "p", turn_id: "T1" },
-    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE] } },
-  ];
-  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 50 }],
-    tool_records: [
-      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
-      { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "read", status: "ok", duration_ms: 3 },
-    ] });
-  assert.deepEqual(turnGroups(items, timing)[0].steps, [
-    { i: 1, iteration: 1, thinking: "", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
-    { i: null, iteration: 2, thinking: "", tools: [{ key: "2:1", tool: "read", status: "ok", duration_ms: 3 }] },
-  ]);
-});
 
 function fakeParent() {
   const parent = {
@@ -271,110 +123,6 @@ test("cancelLineText: the live line and the one a re-render draws from the turn 
   assert.equal(cancelLineText("shutdown"), "\u25A0 canceled (shutdown)");
   assert.equal(cancelLineText(""), "\u25A0 canceled");
   assert.equal(cancelLineText("hook", "loop-guard"), "\u25A0 stopped by loop-guard");
-});
-
-// Live, a canceled turn's partial text stays in the block unless the turn
-// was one step with no tools (turn_block.js turnEnded); a reload agrees.
-const CANCELED = normalizeTiming({
-  turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 12000 }],
-  tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-});
-
-test("turnGroups with parts: a canceled multi-step turn's last text is a step, not the answer", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Checking.", parts: { thinking: "plan", tools: [EXECUTE] } },
-    { role: "assistant", content: "Both checks passed:\n[interrupted]", parts: { thinking: "sum up" } },
-  ];
-  assert.deepEqual(turnGroups(items, CANCELED)[0], {
-    kind: "turn", turnIndex: 0, user: 0, answer: null, record: CANCELED.turnRecords[0], steps: [
-      { i: 1, iteration: 1, thinking: "plan", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
-      { i: 2, iteration: 2, thinking: "sum up", tools: [] },
-    ],
-  });
-});
-
-test("turnGroups: a canceled multi-step turn without parts keeps every text as a step; a one-step one keeps its answer", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Both\n[interrupted]" }];
-  const g = turnGroups(items, CANCELED)[0];
-  assert.equal(g.answer, null);
-  assert.deepEqual(g.steps.map((s) => [s.i, s.iteration, s.tools.length]), [[1, 1, 1], [2, 2, 0]]);
-  const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Half an answer\n[interrupted]", parts: { thinking: "t" } }];
-  const oneStep = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }] });
-  assert.equal(turnGroups(plain, oneStep)[0].answer, 1);
-  assert.equal(turnGroups(plain.map(({ parts, ...m }) => m), oneStep)[0].answer, 1);
-});
-
-test("turnGroups: a plugin's steer goes to the step that answered it (its `step`), never starting a turn", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check." },
-    { role: "steer", content: "status?", source: "check-in", step: 2 },
-    { role: "assistant", content: "Both fine." },
-  ];
-  const [group, ...rest] = turnGroups(items, TIMING);
-  assert.equal(rest.length, 0);
-  assert.equal(group.answer, 3);
-  assert.deepEqual(group.steps.map((s) => [s.iteration, s.steers]), [[1, []], [2, [2]]]);
-  assert.deepEqual(group.steers, []);
-});
-
-test("turnGroups: a steer answered by the answer (no such step) stays on the group, as one in a turn with no steps", () => {
-  const past = [{ role: "user", content: "p" }, { role: "steer", content: "s", step: 3 }, { role: "assistant", content: "a" }];
-  const answered = turnGroups(past, TIMING)[0];
-  assert.deepEqual([answered.steps.map((s) => s.steers), answered.steers], [[[], []], [1]]);
-
-  const plain = [{ role: "user", content: "p" }, { role: "steer", content: "s", step: 1 }, { role: "assistant", content: "a" }];
-  const group = turnGroups(plain, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }))[0];
-  assert.deepEqual([group.steps, group.steers], [[], [1]]);
-});
-
-test("turnGroups: a line merged into the running turn stays in that turn (merged), the next prompt is the next turn", () => {
-  const items = [
-    { role: "user", content: "p" }, { role: "assistant", content: "a" },
-    { role: "user", content: "also", merged: true }, { role: "assistant", content: "b" },
-    { role: "user", content: "q" }, { role: "assistant", content: "c" },
-  ];
-  const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 1 }, { id: "T2", duration_ms: 2 }] }));
-  assert.deepEqual(groups.map((g) => [g.turnIndex, g.user, g.merged, g.answer, g.record?.id]), [[0, 0, [2], 3, "T1"], [1, 4, undefined, 5, "T2"]]);
-});
-
-test("turnGroups: a `!cmd`'s record between two prompts is a command group: two turns, the second's record once, turn indexes 0 and 1", () => {
-  const timing = normalizeTiming({ turn_records: [{ id: "A", duration_ms: 1 }, { id: "B", duration_ms: 2 }] });
-  const items = [
-    { role: "user", content: "one" }, { role: "assistant", content: "1" },
-    { role: "user", content: "!(basket open)\nstderr: x" },
-    { role: "user", content: "two" }, { role: "assistant", content: "2" },
-  ];
-  // Saved before turn ids: the by-place fallback pairs the prompts, not the record.
-  const groups = turnGroups(items, timing);
-  assert.deepEqual(groups.map((g) => [g.kind, g.turnIndex, g.record?.id, g.i]), [
-    ["turn", 0, "A", undefined], ["command", undefined, undefined, 2], ["turn", 1, "B", undefined],
-  ]);
-  assert.deepEqual(timedTurnIndexes(items), [null, 0, null, null, 1]);
-  // A prompt with its turn id is a prompt whatever its text.
-  const prompt = [{ role: "user", content: "!(x)\ny", turn_id: "A" }];
-  assert.equal(turnGroups(prompt, timing)[0].kind, "turn");
-});
-
-test("turnGroups: a prompt with its turn_id pairs with that record, so a failed turn's record (its prompt went back) shifts nothing", () => {
-  const timing = normalizeTiming({ turn_records: [
-    { id: "A", status: "completed", duration_ms: 1000 },
-    { id: "B", status: "failed", duration_ms: 50 },
-    { id: "C", status: "completed", duration_ms: 3000 },
-  ] });
-  const items = [
-    { role: "user", content: "one", turn_id: "A" },
-    { role: "assistant", content: "1" },
-    { role: "user", content: "three", turn_id: "C" },
-    { role: "assistant", content: "3" },
-  ];
-  assert.deepEqual(turnGroups(items, timing).map((g) => g.record?.id), ["A", "C"]);
-  // A prompt saved before turn ids (none) still pairs by its place.
-  const old = items.map(({ turn_id, ...m }) => m);
-  assert.deepEqual(turnGroups(old, timing).map((g) => g.record?.id), ["A", "B"]);
-  // An id with no record yet (the running turn): no record, not another turn's.
-  assert.equal(turnGroups([{ role: "user", content: "x", turn_id: "Z" }], timing)[0].record, null);
 });
 
 // mergeTiming: a turn-end re-read's newest records merged by id.
@@ -501,70 +249,27 @@ test("sessionDurationNow keeps the server's duration without any start", () => {
   assert.equal(sessionDurationNow(undefined, false, 1), null);
 });
 
-test("turnGroups: System 1's auto-allow on a tool record reaches its row, from the parts and from the record alone", () => {
-  const guardrail = { rule: "git-push", p: 0.95 };
-  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
-    tool_records: [
-      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", guardrail, duration_ms: 7 },
-      { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "execute", status: "ok", duration_ms: 3 },
-    ] });
-  const withParts = [
-    { role: "user", content: "p", turn_id: "T1" },
-    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE] } },
-  ];
-  assert.deepEqual(turnGroups(withParts, timing)[0].steps.map((s) => s.tools.map((t) => t.guardrail)), [[guardrail], [undefined]]);
-  const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Done." }];
-  assert.deepEqual(turnGroups(plain, timing)[0].steps.flatMap((s) => s.tools.map((t) => t.guardrail)), [guardrail, undefined]);
-});
-
-test("turnGroups: a no-match tool record's flag reaches its row, from the parts and from the record alone", () => {
-  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
-    tool_records: [
-      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", no_match: true, duration_ms: 7 },
-      { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "execute", status: "ok", no_match: true, duration_ms: 3 },
-    ] });
-  const withParts = [
-    { role: "user", content: "p", turn_id: "T1" },
-    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE] } },
-  ];
-  assert.deepEqual(turnGroups(withParts, timing)[0].steps.map((s) => s.tools.map((t) => t.no_match)), [[true], [true]]);
-  const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Done." }];
-  assert.deepEqual(turnGroups(plain, timing)[0].steps.flatMap((s) => s.tools.map((t) => t.no_match)), [true, true]);
-});
-
 // Shared contract: spec/shared/turn_ranges.json (Bridge::TurnRanges, written by
-// spec/bridge/turn_ranges_spec.rb). The page's turns pair with the same
-// records as the Ruby ranges do: by turn id, else by place among openings.
+// spec/bridge/turn_ranges_spec.rb): the items as the show stamps them and
+// each turn's drawing's end (its record's id, by turn id, else by place
+// among the openings). The page's turns are the stamps': each group holds
+// the items its range does, with the record its end names.
 const turnRanges = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../../spec/shared/turn_ranges.json", import.meta.url)), "utf8"),
 );
 
 for (const [name, spec] of Object.entries(turnRanges)) {
-  test(`turnGroups pairs records as Bridge::TurnRanges does: ${name}`, () => {
-    const timing = normalizeTiming({ turn_records: spec.records });
-    const got = turnGroups(spec.items, timing)
-      .filter((g) => g.kind === "turn")
-      .map((g) => [typeof g.turnId === "string" ? g.turnId : null, g.record?.id ?? null]);
-    const opened = spec.turns.filter((t) => t.opening !== null);
-    const want = opened.map((t) => [t.turn_id ?? null, t.record_id]);
-    // A repeated id's later turn (…~N): Ruby gives it no record; the page,
-    // undrawn, pairs it by id (a drawn one reads end.record_id, none).
-    const repeated = opened.map((t) => typeof t.id === "string" && t.id.includes("~"));
-    assert.deepEqual(got.filter((_, k) => !repeated[k]), want.filter((_, k) => !repeated[k]), spec.description);
-  });
-
-  test(`turnGroups holds the items Bridge::TurnRanges' ranges do: ${name}`, () => {
-    const groups = turnGroups(spec.items, normalizeTiming({ turn_records: spec.records })).filter((g) => g.kind === "turn");
+  test(`turnGroups groups the stamped items as Bridge::TurnRanges cuts them, with their records: ${name}`, () => {
+    const groups = turnGroups(spec.items, normalizeTiming({ turn_records: spec.records }), { drawings: spec.drawings })
+      .filter((g) => g.kind === "turn");
     const itemsOf = (g) => {
-      const all = [g.user, ...(g.steps || []).map((s) => s.i), g.answer, ...(g.merged || []), ...(g.steers || []), g.emptyAnswer];
+      const all = [g.user, ...g.texts, ...(g.merged || []), ...(g.steers || []), g.emptyAnswer];
       // A wake's note opens its group from outside the range (stamped by its id, not its place).
       return [...new Set(all.filter((i) => i != null && !(i === g.user && spec.items[i]?.role === "note")))].sort((a, b) => a - b);
     };
-    const opened = spec.turns.filter((t) => t.opening !== null);
-    opened.forEach((turn, k) => {
-      if (spec.diverges?.[turn.turn_id ?? ""]) return;
-      assert.deepEqual(itemsOf(groups[k]), turn.items, `${spec.description} (turn ${k})`);
-    });
+    const held = spec.turns.filter((t) => t.items.length);
+    assert.deepEqual(groups.map((g) => [itemsOf(g), g.record?.id ?? null]), held.map((t) => [t.items, t.record_id]), spec.description);
+    assert.ok(turnGroups(spec.items, {}, { drawings: spec.drawings }).every((g) => g.kind !== "plain"), "every turn item stamped");
   });
 }
 

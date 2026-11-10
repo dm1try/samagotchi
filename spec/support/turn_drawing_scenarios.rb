@@ -6,6 +6,7 @@ require "samagotchi/steer"
 require "samagotchi/turn_note"
 require "samagotchi/tool_output_cut"
 require "samagotchi/tool_row_fields"
+require "samagotchi/tools/builtin_calls"
 
 # The finished turns the turn-drawing specs share (spec/shared/turn_drawings/
 # <name>.json, written from here): each one's live events (as a Bridge's
@@ -52,15 +53,21 @@ module TurnDrawingScenarios
 
   # A call's live events (ToolRunner's): its row fields as ToolRowFields
   # builds them from +args+ (the call's arguments), as live and a reload do.
+  # +built+: the row fields from the call as the runner builds it
+  # (BuiltinCalls.build over string +args+, a task_wait's view), not +args+.
+  # +activity+: more of the call's activity (no_match, guardrail; called_as
+  # and via, which the start carries too).
   def tool(iteration, index, name, params, output, tool_id:, args: {}, status: "ok", action: "reading file", title: nil, duration: 120,
-           **extra)
-    title_fields = title ? { title: title } : {}
-    view = Samagotchi::ToolRowFields.for(name, args, cwd: nil).slice(*Samagotchi::ToolRowFields::EVENT_KEYS)
+           activity: {}, built: false, **extra)
+    title_fields = { title: title }.compact.merge(activity.slice(:called_as, :via))
+    view = Samagotchi::ToolRowFields.for(name, built ? Samagotchi::Tools::BuiltinCalls.build(name, args) : args, cwd: nil)
+                                    .slice(*Samagotchi::ToolRowFields::EVENT_KEYS)
     [{ type: :tool_call_started, iteration: iteration, call_index: index, tool: name, params: params, tool_id: tool_id, **title_fields,
        **view },
      { type: :tool_call_completed, iteration: iteration, call_index: index, tool: name, tool_id: tool_id, output: output,
        output_truncated: false, duration_ms: duration,
-       activity: { tool: name, status: status, params: params, action: action, **title_fields }, **view, **extra }]
+       activity: { tool: name, status: status, params: params, action: action, **title_fields, **activity.except(:called_as, :via) },
+       **view, **extra }]
   end
 
   def completed(id, from, to, output, empty: nil, duration: 2400)
@@ -218,6 +225,50 @@ module TurnDrawingScenarios
           [HEAD, user("long task", id), model("Working.", tool_calls: [call("c1", "execute", { command: "sleep 1" })]),
            response("c1", "t1", "[execute]\n"), model("Still working.", tool_calls: [call("c2", "execute", { command: "sleep 2" })]),
            response("c2", "t2", "[execute]\n"), model("Finished.")])
+    },
+    row_kinds: lambda {
+      id = "turn-rows"
+      denied = "[execute]\nError: denied by guardrail rule no-rm."
+      shot = { file: "images/aa.png", name: "s.png" }
+      diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, new_file: false }
+      edit_args = { path: "k.conf", old_string: "a", new_string: "b" }
+      auto = { rule: "git-push", p: 0.97, decided_by: "system one" }
+      one("Each kind of row a reload draws: a stopped task_wait, a guardrail's deny, System 1's auto-allow, a grep's " \
+          "no match, an alias's called_as, call_tool's via, a call's images, an edit's diff and a failed call.",
+          [started(id, "check the rows"), gen(1), text(1, "Checking."),
+           *tool(1, 1, "task_wait", 'id="t9"', "[task_wait]\nstatus: stopped", tool_id: "t1", args: { "id" => "t9" }, built: true,
+                                                                                  status: "stopped", action: "waiting for task"),
+           *tool(1, 2, "execute", 'command="rm -rf x"', denied, tool_id: "t2", args: { content: "rm -rf x" }, status: "blocked",
+                                                                 action: "running command", title: "rm -rf x"),
+           *tool(1, 3, "execute", 'command="git push"', "[execute]\nexit: 0", tool_id: "t3", args: { content: "git push" },
+                                                                                action: "running command", title: "git push",
+                                                                                activity: { guardrail: auto }),
+           *tool(1, 4, "grep", 'pattern="zzz"', "[grep]\nNo matches", tool_id: "t4", args: { pattern: "zzz" }, action: "calling tool",
+                                                                        activity: { no_match: true }),
+           *tool(1, 5, "execute", 'command="ls"', "[execute]\na.txt", tool_id: "t5", args: { content: "ls" }, action: "running command",
+                                                                         title: "ls", activity: { called_as: "bash" }),
+           *tool(1, 6, "read", 'path="a.txt"', "[read]\nalpha", tool_id: "t6", args: { path: "a.txt" }, title: "a.txt",
+                                                                   activity: { via: "call_tool" }),
+           done(1), gen(2), text(2, "More."),
+           *tool(2, 1, "read", 'path="s.png"', "[read]\nimage s.png", tool_id: "t7", args: { path: "s.png" }, title: "s.png",
+                                                                         images: [shot]),
+           *tool(2, 2, "edit", 'path="k.conf"', "[edit]\nEdited", tool_id: "t8", args: edit_args, action: "editing file",
+                                                                    title: "k.conf", diff: diff),
+           *tool(2, 3, "execute", 'command="ls /x"', "[execute]\nexit: 1", tool_id: "t9", args: { content: "ls /x" }, status: "error",
+                                                                              action: "running command", title: "ls /x"),
+           done(2), gen(3), text(3, "Done."), done(3), completed(id, 1, 14, "Done.")],
+          [HEAD, user("check the rows", id),
+           model("Checking.", tool_calls: [call("c1", "task_wait", { id: "t9" }), call("c2", "execute", { command: "rm -rf x" }),
+                                           call("c3", "execute", { command: "git push" }), call("c4", "grep", { pattern: "zzz" }),
+                                           call("c5", "bash", { command: "ls" }),
+                                           call("c6", "call_tool", { tool: "read", args: { path: "a.txt" } })]),
+           response("c1", "t1", "[task_wait]\nstatus: stopped"), response("c2", "t2", denied),
+           response("c3", "t3", "[execute]\nexit: 0"), response("c4", "t4", "[grep]\nNo matches"),
+           response("c5", "t5", "[execute]\na.txt"), response("c6", "t6", "[read]\nalpha"),
+           model("More.", tool_calls: [call("c7", "read", { path: "s.png" }), call("c8", "edit", edit_args),
+                                       call("c9", "execute", { command: "ls /x" })]),
+           response("c7", "t7", "[read]\nimage s.png").merge(images: [shot]), response("c8", "t8", "[edit]\nEdited").merge(tool_diffs: diff),
+           response("c9", "t9", "[execute]\nexit: 1"), model("Done.")])
     },
     long_output: lambda {
       id = "turn-long"

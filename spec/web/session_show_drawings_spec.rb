@@ -12,10 +12,10 @@ require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
 require "support/turn_drawing_scenarios"
 
-# GET /api/sessions/:id?parts=1&drawings=1: the items of a turn with a
-# valid drawing are stamped (drawn: <turn_id>) and lose their parts, and
-# turn_drawings carries chi web's unfold of each drawing. Without
-# drawings=1 (an older page) the read is what it always was.
+# GET /api/sessions/:id: every finished turn's items are stamped (drawn:
+# <turn_id>) from its line (a real one, else one made from its messages),
+# with no parts, and turn_drawings carries chi web's unfold of each
+# drawing, whatever the query (a tab from before 0.157 sends parts=1).
 RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -47,14 +47,11 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     end.new
   end
 
-  # +features+: the live worker's sidecar features (a worker that draws
-  # names TurnDrawings::FEATURE).
-  def app_for(messages, live: nil, features: [Samagotchi::Bridge::TurnDrawings::FEATURE])
+  def app_for(messages, live: nil)
     app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader_for(messages), bridge_wait_timeout: 0,
                               markdown: false)
     allow(app).to receive(:bridge_get_json).and_call_original
     allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
-    allow(app).to receive(:worker_draws?).with("s1").and_return(features.include?(Samagotchi::Bridge::TurnDrawings::FEATURE))
     app
   end
 
@@ -63,7 +60,7 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     File.write(File.join(dir, Samagotchi::Bridge::TurnDrawings::FILE), lines.map { |line| "#{JSON.generate(line)}\n" }.join)
   end
 
-  def show(app, query = "?parts=1&drawings=1")
+  def show(app, query = "")
     JSON.parse(app.call(Rack::MockRequest.env_for("/api/sessions/s1#{query}", "HTTP_HOST" => "127.0.0.1"))[2].first)
   end
 
@@ -101,30 +98,6 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
       expect(data["messages"].none? { |m| m.key?("parts") }).to be(true)
       expect(data["turn_drawings"].keys).to eq(["turn-tools"])
     end
-  end
-
-  # A worker from before turn drawings lists no of_turn on its cards (the
-  # page would place a drawn turn's rows again): its session reads as before.
-  it "draws nothing for a live worker that doesn't name turn_drawings in its features, as a stopped session's file does" do
-    saved = fixture("tools_answer")
-    write_lines(saved["lines"])
-
-    old = show(app_for([], live: { "snapshot" => { "messages" => saved["messages"] } }, features: %w[restart]))
-
-    expect(old).not_to have_key("turn_drawings")
-    expect(old["messages"].none? { |m| m.key?("drawn") }).to be(true)
-    expect(old["messages"][1]).to have_key("parts")
-  end
-
-  it "reads whether the live worker draws from its sidecar's features" do
-    app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader_for([]), bridge_wait_timeout: 0)
-    sidecar = Samagotchi::WorkerSidecar.new(port: 1, features: [Samagotchi::Bridge::TurnDrawings::FEATURE])
-    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
-    expect(app.send(:worker_draws?, "s1")).to be(true)
-    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::Live.new(sidecar: Samagotchi::WorkerSidecar.new(port: 1, features: [])))
-    expect(app.send(:worker_draws?, "s1")).to be(false)
-    allow(app).to receive(:worker_link).with("s1").and_return(Samagotchi::WorkerLink::None.new)
-    expect(app.send(:worker_draws?, "s1")).to be(false)
   end
 
   it "drops a rolled-back turn's line: what is left of it is drawn from its messages" do
@@ -278,6 +251,49 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["turn_drawings"]["turn-again"]["end"]).to include("turn_id" => "turn-again")
   end
 
+  # A real line written for the messages' [from, to) (a worker's), with no rows.
+  def real_line(messages, id, from, to)
+    digest = ->(m) { Samagotchi::Bridge::TurnDrawings.digest(m) }
+    { "v" => 1, "turn_id" => id, "kind" => "completed", "from" => from, "to" => to, "from_digest" => digest.call(messages[from]),
+      "to_digest" => digest.call(messages[to - 1]), "drawing" => { "turn_id" => id, "parts" => [] },
+      "end" => { "type" => "turn_completed", "turn_id" => id } }
+  end
+
+  # Two turns, the second followed by a Continue's steps (turn t3, no
+  # opening of its own: TurnRanges reads them as t2's), and drawings that
+  # start partway through: only one of t2 and its Continue has a line.
+  describe "drawings that start partway through a session" do
+    let(:messages) do
+      [{ "role" => "system", "content" => "You are chi." },
+       { "role" => "user", "content" => "q1", "turn_id" => "t1" }, { "role" => "model", "content" => "a1" },
+       { "role" => "user", "content" => "q2", "turn_id" => "t2" },
+       { "role" => "model", "content" => "Looking.", "tool_calls" => [{ "id" => "c2", "name" => "read", "arguments" => "{}" }] },
+       { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c2" },
+       { "role" => "model", "content" => "More.", "tool_calls" => [{ "id" => "c3", "name" => "read", "arguments" => "{}" }] },
+       { "role" => "tool_response", "content" => "[read]\ny", "tool_call_id" => "c3" },
+       { "role" => "model", "content" => "done" }]
+    end
+
+    it "makes the turn before a lined Continue from its messages: no item stays unstamped" do
+      write_lines([real_line(messages, "t3", 6, 9)])
+      data = show(app_for(messages))
+
+      expect(data["messages"].map { |m| [m["content"], m["drawn"]] })
+        .to eq([%w[q1 t1], %w[a1 t1], %w[q2 t2], %w[Looking. t2], %w[More. t3], %w[done t3]])
+      expect(all_drawn(data)).to be(true)
+      expect(data["turn_drawings"]["t2"]["events"].first).to include("type" => "turn_started", "prompt" => "q2")
+    end
+
+    it "makes an unlined Continue after a lined turn from its messages, under an id of its own" do
+      write_lines([real_line(messages, "t2", 3, 6)])
+      data = show(app_for(messages))
+
+      expect(data["messages"].map { |m| m["drawn"] }).to eq(%w[t1 t1 t2 t2 t2~6 t2~6])
+      expect(all_drawn(data)).to be(true)
+      expect(data["turn_drawings"]["t2~6"]["end"]).not_to have_key("turn_id")
+    end
+  end
+
   it "gives a turn with no turn record its saved tool records' durations" do
     write_analytics([], [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "read", "status" => "ok", "duration_ms" => 77 }])
     data = show(app_for(long_session(1)))
@@ -295,20 +311,18 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["turn_drawings"].keys).to eq(["t1"])
   end
 
-  # An open tab across the upgrade keeps its old page: it never sends
-  # drawings=1, so it gets full parts, no stamps and no turn_drawings.
-  it "reads without drawings=1 exactly as before: full parts, no stamps, no turn_drawings" do
+  # A tab from before 0.157 (an open one across the upgrade) asks
+  # ?parts=1 and gets what the page gets: stamps, drawings, no parts (it
+  # draws those turns without their steps until it reloads).
+  it "reads ?parts=1 and ?parts=1&drawings=1 as the plain show: every turn drawn, no parts" do
     saved = fixture("tools_answer")
-    before = show(app_for(saved["messages"]), "?parts=1")
     write_lines(saved["lines"])
+    plain = show(app_for(saved["messages"]))
 
-    after = show(app_for(saved["messages"]), "?parts=1")
-
-    # The session's own fields are the loader's new session each read.
-    expect(after.except("session")).to eq(before.except("session"))
-    expect(after["messages"][1]).to have_key("parts")
-    expect(after).not_to have_key("turn_drawings")
-    expect(show(app_for(saved["messages"]), "?drawings=1")).not_to have_key("turn_drawings")
+    ["?parts=1", "?parts=1&drawings=1"].each do |query|
+      expect(show(app_for(saved["messages"]), query).except("session")).to eq(plain.except("session"))
+    end
+    expect(all_drawn(plain)).to be(true)
   end
 
   it "parses the file once until it grows" do

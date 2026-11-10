@@ -59,14 +59,16 @@ a participant's review turn runs, so the owner's input queues behind it.
 
 ## TurnDrawings
 
-A reload or a reconnect draws a finished turn from what live drew, not rebuilt from its saved messages: the
-accumulator's final fold of the turn (its parts in order, in-turn cards included) and the end event's display keys
-(`TurnDrawings::END_KEYS`), one JSON line per turn in `<session dir>/turn_drawings.jsonl`
-(`{v: 1, turn_id, kind, from, to, from_digest, to_digest, drawing, end}`, `TurnDrawings::Line`).
+A reload or a reconnect draws every finished turn from a drawing, never rebuilt into rows from its saved messages:
+the accumulator's final fold of the turn (its parts in order, in-turn cards included) and the end event's display
+keys (`TurnDrawings::END_KEYS`), one JSON line per turn in `<session dir>/turn_drawings.jsonl`
+(`{v: 1, turn_id, kind, from, to, from_digest, to_digest, drawing, end}`, `TurnDrawings::Line`). A turn live wrote
+no line for (an older worker's, one from before drawings, a dropped one) gets one made from its messages at read
+(`TurnDrawings::Synth`, below), so the page and the TUI have one way to draw a turn.
 
 - **The range comes from the Engine.** The end event's `kept_from`/`kept_to` (`Engine#end_turn`) name the turn's own
-  messages, `kept[from...to]`. No range (an older worker, a turn that kept nothing) or an empty one writes no line,
-  and the turn draws as before.
+  messages, `kept[from...to]`. No range (an older worker, a turn that kept nothing) or an empty one writes no line:
+  the turn is made from its messages at read.
 - **Validity.** A line holds while the messages reach `to` and `messages[from]` and `messages[to - 1]` digest as the
   line says (`TurnDrawings.digest`: role, content and time, one canonical form for the live symbol-keyed messages
   and the saved, scrubbed ones). A rollback, a rolled-back failure or a prompt handed back drops it. Of overlapping
@@ -88,9 +90,13 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
   `TurnDrawings.cover(lines, messages, timing:, entries:, skip_turn_id:, session_id:, cwd:)` is what a show draws
   finished turns from (pure): `valid`'s lines, and for each `TurnRanges` range none overlaps (the running turn's
-  left out), a line `Synth.memoized` makes from its messages, the timing's records and CardStore's entries. A made
-  range whose id a kept line has (a failed turn's kept steps, then its re-run under that id) is renamed `<id>~<from>`,
-  so no two lines share an id. `TurnRanges.of(messages)` (`bridge/turn_ranges.rb`) reads a session's turns
+  left out), a line `Synth.memoized` makes from its messages, the timing's records and CardStore's entries. A range a
+  kept line overlaps only in part (a Continue's steps, which `TurnRanges` reads as the turn before's, with only one
+  of the two lined: drawings that start partway through a session) is split at the lines' bounds and the rest made:
+  a part with the turn's opening keeps its id and record, one without is `<id>~<from>` (no record, no entries), so no
+  turn item is left without a line. A made range whose id a kept line has (a failed turn's kept steps, then its
+  re-run under that id) is renamed `<id>~<from>`, so no two lines share an id; it gets no record, so no timing line
+  (the two runs' records share the id: `Synth::LOSSES` `repeated_turn_id`). `TurnRanges.of(messages)` (`bridge/turn_ranges.rb`) reads a session's turns
   back from its messages as the Engine cuts them (`kept_from…kept_to`: the reminders before an opening start a turn; a
   note after it, a `!cmd`'s record and a wake's note stay outside), with a display id for a turn with none
   (`m<from>-<digest8>`) or a repeated one (`<id>~<from>`); `TurnRanges.records` pairs each with its turn record by id,
@@ -126,22 +132,29 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   rebuilds rows from the messages any more. `chi --remote` attaches through chi web's stream proxy,
   which relays an owner's frames byte for byte, the field included. A participant never gets it: its stream's snapshot
   is bare (`ParticipantView`). An older TUI ignores the field; an older worker sends none.
-- **The show.** chi web's full read with `?parts=1&drawings=1` (the page's) draws every finished turn from a line:
-  `SessionShow#drawn_lines` is `TurnDrawings.cover` over the file, the show's timing records and its cards (CardStore's
-  list, live or saved), the running turn (`current_turn`'s id) left out. A file that can't be read gives no lines, so
-  every turn is made from its messages; should the cover itself fail (`turn_drawings_uncovered`), the turns draw as
-  before. It stamps each display item of a kind a
-  drawing draws (the opening, steps, steers, merged lines, the empty answer) in a line's range with `drawn: <turn_id>`
-  and drops its `parts` (its ✂ marks stay as `marks: {tool_id => edit}`), and sends `turn_drawings: {turn_id =>
+- **The show.** chi web's full read (`GET /api/sessions/:id`, whatever its query: a tab from before 0.157 still sends
+  `?parts=1`) draws every finished turn from a line: `SessionShow#drawn_lines` is `TurnDrawings.cover` over the file,
+  the show's timing records and its cards (CardStore's list, live or saved), the running turn (`current_turn`'s id)
+  left out. A file that can't be read gives no lines, so every turn is made from its messages; should the cover
+  itself fail (`turn_drawings_uncovered`), no item is stamped and the page draws each as a plain row (its fallback,
+  web-frontend.md). `MessageDisplay#messages_for_display(drawings:)` stamps each display item of a kind a drawing
+  draws (the opening, steps, steers, merged lines, the empty answer) in a line's range with `drawn: <turn_id>`; the
+  items carry no `parts` (a step's ✂ marks come as `marks: {tool_id => edit}`, read from its parts only for a step
+  whose outputs carry one; a text-less step stays as an empty item), and the show sends `turn_drawings: {turn_id =>
   {events, end}}`: `TurnAccumulator.replay_events(drawing, cards: true)`, the one unfold, in Ruby. A context note in
-  a range and a `!cmd`'s record are not stamped. Without `drawings=1` (an older page) the read is what it was.
-  CardStore lists an in-turn entry's turn as `of_turn`, so the page leaves a drawn turn's own rows and cards to its
-  drawing (`cards_place.js`). A live worker whose sidecar features lack `turn_drawings` (`TurnDrawings::FEATURE`:
-  an older one lists no `of_turn`) gets no drawings in the show: its turns all draw as before. The stamps walk the
-  lines with one cursor and the unfold reads a Set of stamped ids, so a long session's show is linear in its turns;
-  a made-up line is memoized per range (`Synth.memoized`), so a show after a turn end makes no old turn again.
+  a range and a `!cmd`'s record are not stamped. CardStore lists an in-turn entry's turn as `of_turn`, so the page
+  leaves a drawn turn's own rows and cards to its drawing (`cards_place.js`). Every supported worker (0.161.0 and
+  later) lists `TurnDrawings::FEATURE` in its sidecar; the show no longer asks. The stamps walk the lines with one
+  cursor and the unfold reads a Set of stamped ids, so a long session's show is linear in its turns; a made-up line
+  is memoized per range (`Synth.memoized`), so a show after a turn end makes no old turn again. What each step did
+  as message parts (`MessageParts`, `parts: true`) is the participant review's only (`ParticipantReview`, frozen on
+  its message model).
 - **Compat.** An older worker writes nothing, a continue (a note, no turns) and a review fork copy no drawings, and
-  an older chi's fork or one-shot wrote none: their turns are made from their messages. The lines a fork carries and a
+  an older chi's fork or one-shot wrote none: their turns are made from their messages. A `/btw keep` child forked
+  before its first turn (saved without its system head) draws its turns made from its messages, without CardStore
+  rows, until that turn puts the head back and its carried lines hold (`Synth::LOSSES` `fork_before_first_turn`;
+  `Plugin::Sessions#fork`'s seed is left as it is). A tab opened before 0.157 asks `?parts=1`, gets no parts and
+  draws those turns without their steps until it reloads. The lines a fork carries and a
   one-shot writes are plain `v: 1` lines, which an older chi web draws as any. An older chi web never opens the file and draws them as it
   did. A made-up line's end has no `turn_id` for a made-up id and names its record (`record_id`), which a 0.157+ page
   reads as any drawn turn's (an older page ignores `record_id` and finds no record for such a turn: no timing line;
@@ -440,7 +453,7 @@ The Bridge exposes:
 - `GET  /session/:id/activity` — `Worker#activity_snapshot`: `{session_id, turn_running, input_pending, awaiting_continue, open_streams, reminders, tasks_holding}` — what a `chi schedule tick` asks a live worker before it fires (the tick runs out of process and cannot read a worker's memory). Read-only and small (under 300 bytes). `501 activity_unavailable` when this Bridge was built without an `on_activity:` step; the worker advertises it in `Bridge::FEATURES` (`activity`). See [scheduling.md](../scheduling.md).
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
   the messages itself, then streams from its `event_seq`). Read by the web's full show
-  (`GET /api/sessions/:id`, `?parts=1`) and the plugin's `list_sessions`; every message is copied.
+  (`GET /api/sessions/:id`) and the plugin's `list_sessions`; every message is copied.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
   `working_directory` (the session's folder, which the web checks the answer's file refs against),
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),

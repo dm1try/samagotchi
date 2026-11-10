@@ -69,22 +69,13 @@ module Samagotchi
         session_json = shown_session_json(session, snapshot, owner, persisted)
         raw_messages = live_or_saved(turn_snapshot, "messages") { session.messages }
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
-        parts = req.params["parts"] == "1"
-        # A page that draws finished turns from their drawings (drawings=1,
-        # with parts=1): the valid lines stamp their items, which lose their
-        # parts. An older page (no drawings=1) reads what it always did.
-        # A live worker from before turn drawings lists no of_turn on its
-        # cards: its turns all draw as before.
-        drawings = parts && req.params["drawings"] == "1" && (!live || worker_draws?(id))
+        # Every finished turn is drawn from a line (a real one, else one
+        # made from its messages): its items are stamped, and its drawing
+        # goes in turn_drawings. The running turn has none yet.
         raw_cards = live_or_saved(turn_snapshot, "cards") { saved_cards(id, messages: raw_messages) }
-        drawn = if drawings
-                  drawn_lines(id, raw_messages, timing: timing, entries: raw_cards, cwd: session.working_directory,
-                                                skip_turn_id: current_turn.is_a?(Hash) ? current_turn["turn_id"] : nil)
-                else
-                  []
-                end
-        messages = messages_for_display(raw_messages, parts: parts, cwd: session.working_directory,
-                                                      drawings: drawn, strip_drawn: true)
+        drawn = drawn_lines(id, raw_messages, timing: timing, entries: raw_cards, cwd: session.working_directory,
+                                              skip_turn_id: current_turn.is_a?(Hash) ? current_turn["turn_id"] : nil)
+        messages = messages_for_display(raw_messages, cwd: session.working_directory, drawings: drawn)
         json_response(200, {
           session: session_json,
           history: read_history(id),
@@ -145,21 +136,14 @@ module Samagotchi
                                             started_at: active.is_a?(Hash) ? active["started_at"] : nil)
       end
 
-      # Whether the session's live worker names turn drawings in its
-      # sidecar's features (Bridge::TurnDrawings::FEATURE); false when its
-      # link can't be read as live.
-      def worker_draws?(id)
-        link = worker_link(id)
-        link.live? && Array(link.sidecar.features).include?(Bridge::TurnDrawings::FEATURE)
-      end
-
       # The lines the show draws +messages+' turns from (the live snapshot's
       # messages, else the file's), one per finished turn:
       # Bridge::TurnDrawings.cover over the session's file (.read, cached by
       # its size and mtime), the turns no line covers made from their
       # messages with the show's +timing+ records and CardStore +entries+.
       # A file that can't be read gives no lines: every turn is made. Should
-      # the cover itself fail, the show draws its turns as before (no line).
+      # the cover itself fail, no turn has a line: the page draws each item
+      # as a plain row (turn_block.js, the fallback).
       def drawn_lines(id, messages, timing:, entries:, cwd:, skip_turn_id:)
         dir = @session_class.session_dir(id, state_dir: default_state_dir)
         lines = Degrade.call(:web, "turn_drawings_unreadable", fallback: []) { Bridge::TurnDrawings.read(dir) }
