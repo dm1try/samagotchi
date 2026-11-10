@@ -801,7 +801,7 @@ module Samagotchi
       @sent_delivery = result.delivery || delivery
       @sent_cut = result.cut
       note = if @access.participant? then participant_note(id, result)
-             else delivery_note(result, delivery: delivery, running: running, owner: owner)
+             else delivery_note(id, result, delivery: delivery, running: running, owner: owner)
              end
       @info.puts("#{short}  sent#{with_images}#{note}")
       true
@@ -820,12 +820,14 @@ module Samagotchi
     # running turn's next step (nothing cuts by default); a --cut one names
     # the outcome from the ack (now, waits, off); a --queue one runs after
     # the turn (or now, when the turn ended before it went in); images keep
-    # their own wording; an idle session's turn simply runs.
+    # their own wording; an idle session's turn simply runs. A link reached
+    # after waiting on its continue (#target) has the continue's own spawn
+    # starting its worker: no worker yet doesn't mean this send started it.
     # @param result [SessionManager::DeliverResult] the accepted delivery
     #   (its ack is {} for the input file)
     # @return [String] "" or " (...)"
-    def delivery_note(result, delivery:, running:, owner:)
-      return " (started its worker)" if owner.nil?
+    def delivery_note(id, result, delivery:, running:, owner:)
+      return " (started its worker)" if owner.nil? && !@continued_here&.key?(id)
       return queue_note(result, running: running) if Delivery.queue?(delivery)
       return "" unless running
       # A participant's review turn was running: the worker queued it.
@@ -936,12 +938,14 @@ module Samagotchi
       id = @access.resolve(given)
       head = @access.head(id)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + self.class::CONTINUING_WAIT
+      waited = head.continuing?
       while head.continuing? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
         self.class.pause(self.class::CONTINUING_POLL)
         head = @access.head(id)
       end
       return Unsent.new(line: "#{id[0, 8]}  refused: #{head.continuing_refusal}", error: false, asked: id) if head.continuing?
 
+      (@continued_here ||= {})[head.id] = true if waited
       head
     rescue ArgumentError => e
       Unsent.new(line: "#{command_name}: #{e.message}", error: true)

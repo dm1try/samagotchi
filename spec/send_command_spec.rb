@@ -761,6 +761,29 @@ RSpec.describe Samagotchi::SendCommand do
           expect(archived?(old)).to be(true)
         end
 
+        # The continue's own spawn starts the new link's worker (its
+        # starting marker): this send started nothing.
+        it "doesn't say it started the worker the continue's spawn is starting" do
+          old = archived(make)
+          continuing(old)
+          created = nil
+          allow(described_class).to receive(:pause) do
+            next if created
+
+            created = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app")
+            created.id = successor
+            created.continues = old.id
+            created.save(state_dir: tmpdir)
+            Samagotchi::StartingMarker.mark(created.id, state_dir: tmpdir)
+          end
+          stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+          allow(Process).to receive(:spawn).and_return(40_007)
+
+          expect(run("-m", "made it", old.id)).to eq(0), err.string
+          expect(out.string).to eq("#{label(old, created)}  sent\n")
+          expect(inputs_of(created)).to contain_exactly(include("prompt" => "made it"))
+        end
+
         it "with --wait --format json refuses after the wait with asked the id given (session_id null)" do
           stub_const("#{described_class}::CONTINUING_WAIT", 0.05)
           allow(described_class).to receive(:pause)
