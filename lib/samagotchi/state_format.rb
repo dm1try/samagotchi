@@ -22,7 +22,7 @@ module Samagotchi
       end
     end
 
-    Document = Data.define(:version, :extra, :entries)
+    Document = Data.define(:version, :extra, :entries, :attributes)
 
     class InvalidDocument < StandardError; end
 
@@ -38,16 +38,18 @@ module Samagotchi
       Member.new(name: name.to_sym, introduced_in: in_version, default: ->(_attributes) { {} }, persisted: false)
     end
 
-    attr_reader :members
+    attr_reader :members, :document_members
 
-    def initialize(version:, members:)
+    def initialize(version:, members:, document_members: [])
       @version = version
       @members = members.freeze
+      @document_members = document_members.freeze
       @extra_member = members.find { |member| !member.persisted? }
       raise ArgumentError, "a state format can declare only one extra member" if members.count { |member| !member.persisted? } > 1
       raise ArgumentError, "duplicate state format members" unless members.map(&:name).uniq == members.map(&:name)
+      raise ArgumentError, "duplicate state format document members" unless document_members.map(&:name).uniq == document_members.map(&:name)
 
-      members.each do |member|
+      (members + document_members).each do |member|
         required = member.required? && member.default.equal?(REQUIRED)
         defaulted = member.defaulted? && member.introduced_in.is_a?(Integer) &&
                     member.introduced_in.positive? && member.introduced_in <= version &&
@@ -63,17 +65,26 @@ module Samagotchi
 
       collection = collection.to_s
       entries = Array(data[collection]).map { |raw| read_record(raw) }
-      known = %w[version updated_at] + [collection]
+      attributes = {}
+      document_members.each do |member|
+        key = member.name.to_s
+        attributes[member.name] = if data.key?(key)
+                                    data[key]
+                                  else
+                                    default_value(member.default, attributes)
+                                  end
+      end
+      known = %w[version updated_at] + [collection] + document_members.map { |member| member.name.to_s }
       stored_version = data["version"]
       stored_version = 0 unless stored_version.is_a?(Integer) && stored_version >= 0
 
       Document.new(version: [@version, stored_version].max,
                    extra: data.reject { |key, _value| known.include?(key.to_s) },
-                   entries: entries)
+                   entries: entries, attributes: attributes)
     end
 
     def write(document, collection:, updated_at:)
-      document.extra.transform_keys(&:to_s).merge(
+      document.extra.transform_keys(&:to_s).merge(document.attributes.transform_keys(&:to_s)).merge(
         "version" => [document.version, @version].max,
         "updated_at" => updated_at,
         collection.to_s => document.entries.map(&:to_h)

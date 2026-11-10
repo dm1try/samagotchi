@@ -631,24 +631,84 @@ RSpec.describe Samagotchi::Web::SessionHub do
   end
 
   describe "the schedule tick (schedule.auto_tick, docs/scheduling.md)" do
-    def hub_with(auto)
-      hub = described_class.new(state_dir: state_dir, installed_versions: installed)
+    def hub_with(auto, now: nil)
+      hub = described_class.new(state_dir: state_dir, installed_versions: installed, now: now)
       schedules = Samagotchi::Schedules.new(state_dir: state_dir)
       allow(Samagotchi::Schedules).to receive(:new).and_return(schedules)
       allow(schedules).to receive(:tick)
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(auto)
+      allow(Samagotchi::Config).to receive(:get).with("schedule.tick_interval_minutes").and_return(5)
       [hub, schedules]
     end
 
     it "ticks the schedules when auto_tick is on, once per tick_interval_minutes" do
       hub, schedules = hub_with(true)
+      ticked = Queue.new
+      allow(schedules).to receive(:tick) { ticked << true }
 
       hub.send(:schedule_tick)
+      pop!(ticked, "schedule tick to start")
+      wait_for("schedule tick to finish") { !hub.instance_variable_get(:@schedule_tick_in_flight) }
       expect(schedules).to have_received(:tick).once
 
       hub.send(:schedule_tick) # still inside the interval: the hub does not tick twice
       expect(schedules).to have_received(:tick).once
+    end
+
+    it "keeps scans responsive and skips another due tick while one is in flight" do
+      clock = [0.0]
+      hub, schedules = hub_with(true, now: -> { clock.first })
+      started = Queue.new
+      release = Queue.new
+      first_scan_done = Queue.new
+      second_scan_done = Queue.new
+      allow(schedules).to receive(:tick) do
+        started << true
+        release.pop(timeout: 5)
+      end
+
+      first_scan = Thread.new { hub.scan; first_scan_done << true }
+      pop!(started, "schedule tick to start")
+      tick_thread = hub.instance_variable_get(:@schedule_tick_thread)
+      pop!(first_scan_done, "scan with a running schedule tick")
+
+      clock[0] += 301
+      second_scan = Thread.new { hub.scan; second_scan_done << true }
+      pop!(second_scan_done, "scan during another due schedule tick")
+      expect(schedules).to have_received(:tick).once
+
+      release << true
+      join!(tick_thread, "schedule tick")
+      join!(first_scan, "first hub scan")
+      join!(second_scan, "second hub scan")
+    ensure
+      release << true if release
+      [tick_thread, first_scan, second_scan].compact.each { |thread| join!(thread, "schedule hub thread") }
+    end
+
+    it "joins the running schedule tick when stopping" do
+      hub, schedules = hub_with(true)
+      started = Queue.new
+      release = Queue.new
+      stopped = Queue.new
+      allow(schedules).to receive(:tick) do
+        started << true
+        release.pop(timeout: 5)
+      end
+
+      hub.send(:schedule_tick)
+      expect(started.pop(timeout: 2)).to be(true)
+      tick_thread = hub.instance_variable_get(:@schedule_tick_thread)
+      stopper = Thread.new { hub.stop; stopped << true }
+
+      expect(stopped.pop(timeout: 0.05)).to be_nil
+      release << true
+      expect(stopped.pop(timeout: 2)).to be(true)
+      expect(tick_thread).not_to be_alive
+    ensure
+      release << true if release
+      stopper&.join
     end
 
     it "never ticks when auto_tick is off" do

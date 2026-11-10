@@ -33,17 +33,66 @@ RSpec.describe Samagotchi::Schedules do
     saved.save(state_dir: state_dir)
   end
 
+  def complete_pending(state_dir, schedules, schedule_id)
+    entry = schedules.lookup(schedule_id)
+    return unless entry&.pending_turn_id
+
+    finished_at = Time.iso8601(entry.firing_since) + 1
+    saved = Samagotchi::Session.load(entry.pending_session_id, state_dir: state_dir)
+    saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: finished_at.iso8601,
+                                               enqueued_id: entry.pending_turn_id)
+    saved.save(state_dir: state_dir)
+    schedules.tick(now: Time.iso8601(entry.firing_since))
+  end
+
   def store(state_dir, now: Time.now)
     described_class.new(state_dir: state_dir, clock: -> { now })
   end
 
   it "requires a format decision for every entry member" do
     declarations = described_class::FORMAT.members.to_h { |member| [member.name, member] }
+    document_declarations = described_class::FORMAT.document_members.to_h { |member| [member.name, member] }
 
     expect(declarations.keys).to match_array(described_class::Entry.members)
     expect(declarations.values).to all(satisfy { |member| member.required? || member.defaulted? })
     expect(declarations.values.select(&:required?).map(&:name))
       .to match_array(%i[id anchor mode prompt recurrence next_due])
+    expect(document_declarations.keys).to eq([:last_tick_at])
+    expect(document_declarations.values).to all(satisfy { |member| member.defaulted? })
+  end
+
+  it "stamps the last acquired tick and warns only when the ticker is stale and auto-tick is off" do
+    Dir.mktmpdir("schedules-last-tick") do |root|
+      dir = File.join(root, "sessions")
+      now = Time.utc(2026, 11, 10, 12)
+      schedules = described_class.new(state_dir: dir, clock: -> { now })
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(false)
+      allow(Samagotchi::Config).to receive(:get).with("schedule.tick_interval_minutes").and_return(5)
+
+      expect(schedules.tick_warning(now: now)).to include("schedule.auto_tick: true", "chi schedule tick")
+      schedules.tick(now: now)
+      stamp = JSON.parse(File.read(schedules.path)).fetch("last_tick_at")
+      expect(stamp).to eq(now.utc.iso8601)
+      expect(schedules.tick_warning(now: now + 599)).to be_nil
+      expect(schedules.tick_warning(now: now + 601)).to include("last 10 minutes")
+
+      schedules.tick(dry_run: true, now: now + 601)
+      expect(JSON.parse(File.read(schedules.path)).fetch("last_tick_at")).to eq(stamp)
+      held = File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose
+      held.flock(File::LOCK_EX)
+      expect(schedules.tick(now: now + 601).locked).to be(true)
+      held.flock(File::LOCK_UN)
+      held.close
+      expect(JSON.parse(File.read(schedules.path)).fetch("last_tick_at")).to eq(stamp)
+      allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(true)
+      expect(schedules.tick_warning(now: now + 601)).to be_nil
+    ensure
+      if held && !held.closed?
+        held.flock(File::LOCK_UN)
+        held.close
+      end
+    end
   end
 
   it "writes every entry under the lock, so two writers in flight lose nothing" do
@@ -199,13 +248,29 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "does not rewrite a corrupt store when a tick tries to stamp last_tick_at" do
+    Dir.mktmpdir("schedules-corrupt-tick") do |root|
+      schedules = store(File.join(root, "sessions"))
+      File.write(schedules.path, "{\"schedules\": [")
+      before = File.read(schedules.path)
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      expect { schedules.tick(now: Time.utc(2026, 11, 10, 12)) }
+        .to raise_error(described_class::Corrupt, /not readable JSON/)
+      expect(Samagotchi::Log).to have_received(:warn).with(
+        :worker, "store_unreadable", hash_including(error: "JSON::ParserError")
+      )
+      expect(File.read(schedules.path)).to eq(before)
+    end
+  end
+
   it "preserves a newer file and unknown keys through changes and ticks" do
     Dir.mktmpdir("schedules-unknown-keys") do |root|
       dir = File.join(root, "sessions")
       schedules = store(dir)
       id = session(dir).id
       entry = schedules.add(target: id, prompt: "Audit", recurrence: every("1m"), keep_links: 0)
-      allow(Samagotchi::SessionContinue).to receive(:run).and_return(double(id: id))
+      allow(Samagotchi::SessionContinue).to receive(:run).and_return(double(id: id, first_turn_id: "scheduled-turn"))
 
       data = JSON.parse(File.read(schedules.path))
       data["version"] = 2
@@ -215,7 +280,7 @@ RSpec.describe Samagotchi::Schedules do
 
       schedules.disable(entry.id)
       schedules.enable(entry.id)
-      expect(schedules.tick(now: Time.iso8601(entry.next_due) + 1).outcomes.first.status).to eq("fired")
+      expect(schedules.tick(now: Time.iso8601(entry.next_due) + 1).outcomes.first.status).to eq("pending")
 
       rewritten = JSON.parse(File.read(schedules.path))
       expect(rewritten["version"]).to eq(2)
@@ -361,7 +426,7 @@ RSpec.describe Samagotchi::Schedules do
       entry = schedules.add(target: anchor, prompt: "Audit the queue", recurrence: every("1m"))
 
       fired = schedules.tick(now: Time.now + 60).outcomes.first
-      expect(fired.status).to eq("fired")
+      expect(fired.status).to eq("pending")
       expect(fired.detail).to start_with("new link")
 
       stored = schedules.lookup(entry.id)
@@ -430,8 +495,8 @@ RSpec.describe Samagotchi::Schedules do
       due = first.next_due # both were added at the same clock, so both are due now
 
       tick = schedules.tick(now: Time.now + 300)
-      expect(tick.outcomes.map(&:status).sort).to eq(%w[fired skipped])
-      fired = tick.outcomes.find { |outcome| outcome.status == "fired" }
+      expect(tick.outcomes.map(&:status).sort).to eq(%w[pending skipped])
+      fired = tick.outcomes.find { |outcome| outcome.status == "pending" }
       held = tick.outcomes.find { |outcome| outcome.status == "skipped" }
       expect(held.id).to eq([first.id, second.id].reject { |id| id == fired.id }.first)
       expect(held.detail).to eq("the chain just fired; retry at the next tick")
@@ -448,17 +513,14 @@ RSpec.describe Samagotchi::Schedules do
       expect([held_entry.skips, held_entry.failures, held_entry.next_due, held_entry.head, held_entry.enabled])
         .to eq([1, 0, due, anchor, true])
 
-      # The next tick fires it, and it continues the link the first one made:
-      # the chain stays one line, and each entry's head is its own link.
+      # Another tick cannot continue the new link while its schedule turn is
+      # still in flight, even if the worker has gone idle.
       set_idle(dir, link)
       again = schedules.tick(now: Time.now + 420)
-      expect(again.outcomes.map(&:status)).to eq(["fired"])
-      head = schedules.lookup(held.id).head
-      expect(Samagotchi::Session.load(head, state_dir: dir).continues).to eq(link)
-      expect(Samagotchi::Session.load(link, state_dir: dir).continues).to eq(anchor)
-      expect(Samagotchi::SessionChain.latest(anchor, state_dir: dir)).to eq(head)
-      expect(schedules.lookup(fired.id).head).to eq(link)
-      expect(schedules.lookup(held.id).skips).to eq(0)
+      expect(again.outcomes.map(&:status)).to eq(%w[pending skipped])
+      expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).size).to eq(2)
+      expect(again.outcomes.find { |outcome| outcome.status == "skipped" }.detail)
+        .to eq("a schedule turn is still pending in this chain")
     end
   end
 
@@ -478,10 +540,12 @@ RSpec.describe Samagotchi::Schedules do
       fired = []
       3.times do |round|
         tick = schedules.tick(now: now + (round * 60))
-        fired.concat(tick.outcomes.select { |outcome| outcome.status == "fired" }.map(&:title))
+        turns = tick.outcomes.select { |outcome| outcome.status == "pending" }
+        fired.concat(turns.map(&:title))
         tick.outcomes.each do |outcome|
-          set_idle(dir, schedules.lookup(outcome.id).head) if outcome.status == "fired"
+          set_idle(dir, schedules.lookup(outcome.id).head) if outcome.status == "pending"
         end
+        turns.each { |outcome| complete_pending(dir, schedules, outcome.id) }
       end
 
       expect(fired.uniq.sort).to eq(%w[A B C])
@@ -576,6 +640,7 @@ RSpec.describe Samagotchi::Schedules do
       expect(schedules.lookup(entry.id).skips).to eq(2)
       Samagotchi::SessionInbox.find_new_input_files(inbox).each { |file| File.delete(file) }
       schedules.tick(now: Time.now + 120)
+      complete_pending(dir, schedules, entry.id)
       after = schedules.lookup(entry.id)
       expect([after.skips, after.failures, after.enabled]).to eq([0, 0, true])
     end
@@ -611,7 +676,7 @@ RSpec.describe Samagotchi::Schedules do
       # 20 minutes late: the next Monday is still ahead, so this is a late tick,
       # not a missed cycle, and the schedule runs.
       tick = schedules.tick(now: Time.local(2026, 11, 2, 9, 20))
-      expect(tick.outcomes.first.status).to eq("fired")
+      expect(tick.outcomes.first.status).to eq("pending")
       after = schedules.lookup(entry.id)
       expect(after.last_result).to start_with("new link")
       expect(Time.iso8601(after.next_due)).to eq(Time.local(2026, 11, 9, 9, 0))
@@ -648,7 +713,7 @@ RSpec.describe Samagotchi::Schedules do
                             recurrence: described_class.recurrence(date: "2026-11-20T09:00"))
 
       outcome = schedules.tick(now: at + 3600).outcomes.first
-      expect(outcome.status).to eq("fired")
+      expect(outcome.status).to eq("pending")
       after = schedules.lookup(entry.id)
       expect([after.enabled, after.next_due, after.last_result]).to eq([false, nil, "new link #{after.head[0, 8]}"])
     end
@@ -678,7 +743,8 @@ RSpec.describe Samagotchi::Schedules do
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 3)
-      Samagotchi::SessionManager.delete_session(anchor, state_dir: dir)
+      FileUtils.rm_f(Samagotchi::Session.session_file(anchor, state_dir: dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(anchor, state_dir: dir))
 
       3.times do
         tick = schedules.tick(now: Time.now + 120)
@@ -700,6 +766,7 @@ RSpec.describe Samagotchi::Schedules do
 
       schedules.tick(now: Time.now + 120)
       first = schedules.lookup(entry.id).head
+      complete_pending(dir, schedules, entry.id)
       child = session(dir, parent: first, delegate: true)
       Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
       # Three more firings: run_now fires whatever the clock says, so the
@@ -707,6 +774,7 @@ RSpec.describe Samagotchi::Schedules do
       3.times do
         set_idle(dir, schedules.lookup(entry.id).head)
         schedules.run_now(entry.id)
+        complete_pending(dir, schedules, entry.id)
       end
 
       head = schedules.lookup(entry.id).head
@@ -733,7 +801,8 @@ RSpec.describe Samagotchi::Schedules do
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
       4.times do |step|
         set_idle(dir, schedules.lookup(entry.id).head)
-        schedules.tick(now: Time.now + 120 + (step * 120))
+        expect(schedules.tick(now: Time.now + 120 + (step * 120)).outcomes.first.status).to eq("pending")
+        complete_pending(dir, schedules, entry.id)
       end
 
       ids = Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)
@@ -756,6 +825,7 @@ RSpec.describe Samagotchi::Schedules do
 
       schedules.tick(now: Time.now + 120)
       first = schedules.lookup(entry.id).head
+      complete_pending(dir, schedules, entry.id)
       child = session(dir, parent: first, delegate: true)
       Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
       # The child's delete is refused (its worker is still there).
@@ -766,7 +836,8 @@ RSpec.describe Samagotchi::Schedules do
 
       set_idle(dir, first)
       outcome = schedules.tick(now: Time.now + 240).outcomes.first
-      expect(outcome.status).to eq("fired")
+      expect(outcome.status).to eq("pending")
+      complete_pending(dir, schedules, entry.id)
 
       # Children first: the child does not go, so its link is untouched and
       # still archived. Deleting the link first would leave a delegate under
@@ -787,8 +858,10 @@ RSpec.describe Samagotchi::Schedules do
 
       schedules.tick(now: Time.now + 120)
       first = schedules.lookup(entry.id).head          # still inside the window
+      complete_pending(dir, schedules, entry.id)
       set_idle(dir, first)
       schedules.tick(now: Time.now + 240)
+      complete_pending(dir, schedules, entry.id)
       head = schedules.lookup(entry.id).head
 
       child = session(dir, parent: first, delegate: true)
@@ -798,7 +871,8 @@ RSpec.describe Samagotchi::Schedules do
       # This firing pushes `first` out of the window: its subtree has a worker,
       # so nothing in it is deleted.
       set_idle(dir, head)
-      expect(schedules.tick(now: Time.now + 480).outcomes.first.status).to eq("fired")
+      expect(schedules.tick(now: Time.now + 480).outcomes.first.status).to eq("pending")
+      complete_pending(dir, schedules, entry.id)
       # Nothing in that subtree is deleted while a worker owns part of it.
       expect(archived?(dir, first)).to be(true)
       expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(true)
@@ -806,6 +880,7 @@ RSpec.describe Samagotchi::Schedules do
       lock.release
       set_idle(dir, schedules.lookup(entry.id).head)
       schedules.run_now(entry.id)
+      complete_pending(dir, schedules, entry.id)
       expect(archived?(dir, first)).to be(false)
       expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(false)
     end
@@ -821,15 +896,18 @@ RSpec.describe Samagotchi::Schedules do
 
       schedules.tick(now: Time.now + 120)
       first = schedules.lookup(entry.id).head
+      complete_pending(dir, schedules, entry.id)
       child = session(dir, parent: first, delegate: true)
       set_idle(dir, first)
       schedules.tick(now: Time.now + 240) # archives `first` and its delegate
+      complete_pending(dir, schedules, entry.id)
       Samagotchi::ArchiveStore.unarchive(child.id, state_dir: dir)
 
       # `first` is now behind the window, but one of its descendants is not
       # archived: nothing in that subtree is deleted.
       set_idle(dir, schedules.lookup(entry.id).head)
-      expect(schedules.tick(now: Time.now + 360).outcomes.first.status).to eq("fired")
+      expect(schedules.tick(now: Time.now + 360).outcomes.first.status).to eq("pending")
+      complete_pending(dir, schedules, entry.id)
       expect(archived?(dir, first)).to be(true)
       expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(true)
 
@@ -837,6 +915,7 @@ RSpec.describe Samagotchi::Schedules do
       Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
       set_idle(dir, schedules.lookup(entry.id).head)
       schedules.run_now(entry.id)
+      complete_pending(dir, schedules, entry.id)
       expect(archived?(dir, first)).to be(false)
       expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(false)
     end
@@ -851,7 +930,8 @@ RSpec.describe Samagotchi::Schedules do
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 0)
       3.times do |step|
         set_idle(dir, schedules.lookup(entry.id).head)
-        schedules.tick(now: Time.now + 120 + (step * 120))
+        expect(schedules.tick(now: Time.now + 120 + (step * 120)).outcomes.first.status).to eq("pending")
+        complete_pending(dir, schedules, entry.id)
       end
       expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).size).to eq(4)
     end
@@ -866,21 +946,25 @@ RSpec.describe Samagotchi::Schedules do
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
       schedules.tick(now: Time.now + 120)
       first = schedules.lookup(entry.id).head
+      complete_pending(dir, schedules, entry.id)
       set_idle(dir, first)
       schedules.tick(now: Time.now + 240)
+      complete_pending(dir, schedules, entry.id)
       # `first` is archived now but still inside the window; the next firing
       # pushes it out, and its worker refuses the delete.
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(first, state_dir: dir), kind: "worker")
       set_idle(dir, schedules.lookup(entry.id).head)
       outcome = schedules.tick(now: Time.now + 360).outcomes.first
-      expect(outcome.status).to eq("fired")
+      expect(outcome.status).to eq("pending")
+      complete_pending(dir, schedules, entry.id)
       after = schedules.lookup(entry.id)
       expect(after.failures).to eq(0)
       expect(archived?(dir, first)).to be(true)
       lock.release
       set_idle(dir, schedules.lookup(entry.id).head)
       fired = schedules.run_now(entry.id)
-      expect(fired.status).to eq("fired")
+      expect(fired.status).to eq("pending")
+      complete_pending(dir, schedules, entry.id)
       expect(archived?(dir, first)).to be(false)
     end
   end
@@ -894,13 +978,55 @@ RSpec.describe Samagotchi::Schedules do
       delivered = nil
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **kwargs|
         delivered = { id: id, prompt: prompt, delivery: kwargs[:delivery], client_id: kwargs[:client_id] }
-        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "scheduled-turn" })
       end
       tick = schedules.tick(now: Time.now + 120)
-      expect(tick.outcomes.first.status).to eq("fired")
+      expect(tick.outcomes.first.status).to eq("pending")
       expect(delivered[:delivery]).to eq(Samagotchi::Delivery::QUEUE)
       expect(delivered[:client_id]).to eq(Samagotchi::ClientId.schedule(entry.id))
       expect(schedules.lookup(entry.id).last_result).to eq("queued a turn")
+    end
+  end
+
+  it "waits for the tick lock and does not fire an entry the tick already reserved" do
+    Dir.mktmpdir("schedules-run-now-lock") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      fired = 0
+      allow(Samagotchi::SessionContinue).to receive(:run) do
+        fired += 1
+        double(id: anchor, first_turn_id: "scheduled-turn")
+      end
+
+      held = File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- fake tick holds the lock
+      held.flock(File::LOCK_EX)
+      running = Thread.new { schedules.run_now(entry.id) }
+      sleep 0.2 # sleep-ok: run-now must wait for the fake tick's lock
+      expect(running).to be_alive
+
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first.merge!(
+        "due_was" => entry.next_due,
+        "firing_since" => Time.iso8601(entry.next_due).utc.iso8601,
+        "next_due" => (Time.iso8601(entry.next_due) + 60).utc.iso8601
+      )
+      File.write(schedules.path, JSON.generate(data))
+      held.flock(File::LOCK_UN)
+      held.close
+
+      join!(running, "run-now reservation")
+      outcome = running.value
+      expect(outcome.status).to eq("pending")
+      expect(outcome.detail).to include("already firing")
+      expect(fired).to eq(0)
+    ensure
+      if held && !held.closed?
+        held.flock(File::LOCK_UN)
+        held.close
+      end
+      join!(running, "run-now reservation") if running
     end
   end
 
@@ -934,11 +1060,11 @@ RSpec.describe Samagotchi::Schedules do
       delivered = []
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **kwargs|
         delivered << { id: id, prompt: prompt, delivery: kwargs[:delivery] }
-        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "scheduled-turn" })
       end
 
       outcome = schedules.tick(now: Time.now + 120).outcomes.first
-      expect([outcome.status, outcome.detail]).to eq(["fired", "queued a turn"])
+      expect([outcome.status, outcome.detail]).to eq(["pending", "queued a turn"])
       expect(delivered).to eq([{ id: link.id, prompt: "Check the queue", delivery: Samagotchi::Delivery::QUEUE }])
       expect(archived?(dir, anchor)).to be(true)
     end
@@ -952,21 +1078,23 @@ RSpec.describe Samagotchi::Schedules do
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, _prompt, **_kwargs|
-        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "scheduled-turn" })
       end
 
       schedules.tick(now: Time.now + 120)
       expect(schedules.lookup(entry.id).head).to eq(anchor)
+      complete_pending(dir, schedules, entry.id)
 
       link = Samagotchi::SessionContinue.run(anchor, prompt: "by hand", state_dir: dir)
       set_idle(dir, link.id)
-      expect(schedules.run_now(entry.id).status).to eq("fired")
+      expect(schedules.run_now(entry.id).status).to eq("pending")
       stored = schedules.lookup(entry.id)
       expect([stored.anchor, stored.head]).to eq([anchor, link.id])
 
       # The head, not the archived anchor, is what the next tick resolves from.
+      complete_pending(dir, schedules, entry.id)
       set_idle(dir, link.id)
-      expect(schedules.tick(now: Time.now + 240).outcomes.first.status).to eq("fired")
+      expect(schedules.tick(now: Time.now + 240).outcomes.first.status).to eq("pending")
     end
   end
 
@@ -999,6 +1127,27 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "uses a weekday interval for a run-now pending turn's expiry window" do
+    Dir.mktmpdir("schedules-run-now-weekday-window") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      now = Time.local(2026, 11, 10, 12)
+      schedules = store(dir, now: now)
+      entry = schedules.add(target: anchor, prompt: "Check",
+                            recurrence: described_class.recurrence(weekday: now.to_date.cwday, time: "12:00"),
+                            mode: described_class::SAME)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => "scheduled-turn" })
+      )
+
+      expect(schedules.run_now(entry.id).status).to eq("pending")
+      outcome = schedules.tick(now: now + described_class::PENDING_MIN_SECONDS + 1).outcomes.first
+
+      expect(outcome).to have_attributes(status: "pending")
+    end
+  end
+
   it "does not fire an `every 30m` schedule at every tick" do
     Dir.mktmpdir("schedules-every") do |root|
       dir = File.join(root, "sessions")
@@ -1008,7 +1157,11 @@ RSpec.describe Samagotchi::Schedules do
       schedules.add(target: anchor, prompt: "Audit", recurrence: every("30m"))
       now = Time.now
       firings = 0
-      8.times { |step| firings += schedules.tick(now: now + (step * 300)).outcomes.count { |outcome| outcome.status == "fired" } }
+      8.times do |step|
+        outcomes = schedules.tick(now: now + (step * 300)).outcomes
+        firings += outcomes.count { |outcome| outcome.status == "pending" }
+        complete_pending(dir, schedules, outcomes.find { |outcome| outcome.status == "pending" }&.id)
+      end
       expect(firings).to eq(1)
     end
   end
@@ -1021,7 +1174,7 @@ RSpec.describe Samagotchi::Schedules do
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "One thing", recurrence: described_class.recurrence(date: "2026-01-01T09:00"))
 
-      expect(schedules.tick.outcomes.first.status).to eq("fired")
+      expect(schedules.tick.outcomes.first.status).to eq("pending")
 
       stored = schedules.lookup(entry.id)
       expect([stored.enabled, stored.next_due]).to eq([false, nil])
@@ -1053,7 +1206,9 @@ RSpec.describe Samagotchi::Schedules do
      ["chain", { input_pending: true }, "a prompt is queued for it"],
      ["chain", { awaiting_continue: true }, "its step-limit question waits for an answer"],
      ["chain", { open_streams: 1 }, "a terminal or a web tab is open on it"],
-     ["same", { turn_running: true }, "a turn is running in it"]].each do |mode, snapshot, reason|
+     ["same", { turn_running: true }, "a turn is running in it"],
+     ["same", { input_pending: true }, "a prompt is queued for it"],
+     ["same", { awaiting_continue: true }, "its step-limit question waits for an answer"]].each do |mode, snapshot, reason|
       Dir.mktmpdir("schedules-live-worker") do |root|
         dir = File.join(root, "sessions")
         anchor = session(dir).id
@@ -1084,13 +1239,13 @@ RSpec.describe Samagotchi::Schedules do
       lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
       allow(Samagotchi::BridgeClient).to receive(:new).and_return(double("client", get: [200, { open_streams: 2 }]))
       allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, prompt:, **_kwargs|
-        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "scheduled-turn" })
       end
 
       schedules = store(dir)
       schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
       outcome = schedules.tick(now: Time.now + 120).outcomes.first
-      expect([outcome.status, outcome.detail]).to eq(["fired", "queued a turn"])
+      expect([outcome.status, outcome.detail]).to eq(["pending", "queued a turn"])
       lock.release
     end
   end
@@ -1167,7 +1322,7 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  it "marks an entry firing before the action, so a tick killed mid-continue cannot fire it again" do
+  it "marks an entry firing before the action, then records an interrupted firing without replaying it" do
     [
       ["every", every("1m")],
       ["weekday", described_class.recurrence(weekday: 1, time: "09:00")],
@@ -1193,7 +1348,49 @@ RSpec.describe Samagotchi::Schedules do
         # instant finds nothing due, and nothing was archived.
         expect(schedules.tick(now: now).outcomes).to be_empty
         expect(archived?(dir, anchor)).to be(false)
+
+        outcome = schedules.tick(now: now + described_class::FIRING_TIMEOUT).outcomes.first
+        expect([outcome.status, outcome.detail]).to eq(%w[failed interrupted])
+        after = schedules.lookup(entry.id)
+        expect([after.firing_since, after.failures, after.last_result]).to eq([nil, 1, "interrupted"])
+        expect(after.enabled).to eq(kind != "date")
+        expect(schedules.entries).to be_empty if kind == "date"
       end
+    end
+  end
+
+  it "drops a firing result that arrives after the reaper has recorded the interruption" do
+    Dir.mktmpdir("schedules-stale-record") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      now = Time.utc(2026, 11, 10, 12)
+      schedules = store(dir, now: now)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      due = Time.iso8601(entry.next_due) + 1
+      started = Queue.new
+      release = Queue.new
+      allow(schedules).to receive(:fire) do |reserved, _index|
+        started << true
+        release.pop
+        described_class::Outcome.new(id: reserved.id, title: reserved.title, status: "failed",
+                                     detail: "late result", entry: reserved)
+      end
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      firing = Thread.new { schedules.tick(now: due) }
+      started.pop
+      reaped = schedules.tick(now: due + described_class::FIRING_TIMEOUT).outcomes.first
+      release << true
+      firing.value
+
+      expect(reaped).to have_attributes(status: "failed", detail: "interrupted")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, last_result: "interrupted")
+      expect(Samagotchi::Log).to have_received(:warn).with(
+        :worker, "schedule_record_stale", hash_including(id: entry.id)
+      )
+    ensure
+      release << true if firing&.alive?
+      firing&.join
     end
   end
 
@@ -1222,8 +1419,295 @@ RSpec.describe Samagotchi::Schedules do
       # the skipped one tried.
       lock.release
       fired = schedules.tick(now: monday + 120).outcomes.first
-      expect(fired.status).to eq("fired")
+      expect(fired.status).to eq("pending")
       expect(Time.iso8601(schedules.lookup(entry.id).next_due)).to eq(Time.local(2026, 11, 16, 9, 0))
+    end
+  end
+
+  it "keeps an accepted schedule turn pending until that turn completes" do
+    Dir.mktmpdir("schedules-pending-success") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+
+      started = schedules.tick(now: started_at).outcomes.first
+      expect(started).to have_attributes(status: "pending", detail: "queued a turn")
+      expect(schedules.lookup(entry.id)).to have_attributes(
+        pending_session_id: anchor, pending_turn_id: turn_id, failures: 0, skips: 0
+      )
+
+      saved = Samagotchi::Session.load(anchor, state_dir: dir)
+      saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (started_at + 1).iso8601,
+                                                 origin: "schedule", enqueued_id: turn_id)
+      saved.save(state_dir: dir)
+      resolved = schedules.tick(now: started_at + 2).outcomes.first
+
+      expect(resolved).to have_attributes(status: "fired", detail: "turn completed")
+      expect(schedules.lookup(entry.id)).to have_attributes(
+        pending_session_id: nil, pending_turn_id: nil, failures: 0, skips: 0, last_result: "turn completed"
+      )
+    end
+  end
+
+  it "counts failed and canceled schedule turns as failures with their reasons" do
+    %w[failed canceled].each do |turn_outcome|
+      Dir.mktmpdir("schedules-pending-#{turn_outcome}") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1d"), mode: "same")
+        turn_id = "scheduled-turn"
+        deliveries = 0
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn) do
+          deliveries += 1
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                        ack: { "enqueued_id" => turn_id })
+        end
+        started_at = Time.iso8601(entry.next_due) + 1
+        expect(schedules.tick(now: started_at).outcomes.first.status).to eq("pending")
+
+        saved = Samagotchi::Session.load(anchor, state_dir: dir)
+        saved.last_turn = Samagotchi::LastTurn.new(outcome: turn_outcome, ended_at: (started_at + 1).iso8601,
+                                                   enqueued_id: turn_id,
+                                                   error_kind: (turn_outcome == "failed" ? "server" : nil),
+                                                   cancel_reason: (turn_outcome == "canceled" ? "user" : nil))
+        saved.save(state_dir: dir)
+        resolved = schedules.tick(now: started_at + 2).outcomes.first
+
+        expect(resolved).to have_attributes(status: "failed")
+        expect(resolved.detail).to include(turn_outcome)
+        expect(resolved.detail).to include(turn_outcome == "failed" ? "server" : "user")
+        expect(schedules.lookup(entry.id)).to have_attributes(
+          pending_session_id: nil, pending_turn_id: nil, failures: 1,
+          next_due: (started_at + 86_400).iso8601
+        )
+        expect(schedules.tick(now: started_at + 3).outcomes).to be_empty
+        expect(deliveries).to eq(1)
+      end
+    end
+  end
+
+  it "does not re-enable or replay a date schedule when its accepted turn fails" do
+    Dir.mktmpdir("schedules-pending-date-failure") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: described_class.recurrence(date: "2099-01-01T12:00"),
+                            mode: "same")
+      deliveries = 0
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do
+        deliveries += 1
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => "scheduled-turn" })
+      end
+      started_at = Time.iso8601(entry.next_due) + 1
+      expect(schedules.tick(now: started_at).outcomes.first.status).to eq("pending")
+
+      saved = Samagotchi::Session.load(anchor, state_dir: dir)
+      saved.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: (started_at + 1).iso8601,
+                                                 enqueued_id: "scheduled-turn")
+      saved.save(state_dir: dir)
+      expect(schedules.tick(now: started_at + 2).outcomes.first.status).to eq("failed")
+
+      expect(schedules.lookup(entry.id)).to have_attributes(
+        enabled: false, next_due: nil, failures: 1, pending_turn_id: nil
+      )
+      expect(schedules.tick(now: started_at + 3).outcomes).to be_empty
+      expect(deliveries).to eq(1)
+    end
+  end
+
+  it "resolves a pending turn from its own reply after a newer turn has run" do
+    Dir.mktmpdir("schedules-pending-own-turn") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+      schedules.tick(now: started_at)
+      Samagotchi::SessionInbox.write_output(
+        Samagotchi::Session.session_dir(anchor, state_dir: dir), "done", enqueued_id: turn_id
+      )
+
+      saved = Samagotchi::Session.load(anchor, state_dir: dir)
+      saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (started_at + 2).iso8601,
+                                                 enqueued_id: "later-turn")
+      saved.save(state_dir: dir)
+
+      resolved = schedules.tick(now: started_at + 3).outcomes.first
+
+      expect(resolved).to have_attributes(status: "fired", detail: "turn completed")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 0, pending_turn_id: nil)
+    end
+  end
+
+  it "resolves its own completed turn before a later turn's pending question" do
+    Dir.mktmpdir("schedules-pending-later-question") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+      schedules.tick(now: started_at)
+      Samagotchi::SessionInbox.write_output(
+        Samagotchi::Session.session_dir(anchor, state_dir: dir), "done", enqueued_id: turn_id
+      )
+
+      saved = Samagotchi::Session.load(anchor, state_dir: dir)
+      saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (started_at + 2).iso8601,
+                                                 enqueued_id: "later-turn")
+      saved.pending_question = Samagotchi::PendingQuestion.new(id: "question", kind: "approval",
+                                                               created_at: (started_at + 3).iso8601)
+      saved.save(state_dir: dir)
+
+      resolved = schedules.tick(now: started_at + 4).outcomes.first
+
+      expect(resolved).to have_attributes(status: "fired", detail: "turn completed")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 0, pending_turn_id: nil)
+    end
+  end
+
+  it "fails a pending firing when its session is gone" do
+    Dir.mktmpdir("schedules-pending-session-gone") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+      schedules.tick(now: started_at)
+      File.delete(File.join(dir, "#{anchor}.json"))
+
+      resolved = schedules.tick(now: started_at + 1).outcomes.first
+
+      expect(resolved).to have_attributes(status: "failed", detail: "session gone")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, pending_turn_id: nil)
+    end
+  end
+
+  it "fails a pending turn with no known outcome after its bounded hard limit" do
+    Dir.mktmpdir("schedules-pending-hard-limit") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+      schedules.tick(now: started_at)
+      limit = started_at + described_class::PENDING_MIN_SECONDS
+
+      expect(schedules.tick(now: limit - 1).outcomes.first.status).to eq("pending")
+      resolved = schedules.tick(now: limit).outcomes.first
+
+      expect(resolved).to have_attributes(status: "failed", detail: "no outcome")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, pending_turn_id: nil)
+    end
+  end
+
+  it "expires a stale pending turn id left by an older ticker" do
+    Dir.mktmpdir("schedules-stale-pending-id") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      now = Time.utc(2026, 11, 10, 12)
+      schedules = store(dir, now: now)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+      data = JSON.parse(File.read(schedules.path))
+      data.fetch("schedules").first.merge!(
+        "firing_since" => (now - described_class::PENDING_MIN_SECONDS - 1).iso8601,
+        "pending_session_id" => anchor,
+        "pending_turn_id" => "stale-ticker-turn"
+      )
+      File.write(schedules.path, JSON.generate(data))
+
+      outcome = schedules.tick(now: now).outcomes.first
+
+      expect(outcome).to have_attributes(status: "failed", detail: "no outcome")
+      expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, pending_turn_id: nil)
+    end
+  end
+
+  it "expires pending turns with a missing or invalid firing timestamp" do
+    [nil, "not-a-time"].each do |firing_since|
+      Dir.mktmpdir("schedules-pending-missing-firing-time") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        now = Time.utc(2026, 11, 10, 12)
+        schedules = store(dir, now: now)
+        entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: "same")
+        data = JSON.parse(File.read(schedules.path))
+        data.fetch("schedules").first.merge!(
+          "firing_since" => firing_since,
+          "pending_session_id" => anchor,
+          "pending_turn_id" => "stale-ticker-turn"
+        )
+        File.write(schedules.path, JSON.generate(data))
+
+        outcome = schedules.tick(now: now).outcomes.first
+
+        expect(outcome).to have_attributes(status: "failed", detail: "no outcome")
+        expect(schedules.lookup(entry.id)).to have_attributes(failures: 1, pending_turn_id: nil)
+      end
+    end
+  end
+
+  it "keeps a schedule turn waiting on a question pending until its hard limit" do
+    Dir.mktmpdir("schedules-pending-question") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1d"), mode: "same")
+      turn_id = "scheduled-turn"
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                      ack: { "enqueued_id" => turn_id })
+      )
+      started_at = Time.iso8601(entry.next_due) + 1
+      expect(schedules.tick(now: started_at).outcomes.first.status).to eq("pending")
+
+      saved = Samagotchi::Session.load(anchor, state_dir: dir)
+      saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (started_at + 1).iso8601,
+                                                 enqueued_id: turn_id)
+      saved.pending_question = Samagotchi::PendingQuestion.new(id: "question", kind: "approval",
+                                                               created_at: started_at.iso8601)
+      saved.save(state_dir: dir)
+
+      waiting = schedules.tick(now: started_at + described_class::FIRING_TIMEOUT + 1).outcomes.first
+      expect(waiting).to have_attributes(status: "pending", detail: "turn is waiting for an answer")
+
+      limit = started_at + described_class::PENDING_MAX_SECONDS
+      expect(schedules.tick(now: limit - 1).outcomes.first.status).to eq("pending")
+      failed = schedules.tick(now: limit).outcomes.first
+      expect(failed).to have_attributes(status: "failed", detail: "no outcome")
+      expect(schedules.lookup(entry.id)).to have_attributes(
+        failures: 1, pending_turn_id: nil, next_due: (started_at + 86_400).iso8601
+      )
+      expect(schedules.tick(now: limit + 1).outcomes).to be_empty
+      expect(Samagotchi::SessionManager).to have_received(:deliver_turn).once
     end
   end
 end

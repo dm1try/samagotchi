@@ -7,6 +7,7 @@ worker's memory, so it outlives every session, every restart and every crash:
 chi web's hub can never lose an update to each other). A **tick** — cron, systemd,
 launchd, `chi schedule tick`, or chi web's hub when `schedule.auto_tick` is on —
 walks the entries whose `next_due` has passed and runs the ones that are not busy.
+The top-level `last_tick_at` records the last acquired, non-dry-run tick.
 
 The file is versioned: each entry member is required or declares the format
 version and default that introduced it. Rewrites preserve unknown keys and
@@ -165,6 +166,16 @@ both counters**, so twelve skips spread over months do not kill a healthy weekly
 schedule. `list` prints the skip budget as a time window — 12 skips at a 5 minute
 tick is about an hour of patience, which is what the count really measures.
 
+An accepted delivery is **pending**, not fired: `schedules.json` records its
+session and turn id, and the next tick follows that turn's own outcome, even if a
+later turn has replaced `last_turn`. A completed turn is a success; a failed or
+canceled turn counts toward `max_failures`, with its reason in `chi schedule list`
+and `show`. A question does not time out with the 40-second firing step: the turn
+stays pending until its hard limit, derived from the schedule interval (at least
+10 minutes and at most 6 hours). If no outcome is known by then, it counts as a
+failure with reason `no outcome`. Failed, canceled and expired turns are not
+re-fired; `next_due` remains at the next occurrence.
+
 A chain holds at most `schedule.max_per_session` enabled schedules (default 10) and
 the machine `schedule.max_total` (default 50); `schedule_task` and `chi schedule add`
 refuse past them, naming the key. A schedule the chain already has — the same prompt
@@ -178,7 +189,13 @@ is refused with exit 2, naming the matches.
 The tick's lock covers the file only, never the action: the clock advances before
 the work starts — for `every` and `weekday` to the next occurrence, for a `date`
 one-off to none — so a tick killed mid-continue cannot fire the same entry twice.
-`firing_since` is what `chi schedule show` prints; the advanced clock is the guard.
+If a later tick finds a firing older than 40 seconds without an accepted turn, it
+counts an `interrupted` failure. This 40-second limit covers only the firing
+step, not an accepted turn or its pending question. The action may already have
+taken effect before the process died, so that occurrence is not replayed; a
+`date` one-off stays disabled with the failure visible, and recurring schedules
+keep their advanced clock. An accepted turn is tracked separately until its own
+outcome is known or its hard limit is reached.
 And a `chi schedule add` from a terminal never waits on an archive or a recap wait. Chain mode targets `last:<head>`, so `SessionContinue.run`'s
 own retry loop follows a continue a human made between our resolve and its lock
 instead of racing it.
@@ -207,6 +224,11 @@ pruned" instead of linking to a deleted session.
 If a link to prune still has a worker (`DeleteRefused(:worker_running)`), pruning
 stops there for this firing and is retried at the next one.
 
+Retention keeps the stored `anchor` and `head`, as well as the resolved target,
+of every enabled schedule. Deleting a protected session is refused—even with
+`chi sessions delete --force`—until the schedule is cancelled with
+`chi schedule cancel ID`; a disabled schedule does not protect its sessions.
+
 ## Running the tick
 
 `chi schedule tick` is quiet and safe to run often; it is this machine only
@@ -223,7 +245,9 @@ Run it from systemd or launchd instead if you prefer a timer: the command is the
 same, `chi schedule tick`, and the lock makes overlapping runs harmless — the
 second one exits 0 with "no schedules due (another tick holds the lock)".
 `--dry-run` prints what would fire and changes nothing; `--format json` is the seam
-for scripts and for a future web UI.
+for scripts and for a future web UI. `chi schedule run-now` reserves the entry
+under the same lock before starting its action, so it cannot race a tick into a
+duplicate firing.
 
 A tick fires **one entry per chain**: of the due entries of one chain, the one due
 earliest (`next_due`, then id) fires and the rest are skipped — "the chain just
@@ -237,8 +261,13 @@ they queue a turn, they do not archive.
 
 `schedule.auto_tick: true` makes chi web's hub tick on
 `schedule.tick_interval_minutes` (default 5) as well, sharing the same lock, so
-cron and the hub can coexist without firing twice. It is off by default: cron or
-systemd is the documented driver.
+cron and the hub can coexist without firing twice. The hub runs its tick outside
+the session scan loop and allows only one hub tick at a time, so a firing waiting
+on a worker does not stall session updates. It is off by default: cron or systemd
+is the documented driver. When it is off and no tick has run within twice
+the configured interval, `chi schedule add`, `chi schedule list` and `schedule_task`
+warn to turn `schedule.auto_tick` on or run `chi schedule tick` from cron; `--dry-run`
+and lock-held attempts do not refresh `last_tick_at`.
 
 See [cli.md](cli.md) for the subcommands and flags, and
 [configuration.md](configuration.md) for the `schedule.*` settings.

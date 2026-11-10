@@ -186,7 +186,7 @@ module Samagotchi
       end
 
       ChildMove.return_rings(from: orphan, to: id, state_dir: state_dir)
-      SessionManager.delete_session(orphan, state_dir: state_dir)
+      SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true)
     rescue SessionManager::DeleteRefused
       raise
     rescue StandardError => e

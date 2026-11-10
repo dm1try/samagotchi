@@ -5,6 +5,7 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/schedules"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
@@ -36,6 +37,24 @@ RSpec.describe Samagotchi::SessionManager do
       expect(result).to eq(id: session.id, removed: [session_file, session_dir], stopped: false)
       expect(File.exist?(session_file)).to be false
       expect(Dir.exist?(session_dir)).to be false
+    end
+
+    it "refuses to delete an enabled schedule target, even with stop" do
+      schedule_state_dir = File.join(tmpdir, "scheduled-sessions")
+      FileUtils.mkdir_p(schedule_state_dir)
+      scheduled_session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      scheduled_session.save(state_dir: schedule_state_dir)
+      schedule = Samagotchi::Schedules.new(state_dir: schedule_state_dir).add(
+        target: scheduled_session.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h")
+      )
+
+      expect { described_class.delete_session(scheduled_session.id, state_dir: schedule_state_dir, stop: true) }
+        .to raise_error(described_class::DeleteRefused) { |error|
+          expect(error.reason).to eq(:scheduled)
+          expect(error.message).to eq("this session is the target of an enabled schedule; " \
+                                      "cancel it with chi schedule cancel #{schedule.id}")
+        }
+      expect(File.exist?(File.join(schedule_state_dir, "#{scheduled_session.id}.json"))).to be true
     end
 
     it "removes the plugins' state for the session (plugins/<bundle>/sessions/<id>.json or <id>/), not another's" do

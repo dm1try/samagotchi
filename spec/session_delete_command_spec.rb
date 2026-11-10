@@ -7,10 +7,12 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_delete_command"
 require "samagotchi/owner_lock"
+require "samagotchi/schedules"
 require_relative "support/remote_backend"
 
 RSpec.describe Samagotchi::SessionDeleteCommand do
   let(:tmpdir) { Dir.mktmpdir("session-delete-command") }
+  let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:locks) { [] }
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
@@ -24,17 +26,17 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app").tap do |s|
       s.id = id if id
       s.first_preview = prompt
-      s.save(state_dir: tmpdir)
+      s.save(state_dir: state_dir)
       locks << Samagotchi::OwnerLock.acquire(dir_of(s), kind: owner) if owner
     end
   end
 
-  def dir_of(session) = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+  def dir_of(session) = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
 
-  def gone?(session) = !File.exist?(File.join(tmpdir, "#{session.id}.json")) && !Dir.exist?(dir_of(session))
+  def gone?(session) = !File.exist?(File.join(state_dir, "#{session.id}.json")) && !Dir.exist?(dir_of(session))
 
   def run(*argv)
-    described_class.new(argv, stdout: out, stderr: err, state_dir: tmpdir, access: backend_access(tmpdir)).run
+    described_class.new(argv, stdout: out, stderr: err, state_dir: state_dir, access: backend_access(state_dir)).run
   end
 
   RemoteBackend.both(self) do
@@ -51,7 +53,7 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
 
     it "names a titled session by its title" do
       titled = make(id: "aaaa1111-0000").tap { |s| s.title = "Parser fix" }
-      titled.save(state_dir: tmpdir)
+      titled.save(state_dir: state_dir)
 
       expect(run("aaaa")).to eq(0)
       expect(out.string).to eq("aaaa1111  deleted  Parser fix\n")
@@ -80,6 +82,19 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
 
       expect(out.string).to eq("aaaa1111  deleted (stopped its worker)  fix the bug in the parser\n")
       expect(gone?(live)).to be true
+    end
+
+    it "names an enabled schedule that protects the session from deletion" do
+      scheduled = make(id: "aaaa1111-0000")
+      schedule = Samagotchi::Schedules.new(state_dir: state_dir).add(
+        target: scheduled.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h")
+      )
+
+      expect(run("--force", scheduled.id)).to eq(1)
+
+      expect(out.string).to include("aaaa1111  refused: this session is the target of an enabled schedule; " \
+                                    "cancel it with chi schedule cancel #{schedule.id}")
+      expect(gone?(scheduled)).to be false
     end
 
     it "says so when the worker is still shutting down after --force" do

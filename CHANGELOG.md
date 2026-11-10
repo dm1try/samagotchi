@@ -38,6 +38,19 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle uninstall NAME` of a bundle whose install was interrupted before its record (only the
   `pending.json` journal left) retags the index line of a kept shared file in the journal's own target folder, not the
   current folder's: run from another project, it no longer edits that project's `index.md` for a file living elsewhere.
+- A schedule counts a firing only after its turn completes: failed, canceled or unanswered turns now count toward
+  `max_failures` with the reason visible in `chi schedule list` and `show`.
+- A schedule firing left without a turn after a process interruption is recorded as a failure instead of staying
+  stuck; its uncertain occurrence is not replayed.
+- `chi schedule run-now` reserves an entry under the tick lock before firing, preventing an overlapping tick from
+  starting the same work.
+- Retention protects an enabled schedule's stored anchor and head as well as its resolved target; cancel the
+  schedule with `chi schedule cancel ID` before deleting any of them.
+- Schedule add, list and `schedule_task` warn when the ticker is stale and auto-tick is off; acquired ticks record
+  their timestamp.
+- chi web's schedule tick runs outside the session scan loop, and overlapping hub scans do not start a second
+  tick while one is in flight.
+- The web chain chip waits until its session is in the loaded list before saying earlier links were pruned.
 - A `chi send`, delegate or schedule delivery whose Bridge answered an error after it had queued the prompt no
   longer runs it twice: the client makes the enqueued id, the input-file fallback reuses it, and the worker runs
   each id once (also after a restart, a turn that already ran or was cut off by the worker's death).

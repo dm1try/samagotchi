@@ -21,6 +21,7 @@ require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_row"
 require_relative "state_format"
+require_relative "turn_checkpoint"
 require_relative "worker_link"
 
 module Samagotchi
@@ -62,6 +63,11 @@ module Samagotchi
     PROMPT_MAX_BYTES = SessionInbox::NOTE_MAX_BYTES
     # Seconds a tick waits for a live worker's GET /activity.
     ACTIVITY_TIMEOUT = 2.0
+    # A chain firing can wait 30 s for a recap and 5 s for an archive; 5 s
+    # more leaves margin before an unfinished turn is called interrupted.
+    FIRING_TIMEOUT = 40
+    PENDING_MIN_SECONDS = 10 * 60
+    PENDING_MAX_SECONDS = 6 * 60 * 60
     # Refusals that mean "not now" rather than "this schedule is broken".
     # (starting: the link's worker holds no lock yet, e.g. another ticker's
     # firing just continued the chain.)
@@ -85,7 +91,8 @@ module Samagotchi
     # puts the clock back to it.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
-                        :firing_since, :failures, :skips, :enabled, :created_at, :extra) do
+                        :firing_since, :firing_token, :pending_session_id, :pending_turn_id, :failures, :skips, :enabled,
+                        :created_at, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once.
       def self.from_record(record)
@@ -142,12 +149,16 @@ module Samagotchi
         StateFormat.added(:last_fired, in_version: VERSION, default: nil),
         StateFormat.added(:last_result, in_version: VERSION, default: nil),
         StateFormat.added(:firing_since, in_version: VERSION, default: nil),
+        StateFormat.added(:firing_token, in_version: VERSION, default: nil),
+        StateFormat.added(:pending_session_id, in_version: VERSION, default: nil),
+        StateFormat.added(:pending_turn_id, in_version: VERSION, default: nil),
         StateFormat.added(:failures, in_version: VERSION, default: 0),
         StateFormat.added(:skips, in_version: VERSION, default: 0),
         StateFormat.added(:enabled, in_version: VERSION, default: true),
         StateFormat.added(:created_at, in_version: VERSION, default: nil),
         StateFormat.extra(:extra, in_version: VERSION)
-      ]
+      ],
+      document_members: [StateFormat.added(:last_tick_at, in_version: VERSION, default: nil)]
     )
 
     # What one entry did in a tick: "fired", "skipped", "missed", "failed" or
@@ -185,6 +196,16 @@ module Samagotchi
     def entries(include_disabled: false)
       list = read.entries.grep(Entry).sort_by { |entry| [entry.next_due.to_s, entry.id] }
       include_disabled ? list : list.select(&:enabled)
+    end
+
+    def protected_session_ids
+      index = Index.new(@state_dir)
+      entries.flat_map { |entry| [entry.anchor, entry.head, target_of(entry, index).first] }.compact.uniq
+    end
+
+    def protecting(session_id)
+      index = Index.new(@state_dir)
+      entries.find { |entry| target_of(entry, index).first == session_id }
     end
 
     # @param id_or_name [String] an id, a unique prefix of one, or a title
@@ -265,8 +286,8 @@ module Samagotchi
         max_failures: int_or_default(max_failures, "schedule.default_max_failures", 3, min: 1),
         max_skips: int_or_default(max_skips, "schedule.default_max_skips", 12, min: 1),
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
-        last_fired: nil, last_result: nil, firing_since: nil,
-        failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601, extra: {}
+        last_fired: nil, last_result: nil, firing_since: nil, firing_token: nil, pending_session_id: nil,
+        pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601, extra: {}
       )
       write_under_lock { |file| file.entries << entry }
       entry
@@ -326,6 +347,7 @@ module Samagotchi
     def tick(dry_run: false, now: @clock.call)
       outcomes = []
       pending = []
+      prune_after = []
       index = nil
 
       FileUtils.mkdir_p(@store_dir)
@@ -337,26 +359,63 @@ module Samagotchi
           return Tick.new(locked: true, outcomes: [])
         end
 
-        file = read
+        file = read(strict: true)
         list = file.entries.grep(Entry)
         # Ordered by the moment each entry is due, then id: with one chain
         # firing per tick, the entries of that chain take turns (a skipped
         # entry keeps its `next_due`, so the earliest waiting one goes next).
         # File order would let the first entry added win every tick and starve
         # the rest into their max_skips.
-        due = list.select { |entry| entry.enabled && entry.due?(now) }
+        updated = file.entries.dup
+        pending_ids = []
+        in_flight = []
+        resolved_chains = []
+        prune_after = []
+        updated.each_with_index do |entry, position|
+          next unless entry.is_a?(Entry)
+
+          if entry.firing_since && !entry.pending_turn_id && firing_expired?(entry, now)
+            interrupted = failed(entry, "interrupted")
+            interrupted = interrupted.with(enabled: false) if entry.recurrence[:kind] == "date"
+            updated[position] = interrupted
+            pending_ids << entry.id
+            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "interrupted",
+                                    entry: interrupted)
+            next
+          end
+          next unless entry.pending_turn_id
+
+          outcome = resolve_pending(entry, now)
+          pending_ids << entry.id
+          if outcome
+            updated[position] = finish_pending(entry, outcome)
+            outcomes << outcome
+            if outcome.status == "fired" && entry.mode == CHAIN
+              resolved_chains << entry
+              prune_after << entry if entry.keep_links.positive?
+            end
+          else
+            in_flight << entry
+            detail = pending_detail(entry)
+            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "pending", detail: detail, entry: entry)
+          end
+        end
+        due = list.select { |entry| entry.enabled && !pending_ids.include?(entry.id) && entry.due?(now) }
                   .sort_by { |entry| [entry.next_due.to_s, entry.id] }
-        return Tick.new(locked: false, outcomes: []) if due.empty?
+        if due.empty?
+          write(file: file.with(entries: updated, attributes: file.attributes.merge(last_tick_at: now.utc.iso8601))) unless dry_run
+          next
+        end
 
         # One session listing for the whole tick: a chain walk re-globbing
         # every session per call is the tick's dominant cost.
         index = Index.new(@state_dir)
-        updated = file.entries.dup
         # One firing per chain per tick. A second chain entry of the same chain
         # would continue the link the first one just made: that link has no
         # worker lock yet and is not in this tick's index, so the busy check
         # cannot see it, and its prompt would be archived before it ever ran.
-        fired_chains = {}
+        fired_chains = resolved_chains.to_h { |entry| [chain_key(index, entry), true] }
+        pending_chains = in_flight.select { |entry| entry.mode == CHAIN }.map { |entry| chain_key(index, entry) }
         due.each do |entry|
           position = updated.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
           verdict = check(entry, index)
@@ -371,6 +430,12 @@ module Samagotchi
           end
           if entry.mode == CHAIN && fired_chains[chain_key(index, entry)]
             reason = "the chain just fired; retry at the next tick"
+            updated[position] = skipped(entry, reason) unless dry_run
+            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
+            next
+          end
+          if entry.mode == CHAIN && pending_chains.include?(chain_key(index, entry))
+            reason = "a schedule turn is still pending in this chain"
             updated[position] = skipped(entry, reason) unless dry_run
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
             next
@@ -390,10 +455,16 @@ module Samagotchi
           pending << advanced
           fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
         end
-        write(file: file.with(entries: updated)) unless dry_run
+        write(file: file.with(entries: updated, attributes: file.attributes.merge(last_tick_at: now.utc.iso8601))) unless dry_run
       end
 
-      pending.each { |entry| outcomes << fire_and_record(entry, index) }
+      pending.each do |entry|
+        outcome = fire_and_record(entry, index)
+        outcomes << outcome
+        prune_after << outcome.entry if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
+      end
+      index ||= Index.new(@state_dir) unless prune_after.empty?
+      prune_after.each { |entry| prune(entry, index) }
       Tick.new(locked: false, outcomes: outcomes)
     end
 
@@ -401,28 +472,73 @@ module Samagotchi
     # A refusal is recorded exactly as a tick records one — the counters move,
     # and max_skips or max_failures can disable a schedule that can never run.
     # `due_was` is not involved: run-now is not a scheduled occurrence, so
-    # there is no clock to put back and next_due stays where it was.
+    # there is no clock to put back and next_due stays where it was. Reserve the
+    # firing under the file lock before the action, the way a tick does.
     # @return [Outcome]
     def run_now(id_or_name)
       entry = lookup(id_or_name)
       return Outcome.new(id: id_or_name.to_s, status: "failed", detail: "no such schedule") if entry.nil?
 
       index = Index.new(@state_dir)
-      verdict = check(entry, index)
-      if verdict
-        kind, reason = verdict
-        status = kind == :skip ? "skipped" : "failed"
-        record_refusal(entry, status, reason)
-        return Outcome.new(id: entry.id, title: entry.title, status: status, detail: reason, entry: entry)
+      reserved = nil
+      outcome = nil
+      write_under_lock do |file|
+        position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
+        if position.nil?
+          outcome = Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule")
+          next
+        end
+
+        current = file.entries[position]
+        if current.pending_turn_id
+          outcome = Outcome.new(id: current.id, title: current.title, status: "pending",
+                                detail: "already waiting for turn #{current.pending_turn_id}", entry: current)
+          next
+        end
+        if current.firing_since
+          outcome = Outcome.new(id: current.id, title: current.title, status: "pending",
+                                detail: "already firing since #{current.firing_since}", entry: current)
+          next
+        end
+
+        verdict = check(current, index)
+        if verdict
+          kind, reason = verdict
+          status = kind == :skip ? "skipped" : "failed"
+          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason)
+          file.entries[position] = updated
+          outcome = Outcome.new(id: current.id, title: current.title, status: status, detail: reason, entry: updated)
+          next
+        end
+
+        reserved = advance(current, @clock.call)
+        file.entries[position] = reserved
       end
 
-      fire_and_record(advance(entry, @clock.call), index)
+      return outcome if outcome
+      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule") unless reserved
+
+      fire_and_record(reserved, index)
     end
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
     def self.tick_interval_minutes
       value = Config.get("schedule.tick_interval_minutes").to_i
       value.positive? ? value : 5
+    end
+
+    def tick_warning(now: @clock.call)
+      return if Config.get("schedule.auto_tick")
+
+      last_tick_at = read.attributes[:last_tick_at]
+      stale_after = self.class.tick_interval_minutes * 120
+      return if last_tick_at && now - Time.iso8601(last_tick_at.to_s) <= stale_after
+
+      "Warning: no schedule tick in the last #{stale_after / 60} minutes; set schedule.auto_tick: true or " \
+        "run `chi schedule tick` from cron."
+    rescue ArgumentError
+      "Warning: no schedule tick in the last #{self.class.tick_interval_minutes * 2} minutes; " \
+        "set schedule.auto_tick: true or run `chi schedule tick` from cron."
     end
 
     # A recurrence from the CLI's flags or the tool's arguments. Blank strings
@@ -693,9 +809,10 @@ module Samagotchi
     # arriving from an older file is still spent.
     def reschedule(entry, now)
       if entry.recurrence[:kind] == "date"
-        entry.with(next_due: nil, last_result: "missed", firing_since: nil, enabled: false)
+        entry.with(next_due: nil, last_result: "missed", firing_since: nil, firing_token: nil, enabled: false)
       else
-        entry.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed", firing_since: nil)
+        entry.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed",
+                   firing_since: nil, firing_token: nil)
       end
     end
 
@@ -709,20 +826,120 @@ module Samagotchi
       one_off = entry.recurrence[:kind] == "date"
       entry.with(due_was: entry.next_due,
                  next_due: one_off ? nil : next_due_for(entry.recurrence, from: now).utc.iso8601,
-                 last_fired: now.utc.iso8601, firing_since: now.utc.iso8601, last_result: nil,
+                 last_fired: now.utc.iso8601, firing_since: now.utc.iso8601, firing_token: SecureRandom.uuid,
+                 last_result: nil,
                  enabled: one_off ? false : entry.enabled)
     end
 
     def skipped(entry, reason)
       skips = entry.skips + 1
       disabled = skips >= entry.max_skips
-      entry.with(skips: skips, firing_since: nil,
+      entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
                  last_result: disabled ? "disabled: #{reason}" : "skipped", enabled: !disabled)
     end
 
     def failed(entry, reason)
       failures = entry.failures + 1
-      entry.with(failures: failures, firing_since: nil, last_result: reason, enabled: failures < entry.max_failures)
+      entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
+                 last_result: reason, enabled: failures < entry.max_failures)
+    end
+
+    def pending_detail(entry)
+      session = Session.load(entry.pending_session_id, state_dir: @state_dir)
+      question = session.pending_question
+      return "turn is waiting for an answer" if question_started?(question, entry)
+
+      "waiting for turn #{entry.pending_turn_id}"
+    rescue Session::NotFound
+      "waiting for turn #{entry.pending_turn_id}"
+    end
+
+    def resolve_pending(entry, now)
+      session = Session.load(entry.pending_session_id, state_dir: @state_dir)
+      turn = session.last_turn if session.last_turn&.enqueued_id == entry.pending_turn_id
+      turn ||= TurnCheckpoint.settled_turn(Session.session_dir(entry.pending_session_id, state_dir: @state_dir),
+                                           entry.pending_turn_id)
+      if SessionInbox.reply_for(Session.session_dir(entry.pending_session_id, state_dir: @state_dir), entry.pending_turn_id)
+        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry)
+      end
+
+      question = session.pending_question
+      if question_started?(question, entry) && !question_after_turn?(question, turn)
+        return nil unless pending_expired?(entry, now)
+
+        return Outcome.new(id: entry.id, title: entry.title, status: "failed",
+                           detail: "no outcome", entry: entry)
+      end
+
+      if turn
+        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry) if
+          turn.outcome == "completed"
+
+        reason = [turn.outcome, turn.error_kind, turn.cancel_reason, turn.stopped_by].compact.join(": ")
+        return Outcome.new(id: entry.id, title: entry.title, status: "failed",
+                           detail: "turn #{reason.empty? ? "did not complete" : reason}", entry: entry)
+      end
+
+      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no outcome", entry: entry) if
+        pending_expired?(entry, now)
+
+      nil
+    rescue Session::NotFound
+      Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "session gone", entry: entry)
+    end
+
+    def question_after_turn?(question, turn)
+      return false unless question&.created_at && turn&.ended_at
+
+      Time.iso8601(question.created_at) > Time.iso8601(turn.ended_at)
+    rescue ArgumentError
+      false
+    end
+
+    def question_started?(question, entry)
+      return false unless question&.created_at && entry.firing_since
+
+      Time.iso8601(question.created_at) >= Time.iso8601(entry.firing_since)
+    rescue ArgumentError
+      false
+    end
+
+    def firing_expired?(entry, now)
+      Time.iso8601(entry.firing_since) + FIRING_TIMEOUT <= now
+    rescue ArgumentError
+      false
+    end
+
+    def pending_expired?(entry, now)
+      return true unless entry.firing_since
+
+      Time.iso8601(entry.firing_since) + pending_window(entry) <= now
+    rescue ArgumentError
+      true
+    end
+
+    def pending_window(entry)
+      seconds = case entry.recurrence[:kind]
+                when "every"
+                  self.class.interval_seconds(entry.recurrence[:interval])
+                when "weekday"
+                  # Weekly intervals exceed the cap; for run-now, due_was may
+                  # equal next_due and cannot represent that interval.
+                  PENDING_MAX_SECONDS
+                end
+      (seconds || PENDING_MAX_SECONDS).clamp(PENDING_MIN_SECONDS, PENDING_MAX_SECONDS)
+    rescue ArgumentError, TypeError
+      PENDING_MAX_SECONDS
+    end
+
+    def finish_pending(entry, outcome)
+      if outcome.status == "fired"
+        entry.with(firing_since: nil, firing_token: nil, due_was: nil, pending_session_id: nil, pending_turn_id: nil,
+                   last_result: outcome.detail, failures: 0, skips: 0)
+      else
+        updated = failed(entry, outcome.detail).with(due_was: nil)
+        entry.recurrence[:kind] == "date" ? updated.with(enabled: false) : updated
+      end
     end
 
     # :skip (busy now, try the next tick) or :fail (the target is gone or
@@ -842,7 +1059,6 @@ module Samagotchi
     def fire_and_record(entry, index)
       outcome = fire(entry, index)
       record(entry, outcome)
-      prune(outcome.entry, index) if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       outcome
     end
 
@@ -869,8 +1085,14 @@ module Samagotchi
       # turn is the schedule's (its origin), as a same-mode firing's is.
       link = SessionContinue.run("last:#{head}", prompt: entry.prompt, state_dir: @state_dir,
                                                  client_id: ClientId.schedule(entry.id))
-      Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "new link #{link.id[0, 8]}",
-                  entry: entry.with(head: link.id))
+      turn_id = link.first_turn_id
+      if turn_id.to_s.empty?
+        return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the new link has no turn id",
+                           entry: entry)
+      end
+
+      Outcome.new(id: entry.id, title: entry.title, status: "pending", detail: "new link #{link.id[0, 8]}",
+                  entry: entry.with(head: link.id, pending_session_id: link.id, pending_turn_id: turn_id))
     rescue SessionContinue::Refused => e
       classify(entry, e.reason, e.message)
     rescue SessionManager::ArchiveRefused => e
@@ -895,9 +1117,15 @@ module Samagotchi
                                           client_id: ClientId.schedule(entry.id),
                                           delivery: Delivery::QUEUE, state_dir: @state_dir)
       if result.accepted?
+        if result.enqueued_id.to_s.empty?
+          return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the accepted turn has no id",
+                             entry: entry)
+        end
+
         # The head follows the turn: the next tick resolves from the link this
         # one fired into, so the walk survives a link deleted in between.
-        Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "queued a turn", entry: entry.with(head: target))
+        Outcome.new(id: entry.id, title: entry.title, status: "pending", detail: "queued a turn",
+                    entry: entry.with(head: target, pending_session_id: target, pending_turn_id: result.enqueued_id))
       else
         Outcome.new(id: entry.id, title: entry.title, status: "failed",
                     detail: "the turn was not accepted (#{result.status}: #{result.error || result.detail})", entry: entry)
@@ -912,32 +1140,32 @@ module Samagotchi
     # A run-now refused before anything was tried: the same counters a tick
     # moves for a skip or a failure. `due_was` is untouched — run-now is not a
     # scheduled occurrence, so there is no occurrence to put the clock back to.
-    def record_refusal(entry, status, reason)
-      write_under_lock do |file|
-        position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
-        next if position.nil?
-
-        stored = file.entries[position]
-        file.entries[position] = status == "skipped" ? skipped(stored, reason) : failed(stored, reason)
-      end
-    end
-
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
     def record(entry, outcome)
       write_under_lock do |file|
         position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
-        next if position.nil?
+        stored = position && file.entries[position]
+        unless stored&.firing_token == entry.firing_token && !entry.firing_token.to_s.empty?
+          Log.warn(:worker, "schedule_record_stale", id: entry.id, token: entry.firing_token)
+          next
+        end
 
-        stored = file.entries[position]
-        updated = if outcome.status == "fired"
+        updated = case outcome.status
+                  when "pending"
+                    stored.with(head: outcome.entry.head, pending_session_id: outcome.entry.pending_session_id,
+                                pending_turn_id: outcome.entry.pending_turn_id,
+                                firing_since: stored.firing_since || entry.firing_since,
+                                due_was: stored.due_was || entry.due_was, last_result: outcome.detail)
+                  when "fired"
                     # Any success clears the skip and failure counters: twelve
                     # skips spread over months do not kill a healthy schedule.
                     # A `date` schedule is a one-off: `advance` already left it
                     # with no next_due and disabled, and a firing keeps it so.
-                    stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
+                    stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil, firing_token: nil,
+                                pending_session_id: nil, pending_turn_id: nil,
                                 failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
-                  elsif outcome.status == "skipped"
+                  when "skipped"
                     skipped(stored, outcome.detail).with(firing_since: nil)
                   else
                     failed(stored, outcome.detail)
@@ -946,7 +1174,7 @@ module Samagotchi
         # A skip or a failure is "not now", not "late": the occurrence the tick
         # tried comes back, so the next tick tries it again. max_skips and
         # max_failures bound how often that happens.
-        updated = updated.with(next_due: stored.due_was) if outcome.status != "fired" && !stored.due_was.nil?
+        updated = updated.with(next_due: stored.due_was) if %w[failed skipped].include?(outcome.status) && !stored.due_was.nil?
         file.entries[position] = updated
       end
     end

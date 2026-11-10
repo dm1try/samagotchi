@@ -6,12 +6,20 @@ module Samagotchi
     # reason: :worker_running (not asked to stop it) or :still_stopping
     # (stopped, but the worker outlived the wait).
     class DeleteRefused < StandardError
-      attr_reader :session_id, :reason
+      attr_reader :session_id, :reason, :schedule_id
 
-      def initialize(session_id, reason)
+      def initialize(session_id, reason, message: nil, schedule_id: nil)
         @session_id = session_id
         @reason = reason
-        super(reason == :still_stopping ? "session #{session_id}'s worker is still shutting down" : "session #{session_id}'s worker is running")
+        @schedule_id = schedule_id
+        message ||= case reason
+                    when :still_stopping then "session #{session_id}'s worker is still shutting down"
+                    when :scheduled
+                      "this session is the target of an enabled schedule" \
+                        "#{"; cancel it with chi schedule cancel #{schedule_id}" if schedule_id}"
+                    else "session #{session_id}'s worker is running"
+                    end
+        super(message)
       end
     end
 
@@ -148,7 +156,9 @@ module Samagotchi
       # @param purge_runs [Boolean] also delete System 1's saved runs of it and
       #   its candidate-log lines; a session a worker left empty has none worth
       #   the read
-      def delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true)
+      # @param allow_scheduled [Boolean] internal rollback of a failed continue
+      def delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true,
+                         allow_scheduled: false)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         # Only a plain id: anything else could name a path outside the state dir.
@@ -159,6 +169,14 @@ module Samagotchi
         dir = Session.session_dir(id, state_dir: sd)
         # A folder with no file left is still deleted (not resolve!).
         raise Session::NotFound, given unless File.exist?(path) || Dir.exist?(dir)
+
+        unless allow_scheduled
+          require_relative "../schedules"
+          schedule = Schedules.new(state_dir: sd).protecting(id)
+          if schedule
+            raise DeleteRefused.new(id, :scheduled, schedule_id: schedule.id)
+          end
+        end
 
         presence = WorkerPresence.read(id, state_dir: sd, owner: session_owner(id, state_dir: sd))
         raise OwnedByTUI, id if presence.tui_owned?

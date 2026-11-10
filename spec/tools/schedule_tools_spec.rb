@@ -37,7 +37,8 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
                                    weekday: 1, time: "09:00", peers: peers(dir, id))
 
       entry = store(dir).entries.first
-      expect(answer).to include("Scheduled #{entry.id}", "chain · #{id[0, 8]}", "Mon 09:00", "chi schedule list")
+      expect(answer).to include("Scheduled #{entry.id}", "chain · #{id[0, 8]}", "Mon 09:00", "chi schedule list",
+                                "schedule.auto_tick: true", "chi schedule tick")
       expect([entry.anchor, entry.head, entry.title, entry.mode]).to eq([id, id, "Monday audit", "chain"])
     end
   end
