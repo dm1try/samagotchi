@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.161.0] - 2026-11-10
+
 ### Added
 
 - `chi bundle upgrade NAME` and `chi bundle uninstall NAME`, when the bundle's plugin changed (or an upgrade brought
@@ -23,11 +25,8 @@ and commands may change between minor versions. How releases are made:
   --force installs it anyway`, exit 1). `--force` installs it anyway, as it already does for an edited memory (its
   copy going to the trash first) and for a bundle whose `requires_chi` this chi doesn't meet; a dev install, a
   non-strict run, `chi update` and a bundle profile keep the warning-only behaviour.
-- Core guardrail checks judge what a call's `targets:` say it acts on, not its tool's name: a plugin tool whose
-  targets declare `paths:` it writes (`writes: true`) is checked like `write` and `edit` against the protected
-  paths and a delegate child's boundary. A plugin tool whose targets declare a `command:` a delegate child's
-  boundary checks for what chi can read for sure only: git that changes what every checkout shares, and a `cwd:`
-  outside the child's folder.
+- Core guardrail checks judge a plugin tool by what its `targets:` say it acts on, not by its name: paths it
+  declares it writes (`writes: true`) are checked like `write` and `edit`. See docs/plugins.md (Guardrails).
 - `chi context push` says what a wake push did: `· chi woken` (an idle-exited session started), `· chi is stopped:
   it sees this at its next start` (a stopped session is never started) or `· chi is starting`; chi web's push
   answer carries it as `wake`. A delegate's report, or a push, now wakes a session whose file still said stopped
@@ -35,15 +34,19 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A session being started is no longer pulled from under its worker: a session resumed while the retention sweep runs
+  is not deleted, two starts at once (chi web and a `chi send`, a delegate's report) start one worker, and a second
+  continue of a chain can't archive the link the first one just started. A deleted session no longer comes back
+  when a worker that still had it saves.
+- A `chi sessions stop` that lands while a session's worker is leaving (an idle exit, `/exit`, a signal) is no longer
+  undone by a new worker started for input or delegate reports that were waiting: the session stays stopped and
+  they wait for its next start, as a stop during a restart already did.
 - Session deletion and retention now also end participant grants and purge System 1 runs and context-candidate records.
 - An interrupted continue now repairs its archived previous link when no successor was saved, so the session stays listed.
 - A note sent to a session that was continued (`chi note`, `send_note`, `chi broadcast`, chi web) reaches the new link
   (`chi note` prints `OLD → NEW (continued)`), and notes waiting when it was continued move with it; a note that
   still lands in the old link as it is continued is taken by the new link's worker, and a continue that fails gives
   the notes back. An `/objectives` edit stays in its own session.
-- A `chi sessions stop` that lands while a session's worker is leaving (an idle exit, `/exit`, a signal) is no longer
-  undone by a new worker started for input or delegate reports that were waiting: the session stays stopped and
-  they wait for its next start, as a stop during a restart already did.
 - `chi bundle uninstall NAME` of a bundle whose install was interrupted before its record (only the
   `pending.json` journal left) retags the index line of a kept shared file in the journal's own target folder, not the
   current folder's: run from another project, it no longer edits that project's `index.md` for a file living elsewhere.
@@ -73,10 +76,6 @@ and commands may change between minor versions. How releases are made:
   from the session instead of replaying from the middle of a turn.
 - Stop (the web button, Ctrl-C in the terminal) names the turn it was pressed for, so one pressed as that turn ends no
   longer cancels the queued turn that starts next.
-- A session being started is no longer pulled from under its worker: a session resumed while the retention sweep runs
-  is not deleted, two starts at once (chi web and a `chi send`, a delegate's report) start one worker, and a second
-  continue of a chain can't archive the link the first one just started. A deleted session no longer comes back
-  when a worker that still had it saves.
 - `chi bundle install` and `upgrade` check that the plugin and scripts the manifest names are in the bundle before
   they write anything, so a bundle that lacks one is refused with your memories, plugin and record as they were.
 - A bundle install or upgrade that is killed or fails after it copied memories (a `pending.json` journal in
@@ -88,6 +87,10 @@ and commands may change between minor versions. How releases are made:
 - A fork and a continue keep the session's `--memory` and `--mute` lists; a non-delegate child does not inherit the
   reserved `system/delegated` memory.
 - A review fork carries its source's `--mute` list, but not its `--memory` preloads.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`): workers from
+0.160.0 keep working (N-1), but the new starting marker, session inbox and stop-during-leave rule apply only to
+workers started by 0.161.0.
 
 ## [0.160.0] - 2026-11-09
 
@@ -6003,7 +6006,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.160.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.161.0...HEAD
+[0.161.0]: https://github.com/dm1try/samagotchi/compare/v0.160.0...v0.161.0
 [0.160.0]: https://github.com/dm1try/samagotchi/compare/v0.159.0...v0.160.0
 [0.159.0]: https://github.com/dm1try/samagotchi/compare/v0.158.0...v0.159.0
 [0.158.0]: https://github.com/dm1try/samagotchi/compare/v0.157.0...v0.158.0
