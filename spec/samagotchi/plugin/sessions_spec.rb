@@ -54,7 +54,10 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
   describe "#fork" do
     it "starts an idle child of this session from the messages (frozen ones too)" do
-      host.setup = -> { Samagotchi::SessionSetup.of(parent) }
+      parent.preloaded_memory_names = ["a"]
+      parent.muted_memory_names = ["b"]
+      parent.save(state_dir: tmpdir)
+      host.setup = -> { Samagotchi::SessionSetup.of(parent, forked: true) }
       seed = [{ role: "user", content: "hello" }.freeze, { role: "model", content: "hi" }.freeze,
               { role: "user", content: "q" }, { role: "model", content: "a" }].freeze
 
@@ -62,7 +65,8 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
       child = Samagotchi::Session.load(id, state_dir: tmpdir)
       expect(child).to have_attributes(parent_id: parent.id, first_preview: "q", status: "idle",
-                                       model_name: "gemma4", working_directory: tmpdir, toolkit_origin: "inherited")
+                                       model_name: "gemma4", working_directory: tmpdir, toolkit_origin: "inherited",
+                                       preloaded_memory_names: ["a"], muted_memory_names: ["b"])
       expect(child.messages.map { |m| m[:content] }).to eq(%w[hello hi q a])
       expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map(&:id)).to eq([id])
     end

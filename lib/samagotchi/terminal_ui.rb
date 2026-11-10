@@ -189,12 +189,11 @@ module Samagotchi
         mode: "assist",
         model_name: @effective_model_name,
         working_directory: Dir.pwd,
-        preloaded_memory_names: @requested_memories,
-        muted_memory_names: @muted_memory_names,
         scratch: @scratch,
         setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured,
                                 toolkit_origin: @toolkit ? "chosen" : "default", settings: @session_settings,
-                                parent_answers: @parent_answers)
+                                parent_answers: @parent_answers, preloaded_memory_names: @requested_memories,
+                                muted_memory_names: @muted_memory_names)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

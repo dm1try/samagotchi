@@ -166,7 +166,7 @@ module Samagotchi
           end,
           state_dir: -> { session_state_dir },
           scratch: -> { @scratch },
-          setup: -> { SessionSetup.of(@session) },
+          setup: -> { SessionSetup.of(@session, forked: true) },
           # The files whose text the built system prompt holds; [] until a
           # build and after a rebuild that drops them (SystemPrompt#prompt_files
           # returns [] itself: the || keeps a nil builder safe).

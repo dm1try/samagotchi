@@ -271,7 +271,7 @@ RSpec.describe "Session file goldens (characterization)" do
     def fork_child
       host = Samagotchi::Plugin::Host.new(session_id: -> { source.id }, cwd: -> { folder },
                                           model_name: -> { source.model_name }, state_dir: -> { state_dir },
-                                          setup: -> { Samagotchi::SessionSetup.of(loaded(source.id)) })
+                                          setup: -> { Samagotchi::SessionSetup.of(loaded(source.id), forked: true) })
       sessions = Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {}, host: host).sessions
       sessions.fork(messages: loaded(source.id).messages, title: "forked")
     end
@@ -283,11 +283,12 @@ RSpec.describe "Session file goldens (characterization)" do
     # The spawn_session call Tools::Delegate.start_child makes.
     def delegate_child
       parent = loaded(source.id)
-      setup = Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean"),
+      setup = Samagotchi::SessionSetup.new(preloaded_memory_names: Samagotchi::Tools::Delegate::CHILD_MEMORIES,
+                                           toolkit: Samagotchi::Toolkit.new(name: "lean"),
                                            parent_answers: parent.parent_answers)
       manager.spawn_session(prompt: "check the parser", working_directory: folder, model_name: parent.model_name,
-                            memories: Samagotchi::Tools::Delegate::CHILD_MEMORIES, parent_id: parent.id,
-                            delegate: true, setup: setup, state_dir: state_dir, client_id: "delegate:#{parent.id[0, 8]}").id
+                            parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir,
+                            client_id: "delegate:#{parent.id[0, 8]}").id
     end
 
     # What a woken worker does before its first turn.
@@ -356,7 +357,10 @@ RSpec.describe "Session file goldens (characterization)" do
     end
 
     it "keeps what each path keeps of its source (the carry matrix)" do
-      src = value_of(source.id)
+      matrix_source = source
+      matrix_source.preloaded_memory_names = ["project/notes"]
+      matrix_source.save(state_dir: state_dir, now: later)
+      src = value_of(matrix_source.id)
       fresh = JSON.parse(File.read(File.join(golden_dir, "defaults.json")))
       children = { "fork" => fork_child, "delegate" => delegate_child, "respawn" => respawn,
                    "continue" => continue_link }.transform_values { |id| value_of(id) }

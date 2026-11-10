@@ -579,8 +579,7 @@ module Samagotchi
     # @raise [Toolkit::Refused] its toolkit (setup's, else the configured
     #   one SessionManager.spawn_session gives it) builds on a config kit
     #   with an invalid groups: (Toolkit.check_new!)
-    def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
-                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
+    def self.new_session(mode:, model_name:, working_directory:, test_run: nil, parent_id: nil, messages: [],
                          scratch: false, model_typed: nil, delegate: false, setup: nil, continues: nil,
                          review: nil, now: Time.now)
       own = setup.to_h
@@ -607,8 +606,6 @@ module Samagotchi
         test_run: resolved_test,
         project_root: project&.root,
         project_id: project&.id,
-        preloaded_memory_names: preloaded_memory_names,
-        muted_memory_names: muted_memory_names,
         parent_id: parent_id,
         scratch: scratch,
         delegate: delegate,

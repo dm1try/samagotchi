@@ -401,7 +401,7 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("model notes")).to eq("model_notes_qwen (system, 11 chars)")
 
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "splash:Qwen3.8-27B", working_directory: tmp,
-                                                muted_memory_names: ["model_notes_qwen"])
+                                                setup: Samagotchi::SessionSetup.new(muted_memory_names: ["model_notes_qwen"]))
       session.save(state_dir: Samagotchi::Session.default_state_dir(env: env))
       env["SAMAGOTCHI_PARENT_SESSION"] = session.id
       expect(field("model notes")).to eq("none")

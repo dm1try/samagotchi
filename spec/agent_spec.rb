@@ -150,7 +150,8 @@ file2.rb")
 
     it "merges a resumed session's stored --memory and --mute lists with the flags" do
       stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
-                                               preloaded_memory_names: ["foo"], muted_memory_names: ["bar"])
+                                               setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["foo"],
+                                                                                   muted_memory_names: ["bar"]))
       stored.save
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       agent = described_class.new(client: client, session_id: stored.id, memories: ["baz"], muted_memories: %w[bar qux])

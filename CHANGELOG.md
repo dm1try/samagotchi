@@ -48,6 +48,9 @@ and commands may change between minor versions. How releases are made:
 - A `delegate` follow-up the child's worker refuses says why, in the same sentence `chi send` prints for a delivery
   that did not go in (`DeliverResult#refusal_text`): "Error: session abc12345 refused: this session's worker predates
   queueing ... and send again" rather than the bare error code.
+- A fork and a continue keep the session's `--memory` and `--mute` lists; a non-delegate child does not inherit the
+  reserved `system/delegated` memory.
+- A review fork carries its source's `--mute` list, but not its `--memory` preloads.
 
 ## [0.160.0] - 2026-11-09
 

@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::VerifyFresh do
     lambda do |**options|
       spawned << options
       Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: options[:working_directory],
-                                      parent_id: options[:parent_id], delegate: true).tap do |child|
+                                      parent_id: options[:parent_id], delegate: true, setup: options[:setup]).tap do |child|
         child.verify_fresh = options[:verify_fresh]
         child.status = Samagotchi::Session::STATUS_RUNNING
         child.save(state_dir: state_dir)
@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::VerifyFresh do
 
       options = spawned.first
       expect(options).to include(working_directory: folder, parent_id: parent.id, delegate: true, model_name: "m",
-                                 memories: ["system/delegated"])
+                                 setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["system/delegated"]))
       expect(options[:prompt]).to eq("Claim:\n> the cache key\n> ignores the model\n\n#{described_class::ASK}")
       expect(options[:prompt]).not_to include("audit")
       expect(options[:verify_fresh].to_file).to eq("author" => "p:alex", "mode" => "pair", "of" => check_turn,
