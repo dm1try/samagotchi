@@ -34,14 +34,15 @@ test("drawnKind reads the end event's type; drawingTurn folds the steps and rows
 });
 
 test("turnGroups makes a drawn turn's stamped items one group, a reminder turn's too, its steps the drawing's", () => {
-  const items = [{ role: "user", content: "hi", turn_id: "T0" }, { role: "assistant", content: "a" },
+  const items = [{ role: "user", content: "hi", turn_id: "T0", drawn: "T0" }, { role: "assistant", content: "a", drawn: "T0" },
     { role: "assistant", content: "Tea.", drawn: "T1" }];
-  const groups = turnGroups(items, {}, { drawings: { T1: { events: [started, gen(1), say(1, "Tea.")], end: done } } });
-  assert.deepEqual(groups.map((g) => [g.kind, g.drawn ?? null, g.user]), [["turn", null, 0], ["turn", "T1", null]]);
+  const drawings = { T0: { events: [started, gen(1), say(1, "a")], end: done }, T1: { events: [started, gen(1), say(1, "Tea.")], end: done } };
+  const groups = turnGroups(items, {}, { drawings });
+  assert.deepEqual(groups.map((g) => [g.kind, g.drawn ?? null, g.user]), [["turn", "T0", 0], ["turn", "T1", null]]);
   assert.equal(groups[1].answer, 2);
   assert.equal(groups[1].steps.length, 1);
-  // No drawing for the stamp (a page without them): today's groups.
-  assert.equal(turnGroups(items, {}).length, 1);
+  // A stamp with no drawing sent is no stamp: plain rows.
+  assert.deepEqual(turnGroups(items, {}).map((g) => g.kind), ["plain", "plain", "plain"]);
 });
 
 // The steer's step is the answer's, which leaves the block: the steer
@@ -115,4 +116,77 @@ test("a drawn card CardStore still lists keeps its buttons as CardStore gives th
   assert.ok([...el.querySelectorAll(".card-action")].every((b) => !b.disabled));
   const dead = drawn(events, items, { cards: [{ ...card, actions: [] }] }).querySelector(".plugin-card");
   assert.equal(dead.querySelectorAll(".card-action").length, 0);
+});
+
+// H3 P5: chi web draws every finished turn, so the page groups by stamps
+// only and an unstamped turn item (a bug, or a cover that failed) is a
+// plain row of its text, logged once, never rebuilt into steps.
+test("turnGroups groups by stamps only: unstamped turn items are plain rows, never a turn rebuilt from records", () => {
+  const items = [{ role: "user", content: "hi", turn_id: "T0" }, { role: "assistant", content: "Looking." },
+    { role: "steer", content: "go on", source: "check-in", step: 1 }, { role: "assistant", content: "Done." },
+    { role: "note", content: "a note" }, { role: "assistant", content: "Tea.", drawn: "T1" }];
+  const timing = { turnRecords: [{ id: "T0", status: "completed", duration_ms: 5 }],
+    toolRecords: [{ turn_id: "T0", iteration: 1, tool: "read", status: "ok" }] };
+  const groups = turnGroups(items, timing, { drawings: { T1: { events: [started, gen(1), say(1, "Tea.")], end: done } } });
+  assert.deepEqual(groups.map((g) => [g.kind, g.i ?? g.drawn]), [["plain", 0], ["plain", 1], ["plain", 2], ["plain", 3], ["note", 4], ["turn", "T1"]]);
+  assert.ok(groups.slice(0, 4).every((g) => !g.steps && !g.record && !g.running));
+  // The running turn's items (never drawn yet: its line comes at its end) are plain and expected.
+  const running = turnGroups(items.slice(0, 2), timing, { runningTurnId: "T0" });
+  assert.deepEqual(running.map((g) => [g.kind, g.running]), [["plain", true], ["plain", true]]);
+});
+
+test("an unstamped turn item draws as a plain text row, marked undrawn, with one console.warn; the running turn's don't warn", () => {
+  const items = [{ role: "user", content: "hi", turn_id: "T0" }, { role: "assistant", content: "Hello.", html: "<p>Hello.</p>" },
+    { role: "assistant", content: "" }, { role: "empty_answer", content: "", retries: 0 }];
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (...args) => warned.push(args);
+  try {
+    const host = document.createElement("div");
+    host.append(turnHistoryNodes(items, {}, { thumbs: () => null, drawings: {} }));
+    // The prompt, the answer, the empty answer's notice: the text-less step has nothing to show.
+    assert.deepEqual([...host.children].map((el) => [".bubble.user", ".bubble.output", ".empty-answer"].findIndex((sel) => el.matches(sel))), [0, 1, 2]);
+    assert.ok(host.querySelector(".turn-work") === null);
+    assert.equal(host.querySelector(".bubble.output").innerHTML, "<p>Hello.</p>");
+    assert.ok([...host.children].every((el) => el.dataset.undrawn === "1"));
+    assert.equal(warned.length, 1);
+    const live = document.createElement("div");
+    live.append(turnHistoryNodes(items.slice(0, 1), {}, { thumbs: () => null, drawings: {}, runningTurnId: "T0" }));
+    assert.equal(live.querySelector(".bubble.user").textContent.trim(), "hi");
+    assert.ok(live.querySelector("[data-undrawn]") === null);
+    assert.equal(warned.length, 1);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("a drawn turn whose drawing has no parts (a minimal line) draws its prompt, its answer and its end", () => {
+  const items = [{ role: "user", content: "hi", turn_id: "T1", drawn: "T1" }, { role: "assistant", content: "Tea.", drawn: "T1" }];
+  const shape = historyShape(drawn([started], items));
+  assert.deepEqual(shape.map((it) => it.kind), ["prompt"]);
+  const canceled = historyShape(drawn([started], items, { end: { type: "turn_canceled", turn_id: "T1", cancellation_reason: "user" } }));
+  assert.deepEqual(canceled.map((it) => it.kind), ["prompt", "cancel"]);
+});
+
+// Each kind of row a reload draws, from a drawing made from the messages
+// (spec/shared/turn_drawings/row_kinds.json's synth show): what the
+// deleted message-rebuild tests pinned on reloaded rows.
+test("a turn made from its messages draws each kind of row as live: stopped, blocked, auto-allowed, no match, alias, via, images, diff, failed", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { synth } = JSON.parse(readFileSync(new URL("../../shared/turn_drawings/row_kinds.json", import.meta.url), "utf8"));
+  const host = document.createElement("div");
+  host.append(turnHistoryNodes(synth.messages, {}, { thumbs: (images) => (images?.length ? images.map((i) => i.name).join(",") : ""), drawings: synth.turn_drawings }));
+  // Each row's markup without lit's comment markers.
+  const rows = [...host.querySelectorAll(".activity-row")].map((el) => el.outerHTML.replace(/<!--[^>]*-->/g, ""));
+  assert.equal(rows.length, 9);
+  assert.match(rows[0], /activity-status stopped.*task_wait.*activity-state stopped/);
+  assert.match(rows[1], /activity-status blocked.*activity-state blocked/);
+  assert.match(rows[2], /auto-allowed · System 1/);
+  assert.match(rows[3], /no match/);
+  assert.match(rows[4], /\(called as bash\)/);
+  assert.match(rows[5], /\(via call_tool\)/);
+  assert.match(rows[6], /s\.png/);
+  assert.match(rows[7], /class="activity-diff"/);
+  assert.match(rows[8], /activity-status error.*activity-state error/);
+  assert.ok(host.querySelector("[data-undrawn]") === null);
 });

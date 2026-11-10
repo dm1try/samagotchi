@@ -1,305 +1,124 @@
-import { htmlOf, markupOf } from "./dom_shim.js";
+// turnHistoryNodes: a reloaded history as chi web sends it, every finished
+// turn drawn (drawn_history.js stamps the items and gives each turn a
+// minimal drawing). What a drawing holds and how a drawn turn's block,
+// rows, notices and end come out is turn_drawing.test.js's and the parity
+// test's (turn_drawing_parity.test.js); here: the saved items' overlays
+// (an answer's markdown, refs and key, a step's text, the timing line,
+// merged lines, a report's label and reply, Apply, the gap dividers) and
+// what sits between the turns (notes, `!cmd` records).
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
-import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
-import { commandBlockTemplate } from "../../../lib/samagotchi/web/public/command_view.js";
-import { html as lit, nothing } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+import { drawnHistory } from "./drawn_history.js";
 
-const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
-
-const timing = normalizeTiming({
-  turn_records: [{ id: "T1", status: "completed", duration_ms: 18503 }],
-  tool_records: [
-    { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
-    { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "read", status: "ok", duration_ms: 1200 },
-  ],
-});
 const thumbs = () => "";
 
-// A block with a narrated step is its outline (P3): open, the narrated
-// step a row, the steps that said nothing behind one fold.
-test("turnHistoryHtml: a reloaded tool turn is its block's outline of steps, then the answer with its timing", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me <check>." },
-    { role: "assistant", content: "Both fine.", html: "<p>Both <em>fine</em>.</p>" },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.equal(html,
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline"><summary><span class="tw-sum"><span class="turn-steps">2 steps · 2 tool calls</span></span></summary>' +
-    '<details class="gen"><summary class="repeats"><span class="gen-head">Let me &lt;check&gt;.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
-    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
-    '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">1 step</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
-    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span><span class="activity-duration">1.2s</span></div></div></details>' +
-    '</details>' +
-    '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p></div><div class="turn-timing">turn 1 · 19s</div>');
+// The nodes for +source+ items as chi web's show draws them.
+function history(source, timing = normalizeTiming({}), { ends, ...opts } = {}) {
+  const { items, drawings } = drawnHistory(source, { ends });
+  return turnHistoryNodes(items, timing, { thumbs, drawings, ...opts });
+}
+const historyHtml = (...args) => htmlOf(history(...args));
+// The nodes in a holder, as returned (a clone would drop the WeakMap's data).
+function held(...args) {
+  const holder = document.createElement("div");
+  holder.append(history(...args));
+  return holder;
+}
+
+test("a plain answer and a note; the timing line under the answer, where the live view leaves it", () => {
+  const items = [{ role: "user", content: "p", turn_id: "T1" }, { role: "assistant", content: "PONG" }, { role: "note", content: "n", label: "x" }];
+  const html = historyHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }));
+  assert.match(html, /^<div class="bubble user"[^>]*data-turn-id="T1"[^>]*><div class="user-message">p<\/div><\/div>/);
+  assert.match(html, /<div class="bubble output" data-answer-turn="T1"[^>]*>PONG<\/div><div class="turn-timing"[^>]*>turn 1 · 0.5s<\/div>/);
+  assert.match(html, /<div class="bubble note"><div class="note-line">note from x<\/div><div class="note-text">n<\/div><\/div>$/);
 });
 
-test("turnHistoryHtml: a plain answer and a note; the timing line under the answer, where the live view leaves it", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "PONG" }, { role: "note", content: "n", label: "x" }];
-  const plain = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] });
-  assert.equal(turnHistoryHtml(items, plain, { thumbs }),
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
-    '<div class="bubble note"><div class="note-line">note from x</div><div class="note-text">n</div></div>');
-});
-
-test("turnHistoryHtml: a `!cmd`'s saved user message renders as its command bubble, not a user bubble", () => {
-  const items = [{ role: "user", content: "!(echo <hi>)\n<hi>" }, { role: "assistant", content: "done" }];
-  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs });
+test("a `!cmd`'s saved user message renders as its command bubble, not a user bubble", () => {
+  const html = historyHtml([{ role: "user", content: "!(echo <hi>)\n<hi>" }, { role: "assistant", content: "done" }]);
   assert.match(html, /^<div class="bubble command"><div class="command-line">!echo &lt;hi&gt;<\/div><pre class="command-output">&lt;hi&gt;<\/pre><\/div>/);
   assert.doesNotMatch(html, /bubble user/);
   // A message that merely starts with "!(" without the newline shape stays a user bubble.
-  const plain = turnHistoryHtml([{ role: "user", content: "!(no newline" }], normalizeTiming({}), { thumbs });
-  assert.match(plain, /^<div class="bubble user"/);
+  assert.match(historyHtml([{ role: "user", content: "!(no newline" }]), /^<div class="bubble user"/);
 });
 
-test("turnHistoryHtml: a `!cmd`'s record between two prompts is its bubble alone: no steps, no timing; the next turn's shows once", () => {
+test("a `!cmd`'s record between two prompts is its bubble alone: no steps, no timing; the next turn's shows once", () => {
   const items = [
     { role: "user", content: "one", turn_id: "T1" }, { role: "assistant", content: "1" },
     { role: "user", content: "!(basket open)\nstderr: x" },
-    { role: "user", content: "two", turn_id: "T2" }, { role: "assistant", content: "2" },
+    { role: "user", content: "two", turn_id: "T2" },
+    { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="true"', output: "ok" }] } },
+    { role: "assistant", content: "2" },
   ];
-  const twoTurns = normalizeTiming({
-    turn_records: [{ id: "T1", status: "completed", duration_ms: 1000 }, { id: "T2", status: "completed", duration_ms: 13000 }],
-    tool_records: [{ id: "T2:1:1", turn_id: "T2", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-  });
-  const out = turnHistoryNodes(items, twoTurns, { thumbs });
-  const kids = [...out.children].map((el) => el.className);
+  const twoTurns = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 1000 }, { id: "T2", status: "completed", duration_ms: 13000 }] });
+  const out = history(items, twoTurns);
+  const kids = [...out.children].map((el) => el.className.split(" ").slice(0, 2).join(" "));
   assert.deepEqual(kids, ["bubble user", "bubble output", "turn-timing", "bubble command", "bubble user", "turn-work done", "bubble output", "turn-timing"]);
   assert.deepEqual([...out.querySelectorAll(".turn-timing")].map((el) => el.textContent), ["turn 1 · 1.0s", "turn 2 · 13s"]);
-  assert.equal(out.querySelectorAll(".turn-work").length, 1);
+  assert.equal(out.querySelector(".bubble.command").dataset.drawn, undefined);
 });
 
-test("turnHistoryHtml: a turn canceled before any answer keeps its timing under the prompt, after its steps", () => {
-  const items = [{ role: "user", content: "p" }];
-  const canceled = normalizeTiming({
-    turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-  });
-  const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div><div class="bubble cancel stopped">\u25A0 canceled<\/div>$/);
-  assert.match(html, /<span class="turn-steps">1 step · 1 tool call<\/span><\/span><\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
-});
-
-test("turnHistoryNodes: a canceled or failed turn's outline stays open, a completed or recordless one's closes", () => {
+test("the user's lines merged into a turn stay in it: a steered bubble after its steps, before its answer and timing", () => {
   const items = [
-    { role: "user", content: "p", turn_id: "T" },
-    { role: "assistant", content: "Looking first." },
-    { role: "assistant", content: "Still at it." },
-  ];
-  const blockOf = (record) => {
-    const holder = document.createElement("div");
-    holder.append(turnHistoryNodes(items, {
-      turnRecords: record ? [{ id: "T", started_at: "2026-01-01T00:00:00Z", ...record }] : [],
-      toolRecords: record ? [{ turn_id: "T", tool: "read", status: "ok", iteration: 1, call_index: 1 }] : [],
-    }, { thumbs }));
-    return holder.querySelector(".turn-work");
-  };
-  for (const [record, open] of [[{ status: "canceled" }, true], [{ status: "failed" }, true], [{ status: "completed" }, false], [null, false]]) {
-    const block = blockOf(record);
-    assert.ok(block.classList.contains("outline"), record?.status);
-    assert.equal(block.open, open, record?.status);
-  }
-});
-
-test("turnHistoryHtml with parts: each step expands to its thinking, text and calls with params and output, as live", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check.", parts: { thinking: "plan <a>", tools: [{ tool: "execute", params: 'command="true"', output: "[execute]\nexit: 0" }] } },
-    { role: "assistant", content: "", parts: { tools: [{ tool: "read", params: 'path="R.md"', output: `[read]\n${"x".repeat(310)}` }] } },
-    { role: "assistant", content: "Both fine.", parts: { thinking: "sum up" } },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.equal(html,
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline"><summary><span class="tw-sum"><span class="turn-steps">3 steps · 2 tool calls</span></span></summary>' +
-    '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
-    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
-    '<span class="activity-params">command="true"</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
-    '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">2 steps</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
-    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span>' +
-    `<span class="activity-params">path="R.md"</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
-    // A thinking-only step: one header, the body directly under it (no
-    // nested wrap that would repeat "thinking"), as the live view leaves it.
-    '<details class="gen folded"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
-    '</details>' +
-    '<div class="bubble output">Both fine.</div><div class="turn-timing">turn 1 · 19s</div>');
-});
-
-test("turnHistoryHtml with parts: a plain answer's thinking is the chat view's collapsed thinking block, no step block", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "PONG", parts: { thinking: "easy" } }];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
-  assert.equal(html,
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="bubble thinking"><summary>thinking</summary><div class="thinking-body">easy</div></details>' +
-    '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>');
-});
-
-test("turnHistoryHtml: a canceled turn with an answer ends with its cancel line and reason, after the answer", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Running the slow\n[interrupted]" }];
-  const canceled = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 4400 }] });
-  const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.match(html, /<div class="turn-timing">turn 1 · 4.4s · canceled<\/div><div class="bubble cancel stopped">\u25A0 canceled \(stopped\)<\/div>$/);
-  const done = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 4400 }] });
-  assert.doesNotMatch(turnHistoryHtml(items, done, { thumbs }), /bubble cancel/);
-});
-
-test("turnHistoryHtml: a canceled multi-step turn keeps its partial text in the block, as live: no answer bubble", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Checking.", parts: { tools: [{ tool: "execute", params: 'command="true"', output: "exit: 0" }] } },
-    { role: "assistant", content: "Both checks passed:\n[interrupted]" },
-  ];
-  const canceled = normalizeTiming({
-    turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 12000 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-  });
-  const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.doesNotMatch(html, /bubble output/);
-  assert.match(html, /2 steps · 1 tool call/);
-  assert.match(html, /Both checks passed:/);
-  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 12s · canceled<\/div><div class="bubble cancel stopped">■ canceled \(stopped\)<\/div>$/);
-});
-
-test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row, as live", () => {
-  const items = [
-    { role: "user", content: "shoot" },
-    { role: "assistant", content: "", parts: { tools: [
-      { tool: "mcp_chrome_screenshot", params: "", output: "[mcp_chrome_screenshot]\n/tmp/s.png", images: [{ file: "images/aa.png", name: "s.png" }] },
-      { tool: "execute", params: 'command="true"', output: "[execute]\n" },
-    ] } },
-    { role: "assistant", content: "A page." },
-  ];
-  const seen = [];
-  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs: (images) => { if (!images?.length) return nothing; seen.push(images); return lit`<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
-  assert.deepEqual(seen, [[{ file: "images/aa.png", name: "s.png" }]]);
-  assert.match(html, /<span class="activity-tool">mcp_chrome_screenshot<\/span>.*\/tmp\/s\.png<\/div><div class="thumbs">s\.png<\/div><\/div>/);
-  assert.equal(html.match(/class="thumbs"/g).length, 1);
-});
-
-test("turnHistoryHtml: a plugin's steer is the first row of the step that answered it, not a prompt", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check." },
-    { role: "steer", content: "say what <you> found", source: "check-in", step: 2 },
-    { role: "assistant", content: "Both fine." },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.equal((html.match(/bubble user/g) || []).length, 1);
-  assert.match(html, /<details class="gen folded"><summary>[^<]*<\/summary><details class="steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">say what &lt;you&gt; found<\/div><\/details><div class="activity-body">.*read/);
-});
-
-test("turnHistoryHtml: a steer the answer answered is a bubble after the block, before the answer", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check." },
-    { role: "steer", content: "wrap up", source: "check-in", step: 3 },
-    { role: "assistant", content: "Both fine." },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.match(html, /<\/details><details class="bubble steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">wrap up<\/div><\/details><div class="bubble output/);
-});
-
-test("turnHistoryHtml: the user's lines merged into a turn stay in it: a steered bubble after its steps, before its answer and timing", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Let me check." },
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Let me check.", parts: { tools: [{ tool: "read", params: 'path="a"', output: "x" }] } },
     { role: "user", content: "also <typos>", merged: true, step: 2 },
     { role: "assistant", content: "Both fine." },
-    { role: "user", content: "next" },
+    { role: "user", content: "next", turn_id: "T2" },
     { role: "assistant", content: "ok" },
   ];
   const twoTurns = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5000 }, { id: "T2", duration_ms: 2000 }] });
-  const html = turnHistoryHtml(items, twoTurns, { thumbs });
+  const html = historyHtml(items, twoTurns);
   assert.equal((html.match(/class="bubble user"/g) || []).length, 2);
-  assert.match(html, /<\/details><div class="bubble user steered" data-user-state="steered" data-step="2" data-copy-source="[^"]*"><div class="user-message">also &lt;typos&gt;<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output[^"]*"[^>]*>.*Both fine.*<\/div><div class="turn-timing">turn 1 · 5\.0s<\/div>/);
-  assert.match(html, /ok.*<div class="turn-timing">turn 2 · 2\.0s<\/div>/);
+  assert.match(html, /<\/details><div class="bubble user steered" data-user-state="steered" data-step="2".*?><div class="user-message">also &lt;typos&gt;<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output[^"]*"[^>]*>.*Both fine.*<\/div><div class="turn-timing"[^>]*>turn 1 · 5\.0s<\/div>/);
+  assert.match(html, /ok.*<div class="turn-timing"[^>]*>turn 2 · 2\.0s<\/div>/);
 });
 
-test("turnHistoryHtml: a delegate report keeps its label on reload: a wake turn's prompt, or merged into a turn", () => {
+test("a delegate report keeps its label on reload: a wake turn's prompt, or merged into a turn", () => {
   const items = [
     { role: "user", content: "session: c1", source: "delegate_report", turn_id: "T1" },
     { role: "assistant", content: "The child found it." },
     { role: "user", content: "p", turn_id: "T2" },
-    { role: "assistant", content: "Let me check." },
+    { role: "assistant", content: "Let me check.", parts: { tools: [{ tool: "read", params: 'path="a"', output: "x" }] } },
     { role: "user", content: "session: c2", source: "delegate_report", merged: true, step: 2 },
     { role: "assistant", content: "Both fine." },
   ];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs });
+  const html = historyHtml(items);
   assert.match(html, /^<div class="bubble user"[^>]*><span class="origin-label">delegate report<\/span><div class="user-message">session: c1<\/div>/);
   assert.match(html, /<div class="bubble user steered"[^>]*><span class="origin-label">delegate report<\/span><div class="user-message">session: c2/);
   assert.equal((html.match(/origin-label/g) || []).length, 2);
   // Their source and fold keys (answer_fold.js): the wake turn's by its turn id, the merged one by its place.
-  assert.match(html, /^<div class="bubble user"[^>]*data-turn-id="T1"[^>]*data-source="delegate_report">/);
-  assert.match(html, /<div class="bubble user steered"[^>]*data-source="delegate_report" data-line-key="T2:input:2">/);
+  assert.match(html, /^<div class="bubble user"[^>]*data-turn-id="T1"[^>]*data-source="delegate_report"[^>]*>/);
+  assert.match(html, /<div class="bubble user steered"[^>]*data-source="delegate_report" data-line-key="T2:input:2"[^>]*>/);
   // A merged line that isn't a report has no line key.
-  const plain = turnHistoryHtml([items[2], items[3], { role: "user", content: "also", merged: true, step: 2 }], normalizeTiming({}), { thumbs });
-  assert.doesNotMatch(plain, /data-line-key/);
+  assert.doesNotMatch(historyHtml([items[2], items[3], { role: "user", content: "also", merged: true, step: 2 }, items[5]]), /data-line-key/);
 });
 
-test("turnHistoryHtml: the text that answered a delegate report mid-turn stays visible after its bubble, unless it is the answer", () => {
+test("the text that answered a delegate report mid-turn stays visible after its bubble, unless it is the answer", () => {
+  const read = { tools: [{ tool: "read", params: 'path="a"', output: "x" }] };
   const items = [
     { role: "user", content: "rename it", turn_id: "T1" },
-    { role: "assistant", content: "Reading." },
+    { role: "assistant", content: "Reading.", parts: read },
     { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 2 },
-    { role: "assistant", content: "The delegate found the bug. Back to the rename." },
+    { role: "assistant", content: "The delegate found the bug. Back to the rename.", parts: read },
     { role: "assistant", content: "Renamed." },
     { role: "user", content: "next", turn_id: "T2" },
-    { role: "assistant", content: "Reading." },
+    { role: "assistant", content: "Reading.", parts: read },
     { role: "user", content: "session: c2", source: "delegate_report", merged: true, step: 2 },
     { role: "assistant", content: "Done; the delegate said ok." },
   ];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs });
-  assert.match(html, /session: c1<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output report-reply"[^>]*>The delegate found the bug\. Back to the rename\.<\/div><div class="bubble output[^"]*"[^>]*>Renamed\./);
+  const html = historyHtml(items);
+  assert.match(html, /session: c1<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output report-reply"[^>]*>The delegate found the bug\. Back to the rename\.<\/div>.*<div class="bubble output[^"]*"[^>]*>Renamed\./);
   assert.equal((html.match(/report-reply/g) || []).length, 1);
   // Its own fold key (answer_fold.js): the turn's id and the report's place after the opening.
   assert.match(html, /class="bubble output report-reply"[^>]*data-reply-key="T1:report:2"/);
   assert.doesNotMatch(html, /report-reply"[^>]*data-answer-turn/);
 });
 
-test("turnHistoryHtml: a steer in a turn with no block is a bubble after the prompt", () => {
-  const items = [{ role: "user", content: "p" }, { role: "steer", content: "s", source: "check-in", step: 1 }, { role: "assistant", content: "a" }];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs });
-  assert.match(html, /<\/div><\/div><details class="bubble steer-row"><summary>check-in nudged the model<\/summary>/);
-});
-
-test("turnHistoryHtml: a saved task_wait record the user's Stop ended reloads as stopped, not done", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Waiting." }];
-  const stopped = normalizeTiming({
-    turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "task_wait", status: "stopped", duration_ms: 800 }],
-  });
-  const html = turnHistoryHtml(items, stopped, { thumbs });
-  assert.match(html, /<span class="activity-status stopped" role="img" aria-label="stopped" title="stopped"><\/span><span class="activity-tool">task_wait<\/span><span class="activity-state stopped">stopped<\/span><span class="activity-duration">/);
-});
-
-test("turnHistoryHtml: a saved guardrail-denied record reloads as blocked, not done", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Searching." }];
-  const denied = normalizeTiming({
-    turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "blocked", duration_ms: 0 }],
-  });
-  const html = turnHistoryHtml(items, denied, { thumbs });
-  assert.match(html, /<span class="activity-status blocked" role="img" aria-label="blocked" title="blocked"><\/span><span class="activity-tool">execute<\/span><span class="activity-state blocked">blocked<\/span>/);
-});
-
-test("turnHistoryHtml with parts: an edit's row keeps its collapsed diff after a reload", () => {
-  const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, new_file: false };
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { tools: [{ tool: "edit", params: 'path="k.conf"', output: "[edit]\nEdited", diff }] } },
-    { role: "assistant", content: "Done." },
-  ];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
-  assert.match(html, /<div class="activity-output"[^>]*>Edited<\/div><details class="activity-diff"><summary>diff \+1 \u22121<\/summary><pre class="diff">/);
-});
-
-test("turnHistoryHtml: the timing line numbers a turn by its record, after a failed turn as live", () => {
+test("the timing line numbers a turn by its record, after a failed turn as live", () => {
   const timing = normalizeTiming({ turn_records: [
     { id: "A", status: "completed", duration_ms: 1000 },
     { id: "B", status: "failed", duration_ms: 50 },
@@ -309,203 +128,61 @@ test("turnHistoryHtml: the timing line numbers a turn by its record, after a fai
     { role: "user", content: "one", turn_id: "A" }, { role: "assistant", content: "1" },
     { role: "user", content: "three", turn_id: "C" }, { role: "assistant", content: "3" },
   ];
-  const html = turnHistoryHtml(items, timing, { thumbs: () => "" });
+  const html = historyHtml(items, timing);
   assert.match(html, /turn 1 · 1\.0s/);
   assert.match(html, /turn 3 · 3\.0s/);
 });
 
-test("turnHistoryHtml: a turn with no answer keeps its empty steps, then the muted notice before its timing", () => {
+test("a context wake turn starts with its note (turn_start): the note bubble, then its own answer (keyed by its turn) and timing", () => {
   const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { thinking: "first" } },
-    { role: "assistant", content: "", parts: { thinking: "second" } },
-    { role: "empty_answer", content: "", retries: 1 },
-  ];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 3700 }] }), { thumbs });
-  assert.equal(html,
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done"><summary><span class="tw-sum"><span class="turn-steps">2 steps</span></span></summary>' +
-    '<details class="gen"><summary>thinking</summary><div class="thinking-body">first</div></details>' +
-    '<details class="gen"><summary>thinking</summary><div class="thinking-body">second</div></details>' +
-    '</details>' +
-    '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing (after 1 retry)</div>' +
-    '<div class="turn-timing">turn 1 · 3.7s</div>');
-});
-
-test("turnHistoryHtml: a one-step turn with no answer is its collapsed thinking and the notice, as live", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { thinking: "hm" } },
-    { role: "empty_answer", content: "", retries: 0 },
-  ];
-  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
-  assert.equal(html,
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="bubble thinking"><summary>thinking</summary><div class="thinking-body">hm</div></details>' +
-    '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing</div>' +
-    '<div class="turn-timing">turn 1 · 0.5s</div>');
-});
-
-test("turnHistoryHtml: a turn with no answer after tool steps shows no step's text as its answer", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Looking." },
-    { role: "empty_answer", content: "", retries: 1 },
-  ];
-  const tools = normalizeTiming({
-    turn_records: [{ id: "T1", duration_ms: 900 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-  });
-  const html = turnHistoryHtml(items, tools, { thumbs });
-  assert.doesNotMatch(html, /bubble output/);
-  assert.match(html, /<div class="gen-text">Looking\.<\/div>/);
-  assert.match(html, /<div class="bubble hook-notice empty-answer">no answer: the model returned nothing \(after 1 retry\)<\/div><div class="turn-timing">/);
-});
-
-test("turnHistoryHtml with parts: an execute's reloaded row shows its full command above the output, its hover the command", () => {
-  const view = { command: "cd /p && rg -n foo lib |\n  head -5", cwd: "lib" };
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="cd /p && rg -n foo lib | head -5"', title: "rg -n foo lib |", output: "[execute]\na", view }] } },
-    { role: "assistant", content: "Done." },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.ok(html.includes(
-    '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
-    `${markupOf(commandBlockTemplate(view))}<div class="activity-output" title="a">a</div>`), html);
-});
-
-test("turnHistoryHtml with parts: a failed call's row keeps its word after the params; its step is marked failed", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="ls /x"', output: "[execute]\nexit: 1" }] } },
-    { role: "assistant", content: "Done." },
-  ];
-  const failed = normalizeTiming({
-    turn_records: [{ id: "T1", status: "completed", duration_ms: 900 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "error", duration_ms: 15 }],
-  });
-  const html = turnHistoryHtml(items, failed, { thumbs });
-  assert.match(html, /<div class="activity-row" data-key="1:1"><span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
-  assert.match(html, /<span class="activity-params">command="ls \/x"<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
-  // The step says so, with the red-chevron class, and the block's bare count too (under 3 calls).
-  assert.match(html, /<details class="turn-work done"><summary><span class="tw-sum"><span class="turn-steps">1 step · 1 tool call \(1 failed\)<\/span><\/span><\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
-});
-
-test("turnHistoryHtml: a task_wait titled by its task's command shows it, its id line on hover", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "", parts: { tools: [{ tool: "task_wait", params: 'id="t1" timeout="600"', title: "bundle exec rspec · up to 600s", output: "[task_wait]\nstatus: completed", view: { task_id: "t1" } }] } },
-    { role: "assistant", content: "Done." },
-  ];
-  const html = turnHistoryHtml(items, timing, { thumbs });
-  assert.match(html, /<span class="activity-tool">task_wait<\/span><span class="activity-params" title="id=&quot;t1&quot; timeout=&quot;600&quot;">bundle exec rspec · up to 600s<\/span>/);
-});
-
-test("turnHistoryHtml: a context wake turn starts with its note (turn_start): the note bubble, then its own answer (keyed by its turn) and timing", () => {
-  const items = [
-    { role: "user", content: "p" },
+    { role: "user", content: "p", turn_id: "T1" },
     { role: "assistant", content: "PONG" },
     { role: "note", content: "Updated: pr-1.", label: "context pr-1", turn_start: true, turn_id: "T2" },
     { role: "assistant", content: "Bob asked for changes." },
   ];
   const two = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }, { id: "T2", duration_ms: 2000 }] });
-  assert.equal(turnHistoryHtml(items, two, { thumbs }),
-    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
-    '<div class="bubble note turn-start" data-opening-id="T2"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
-    '<div class="bubble output" data-answer-turn="T2">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
+  assert.match(historyHtml(items, two),
+    /<div class="bubble note turn-start" data-opening-id="T2"[^>]*><div class="note-line">note from context pr-1<\/div><div class="note-text">Updated: pr-1.<\/div><\/div><div class="bubble output" data-answer-turn="T2"[^>]*>Bob asked for changes.<\/div><div class="turn-timing"[^>]*>turn 2 · 2.0s<\/div>$/);
 });
 
-test("turnHistoryNodes: a turn's answer carries its turn id (data-answer-turn); a report reply, an answer before any prompt and a prompt saved without an id don't", () => {
+test("a turn's answer carries its turn id (data-answer-turn); a report reply, a turn with no opening and one saved without an id don't", () => {
+  const read = { tools: [{ tool: "read", params: 'path="a"', output: "x" }] };
   const items = [
     { role: "assistant", content: "hello" },
     { role: "user", content: "p", turn_id: "T1" },
-    { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 1 },
-    { role: "assistant", content: "The report says done." },
-    { role: "user", content: "next", merged: true, step: 2 },
+    { role: "assistant", content: "Reading.", parts: read },
+    { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 2 },
+    { role: "assistant", content: "The report says done.", parts: read },
+    { role: "user", content: "next", merged: true, step: 3 },
     { role: "assistant", content: "Final." },
     { role: "user", content: "old" },
     { role: "assistant", content: "Old answer." },
   ];
-  const records = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T0", duration_ms: 5 }] });
-  const keys = [...turnHistoryNodes(items, records, { thumbs }).querySelectorAll(".bubble.output")]
-    .map((el) => [el.textContent, el.dataset.answerTurn ?? null]);
+  const keys = [...history(items).querySelectorAll(".bubble.output")].map((el) => [el.textContent, el.dataset.answerTurn ?? null]);
   assert.deepEqual(keys, [["hello", null], ["The report says done.", null], ["Final.", "T1"], ["Old answer.", null]]);
 });
 
-test("turnHistoryHtml: a failed turn whose steps stayed ends with the live failure line, after its timing; its texts stay steps", () => {
-  const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "Checking.", parts: { tools: [{ tool: "execute", params: 'command="true"', output: "exit: 0" }] } },
-    { role: "assistant", content: "Now the tests." },
-  ];
-  const failure = { summary: "402 Payment Required (openrouter)", kept_steps: 1 };
-  const failed = normalizeTiming({
-    turn_records: [{ id: "T1", status: "failed", duration_ms: 12000, failure }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
-  });
-  const html = turnHistoryHtml(items, failed, { thumbs });
-  assert.doesNotMatch(html, /bubble output/);
-  assert.match(html, /Now the tests\./);
-  // The live turn_failed's words (format.js failedTurnText), in the live class.
-  const line = failedTurnText({ ...failure, kept_steps: 1 }).replace(/[()!]/g, "\\$&");
-  assert.match(html, new RegExp(`<div class="turn-timing">turn 1 · 12s</div><div class="bubble cancel">${line}</div>$`));
-  // A record from before failures were kept, or another end: no line.
-  const bare = normalizeTiming({ turn_records: [{ id: "T1", status: "failed", duration_ms: 12000 }] });
-  assert.doesNotMatch(turnHistoryHtml(items, bare, { thumbs }), /bubble cancel/);
-});
-
-test("turnHistoryHtml without parts: a call's row keeps its called_as from the tool record", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Let me check." }, { role: "assistant", content: "done" }];
-  const aliased = normalizeTiming({
-    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", called_as: "bash", status: "ok", duration_ms: 7 }],
-  });
-  const html = turnHistoryHtml(items, aliased, { thumbs });
-  assert.match(html, /<span class="activity-tool">execute<\/span><span class="activity-alias">\(called as bash\)<\/span>/);
-});
-
-test("turnHistoryHtml without parts: a call's row keeps its via from the tool record", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "done" }];
-  const timing = normalizeTiming({
-    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "delegate", via: "call_tool", status: "ok", duration_ms: 7 }],
-  });
-  assert.match(turnHistoryHtml(items, timing, { thumbs }), /<span class="activity-tool">delegate<\/span><span class="activity-alias">\(via call_tool\)<\/span>/);
-});
-
-test("turnHistoryHtml with parts: a record no saved message took keeps its called_as too", () => {
-  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "done", parts: {} }];
-  const aliased = normalizeTiming({
-    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
-    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", called_as: "Bash", status: "ok", duration_ms: 7 }],
-  });
-  assert.match(turnHistoryHtml(items, aliased, { thumbs }), /\(called as Bash\)/);
-});
-
-test("turnHistoryNodes: an answer bubble knows its message's display_refs (no index left in the DOM); one without has none", () => {
+test("an answer bubble knows its message's display_refs (no index left in the DOM); one without has none", () => {
   const refs = [{ match: "JIRA-7", kind: "issue", target: { id: "JIRA-7" }, actions: [] }];
   const reply = [{ match: "ABC-3", kind: "issue", target: { id: "ABC-3" }, actions: [] }];
+  const read = { tools: [{ tool: "read", params: 'path="a"', output: "x" }] };
   const items = [
     { role: "user", content: "p", turn_id: "T1" },
     { role: "assistant", content: "First, JIRA-7.", display_refs: refs },
     { role: "user", content: "q", turn_id: "T2" },
-    { role: "assistant", content: "Reading." },
+    { role: "assistant", content: "Reading.", parts: read },
     { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 2 },
-    { role: "assistant", content: "Report says ABC-3.", display_refs: reply },
+    { role: "assistant", content: "Report says ABC-3.", display_refs: reply, parts: read },
     { role: "assistant", content: "Plain." },
   ];
-  // The nodes as returned (a clone would drop the WeakMap's data).
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs }));
+  const holder = held(items);
   const bubbles = [...holder.querySelectorAll(".bubble.output")];
   assert.deepEqual(bubbles.map((b) => b.textContent), ["First, JIRA-7.", "Report says ABC-3.", "Plain."]);
   assert.deepEqual(bubbles.map((b) => answerRefsOf(b)), [refs, reply, null]);
   assert.ok(holder.querySelector("[data-answer-at]") === null);
 });
 
-test("turnHistoryNodes: a step's text knows its message's display_refs (a question's), as an answer does", () => {
+test("a step's text knows its message's display_refs (a question's), as an answer does", () => {
   const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
   const items = [
     { role: "user", content: "p", turn_id: "T1" },
@@ -513,15 +190,14 @@ test("turnHistoryNodes: a step's text knows its message's display_refs (a questi
     { role: "assistant", content: "Reading.", parts: { tools: [{ tool: "read", params: 'path="R.md"', output: "[read]\nok" }] } },
     { role: "assistant", content: "Done." },
   ];
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs }));
+  const holder = held(items);
   const texts = [...holder.querySelectorAll(".gen > .gen-text")];
   assert.deepEqual(texts.map((el) => el.textContent), ["Proceed with DEMO-123?", "Reading."]);
   assert.deepEqual(texts.map((el) => answerRefsOf(el)), [refs, null]);
   assert.ok(holder.querySelector("[data-answer-at]") === null);
 });
 
-test("turnHistoryNodes: a step's text with its message's rendered markdown shows it, keeping the text as written for stepText", () => {
+test("a step's text with its message's rendered markdown shows it, keeping the text as written for stepText", () => {
   const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
   const items = [
     { role: "user", content: "p", turn_id: "T1" },
@@ -529,8 +205,7 @@ test("turnHistoryNodes: a step's text with its message's rendered markdown shows
     { role: "assistant", content: "Plain step.", parts: { tools: [{ tool: "read", params: 'path="R.md"', output: "[read]\nok" }] } },
     { role: "assistant", content: "Done.", html: "<p>Done.</p>" },
   ];
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs }));
+  const holder = held(items);
   const [md, plain] = holder.querySelectorAll(".gen > .gen-text");
   assert.ok(md.classList.contains("markdown") && md.classList.contains("md-compact"));
   assert.equal(md.querySelector("strong").textContent, "DEMO-123");
@@ -541,22 +216,21 @@ test("turnHistoryNodes: a step's text with its message's rendered markdown shows
 });
 
 test("stepText: a reloaded block's step text by iteration (1-based), \"\" for a step without text or none at all", () => {
+  const read = { tools: [{ tool: "read", params: 'path="a"', output: "x" }] };
   const items = [
-    { role: "user", content: "p" },
-    { role: "assistant", content: "I found two files.\nThey disagree." },
-    { role: "assistant", content: "" },
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "I found two files.\nThey disagree.", parts: read },
+    { role: "assistant", content: "", parts: read },
     { role: "assistant", content: "Done." },
   ];
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, timing, { thumbs }));
-  const block = holder.querySelector(".turn-work");
+  const block = held(items).querySelector(".turn-work");
   assert.equal(stepText(block, 1), "I found two files.\nThey disagree.");
   assert.equal(stepText(block, 2), "");
   assert.equal(stepText(block, 7), "");
   assert.equal(stepText(null, 1), "");
 });
 
-test("turnHistoryNodes: a gap divider between turns 10+ quiet minutes apart (its own element), and each bubble's time on hover", () => {
+test("a gap divider between turns 10+ quiet minutes apart (its own element), and each bubble's time on hover", () => {
   const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
   const items = [
     { role: "user", content: "one", turn_id: "T1", at: at(9, 0) },
@@ -567,8 +241,7 @@ test("turnHistoryNodes: a gap divider between turns 10+ quiet minutes apart (its
     { role: "user", content: "three", turn_id: "T3", at: at(9, 40) },
     { role: "assistant", content: "third", at: at(9, 41) },
   ];
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({}), { thumbs, now: new Date(2026, 9, 24, 23, 0).getTime() }));
+  const holder = held(items, normalizeTiming({}), { now: new Date(2026, 9, 24, 23, 0).getTime() });
   const gaps = [...holder.querySelectorAll(".time-gap")];
   assert.deepEqual(gaps.map((el) => el.textContent), ["── 09:36 · 30 min later ──"]);
   assert.ok(gaps[0].nextElementSibling.matches(".bubble.note"));
@@ -577,13 +250,12 @@ test("turnHistoryNodes: a gap divider between turns 10+ quiet minutes apart (its
   assert.equal(holder.querySelector(".bubble.output").getAttribute("title"), "Sat 24 Oct 2026 09:01:00");
   assert.equal(holder.querySelector(".bubble.note").getAttribute("title"), "Sat 24 Oct 2026 09:36:00");
   // Unstamped (an old session): no title, no divider.
-  const old = document.createElement("div");
-  old.append(turnHistoryNodes([{ role: "user", content: "x" }, { role: "assistant", content: "y" }], normalizeTiming({}), { thumbs }));
+  const old = held([{ role: "user", content: "x", turn_id: "T1" }, { role: "assistant", content: "y" }]);
   assert.equal(old.querySelector(".bubble.user").hasAttribute("title"), false);
   assert.ok(old.querySelector(".time-gap") === null);
 });
 
-test("turnHistoryNodes: an old session's turns get their divider from the turn records (started_at, duration_ms)", () => {
+test("an old session's turns get their divider from the turn records (started_at, duration_ms)", () => {
   const at = (h, m) => new Date(2026, 9, 24, h, m).toISOString();
   const items = [{ role: "user", content: "one", turn_id: "T1" }, { role: "assistant", content: "a" },
     { role: "user", content: "two", turn_id: "T2" }, { role: "assistant", content: "b" }];
@@ -591,26 +263,23 @@ test("turnHistoryNodes: an old session's turns get their divider from the turn r
     { id: "T1", status: "completed", started_at: at(9, 0), duration_ms: 60_000 },
     { id: "T2", status: "completed", started_at: at(11, 1), duration_ms: 60_000 },
   ] });
-  const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, records, { thumbs, now: new Date(2026, 9, 24, 23, 0).getTime() }));
+  const holder = held(items, records, { now: new Date(2026, 9, 24, 23, 0).getTime() });
   assert.deepEqual([...holder.querySelectorAll(".time-gap")].map((el) => el.textContent), ["── 11:01 · 2 h later ──"]);
   assert.ok(holder.querySelector(".time-gap").nextElementSibling.matches(".bubble.user"));
 });
 
 // A participant's review turn gets Apply under its reply; a pair turn (a
 // working session's) acted itself: its badge says so, and no Apply.
-test("turnHistoryHtml: Apply under a review turn's reply, none under a pair turn; the badge says the mode", () => {
+test("Apply under a review turn's reply, none under a pair turn; the badge says the mode", () => {
   const turn = (id, mode) => [
     { role: "user", content: "q", turn_id: id, author: "p:p_0001abcd", author_name: "Sam", ...(mode ? { participant_mode: mode } : {}) },
     { role: "assistant", content: "done" },
   ];
-  const plain = normalizeTiming({});
-  const review = turnHistoryHtml(turn("rev-1", "review"), plain, { thumbs });
+  const review = historyHtml(turn("rev-1", "review"));
   assert.match(review, /data-apply-turn="rev-1"/);
   assert.match(review, />Sam · review</);
-  const unstamped = turnHistoryHtml(turn("old-1", null), plain, { thumbs });
-  assert.match(unstamped, /data-apply-turn="old-1"/);
-  const pair = turnHistoryHtml(turn("pair-1", "pair"), plain, { thumbs });
+  assert.match(historyHtml(turn("old-1", null)), /data-apply-turn="old-1"/);
+  const pair = historyHtml(turn("pair-1", "pair"));
   assert.doesNotMatch(pair, /review-apply/);
   assert.match(pair, />Sam · pair</);
   assert.match(pair, /data-participant-mode="pair"/);

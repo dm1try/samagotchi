@@ -9,10 +9,12 @@ require "support/turn_drawing_scenarios"
 
 # Bridge::TurnRanges: the turns read back from a session's messages. Its
 # ranges are the Engine's kept_from...kept_to (every TurnDrawingScenarios
-# end), and its record pairing is the page's (timing.js turnGroups /
-# promptRecord). The cases' fixture, spec/shared/turn_ranges.json (written
-# with UPDATE_TURN_RANGES=1), holds each case's messages, records, display
-# items (MessageDisplay) and expected turns; timing.test.js reads it too.
+# end), and its record pairing (by id, else by place) is what a made line's
+# end names (record_id). The cases' fixture, spec/shared/turn_ranges.json
+# (written with UPDATE_TURN_RANGES=1), holds each case's messages, records,
+# display items as the show stamps them (MessageDisplay), each turn's
+# drawing's end and the expected turns; timing.test.js reads it too (the
+# page groups by the stamps).
 RSpec.describe Samagotchi::Bridge::TurnRanges do
   fixture_path = File.expand_path("../shared/turn_ranges.json", __dir__)
   head = { role: "system", content: "You are chi." }
@@ -52,9 +54,7 @@ RSpec.describe Samagotchi::Bridge::TurnRanges do
       description: "A reminder turn after a prompt's: its own range, no opening, no record by place.",
       messages: [head, user.call("one", "t1"), model.call("a"), reminder, model.call("tea")],
       records: [record.call("t1"), record.call("t-reminder")],
-      turns: [turn.call(1, 3, "t1", 1, "t1"), { from: 3, to: 5, opening: nil, record_id: nil }],
-      # Undrawn, the page reads a turn with no opening as the one before's (no item opens it).
-      diverges: { "t1" => "the reminder turn's answer joins t1's group" }
+      turns: [turn.call(1, 3, "t1", 1, "t1"), { from: 3, to: 5, opening: nil, record_id: nil }]
     },
     wake_note: {
       description: "A context wake's note opens its turn from outside the range.",
@@ -110,23 +110,28 @@ RSpec.describe Samagotchi::Bridge::TurnRanges do
   # The case as the fixture has it: JSON's string keys, the page's items.
   def self.wire(value) = JSON.parse(JSON.generate(value))
 
-  # Which items each range holds, as the show stamps them (MessageDisplay,
-  # a line per range): what turnGroups' groups must hold too (timing.test.js;
-  # a case's `diverges` names a turn the page groups otherwise, and why).
-  def self.items_of(display, messages)
+  # The items as the show stamps them (MessageDisplay, a line per range),
+  # which each range holds (what turnGroups' groups must hold too,
+  # timing.test.js), and each range's drawing as a made line's end names it
+  # (its own turn id, its record's id).
+  def self.stamped(display, messages, records)
     ranges = described_class.of(messages)
     lines = ranges.map do |range|
       Samagotchi::Bridge::TurnDrawings::Line.new(v: 1, turn_id: range.id, kind: "completed", from: range.from, to: range.to,
                                                  from_digest: "", to_digest: "", drawing: {}, end: {})
     end
-    stamped = display.messages_for_display(messages, markdown: false, drawings: lines)
-    ranges.map { |range| stamped.each_index.select { |i| stamped[i][:drawn] == range.id } }
+    items = display.messages_for_display(messages, markdown: false, drawings: lines)
+    drawings = ranges.zip(described_class.records(ranges, records)).to_h do |range, record|
+      ending = { type: "turn_completed", turn_id: (range.id if range.own_id?), record_id: record&.fetch("id") }.compact
+      [range.id, { events: [], end: ending }]
+    end
+    [items, ranges.map { |range| items.each_index.select { |i| items[i][:drawn] == range.id } }, drawings]
   end
 
   built = cases.to_h do |name, spec|
-    items = items_of(display, spec[:messages])
-    turns = spec[:turns].each_with_index.map { |turn, k| turn.merge(items: items[k]) }
-    [name.to_s, wire(spec.merge(turns: turns, items: display.messages_for_display(spec[:messages], markdown: false)))]
+    items, held, drawings = stamped(display, spec[:messages], spec[:records])
+    turns = spec[:turns].each_with_index.map { |turn, k| turn.merge(items: held[k]) }
+    [name.to_s, wire(spec.merge(turns: turns, items: items, drawings: drawings))]
   end
 
   describe ".of and .records on the shared cases (spec/shared/turn_ranges.json)" do

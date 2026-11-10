@@ -238,15 +238,14 @@ test("getSession({ tail: true }) asks for the lighter end-of-turn answer, never 
   assert.deepEqual(calls[0], ["/api/sessions/abc?tail=1", false]);
 });
 
-test("getSession({ parts: true }) asks for what each saved step did (the turn block's reload), never passing parts to fetch", async () => {
+test("getSession's full read asks for no parts or drawings flag: chi web draws every finished turn", async () => {
   const calls = [];
   const fetchImpl = (path, opts) => {
-    calls.push([String(path), "parts" in opts]);
+    calls.push(String(path));
     return Promise.resolve(okResponse({ session: { id: "abc" } }));
   };
-  await getSession("abc", { parts: true, fetchImpl });
-  await getSession("abc", { parts: false, fetchImpl });
-  assert.deepEqual(calls, [["/api/sessions/abc?parts=1&drawings=1", false], ["/api/sessions/abc", false]]);
+  await getSession("abc", { fetchImpl });
+  assert.deepEqual(calls, ["/api/sessions/abc"]);
 });
 
 test("getSession({ cards: true }) asks for the cards alone (their rendered bodies)", async () => {

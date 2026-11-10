@@ -75,23 +75,45 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "user",
         "content": "two",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t2"
+        "turn_id": "t2",
+        "drawn": "t2"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "t2"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t2": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t2",
+          "record_id": "t2"
+        }
+      }
+    }
   },
   "by_place": {
     "description": "Turns saved before turn ids pair by their place among the openings.",
@@ -157,22 +179,42 @@
       {
         "role": "user",
         "content": "one",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "user",
         "content": "two",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m3-7c937192"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "m3-7c937192"
       }
-    ]
+    ],
+    "drawings": {
+      "m1-1fb3624f": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r1"
+        }
+      },
+      "m3-7c937192": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r2"
+        }
+      }
+    }
   },
   "reminders_before_prompt": {
     "description": "Reminders that went into a prompt's turn start its range.",
@@ -250,23 +292,45 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "user",
         "content": "two",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t2"
+        "turn_id": "t2",
+        "drawn": "t2"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "t2"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t2": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t2",
+          "record_id": "t2"
+        }
+      }
+    }
   },
   "reminder_turn": {
     "description": "A reminder turn after a prompt's: its own range, no opening, no record by place.",
@@ -330,25 +394,41 @@
         ]
       }
     ],
-    "diverges": {
-      "t1": "the reminder turn's answer joins t1's group"
-    },
     "items": [
       {
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "tea"
+        "content": "tea",
+        "drawn": "m3-a1b0333e"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "m3-a1b0333e": {
+        "events": [],
+        "end": {
+          "type": "turn_completed"
+        }
+      }
+    }
   },
   "wake_note": {
     "description": "A context wake's note opens its turn from outside the range.",
@@ -424,11 +504,13 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "note",
@@ -440,9 +522,28 @@
       },
       {
         "role": "assistant",
-        "content": "woke"
+        "content": "woke",
+        "drawn": "t2"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t2": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t2",
+          "record_id": "t2"
+        }
+      }
+    }
   },
   "wake_report": {
     "description": "A delegate report's wake turn opens with the report (turn_start input).",
@@ -518,24 +619,46 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "user",
         "content": "[report] done",
         "at": "2026-11-08T10:00:00.000+01:00",
         "source": "delegate_report",
-        "turn_id": "t2"
+        "turn_id": "t2",
+        "drawn": "t2"
       },
       {
         "role": "assistant",
-        "content": "noted"
+        "content": "noted",
+        "drawn": "t2"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t2": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t2",
+          "record_id": "t2"
+        }
+      }
+    }
   },
   "shell_between": {
     "description": "A `!cmd`'s record between turns is no turn's and counts for no place.",
@@ -606,11 +729,13 @@
       {
         "role": "user",
         "content": "one",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "user",
@@ -620,13 +745,31 @@
       {
         "role": "user",
         "content": "two",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m4-7c937192"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "m4-7c937192"
       }
-    ]
+    ],
+    "drawings": {
+      "m1-1fb3624f": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r1"
+        }
+      },
+      "m4-7c937192": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r2"
+        }
+      }
+    }
   },
   "notes_between": {
     "description": "A context note after a turn and before the next is outside both.",
@@ -707,11 +850,13 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "note",
@@ -723,13 +868,33 @@
         "role": "user",
         "content": "two",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t2"
+        "turn_id": "t2",
+        "drawn": "t2"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "t2"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t2": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t2",
+          "record_id": "t2"
+        }
+      }
+    }
   },
   "duplicate_id": {
     "description": "A later range repeating a turn id (a hand-edited file) gets <id>~<from>.",
@@ -802,23 +967,43 @@
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "t1"
       },
       {
         "role": "user",
         "content": "one",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "t1"
+        "turn_id": "t1",
+        "drawn": "t1~4"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "t1~4"
       }
-    ]
+    ],
+    "drawings": {
+      "t1": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "t1",
+          "record_id": "t1"
+        }
+      },
+      "t1~4": {
+        "events": [],
+        "end": {
+          "type": "turn_completed"
+        }
+      }
+    }
   },
   "restored_failure": {
     "description": "A failure that handed its prompt back is a range of its note alone: not the turn before's, and its record (no opening) takes no place among the openings.",
@@ -904,21 +1089,47 @@
       {
         "role": "user",
         "content": "one",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "assistant",
-        "content": "a"
+        "content": "a",
+        "drawn": "m1-1fb3624f"
       },
       {
         "role": "user",
         "content": "two",
-        "at": "2026-11-08T10:00:00.000+01:00"
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "drawn": "m4-7c937192"
       },
       {
         "role": "assistant",
-        "content": "b"
+        "content": "b",
+        "drawn": "m4-7c937192"
       }
-    ]
+    ],
+    "drawings": {
+      "m1-1fb3624f": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r1"
+        }
+      },
+      "m3-7d473e6a": {
+        "events": [],
+        "end": {
+          "type": "turn_completed"
+        }
+      },
+      "m4-7c937192": {
+        "events": [],
+        "end": {
+          "type": "turn_completed",
+          "record_id": "r2"
+        }
+      }
+    }
   }
 }

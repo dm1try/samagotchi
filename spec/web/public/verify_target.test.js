@@ -7,12 +7,14 @@ import assert from "node:assert/strict";
 import { OWNER_FINAL, PARTICIPANT_FINAL, verifyTurnOf } from "../../../lib/samagotchi/web/public/verify_target.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 
 const thumbs = () => "";
 
-function ownerHistory(items, records) {
+function ownerHistory(source, records) {
+  const { items, drawings } = drawnHistory(source);
   const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs }));
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs, drawings }));
   return holder;
 }
 

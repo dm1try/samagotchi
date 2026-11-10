@@ -2538,7 +2538,8 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   expect(final[0]).toMatch(/^turn 1 · /);
   expect(final[1]).toMatch(/^turn 2 · /);
   await expect(page.locator("#history .time-gap")).toHaveCount(0);
-  await page.route(/\/api\/sessions\/[^/?]+\?parts=1&drawings=1$/, async (route) => {
+  // The page's full read: GET /api/sessions/<id>, no query.
+  await page.route((url) => /^\/api\/sessions\/[^/]+$/.test(url.pathname) && !/\/(summaries|resolve)$/.test(url.pathname) && url.search === "", async (route) => {
     const response = await route.fetch();
     const json = await response.json();
     const earlier = (iso) => new Date(Date.parse(iso) - 40 * 60_000).toISOString();

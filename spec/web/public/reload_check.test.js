@@ -44,20 +44,20 @@ test("a handed-off turn the reload draws the same posts same, no kinds, not draw
   const { check, posts, reads } = setup();
   await check.handedOff({ pieces: pieces() });
   assert.deepEqual(reads, ["s1"]);
-  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: true, kinds: [], excused: [], explained: true, drawn: false }]]);
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: true, kinds: [], excused: [], explained: true, drawn: false, undrawn: 0 }]]);
 });
 
 test("a reload that differs posts the kinds that did; a drawing for the turn says drawn", async () => {
   const { check, posts } = setup({ reloaded: `${PROMPT}<div class="bubble output">other</div>`, data: { turn_drawings: { T1: {} } } });
   await check.handedOff({ pieces: pieces() });
-  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["answer", "timing"], excused: [], explained: false, drawn: true }]]);
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["answer", "timing"], excused: [], explained: false, drawn: true, undrawn: 0 }]]);
 });
 
 test("it is strict: a known divergence is a mismatch, posted with the ACCEPTED entry that would excuse it", async () => {
   const command = '<div class="bubble command"><div class="command-line">/help</div></div>';
   const { check, posts } = setup();
   await check.handedOff({ pieces: pieces(PROMPT + command + ANSWER) });
-  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["command"], excused: ["command-bubble"], explained: true, drawn: false }]]);
+  assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["command"], excused: ["command-bubble"], explained: true, drawn: false, undrawn: 0 }]]);
 });
 
 test("a card is no finding (a reload places it after the render); the queued lines after the turn aren't the turn's", async () => {
@@ -66,6 +66,13 @@ test("a card is no finding (a reload places it after the render); the queued lin
   const { check, posts } = setup();
   await check.handedOff({ pieces: pieces(live) });
   assert.equal(posts[0][1].same, true);
+});
+
+test("a reload's rows that came without their turn's drawing (the plain fallback) are counted", async () => {
+  const plain = PROMPT.replace('data-turn-id="T1"', 'data-turn-id="T1" data-undrawn="1"') + ANSWER.replace('class="bubble output"', 'class="bubble output" data-undrawn="1"');
+  const { check, posts } = setup({ reloaded: plain });
+  await check.handedOff({ pieces: pieces() });
+  assert.equal(posts[0][1].undrawn, 2);
 });
 
 test("off, the check reads nothing", async () => {

@@ -5,26 +5,27 @@ import { createWorkingSet, footprintNode, groupItems, stampHistory, stampRows } 
 import { itemsOfTurn } from "../../../lib/samagotchi/web/public/working_set.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming, turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 import { infoBarHtml, renderInfoBar, workingSetChipTemplate } from "../../../lib/samagotchi/web/public/info_bar.js";
 import { handOffOrder } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 const read = (path) => ({ tool: "read", title: path, ref: { kind: "file", path: `/p/${path}` }, params: `path="${path}"` });
-// Two turns with saved parts: the first reads two files and a memory, the
-// second only answers.
-const items = [
-  { role: "user", content: "first" },
+// Two turns, drawn as chi web sends them (drawn_history.js): the first
+// reads two files and a memory, the second only answers.
+const { items, drawings } = drawnHistory([
+  { role: "user", content: "first", turn_id: "T1" },
   { role: "assistant", content: "Looking.", parts: { tools: [read("lib/a.rb"), { tool: "memory_read", title: "style" }] } },
   { role: "assistant", content: "", parts: { tools: [read("lib/b.rb")] } },
   { role: "assistant", content: "Done.", parts: {} },
-  { role: "user", content: "second" },
+  { role: "user", content: "second", turn_id: "T2" },
   { role: "assistant", content: "Hi.", parts: {} },
-];
+]);
 const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 5 }, { id: "T2", status: "completed", duration_ms: 5 }] });
 const thumbs = () => "";
 
 test("turnHistoryNodes with the working set: blocks and rows stamped with ordinals, the footprint first on the block's summary line", () => {
-  const out = turnHistoryNodes(items, timing, { thumbs, workingSet: true });
+  const out = turnHistoryNodes(items, timing, { thumbs, workingSet: true, drawings });
   const holder = document.createElement("div");
   holder.append(out);
   const block = holder.querySelector(".turn-work");
@@ -38,12 +39,12 @@ test("turnHistoryNodes with the working set: blocks and rows stamped with ordina
   assert.equal(foot.querySelector(".ws-step").dataset.at, "0.0.1");
   // The flag off: no stamps, no footprint.
   const plain = document.createElement("div");
-  plain.append(turnHistoryNodes(items, timing, { thumbs }));
+  plain.append(turnHistoryNodes(items, timing, { thumbs, drawings }));
   assert.equal(plain.querySelectorAll(".ws-foot, [data-turn], [data-at]").length, 0);
 });
 
 test("groupItems: a reloaded turn's items as the history numbers them", () => {
-  const [g] = turnGroups(items, timing).filter((x) => x.kind === "turn");
+  const [g] = turnGroups(items, timing, { drawings }).filter((x) => x.kind === "turn");
   assert.deepEqual(groupItems(g, 0).map((i) => [i.key, i.at]), [
     ["/p/lib/a.rb", { turn: 0, step: 0, row: 0 }], ["style", { turn: 0, step: 0, row: 1 }], ["/p/lib/b.rb", { turn: 0, step: 1, row: 0 }],
   ]);

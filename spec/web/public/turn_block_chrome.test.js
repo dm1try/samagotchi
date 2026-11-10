@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createTurnBlock, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { drawnHistory } from "./drawn_history.js";
 
 // A block hides its chrome (index.html, the .turn-work:not(:has(…)) rules) only
 // while it has nothing to stack: a plain answer streaming. A step that closed
@@ -125,10 +126,14 @@ test("live, the control: a steer after a tool step keeps its block as it always 
   assert.ok(block.querySelector(".activity-body"));
 });
 
-// A reload's nodes in a holder, as #history holds them.
-function reloaded(items, records = []) {
+// A reload's nodes in a holder, as #history holds them: the turns drawn as
+// chi web sends them (drawn_history.js), each ending as its record says.
+const END_OF = { completed: "turn_completed", canceled: "turn_canceled", failed: "turn_failed" };
+function reloaded(source, records = []) {
+  const ends = Object.fromEntries(records.map((r) => [r.id, { type: END_OF[r.status] || "turn_completed", turn_id: r.id }]));
+  const { items, drawings } = drawnHistory(source, { ends });
   const holder = document.createElement("div");
-  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs: () => "", now: 0 }));
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: records }), { thumbs: () => "", now: 0, drawings }));
   return holder;
 }
 
@@ -151,22 +156,6 @@ test("reload: the same step keeps its markdown as the step's text", () => {
   const block = holder.querySelector(":scope > .turn-work");
   assert.ok(stacks(block));
   assert.match(htmlOf(block), /<div class="gen-text markdown md-compact"[^>]*><p>First reply\.<\/p><p>Its second paragraph\.<\/p><\/div>/);
-});
-
-test("reload: a turn with no answer whose one step has text keeps it reachable (failed; empty answer)", () => {
-  const failed = reloaded([PROMPT, { role: "assistant", content: FIRST }], [{ id: "T1", status: "failed", duration_ms: 1000 }]);
-  assertReplyReachable(failed.querySelector(":scope > .turn-work"));
-  const empty = reloaded([PROMPT, { role: "assistant", content: FIRST }, STEERED, { role: "empty_answer", content: "no answer" }],
-    [{ id: "T1", status: "completed", duration_ms: 1000 }]);
-  assertReplyReachable(empty.querySelector(":scope > .turn-work"));
-});
-
-test("reload: a lone step saved with nothing to show has no chrome for it", () => {
-  const holder = reloaded([PROMPT, { role: "assistant", content: "", parts: {} }, STEERED, { role: "assistant", content: "Second reply.", parts: {} }],
-    [{ id: "T1", status: "completed", duration_ms: 1000 }]);
-  const block = holder.querySelector(":scope > .turn-work");
-  assert.equal(block.querySelectorAll(":scope > .gen").length, 1);
-  assert.equal(stacks(block), false);
 });
 
 test("reload, the control: a steer after a tool step keeps its block as it always did", () => {
