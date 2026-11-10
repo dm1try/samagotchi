@@ -92,6 +92,39 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     expect(Dir.exist?(File.join(bundles_dir, "interrupted-fresh"))).to be(false)
   end
 
+  it "retags the index of the folder the journal was written for, not the current one" do
+    # Two projects; the interrupted install journaled its files into A, and the
+    # uninstall is run from B.
+    project_a = File.join(tmpdir, "project_a")
+    project_b = File.join(tmpdir, "project_b")
+    FileUtils.mkdir_p(project_a)
+    FileUtils.mkdir_p(project_b)
+    dir_a = Dir.chdir(project_a) { Samagotchi::MemoryPaths.project_dir }
+    dir_b = Dir.chdir(project_b) { Samagotchi::MemoryPaths.project_dir }
+    FileUtils.mkdir_p(dir_a)
+    FileUtils.mkdir_p(dir_b)
+
+    content = "# Notes\n"
+    File.write(File.join(dir_a, "n.md"), content)
+    seed = "- **n** · project · 2026-01-01 · 3\n"
+    File.write(File.join(dir_a, "index.md"), seed)
+    File.write(File.join(dir_b, "index.md"), seed)
+
+    Samagotchi::MemoryBundle::Provenance.new(name: "x").write_pending(
+      version: "1.0.0", scope: "project", target_dir: dir_a, files: { "n.md" => Digest::SHA256.hexdigest(content) }
+    )
+    # Bundle Y is installed and lists the same file: x's uninstall keeps it and
+    # retags its index line to Y.
+    Samagotchi::MemoryBundle::Provenance.new(name: "y").write(
+      files: { "n.md" => File.join(dir_a, "n.md") }, scope: "project", version: "1.0.0", source_path: "/gone"
+    )
+
+    Dir.chdir(project_b) { described_class.new(name: "x").run }
+
+    expect(File.read(File.join(dir_a, "index.md"))).to include("- **n** · project · #{Date.today.iso8601} · #{content.bytesize} · from y\n")
+    expect(File.read(File.join(dir_b, "index.md"))).to eq(seed)
+  end
+
   it "removes the entry's index line, including a legacy name.md line" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "index-uninstall")
     install_bundle(src, "index-uninstall")

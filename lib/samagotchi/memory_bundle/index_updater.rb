@@ -14,8 +14,11 @@ module Samagotchi
       # @param source [String, false, nil] the bundle the memory came from
       #   ("· from <bundle>"): a name sets it, false drops it, nil keeps the
       #   line's (memory_write and write/edit pass nil)
-      def self.update_index(scope, entry_name, byte_count, description = nil, source: nil)
-        index_path = index_path_for(scope)
+      # @param target_dir [String, nil] the folder whose index.md to edit, when
+      #   it is not the one +scope+ resolves from the current folder (an
+      #   uninstall of a bundle journaled into another project)
+      def self.update_index(scope, entry_name, byte_count, description = nil, source: nil, target_dir: nil)
+        index_path = target_dir ? File.join(target_dir, "#{MEMORY_INDEX}.md") : index_path_for(scope)
         return true unless index_path
 
         locked_write(File.dirname(index_path)) do |content|

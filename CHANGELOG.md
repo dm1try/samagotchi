@@ -30,6 +30,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi bundle uninstall NAME` of a bundle whose install was interrupted before its record (only the
+  `pending.json` journal left) retags the index line of a kept shared file in the journal's own target folder, not the
+  current folder's: run from another project, it no longer edits that project's `index.md` for a file living elsewhere.
 - A `chi send`, delegate or schedule delivery whose Bridge answered an error after it had queued the prompt no
   longer runs it twice: the client makes the enqueued id, the input-file fallback reuses it, and the worker runs
   each id once (also after a restart, a turn that already ran or was cut off by the worker's death).
