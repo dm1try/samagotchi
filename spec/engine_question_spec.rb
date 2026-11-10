@@ -49,8 +49,11 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       result_box[:error] = e
     end
     turn_thread.report_on_exception = false
-    # Wait until the question is pending (question_requested emitted)
-    wait_for("the pending question", interval: 0.005) { engine.pending_question }
+    # Wait until the question is pending and question_requested is emitted
+    # (QuestionDesk#publish sets the pending question before it emits).
+    wait_for("the pending question and its question_requested event", interval: 0.005) do
+      engine.pending_question && events.any? { |e| e[:type] == :question_requested }
+    end
     [turn_thread, result_box, events]
   end
 
