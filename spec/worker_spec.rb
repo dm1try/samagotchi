@@ -138,7 +138,10 @@ RSpec.describe Samagotchi::Worker do
       count_loop_rounds(worker)
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
-      wait_for("the worker's sidecar") { File.exist?(sidecar) }
+      # Or its end: a worker that leaves at once (a scratch one whose join
+      # grace ran out while it started) writes its sidecar and removes it
+      # again faster than a poll here can see.
+      wait_for("the worker's sidecar (or its end)") { File.exist?(sidecar) || !@thread.alive? }
       # Let the loop reach its wait (or end): at most what a turn the
       # example holds open would let it.
       wait_until(timeout: 0.5) { !@thread.alive? || loop_waiting?(@thread) } # wait-ok: at most what a turn held open lets it
