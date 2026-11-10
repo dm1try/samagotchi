@@ -28,6 +28,8 @@ RSpec.describe Samagotchi::TerminalUI::VersionLines do
     expect(line(worker: "0.155.0", installed: "0.160.0", terminal: "0.157.1"))
       .to eq("chi> chi 0.160.0 is installed; this session's worker runs 0.155.0 and this terminal 0.157.1. " \
              "chi sessions restart abcdef12 moves the worker; /detach, then chi --attach abcdef12 for the terminal.")
+    expect(line(worker: "0.160.0", installed: "99.0.0", terminal: "0.160.0"))
+      .to start_with("chi> chi 99.0.0 is installed; this session's worker runs 0.160.0 and this terminal 0.160.0.")
   end
 
   it "says nothing when all is current, the worker is the newer one, or it doesn't say its version" do

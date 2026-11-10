@@ -25,7 +25,7 @@ module Samagotchi
 
         newest = [installed, terminal].select { |v| Gem::Version.correct?(v.to_s) && !v.to_s.empty? }
                                       .max_by { |v| Gem::Version.new(v) }
-        worker_old = Compat.verdict(worker_version: worker, version: terminal) == :restart_suggested
+        worker_old = Compat.verdict(worker_version: worker, version: newest) == :restart_suggested
         terminal_old = InstalledVersions.newer?(newest, terminal)
         return nil unless worker_old || terminal_old
 

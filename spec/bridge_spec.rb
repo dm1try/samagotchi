@@ -645,14 +645,14 @@ RSpec.describe Samagotchi::Bridge do
       expect(another_session.status).to eq(404)
     end
 
-    it "advertises the input format its worker reads in the sidecar" do
+    it "does not write the unused input_format to the sidecar" do
       start_bridge
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
       expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
       @bridge.stop
 
       @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id, input_format: 2).start
-      expect(JSON.parse(File.read(sidecar))).to include("input_format" => 2)
+      expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
     end
 
     it "writes the client's ids into the queued input" do
