@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::ProjectIdClash do
     clash = check(copy)
     expect(clash).to eq(described_class.new(root: copy, other: notes, id: id))
     expect(clash.message).to eq("#{copy} and #{notes} share chi project id #{id} (a copied folder?): they share " \
-                                "memories; `chi project init --new-id` gives this one its own.")
+                                "memories. Run `chi project init --new-id` in the copy to give it its own.")
     expect(check(copy)).to eq(clash)
     expect(check(notes)).to be_nil
     expect(File.read(claim)).to eq("#{notes}\n")
