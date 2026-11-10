@@ -613,6 +613,90 @@ RSpec.describe Samagotchi::SendCommand do
         expect([archived?(first), archived?(second)]).to eq([true, true])
       end
 
+      # chi send resolves the head once, then delivers: a continue that ends
+      # (or starts) in between leaves it holding the old link, which a send
+      # would un-archive beside the new one. The delivery refuses a followed
+      # send to an archived link a continue took, and chi send resolves again.
+      describe "when a continue takes the link after chi send resolved it" do
+        before do
+          stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+          allow(Process).to receive(:spawn).and_return(40_007)
+          allow(described_class).to receive(:pause)
+        end
+
+        after { @lock&.close }
+
+        # Once, right after the first head look.
+        def after_first_head(&)
+          looked = false
+          allow(Samagotchi::SessionInbox::Head).to receive(:resolve).and_wrap_original do |original, *args, **kwargs|
+            original.call(*args, **kwargs).tap do
+              next if looked
+
+              looked = true
+              yield
+            end
+          end
+        end
+
+        it "sends to the new link once the continue ended; the old link stays archived" do
+          old = archived(make)
+          newer = nil
+          after_first_head do
+            newer = link_after(old, owner: "worker")
+            serve(newer)
+          end
+
+          expect(run("-m", "still there?", old.id)).to eq(0), err.string
+          expect(out.string).to eq("#{label(old, newer)}  sent\n")
+          expect(inputs_of(newer)).to contain_exactly(include("prompt" => "still there?"))
+          expect(inputs_of(old)).to be_empty
+          expect(archived?(old)).to be(true)
+        end
+
+        it "waits for a continue that started meanwhile, then sends to its new link" do
+          old = archived(make)
+          successor = "7b2d41aa-0000-4000-8000-000000000000"
+          after_first_head do
+            File.write(File.join(dir_of(old), Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor))
+            @lock = File.open(File.join(dir_of(old), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
+            @lock.flock(File::LOCK_EX)
+          end
+          created = nil
+          allow(described_class).to receive(:pause) do
+            next if created
+
+            created = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app")
+            created.id = successor
+            created.continues = old.id
+            created.save(state_dir: tmpdir)
+            locks << Samagotchi::OwnerLock.acquire(dir_of(created), kind: "worker")
+            serve(created)
+          end
+
+          expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "made it", old.id)).to eq(4), err.string
+          expect(JSON.parse(out.string)).to include("session_id" => successor, "asked" => old.id)
+          expect(err.string).to start_with("#{label(old, created)}  sent")
+          expect(inputs_of(created)).to contain_exactly(include("prompt" => "made it"))
+          expect(inputs_of(old)).to be_empty
+          expect(archived?(old)).to be(true)
+        end
+
+        it "refuses once the wait is over, nothing written, the old link still archived" do
+          stub_const("#{described_class}::CONTINUING_WAIT", 0.05)
+          old = archived(make)
+          after_first_head do
+            @lock = File.open(File.join(dir_of(old), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
+            @lock.flock(File::LOCK_EX)
+          end
+
+          expect(run("-m", "too soon", old.id)).to eq(1)
+          expect(out.string).to eq("#{short(old)}  refused: being continued; send again in a moment\n")
+          expect(inputs_of(old)).to be_empty
+          expect(archived?(old)).to be(true)
+        end
+      end
+
       it "sends once to an old id and its newest link named together" do
         old = archived(make)
         newer = link_after(old, owner: "worker")

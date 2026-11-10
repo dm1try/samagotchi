@@ -188,8 +188,10 @@ module Samagotchi
 
       # @return [SessionManager::DeliverResult]
       # @raise [SessionManager::OwnedByTUI] a one-turn chi run owns it
-      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil)
-        SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery, **dir)
+      # @param follow [Boolean] +id+ is the head #head resolved (SessionManager.deliver_turn's follow:)
+      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false)
+        SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
+                                        follow: follow, **dir)
       end
 
       # @return [NoteDelivery::Result]

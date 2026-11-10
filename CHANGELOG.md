@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
 - web: a ```` ```chi-ui ```` picks row whose id starts with `!` or `/` no longer makes **Fill reply** start a shell
   line or a session command: the leading `!` and `/` are dropped from the id (`!touch x` reads `touch x: …`), and an id
   of nothing else refuses the block.
+- `chi send` to a continued session no longer brings the old link back beside the new one when the continue finishes
+  just as the send goes in: it resends to the new link (or says `refused: being continued; send again in a moment`
+  after 10 s), and a same-mode schedule firing at that moment queues its turn in the new link instead of failing as
+  `archived`. With `--remote`, the other machine's chi web needs this release for the send half.
 
 ## [0.164.0] - 2026-11-10
 

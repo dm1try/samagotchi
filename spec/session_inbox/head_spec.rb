@@ -134,6 +134,24 @@ RSpec.describe Samagotchi::SessionInbox::Head do
       expect(resolve(:send, first)).to eq(id: second.id, asked: first.id, via: :head)
     end
 
+    # The walk lists the sessions once, then asks for the intent: a
+    # successor saved in between is not in the listing, and the old link
+    # (archived) must not come back via :same (a send would un-archive it
+    # beside the new one).
+    it "gives a send the successor saved after the walk's listing, via :head" do
+      first = link(archived: true)
+      intent(first, successor)
+      allow(Samagotchi::Session).to receive(:list).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          saved = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: first.id)
+          saved.id = successor
+          saved.save(state_dir: tmpdir)
+        end
+      end
+
+      expect(resolve(:send, first)).to eq(id: successor, asked: first.id, via: :head)
+    end
+
     it "ignores a stale intent, one no continue holds the lock of (a crash's, repair_interrupted's to undo)" do
       archived = link(archived: true)
       intent(archived, successor, locked: false)

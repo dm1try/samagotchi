@@ -1090,15 +1090,20 @@ module Samagotchi
       classify(entry, e.reason, e.message)
     end
 
-    def fire_same(entry, links)
+    def fire_same(entry, links, walked_again: false)
       target, reason, kind = target_of(entry, links)
       return unresolved(entry, reason, kind) if target.nil?
 
       # Checked again, against the files: a continue made between the tick's
       # listing and this moment archives the target it just resolved to.
+      # One in flight is a skip; one that ended since saved its successor
+      # before it let its intent go, so a fresh listing (one walk again,
+      # checked as the tick checks) finds where the chain went.
       dir = Session.session_dir(target, state_dir: @state_dir)
       if ArchiveStore.archived?(dir)
         continuing = continuing_reason(target)
+        return fire_same_again(entry) if continuing.nil? && !walked_again
+
         return Outcome.new(id: entry.id, title: entry.title, status: continuing ? "skipped" : "failed",
                            detail: continuing || "archived", entry: entry)
       end
@@ -1125,6 +1130,16 @@ module Samagotchi
         Outcome.new(id: entry.id, title: entry.title, status: "failed",
                     detail: "the turn was not accepted (#{result.status}: #{result.error || result.detail})", entry: entry)
       end
+    end
+
+    # #fire_same over a fresh listing: its target and busy checks as the
+    # tick's (#check), then the firing; an end still archived fails.
+    def fire_same_again(entry)
+      links = links_now
+      verdict = check(entry, links)
+      return unresolved(entry, verdict[1], verdict[0]) if verdict
+
+      fire_same(entry, links, walked_again: true)
     end
 
     def classify(entry, reason, message)

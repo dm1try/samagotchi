@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require_relative "session"
 
@@ -35,6 +36,23 @@ module Samagotchi
       Session.valid_id?(successor) ? successor : nil
     rescue JSON::ParserError, SystemCallError
       nil
+    end
+
+    # The block under a shared hold of +id+'s continue lock, so no continue
+    # of it starts until the block returns (its exclusive lock waits); the
+    # block's argument is false when a continue holds the lock now (not
+    # waited for: nothing is held then). A followed send's check and the
+    # resume that would un-archive the link run inside it
+    # (SessionManager.deliver_turn's follow:).
+    # @yieldparam held [Boolean]
+    def hold(id, state_dir:)
+      return yield(false) unless Session.valid_id?(id)
+
+      dir = Session.session_dir(id, state_dir: state_dir)
+      FileUtils.mkdir_p(dir)
+      File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
+        yield(lock.flock(File::LOCK_SH | File::LOCK_NB) ? true : false)
+      end
     end
 
     # Whether a continue holds the lock at +path+: a shared try that fails.

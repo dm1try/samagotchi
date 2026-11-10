@@ -243,8 +243,11 @@ module Samagotchi
 
       # @return [SessionManager::DeliverResult]
       # @raise [SessionManager::OwnedByTUI]
-      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil)
+      # @param follow [Boolean] +id+ is the head #head resolved: sent only
+      #   when true (an older chi web ignores it and delivers as before)
+      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false)
         body = { prompt: prompt, client_id: client_id, history: false }
+        body[:follow] = true if follow
         body[:images] = images.map { |ref| { file: ref[:file], name: ref[:name] } } unless images.empty?
         body[:check_vision] = true unless images.empty?
         body[:delivery] = delivery if delivery

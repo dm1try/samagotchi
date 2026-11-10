@@ -160,7 +160,10 @@ person's `chi send --new --continues` or web `continue →` archives the link be
 its successor is saved, and a tick in that moment sees an archived end
 (`ContinueIntent.in_flight`: the intent written, its lock held). It is checked before
 the busy check, in both modes, and again by a same-mode firing's own look at the
-files; the next tick's walk reaches the new link. A stale intent (no continue holds
+files; the next tick's walk reaches the new link. A continue that ended between the
+tick's listing and that look (its successor saved, its intent gone) is no failure
+either: the firing walks again on a fresh listing, checks the new link as the tick
+would, and queues its turn there. A stale intent (no continue holds
 its lock: a crash, repaired by the next continue or list) is not in flight, so that
 target still fails `archived`.
 

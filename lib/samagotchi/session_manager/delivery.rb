@@ -44,7 +44,8 @@ module Samagotchi
       # tool's follow-up says it after "Error: session <id8>".
       # @return [String]
       def refusal_text
-        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || DeliverResult::REMOTE_REFUSALS.include?(error)
+        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? ||
+                  DeliverResult::REMOTE_REFUSALS.include?(error)
         "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
       end
 
@@ -52,6 +53,10 @@ module Samagotchi
       # or next_step for a --queue that found no turn running; nil from the
       # input file or a worker older than delivery.
       def delivery = ack["delivery"]
+
+      # A followed send refused: a continue took the archived link it named
+      # (deliver_turn's follow:); the sender resolves the head again.
+      def continued? = error == DeliverResult::CONTINUED
 
       # A --cut's outcome ("now", "waits", "off"), nil when nothing was cut.
       def cut = ack["cut"]
@@ -66,6 +71,9 @@ module Samagotchi
     # DeliverResult, not inside its Data.define block, where a constant
     # would land on SessionManager.
     DeliverResult::REMOTE_REFUSALS = %w[parent_answers_refused parent_continue_refused no_vision].freeze
+    # A followed send's refusal (DeliverResult#continued?), here and from a
+    # remote's turn route alike.
+    DeliverResult::CONTINUED = "link_continued"
 
     # The unclaimed input files +author+ wrote.
     PARTICIPANT_QUEUE_LOCK = "participants.lock"
@@ -116,6 +124,12 @@ module Samagotchi
       # @param anchors [TurnAnchors, Hash, nil] a Verify turn's claim, a Revise
       #   turn's draft: each refused (409, its UNAVAILABLE) by a worker without
       #   its feature
+      # @param follow [Boolean] the sender resolved +session_id+ as its
+      #   chain's head (chi send: SessionAccess#head), so an archived link a
+      #   continue took since is refused (:refused 409 link_continued, nothing
+      #   written: #follow_guard) rather than un-archived beside its new link;
+      #   the sender resolves again. Others name the id they mean (the web
+      #   composer, schedules, delegates, plugins, participants).
       # @param manager [#resume_session, #write_turn_input] this class, or a
       #   stand-in (the web's specs); #session_owner is optional
       # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -129,7 +143,42 @@ module Samagotchi
       # @raise [OwnedByTUI] a one-turn chi run owns the session
       # @raise [ArgumentError] no such session
       def deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
-                       author: nil, pending_limit: nil, anchors: nil, state_dir: nil, manager: self, bridge: nil)
+                       author: nil, pending_limit: nil, anchors: nil, follow: false, state_dir: nil, manager: self,
+                       bridge: nil)
+        follow_guard(session_id, state_dir, follow) do
+          deliver_turn_now(session_id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
+                                       no_interrupt: no_interrupt, author: author, pending_limit: pending_limit,
+                                       anchors: anchors, state_dir: state_dir, manager: manager, bridge: bridge)
+        end
+      end
+
+      # A followed send (deliver_turn's follow:) to an archived link: refused
+      # when a continue took it (a successor saved, or a continue holding its
+      # lock now: its successor comes), else the delivery under a shared hold
+      # of the continue lock (ContinueIntent.hold), so no continue starts
+      # between this check and the input going in. Any other delivery, or
+      # a link not archived, is the block alone. Head.resolve answers the
+      # sender before the delivery: a continue that ends or starts in
+      # between is caught here, and chi send resolves again (SendCommand#target).
+      # @return [DeliverResult] the block's, or the refusal
+      private def follow_guard(session_id, state_dir, follow)
+        sd = state_dir || Session.default_state_dir
+        return yield unless follow && Session.valid_id?(session_id) &&
+                            ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+
+        ContinueIntent.hold(session_id, state_dir: sd) do |held|
+          successor = SessionChain::Links.new(state_dir: sd).next_of(session_id) if held
+          next yield if held && successor.nil?
+
+          words = successor ? "being continued as #{successor[0, 8]}" : "being continued"
+          DeliverResult.new(status: :refused, code: 409,
+                            ack: { "error" => DeliverResult::CONTINUED, "detail" => "#{words}; send again in a moment",
+                                   "session_id" => session_id, "successor_id" => successor }.compact)
+        end
+      end
+
+      private def deliver_turn_now(session_id, prompt:, client_id:, images:, delivery:, no_interrupt:, author:,
+                                   pending_limit:, anchors:, state_dir:, manager:, bridge:)
         anchors = TurnAnchors.from(anchors)
         session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
         bridge ||= lambda do

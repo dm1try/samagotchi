@@ -1259,6 +1259,50 @@ RSpec.describe Samagotchi::Schedules do
         expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
       end
     end
+
+    # The tick's listing saw a live target; a continue ended (its successor
+    # saved, its intent gone) before the firing's own look: the stale
+    # listing says "archived", a fresh walk says where the chain went.
+    it "fires a same-mode entry into the successor of a continue that ended after the tick's listing" do
+      Dir.mktmpdir("schedules-continued-fire") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        expect(links.latest(anchor)).to eq(anchor)
+        Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+        saved = session(dir, continues: anchor).id
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                        ack: { "enqueued_id" => "scheduled-turn" })
+        )
+
+        outcome = schedules.send(:fire_same, entry, links)
+
+        expect(outcome).to have_attributes(status: "pending", detail: "queued a turn")
+        expect(Samagotchi::SessionManager).to have_received(:deliver_turn).with(saved, hash_including(prompt: "Audit"))
+        expect(outcome.entry.head).to eq(saved)
+      end
+    end
+
+    it "still fails a same-mode firing as archived when a fresh walk finds no successor either" do
+      Dir.mktmpdir("schedules-retired-fire") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        expect(links.latest(anchor)).to eq(anchor)
+        Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+
+        outcome = schedules.send(:fire_same, entry, links)
+
+        expect([outcome.status, outcome.detail]).to eq(%w[failed archived])
+        expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      end
+    end
   end
 
   it "records a run-now refusal, so a schedule that can never fire is disabled" do
