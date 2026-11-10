@@ -8,8 +8,8 @@ module Samagotchi
   # folder while it runs: LOCK, held for the whole continue, and FILE, its
   # intent (the successor's id), written before the link is archived and
   # removed once the successor is saved or the continue is undone. A send
-  # reads them (SessionInbox::Head) to tell a continue in flight from a link
-  # nobody continues.
+  # (SessionInbox::Head) and a schedule tick (Schedules#continuing_reason)
+  # read them to tell a continue in flight from a link nobody continues.
   module ContinueIntent
     # One continue of a session at a time.
     LOCK = "continue.lock"

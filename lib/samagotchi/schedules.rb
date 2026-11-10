@@ -12,6 +12,7 @@ require_relative "worker_presence"
 require_relative "client_id"
 require_relative "command_intake"
 require_relative "config"
+require_relative "continue_intent"
 require_relative "continue_offer"
 require_relative "delivery"
 require_relative "log"
@@ -904,11 +905,13 @@ module Samagotchi
       end
     end
 
-    # :skip (busy now, try the next tick) or :fail (the target is gone or
-    # archived); nil when the entry may fire.
+    # :skip (busy now, or being continued: try the next tick) or :fail (the
+    # target is gone or archived); nil when the entry may fire. The
+    # continue's skip comes before the busy check: its successor holds no
+    # worker lock yet, and the old link's busy signals say nothing.
     def check(entry, links)
-      target, reason = target_of(entry, links)
-      return [:fail, reason] if target.nil?
+      target, reason, kind = target_of(entry, links)
+      return [kind || :fail, reason] if target.nil?
 
       busy_reason(entry, links, target)
     end
@@ -924,16 +927,32 @@ module Samagotchi
     # a same-mode entry read literally would fail "archived" from then on, and
     # the chain would continue a link that is no longer the end. The anchor is
     # the fallback when the head is gone (pruned or deleted by hand): the walk
-    # from it still finds the chain's end.
+    # from it still finds the chain's end. An archived end fails (a retired
+    # chain stops its schedules), unless a continue of it is in flight
+    # (#continuing_reason): then it is a skip, the third member :skip.
+    # @return [Array] [target, nil] or [nil, reason] or [nil, reason, :skip]
     def target_of(entry, links)
       head = links.latest(links.gone?(entry.head) ? entry.anchor : entry.head)
       if links.gone?(head)
         return [nil, entry.mode == CHAIN ? "the chain is gone" : "the session it was made against is gone"]
       end
 
-      return [nil, "archived"] if links.archived?(head)
+      if links.archived?(head)
+        continuing = continuing_reason(head)
+        return continuing ? [nil, continuing, :skip] : [nil, "archived"]
+      end
 
       [head, nil]
+    end
+
+    # Why an archived +link+ is "not now": a continue of it in flight (a
+    # person's `chi send --new --continues` or web `continue →`; ContinueIntent.in_flight:
+    # the intent written, the lock held) archived it for a successor this
+    # listing doesn't have yet; the next tick's walk reaches it. Else nil. A
+    # stale intent (no continue holds the lock) is nil: archived it stays.
+    def continuing_reason(link)
+      successor = ContinueIntent.in_flight(link, state_dir: @state_dir)
+      successor && "being continued as #{successor[0, 8]}; retry at the next tick"
     end
 
     # Which chain an entry belongs to, for the one-firing-per-chain-per-tick
@@ -1070,7 +1089,11 @@ module Samagotchi
       # Checked again, against the files: a continue made between the tick's
       # listing and this moment archives the target it just resolved to.
       dir = Session.session_dir(target, state_dir: @state_dir)
-      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "archived", entry: entry) if ArchiveStore.archived?(dir)
+      if ArchiveStore.archived?(dir)
+        continuing = continuing_reason(target)
+        return Outcome.new(id: entry.id, title: entry.title, status: continuing ? "skipped" : "failed",
+                           detail: continuing || "archived", entry: entry)
+      end
       # One stored before #add refused it: the Bridge would refuse it, but a
       # delivery that falls back to the input file is accepted.
       if CommandIntake.shell_line?(entry.prompt)

@@ -154,9 +154,17 @@ are the refusals that mean "not this moment": `ArchiveRefused` with `busy`, `que
 or `offer`, or `busy_child`/`queued_child`/`offer_child` (a chain's own running
 delegate refuses the archive, since `archivable!` walks the whole descendant tree),
 `SessionContinue::Refused(:continued)` (a human continued it while we were
-resolving) and `:open_children`.
+resolving) and `:open_children`. So is an archived target that a continue is still
+making the next link of (`being continued as 7b2d41aa; retry at the next tick`): a
+person's `chi send --new --continues` or web `continue →` archives the link before
+its successor is saved, and a tick in that moment sees an archived end
+(`ContinueIntent.in_flight`: the intent written, its lock held). It is checked before
+the busy check, in both modes, and again by a same-mode firing's own look at the
+files; the next tick's walk reaches the new link. A stale intent (no continue holds
+its lock: a crash, repaired by the next continue or list) is not in flight, so that
+target still fails `archived`.
 
-Anything else is a **failure** (`failures += 1`): a gone or archived target,
+Anything else is a **failure** (`failures += 1`): a gone or archived target (an archived end of the chain: you retired it, and a schedule never brings it back),
 `SessionContinue::Refused(:folder_gone)`, `SessionManager::DeleteRefused`,
 `ModelProfile::MissingModel`, `OwnedByTUI`, `Session::NotFound`, and anything a
 spawn throws (`Errno::ENOSPC` included — `run_locked` re-raises it after undoing

@@ -4,6 +4,7 @@ require "securerandom"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/schedules"
+require "samagotchi/continue_intent"
 require "samagotchi/memory_usage"
 require "samagotchi/session_manager"
 
@@ -1116,6 +1117,111 @@ RSpec.describe Samagotchi::Schedules do
       complete_pending(dir, schedules, entry.id)
       set_idle(dir, link.id)
       expect(schedules.tick(now: Time.now + 240).outcomes.first.status).to eq("pending")
+    end
+  end
+
+  # A person's continue of the chain's end (chi send --continues, a resume)
+  # writes its intent and archives the link before its successor is saved: a
+  # tick in that moment sees an archived end. It is "not now", not a retired
+  # chain.
+  describe "a continue of the target in flight" do
+    let(:successor) { "7b2d41aa-0000-4000-8000-000000000000" }
+    let(:locks) { [] }
+
+    after { locks.each(&:close) }
+
+    def continuing(dir, id, successor_id, hold: true)
+      folder = Samagotchi::Session.session_dir(id, state_dir: dir)
+      FileUtils.mkdir_p(folder)
+      File.write(File.join(folder, Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor_id))
+      return unless hold
+
+      path = File.join(folder, Samagotchi::ContinueIntent::LOCK)
+      lock = File.open(path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed after
+      lock.flock(File::LOCK_EX)
+      locks << lock
+    end
+
+    %w[chain same].each do |mode|
+      it "skips a #{mode} entry, moving no failure and firing nothing" do
+        Dir.mktmpdir("schedules-continuing") do |root|
+          dir = File.join(root, "sessions")
+          allow(Process).to receive(:spawn).and_return(12_345)
+          allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+          anchor = session(dir).id
+          schedules = store(dir)
+          entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: mode)
+          Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+          continuing(dir, anchor, successor)
+
+          outcome = schedules.tick(now: Time.now + 60).outcomes.first
+
+          expect([outcome.status, outcome.detail]).to eq(["skipped", "being continued as 7b2d41aa; retry at the next tick"])
+          expect(schedules.lookup(entry.id)).to have_attributes(failures: 0, skips: 1, head: anchor, next_due: entry.next_due)
+          expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)).to eq([anchor])
+          expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+          expect(Process).not_to have_received(:spawn)
+        end
+      end
+    end
+
+    it "fails as archived when the intent is stale (no continue holds its lock)" do
+      Dir.mktmpdir("schedules-continuing-stale") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+        continuing(dir, anchor, successor, hold: false)
+
+        outcome = schedules.tick(now: Time.now + 60).outcomes.first
+
+        expect([outcome.status, outcome.detail]).to eq(%w[failed archived])
+        expect(schedules.lookup(entry.id).failures).to eq(1)
+      end
+    end
+
+    it "fires at the successor once it is saved, the intent still in place" do
+      Dir.mktmpdir("schedules-continuing-saved") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+        saved = session(dir, continues: anchor).id
+        continuing(dir, anchor, saved)
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file,
+                                                        ack: { "enqueued_id" => "scheduled-turn" })
+        )
+
+        outcome = schedules.tick(now: Time.now + 60).outcomes.first
+
+        expect(outcome).to have_attributes(status: "pending", detail: "queued a turn")
+        expect(Samagotchi::SessionManager).to have_received(:deliver_turn).with(saved, hash_including(prompt: "Audit"))
+        expect(schedules.lookup(entry.id)).to have_attributes(head: saved, failures: 0)
+      end
+    end
+
+    # The tick's listing saw a live target; the continue archived it before
+    # the firing's own look at the files.
+    it "skips a same-mode firing whose target was archived for a continue after the check" do
+      Dir.mktmpdir("schedules-continuing-fire") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        expect(links.archived?(anchor)).to be(false)
+        Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+        continuing(dir, anchor, successor)
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+
+        outcome = schedules.send(:fire_same, entry, links)
+
+        expect([outcome.status, outcome.detail]).to eq(["skipped", "being continued as 7b2d41aa; retry at the next tick"])
+        expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      end
     end
   end
 
