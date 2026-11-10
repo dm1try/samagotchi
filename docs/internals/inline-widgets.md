@@ -116,7 +116,9 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
   (a move that removes or hides the focused button leaves the focus on the widget; a click on the current step is no
   move). `walkRoutes`
   resolves where a step goes: its `next` (`end`: nowhere), else the step below; a fork's `cases` as written, a case whose `when` is no
-  condition (round 1's `always`) reading as the usual path, alone it is the step's next. At a phone's width the
+  condition (round 1's `always`) reading as the usual path, alone it is the step's next. A fork none of whose cases
+  moves on (each loops back to an earlier step or its own) keeps Next beside them (`hasNext`): its unwritten usual
+  path, the step below or Start over, or the walk would be stuck there. At a phone's width the
   swimlane scrolls sideways inside the widget; the page doesn't.
 - **picks** (`widget_picks.js`): one row per item, its options as chips (`aria-pressed`), the recommended one marked
   and picked to start with, a "+ note" per row, and "Fill reply".
