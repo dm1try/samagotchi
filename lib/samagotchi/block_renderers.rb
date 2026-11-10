@@ -38,6 +38,9 @@ module Samagotchi
     # Languages core draws itself: a bundle's renderer for one would be a
     # second drawer for the same block.
     RESERVED = [InlineWidgets::LANG].freeze
+    # The [bundle, problem] pairs .renderers has logged in this process.
+    WARNED = Set.new
+    WARNED_LOCK = Mutex.new
 
     module_function
 
@@ -97,25 +100,32 @@ module Samagotchi
     # owner's browser, so it is checked as a plugin's load and a provider's
     # script are; a --dev install's links are not.
     # @return [String, nil] nil when no such renderer loads such a file
-    # @raise [Invalid] the file is gone or changed
+    # @raise [Invalid] the file is gone, has no recorded sha, or changed
     def script_path(bundle, file)
       return nil unless for_installed.any? { |renderer| renderer.bundle == bundle && renderer.files.include?(file) }
 
       provenance = MemoryBundle::Provenance.new(name: bundle)
       path = File.join(provenance.scripts_dir, file)
       recorded = provenance.record&.scripts&.fetch(file, nil)
-      return path if File.file?(path) && MemoryBundle::Provenance.sha_matches?(path, recorded)
+      raise Invalid, "bundle #{bundle}'s scripts/#{file} isn't among its installed scripts (reinstall the bundle)" if recorded.to_s.empty?
+      raise Invalid, "bundle #{bundle}'s scripts/#{file} is missing (reinstall the bundle)" unless File.file?(path)
+      return path if MemoryBundle::Provenance.sha_matches?(path, recorded)
 
       raise Invalid, "bundle #{bundle}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
     end
 
-    # Its parsed renderers; a list that doesn't parse is none (logged).
+    # Its parsed renderers; a kept list that doesn't parse is the record's
+    # mirror, else none. Logged once per bundle and problem: this runs on each
+    # list request and each renderer file fetch.
     def renderers(bundle, manifest)
-      if (problem = manifest.problems["block_renderers"])
+      if (problem = manifest.problems["block_renderers"]) && WARNED_LOCK.synchronize { WARNED.add?([bundle, problem]) }
         Log.warn(:web, "block_renderers_unreadable", bundle: bundle, msg: problem)
       end
       manifest.block_renderers
     end
     private_class_method :renderers
+
+    # Forget what was logged (specs).
+    def reset_warnings! = WARNED_LOCK.synchronize { WARNED.clear }
   end
 end
