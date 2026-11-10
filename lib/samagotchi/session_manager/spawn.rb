@@ -166,21 +166,22 @@ module Samagotchi
         session
       end
 
-      # A delegate child rang a parent that has no worker (ChildRing): start
-      # one, which runs a turn for the report. Not for a parent that is gone,
-      # stopped, archived, a scratch session, a one-turn run's, or a
-      # continue's new link still taking its delegates (its own spawn comes):
-      # the ring waits on disk for whoever runs it next (#resume_session
-      # itself would clear the stop). A stop landing between the check and
-      # the resume is a small window, left as is. An archived parent with a
-      # later link in its chain wakes that link instead: a ring a moved child
-      # wrote just as the continue moved it reaches the new link that way
-      # (ChildReports reads its predecessor's rings).
+      # A ring waits in a parent's children/ (a failed continue's previous
+      # link got rings back): wake it as the ring's own delivery would
+      # (SessionInbox.wake :ring, its WakePolicy). Not for a parent that is
+      # gone, stopped (the stop marker; the file's status never decides),
+      # archived, a scratch session, a one-turn run's or owned, or a
+      # continue's new link still taking its delegates (its own spawn
+      # comes): the ring waits on disk for whoever runs it next. A stop
+      # landing between the check and the resume is a small window, left as
+      # is. An archived parent with a later link wakes that link (one hop:
+      # ChildReports reads its predecessor's rings, no further).
       # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
       #   :scratch, :owned, :starting)
-      def wake_for_report(session_id, state_dir: nil, forward: true)
-        wake_existing_session(session_id, state_dir: state_dir || Session.default_state_dir, forward: forward,
-                              event: :delegate_woke_parent)
+      def wake_for_report(session_id, state_dir: nil)
+        sd = state_dir || Session.default_state_dir
+        outcome = SessionInbox.wake(:ring, session_id, state_dir: sd, owner: ->(id) { session_owner(id, state_dir: sd) }).wake
+        outcome == :live ? :owned : outcome
       end
 
       # A pushed context source asked for a wake: start an idle-exited

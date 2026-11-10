@@ -45,7 +45,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       turns << [prompt, kwargs]
       result
     end
-    allow(Samagotchi::SessionManager).to receive(:wake_for_report) { |id, **| wakes << id }
+    allow(Samagotchi::SessionManager).to receive(:start_for_inbox) { |id, **| wakes << id }
     engine.subscribe(observer: ->(event) { events << event })
   end
 
@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
     # the idle parent's worker: the parent never woke.
     it "wakes its idle parent before its run returns when it crashes" do
       child = make_child
-      allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox) do |id, **|
         sleep(0.2) # sleep-ok: a slow wake, which run must still wait for before it returns
         wakes << id
       end

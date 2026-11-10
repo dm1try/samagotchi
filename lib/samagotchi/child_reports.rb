@@ -14,10 +14,6 @@ require_relative "tools/delegate_wait"
 require_relative "tools/delegate_cursor"
 
 module Samagotchi
-  # Loaded on first use (a ring): keeps the bundle test kit's load budget
-  # (spec/samagotchi/testing/sandbox_spec.rb).
-  autoload :WorkerPresence, File.expand_path("worker_presence", __dir__)
-
   # Loaded on first use: this autoload keeps SessionManager and its ~80
   # files unloaded until the delegate/session path needs them.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
@@ -56,12 +52,15 @@ module Samagotchi
     end
 
     # Ring +child+'s parent; best effort (a failure is logged, never
-    # raised). A parent with no worker is woken on a thread
-    # (SessionManager.wake_for_report decides whether it may be).
+    # raised): a ring delivery (SessionInbox.deliver :ring). The ring file
+    # goes to the parent parent.json names; its WakePolicy decides whether
+    # a worker starts (a parent with none, idle, in wake mode), and for an
+    # archived parent with a later link, that link (the one whose
+    # ChildReports reads the ring). A start runs on a thread.
     # @param child [Session] a delegate child
     # @param why [String] "turn_end", "question" or "crash"
-    # @param wake [#call, nil] (parent id) wakes a parent with no worker;
-    #   nil: SessionManager.wake_for_report on a thread
+    # @param wake [#call, nil] (parent id) starts the worker the policy
+    #   decided on; nil: SessionManager.start_for_inbox on a thread
     # @return [String, nil] the ring file, nil when none was written
     # The parent is read fresh: a continue may have moved the child to the
     # chain's new link (Session::PARENT_FILE) since its worker loaded it.
@@ -74,34 +73,36 @@ module Samagotchi
 
       parent_id = Session.parent_override(child.id, state_dir: state_dir) || child.parent_id
       return nil unless parent_id
-      # A deleted parent gets no orphan dir.
-      return nil unless Session.exist?(parent_id, state_dir: state_dir)
 
-      parent_dir = Session.session_dir(parent_id, state_dir: state_dir)
-      path = SessionInbox.write_ring(parent_dir, child_id: child.id, why: why)
-      Log.info(:worker, "delegate_rang", parent: parent_id[0, 8], why: why)
-      wake_parent(parent_id, state_dir: state_dir, wake: wake) if mode == "wake"
+      # A deleted parent gets no orphan dir: the delivery refuses it (:gone).
+      path = nil
+      SessionInbox.deliver(:ring, parent_id, state_dir: state_dir, wake: mode == "wake",
+                                             start: starter(state_dir, wake)) do |at|
+        path = SessionInbox.write_ring(Session.session_dir(at, state_dir: state_dir), child_id: child.id, why: why)
+        Log.info(:worker, "delegate_rang", parent: at[0, 8], why: why)
+        true
+      end
       path
     rescue StandardError => e
       Log.warn(:worker, "delegate_ring_failed", parent: child&.parent_id.to_s[0, 8], error: e.class.name, msg: e.message)
       nil
     end
 
-    # A live parent worker sees the ring on its next pass; one with no
-    # worker is woken.
-    def wake_parent(parent_id, state_dir:, wake:)
-      owner = SessionManager.session_owner(parent_id, state_dir: state_dir)
-      return if WorkerPresence.read(parent_id, state_dir: state_dir, owner: owner).owned?
+    # The ring delivery's start: +wake+, or SessionManager.start_for_inbox
+    # on a thread (#await_wakes joins it), so the child's turn doesn't wait
+    # for a spawn.
+    def starter(state_dir, wake)
+      return ->(id) { wake.call(id).then { :woken } } if wake
 
-      return wake.call(parent_id) if wake
-
-      thread = Thread.new do
-        SessionManager.wake_for_report(parent_id, state_dir: state_dir)
-      rescue StandardError => e
-        Log.warn(:worker, "delegate_wake_failed", parent: parent_id[0, 8], error: e.class.name, msg: e.message)
+      lambda do |id|
+        thread = Thread.new do
+          SessionManager.start_for_inbox(id, state_dir: state_dir, event: :delegate_woke_parent)
+        rescue StandardError => e
+          Log.warn(:worker, "delegate_wake_failed", parent: id[0, 8], error: e.class.name, msg: e.message)
+        end
+        @wakes_mutex.synchronize { @wakes = @wakes.select(&:alive?) << thread }
+        :woken
       end
-      @wakes_mutex.synchronize { @wakes = @wakes.select(&:alive?) << thread }
-      thread
     end
 
     # Waits up to +timeout+ for the parent wakes this process started: a

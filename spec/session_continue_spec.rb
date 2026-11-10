@@ -776,11 +776,12 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
           Samagotchi::ChildRing.await_wakes
         end
       end
-      allow(manager).to receive(:wake_for_report).and_call_original
+      allow(manager).to receive(:start_for_inbox).and_call_original
 
       link = continue(previous.id)
 
-      expect(manager).to have_received(:wake_for_report).with(link.id, state_dir: tmpdir)
+      # The ring's wake found the new link starting: its own spawn reads it.
+      expect(manager).not_to have_received(:start_for_inbox)
       expect(Process).to have_received(:spawn).once
       expect(ring_ids(link.id)).to eq([child.id])
       reports = Samagotchi::ChildReports.new(session_id: link.id, state_dir: tmpdir, predecessor: previous.id).take
