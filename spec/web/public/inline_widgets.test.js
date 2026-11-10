@@ -201,6 +201,47 @@ test("a case whose goto is its own step is a disabled button that says so", () =
   assert.deepEqual(cases.map((c) => c.disabled), [true, false]);
 });
 
+// A fork whose cases only loop back (a retry from an earlier step) still goes on:
+// Next is its unwritten usual path, the step below, or Start over at the end.
+test("a fork whose only case loops back keeps Next: the step below, then Start over", () => {
+  const walk = { actors: ["a", "b"], steps: [
+    { id: "s1", actor: "a", does: "sends" },
+    { id: "s2", actor: "b", does: "checks", cases: [{ when: "the check fails", goto: "s1" }] },
+    { id: "s3", actor: "a", does: "retries all", cases: [{ when: "still failing", goto: "s3" }, { when: "gone", goto: "nope" }] },
+    { id: "s4", actor: "b", does: "done", cases: [{ when: "undo", goto: "s1" }] },
+  ] };
+  const r = walkRoutes(walk);
+  assert.deepEqual([0, 1, 2, 3].map((k) => r.hasNext(k)), [true, true, true, true]);
+  const box = drawWalk(walk, document);
+  document.body.append(box);
+  const card = () => box.querySelector(".ww-does").textContent;
+  const next = () => box.querySelector(".ww-nav .primary");
+  next().click();
+  assert.equal(card(), "checks");
+  assert.deepEqual([...box.querySelectorAll(".ww-case")].map((c) => c.textContent), ["the check failsstep 1 →"]);
+  assert.ok(!next().hidden);
+  assert.equal(next().textContent, "Next →");
+  next().click();
+  assert.equal(card(), "retries all");
+  assert.ok(!next().hidden);
+  box.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  assert.equal(card(), "done");
+  assert.ok(!next().hidden);
+  assert.equal(next().textContent, "Start over");
+  box.querySelector(".ww-case").click();
+  assert.equal(card(), "sends");
+});
+
+test("a fork with a case that moves on hides Next, a named next counting as one", () => {
+  const r = walkRoutes({ actors: ["a", "b"], steps: [
+    { id: "s1", actor: "a", does: "sends" },
+    { id: "s2", actor: "b", does: "checks", next: "s4", cases: [{ when: "fails", goto: "s1" }] },
+    { id: "s3", actor: "a", does: "x", cases: [{ when: "fails", goto: "s1" }, { when: "passes", goto: "s4" }] },
+    { id: "s4", actor: "b", does: "done" },
+  ] });
+  assert.deepEqual([0, 1, 2, 3].map((k) => r.hasNext(k)), [true, false, false, true]);
+});
+
 test("a keyboard move that removes or hides the focused button keeps the focus in the widget", () => {
   const box = drawWalk(WALK, document);
   document.body.append(box);

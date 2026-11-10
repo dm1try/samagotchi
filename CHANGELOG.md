@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 - chi web behind an auth proxy: when the proxy answered the widgets' stylesheet with its login page, `chi-ui` widgets
   stayed unstyled until a reload; the next widget drawn now fetches the stylesheet again.
+- chi web: a `chi-ui` walk step whose only cases loop back (a retry from an earlier step) no longer hides Next, so
+  the walk can go on past it.
 
 ## [0.163.0] - 2026-11-10
 
