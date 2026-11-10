@@ -107,6 +107,65 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class.session_owner(session.id, state_dir: tmpdir)).not_to be_nil
     end
 
+    # A worker being started holds no lock yet: the delete refuses it as
+    # it refuses an owned one, rather than pull the files from under it.
+    it "refuses while a worker is being started for it (the starting marker), and removes nothing" do
+      fill_session_dir
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }
+      expect(File.exist?(session_file)).to be true
+    end
+
+    it "with stop: stops a worker being started, waits for it, then deletes" do
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+      # The worker takes the lock, sees the stop and leaves (Worker#start
+      # clears the marker as it takes the session).
+      allow(described_class).to receive(:stop_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap { Samagotchi::StartingMarker.clear(session.id, state_dir: tmpdir) }
+      end
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 5)
+
+      expect(result).to include(id: session.id, stopped: true)
+      expect(File.exist?(session_file)).to be false
+    end
+
+    it "with stop: removes nothing while the start outlives the wait" do
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 0.2) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:still_stopping) }
+      expect(File.exist?(session_file)).to be true
+    end
+
+    # H10: the deleter holds the owner lock while the files go, so a worker
+    # can't take the session in the middle of it.
+    it "holds the owner lock (kind deleting, which a stop never signals) while it removes the files" do
+      fill_session_dir
+      seen = nil
+      allow(FileUtils).to receive(:rm_rf).and_wrap_original do |original, path, *rest|
+        seen ||= Samagotchi::OwnerLock.owner(session_dir) if path == session_dir
+        original.call(path, *rest)
+      end
+
+      described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect(seen).to have_attributes(kind: "deleting", pid: Process.pid)
+      expect(Dir.exist?(session_dir)).to be false
+    end
+
+    it "refuses, removing nothing, when a worker took the lock after its check" do
+      fill_session_dir
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_call_original
+      allow(Samagotchi::OwnerLock).to receive(:acquire).with(session_dir, kind: "deleting", wait: 0).and_return(nil)
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }
+      expect(File.exist?(session_file)).to be true
+    end
+
     it "with stop: stops the worker first, then deletes" do
       fill_session_dir
       spawn_owner

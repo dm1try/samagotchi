@@ -5,6 +5,7 @@ require "time"
 require_relative "session"
 require_relative "archive_store"
 require_relative "worker_presence"
+require_relative "starting_marker"
 require_relative "config"
 require_relative "log"
 require_relative "model_profile"
@@ -19,8 +20,8 @@ module Samagotchi
   # (session.retention_days), count (session.max_count, counting only the
   # sessions that stay), statuses kept (session.keep_status), sessions left
   # empty (SessionManager.discardable?, an hour on), leftover scratch
-  # sessions (once past SCRATCH_START_GRACE) and skeleton-only directories; a session with a live owner
-  # always stays.
+  # sessions and skeleton-only directories; a session with a live owner, or
+  # whose worker is being started (StartingMarker), always stays.
   module SessionRetention
     # The session.retention_days / max_count / keep_status defaults.
     DEFAULT_RETENTION_DAYS = 14
@@ -87,7 +88,7 @@ module Samagotchi
         next unless Session.valid_id?(name) && File.directory?(dir)
         next if File.exist?(File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}"))
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
-        next if owned?(name, state_dir)
+        next if owned?(name, state_dir) || starting?(name, state_dir)
 
         unless dry_run
           FileUtils.rm_rf(dir)
@@ -100,14 +101,18 @@ module Samagotchi
       end
     end
 
-    # How long after its save an unowned scratch session may still be
-    # waiting for the worker just spawned for it to take its owner lock.
-    SCRATCH_START_GRACE = SessionManager::WORKER_START_GRACE
+    # A worker is being started for it (every spawn marks it, a new
+    # session's before its file is saved): no owner yet doesn't mean nobody
+    # runs it.
+    private_class_method def self.starting?(session_id, state_dir)
+      StartingMarker.fresh?(session_id, state_dir: state_dir)
+    end
 
-    private_class_method def self.scratch_starting?(path, now)
-      now - File.mtime(path) < SCRATCH_START_GRACE
-    rescue SystemCallError
-      false
+    # Being started or owned now (+alive_check+, when given, reads the owner).
+    private_class_method def self.held?(session_id, state_dir, alive_check)
+      starting?(session_id, state_dir) || alive_check&.call(session_id) == true
+    rescue StandardError
+      true
     end
 
     # Lazy sweep guard: runs prune at most once per SWEEP_INTERVAL_HOURS
@@ -179,9 +184,11 @@ module Samagotchi
     # count (`chi sessions clean` with no --days: test runs are throwaway).
     #
     # A scratch session nobody owns (its terminal and worker were killed) goes whatever its
-    # age, its status and the count; +test_only+ takes it too. One saved
-    # within SCRATCH_START_GRACE (its file's mtime, against +now+) stays: its
-    # worker may not have taken the owner lock yet.
+    # age, its status and the count; +test_only+ takes it too.
+    #
+    # A session whose worker is being started (StartingMarker, fresh) stays,
+    # whatever it is, and takes no count slot: its worker may not have taken
+    # the owner lock yet.
     #
     # +max_count+ counts the sessions that stay: one deleted whatever its
     # place (scratch, left empty, expired, +any_age+) takes no slot.
@@ -235,10 +242,9 @@ module Samagotchi
           end
         end
 
-        # A scratch session saved within SCRATCH_START_GRACE: `chi scratch`
-        # saves it, then spawns the worker that takes its owner lock, so no
-        # owner yet doesn't mean a leftover. Kept, it takes no count slot.
-        if session.scratch && scratch_starting?(path, now)
+        # Being started (a resume, a new or scratch session): its worker
+        # takes the owner lock in a moment. Kept, it takes no count slot.
+        if starting?(session.id, state_dir)
           kept << session.id
           passed_over += 1
           next
@@ -284,14 +290,19 @@ module Samagotchi
         # Eligible for deletion
         if dry_run
           deleted << session.id
+        # Looked at again right before its files go (the list was read
+        # once, at the start): resumed or taken by a worker since, it stays.
+        elsif held?(session.id, state_dir, alive_check)
+          kept << session.id
         else
           begin
-            FileUtils.rm_f(path)
-            sidecar = File.join(state_dir, session.id)
-            FileUtils.rm_rf(sidecar)
+            # Under the owner lock, the start read again (as a delete).
+            SessionManager.remove_session_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir)
             PluginSessionState.remove(session.id)
             ContextSources.remove_session(session.id, state_dir: state_dir)
             deleted << session.id
+          rescue SessionManager::DeleteRefused
+            kept << session.id
           rescue StandardError
             skipped << session.id
           end

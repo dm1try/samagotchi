@@ -23,6 +23,8 @@ module Samagotchi
     # web's continueRefusal reads "<short> (why)" out of a refusal.
     TUI_BUSY = "in use by a one-turn chi --non-interactive run or an older chi's terminal"
     DEFAULT_WAIT = 2.0
+    # The kind a deleter holds the lock as while a session's files go.
+    DELETING = "deleting"
     RETRY_INTERVAL = 0.05
     OWNER_READ_ATTEMPTS = 10
     # Seconds .await_release waits past a leaving worker's own budget: its
@@ -33,7 +35,7 @@ module Samagotchi
 
     # Who holds the lock, as .owner reads it from the lock file. Its fields
     # may be nil for a moment right after acquisition.
-    # kind: "worker" or "tui"; pid as written (an Integer). leaving_at (an
+    # kind: "worker", "tui" or "deleting" (Owner#deleting?); pid as written (an Integer). leaving_at (an
     # ISO 8601 time) and leave_wait (seconds): set once a worker is leaving
     # (#mark_leaving), its Bridge closed, the lock held for its last work
     # (the recap on leave) for up to leave_wait.
@@ -44,6 +46,10 @@ module Samagotchi
       def tui? = kind == "tui"
 
       def worker? = kind == "worker"
+
+      # A deleter removing the session's files (SessionManager's
+      # remove_session_files): no worker, nothing to signal.
+      def deleting? = kind == DELETING
 
       # A worker that closed its Bridge and releases the lock once its
       # last work is done.

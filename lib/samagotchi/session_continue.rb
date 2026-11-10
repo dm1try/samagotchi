@@ -203,15 +203,15 @@ module Samagotchi
       Log.warn(:worker, "continue_wake_failed", sid: id, error: e.class.name, msg: e.message)
     end
 
-    # The new link, holding off any worker but its own (StartingMarker.fresh?)
-    # while +move+ goes to it.
+    # The new link, holding off any worker but its own while +move+ goes to
+    # it (spawn_session marks it starting before its file is saved:
+    # StartingMarker.fresh?).
     private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
       moved_context = nil
       before_spawn = lambda do |link|
-        StartingMarker.mark(link.id, state_dir: state_dir)
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
         # Its movable context too, with a note saying what moved and stayed.
         moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)

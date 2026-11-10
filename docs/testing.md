@@ -88,7 +88,7 @@ The session file goldens (`spec/session_file_goldens_spec.rb`, `spec/fixtures/se
 writes: every field away from its default, a new session, a newer chi's file, an old chi's file in a git repo, every key
 present as `null`, the plain writers' raw values, a running turn's checkpoint and the scrub (the `*_in.json` files are
 hand-written inputs, never regenerated); and the file each path that makes or rewrites a session writes (a fork, a
-continue, a delegate child, a plain spawn, a review, a Verify fresh child, a resume, a respawn, an archive), with
+continue, a delegate child, a plain spawn, a review, a Verify fresh child, a respawn; a resume and an archive leave the bytes as they were), with
 `carry_matrix.json`, what each keeps of its source. They are pinned before Session's fields became one table and are kept
 as the file format's pins, not retired: a diff is a change to every session file on disk, so only a commit that means to
 change the format regenerates them (`UPDATE_GOLDENS=1 bundle exec rspec spec/session_file_goldens_spec.rb`).

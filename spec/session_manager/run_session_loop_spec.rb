@@ -98,8 +98,8 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "does not run the initial prompt of a session stopped before the worker took it, nor its plugins' init tasks" do
       session.last_prompt = "hello"
-      session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
@@ -111,6 +111,69 @@ RSpec.describe Samagotchi::SessionManager do
       end.to raise_error(SystemExit)
       expect(engine).to have_received(:announce_load_events!)
       expect(engine).not_to have_received(:start_init_tasks!)
+    end
+
+    # resume_session writes nothing to the file (the worker owns it): the
+    # worker, holding the lock, turns a status no turn is behind idle, as
+    # the resume did before. Never a stopped one (the marker), nor a new
+    # session's running whose first prompt hasn't run.
+    describe "the status a worker finds as it takes the session" do
+      def fake_engine
+        instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+                                                turn_running?: false, last_activity_at: 0.0).tap do |engine|
+          allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
+          allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+        end
+      end
+
+      # Runs the worker until its loop starts (its init tasks), then stops
+      # it there: the status on disk at that moment.
+      def status_as_it_runs(field = "status")
+        engine = fake_engine
+        seen = nil
+        allow(engine).to receive(:start_init_tasks!) do
+          seen = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))[field]
+          Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        end
+        expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }.to raise_error(SystemExit)
+        seen
+      end
+
+      it "runs a session whose file says stopped with no stop marker (a stop baked in), idle" do
+        session.status = Samagotchi::Session::STATUS_STOPPED
+        session.save(state_dir: tmpdir)
+
+        expect(status_as_it_runs).to eq("idle")
+      end
+
+      it "turns an error, or a running no turn is behind, idle" do
+        [Samagotchi::Session::STATUS_ERROR, Samagotchi::Session::STATUS_RUNNING].each do |status|
+          Samagotchi::Session.clear_stopped(session.id, state_dir: tmpdir)
+          session.status = status
+          session.messages = [{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }]
+          session.last_prompt = "hi"
+          session.save(state_dir: tmpdir)
+
+          expect(status_as_it_runs).to eq("idle")
+        end
+      end
+
+      # A resume used to save the file: an old session woken with no turn
+      # (an attach, a web wake) must not look old to the sweep.
+      it "stamps updated_at as it takes the session, whatever its status" do
+        session.messages = [{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }]
+        session.save(state_dir: tmpdir, now: Time.now - (20 * 86_400))
+
+        expect(Time.iso8601(status_as_it_runs("updated_at"))).to be_within(60).of(Time.now)
+      end
+
+      it "keeps a new session's running while its first prompt waits" do
+        session.status = Samagotchi::Session::STATUS_RUNNING
+        session.last_prompt = "hello"
+        session.save(state_dir: tmpdir)
+
+        expect(status_as_it_runs).to eq("running")
+      end
     end
 
     it "records the worker as owner, with its own pid, while it runs, and writes no pid file" do
@@ -423,8 +486,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "initializes Engine with supported keywords" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
+      # Stopped before this worker took it: it leaves at once.
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       expect(Samagotchi::Engine).to receive(:new)
@@ -447,8 +511,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "leaves the idle recap to the config (the web and attached UIs show :recap_ready)" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
+      # Stopped before this worker took it: it leaves at once.
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
@@ -496,8 +561,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "wires a reminder callback that notes the due reminders for a reminder turn, with no input file" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
+      # Stopped before this worker took it: it leaves at once.
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
       engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommands.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       reminder_callback = nil

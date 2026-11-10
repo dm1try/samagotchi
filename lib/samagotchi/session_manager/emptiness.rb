@@ -3,6 +3,7 @@
 require_relative "../analytics_file"
 require_relative "../session_inbox"
 require_relative "../worker_link"
+require_relative "../starting_marker"
 
 module Samagotchi
   class SessionManager
@@ -12,7 +13,9 @@ module Samagotchi
     # nothing writes or reads it now, but a folder from before still has one
     # and is still empty. A turn's drawing (Bridge::TurnDrawings::FILE)
     # exists only after a turn that kept messages: never a skeleton file.
-    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME].freeze
+    # The starting marker is one too: a start left one behind; a fresh one
+    # keeps the session from the deleters itself.
+    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME, StartingMarker::FILE].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 
@@ -94,7 +97,9 @@ module Samagotchi
           elsif name == "cards.json"
             cards_empty?(path)
           else
-            EMPTY_SKELETON_FILES.include?(name)
+            # A starting claim's temp files a kill left (StartingMarker.claim:
+            # starting.<pid>.<hex>, starting.old.<pid>.<hex>) are the marker's.
+            EMPTY_SKELETON_FILES.include?(name) || name.start_with?("#{StartingMarker::FILE}.")
           end
         end
       end

@@ -125,8 +125,9 @@ module Samagotchi
       # forks the worker, which starts a session of its own (setsid: no
       # controlling terminal, no SIGHUP from one) and returns to run the loop;
       # this one waits until the worker holds the session's OwnerLock, or has
-      # exited, or WORKER_START_GRACE passed, and exits: the spawner's waiter
-      # stays alive exactly while the worker starts (WorkerPresence#start_pending?). The
+      # exited, or WORKER_START_GRACE passed, and exits: this process (the
+      # pid the session's starting marker names, StartingMarker) lives
+      # exactly while the worker starts (WorkerPresence#starting?). The
       # worker is reparented to init (launchd), which reaps it.
       private def detach_from_spawner(session_dir)
         worker = Process.fork

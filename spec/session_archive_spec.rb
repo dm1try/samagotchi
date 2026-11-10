@@ -176,6 +176,25 @@ RSpec.describe "Session archive" do
       expect(archived?(busy)).to be(false)
     end
 
+    # C1: a second continue of one chain (another process) must not archive
+    # the link the first one just spawned, whose worker holds no lock yet.
+    it "refuses while its worker or a delegate's is being started (the starting marker), and archives none" do
+      starting = make
+      Samagotchi::StartingMarker.mark(starting.id, state_dir: tmpdir)
+
+      expect { Samagotchi::SessionManager.archive_session(starting.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::ArchiveRefused, "its worker is starting; try again in a moment")
+      expect(archived?(starting)).to be(false)
+
+      parent = make
+      child = make(parent: parent)
+      Samagotchi::StartingMarker.mark(child.id, state_dir: tmpdir)
+      expect { Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::ArchiveRefused,
+                        "its delegate #{child.id[0, 8]}'s worker is starting; try again in a moment")
+      expect([archived?(parent), archived?(child)]).to eq([false, false])
+    end
+
     it "refuses while a delegate of it runs a turn, naming the delegate, and archives none" do
       parent = make
       child = make(parent: parent, owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)

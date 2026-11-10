@@ -22,6 +22,22 @@ RSpec.describe Samagotchi::SessionManager do
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_STOPPED)
     end
 
+    # A delete holds owner.lock as kind deleting (the deleter: chi web, the
+    # CLI) while the files go: a stop at that moment signals nobody.
+    it "signals no deleter holding the lock" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: "deleting")
+      allow(Process).to receive(:kill)
+
+      described_class.stop_session(session.id, state_dir: tmpdir)
+
+      expect(Process).not_to have_received(:kill).with("TERM", Process.pid)
+      expect(Process).not_to have_received(:kill).with("CONT", Process.pid)
+    ensure
+      lock&.release
+    end
+
     it "removes a restart's reminders hand-off, so a later resume doesn't bring them back" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
