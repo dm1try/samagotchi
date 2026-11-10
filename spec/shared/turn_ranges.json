@@ -1,0 +1,924 @@
+{
+  "by_id": {
+    "description": "Turn ids pair with their records by id, whatever the records' order.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "t2",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "other",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 5,
+        "id": "t2",
+        "turn_id": "t2",
+        "opening": 3,
+        "record_id": "t2",
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "by_place": {
+    "description": "Turns saved before turn ids pair by their place among the openings.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "r1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "r2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "opening": 1,
+        "record_id": "r1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 5,
+        "opening": 3,
+        "record_id": "r2",
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "reminders_before_prompt": {
+    "description": "Reminders that went into a prompt's turn start its range.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "content": "[SYSTEM: REMINDERS DUE 2026-11-08 10:00 local]\n- tea: brew",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 6,
+        "id": "t2",
+        "turn_id": "t2",
+        "opening": 4,
+        "record_id": "t2",
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "reminder_turn": {
+    "description": "A reminder turn after a prompt's: its own range, no opening, no record by place.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "content": "[SYSTEM: REMINDERS DUE 2026-11-08 10:00 local]\n- tea: brew",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "tea"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t-reminder",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 5,
+        "opening": null,
+        "record_id": null,
+        "items": [
+          2
+        ]
+      }
+    ],
+    "diverges": {
+      "t1": "the reminder turn's answer joins t1's group"
+    },
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "assistant",
+        "content": "tea"
+      }
+    ]
+  },
+  "wake_note": {
+    "description": "A context wake's note opens its turn from outside the range.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "kind": "note",
+        "note_id": "n2",
+        "source": "context",
+        "content": "[CONTEXT NOTE from context, 10:00]\npr-7 changed\n[END NOTE]",
+        "at": "2026-11-08T09:00:00.000Z",
+        "turn_start": true,
+        "turn_id": "t2"
+      },
+      {
+        "role": "model",
+        "content": "woke"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 4,
+        "to": 5,
+        "id": "t2",
+        "turn_id": "t2",
+        "opening": 3,
+        "record_id": "t2",
+        "items": [
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "note",
+        "content": "pr-7 changed",
+        "label": "context",
+        "at": "2026-11-08T09:00:00.000Z",
+        "turn_start": true,
+        "turn_id": "t2"
+      },
+      {
+        "role": "assistant",
+        "content": "woke"
+      }
+    ]
+  },
+  "wake_report": {
+    "description": "A delegate report's wake turn opens with the report (turn_start input).",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "kind": "input",
+        "source": "delegate_report",
+        "content": "[report] done",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_start": true,
+        "turn_id": "t2"
+      },
+      {
+        "role": "model",
+        "content": "noted"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 5,
+        "id": "t2",
+        "turn_id": "t2",
+        "opening": 3,
+        "record_id": "t2",
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "[report] done",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "source": "delegate_report",
+        "turn_id": "t2"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      }
+    ]
+  },
+  "shell_between": {
+    "description": "A `!cmd`'s record between turns is no turn's and counts for no place.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "!(ls)\na.txt",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "r1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "r2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "opening": 1,
+        "record_id": "r1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 4,
+        "to": 6,
+        "opening": 4,
+        "record_id": "r2",
+        "items": [
+          3,
+          4
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "!(ls)\na.txt",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "notes_between": {
+    "description": "A context note after a turn and before the next is outside both.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "kind": "note",
+        "note_id": "n1",
+        "source": "chi_note",
+        "content": "[CONTEXT NOTE from chi_note, 10:00]\na note\n[END NOTE]",
+        "at": "2026-11-08T09:00:00.000Z"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "t2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 4,
+        "to": 6,
+        "id": "t2",
+        "turn_id": "t2",
+        "opening": 4,
+        "record_id": "t2",
+        "items": [
+          3,
+          4
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "note",
+        "content": "a note",
+        "label": "chi_note",
+        "at": "2026-11-08T09:00:00.000Z"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t2"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "duplicate_id": {
+    "description": "A later range repeating a turn id (a hand-edited file) gets <id>~<from>.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "content": "[SYSTEM: the previous turn failed after 1 tool step: boom. Its work so far (tool calls, file changes) stays; the user's last message is not answered yet.]",
+        "kind": "turn_note"
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "t1",
+        "status": "failed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 4,
+        "id": "t1",
+        "turn_id": "t1",
+        "opening": 1,
+        "record_id": "t1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 4,
+        "to": 6,
+        "id": "t1~4",
+        "turn_id": "t1",
+        "opening": 4,
+        "record_id": null,
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "t1"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  },
+  "restored_failure": {
+    "description": "A failure that handed its prompt back is a range of its note alone: not the turn before's, and its record (no opening) takes no place among the openings.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi."
+      },
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "a"
+      },
+      {
+        "role": "system",
+        "content": "[SYSTEM: the previous turn failed before any answer: down. The message went back to the user, who may send it again.]",
+        "kind": "turn_note"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "model",
+        "content": "b"
+      }
+    ],
+    "records": [
+      {
+        "id": "r1",
+        "status": "completed",
+        "duration_ms": 1000
+      },
+      {
+        "id": "rF",
+        "status": "failed",
+        "duration_ms": 1000,
+        "failure": {
+          "summary": "down"
+        }
+      },
+      {
+        "id": "r2",
+        "status": "completed",
+        "duration_ms": 1000
+      }
+    ],
+    "turns": [
+      {
+        "from": 1,
+        "to": 3,
+        "opening": 1,
+        "record_id": "r1",
+        "items": [
+          0,
+          1
+        ]
+      },
+      {
+        "from": 3,
+        "to": 4,
+        "opening": null,
+        "record_id": null,
+        "items": []
+      },
+      {
+        "from": 4,
+        "to": 6,
+        "opening": 4,
+        "record_id": "r2",
+        "items": [
+          2,
+          3
+        ]
+      }
+    ],
+    "items": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "a"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "assistant",
+        "content": "b"
+      }
+    ]
+  }
+}

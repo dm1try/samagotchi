@@ -147,14 +147,15 @@ module Samagotchi
         link.live? && Array(link.sidecar.features).include?(Bridge::TurnDrawings::FEATURE)
       end
 
-      # The session's turn drawings that hold against +messages+ (the live
-      # snapshot's, else the file's): Bridge::TurnDrawings, cached by the
-      # file's size and mtime; the newest SHOWN_MAX of them.
-      # A drawing that can't be read draws its turn as before.
+      # The lines the show draws +messages+' turns from (the live snapshot's
+      # messages, else the file's): Bridge::TurnDrawings.cover over the
+      # session's file (.read, cached by its size and mtime); the newest
+      # SHOWN_MAX of them. A drawing that can't be read draws its turn as
+      # before.
       def drawn_lines(id, messages)
         Degrade.call(:web, "turn_drawings_unreadable", fallback: []) do
           dir = @session_class.session_dir(id, state_dir: default_state_dir)
-          Bridge::TurnDrawings.valid(Bridge::TurnDrawings.read(dir), messages).last(Bridge::TurnDrawings::SHOWN_MAX)
+          Bridge::TurnDrawings.cover(Bridge::TurnDrawings.read(dir), messages).last(Bridge::TurnDrawings::SHOWN_MAX)
         end
       end
 

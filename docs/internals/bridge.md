@@ -80,13 +80,22 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   (`TextDiff`'s cut); images are refs.
 - **Reading.** `TurnDrawings.read(dir)` skips an unknown `v`, a torn or broken line and one missing a field, and is
   cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
+  `TurnDrawings.cover(lines, messages)` is what a show draws finished turns from (pure; today `valid`'s lines: a turn no
+  valid line covers draws from its messages). `TurnRanges.of(messages)` (`bridge/turn_ranges.rb`) reads a session's turns
+  back from its messages as the Engine cuts them (`kept_from…kept_to`: the reminders before an opening start a turn; a
+  note after it, a `!cmd`'s record and a wake's note stay outside), with a display id for a turn with none
+  (`m<from>-<digest8>`) or a repeated one (`<id>~<from>`); `TurnRanges.records` pairs each with its turn record by id,
+  else by place among the openings, as `timing.js turnGroups` does (`spec/shared/turn_ranges.json` holds the cases both
+  suites read).
 - **The snapshot.** `Bridge#snapshot` (the snapshot and reset frames, `GET /snapshot`) adds `last_turn_drawing:
-  {drawing, end}`, `#last` as the file has it, not unfolded, when it holds against the snapshot's messages and its `to`
-  is their size (the last exchange); it is absent otherwise (no turn yet, a rollback, a Continue's note after it, a line
-  of another version, one over the 1 MB a restart reads back: `TurnDrawings.sendable?`). An attaching TUI unfolds it (`TerminalUI::JoinReplay`, `TurnAccumulator.replay_events`) and draws
+  {drawing, end}`: the line of the last prompt's turn (the last user message that opens a turn, the one the TUI draws),
+  the newest for that turn id that holds against the snapshot's messages (`#last`, else the file's, `TurnDrawings.read`),
+  not unfolded, when that turn is the last one (`TurnRanges`: a note after it doesn't hide it). It is absent otherwise:
+  a later turn with no prompt (a reminder's, a Continue's: a join would draw the prompt's rows, then the later turn's
+  answer without its rows), no prompt with a turn id, a rollback, a line of another version, one over the 1 MB a
+  restart reads back (`TurnDrawings.sendable?`). An attaching TUI unfolds it (`TerminalUI::JoinReplay`, `TurnAccumulator.replay_events`) and draws
   that turn's rows through its `EventRenderer`, as a running turn's join does, then the end event's cancel or failure
-  line, else the saved answer; without it (or for a drawing that isn't the last prompt's turn: a reminder's, a
-  Continue's) the rows are rebuilt from the messages as before. `chi --remote` attaches through chi web's stream proxy,
+  line, else the saved answer; without it the rows are rebuilt from the messages as before. `chi --remote` attaches through chi web's stream proxy,
   which relays an owner's frames byte for byte, the field included. A participant never gets it: its stream's snapshot
   is bare (`ParticipantView`). An older TUI ignores the field; an older worker sends none.
 - **The show.** chi web's full read with `?parts=1&drawings=1` (the page's) stamps each display item of a kind a

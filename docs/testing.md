@@ -180,7 +180,9 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   scenarios in `spec/shared/turn_drawings/` (written from `spec/support/turn_drawing_scenarios.rb`;
   `UPDATE_TURN_DRAWINGS=1 bundle exec rspec spec/bridge/turn_drawings_spec.rb spec/web/session_show_drawings_spec.rb`
   rewrites their lines and show after an intended change) feed `turn_drawing_parity.test.js`, which draws each one
-  live (the real stream handlers and stage) and from its drawing and compares the shapes with no allow list. The
+  live (the real stream handlers and stage) and from its drawing and compares the shapes with no allow list.
+  `spec/shared/turn_ranges.json` (`UPDATE_TURN_RANGES=1 bundle exec rspec spec/bridge/turn_ranges_spec.rb`) pins
+  `Bridge::TurnRanges`' turns and record pairing against `timing.js turnGroups` (timing.test.js). The
   `lan` project's chi web is on the LAN only
   when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
   loopback.

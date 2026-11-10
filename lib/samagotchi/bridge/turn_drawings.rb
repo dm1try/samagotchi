@@ -224,6 +224,13 @@ module Samagotchi
           kept.sort_by(&:from)
         end
 
+        # The lines a show draws the session's finished turns from: pure,
+        # over the file's +lines+ (.read) and the session's +messages+. Today
+        # the valid ones (.valid); the turns no valid line covers draw from
+        # their messages (H3: a drawing made from them takes their place).
+        # @return [Array<Line>] ordered by their range
+        def cover(lines, messages) = valid(lines, messages)
+
         # The last parseable line of +path+, or nil.
         # @return [Line, nil]
         def tail_line(path)

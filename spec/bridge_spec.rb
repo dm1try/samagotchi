@@ -1157,7 +1157,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(body["snapshot"]["last_turn_drawing"]).to eq(JSON.parse(JSON.generate(drawn)))
       end
 
-      it "is absent before any turn, after a rollback, and once a later message follows the turn (a Continue's note)" do
+      it "is absent before any turn and after a rollback, and stays when a later message follows the turn (a Continue's note)" do
         start_bridge
         expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
         answer_turns
@@ -1171,7 +1171,32 @@ RSpec.describe Samagotchi::Bridge do
 
         @engine.rollback_to(after)
         @engine.append_messages([Samagotchi::ContextNote.message(note_id: "n1", text: "later", source: "continue")])
+        expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("prompt" => "hi")
+      end
+
+      # A join draws the line's rows, then the newest answer: a later turn's
+      # (a reminder's, a Continue's) would sit under the prompt's rows
+      # without its own, in any TUI, an older one too.
+      it "is absent when a turn with no prompt ran after the prompt's (a reminder's, a Continue's)" do
+        start_bridge
+        answer_turns
+        run_turn_sync(@engine, @session, "hi")
+        @engine.run_turn(@session, nil, continue: true, on_event: ->(_e) {})
+        expect(Samagotchi::Bridge::TurnDrawings.read(File.dirname(drawings_path)).size).to eq(2)
+
         expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+      end
+
+      it "reads the prompt's line from the file in a later worker, a note after it" do
+        start_bridge
+        answer_turns
+        run_turn_sync(@engine, @session, "hi")
+        prompt_id = @session.messages.reverse_each.find { |m| m[:role] == "user" }[:turn_id]
+        @engine.append_messages([Samagotchi::ContextNote.message(note_id: "n1", text: "later", source: "chi_note")])
+
+        @bridge.stop
+        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id)
+        expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("turn_id" => prompt_id)
       end
 
       it "is absent once the turn's last message is another one, the count unchanged (its digest differs)" do
