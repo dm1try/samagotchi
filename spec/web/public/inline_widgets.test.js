@@ -298,6 +298,19 @@ test("the reply never starts with ! or /: an id's leading ones are dropped, an i
   assert.equal(withDraft("", replyText(rows, picks)).trimStart()[0], "t");
 });
 
+// The chip label and the reply agree: the same id the reply leads with, so a
+// row shows what it fills.
+test("the row's chip shows the id the reply uses: leading ! / and spaces dropped, an empty one the row number", () => {
+  const box = drawPicks({
+    rows: [
+      { id: "!x", options: ["a", "b"] },
+      { id: "!/ ", options: ["a", "b"] },
+      { id: "D4", options: ["a", "b"] },
+    ],
+  }, { fill() {}, doc: document });
+  assert.deepEqual([...box.querySelectorAll(".wp-id")].map((s) => s.textContent), ["x", "2", "D4"]);
+});
+
 test("a draft keeps its text, and the reply goes after it on a new line", () => {
   assert.equal(withDraft("", "1: a"), "1: a");
   assert.equal(withDraft("   \n", "1: a"), "1: a");

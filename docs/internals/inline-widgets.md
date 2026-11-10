@@ -131,7 +131,8 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
 pick is left out) and hands it to app.js's `fillComposer`, after a typed draft on a new line (`withDraft`; the draft
 is kept). It never sends: the owner reads the text and sends it or not. `replyText` drops a leading `!` or `/` from
 an id too (an id of only those is its row's number), so the filled text never starts a shell line or a session command
-even from data the normaliser didn't mend; the draft before it is the owner's own. A walk has no way out at all. The model's
+even from data the normaliser didn't mend; the draft before it is the owner's own. The row's `wp-id` chip shows that
+same cleaned id (`rowId`, one rule for both), so what is drawn is what fills. A walk has no way out at all. The model's
 strings reach the page through `textContent` and attributes only, never `innerHTML`, so a step reading
 `<img src=x onerror=…>` shows as those characters.
 
