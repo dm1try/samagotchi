@@ -7,6 +7,7 @@ require_relative "config"
 require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "session_chain/links"
 require_relative "steer"
 require_relative "recap_store"
 
@@ -16,7 +17,8 @@ module Samagotchi
   # follow +continues+ back for the earlier links, forward (the session whose
   # +continues+ names this one) for the later ones. A link is continued at
   # most once (SessionContinue.run refuses a second), so the
-  # chain's latest link is the one nobody continues.
+  # chain's latest link is the one nobody continues. Every walk is
+  # SessionChain::Links'.
   module SessionChain
     # `--continues last:<id>`: the latest link of the chain <id> is in.
     LAST_PREFIX = "last:"
@@ -36,28 +38,14 @@ module Samagotchi
     module_function
 
     # The session that continues +id+, else nil. Archived ones count: an
-    # archived link is still a link.
+    # archived link is still a link (Links#next_of).
     # @return [String, nil]
-    def next_of(id, state_dir:)
-      Session.list(state_dir: state_dir, sort: "created_at", order: "asc", include_archived: true)
-             .find { |s| s.continues == id }&.id
-    end
+    def next_of(id, state_dir:) = Links.new(state_dir: state_dir).next_of(id)
 
     # The chain's latest link from +id+ on: +id+ itself when nobody
-    # continues it. One listing, walked forward (a loop a hand-edited file
-    # could make ends where it started).
+    # continues it (Links#latest: one listing, walked forward).
     # @return [String]
-    def latest(id, state_dir:)
-      nexts = {}
-      Session.list(state_dir: state_dir, sort: "created_at", order: "asc", include_archived: true).each do |s|
-        nexts[s.continues] ||= s.id if s.continues
-      end
-      seen = [id]
-      while (following = nexts[seen.last]) && !seen.include?(following)
-        seen << following
-      end
-      seen.last
-    end
+    def latest(id, state_dir:) = Links.new(state_dir: state_dir).latest(id)
 
     # A session to continue as the CLI and the web name it: an id, a unique
     # prefix, or `last:<id or prefix>` for that chain's latest link.

@@ -12,6 +12,7 @@ require_relative "worker_presence"
 require_relative "client_id"
 require_relative "command_intake"
 require_relative "config"
+require_relative "continue_intent"
 require_relative "continue_offer"
 require_relative "delivery"
 require_relative "log"
@@ -199,13 +200,13 @@ module Samagotchi
     end
 
     def protected_session_ids
-      index = Index.new(@state_dir)
-      entries.flat_map { |entry| [entry.anchor, entry.head, target_of(entry, index).first] }.compact.uniq
+      links = links_now
+      entries.flat_map { |entry| [entry.anchor, entry.head, target_of(entry, links).first] }.compact.uniq
     end
 
     def protecting(session_id)
-      index = Index.new(@state_dir)
-      entries.find { |entry| target_of(entry, index).first == session_id }
+      links = links_now
+      entries.find { |entry| target_of(entry, links).first == session_id }
     end
 
     # @param id_or_name [String] an id, a unique prefix of one, or a title
@@ -303,11 +304,11 @@ module Samagotchi
     # its anchor or its head is one of them.
     # @return [Array<String>]
     def chain_of(session_id)
-      index = Index.new(@state_dir)
-      head = index.latest(session_id)
+      links = links_now
+      head = links.latest(session_id)
       ids = [head]
       id = head
-      while (previous = index.continues(id)) && !ids.include?(previous)
+      while (previous = links.continues(id)) && !ids.include?(previous)
         ids << previous
         id = previous
       end
@@ -348,7 +349,7 @@ module Samagotchi
       outcomes = []
       pending = []
       prune_after = []
-      index = nil
+      links = nil
 
       FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
@@ -407,18 +408,19 @@ module Samagotchi
           next
         end
 
-        # One session listing for the whole tick: a chain walk re-globbing
-        # every session per call is the tick's dominant cost.
-        index = Index.new(@state_dir)
+        # One session listing for the whole tick (one SessionChain::Links): a
+        # chain walk re-globbing every session per call is the tick's
+        # dominant cost.
+        links = links_now
         # One firing per chain per tick. A second chain entry of the same chain
         # would continue the link the first one just made: that link has no
-        # worker lock yet and is not in this tick's index, so the busy check
+        # worker lock yet and is not in this tick's listing, so the busy check
         # cannot see it, and its prompt would be archived before it ever ran.
-        fired_chains = resolved_chains.to_h { |entry| [chain_key(index, entry), true] }
-        pending_chains = in_flight.select { |entry| entry.mode == CHAIN }.map { |entry| chain_key(index, entry) }
+        fired_chains = resolved_chains.to_h { |entry| [chain_key(links, entry), true] }
+        pending_chains = in_flight.select { |entry| entry.mode == CHAIN }.map { |entry| chain_key(links, entry) }
         due.each do |entry|
           position = updated.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
-          verdict = check(entry, index)
+          verdict = check(entry, links)
           if verdict
             kind, reason = verdict
             unless dry_run
@@ -428,20 +430,20 @@ module Samagotchi
                                     detail: reason, entry: entry)
             next
           end
-          if entry.mode == CHAIN && fired_chains[chain_key(index, entry)]
+          if entry.mode == CHAIN && fired_chains[chain_key(links, entry)]
             reason = "the chain just fired; retry at the next tick"
             updated[position] = skipped(entry, reason) unless dry_run
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
             next
           end
-          if entry.mode == CHAIN && pending_chains.include?(chain_key(index, entry))
+          if entry.mode == CHAIN && pending_chains.include?(chain_key(links, entry))
             reason = "a schedule turn is still pending in this chain"
             updated[position] = skipped(entry, reason) unless dry_run
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
             next
           end
           if dry_run
-            fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
+            fired_chains[chain_key(links, entry)] = true if entry.mode == CHAIN
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "dry", detail: entry.recurrence_words, entry: entry)
             next
           end
@@ -453,18 +455,18 @@ module Samagotchi
           advanced = advance(entry, now)
           updated[position] = advanced
           pending << advanced
-          fired_chains[chain_key(index, entry)] = true if entry.mode == CHAIN
+          fired_chains[chain_key(links, entry)] = true if entry.mode == CHAIN
         end
         write(file: file.with(entries: updated, attributes: file.attributes.merge(last_tick_at: now.utc.iso8601))) unless dry_run
       end
 
       pending.each do |entry|
-        outcome = fire_and_record(entry, index)
+        outcome = fire_and_record(entry, links)
         outcomes << outcome
         prune_after << outcome.entry if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       end
-      index ||= Index.new(@state_dir) unless prune_after.empty?
-      prune_after.each { |entry| prune(entry, index) }
+      links ||= links_now unless prune_after.empty?
+      prune_after.each { |entry| prune(entry, links) }
       Tick.new(locked: false, outcomes: outcomes)
     end
 
@@ -479,7 +481,7 @@ module Samagotchi
       entry = lookup(id_or_name)
       return Outcome.new(id: id_or_name.to_s, status: "failed", detail: "no such schedule") if entry.nil?
 
-      index = Index.new(@state_dir)
+      links = links_now
       reserved = nil
       outcome = nil
       write_under_lock do |file|
@@ -501,7 +503,7 @@ module Samagotchi
           next
         end
 
-        verdict = check(current, index)
+        verdict = check(current, links)
         if verdict
           kind, reason = verdict
           status = kind == :skip ? "skipped" : "failed"
@@ -518,7 +520,7 @@ module Samagotchi
       return outcome if outcome
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule") unless reserved
 
-      fire_and_record(reserved, index)
+      fire_and_record(reserved, links)
     end
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
@@ -578,50 +580,6 @@ module Samagotchi
       end
     end
 
-    # The chain a tick walks: the sessions once, with their predecessors,
-    # their successors and whether they are archived.
-    class Index
-      def initialize(state_dir)
-        @state_dir = state_dir
-        sessions = Session.list(state_dir: state_dir, include_archived: true, sort: "created_at", order: "asc")
-        @by_id = sessions.to_h { |session| [session.id, session] }
-        @archived = @by_id.to_h { |id, _session| [id, ArchiveStore.archived?(Session.session_dir(id, state_dir: state_dir))] }
-        @nexts = {}
-        sessions.each { |session| @nexts[session.continues] ||= session.id if session.continues }
-      end
-
-      def session(id) = @by_id[id]
-
-      def gone?(id) = @by_id[id].nil?
-
-      def archived?(id) = @archived[id]
-
-      attr_reader :state_dir
-
-      # The chain's latest link from +id+ on, in this one listing.
-      def latest(id)
-        seen = [id]
-        while (following = @nexts[seen.last]) && !seen.include?(following)
-          seen << following
-        end
-        seen.last
-      end
-
-      # A link's predecessor, or nil (a pruned or never-existing one).
-      def continues(id) = @by_id[id]&.continues
-
-      # A chain's root: +id+ back through `continues` until a link with no
-      # predecessor. Entries of one chain share this root whichever link each
-      # of them was added against.
-      def root(id)
-        seen = [id]
-        while (previous = @by_id[seen.last]&.continues) && !seen.include?(previous)
-          seen << previous
-        end
-        seen.last
-      end
-    end
-
     # The length of an interval in seconds; nil for something that is not an
     # interval, and nil for zero so a `0m` schedule can never fire every tick.
     def self.interval_seconds(interval)
@@ -676,6 +634,11 @@ module Samagotchi
     end
 
     private
+
+    # The chains as they are now, over one session listing (SessionChain::Links):
+    # one per tick, passed wherever a target is resolved, so the check, the
+    # one-firing-per-chain guard and the firing see the same chain.
+    def links_now = SessionChain::Links.new(state_dir: @state_dir)
 
     # @param strict [Boolean] a file that is not readable JSON raises rather
     #   than reading as empty: a write starting from an empty list would rewrite
@@ -942,47 +905,67 @@ module Samagotchi
       end
     end
 
-    # :skip (busy now, try the next tick) or :fail (the target is gone or
-    # archived); nil when the entry may fire.
-    def check(entry, index)
-      target, reason = target_of(entry, index)
-      return [:fail, reason] if target.nil?
+    # :skip (busy now, or being continued: try the next tick) or :fail (the
+    # target is gone or archived); nil when the entry may fire. The
+    # continue's skip comes before the busy check: its successor holds no
+    # worker lock yet, and the old link's busy signals say nothing.
+    def check(entry, links)
+      target, reason, kind = target_of(entry, links)
+      return [kind || :fail, reason] if target.nil?
 
-      busy_reason(entry, index, target)
+      busy_reason(entry, links, target)
     end
 
     # The session the entry would act on: its head, followed through every
     # continue made since it was last written — a chain firing's new link or a
-    # human `chi send --continues`/`chi resume` (SessionChain.latest, the same
-    # walk SessionContinue.run does for `last:`). Both modes use the walk: a
+    # human `chi send --continues`/`chi resume` (SessionChain::Links#latest,
+    # the walk SessionContinue.run does for `last:`). The chain's end, not the
+    # send rule's first live link (Links#first_live): a chain continues only
+    # its end, and a schedule never un-archives a retired chain. Both modes use the walk: a
     # chain continues that link, a same-mode entry queues a turn in it. The
     # anchor alone is not enough for either: the first continue archives it, so
     # a same-mode entry read literally would fail "archived" from then on, and
     # the chain would continue a link that is no longer the end. The anchor is
     # the fallback when the head is gone (pruned or deleted by hand): the walk
-    # from it still finds the chain's end.
-    def target_of(entry, index)
-      head = index.latest(index.gone?(entry.head) ? entry.anchor : entry.head)
-      if index.gone?(head)
+    # from it still finds the chain's end. An archived end fails (a retired
+    # chain stops its schedules), unless a continue of it is in flight
+    # (#continuing_reason): then it is a skip, the third member :skip.
+    # @return [Array] [target, nil] or [nil, reason] or [nil, reason, :skip]
+    def target_of(entry, links)
+      head = links.latest(links.gone?(entry.head) ? entry.anchor : entry.head)
+      if links.gone?(head)
         return [nil, entry.mode == CHAIN ? "the chain is gone" : "the session it was made against is gone"]
       end
 
-      return [nil, "archived"] if index.archived?(head)
+      if links.archived?(head)
+        continuing = continuing_reason(head)
+        return continuing ? [nil, continuing, :skip] : [nil, "archived"]
+      end
 
       [head, nil]
+    end
+
+    # Why an archived +link+ is "not now": a continue of it in flight (a
+    # person's `chi send --new --continues` or web `continue →`; ContinueIntent.in_flight:
+    # the intent written, the lock held) archived it for a successor this
+    # listing doesn't have yet; the next tick's walk reaches it. Else nil. A
+    # stale intent (no continue holds the lock) is nil: archived it stays.
+    def continuing_reason(link)
+      successor = ContinueIntent.in_flight(link, state_dir: @state_dir)
+      successor && "being continued as #{successor[0, 8]}; retry at the next tick"
     end
 
     # Which chain an entry belongs to, for the one-firing-per-chain-per-tick
     # guard: the root of the chain its resolved target is in. Every entry of a
     # chain has the same root, whichever link it was added against.
-    def chain_key(index, entry)
-      target, _reason = target_of(entry, index)
-      index.root(target)
+    def chain_key(links, entry)
+      target, _reason = target_of(entry, links)
+      links.root(target)
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no
     # worker the files say what the tick can know.
-    def busy_reason(entry, index, target)
+    def busy_reason(entry, links, target)
       dir = Session.session_dir(target, state_dir: @state_dir)
       owner = SessionManager.session_owner(target, state_dir: @state_dir)
       presence = WorkerPresence.read(target, state_dir: @state_dir, owner: owner, link: :look)
@@ -1001,7 +984,7 @@ module Samagotchi
           # queues a turn, so for it the files are enough.
           return [:skip, "its worker is too old to ask: chi sessions restart #{target[0, 8]}"] if entry.mode == CHAIN
 
-          return file_busy_reason(index.session(target), dir)
+          return file_busy_reason(links.session(target), dir)
         end
         return [:skip, "its worker is not answering"] if activity.nil?
 
@@ -1022,7 +1005,7 @@ module Samagotchi
       # A queued turn is fine: the starting worker takes it.
       return [:skip, "its worker is starting or leaving"] if entry.mode == CHAIN && presence.starting?
 
-      file_busy_reason(index.session(target), dir)
+      file_busy_reason(links.session(target), dir)
     end
 
     # The worker's activity snapshot, :old when it has no /activity route, or
@@ -1056,14 +1039,14 @@ module Samagotchi
       nil
     end
 
-    def fire_and_record(entry, index)
-      outcome = fire(entry, index)
+    def fire_and_record(entry, links)
+      outcome = fire(entry, links)
       record(entry, outcome)
       outcome
     end
 
-    def fire(entry, index)
-      entry.mode == CHAIN ? fire_chain(entry, index) : fire_same(entry, index)
+    def fire(entry, links)
+      entry.mode == CHAIN ? fire_chain(entry, links) : fire_same(entry, links)
     rescue StandardError => e
       # run_locked re-raises whatever spawn_continuation throws after undoing
       # the move: a spawn failure or an ENOSPC is a failure, not a skip.
@@ -1071,8 +1054,8 @@ module Samagotchi
       Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "#{e.class}: #{e.message}", entry: entry)
     end
 
-    def fire_chain(entry, index)
-      head, _reason = target_of(entry, index)
+    def fire_chain(entry, links)
+      head, _reason = target_of(entry, links)
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the chain is gone", entry: entry) if head.nil?
       # One stored before #add refused it: its link would refuse the line,
       # so it fails here, with no link started and nothing archived.
@@ -1099,14 +1082,18 @@ module Samagotchi
       classify(entry, e.reason, e.message)
     end
 
-    def fire_same(entry, index)
-      target, reason = target_of(entry, index)
+    def fire_same(entry, links)
+      target, reason = target_of(entry, links)
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: reason, entry: entry) if target.nil?
 
       # Checked again, against the files: a continue made between the tick's
       # listing and this moment archives the target it just resolved to.
       dir = Session.session_dir(target, state_dir: @state_dir)
-      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "archived", entry: entry) if ArchiveStore.archived?(dir)
+      if ArchiveStore.archived?(dir)
+        continuing = continuing_reason(target)
+        return Outcome.new(id: entry.id, title: entry.title, status: continuing ? "skipped" : "failed",
+                           detail: continuing || "archived", entry: entry)
+      end
       # One stored before #add refused it: the Bridge would refuse it, but a
       # delivery that falls back to the input file is accepted.
       if CommandIntake.shell_line?(entry.prompt)
@@ -1188,13 +1175,13 @@ module Samagotchi
     # still unarchived: nothing is deleted in that case, and the next firing
     # retries (a schedule failure it is not). The anchor is never pruned:
     # `last:<anchor>` must keep resolving, and it is the id the user remembers.
-    def prune(entry, index)
-      links = []
+    def prune(entry, links)
+      chain = []
       id = entry.head
       seen = []
       while id && !seen.include?(id)
         seen << id
-        links << id
+        chain << id
         # The walk stops at the anchor: the links before it are the user's own
         # history, made before this schedule existed, and the anchor itself is
         # the id `last:<anchor>` and the user remember.
@@ -1202,10 +1189,10 @@ module Samagotchi
 
         # The link a firing just made is not in the tick's listing; every
         # older one is.
-        session = index.session(id) || (File.exist?(Session.session_file(id, state_dir: @state_dir)) ? Session.load(id, state_dir: @state_dir) : nil)
+        session = links.session(id) || (File.exist?(Session.session_file(id, state_dir: @state_dir)) ? Session.load(id, state_dir: @state_dir) : nil)
         id = session&.continues
       end
-      older = links[entry.keep_links..] || []
+      older = chain[entry.keep_links..] || []
       return if older.empty?
 
       older.reverse_each do |link|

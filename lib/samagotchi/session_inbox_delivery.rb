@@ -5,6 +5,7 @@ require_relative "session_inbox"
 require_relative "archive_store"
 require_relative "worker_presence"
 require_relative "continue_intent"
+require_relative "session_chain/links"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -130,8 +131,9 @@ module Samagotchi
     # SessionAccess#head; SessionManager.deliver_turn resolves nothing).
     # What stays on the id it names doesn't ask Head: the web composer (a
     # person on that page means that session), a participant's grant (one
-    # session), delegate follow-ups, Plugin::Sessions and Schedules (their
-    # own rule).
+    # session), delegate follow-ups, Plugin::Sessions and Schedules (the
+    # chain's end, SessionChain::Links#latest: a firing continues the end,
+    # and never un-archives a retired chain).
     WakePolicy::ROWS = {
       send: WakePolicy.new(kind: :send, resolves: :head, starts: true, unstops: true, starts_archived: true,
                            refuse_tui: true, refuse_scratch: true),
@@ -175,17 +177,20 @@ module Samagotchi
         (continuing(resolved, state_dir) if policy.starts_archived) || resolved
       end
 
+      # The chain walk is SessionChain::Links': #first_live for :head (the
+      # send/note rule: the first live link, not the chain's end that a
+      # schedule fires at, Links#latest), its successor alone for :reader.
       def walk(how, id, state_dir)
-        same = Resolved.new(id: id, asked: id, via: :same)
-        return same unless archived?(id, state_dir)
+        links = SessionChain::Links.new(state_dir: state_dir)
+        reached = how == :reader ? reader(links, id) : links.first_live(id)
+        reached == id ? Resolved.new(id: id, asked: id, via: :same) : Resolved.new(id: reached, asked: id, via: :head)
+      end
 
-        nexts = successors(state_dir)
-        seen = [id]
-        while (following = nexts[seen.last]) && !seen.include?(following)
-          seen << following
-          break if how == :reader || !archived?(following, state_dir)
-        end
-        seen.size == 1 ? same : Resolved.new(id: seen.last, asked: id, via: :head)
+      # The link that reads an archived +id+'s file: its successor, one hop.
+      def reader(links, id)
+        return id unless links.archived?(id)
+
+        links.next_of(id) || id
       end
 
       # +resolved+'s link being continued, its successor not saved yet: the
@@ -196,17 +201,6 @@ module Samagotchi
         return nil if successor.nil? || Session.exist?(successor, state_dir: state_dir)
 
         Resolved.new(id: successor, asked: resolved.asked, via: :continuing)
-      end
-
-      def archived?(id, state_dir)
-        Session.valid_id?(id) && ArchiveStore.archived?(Session.session_dir(id, state_dir: state_dir))
-      end
-
-      # id → the session that continues it (SessionChain.next_of's: the
-      # earliest one, archived ones too).
-      def successors(state_dir)
-        Session.list(state_dir: state_dir, sort: "created_at", order: "asc", include_archived: true)
-               .each_with_object({}) { |s, nexts| nexts[s.continues] ||= s.id if s.continues }
       end
     end
 
