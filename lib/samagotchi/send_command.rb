@@ -596,19 +596,28 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_wait(prompt, options)
       target = wait_target(options) or return 1
-      id = target.id
       return run_participant_wait(target, prompt, options) if @access.participant?
 
       # Local: one read for the check and the baseline; remotely the
-      # server's wait prepare route reads both (Busy's words).
-      session = @access.show(id) unless @access.remote?
-      if (busy = @access.busy(id, queue: @queue, session: session))
-        error_line("#{target.label}  #{busy.message(via: @access.invocation)}")
-        return 1
-      end
+      # server's wait prepare route reads both (Busy's words). Again for a
+      # link a continue moved the send to (#deliver).
+      start = nil
+      sent = deliver(target, prompt) do |at|
+        session = @access.show(at.id) unless @access.remote?
+        if (busy = @access.busy(at.id, queue: @queue, session: session))
+          @wait_target = at
+          @session_id = at.id
+          error_line("#{at.label}  #{busy.message(via: @access.invocation)}")
+          next false
+        end
 
-      start = @access.prepare_wait(id, session: session)
-      return 1 unless deliver(target, prompt)
+        start = @access.prepare_wait(at.id, session: session)
+        true
+      end
+      return 1 unless sent
+
+      @wait_target = target = @sent_to
+      @session_id = id = target.id
       return report_command(id, label: target.label) if @sent_command
 
       target = ReplyWait::Target.message(start, @delivered, queue: @queue)
@@ -759,9 +768,17 @@ module Samagotchi
       CLI::Exit::OK
     end
 
+    # A followed send (a head #target resolved) is refused when a continue
+    # took its link since (DeliverResult#continued?): it resolves again
+    # (#follow_again) and goes to the new link, until CONTINUING_WAIT after
+    # the first refusal; the old link is never sent to.
     # @param target [SessionInbox::Resolved] the session (#target)
-    # @return [Boolean] whether the message was queued
-    def deliver(target, prompt)
+    # @yieldparam at [SessionInbox::Resolved] each link about to be sent to
+    # @yieldreturn [Boolean] false: nothing is sent (its line printed)
+    # @return [Boolean] whether the message was queued (@sent_to: where)
+    def deliver(target, prompt, deadline: nil, &before)
+      return false if block_given? && !yield(target)
+
       id = target.id
       short = target.label
       session = @access.show(id)
@@ -783,12 +800,20 @@ module Samagotchi
       delivery = if @queue then Delivery::QUEUE
                  elsif @cut && running then Delivery::CUT
                  end
-      result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery)
+      result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery,
+                                        follow: target.via != :pinned)
+      if result.continued?
+        deadline ||= monotonic + self.class::CONTINUING_WAIT
+        again = follow_again(target, deadline)
+        return unsent(again) if again.is_a?(Unsent)
+        return deliver(again, prompt, deadline: deadline, &before) if again
+      end
       unless result.accepted?
         @info.puts("#{short}  #{result.refusal_text}")
         return false
       end
 
+      @sent_to = target
       @sent_command = result.command?
       if @sent_command
         @info.puts("#{short}  #{SENT_COMMAND}")
@@ -937,9 +962,9 @@ module Samagotchi
     def target(given)
       id = @access.resolve(given)
       head = @access.head(id)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + self.class::CONTINUING_WAIT
+      deadline = monotonic + self.class::CONTINUING_WAIT
       waited = head.continuing?
-      while head.continuing? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+      while head.continuing? && monotonic < deadline
         self.class.pause(self.class::CONTINUING_POLL)
         head = @access.head(id)
       end
@@ -950,6 +975,26 @@ module Samagotchi
     rescue ArgumentError => e
       Unsent.new(line: "#{command_name}: #{e.message}", error: true)
     end
+
+    # +refused+'s id resolved again after a continue took its link
+    # (#deliver): #target, pausing between looks while it still names that
+    # link, until +deadline+. The new link's worker is the continue's spawn
+    # to start (#delivery_note).
+    # @return [SessionInbox::Resolved, Unsent, nil] nil: out of time
+    def follow_again(refused, deadline)
+      while monotonic < deadline
+        self.class.pause(self.class::CONTINUING_POLL)
+        again = target(refused.asked)
+        return again unless again.is_a?(SessionInbox::Resolved)
+        next if again.id == refused.id
+
+        (@continued_here ||= {})[again.id] = true
+        return again
+      end
+      nil
+    end
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     # Prints +unsent+'s line. @return [false]
     def unsent(unsent)

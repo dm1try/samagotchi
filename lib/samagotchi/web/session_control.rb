@@ -197,10 +197,13 @@ module Samagotchi
         # no_interrupt: an attached TUI's --no-interrupt (chi --remote --attach).
         # author: the principal's (nil for the owner), never the body's.
         # anchors: a Verify turn's claim, a Revise turn's draft (TurnAnchors).
+        # follow: a chi --remote send to the head its resolve?head=1 named
+        # (the page never sends it: a person on that page means that session).
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, no_interrupt: body["no_interrupt"] == true,
                                                  author: principal(req).author,
                                                  anchors: TurnAnchors.from(body),
+                                                 follow: body["follow"] == true,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
         case result.status
