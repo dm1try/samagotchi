@@ -36,7 +36,13 @@ the folder is left as is: it is created when missing, nothing is marked).
   id. A later `git init` in the folder makes it a repository, keyed by its path again (git wins): its
   memories stay in the id folder until you move them, and chi names the id folder at session start
   (and under a `memory_read` miss) while the repository's own folder holds no memories. Memories saved from a *subfolder* before
-  `init` stay in that subfolder's own folder: move them by hand if you want them in the project's.
+  `init` stay in that subfolder's own folder (keyed by its path); `chi project init` and `chi project`
+  name the ones a session on this machine saved, and `chi project init --merge-subfolders` moves them
+  into the project's folder (each memory with its model overlays and index line; one the project has by
+  that name, or a bundle's, stays and is named; an emptied folder is removed, with no link: every chi
+  that knows markers resolves the subfolder to the project). It refuses while a session in the
+  project runs. Memories only: a subfolder's project context sources stay. Ones older than the
+  sessions kept (14 days / 500) aren't found: move them by hand.
   A hand-edited id must be letters, digits, `_`, `.` or `-` (up to 64, a letter or digit first);
   anything else (or a broken file) is ignored and the project keyed by its path (a debug log line
   says why, `chi project init` reports it).
@@ -47,7 +53,7 @@ the folder is left as is: it is created when missing, nothing is marked).
   the old folder mid-move), and names memories an earlier key left (the same folder name with
   another path's hash: moved before it had an id, or a `chi project init` id folder,
   `<basename>-<8 hex>`, left behind when `git init` turns that marked folder into a repository),
-  merging nothing. A link stays behind: a new
+  merging nothing (memories saved from a subfolder: `--merge-subfolders`, above). A link stays behind: a new
   folder (or git repository) made later at the old path reaches the moved project's memories
   through it; delete the link to stop that. chi web's project picker marks a new folder with an id
   but never moves folders: a folder it marks that already has path-keyed memories gets no id until
