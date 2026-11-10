@@ -6,6 +6,7 @@ require "time"
 require_relative "atomic_file"
 require_relative "log"
 require_relative "session"
+require_relative "session_inbox"
 require_relative "session_metrics"
 require_relative "session_row"
 require_relative "worker_link"
@@ -161,28 +162,43 @@ module Samagotchi
 
     # The child's new verdicts (+records+, Engine's verdict records) into
     # its parent's INBOX, marked fresh: true with the child's id and the
-    # verdict they check again (of). Best effort.
+    # verdict they check again (of). Best effort. A session inbox delivery
+    # (SessionInbox.deliver :fresh_verdict): pinned to the parent the child
+    # names (its original verdict's card is there, a continued one's too),
+    # never a worker started for it; a parent that is gone gets nothing.
     # @param child [Session] a Verify fresh child
     # @return [Integer] how many were written
     def forward(child, records, state_dir: Session.default_state_dir)
       fresh = child&.verify_fresh
-      return 0 unless fresh&.of && child.parent_id && Session.exist?(child.parent_id, state_dir: state_dir)
+      return 0 unless fresh&.of && child.parent_id
 
-      dir = File.join(Session.session_dir(child.parent_id, state_dir: state_dir), INBOX)
+      written = 0
+      SessionInbox.deliver(:fresh_verdict, child.parent_id, state_dir: state_dir, wake: false) do |at|
+        written = write_verdicts(Session.session_dir(at, state_dir: state_dir), child, fresh.of, records)
+        false
+      end
+      written
+    rescue StandardError => e
+      Log.warn(:worker, "fresh_forward_failed", parent: child&.parent_id.to_s[0, 8], error: e.class.name, msg: e.message)
+      0
+    end
+
+    # +records+ into +session_dir+'s INBOX, one file per check turn.
+    # @return [Integer] how many were written
+    def write_verdicts(session_dir, child, of, records)
+      dir = File.join(session_dir, INBOX)
       FileUtils.mkdir_p(dir)
       Array(records).count do |record|
         check = field(record, :check_turn_id).to_s
         next false unless Session.valid_id?(check)
 
         out = record.to_h { |key, value| [key.to_s, value.is_a?(Hash) ? value.transform_keys(&:to_s) : value] }
-        out.merge!("fresh" => true, "of" => fresh.of, "child_id" => child.id)
+        out.merge!("fresh" => true, "of" => of, "child_id" => child.id)
         AtomicFile.write(File.join(dir, "#{check}.json"), JSON.generate(out))
         true
       end
-    rescue StandardError => e
-      Log.warn(:worker, "fresh_forward_failed", parent: child&.parent_id.to_s[0, 8], error: e.class.name, msg: e.message)
-      0
     end
+    private_class_method :write_verdicts
 
     # The verdicts waiting in +session_dir+'s INBOX: [[record, file]],
     # oldest first.

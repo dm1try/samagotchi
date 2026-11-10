@@ -303,6 +303,37 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).to have_received(:resume_session).once
     end
 
+    # Lifecycle P10: a stop that lands as the worker leaves (after its last
+    # pass) wins for every way out, not only a restart: the successor's
+    # resume would clear it. Its input and rings stay for the next start.
+    it "starts no next worker for input or rings when a stop landed as it left, however it left" do
+      allow(described_class).to receive(:resume_session)
+      allow(described_class).to receive(:delete_session)
+      { idle_exit: nil, exit_requested: nil, signal: 0 }.each do |result, status|
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.save(state_dir: tmpdir)
+        described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+        worker = instance_double(Samagotchi::Worker, scratch?: false, discard?: true, wake_due?: true)
+        allow(worker).to receive(:run) do
+          Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+          result
+        end
+        allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+
+        if status
+          expect { Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir) }
+            .to raise_error(SystemExit) { |e| expect(e.status).to eq(status) }
+        else
+          expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(result)
+        end
+        dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+        expect(Samagotchi::SessionInbox.find_new_input_files(dir).size).to eq(1), result.to_s
+        expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true), result.to_s
+      end
+      expect(described_class).not_to have_received(:resume_session)
+      expect(described_class).not_to have_received(:delete_session)
+    end
+
     it "deletes a chi scratch session as its worker leaves, however it leaves, and resumes nothing" do
       allow(described_class).to receive(:resume_session)
       { scratch_left: nil, idle_exit: nil, signal: 0, stopped: 0 }.each do |result, status|

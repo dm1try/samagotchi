@@ -11,12 +11,13 @@ module Samagotchi
   # one decision: the one reader of the liveness facts that the deciders
   # ("start a worker for this session?", "is one up?") combine. Each fact is
   # read from disk by WorkerPresence.read; the predicates are named after what
-  # the deciders ask, and each decider keeps its own subset and order.
+  # the deciders ask, and each decider keeps its own subset and order (the
+  # session inbox's WakePolicy is the table of most of them).
   #
-  # Two "stopped"s stay apart: #stop_marked? is the `<id>/stopped` marker (a
-  # `chi sessions stop`; a resume removes it), #turn_stopped? the loaded
-  # session's status field (turn state, which Session.load also reads as
-  # stopped while the marker is there). The second needs a Session (#with_session).
+  # "Stopped" is #stop_marked?, the `<id>/stopped` marker (a `chi sessions
+  # stop`; a resume removes it): no decider reads the session file's status
+  # (turn state). Nor is the file read here: the one decider that needs it
+  # (a scratch session, WakePolicy#decide) reads it last, itself.
   #
   # @!attribute session_id [String]
   # @!attribute exists [Boolean] its session file is there (Session.exist?)
@@ -30,12 +31,7 @@ module Samagotchi
   # @!attribute link [WorkerLink::Live, WorkerLink::Starting, WorkerLink::Leaving,
   #   WorkerLink::None, WorkerLink::Stale, WorkerLink::Skew, nil] the Bridge
   #   outcome, when read (+link:+), else nil
-  # @!attribute turn_status [String, nil] the loaded session's status, nil
-  #   until #with_session
-  # @!attribute scratch [Boolean, nil] the loaded session's scratch flag, nil
-  #   until #with_session
-  WorkerPresence = Data.define(:session_id, :exists, :owner, :stop_marked, :starting_marked, :archived, :link,
-                               :turn_status, :scratch) do
+  WorkerPresence = Data.define(:session_id, :exists, :owner, :stop_marked, :starting_marked, :archived, :link) do
     # Read the facts for +session_id+ now.
     # @param state_dir [String, nil] nil: Session.default_state_dir
     # @param owner [OwnerLock::Owner, nil, :read, #call] the lock's holder as
@@ -62,14 +58,6 @@ module Samagotchi
           link: link && WorkerLink.resolve(dir, unlink: link == :unlink, owner: owner))
     end
 
-    # The stop marker alone, for a decider that asks nothing else (WorkerBoot's
-    # restart leave, after the lock's release): no lock probe, no other file.
-    # Same reader as #stop_marked?.
-    def self.stop_marked?(session_id, state_dir: nil)
-      Session.valid_id?(session_id) &&
-        Session.stopped_marker?(session_id, state_dir: state_dir || Session.default_state_dir)
-    end
-
     # An id that isn't one names no session: nothing on disk is read
     # (Session.session_dir would raise), and a link asked for is None.
     # @return [WorkerPresence]
@@ -78,14 +66,7 @@ module Samagotchi
           archived: false, link: link && WorkerLink::None.new)
     end
 
-    def initialize(session_id:, exists:, owner:, stop_marked:, starting_marked:, archived:, link: nil,
-                   turn_status: nil, scratch: nil)
-      super
-    end
-
-    # The same facts with the loaded session's (#turn_stopped?, #scratch?).
-    # @param session [Session]
-    def with_session(session) = with(turn_status: session.status, scratch: session.scratch)
+    def initialize(session_id:, exists:, owner:, stop_marked:, starting_marked:, archived:, link: nil) = super
 
     def exists? = exists
     def archived? = archived
@@ -99,13 +80,6 @@ module Samagotchi
 
     # The `<id>/stopped` marker: a user's stop, not the turn's status.
     def stop_marked? = stop_marked
-
-    # The loaded session's status is stopped (turn state; Session.load reads
-    # it so while #stop_marked?). False before #with_session.
-    def turn_stopped? = turn_status == Session::STATUS_STOPPED
-
-    # The loaded session is a `chi scratch` one. False before #with_session.
-    def scratch? = scratch == true
 
     # A worker is being started for it: the fresh `starting` marker
     # (StartingMarker) a spawn writes until its worker holds the lock.

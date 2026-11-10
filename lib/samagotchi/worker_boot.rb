@@ -93,7 +93,7 @@ module Samagotchi
         # wakes a new worker, as after an idle exit.
         exit(0) if result == :stopped
         if result == :signal
-          SessionManager.resume_session(session_id, state_dir: sd) unless SessionInbox.find_new_input_files(session_dir).empty?
+          respawn(session_id, state_dir: sd, session_dir: session_dir, result: result) unless SessionInbox.find_new_input_files(session_dir).empty?
           exit(0)
         end
         exit(1) if result == :crashed
@@ -103,19 +103,29 @@ module Samagotchi
         # A restart starts its successor here, on the newest chi installed
         # (worker_command), once this one's lock is free.
         # Delegate reports that rang while it left wake one too.
-        if result == :restart && WorkerPresence.stop_marked?(session_id, state_dir: sd)
-          # A stop landed as it left: no successor (resume_session would clear
-          # the stop), and the reminders go with it.
-          ReminderCarry.remove(session_dir)
-          Log.info(:worker, "restart_dropped", why: :stopped)
-        elsif result == :restart ||
-              (%i[idle_exit exit_requested].include?(result) &&
+        if result == :restart ||
+           (%i[idle_exit exit_requested].include?(result) &&
             (!SessionInbox.find_new_input_files(session_dir).empty? || worker.wake_due?))
-          SessionManager.resume_session(session_id, state_dir: sd)
+          respawn(session_id, state_dir: sd, session_dir: session_dir, result: result)
         elsif worker.discard?
           discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)
         end
         result
+      end
+
+      # Start this session's next worker as this one leaves (+result+), on
+      # the session inbox's leave row (SessionInbox::WakePolicy), read on a
+      # fresh WorkerPresence now the lock is free: a stop that landed as it
+      # left wins for every way out (resume_session would clear it; a
+      # restart's reminders go with it), and a worker that took the session
+      # since, or one being started, gets no second one. What waits (input,
+      # rings) stays on disk for the next start.
+      private def respawn(session_id, state_dir:, session_dir:, result:)
+        decided = SessionInbox::WakePolicy.for(:leave).decide(WorkerPresence.read(session_id, state_dir: state_dir))
+        return SessionManager.resume_session(session_id, state_dir: state_dir) if decided == :start
+
+        ReminderCarry.remove(session_dir) if result == :restart && decided == :stopped
+        Log.info(:worker, result == :restart ? "restart_dropped" : "respawn_dropped", why: decided, reason: result)
       end
 
       # A spawned worker leaves its spawner's process tree: a killer that

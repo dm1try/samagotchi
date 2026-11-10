@@ -136,7 +136,9 @@ module Samagotchi
           link = WorkerLink.await(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT)
           link.live? ? link.client(session_id) : nil
         end
-        manager.resume_session(session_id, state_dir: state_dir)
+        # Its refusals (no session, a one-turn run's, a scratch one) are
+        # resume_session's to raise, in their one wording.
+        start_for_send(manager, session_id, state_dir, before: true)
         enqueued_id = SessionInbox.new_enqueued_id
         if (client = bridge.call)
           if (missing = anchors.present.find { |anchor| !worker_has?(client, anchor.class::FEATURE) })
@@ -208,19 +210,49 @@ module Samagotchi
         end
         return DeliverResult.new(status: :failed) unless path
 
-        presence = delivery_presence(manager, session_id, state_dir)
         # A TUI that took the session between the resume and the write never
         # reads input files; a later worker would replay this one.
-        if presence.tui_owned?
-          FileUtils.rm_f(path) if path.is_a?(String)
-          raise OwnedByTUI, session_id
-        end
         # A worker that idle-exited since the resume never reads it either:
         # wake a new one. (The exiting worker also looks for input it left;
         # one the first resume spawned that is still starting is left be.)
-        manager.resume_session(session_id, state_dir: state_dir) unless presence.owned?
+        start_for_send(manager, session_id, state_dir, before: false) do
+          FileUtils.rm_f(path) if path.is_a?(String)
+          raise OwnedByTUI, session_id
+        end
         DeliverResult.new(status: :accepted, via: :file,
                           ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
+      end
+
+      # deliver_turn's two liveness checks, on the session inbox's send row
+      # (SessionInbox::WakePolicy: send un-stops and starts an archived
+      # link; it is pinned to the id it names): resume_session unless a
+      # worker holds the session or one is being started. Its refusals (no
+      # session, a one-turn run's, a scratch one) are resume_session's to
+      # raise, in their one wording: +before+ the write, a session it would
+      # not resume is checked for them (WakePolicy#refusal: the file read
+      # only then, resume_session reads it otherwise); after it, a one-turn
+      # run that took the session since runs the block, and a worker that
+      # is leaving (OwnerLock::Owner#leaving?: its Bridge closed, the lock
+      # held for its last work) has its input served by its own respawn
+      # (WorkerBoot's leave): a stop that landed before this send is
+      # cleared, as resume_session clears it (a send un-stops); one that
+      # lands after it still wins.
+      private def start_for_send(manager, session_id, state_dir, before:)
+        presence = delivery_presence(manager, session_id, state_dir)
+        policy = SessionInbox::WakePolicy.for(:send)
+        outcome = policy.decide(presence)
+        yield if outcome == :owned && block_given?
+        if !before && outcome == :live && presence.stop_marked? && presence.owner&.leaving?
+          Session.clear_stopped(session_id, state_dir: state_dir || Session.default_state_dir)
+          Log.info(:worker, "send_unstopped_leaving", sid: session_id[0, 8])
+        end
+        if %i[live starting].include?(outcome)
+          return unless before
+
+          load = -> { Session.load(session_id, state_dir: state_dir || Session.default_state_dir) }
+          return unless policy.refusal(presence, load: load)
+        end
+        manager.resume_session(session_id, state_dir: state_dir)
       end
 
       # Whether the worker +client+ talks to names +feature+: the features of
