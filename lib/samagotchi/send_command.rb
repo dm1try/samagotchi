@@ -603,13 +603,13 @@ module Samagotchi
       # server's wait prepare route reads both (Busy's words).
       session = @access.show(id) unless @access.remote?
       if (busy = @access.busy(id, queue: @queue, session: session))
-        error_line("#{id[0, 8]}  #{busy.message(via: @access.invocation)}")
+        error_line("#{target.label}  #{busy.message(via: @access.invocation)}")
         return 1
       end
 
       start = @access.prepare_wait(id, session: session)
       return 1 unless deliver(target, prompt)
-      return report_command(id) if @sent_command
+      return report_command(id, label: target.label) if @sent_command
 
       target = ReplyWait::Target.message(start, @delivered, queue: @queue)
       wait_for_reply(id, target: target, timeout: options[:timeout])
@@ -628,7 +628,7 @@ module Samagotchi
 
       turn = @delivered.enqueued_id.to_s
       if turn.empty?
-        error_line("chi send: #{id[0, 8]}: the review turn's id didn't come back; chi --remote … send --wait --turn T waits once you have it")
+        error_line("chi send: #{target.label}: the review turn's id didn't come back; chi --remote … send --wait --turn T waits once you have it")
         return 1
       end
       start = @access.prepare_wait(id, turn: turn)
@@ -745,15 +745,16 @@ module Samagotchi
 
     # --wait after a message that ran as a session command: no reply comes
     # for it. Its output shows where the session is open.
+    # @param label [String] how the line names it (a chain's label, #target)
     # @return [Integer] 0
-    def report_command(id)
+    def report_command(id, label: id[0, 8])
       detail = "#{SENT_COMMAND}: no reply to wait for (its output shows in #{@access.invocation.open_it(id)})"
       if @json
         @stdout.puts(JSON.generate({ status: "command", session_id: id, **asked_extra, detail: detail }))
         @stdout.flush
         @reported = true
       else
-        @stderr.puts("#{id[0, 8]}  #{detail}")
+        @stderr.puts("#{label}  #{detail}")
       end
       CLI::Exit::OK
     end
@@ -800,7 +801,7 @@ module Samagotchi
       @sent_delivery = result.delivery || delivery
       @sent_cut = result.cut
       note = if @access.participant? then participant_note(id, result)
-             else delivery_note(result, delivery: delivery, running: running, owner: owner)
+             else delivery_note(id, result, delivery: delivery, running: running, owner: owner)
              end
       @info.puts("#{short}  sent#{with_images}#{note}")
       true
@@ -819,12 +820,14 @@ module Samagotchi
     # running turn's next step (nothing cuts by default); a --cut one names
     # the outcome from the ack (now, waits, off); a --queue one runs after
     # the turn (or now, when the turn ended before it went in); images keep
-    # their own wording; an idle session's turn simply runs.
+    # their own wording; an idle session's turn simply runs. A link reached
+    # after waiting on its continue (#target) has the continue's own spawn
+    # starting its worker: no worker yet doesn't mean this send started it.
     # @param result [SessionManager::DeliverResult] the accepted delivery
     #   (its ack is {} for the input file)
     # @return [String] "" or " (...)"
-    def delivery_note(result, delivery:, running:, owner:)
-      return " (started its worker)" if owner.nil?
+    def delivery_note(id, result, delivery:, running:, owner:)
+      return " (started its worker)" if owner.nil? && !@continued_here&.key?(id)
       return queue_note(result, running: running) if Delivery.queue?(delivery)
       return "" unless running
       # A participant's review turn was running: the worker queued it.
@@ -889,11 +892,13 @@ module Samagotchi
     # its line comes where it is sent).
     def resolved_ids(options) = targets(options).grep(SessionInbox::Resolved).map(&:id)
 
-    # --wait's one target, kept for the JSON lines (@session_id: its id);
-    # nil after its line.
+    # --wait's one target, kept for the JSON lines (@session_id: its id;
+    # asked_extra); nil after its line (an Unsent is kept too: a continue
+    # in flight's refusal names the id asked).
     # @return [SessionInbox::Resolved, nil]
     def wait_target(options)
       target = targets(options).first
+      @wait_target = target
       unless target.is_a?(SessionInbox::Resolved)
         unsent(target)
         return nil
@@ -903,16 +908,25 @@ module Samagotchi
       @wait_target = target
     end
 
-    # The --format json line's asked: the id given, when the wait is on a
-    # later link of its chain (session_id); {} otherwise.
+    # The --format json line's asked, whatever the end once the id given
+    # resolved (an answer, a refusal, an error): that id, when it is not
+    # the line's session_id (the wait is on a later link of its chain, or a
+    # continue in flight refused it before there was one); {} otherwise.
     def asked_extra
-      @wait_target && @wait_target.asked != @wait_target.id ? { asked: @wait_target.asked } : {}
+      asked = @wait_target&.asked
+      asked && asked != @session_id ? { asked: asked } : {}
     end
+
+    # ParentWait's error line: asked too (asked_extra).
+    def error_extra = asked_extra
 
     # An id given that names no session to send to, and the line that says
     # why: an error line (no such session, a prefix of several) or a
-    # refusal on the info stream (a continue in flight).
-    Unsent = Data.define(:line, :error)
+    # refusal on the info stream (a continue in flight: +asked+ the full id
+    # given, nil for the others).
+    Unsent = Data.define(:line, :error, :asked) do
+      def initialize(line:, error:, asked: nil) = super
+    end
 
     # +given+'s session (an id or a prefix), then where input for it goes
     # (SessionAccess#head): a continued session's chain's newest link. A
@@ -924,12 +938,14 @@ module Samagotchi
       id = @access.resolve(given)
       head = @access.head(id)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + self.class::CONTINUING_WAIT
+      waited = head.continuing?
       while head.continuing? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
         self.class.pause(self.class::CONTINUING_POLL)
         head = @access.head(id)
       end
-      return Unsent.new(line: "#{id[0, 8]}  refused: #{head.continuing_refusal}", error: false) if head.continuing?
+      return Unsent.new(line: "#{id[0, 8]}  refused: #{head.continuing_refusal}", error: false, asked: id) if head.continuing?
 
+      (@continued_here ||= {})[head.id] = true if waited
       head
     rescue ArgumentError => e
       Unsent.new(line: "#{command_name}: #{e.message}", error: true)

@@ -173,8 +173,9 @@ module Samagotchi
     # A failure before any wait (no such session, a busy one, a message
     # that didn't go in) as the JSON object.
     # @param session_id [String, nil]
-    def error_line(detail, session_id: nil)
-      JSON.generate({ status: "error", session_id: session_id, detail: detail.to_s })
+    # @param extra [Hash] more keys after session_id (chi send's asked)
+    def error_line(detail, session_id: nil, extra: {})
+      JSON.generate({ status: "error", session_id: session_id, **extra, detail: detail.to_s })
     end
 
     # A pending question (Session#pending_question, a PendingQuestion) as a

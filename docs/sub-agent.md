@@ -237,8 +237,10 @@ answers from any local process.
   (`chi send --new --continues`, a chain schedule): `chi send` to that id goes
   to its chain's newest link, and the old link stays archived. Keep the
   chain's first id as its address. With `--format json`, `session_id` is the
-  link the message went to and `asked` the id you gave (only when they differ);
-  `chi answer` and `--wait --turn T` take that `session_id` (a `--turn` of the
+  link the message went to and `asked` the id you gave (only when they differ),
+  in every line after the id resolved (a refusal or an error too; a refused
+  send while the continue runs has `session_id` null and `asked`); the text
+  lines name both, `3f9a1c2e → 7b2d41aa (continued)`. `chi answer` and `--wait --turn T` take that `session_id` (a `--turn` of the
   old link, from before the continue, waits on the old link). A send while the
   continue itself runs waits a moment for the new link, else exits 1 with
   `being continued as <id>; send again in a moment`.

@@ -38,7 +38,7 @@ module Samagotchi
         end
         if @json && !@reported && status == 1
           detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
-          @stdout.puts(ParentReport.error_line(detail, session_id: @session_id))
+          @stdout.puts(ParentReport.error_line(detail, session_id: @session_id, extra: error_extra))
           @stdout.flush
         end
         status
@@ -88,6 +88,10 @@ module Samagotchi
         error_line("#{command_name}: the session is gone (deleted while waiting)")
         Exit::FAILED
       end
+
+      # More keys for the error object, after session_id: {} (chi send's
+      # names the id asked).
+      def error_extra = {}
 
       # More keys for the JSON object: answered_here: false when chi
       # answer's answer didn't go in (the question was no longer open).
