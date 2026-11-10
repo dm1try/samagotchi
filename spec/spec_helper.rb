@@ -34,6 +34,7 @@ require_relative "support/env"
 require_relative "support/git_repo"
 require_relative "support/lock_holder"
 require_relative "support/chi_cli"
+require_relative "support/session_manager_spawn"
 # Reads SAMAGOTCHI_INTEGRATION_* now, before the clear below.
 require_relative "support/integration_server"
 
@@ -178,6 +179,7 @@ RSpec.configure do |config|
   config.include SpecWaiting
   config.include SpecStamps
   config.include SpecEnv
+  config.include SpecSessionManagerSpawn
   config.include ChiCli
   config.include SpecGitRepo
   config.include SpecLockHolder

@@ -9,6 +9,8 @@ module Samagotchi
     # A web tab (web:<random>, per tab); web:restart, the page's Restart.
     WEB_PREFIX = "web:"
     WEB_RESTART = "web:restart"
+    # A web page's first prompt when creating a session.
+    WEB_CREATE = "web:create"
     # An attached chi TUI: tui:<pid>.
     TUI_PREFIX = "tui:"
     # chi send's turns and commands.

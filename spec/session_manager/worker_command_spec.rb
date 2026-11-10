@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::SessionManager do
           env = args.first if args.first.is_a?(Hash)
           12_345
         end
-        described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir)
+        spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir)
         env
       end
 
@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::SessionManager do
         FileUtils.cp(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), File.join("rel-config", "samagotchi"))
         stub_const("ENV", ENV.to_h.merge("XDG_STATE_HOME" => "rel-state", "XDG_CONFIG_HOME" => "rel-config"))
 
-        described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+        spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
         expect(spawned_env).to include("XDG_STATE_HOME" => File.join(Dir.pwd, "rel-state"),
                                        "XDG_CONFIG_HOME" => File.join(Dir.pwd, "rel-config"))
@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::SessionManager do
       stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_GUARDRAILS_ENABLED" => "false",
                                        "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => "", "SAMAGOTCHI_GUARDRAILS_X" => "1"))
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).to include("SAMAGOTCHI_GUARDRAILS_ENABLED" => nil, "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => nil,
                                      "SAMAGOTCHI_GUARDRAILS_X" => nil)
@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::SessionManager do
                                        "SAMAGOTCHI_SESSION_MODEL" => "main:outer", "SAMAGOTCHI_SESSION_THINKING" => "low",
                                        "SAMAGOTCHI_SESSION_REASONING_HISTORY" => "all"))
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).to include("SAMAGOTCHI_PARENT_SESSION" => nil, "SAMAGOTCHI_SESSION_MODEL" => nil,
                                      "SAMAGOTCHI_SESSION_THINKING" => nil, "SAMAGOTCHI_SESSION_REASONING_HISTORY" => nil)
@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:waitpid).and_return(nil)
       allow(Process).to receive(:detach)
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(Process).to have_received(:detach).with(12_345)
     end
@@ -140,7 +140,7 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).to include("SAMAGOTCHI_INSTALLED_VERSION" => nil)
     end
@@ -156,7 +156,7 @@ RSpec.describe Samagotchi::SessionManager do
       stub_const("ENV", ENV.to_h.merge("RUBYOPT" => "-W0 -rbundler/setup", "BUNDLE_GEMFILE" => "/p/Gemfile"))
       allow(Bundler).to receive(:unbundled_env).and_return(ENV.to_h.merge("RUBYOPT" => "-W0").except("BUNDLE_GEMFILE"))
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).to include("RUBYOPT" => "-W0", "BUNDLE_GEMFILE" => nil)
     end
@@ -169,7 +169,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
       stub_const("ENV", ENV.to_h.merge("BUNDLE_GEMFILE" => "/p/Gemfile"))
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).not_to have_key("BUNDLE_GEMFILE")
     end
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(Process).to have_received(:spawn)
       args_str = spawned_args.map(&:to_s).join(" ")
@@ -297,7 +297,7 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_opts).to include(pgroup: true)
       # A worker process: it traps signals (WorkerBoot.run_session_loop).
@@ -320,7 +320,7 @@ RSpec.describe Samagotchi::SessionManager do
       log = File.join(tmpdir, "chi.log")
       Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
       session = nil
-      spawned_opts { session = described_class.spawn_session(prompt: nil, model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir) }
+      spawned_opts { session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir) }
 
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "spawn" } }
       expect(record.to_h).to include(level: "INFO", tag: "worker", sid: session.id[0, 8], fields: { "child_pid" => "12345" })
@@ -331,7 +331,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "starts the worker in the session's directory, so its tools run there" do
       dir = Dir.mktmpdir("session-dir", tmpdir)
 
-      opts = spawned_opts { described_class.spawn_session(prompt: nil, model_name: "gemma4", working_directory: dir, state_dir: tmpdir) }
+      opts = spawned_opts { spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", working_directory: dir, state_dir: tmpdir) }
 
       expect(opts).to include(chdir: dir)
     end

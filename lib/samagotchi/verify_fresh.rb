@@ -89,7 +89,8 @@ module Samagotchi
         child = spawn.call(prompt: prompt_for(anchor.quote), working_directory: parent.working_directory,
                            model_name: parent.model_name,
                            setup: SessionSetup.new(preloaded_memory_names: [Session::DELEGATE_MEMORY]),
-                           parent_id: parent.id, delegate: true, verify_fresh: origin, state_dir: state_dir)
+                           parent_id: parent.id, delegate: true, verify_fresh: origin, state_dir: state_dir,
+                           client_id: ClientId.delegate(parent.id))
         append_ledger(dir, { "child_id" => child.id, "of" => of, "author" => author, "at" => Time.now.utc.iso8601(3) })
         child
       end

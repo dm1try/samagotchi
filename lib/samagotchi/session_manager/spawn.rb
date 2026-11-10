@@ -56,16 +56,15 @@ module Samagotchi
       # @param scratch [Boolean] a `chi scratch` session (its terminal's
       #   AttachLauncher): its worker runs a scratch Engine and deletes it
       #   once its last client is gone
-      # @param client_id [String, nil] who sent +prompt+ when no person did
-      #   (a ClientId: a delegating parent, a schedule's chain link): its
-      #   first turn's origin (Session#first_turn_client_id)
+      # @param client_id [String, nil] who sent +prompt+ (a ClientId); required
+      #   even when nil is intentional for a session with no initial prompt
       # @param session_id [String, nil] an id reserved by a durable operation
       # @return [Session] with #seed_images_dropped: refs whose file was gone,
       #   and #model_warning: an id its host's saved list doesn't have
-      def spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
+      def spawn_session(prompt:, client_id:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                         parent_id: nil, messages: [], images_from: nil, preview: nil, title: nil, delegate: false,
                         setup: SessionSetup.new, continues: nil, note: nil, note_source: "chi", before_spawn: nil,
-                        review: nil, verify_fresh: nil, scratch: false, client_id: nil, session_id: nil)
+                        review: nil, verify_fresh: nil, scratch: false, session_id: nil)
         sd = state_dir || Session.default_state_dir
         if session_id && (!Session.valid_id?(session_id) || Session.exist?(session_id, state_dir: sd))
           raise ArgumentError, "invalid or existing session id #{session_id.inspect}"
@@ -109,7 +108,7 @@ module Samagotchi
         # carry the id.
         unless prompt.to_s.strip.empty?
           session.first_turn_id = SecureRandom.uuid
-          session.first_turn_client_id = client_id
+          session.first_turn_client_id = client_id unless ClientId.human?(client_id)
         end
         # The worker takes last_prompt and clears it, and messages are saved at
         # the turn's end: until then this is the only preview a list has.

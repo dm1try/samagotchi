@@ -35,8 +35,9 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
   it "starts a session with the composed message and prints its full id" do
     expect(run("--new", "-m", "review this", stdin: StringIO.new("diff --git a b\n"))).to eq(0), err.string
 
-    expect(spawned).to eq([{ prompt: "> diff --git a b\n\nreview this", working_directory: nil, model_name: nil,
-                             setup: Samagotchi::SessionSetup.new, state_dir: tmpdir }])
+    expect(spawned).to eq([{ prompt: "> diff --git a b\n\nreview this", client_id: Samagotchi::ClientId::CLI_SEND,
+                             working_directory: nil, model_name: nil, setup: Samagotchi::SessionSetup.new,
+                             state_dir: tmpdir }])
     expect(out.string).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}  started\n\z/)
     expect(err.string).to be_empty
   end
@@ -485,7 +486,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       # Remotely chi web's create spawns it (its own arguments, --dir given).
       spawned = if backend == :local
                   { prompt: nil, preview: "what is it?", working_directory: nil, model_name: nil,
-                    setup: Samagotchi::SessionSetup.new, state_dir: tmpdir }
+                    setup: Samagotchi::SessionSetup.new, state_dir: tmpdir,
+                    client_id: Samagotchi::ClientId::CLI_SEND }
                 else
                   hash_including(prompt: nil, preview: "what is it?", working_directory: Dir.pwd)
                 end

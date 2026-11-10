@@ -80,7 +80,8 @@ module Samagotchi
       setup = setup.with(toolkit_origin: "chosen")
       SessionManager.spawn_session(prompt: nil, preview: preview(subjects), working_directory: dir, model_name: model,
                                    setup: setup, review: SessionReview.new(subjects: subjects),
-                                   note: note(subjects: subjects), note_source: NOTE_SOURCE, state_dir: state_dir)
+                                   note: note(subjects: subjects), note_source: NOTE_SOURCE, state_dir: state_dir,
+                                   client_id: nil)
     end
 
     # A review fork of +from+ (an id, a prefix, or last:<id>): a new session
@@ -108,7 +109,8 @@ module Samagotchi
         prompt: nil, preview: preview(subjects, source: source), working_directory: dir, model_name: choice.model,
         setup: SessionSetup.of(source).with(preloaded_memory_names: [], toolkit_origin: "chosen"),
         review: SessionReview.new(subjects: subjects, from: source.id),
-        note: note(subjects: subjects, source: source, recap: recap, seed: seed), note_source: NOTE_SOURCE, state_dir: sd
+        note: note(subjects: subjects, source: source, recap: recap, seed: seed), note_source: NOTE_SOURCE,
+        state_dir: sd, client_id: nil
       )
       warnings = [choice.warning, session.model_warning].compact
       session.model_warning = warnings.join("; ") unless warnings.empty?

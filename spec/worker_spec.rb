@@ -2820,6 +2820,23 @@ RSpec.describe Samagotchi::Worker do
           end
         end
 
+        it "refuses a non-human shell line routed through the anytime path" do
+          marker = File.join(tmpdir, "anytime-shell-marker")
+          allow(engine.command_registry).to receive(:anytime?).and_wrap_original do |original, line|
+            line.start_with?("!touch ") || original.call(line)
+          end
+          start_worker(poll_interval: 5)
+
+          response = post_command("!touch #{marker}", client_id: "delegate:abcd1234")
+          done = ran(JSON.parse(response.body)["command_id"])
+
+          expect(response.code).to eq("202")
+          expect(done).to include(status: "error", output: Samagotchi::CommandIntake::REFUSED,
+                                  client_id: "delegate:abcd1234", anytime: true)
+          expect(seen.count { |event| event[:type] == :command_ran }).to eq(1)
+          expect(File.exist?(marker)).to be(false)
+        end
+
         ["slow", "slow, no boundary"].each do |prompt|
           it "runs at once while a turn runs (#{prompt}), never busy, its cards announced between its queued and ran" do
             start_worker(poll_interval: 5)

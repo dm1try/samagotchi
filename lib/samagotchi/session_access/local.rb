@@ -144,11 +144,11 @@ module Samagotchi
 
         start = spec.preview ? { prompt: spec.prompt, preview: spec.preview } : { prompt: spec.prompt }
         if spec.continues
-          return SessionContinue.run(spec.continues, **start, model: spec.model_name, **dir)
+          return SessionContinue.run(spec.continues, **start, model: spec.model_name, client_id: spec.client_id, **dir)
         end
 
         SessionManager.spawn_session(**start, working_directory: spec.working_directory, model_name: spec.model_name,
-                                              setup: spec.setup, **dir)
+                                              setup: spec.setup, client_id: spec.client_id, **dir)
       end
 
       # A review session (ReviewStart): a fork of review.from, or a fresh
