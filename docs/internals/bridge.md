@@ -77,7 +77,13 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   "enqueue-only" note, as CardStore's save does: one append per turn end. It writes `"\n"` first when the file's last
   byte isn't one (a torn line from a crash), then the line in one write; a failure is logged (`turn_drawing_failed`).
   A part's output is the accumulator's cut (`WEB_PREVIEW_CHARS`); a diff is the one the saved `tool_diffs` have
-  (`TextDiff`'s cut); images are refs.
+  (`TextDiff`'s cut); images are refs. The writer is the session's owner under `OwnerLock`: its worker's Bridge, or a
+  `-p X --non-interactive` one-shot, whose `TerminalUI#run_one_shot_turn` tees its events to an accumulator with the
+  same hook. A fork's child starts with its parent's lines that hold against its seed (`TurnDrawings.carry`, in
+  `Plugin::Sessions#fork`'s `before_spawn`, before the child's worker exists: same indices, same digests; a range
+  whose end the image copy changed is dropped and made from its messages at read). A seed without the system head (a
+  plugin's `ctx.messages`) is checked as the child's messages will be once its first turn puts the head back: the
+  lines keep the parent's indices, so until that turn they don't hold and their turns are made from the messages.
 - **Reading.** `TurnDrawings.read(dir)` skips an unknown `v`, a torn or broken line and one missing a field, and is
   cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
   `TurnDrawings.cover(lines, messages, timing:, entries:, skip_turn_id:, session_id:, cwd:)` is what a show draws
@@ -134,8 +140,9 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   an older one lists no `of_turn`) gets no drawings in the show: its turns all draw as before. The stamps walk the
   lines with one cursor and the unfold reads a Set of stamped ids, so a long session's show is linear in its turns;
   a made-up line is memoized per range (`Synth.memoized`), so a show after a turn end makes no old turn again.
-- **Compat.** An older worker writes nothing, a fork or a continue copies no drawings, and a one-shot run (no Bridge)
-  writes none: their turns are made from their messages. An older chi web never opens the file and draws them as it
+- **Compat.** An older worker writes nothing, a continue (a note, no turns) and a review fork copy no drawings, and
+  an older chi's fork or one-shot wrote none: their turns are made from their messages. The lines a fork carries and a
+  one-shot writes are plain `v: 1` lines, which an older chi web draws as any. An older chi web never opens the file and draws them as it
   did. A made-up line's end has no `turn_id` for a made-up id and names its record (`record_id`), which a 0.157+ page
   reads as any drawn turn's (an older page ignores `record_id` and finds no record for such a turn: no timing line;
   it also keys such a turn's answer by the made id, `data-answer-turn`, until a reload: only a turn saved before turn

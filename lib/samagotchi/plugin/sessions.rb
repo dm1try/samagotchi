@@ -5,6 +5,8 @@ require_relative "../delivery"
 require_relative "../session"
 require_relative "../worker_link"
 require_relative "../bridge/turn_accumulator"
+require_relative "../bridge/turn_drawings"
+require_relative "../degrade"
 require_relative "../tools/delegate"
 require_relative "../children_status"
 require_relative "../context_move"
@@ -63,9 +65,14 @@ module Samagotchi
         check_children(parent_id, state_dir) if prompt
 
         # The fork takes this session's movable attached context, its
-        # subscriptions as its seed last had them.
+        # subscriptions as its seed last had them, and the drawings of the
+        # turns its seed keeps as they were (Bridge::TurnDrawings.carry).
         before_spawn = lambda do |forked|
           ContextMove.call(from: parent_id, to: forked.id, mode: :fork, seed: forked.messages, state_dir: state_dir)
+          Degrade.call(:plugins, "fork_drawings_not_carried", fallback: 0) do
+            Bridge::TurnDrawings.carry(from_dir: Session.session_dir(parent_id, state_dir: state_dir),
+                                       to_dir: Session.session_dir(forked.id, state_dir: state_dir), messages: forked.messages)
+          end
         end
         child = SessionManager.spawn_session(
           prompt: prompt, working_directory: @host.cwd.call || Dir.pwd, model_name: @host.model_name&.call,

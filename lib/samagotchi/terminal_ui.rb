@@ -14,6 +14,8 @@ require_relative "host_registry"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "bridge/card_store"
+require_relative "bridge/turn_accumulator"
+require_relative "bridge/turn_drawings"
 require_relative "bridge/pending_card"
 require_relative "engine"
 require_relative "turn_flow"
@@ -253,11 +255,20 @@ module Samagotchi
         end
       ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
       sink = OneShotSink.new
+      # The turn's drawing, as a worker's Bridge writes it: this process is
+      # the session's owner (OwnerLock), the file's one writer meanwhile.
+      drawings = Bridge::TurnDrawings.new(path: File.join(Session.session_dir(session.id), Bridge::TurnDrawings::FILE),
+                                          messages: -> { session.messages })
+      accumulator = Bridge::TurnAccumulator.new(on_turn_end: drawings.method(:append))
+      events = lambda do |event|
+        sink.call(event)
+        accumulator.call(event)
+      end
       save_before_first_turn(session)
       attach_mentioned_context(session, prompt)
       max_iterations = IterationLimit.for(no_interrupt: true)
       begin
-        result = @engine.run_turn(session, prompt, on_event: sink, max_iterations: max_iterations,
+        result = @engine.run_turn(session, prompt, on_event: events, max_iterations: max_iterations,
                                                    cancel_controller: nil, images: ImageInput.extract(prompt))
       rescue LLM::ProviderError, ImageStore::Error => e
         return one_shot_failed(session, e)
