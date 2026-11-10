@@ -196,6 +196,12 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings do
     it "reads string-keyed messages (the session file) as the live ones" do
       expect(described_class.valid([line("t1", 1, 3)], TurnDrawingScenarios.wire(messages)).size).to eq(1)
     end
+
+    it "is what .cover draws a show from, for now" do
+      lines = [line("t1", 1, 3), line("gone", 1, 3, [nil, { role: "user", content: "x" }, { role: "model", content: "y" }])]
+      expect(described_class.cover(lines, messages)).to eq(described_class.valid(lines, messages))
+      expect(described_class.cover(lines, messages).map(&:turn_id)).to eq(["t1"])
+    end
   end
 
   describe ".read" do
