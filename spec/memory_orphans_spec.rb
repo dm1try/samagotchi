@@ -219,7 +219,7 @@ RSpec.describe Samagotchi::MemoryOrphans do
       folder("app-0a1b2c3d")
 
       message = described_class.model_message(env: env, cwd: root)
-      expect(message).to include("exists, keyed by a project id (app-0a1b2c3d)")
+      expect(message).to include("exists under project id app-0a1b2c3d")
       expect(message).not_to include("hash")
     end
 

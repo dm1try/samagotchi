@@ -88,13 +88,8 @@ module Samagotchi
       name = File.basename(MemoryPaths.project_root(cwd))
       if found.candidates.size == 1
         candidate = found.candidates.first
-        key = if hash_keyed?(candidate)
-                "exists with another path's hash"
-              else
-                "exists, keyed by a project id (#{File.basename(candidate)})"
-              end
-        "a folder with the same project name (#{name}) #{key}; ask the user whether its memories belong to this " \
-          "project before using them."
+        "a folder with the same project name (#{name}) exists under #{key_note(candidate)}; ask the user " \
+          "whether its memories belong to this project before using them."
       else
         list = found.candidates.map { |candidate| "#{candidate} (#{key_note(candidate)})" }.join(", ")
         "folders with the same project name (#{name}) exist under other keys (#{list}); ask the user whether their " \
