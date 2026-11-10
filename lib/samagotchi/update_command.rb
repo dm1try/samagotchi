@@ -310,7 +310,9 @@ module Samagotchi
       when :skipped then skipped(row, result.error)
       else failed(row, result.error)
       end
-      system.clear_merge_notes(earlier, files: result.merged) if read_by_someone?
+      if read_by_someone? && (error = system.clear_merge_notes(earlier, files: result.merged)).is_a?(String)
+        row.status = [row.status, error].compact.join("; ")
+      end
       row
     end
 
@@ -363,7 +365,10 @@ module Samagotchi
       else failed(row, [update.note, *notes].compact.join("; "))
       end
       # A failed row keeps them: the run didn't finish, and the next says what stands.
-      MemoryBundle::Provenance.new(name: update.name).clear_merge_notes(earlier, files: row.merged) if read_by_someone? && update.status != :failed
+      if read_by_someone? && update.status != :failed
+        error = MemoryBundle::Provenance.new(name: update.name).clear_merge_notes(earlier, files: row.merged)
+        row.status = [row.status, error].compact.join("; ") if error.is_a?(String)
+      end
       row
     end
 

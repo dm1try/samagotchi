@@ -1086,6 +1086,18 @@ RSpec.describe "Cards" do
         expect(listed(store).first).to include(title: "again", after_failed: true)
       end
 
+      it "does not resurrect a cleared failed-turn mark after a restart" do
+        File.write(path, JSON.generate(version: 2, entries: [], turn_log: ["t5"], failed_turn: "t5"))
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+
+        store.call(type: :turn_started, turn_id: "t6")
+        reloaded = Samagotchi::Bridge::CardStore.new(path: path)
+        reloaded.call(type: :hook_notice, hook: "h", text: "note", between_turns: true)
+
+        expect(JSON.parse(File.read(path))).not_to have_key("failed_turn")
+        expect(reloaded.list.first).not_to have_key(:after_failed)
+      end
+
       it "says so (the page draws that prompt at the end), saved, until the next turn starts" do
         store = Samagotchi::Bridge::CardStore.new(path: path)
         store.call(between("before"))
@@ -1201,6 +1213,35 @@ RSpec.describe "Cards" do
         expect(data["entries"].first).not_to have_key("turns")
         turn(:turn_completed, on: store)
         expect(saved.first).to include(id: "before", turns_since: 1, earlier: true)
+      end
+
+      it "carries unknown file and entry fields through a rewrite" do
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+        store.call(card("before").merge(in_turn: false))
+        data = JSON.parse(File.read(path))
+        data["future_file_key"] = { "kept" => true }
+        data["entries"].first["future_entry_key"] = "kept"
+        File.write(path, JSON.generate(data))
+
+        worker.call(card("after").merge(in_turn: false))
+
+        saved = JSON.parse(File.read(path))
+        expect(saved).to include("future_file_key" => { "kept" => true })
+        expect(saved["entries"].first).to include("future_entry_key" => "kept")
+      end
+
+      it "warns once and does not rewrite a newer file format" do
+        File.write(path, JSON.generate("version" => 3))
+        original = File.read(path)
+        expect(Samagotchi::Log).to receive(:warn).with(
+          :bridge, "card_store_unreadable",
+          error: "cards.json has format version 3, newer than supported 2; update chi before writing it"
+        ).once
+
+        store = worker
+        store.call(card("newer").merge(in_turn: false))
+
+        expect(File.read(path)).to eq(original)
       end
 
       it "prunes the log to the earliest anchor, and keeps it whole for an entry with none" do

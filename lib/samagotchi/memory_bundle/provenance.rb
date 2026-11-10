@@ -7,6 +7,7 @@ require "fileutils"
 require "tmpdir"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
+require_relative "../state_format"
 require_relative "../version"
 require_relative "file_digest"
 require_relative "installed_bundle"
@@ -32,6 +33,38 @@ module Samagotchi
       MARK_FIELDS = %w[conflict incoming_sha legacy_base why missed missed_places].freeze
       # What a merge no report has shown adds to a file's entry (#note_merged).
       MERGE_NOTE_FIELDS = %w[merged_version merged_at merged_trash].freeze
+      RECORD_FORMAT_VERSION = 1
+      RECORD_FORMAT = StateFormat.new(
+        version: RECORD_FORMAT_VERSION,
+        members: [
+          StateFormat.required(:name),
+          StateFormat.required(:version),
+          StateFormat.required(:scope),
+          StateFormat.required(:source),
+          StateFormat.required(:installed_at),
+          StateFormat.required(:files),
+          StateFormat.required(:hooks),
+          StateFormat.added(:record_format, in_version: 1, default: 1),
+          StateFormat.added(:dev, in_version: 1, default: false),
+          StateFormat.added(:guardrails, in_version: 1, default: {}),
+          StateFormat.added(:source_commit, in_version: 1, default: nil),
+          StateFormat.added(:plugin, in_version: 1, default: nil),
+          StateFormat.added(:includes, in_version: 1, default: nil),
+          StateFormat.added(:scripts, in_version: 1, default: {}),
+          StateFormat.added(:manifest_sha, in_version: 1, default: nil),
+          StateFormat.added(:installed_by, in_version: 1, default: nil),
+          StateFormat.added(:requires_chi, in_version: 1, default: nil),
+          StateFormat.added(:trust_level, in_version: 1, default: nil),
+          StateFormat.added(:needs, in_version: 1, default: nil),
+          StateFormat.added(:context_providers, in_version: 1, default: nil),
+          StateFormat.added(:block_renderers, in_version: 1, default: nil),
+          StateFormat.added(:session_settings, in_version: 1, default: nil),
+          StateFormat.added(:session_setting_types, in_version: 1, default: nil),
+          StateFormat.added(:settings, in_version: 1, default: nil),
+          StateFormat.added(:setting_types, in_version: 1, default: nil),
+          StateFormat.extra(:extra, in_version: 1)
+        ]
+      )
 
       def initialize(name:)
         @name = name
@@ -282,6 +315,7 @@ module Samagotchi
                 guardrails_files: {}, plugin_file: nil, plugin_required: false, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false, manifest_from: nil)
+        record_extra = format_record(read)&.extra || {}
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -329,6 +363,7 @@ module Samagotchi
 
         manifest_data = {
           "name" => @name,
+          "record_format" => RECORD_FORMAT_VERSION,
           "version" => version.to_s,
           "scope" => scope.to_s,
           "source" => source_path.to_s,
@@ -363,6 +398,7 @@ module Samagotchi
           end
         end
         manifest_data.merge!(kept_manifest_fields(existing, manifest_from, dev))
+        manifest_data = record_extra.merge(manifest_data)
 
         write_manifest(manifest_data)
         FileUtils.rm_f(pending_path)
@@ -380,7 +416,7 @@ module Samagotchi
       def resolve_conflicts(conflicts)
         return [] unless installed?
 
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw = writable_record
         raw["files"] ||= {}
         settled = conflicts.filter_map do |file_key, info|
           key = file_key.to_s
@@ -399,7 +435,7 @@ module Samagotchi
       # A missing file was put back with the bundle's bytes: +path+ is its base,
       # its entry is made or rebuilt (no mark), and the rest of the manifest stays.
       def record_restored(file_key, path, description: nil)
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw = writable_record
         content = File.binread(path)
         File.binwrite(base_path(file_key), content)
         entry = { "checksum" => Digest::SHA256.hexdigest(content) }
@@ -419,7 +455,7 @@ module Samagotchi
       def refresh_marks(marks, incoming_dir)
         return unless installed?
 
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw = writable_record
         marks.each do |mark|
           entry = raw.dig("files", mark.file)
           next unless entry&.fetch("conflict", nil)
@@ -443,7 +479,7 @@ module Samagotchi
       def note_merged(files, version:, trash:, at: Time.now)
         return unless installed?
 
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw = writable_record
         files.each do |key|
           raw.dig("files", key)&.merge!({ "merged_version" => version.to_s, "merged_at" => at.iso8601, "merged_trash" => trash }.compact)
         end
@@ -459,7 +495,7 @@ module Samagotchi
       def clear_merge_notes(notes, files: [])
         return if notes.empty? && files.empty?
 
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw = writable_record
         stale = notes.select do |note|
           entry = raw.dig("files", note.file)
           entry && entry["merged_version"] == note.version && entry["merged_at"] == note.at
@@ -469,6 +505,8 @@ module Samagotchi
           MERGE_NOTE_FIELDS.each { |field| entry.delete(field) } if entry
         end
         write_manifest(raw)
+      rescue StateFormat::InvalidDocument => e
+        e.message
       rescue JSON::ParserError, SystemCallError
         nil
       end
@@ -487,7 +525,10 @@ module Samagotchi
       def adopt_manifest(dir, dry_run: false)
         bundle = record
         return "#{@name} isn't installed" unless bundle
+
         return "#{@name} is a dev install" if bundle.dev
+
+        raw = writable_record
         return "#{@name} keeps its manifest already" unless bundle.manifest_unkept?
 
         source = File.join(dir.to_s, "manifest.yml")
@@ -499,9 +540,10 @@ module Samagotchi
         return why if why || dry_run
 
         AtomicFile.write(kept_manifest_path, bytes)
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
         write_manifest(raw.merge("manifest_sha" => "sha256:#{Digest::SHA256.hexdigest(bytes)}"))
         nil
+      rescue StateFormat::InvalidDocument => e
+        e.message
       rescue JSON::ParserError, SystemCallError => e
         "#{@name}'s record can't take it: #{e.message}"
       end
@@ -511,6 +553,10 @@ module Samagotchi
       # @raise [JSON::ParserError] manifest.json doesn't parse
       def record
         InstalledBundle.read(@name, File.join(@bundle_dir, "manifest.json"))
+      end
+
+      def ensure_supported_record_format!
+        format_record(read)
       end
 
       # The journal's memory => shas, {} when it doesn't belong to this target
@@ -543,6 +589,40 @@ module Samagotchi
 
         JSON.parse(File.read(manifest_path), symbolize_names: true)
       end
+
+      def writable_record
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        format_record(raw)
+        raw
+      end
+      private :writable_record
+
+      def format_record(data)
+        return unless data
+        raise StateFormat::InvalidDocument, "manifest.json must contain a JSON object" unless data.is_a?(Hash)
+
+        data = data.transform_keys(&:to_s)
+        version = data["record_format"]
+        unless version.nil? || (version.is_a?(Integer) && version >= 0)
+          raise StateFormat::InvalidDocument, "manifest.json has an invalid record_format"
+        end
+
+        document = RECORD_FORMAT.read({ "version" => version, "records" => [data] }, collection: "records")
+        if document.version > RECORD_FORMAT_VERSION
+          raise StateFormat::InvalidDocument,
+                "manifest.json record_format #{document.version} is newer than supported #{RECORD_FORMAT_VERSION}; update chi before writing it"
+        end
+
+        record = document.entries.first
+        unless record&.readable?
+          raise StateFormat::InvalidDocument,
+                "manifest.json is missing required record fields; repair with chi bundle uninstall #{@name} --force, " \
+                "then chi bundle install <source> --force"
+        end
+
+        record
+      end
+      private :format_record
 
       # Write aside and rename, so a reader in another process (a parallel
       # chi start) never parses a truncated manifest.json.
