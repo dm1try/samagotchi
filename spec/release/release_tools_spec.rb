@@ -34,6 +34,13 @@ RSpec.describe ReleaseTools do
       expect(described_class.stale_shas(repo_root)).to eq([])
     end
 
+    # `chi bundle install` refuses a file whose sha disagrees with its manifest.
+    it "include the e2e fixture bundles, which have no stale sha256 lines" do
+      dirs = Dir.glob(File.join(repo_root, "spec/e2e/support/bundles/*"))
+      expect(dirs).not_to be_empty
+      expect(dirs.flat_map { |dir| Samagotchi::MemoryBundle::Shas.stale(dir) }).to eq([])
+    end
+
     # The hooks shape (no shipped bundle has hooks now) is shas_spec's.
     it "are read in both shipped manifest shapes: files and plugin" do
       files = described_class.bundle_dirs(repo_root).to_h do |dir|
