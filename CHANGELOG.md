@@ -13,6 +13,7 @@ and commands may change between minor versions. How releases are made:
 - chi web draws every finished turn the way it was drawn live; turns from before drawings (and past the newest 100)
   are drawn from a drawing rebuilt from their messages, with small differences (no hook notices or durations that were
   never kept).
+- chi --attach draws the last turn the same way for every session.
 
 ### Fixed
 

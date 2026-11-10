@@ -2,14 +2,13 @@
 
 require_relative "../bridge/turn_accumulator"
 require_relative "../bridge/turn_drawings"
+require_relative "../bridge/turn_drawings/synth"
+require_relative "../bridge/turn_ranges"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../log"
-require_relative "../message_parts"
 require_relative "../output_formatter"
 require_relative "../steer"
-require_relative "../tool_activity"
-require_relative "../tool_view"
 require_relative "../turn_note"
 require_relative "event_renderer"
 require_relative "formatting"
@@ -33,11 +32,13 @@ module Samagotchi
         @renderer = renderer
       end
 
-      # A snapshot's last_turn_drawing (Bridge#snapshot: the last exchange's
-      # turn as live drew it) draws that turn's rows; without one (an older
-      # worker, a turn before drawings) they are rebuilt from the messages.
+      # The last prompt's turn is drawn from a drawing: the snapshot's
+      # last_turn_drawing (Bridge#snapshot: as live drew it) when it is that
+      # turn's, else one made from the snapshot's messages, the link's saved
+      # records and the snapshot's cards (Bridge::TurnDrawings::Synth: an
+      # older worker, a turn before drawings, a line over 1 MB).
       def render_join(snapshot, saved)
-        render_join_header(Array(snapshot[:messages]), drawing: snapshot[:last_turn_drawing])
+        render_join_header(Array(snapshot[:messages]), drawing: snapshot[:last_turn_drawing], cards: Array(snapshot[:cards]))
         render_join_gap(snapshot, saved)
       end
 
@@ -106,7 +107,7 @@ module Samagotchi
         @screen.commit(gap_divider(line)) if line
       end
 
-      def render_join_header(messages, drawing: nil)
+      def render_join_header(messages, drawing: nil, cards: [])
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
         # The id stays findable: the detach line and chi sessions list show it.
         Log.session_id = @link.client.session_id
@@ -119,36 +120,17 @@ module Samagotchi
         render_join_notes(messages, from)
         return unless last_user
 
-        @screen.commit(join_prompt_line(exchange[last_user]))
+        prompt = exchange[last_user]
+        @screen.commit(join_prompt_line(prompt))
         # An image-only turn's text names its images already.
-        unless ImageRef.placeholder_only?(exchange[last_user][:content])
-          Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
+        unless ImageRef.placeholder_only?(prompt[:content])
+          Array(prompt[:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         end
-        if (drawn = drawn_turn(drawing, exchange[last_user]))
+        drawn = drawn_turn(drawing, prompt) || made_turn(messages, from, cards)
+        if drawn
           render_drawn_turn(*drawn, exchange[(last_user + 1)..])
-          return render_join_notes(messages, from, after_exchange: true)
-        end
-
-        render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
-        record = @link.saved_turn_record(exchange[last_user][:turn_id] || exchange[last_user]["turn_id"])
-        failed = join_failed_record(record)
-        # A turn that ended with no answer: its notice, as live.
-        empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
-        if empty
-          @screen.commit(format_empty_answer_line(empty[:retries] || empty["retries"], empty[:refusal] || empty["refusal"]))
-        elsif failed
-          # A failed turn whose steps stayed: the line the live view left,
-          # and no step text as if it were the answer (the web keeps a
-          # failed turn's texts as steps too).
-          failure = failed["failure"]
-          @screen.commit(@view.turn_failed_line(failure["summary"] || failure["message"], failed["duration_ms"]))
-          @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) if failure["kept_steps"]
-        elsif record && record["status"] == "canceled"
-          # A canceled turn (a Stop, Ctrl-C): its line, as live, and no
-          # text it streamed before the cancel as if it were the answer.
-          @screen.commit(@view.turn_canceled_line(record["cancellation_reason"], record["duration_ms"], by: record["cancelled_by"]))
-          @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) unless record["continue"]
         else
+          # No turn ran for it (a `!cmd`'s record): what came after it.
           render_join_answer(exchange[(last_user + 1)..])
         end
         render_join_notes(messages, from, after_exchange: true)
@@ -179,6 +161,24 @@ module Samagotchi
         [turn, EventRenderer.symbolize(Bridge::TurnAccumulator.from_wire(drawing[:end]))]
       end
 
+      # The prompt's turn (its opening at +from+ in +messages+) drawn from
+      # its messages (TurnRanges, Synth.safe_line) with the link's saved
+      # records of it (this machine's, or chi web's for --remote) and the
+      # snapshot's +cards+ (its CardStore rows), as [turn, end event]; nil
+      # when no turn opens there.
+      def made_turn(messages, from, cards)
+        # Its opening, or the range that holds it (a wake turn's report, its note the opening).
+        range = Bridge::TurnRanges.of(messages).find { |r| r.opening == from || r.range.cover?(from) }
+        return nil unless range
+
+        # Tool records first: a remote link reads both in one request then
+        # (RemoteLink#saved_tool_records keeps it for #saved_turn_record).
+        tools = range.turn_id ? Array(@link.saved_tool_records(range.turn_id)) : []
+        record = range.turn_id && @link.saved_turn_record(range.turn_id)
+        line = Bridge::TurnDrawings::Synth.safe_line(messages, range, record: record, tools: tools, entries: cards)
+        [Bridge::TurnAccumulator.from_wire(line.drawing), EventRenderer.symbolize(Bridge::TurnAccumulator.from_wire(line.end))]
+      end
+
       # The last turn from its drawing, through the renderer as live drew it
       # (the running turn's join path, AttachedLoop#render_current_turn): its
       # rows with their status and duration, a retry's line, a hook's notice,
@@ -200,100 +200,6 @@ module Samagotchi
         end
         # A call the turn never answered left the tool slot running.
         @view.finish_thinking_spinner
-      end
-
-      # What the last exchange did, as the live turn drew it: each saved
-      # call's tool row (action, params, status from its result, and its
-      # duration from +durations+, the turn's saved tool records) and a
-      # plugin's steer and the user's input merged into the turn where they
-      # came. The step texts stay out, as live (the ticker's).
-      def render_join_steps(messages, from, durations: [])
-        records = durations.dup
-        messages.each_with_index.drop(from + 1).each do |m, i|
-          if Steer.steer?(m)
-            @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
-          elsif Steer.input?(m) && !Steer.turn_prompt?(m)
-            @screen.commit("input> #{m[:content]}")
-          elsif %w[model assistant].include?(m[:role].to_s)
-            responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
-            Array(MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
-              record = join_record(records, part)
-              duration = record&.dig("duration_ms")
-              @screen.commit(join_tool_line(part, duration_ms: duration.is_a?(Numeric) ? duration : nil,
-                                                  saved_status: record&.dig("status"),
-                                                  auto_allowed: record&.dig("guardrail")))
-            end
-          end
-        end
-      end
-
-      # The prompt's turn's saved tool records (AttachLink: SessionMetrics,
-      # in this machine's state dir, as #attach_images): none for a prompt
-      # with no turn id (an older session) or a session with no analytics.
-      def join_tool_records(prompt)
-        @link.saved_tool_records(prompt[:turn_id] || prompt["turn_id"])
-      end
-
-      # The turn's saved +record+ when it failed with the fields its line is
-      # made of (SessionMetrics#failure_fields), else nil: a completed or
-      # older turn — or one saved before the failure field — draws its
-      # answer as before (a canceled one its line).
-      def join_failed_record(record)
-        return nil unless record && record["status"] == "failed" && record["failure"].is_a?(Hash)
-
-        failure = record["failure"]
-        return nil if failure["summary"].to_s.empty? && failure["message"].to_s.empty?
-
-        record
-      end
-
-      # The saved record of +part+'s call (its duration and status): the
-      # next record of its tool, in call order, consumed with the ones it
-      # skipped. By tool and order, not by iteration: an empty retry spends
-      # an iteration that left no message (as the web's timing.js
-      # takeRecord). nil for a call that left none: it never finished, or a
-      # worker before turn ids saved it.
-      def join_record(records, part)
-        return nil if part[:output].nil?
-
-        at = records.index { |r| r["tool"].to_s == part[:tool].to_s }
-        return nil unless at
-
-        records.shift(at + 1).last
-      end
-
-      # A saved call's row; "no result" for a call the turn never answered
-      # (it ended first). Its status is the saved record's, as live and the
-      # web's reload (a guardrail's "blocked" is no error), else read from
-      # its result (a guardrail's deny text reads blocked too). A record that
-      # System 1 allowed once (+auto_allowed+, its saved {rule, p}) says so,
-      # as the live row does.
-      def join_tool_line(part, duration_ms: nil, saved_status: nil, auto_allowed: nil)
-        output = part[:output]
-        command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
-        text = ToolActivity.saved_result_text(output) unless output.nil?
-        status = if output.nil?
-                   "no result"
-                 elsif !saved_status.to_s.empty?
-                   saved_status.to_s
-                 elsif ToolActivity.guardrail_denied?(text)
-                   "blocked"
-                 else
-                   ToolActivity.tool_activity_status(text, part[:tool], command: command)
-                 end
-        activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
-                     params: part[:params], status: status,
-                     description: ToolView.description_title(part[:view] || {}) }
-        "#{format_tool_activity_line(activity, duration_ms: duration_ms)}" \
-          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}#{format_tool_cut_suffix(part[:output_truncated])}" \
-          "#{auto_allowed_suffix(auto_allowed)}"
-      end
-
-      # The live row's System 1 suffix for a saved record's {rule, p}.
-      def auto_allowed_suffix(saved)
-        return "" unless saved.is_a?(Hash)
-
-        format_tool_guardrail_suffix({ decided_by: "system one", p: saved["p"] || saved[:p] })
       end
 
       # The context notes that came since the last prompt (+from+, its index

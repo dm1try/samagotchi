@@ -332,7 +332,9 @@ module Samagotchi
           # note's (a cancel's, a failure's), else completed.
           def kind
             status = @record && @record[:status].to_s
-            return status if END_TYPES.key?(status)
+            # A failed record saved before its failure field says nothing a
+            # failure's line is made of: the turn's own note decides.
+            return status if END_TYPES.key?(status) && !(status == "failed" && !@record[:failure].is_a?(Hash))
 
             # Only the turn's own ending: a note that is its last message.
             last = own_messages.last
@@ -429,7 +431,7 @@ module Samagotchi
             view = part.slice(*ToolRowFields::EVENT_KEYS).compact
             @events << { type: :tool_call_started, **call, params: part[:params], **title, **view }
             place_at(iteration, index)
-            activity = { tool: part[:tool], status: (rec && rec[:status]&.to_s) || ToolActivity.tool_activity_status(part[:output], part[:tool]),
+            activity = { tool: part[:tool], status: (rec && rec[:status]&.to_s) || status_of(part),
                          params: part[:params], **title,
                          action: part[:label] || ToolActivity.tool_activity_action(part[:tool]) }
             activity[:no_match] = true if rec && rec[:no_match]
@@ -445,6 +447,20 @@ module Samagotchi
             completed[:diff] = part[:diff] if part[:diff]
             completed[:images] = part[:images] if part[:images]
             @events << completed
+          end
+
+          # A call's status with no record of it, from its saved output as a
+          # reload always read it: "no result" for a call the turn never
+          # answered, "blocked" for a guardrail's deny, else the live rule
+          # (a grep that found nothing is ok).
+          def status_of(part)
+            return "no result" if part[:output].nil?
+
+            text = ToolActivity.saved_result_text(part[:output])
+            return "blocked" if ToolActivity.guardrail_denied?(text)
+
+            command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
+            ToolActivity.tool_activity_status(text, part[:tool], command: command)
           end
 
           # The turn's next tool record of +tool+, in call order, with the
