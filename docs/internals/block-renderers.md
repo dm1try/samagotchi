@@ -78,7 +78,7 @@ is model-written**, so a renderer bug or an injected diagram must not reach a pa
    has origin `null` and can't read chi's API; WebKit may still attach a same-host cookie to a request it makes (seen with a
    test cookie to another port), so what holds is that the answer stays unreadable, not that no cookie is ever sent.
 3. The page accepts messages only where `e.source === frame.contentWindow`, of known types, and treats them as data
-   (`frameMessage`). No other window `message` listener exists on the page.
+   (`frameMessage`). No other window `message` listener exists on the page (`spec/web/public/message_listeners.test.js` keeps it so).
 4. Code enters the frame by postMessage from the page's own authenticated fetch (the frame's CSP closes its network but for
    WebRTC, the residual risk below, and it has no cookie),
    then as `script.text = code`. `eval` doesn't work: a library's `"use strict"` keeps its global local. A syntax error doesn't
