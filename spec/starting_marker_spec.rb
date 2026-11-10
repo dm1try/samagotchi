@@ -31,6 +31,27 @@ RSpec.describe Samagotchi::StartingMarker do
       expect(Dir.children(dir_of(to.id)).grep(/starting\./)).to be_empty
     end
 
+    it "takes over a fresh start from before +over_before+ (a stop), not one from after it" do
+      described_class.mark(to.id, state_dir: tmpdir)
+      at = Time.iso8601(JSON.parse(File.read(File.join(dir_of(to.id), "starting")))["at"])
+
+      expect(described_class.claim(to.id, state_dir: tmpdir, over_before: at - 1)).to be(false)
+      expect(described_class.claim(to.id, state_dir: tmpdir, over_before: at)).to be(true)
+      expect(described_class.claim(to.id, state_dir: tmpdir, over_before: at)).to be(false)
+    end
+
+    # A pid the system won't probe: EPERM is a running process (another
+    # user's, a reused pid), any other error holds nothing; neither raises.
+    it "reads a pid it can't probe without raising" do
+      described_class.mark(to.id, state_dir: tmpdir)
+      allow(Process).to receive(:kill).and_raise(Errno::EPERM)
+      expect(described_class.claim(to.id, state_dir: tmpdir)).to be(false)
+
+      allow(Process).to receive(:kill).and_raise(Errno::EINVAL)
+      expect(described_class.fresh?(to.id, state_dir: tmpdir)).to be(false)
+      expect(described_class.claim(to.id, state_dir: tmpdir)).to be(true)
+    end
+
     it "lets one of many racing claimers win" do
       results = Array.new(8) { Thread.new { described_class.claim(to.id, state_dir: tmpdir) } }.map(&:value)
 

@@ -114,7 +114,9 @@ module Samagotchi
     # A worker being started (#starting?, from any process) may not hold the
     # lock yet, and no stop came since: a stop cancels the hold-off (a
     # resume after it clears the stop and spawns; the starting worker and
-    # the new one race the lock, one wins).
+    # the new one race the lock, one wins). Of resumes after one stop, one
+    # spawns: resume_session's claim takes over only a start marked before
+    # the stop.
     def start_pending? = starting? && !stop_marked?
 
     # resume_session's hold-off, after the owner: a start pending.

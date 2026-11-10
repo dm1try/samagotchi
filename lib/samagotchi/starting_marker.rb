@@ -34,34 +34,77 @@ module Samagotchi
     def mark(session_id, state_dir:, pid: Process.pid)
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
-      AtomicFile.write(File.join(dir, FILE), JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(3) }))
+      AtomicFile.write(File.join(dir, FILE), JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(6) }))
     end
 
     # Claim the start of +session_id+'s worker: write the marker only when
-    # no fresh one is there (a link(2) of a written temp file: of starters
-    # racing, one wins). A stale or dead one is taken over; two takers of
-    # one stale marker can both win (rare: both spawn, and their workers
-    # race the owner lock, one wins).
+    # no fresh one holds it (a link(2) of a written temp file: of starters
+    # racing, one wins). A stale or dead one is taken over (renamed away,
+    # then checked to be the one judged, so a takeover never removes a new
+    # claim), and so is a fresh one written before +over_before+ (a stop
+    # cancels the starts before it, not the ones after it).
     # @param pid [Integer] the process the hold lasts for (#mark)
+    # @param over_before [Time, nil] take over a start marked at or before it
     # @return [Boolean] whether this caller holds the start now
-    def claim(session_id, state_dir:, pid: Process.pid)
+    def claim(session_id, state_dir:, pid: Process.pid, over_before: nil)
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, FILE)
       temp = File.join(dir, "#{FILE}.#{Process.pid}.#{SecureRandom.hex(4)}")
-      File.write(temp, JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(3) }))
-      2.times do
+      File.write(temp, JSON.generate({ "pid" => pid, "at" => Time.now.iso8601(6) }))
+      3.times do
         File.link(temp, path)
         return true
       rescue Errno::EEXIST
-        return false if fresh?(session_id, state_dir: state_dir)
-
-        FileUtils.rm_f(path)
+        seen = read_raw(path) or next
+        return false if holds?(seen, over_before)
+        return false unless take_over(path, seen)
       end
       false
     ensure
       FileUtils.rm_f(temp) if temp
     end
+
+    # Move the marker +seen+ out of the way: false when what was renamed is
+    # another claim's (put back), true when it was +seen+ or already gone.
+    def take_over(path, seen)
+      tomb = "#{path}.old.#{Process.pid}.#{SecureRandom.hex(4)}"
+      File.rename(path, tomb)
+      return true if File.read(tomb) == seen
+
+      begin
+        File.link(tomb, path)
+      rescue Errno::EEXIST
+        nil
+      end
+      false
+    rescue Errno::ENOENT
+      true
+    ensure
+      FileUtils.rm_f(tomb) if tomb
+    end
+    private_class_method :take_over
+
+    def read_raw(path)
+      File.read(path)
+    rescue Errno::ENOENT
+      nil
+    end
+    private_class_method :read_raw
+
+    # Whether the marker text +raw+ holds a start: fresh, its process
+    # running, and (with +over_before+) marked after it.
+    def holds?(raw, over_before = nil)
+      data = JSON.parse(raw)
+      at = Time.iso8601(data["at"].to_s)
+      return false if Time.now - at > STALE
+      return false if over_before && at <= over_before
+
+      process_alive?(data["pid"].to_i)
+    rescue JSON::ParserError, ArgumentError, TypeError, RangeError, SystemCallError
+      false
+    end
+    private_class_method :holds?
 
     def clear(session_id, state_dir:)
       FileUtils.rm_f(File.join(Session.session_dir(session_id, state_dir: state_dir), FILE))
@@ -70,14 +113,9 @@ module Samagotchi
     # Whether a worker is being started for +session_id+ right now: its
     # marker is there, fresh, and the process it names runs.
     def fresh?(session_id, state_dir:)
-      file = File.join(Session.session_dir(session_id, state_dir: state_dir), FILE)
-      return false unless File.exist?(file)
-
-      data = JSON.parse(File.read(file))
-      return false if Time.now - Time.iso8601(data["at"].to_s) > STALE
-
-      process_alive?(data["pid"].to_i)
-    rescue JSON::ParserError, ArgumentError, SystemCallError
+      raw = read_raw(File.join(Session.session_dir(session_id, state_dir: state_dir), FILE))
+      !raw.nil? && holds?(raw)
+    rescue SystemCallError
       false
     end
 

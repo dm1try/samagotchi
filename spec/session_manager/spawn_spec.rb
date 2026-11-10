@@ -218,6 +218,53 @@ RSpec.describe Samagotchi::SessionManager do
         expect(Process).to have_received(:spawn).exactly(3).times
       end
 
+      # The plan's two shells: a stop, then two sends at once. The stop
+      # cancels a start from before it, not one a resume made after it.
+      it "is spawned once by two resumes after a stop, and again over a start from before the stop" do
+        Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+        sleep(0.01) # sleep-ok: the stop's mtime comes after the start's at
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        # Both see the stop (presence read), then race for the start.
+        allow(Samagotchi::Session).to receive(:clear_stopped)
+
+        2.times { described_class.resume_session(session.id, state_dir: tmpdir) }
+
+        expect(Process).to have_received(:spawn).once
+      end
+
+      # The stop carries its own at, on the starting marker's clock: a
+      # coarse or skewed file mtime doesn't make a start from before the stop
+      # read as after it.
+      it "takes over a start from before the stop by the stop's own time, not its file's mtime" do
+        Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+        sleep(0.01) # sleep-ok: the stop's at comes after the start's
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        stop_file = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "stopped")
+        File.utime(Time.now - 10, Time.now - 10, stop_file)
+
+        described_class.resume_session(session.id, state_dir: tmpdir)
+
+        expect(Process).to have_received(:spawn).once
+      end
+
+      it "falls back to the mtime of an older chi's empty stop file" do
+        Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+        stop_file = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "stopped")
+        File.write(stop_file, "")
+        File.utime(Time.now + 10, Time.now + 10, stop_file)
+
+        described_class.resume_session(session.id, state_dir: tmpdir)
+
+        expect(Process).to have_received(:spawn).once
+      end
+
+      it "drops its claim when the spawn fails before Process.spawn (the command, the options)" do
+        allow(described_class).to receive(:worker_command).and_raise(ArgumentError, "no chi")
+
+        expect { described_class.resume_session(session.id, state_dir: tmpdir) }.to raise_error(ArgumentError)
+        expect(File.exist?(File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "starting"))).to be(false)
+      end
+
       it "is spawned again once the marker is stale" do
         described_class.resume_session(session.id, state_dir: tmpdir)
         File.write(File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "starting"),

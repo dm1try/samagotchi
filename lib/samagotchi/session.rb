@@ -879,7 +879,25 @@ module Samagotchi
 
       dir = session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
-      FileUtils.touch(File.join(dir, STOPPED_FILE))
+      # Its own at, on the clock the starting marker's at is written with
+      # (StartingMarker; resume_session compares them): a file's mtime may be
+      # coarse or skewed. Older chi readers ask only whether it exists.
+      AtomicFile.write(File.join(dir, STOPPED_FILE), JSON.generate({ "at" => Time.now.iso8601(6) }))
+    end
+
+    # When the stop marker was written: its own at, or (an older chi's empty
+    # file) its mtime; nil without one.
+    # @return [Time, nil]
+    def self.stopped_at(session_id, state_dir: default_state_dir)
+      path = File.join(session_dir(session_id, state_dir: state_dir), STOPPED_FILE)
+      own = begin
+        Time.iso8601(JSON.parse(File.read(path))["at"].to_s)
+      rescue JSON::ParserError, ArgumentError, TypeError, NoMethodError
+        nil
+      end
+      own || File.mtime(path)
+    rescue SystemCallError
+      nil
     end
 
     # Remove the stop marker (a resume, before its worker starts).

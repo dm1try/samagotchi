@@ -154,8 +154,15 @@ module Samagotchi
         # The new worker must not find the session stopped (it would exit).
         # Nothing else is written: the file is the worker's, which turns a
         # status from before it idle under the lock (Worker#settle_stale_status).
-        Session.clear_stopped(session.id, state_dir: sd)
-        spawn_worker_for_session(session, state_dir: sd)
+        begin
+          Session.clear_stopped(session.id, state_dir: sd)
+          spawn_worker_for_session(session, state_dir: sd)
+        rescue StandardError
+          # Its claim holds nothing now (a command or the options failed
+          # before Process.spawn): no 60 s hold-off.
+          StartingMarker.clear(session.id, state_dir: sd)
+          raise
+        end
         session
       end
 
@@ -210,20 +217,23 @@ module Samagotchi
       # Take the start for resume_session: the marker claimed (of resumes
       # racing from any processes, one claims it), then the owner read
       # again: a worker that took the lock since the first read cleared an
-      # earlier start's marker, and keeps the session. After a stop the
-      # marker is written over (a stop cancels the hold-off).
+      # earlier start's marker, and keeps the session. After a stop, a start
+      # marked before it is taken over (a stop cancels the hold-off), one a
+      # resume made after it holds (two sends after a stop start one worker).
       # @return [Boolean] whether this resume spawns
       private def claim_start(session_id, state_dir:, stopped:)
-        if stopped
-          StartingMarker.mark(session_id, state_dir: state_dir)
-        else
-          return false unless StartingMarker.claim(session_id, state_dir: state_dir)
-        end
+        over_before = stopped ? stopped_at(session_id, state_dir) : nil
+        return false unless StartingMarker.claim(session_id, state_dir: state_dir, over_before: over_before)
         return true unless session_owner(session_id, state_dir: state_dir)
 
         StartingMarker.clear(session_id, state_dir: state_dir)
         false
       end
+
+      # When the stop marker was written (Session.stopped_at); nil when it
+      # is gone (another resume cleared it: its start came after the stop,
+      # and holds).
+      private def stopped_at(session_id, state_dir) = Session.stopped_at(session_id, state_dir: state_dir)
 
       private def note_starter(waiter)
         @starters_mutex.synchronize do
