@@ -5,6 +5,7 @@ require "samagotchi/worker_link"
 require "tmpdir"
 require "samagotchi/plugin/context"
 require "samagotchi/session_manager"
+require "samagotchi/bridge/turn_drawings"
 
 # ctx.sessions (docs/plugins.md, Sessions): fork, send and read.
 RSpec.describe Samagotchi::Plugin::Sessions do
@@ -108,6 +109,55 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       notes = Samagotchi::SessionInbox.find_new_note_files(Samagotchi::Session.session_dir(id, state_dir: state))
                                       .map { |f| Samagotchi::SessionInbox.read_note(f)[:text] }
       expect(notes).to eq(["Context moved with this session: pr-1."])
+    end
+
+    it "carries the parent's turn drawings its seed keeps as they were, and none of a turn it changed" do
+      drawings = Samagotchi::Bridge::TurnDrawings
+      head = { role: "system", content: "You are chi." }
+      parent.messages = [head, { role: "user", content: "hello", turn_id: "tp" }, { role: "model", content: "hi" },
+                         { role: "user", content: "more", turn_id: "tq" }, { role: "model", content: "yes" }]
+      parent.save(state_dir: tmpdir)
+      line = lambda do |id, from, to|
+        drawings::Line.new(v: 1, turn_id: id, kind: "completed", from: from, to: to,
+                           from_digest: drawings.digest(parent.messages[from]), to_digest: drawings.digest(parent.messages[to - 1]),
+                           drawing: { "prompt" => "x", "turn_id" => id, "parts" => [] }, end: { "type" => "turn_completed", "turn_id" => id })
+      end
+      parent_dir = Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(parent_dir)
+      File.write(File.join(parent_dir, drawings::FILE), [line.call("tp", 1, 3), line.call("tq", 3, 5)].map { |l| "#{JSON.generate(l.to_h)}\n" }.join)
+      # A plugin's seed (ctx.messages, no system head): the first turn kept, the second's answer changed.
+      seed = parent.messages[1, 3] + [{ role: "model", content: "no" }, { role: "user", content: "q" }, { role: "model", content: "a" }]
+
+      id = sessions.fork(messages: seed)
+
+      carried = drawings.read(Samagotchi::Session.session_dir(id, state_dir: tmpdir))
+      expect(carried.map { |l| [l.turn_id, l.from, l.to] }).to eq([["tp", 1, 3]])
+      # Once the child's first turn puts its head back, the carried line draws that turn; the others are made.
+      child = [head] + Samagotchi::Session.load(id, state_dir: tmpdir).messages
+      covered = drawings.cover(carried, child)
+      expect(covered.first).to eq(carried.first)
+      expect(covered[1]).to have_attributes(turn_id: "tq", from: 3, to: 5)
+      expect(covered[2].turn_id).to start_with("m5-")
+    end
+
+    it "carries them for a seed that keeps the system head too" do
+      drawings = Samagotchi::Bridge::TurnDrawings
+      parent.messages = [{ role: "system", content: "You are chi." }, { role: "user", content: "hello", turn_id: "tp" }, { role: "model", content: "hi" }]
+      parent.save(state_dir: tmpdir)
+      kept = drawings::Line.new(v: 1, turn_id: "tp", kind: "completed", from: 1, to: 3, from_digest: drawings.digest(parent.messages[1]),
+                                to_digest: drawings.digest(parent.messages[2]), drawing: { "parts" => [] }, end: { "type" => "turn_completed" })
+      parent_dir = Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(parent_dir)
+      File.write(File.join(parent_dir, drawings::FILE), "#{JSON.generate(kept.to_h)}\n")
+
+      id = sessions.fork(messages: parent.messages + [{ role: "user", content: "q" }])
+
+      expect(drawings.read(Samagotchi::Session.session_dir(id, state_dir: tmpdir)).map(&:turn_id)).to eq(["tp"])
+    end
+
+    it "starts the fork without drawings when the parent has none" do
+      id = sessions.fork(messages: [{ role: "user", content: "q" }])
+      expect(File).not_to exist(File.join(Samagotchi::Session.session_dir(id, state_dir: tmpdir), Samagotchi::Bridge::TurnDrawings::FILE))
     end
 
     # A plugin's first prompt is the plugin's, as its send is (CommandIntake):

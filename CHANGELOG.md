@@ -14,6 +14,7 @@ and commands may change between minor versions. How releases are made:
   are drawn from a drawing rebuilt from their messages, with small differences (no hook notices or durations that were
   never kept).
 - chi --attach draws the last turn the same way for every session.
+- A forked session and a one-shot run keep their turns' drawings.
 
 ### Fixed
 

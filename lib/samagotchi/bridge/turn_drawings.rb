@@ -5,6 +5,7 @@ require "fileutils"
 require "json"
 require_relative "../log"
 require_relative "../message_time"
+require_relative "../context_note"
 require_relative "../degrade"
 require_relative "../steer"
 
@@ -289,6 +290,27 @@ module Samagotchi
           end
         end
         private :uncovered
+
+        # A fork's drawings (Plugin::Sessions#fork, before its child's worker
+        # spawns: no other writer): the lines of +from_dir+'s file that hold
+        # against the child's seed +messages+ (same indices, same ends; a range
+        # whose end the image copy changed doesn't), written as the child's
+        # file. A seed without the system head (a plugin's ctx.messages) is
+        # read as the child's messages will be once its first turn puts the
+        # head back at index 0 (ContextNote.with_system_head): the lines keep
+        # the parent's indices, and hold from then on. Its other turns are
+        # made from their messages at read.
+        # @return [Integer] the lines carried
+        def carry(from_dir:, to_dir:, messages:)
+          seed = Array(messages)
+          seed = [{ role: "system", content: "" }] + seed unless ContextNote.system_head?(seed.first)
+          lines = valid(read(from_dir), seed)
+          return 0 if lines.empty?
+
+          FileUtils.mkdir_p(to_dir)
+          File.write(File.join(to_dir, FILE), lines.map { |line| "#{JSON.generate(line.to_h)}\n" }.join, perm: 0o600)
+          lines.size
+        end
 
         # The last parseable line of +path+, or nil.
         # @return [Line, nil]
