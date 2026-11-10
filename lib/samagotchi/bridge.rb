@@ -23,6 +23,7 @@ require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
 require_relative "bridge/turn_drawings"
+require_relative "bridge/turn_ranges"
 require_relative "session"
 require_relative "engine"
 require_relative "system_one/log"
@@ -327,11 +328,12 @@ module Samagotchi
     # working_set: the running turn's last :working_set_updated ({items:,
     # at:}, TurnAccumulator#working_set), which the messages lag; nil
     # between turns and before the turn emitted one.
-    # last_turn_drawing: the last exchange's turn as live drew it
-    # ({drawing:, end:}, TurnDrawings#last, not unfolded: an attaching TUI
-    # unfolds it, TurnAccumulator.replay_events), only while it holds against
-    # these messages and ends at their end; absent otherwise (a rollback, a
-    # later Continue or note, an older worker's file).
+    # last_turn_drawing: the last prompt's turn as live drew it ({drawing:,
+    # end:}, the file's line for that turn id, not unfolded: an attaching
+    # TUI unfolds it, TurnAccumulator.replay_events), only while it holds
+    # against these messages; a reminder's, a Continue's or a note after it
+    # hides it no more. Absent otherwise (no prompt with a turn id, a
+    # rollback, an older worker's file).
     # @return [Hash] {messages:, current_turn:, working_set:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
     #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:}
     def snapshot
@@ -361,19 +363,40 @@ module Samagotchi
       end
     end
 
-    # The newest drawing (TurnDrawings#last) as the snapshot sends it, when
-    # it is the last exchange's: its range still holds against +messages+
-    # and ends at their end, and is no bigger than a restart reads back
-    # (TurnDrawings.sendable?). nil otherwise.
+    # The last prompt's drawing as the snapshot sends it: the turn an
+    # attaching TUI draws (TerminalUI::JoinReplay: the last user message
+    # that opens a turn), its newest line that still holds against
+    # +messages+, the one this worker wrote last (TurnDrawings#last) else
+    # the file's (TurnDrawings.read, cached by its size and mtime), and no
+    # bigger than a restart reads back (TurnDrawings.sendable?). Only when
+    # it is the last turn (TurnRanges: notes after it are fine): a join
+    # draws the line's rows and then the newest answer, so a later turn's
+    # (a reminder's, a Continue's) would sit under the prompt's rows
+    # without its own. nil otherwise.
     # @return [Hash, nil] {drawing:, end:} (string keys inside, as the file)
     def last_turn_drawing(messages)
-      line = @drawings.last
-      return nil unless line && line.to == messages.size && TurnDrawings.holds?(line, messages)
-      return nil unless TurnDrawings.sendable?(line)
+      id = last_prompt_turn_id(messages)
+      return nil unless id
+
+      line = [@drawings.last].compact.find { |l| l.turn_id == id && TurnDrawings.holds?(l, messages) } ||
+             TurnDrawings.read(session_dir).reverse_each.find { |l| l.turn_id == id && TurnDrawings.holds?(l, messages) }
+      return nil unless line && TurnDrawings.sendable?(line)
+      return nil unless TurnRanges.of(messages).last&.to == line.to
 
       { drawing: line.drawing, end: line.end }
     end
     private :last_turn_drawing
+
+    # The turn id of the last user message that opens a turn
+    # (Steer.turn_prompt?, as JoinReplay finds the prompt it draws), nil
+    # for none or one with no id (a `!cmd`'s record, a line from before
+    # turn ids).
+    def last_prompt_turn_id(messages)
+      prompt = messages.reverse_each.find { |m| m.is_a?(Hash) && (m[:role] || m["role"]).to_s == "user" && Steer.turn_prompt?(m) }
+      id = prompt && (prompt[:turn_id] || prompt["turn_id"])
+      id.is_a?(String) && !id.empty? ? id : nil
+    end
+    private :last_prompt_turn_id
 
     # The snapshot and the session state (status, pending question, ...) as
     # one step of the event log, both as of the same event_seq: what a

@@ -12,6 +12,7 @@ and commands may change between minor versions. How releases are made:
 
 - The copied-folder notice (two folders sharing a chi project id) no longer tells the original to take a new id: it
   names both folders and says to run `chi project init --new-id` in the copy.
+- chi --attach draws the last turn as live even when a note came after it.
 
 ## [0.161.0] - 2026-11-10
 
