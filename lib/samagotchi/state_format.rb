@@ -60,11 +60,13 @@ module Samagotchi
       end
     end
 
+    # @param collection [String, Symbol, nil] the key of the file's records;
+    #   nil for a file of document members only (no entries)
     def read(data, collection:)
       raise InvalidDocument, "the state file must contain a JSON object" unless data.is_a?(Hash)
 
-      collection = collection.to_s
-      entries = Array(data[collection]).map { |raw| read_record(raw) }
+      collection = collection&.to_s
+      entries = collection ? Array(data[collection]).map { |raw| read_record(raw) } : []
       attributes = {}
       document_members.each do |member|
         key = member.name.to_s
@@ -74,7 +76,7 @@ module Samagotchi
                                     default_value(member.default, attributes)
                                   end
       end
-      known = %w[version updated_at] + [collection] + document_members.map { |member| member.name.to_s }
+      known = %w[version updated_at] + [collection].compact + document_members.map { |member| member.name.to_s }
       stored_version = data["version"]
       stored_version = 0 unless stored_version.is_a?(Integer) && stored_version >= 0
 
@@ -83,12 +85,14 @@ module Samagotchi
                    entries: entries, attributes: attributes)
     end
 
+    # @param collection [String, Symbol, nil] as #read's (nil: no entries written)
+    # @param updated_at [String, nil] nil: none written
     def write(document, collection:, updated_at:)
-      document.extra.transform_keys(&:to_s).merge(document.attributes.transform_keys(&:to_s)).merge(
-        "version" => [document.version, @version].max,
-        "updated_at" => updated_at,
-        collection.to_s => document.entries.map(&:to_h)
-      )
+      body = document.extra.transform_keys(&:to_s).merge(document.attributes.transform_keys(&:to_s))
+                     .merge("version" => [document.version, @version].max)
+      body["updated_at"] = updated_at if updated_at
+      body[collection.to_s] = document.entries.map(&:to_h) if collection
+      body
     end
 
     private

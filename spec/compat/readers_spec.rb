@@ -5,6 +5,7 @@ require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
 require "samagotchi/continue_intent"
 require "samagotchi/memory_bundle/installed_bundle"
+require "samagotchi/memory_bundle/provenance"
 require "samagotchi/schedules"
 require "samagotchi/session"
 require "samagotchi/session_inbox"
@@ -15,7 +16,8 @@ require_relative "../../script/release/release_tools"
 RSpec.describe "the recorded compatibility corpus" do
   let(:compat_root) { File.join(__dir__) }
   # The last release whose corpus has no live-session files (input, note,
-  # continue intent, stop marker): a later one must hold them.
+  # continue intent, stop marker) and no install journal: a later one must
+  # hold them.
   let(:live_files_after) { Gem::Version.new("0.164.0") }
 
   def corpus_version
@@ -88,6 +90,24 @@ RSpec.describe "the recorded compatibility corpus" do
     expect(record).to have_attributes(name: "compat", version: version, scope: "system", source: "compat-fixture")
 
     expect_live_files_read(sessions_dir, session_dir, version, since)
+    expect_install_journal_read(root, version, since)
+  end
+
+  # An install journal (pending.json) beside the bundle record: what the
+  # next install, maybe another chi's, reads.
+  def expect_install_journal_read(root, version, since)
+    journal = File.join(root, ".bundles", "compat", "pending.json")
+    return unless recorded?(journal, version, since)
+
+    Dir.mktmpdir("chi-compat-journal-") do |home|
+      with_config_home(home) do
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: "compat")
+        FileUtils.mkdir_p(provenance.bundle_dir)
+        FileUtils.cp(journal, provenance.pending_path)
+        expect(provenance.pending_scope).to eq("system")
+        expect(provenance.pending_shas("compat.md", target_dir: "/compat-fixture/memories")).to eq(["sha256:compat"])
+      end
+    end
   end
 
   # The files other chi versions write into a live session's folder.

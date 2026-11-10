@@ -242,6 +242,41 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
     end
   end
 
+  describe "the state file's format (STATE_FORMAT)" do
+    def write_state(data)
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, JSON.generate(data))
+    end
+
+    it "reads a file with no version as the old one and writes the current version" do
+      write_state(checked_at: (clock.first - (48 * 3600)).iso8601, available: nil, notified: ["0.0.1"], auto_failed: ["0.0.2"])
+
+      update_check = checker
+      expect(update_check.auto_failed?("0.0.2")).to be(true)
+      expect(update_check.check).to be(true)
+      expect(JSON.parse(File.read(state_file)))
+        .to include("version" => described_class::STATE_FORMAT_VERSION, "notified" => ["0.0.1", release_version],
+                    "auto_failed" => ["0.0.2"])
+    end
+
+    it "keeps a newer chi's version and the keys it doesn't know through a write" do
+      write_state(version: described_class::STATE_FORMAT_VERSION + 1, notified: [], later: { "kept" => true })
+
+      expect(checker.check).to be(true)
+      expect(JSON.parse(File.read(state_file)))
+        .to include("version" => described_class::STATE_FORMAT_VERSION + 1, "later" => { "kept" => true },
+                    "available" => release_version)
+    end
+
+    it "reads a file that isn't a JSON object as no state" do
+      write_state([1, 2])
+
+      expect(checker.available).to be_nil
+      expect(checker.check).to be(true)
+      expect(JSON.parse(File.read(state_file))).to include("available" => release_version)
+    end
+  end
+
   it "uses the config checks for the minimum supported intervals" do
     entries = Samagotchi::Config::ENTRIES.to_h { |entry| [entry.key, entry] }
 

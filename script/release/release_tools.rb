@@ -109,6 +109,12 @@ module ReleaseTools
         bundle_record = File.join(staged, ".bundles", "compat", "manifest.json")
         FileUtils.mkdir_p(File.dirname(bundle_record))
         FileUtils.cp(manifest_path, bundle_record)
+        # An install journal (an upgrade interrupted before its record):
+        # the next run, maybe another chi's, reads its shas.
+        provenance.write_pending(version: version, scope: "system", target_dir: "/compat-fixture/memories",
+                                 files: { "compat.md" => "sha256:compat" })
+        bundle_journal = File.join(File.dirname(bundle_record), "pending.json")
+        FileUtils.cp(provenance.pending_path, bundle_journal)
 
         required = [
           session_path,
@@ -117,6 +123,7 @@ module ReleaseTools
           drawn_path,
           schedules.path,
           bundle_record,
+          bundle_journal,
           *live_paths
         ]
         missing = required.reject { |path| File.file?(path) }

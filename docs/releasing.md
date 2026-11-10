@@ -99,7 +99,8 @@ The agent does each step and stops where the user has to say yes.
    which it names in the CHANGELOG's "Update with `chi update`" line, and the
    SINCE entries it moved out of their `# Unreleased` comments. It also records
    the release's session, bridge, cards, schedules and bundle state, and a
-   session's input file, note, continue intent and stop marker, under
+   session's input file, note, continue intent and stop marker and a bundle's
+   install journal, under
    `spec/compat/X.Y.Z/`; commit those samples with the release so the next
    release's reader spec checks them as N-1 data.
 5. **Check.** Add all release files, including the new compatibility corpus, then run it:

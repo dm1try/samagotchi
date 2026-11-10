@@ -151,7 +151,8 @@ current version (or the current corpus when it is the only one) through today's
 session, Bridge, CardStore, schedules and bundle-record readers, and the files
 other chi versions write into a live session's folder: a queued input file, a
 context note, a continue's intent (`continue.json`) and the stop marker (the
-starting marker isn't recorded: a recorded one is always stale). A corpus from
+starting marker isn't recorded: a recorded one is always stale), and a bundle's
+install journal (`.bundles/compat/pending.json`). A corpus from
 0.164.0 or before has none of those and skips them; a later one must hold them.
 A second example reads a corpus the writer records now, so a writer change that
 today's readers can't read goes red before the release. `rake

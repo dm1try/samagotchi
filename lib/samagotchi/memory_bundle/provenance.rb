@@ -66,6 +66,21 @@ module Samagotchi
         ]
       )
 
+      # pending.json's format (#write_pending), in its pending_format key:
+      # its version key is the bundle's. A journal with no pending_format is
+      # one from before it (the same members); a newer chi's keeps its
+      # format and the keys this one doesn't know through a write.
+      PENDING_FORMAT_VERSION = 1
+      PENDING_FORMAT = StateFormat.new(
+        version: PENDING_FORMAT_VERSION,
+        members: [
+          StateFormat.required(:scope),
+          StateFormat.required(:target_dir),
+          StateFormat.added(:version, in_version: 1, default: nil),
+          StateFormat.added(:files, in_version: 1, default: {})
+        ]
+      )
+
       def initialize(name:)
         @name = name
         @bundle_dir = File.join(self.class.bundles_dir, name)
@@ -125,9 +140,14 @@ module Samagotchi
       def write_pending(version:, scope:, target_dir:, files:)
         shas = pending_files(target_dir: target_dir)
         files.each { |key, sha| shas[key] = (shas.fetch(key, []) + [sha]).uniq }
+        target = File.expand_path(target_dir)
+        earlier = pending_metadata
+        kept = earlier && earlier["target_dir"] == target ? earlier.except("version", "scope", "target_dir", "files") : {}
+        format = [kept.delete("pending_format").to_i, PENDING_FORMAT_VERSION].max
         FileUtils.mkdir_p(@bundle_dir)
         AtomicFile.write(pending_path, JSON.pretty_generate(
-          "version" => version.to_s, "scope" => scope.to_s, "target_dir" => File.expand_path(target_dir), "files" => shas
+          kept.merge("pending_format" => format, "version" => version.to_s, "scope" => scope.to_s, "target_dir" => target,
+                     "files" => shas)
         ))
       end
 
@@ -584,12 +604,21 @@ module Samagotchi
         files.is_a?(Hash) ? files.to_h { |key, shas| [key, Array(shas).grep(String)] } : {}
       end
 
+      # The journal as PENDING_FORMAT reads it, string keys, its format under
+      # pending_format; nil when there is none or it doesn't read.
       def pending_metadata
         data = JSON.parse(File.read(pending_path))
-        return unless data.is_a?(Hash) && data["scope"].is_a?(String) && data["target_dir"].is_a?(String)
+        return unless data.is_a?(Hash)
 
-        data
-      rescue JSON::ParserError, EncodingError, SystemCallError
+        format = data["pending_format"]
+        format = nil unless format.is_a?(Integer) && format >= 0
+        document = PENDING_FORMAT.read({ "version" => format, "journals" => [data] }, collection: "journals")
+        journal = document.entries.first
+        return unless journal.readable?
+        return unless journal.attributes[:scope].is_a?(String) && journal.attributes[:target_dir].is_a?(String)
+
+        journal.to_h.merge("pending_format" => document.version)
+      rescue JSON::ParserError, EncodingError, SystemCallError, StateFormat::InvalidDocument
         nil
       end
       private :pending_files, :pending_metadata

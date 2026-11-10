@@ -351,7 +351,9 @@ first RubyGems check is about 30 seconds after chi web starts, then it checks at
 intervals. A stable release is available only after `update.min_age_hours` and when newer than both
 the running and newest installed chi. Its atomic, mode-0600
 `$XDG_STATE_HOME/samagotchi/update_check.json` keeps the check cooldown and versions already
-announced across restarts, and AutoUpdate's record (`auto`, `auto_failed`; `save_auto`). `update.notify: off`
+announced across restarts, and AutoUpdate's record (`auto`, `auto_failed`; `save_auto`); its `version` is its
+`StateFormat` (`UpdateCheck::STATE_FORMAT`: a file without one is an older chi's, a newer chi's keeps its version and
+unknown keys through a write). `update.notify: off`
 with `update.auto: off` starts no checker thread and makes no network request. `update_blocked` names why the local gem cannot be updated in place (checkout, Bundler, or
 an unwritable gem directory). The page tells the owner to run `chi update`; a newer `installed`
 version than the server itself still means restart chi web (its workers already run the newest chi,
