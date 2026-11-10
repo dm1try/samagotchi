@@ -1535,6 +1535,11 @@ body.all-view #scope .scope-where{display:none}
   #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis}
   #stripStatus{padding:3px 8px}
   #newBtn .brand-new{font-size:16px}
+  /* In a session the brand gives its room to the bar: a bare "+", a 32px round button (the start page keeps "chi"); its extra 4px
+     taken back so the bar keeps its height. */
+  body.has-session #newBtn .brand-name{display:none}
+  body.has-session #newBtn.brand{width:32px;height:32px;margin:-2px 0;padding:0;justify-content:center;align-items:center;border-radius:999px;border:1px solid var(--border-strong)}
+  body.has-session #newBtn .brand-new{font-size:20px;line-height:1;color:var(--text-2)}
 }
 /* The bell (notifications): quiet at the top bar's right end; filled in the accent when on, struck through when the browser blocks it. */
 /* The open session's title, when no strip card in sight shows it (session_title.js): the bar's middle, cut with an ellipsis; the whole first message in its tooltip.
