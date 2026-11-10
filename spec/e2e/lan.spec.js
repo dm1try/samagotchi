@@ -4,6 +4,7 @@
 // (playwright.config.js): the LAN tests skip, the review journey runs there.
 import fs from "node:fs";
 import { test, expect } from "./support/fixtures.js";
+import { clickBarItem } from "./support/layout.js";
 
 const NO_LAN = "no private IPv4 address on this machine";
 
@@ -139,7 +140,7 @@ test("a review: the owner starts one for a file and invites from the panel, the 
 
   const chip = owner.locator("#infoText .participants-chip");
   await expect(chip).toHaveText("participants · invite");
-  await chip.click();
+  await clickBarItem(owner, "participants");
   await owner.locator("#participantsPopover input[name=name]").fill("Alex");
   await owner.locator("#participantsPopover .pp-invite-btn").click();
   const link = await owner.locator("#participantsPopover .pp-link input").inputValue();

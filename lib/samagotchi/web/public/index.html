@@ -1094,14 +1094,15 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
   .bubble.question.approval .question-option{padding:5px 8px}
 }
 @media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.ts-spin,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
-#infoBar{display:flex;background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
+/* The session bar is one row at every width (bar_fold.js): what doesn't fit folds into ⋯. It wraps only for
+   #contextChips, a line of its own: the info's basis is 0, so the row's buttons never move to a line of theirs. */
+#infoBar{display:flex;background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
-/* The meta row keeps its room: with a plain flex:1 the bar's own buttons (continue, archive, stop session, delete)
-   shrink it to a narrow column in a small window and its items wrap into five lines. With a 640px basis they share
-   the line while they fit; when they don't, the buttons wrap to a line of their own (the bar already wraps) and the
-   meta keeps the width. */
-#infoBar .info{flex:1 1 640px;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
-#infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* The info takes the room the buttons leave; the fold keeps its chips within it (only pinned ones left, it clips). */
+#infoBar .info{flex:1 1 0;min-width:0;overflow:hidden;font-size:13px;line-height:1.4;display:flex;flex-direction:column;gap:2px}
+#infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:nowrap;white-space:nowrap;align-items:center}
+/* Nothing on the row shrinks: a chip's width is its natural one, as the fold measures it (bar_fold.js). */
+#infoBar .meta>*,#infoBar .meta .bar-group>*{flex:none}
 /* The id is a button (a click copies the full id, app.js): its own padding and no button look, the #infoBar button rule aside. */
 #infoBar .meta .id{padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--accent)}
 @media(hover:hover){#infoBar .meta .id:hover:not(:disabled){filter:none;border-color:var(--accent-border);background:var(--accent-bg)}}
@@ -1115,32 +1116,43 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
-/* The meta's three groups (info_bar.js): setup | relations | telemetry, a hairline between two. */
+/* The meta's four groups (info_bar.js): identity | setup | relations | trail, a hairline before each but the first. */
 #infoBar .meta .bar-group{display:flex;gap:8px;align-items:center;min-width:0;flex:none}
 #infoBar .meta .bar-sep{flex:none;width:1px;height:14px;background:var(--border-strong)}
-/* Above the phone's one scrolling line the meta is one line too: the telemetry takes the room left and its folder gives
-   way first (it already loses its start), then the model chip, down to 10ch; a chip is capped, cut with "…", their full
-   text in the title. The two groups are column grids: the giving chip's track (minmax(…, max-content)) leaves the
-   other chips as the group's min-content, so a group never shrinks under its fixed chips (they once slid under
-   continue →), and the info keeps that min-width: past it the bar's buttons wrap to a line of their own. */
-@media(min-width:601px){
-  #infoBar .info{min-width:auto}
-  #infoBar .meta{flex-wrap:nowrap}
-  #infoBar .meta .bar-group:is(.setup,.telemetry){display:grid;grid-auto-flow:column;grid-auto-columns:max-content}
-  #infoBar .meta .bar-group.setup{flex:0 1 auto;min-width:auto;grid-template-columns:max-content max-content minmax(10ch,max-content)}
-  #infoBar .meta .bar-group.telemetry{flex:1 1 0;min-width:auto;grid-template-columns:minmax(0,max-content)}
-  #infoBar .meta .telemetry>.dir{max-width:48ch}
-  #infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-}
-/* Below 900px the buttons already have a line of their own, and the meta's one line can be wider than the bar: its
-   groups wrap instead of being cut, the telemetry first. The setup's basis is 0 (its min-content, the model at 10ch)
-   and its grow wins up to its max-content, so a group moves down only when the min-contents don't fit; the room left
-   is the telemetry's (its folder). The info never asks for more than the bar. */
-@media(min-width:601px) and (max-width:899px){
-  #infoBar .info{max-width:100%}
-  #infoBar .meta{flex-wrap:wrap;row-gap:4px}
-  #infoBar .meta .bar-group.setup{flex:1000 1 0;max-width:max-content}
-}
+/* A chip is capped, cut with "…", its full text in the title: the model (and ⚙'s values) at 40ch, the folder at 48ch
+   (its own rule above). The caps hold while the fold measures, so a chip's measured width is its drawn one. */
+#infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The fold (bar_fold.js) as attributes on #infoBar: a folded item is display:none (still in the DOM: ⋯'s rows click
+   it), ⚙ compact is its icon with the dot when the session set its own, an empty group goes with its hairline. One
+   selector per BAR_ITEMS key (info_bar_model.js; info_bar_fold_css.test.js checks every foldable key has one). */
+#infoBar[data-folded~="id"] .meta .id,
+#infoBar[data-folded~="continue"] #infoContinueBtn,
+#infoBar[data-folded~="settings"] .meta .settings-chip,
+#infoBar[data-folded~="worker"] .meta .worker-badge,
+#infoBar[data-folded~="speed"] .meta .speed,
+#infoBar[data-folded~="stop"] #infoStopBtn,
+#infoBar[data-folded~="prev"] .meta .chain-prev,
+#infoBar[data-folded~="next"] .meta .chain-next,
+#infoBar[data-folded~="pruned"] .meta .chain-pruned,
+#infoBar[data-folded~="parent"] .meta .parent,
+#infoBar[data-folded~="time"] .meta .session-time,
+#infoBar[data-folded~="model"] .meta .model-name,
+#infoBar[data-folded~="delegates"] .meta .children-chip,
+#infoBar[data-folded~="participants"] .meta .participants-chip,
+#infoBar[data-folded~="workingSet"] .meta .ws-chip,
+#infoBar[data-folded~="memories"] .meta .mem-chip,
+#infoBar[data-folded~="notes"] .meta .notes-chip,
+#infoBar[data-folded~="toolkit"] .meta .tools-chip,
+#infoBar[data-folded~="dir"] .meta .dir,
+#infoBar[data-folded~="archive"] #infoArchiveBtn,
+#infoBar[data-folded~="delete"] #infoDeleteBtn,
+#infoBar[data-empty-groups~="identity"] .meta .bar-group.identity,
+#infoBar[data-empty-groups~="setup"] .meta :is(.bar-group.setup,.sep-setup),
+#infoBar[data-empty-groups~="relations"] .meta :is(.bar-group.relations,.sep-relations),
+#infoBar[data-empty-groups~="trail"] .meta :is(.bar-group.trail,.sep-trail){display:none}
+#infoBar[data-compact~="settings"] .meta .settings-chip .sc-own{display:none}
+#infoBar[data-compact~="settings"] .meta .settings-chip.own{padding-right:6px}
+#infoBar[data-compact~="settings"] .meta .settings-chip.own::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
 /* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and move the chips after it. The speed and the clock show from the session's start, a muted placeholder until there is a number. */
@@ -1157,8 +1169,7 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
 @media(hover:hover){#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
-/* The bar's action buttons are one flex item: when they don't fit beside the info line they wrap to a line of their
-   own together, never one button alone. */
+/* The bar's action buttons (continue →, stop session; archive and delete live in ⋯), right-aligned, never moving. */
 #infoBar .info-actions{display:flex;flex:none;gap:10px;align-items:center}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
@@ -1170,7 +1181,7 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 /* The composer folded away (composer_grip.js, composer.css): the info bar is the page's bottom edge; the plugins' setup row folds with it. */
 body.has-session.composer-folded #initRow{display:none}
 body.has-session.composer-folded #infoBar{border-top-color:transparent}
-/* The ⚙ chip (settings_chip.js): a model-like chip that opens the session's settings panel; accent when the session set its own (capped like the model chip in the min-width:601px rule above, the full text in its tooltip; a phone shows ⚙ with a dot). */
+/* The ⚙ chip (settings_chip.js): a model-like chip that opens the session's settings panel; accent when the session set its own (capped like the model chip above, the full text in its tooltip; compact, as on a phone, ⚙ with a dot). */
 #infoBar .meta .settings-chip{position:relative;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
 #infoBar .meta .settings-chip[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
 #infoBar .meta .settings-chip.own{color:var(--accent);border-color:var(--accent-border)}
@@ -1370,46 +1381,39 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 @media(hover:hover){.ctx-pop-actions button:hover{color:var(--text-hover)}}
 .ctx-pop-actions .ctx-pop-detach{color:var(--text-muted);background:transparent}
 @media(hover:hover){.ctx-pop-actions .ctx-pop-detach:hover{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}}
-/* ⋯ (more_sheet.js): a phone's alone. */
-#infoBar #infoMoreBtn{display:none}
-/* Phones: the footer is one line with no swiping: id, status, model (it gives way first), ⚙ and ⋯. The other chips and the
-   four buttons stay in the DOM, unseen: ⋯'s sheet clicks them, and what they open is placed at ⋯ (chip_popover.js). */
+/* ⋯ (more_sheet.js): on the row at every width, pinned at its end; on a desktop the count of what it holds for the
+   row (none at 0), its dot when something folded asks for a look. */
+#infoBar #infoMoreBtn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:none;min-height:24px;padding:0 8px;font-size:14px;line-height:1;letter-spacing:1px;color:var(--text-3);background:var(--bg-raised);border:1px solid var(--border-strong)}
+#infoBar #infoMoreBtn .more-count{font-size:11px;font-weight:600;letter-spacing:0;font-variant-numeric:tabular-nums}
+#infoBar #infoMoreBtn .more-count:empty{display:none}
+#infoBar #infoMoreBtn[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar #infoMoreBtn[data-attention]::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+#infoBar #infoMoreBtn[data-attention="warn"]::after{background:var(--warn-bright)}
+/* Phones: the row is status, ctx, speed, ⚙ and ⋯ (the fold's phone profile); the rest is in ⋯'s sheet. */
 @media(max-width:600px){
-  #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
-  #infoBar .info{flex:1 1 0}
-  #infoBar .meta{flex-wrap:nowrap;white-space:nowrap;gap:6px}
-  #infoBar .meta .id{padding:2px 3px}
+  #infoBar{align-items:center;gap:6px;padding:6px 10px 8px}
+  #infoBar .meta{gap:6px}
   #infoBar .meta .status{padding:2px 5px}
-  #infoBar .meta>*,#infoBar .meta .bar-group>*{flex-shrink:0}
-  /* One run: the groups' chips are the meta's. */
+  /* One run: the groups' chips are the meta's, no hairlines. */
   #infoBar .meta .bar-group{display:contents}
   #infoBar .meta .bar-sep{display:none}
-  #infoBar .meta :is(.tools-chip,.notes-chip,.mem-chip,.ws-chip,.chain-link,.chain-pruned,.parent,.children-chip,.participants-chip,.dir,.ctx,.speed,.session-time,.worker-badge){display:none}
-  #infoBar .info-actions{display:none}
-  #infoBar .meta .status+.model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-  /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
-  #infoBar .meta .settings-chip .sc-own{display:none}
-  #infoBar .meta .settings-chip.own{padding-right:6px}
-  #infoBar .meta .settings-chip.own::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
   /* ⚙ and ⋯: bigger to the thumb than to the eye. 2 px of negative margin keep the row its height, and each one's ::before reaches the foot's edges for the tap. */
   #infoBar .meta .settings-chip{margin:-2px 0 -2px auto;min-width:32px;min-height:30px;justify-content:center}
   #infoBar .meta .settings-chip::before,#infoBar #infoMoreBtn::before{content:"";position:absolute;inset:-4px -3px -6px}
-  #infoBar #infoMoreBtn{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;width:38px;height:30px;margin:-2px 0;padding:0;font-size:16px;line-height:1;letter-spacing:1px;color:var(--text-3);background:var(--bg-raised);border:1px solid var(--border-strong)}
-  #infoBar #infoMoreBtn[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
-  #infoBar #infoMoreBtn[data-attention]::after{content:"";position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
-  #infoBar #infoMoreBtn[data-attention="warn"]::after{background:var(--warn-bright)}
-  /* The attached context's chips get a second line of their own (only when there are some), scrolling sideways. */
-  #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
-  #infoBar:has(#contextChips:not([hidden])) .info{flex-basis:calc(100% - 44px)}
+  #infoBar #infoMoreBtn{width:38px;height:30px;margin:-2px 0;padding:0;font-size:16px}
+  #infoBar #infoMoreBtn .more-count{display:none}
+  #infoBar #infoMoreBtn[data-attention]::after{top:4px;right:4px}
+  /* The attached context's chips: their line scrolls sideways. */
   #contextChips{order:1;flex:1 0 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   #contextChips::-webkit-scrollbar{display:none}
   #contextChips>*{flex-shrink:0}
   #infoBar button{padding:4px 8px}
 }
-/* ⋯'s sheet (more_sheet.js): a row per chip the phone's bar folded away, the telemetry, the actions. */
+/* ⋯'s menu (more_sheet.js): a row per chip the bar folded away, the folded telemetry, the actions; its grip on a phone's sheet alone. */
 .more-sheet{gap:2px;font-size:13.5px}
 .more-sheet.sheet{border-radius:14px;padding:10px 14px 12px;box-shadow:0 0 0 100vmax color-mix(in srgb,var(--bg) 62%,transparent)}
 .more-grip{flex:none;align-self:center;width:34px;height:4px;border-radius:2px;background:var(--border-strong);margin-bottom:4px}
+.more-sheet:not(.sheet) .more-grip{display:none}
 .more-rows{display:flex;flex-direction:column}
 .more-row{display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box;width:100%;min-height:40px;padding:6px 0;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;color:var(--text);font:inherit;text-align:left;text-decoration:none;cursor:pointer}
 div.more-row{cursor:default}
@@ -1431,7 +1435,7 @@ a.more-row .more-text{color:var(--accent)}
 /* Its start gives way, as the bar's folder does: the end names the project. Its separator goes with it, so it isn't the clipped side's. */
 .more-telemetry .more-dir{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace;direction:rtl;text-align:left}
 .more-telemetry .more-dir::before{content:none}
-.more-telemetry .more-clock::after{content:"·";margin-left:6px}
+.more-telemetry .more-clock:has(+.more-dir)::after{content:"·";margin-left:6px}
 .more-actions{display:flex;gap:6px}
 .more-act{flex:1 1 0;min-width:0;min-height:40px;padding:0 2px;border-radius:9px;font-size:12px;font-weight:600;color:var(--text-2);background:transparent;border:1px solid var(--border-strong)}
 .more-act.accent{color:var(--accent);background:var(--bg-raised);border-color:var(--accent-border)}
@@ -1866,7 +1870,7 @@ a{color:var(--accent)}
           <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
           <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
         </div>
-        <button type="button" class="ghost" id="infoMoreBtn" data-anchor-stand-in aria-label="More" title="More" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">⋯</span></button>
+        <button type="button" class="ghost" id="infoMoreBtn" data-anchor-stand-in aria-label="More" title="More" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">⋯</span><span class="more-count"></span></button>
       </div>
     </div>
   </section>

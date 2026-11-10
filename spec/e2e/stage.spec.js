@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
-import { expectNoHorizontalOverflow } from "./support/layout.js";
+import { barItemOnRow, clickBarItem, expectNoHorizontalOverflow } from "./support/layout.js";
 import { expectSameAfterReload } from "./support/history_shape.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
@@ -686,7 +686,7 @@ test.describe("the working set", () => {
     await expect(stageEl(page)).toBeVisible();
     await page.mouse.move(0, 0);
     await handedOff(page, 1);
-    await page.locator("#infoText .ws-chip").click();
+    await clickBarItem(page, "workingSet");
     const pop = page.locator("#workingSetPopover");
     const row = pop.locator(".ws-row.file", { hasText: "README.md" });
     await row.hover();
@@ -763,7 +763,13 @@ test.describe("the working set", () => {
         await expect(stageEl(page)).toBeVisible();
         await page.mouse.move(0, 0);
         await handedOff(page, 1);
-        await expect(page.locator("#infoText .mem-chip")).toBeVisible();
+        // On the row or folded into ⋯ (the fold's choice at this width), it is drawn.
+        await expect(page.locator("#infoText .mem-chip")).toHaveCount(1);
+        if (!(await barItemOnRow(page, "memories"))) {
+          await page.locator("#infoMoreBtn").click();
+          await expect(page.locator('#moreSheet [data-row="memories"]')).toBeVisible();
+          await page.keyboard.press("Escape");
+        }
         await expect(page.locator("#infoText .mem-chip")).toHaveAttribute("title", /e2e-style/);
         await expect(page.locator("#infoText .ws-chip")).toHaveCount(0);
         await expect(page.locator(".ts-ws, .ws-foot")).toHaveCount(0);

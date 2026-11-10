@@ -1534,19 +1534,26 @@ access token", paste the token there (the part of the link after
   phone. The same sheet lists the other devices (a long-turns-done switch each, Remove), and `chi web push ls|rm|test`
   does it from the Mac (see [Phone notifications](configuration.md#phone-notifications-web-push)).
 
-#### The session bar on a phone
+#### The session bar
 
-At a phone's width (600 px or less) the session bar is one row with no swiping: the id (a tap copies it), the status, the model
-(cut short first), ⚙ and ⋯. ⋯ opens a bottom sheet with the rest:
+The session bar is one row at every window width, with no swiping and no second line. What doesn't fit folds into ⋯ by
+priority, the least needed first: the folder and the 🧰 toolkit, then model notes, the working set (or memories),
+participants and delegates, the model, the chain links, stop session, the speed, ⚙ (first down to its icon), continue →
+and the id. The status, ctx and ⋯ always stay. On a phone (600 px or less) the row is the status, ctx, the speed, ⚙ (its
+icon, a dot when the session set its own) and ⋯.
 
-- a row for what the row has no room for, each opening what its chip opens on a wider screen: the model and the 🧰 toolkit (a tap
-  shows the full text a tooltip gives elsewhere), the working set (or the memories with `web.working_set` off), and, when the
-  session has them, participants, chain links, the parent, delegates, model notes and an older worker's Restart;
-- one line with ctx, speed, the clock and the folder;
-- Continue, Archive (or Unarchive), Stop and Delete, under the same rules and confirmations as the wider screen's buttons.
+⋯ opens a popover (a bottom sheet on a phone) with what the row folded away:
 
-A dot on ⋯ says something behind it needs a look: the accent when the working set changed or a participant is here, the warning
-colour when a delegate waits or the worker runs an older chi. The attached context's chips keep their own second line under the row.
+- a row for each folded chip, each opening what its chip opens: the id (a tap copies it), the model and the 🧰 toolkit (a
+  tap shows the full text a tooltip gives elsewhere), ⚙, the working set (or the memories with `web.working_set` off),
+  participants, chain links, the parent, delegates, model notes and an older worker's Restart;
+- one line with the folded ones of the speed, the clock and the folder;
+- Archive (or Unarchive) and Delete always, Continue and Stop when folded, under the same rules and confirmations as the
+  buttons on the row.
+
+On a wider screen ⋯ shows how many things it holds. A dot on ⋯ says something folded behind it needs a look: the accent when
+the working set changed or a participant is here, the warning colour when a delegate waits or the worker runs an older chi.
+The attached context's chips keep their own second line under the row.
 
 ### Remote sessions
 

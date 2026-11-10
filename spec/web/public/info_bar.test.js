@@ -20,14 +20,16 @@ const markupOf = (template) => {
   return htmlOf(frag);
 };
 
-// No relations: the setup and the telemetry, one hairline between them.
+// No relations: the identity, the setup and the trail, a hairline before
+// each but the first, classed by the group it precedes.
 test("infoBarHtml: a bare session's line, as the string builder wrote it", () => {
   assert.equal(markupOf(infoBarHtml(bare)), canon(
-    `<div class="meta"><span class="bar-group setup"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
-    `<span class="status idle"><span>idle</span></span><span class="model model-name" title="qwen">qwen</span></span>` +
-    `<span class="bar-sep" aria-hidden="true"></span><span class="bar-group telemetry">` +
-    `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span>` +
-    `<span class="model session-time empty" title="This session's time: no turn yet">–</span></span></div>`,
+    `<div class="meta"><span class="bar-group identity"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
+    `<span class="status idle"><span>idle</span></span><span class="model ctx" title="no request yet">ctx ?</span>` +
+    `<span class="model session-time empty" title="This session's time: no turn yet">–</span></span>` +
+    `<span aria-hidden="true" class="bar-sep sep-setup"></span><span class="bar-group setup"><span class="model model-name" title="qwen">qwen</span></span>` +
+    `<span aria-hidden="true" class="bar-sep sep-trail"></span><span class="bar-group trail">` +
+    `<span class="dir" title="/p"><bdi>/p</bdi></span></span></div>`,
   ));
 });
 
@@ -73,11 +75,13 @@ test("infoBarHtml: every part, in the bar's order", () => {
   render(infoBarHtml(full), div);
   const parts = [...div.querySelector(".meta").children].map((el) => [el.className, [...el.children].map((kid) => kid.className)]);
   assert.deepEqual(parts, [
-    ["bar-group setup", ["id", "status running", "model model-name served-mismatch", "model settings-chip own", "model tools-chip", "model notes-chip", "model mem-chip"]],
-    ["bar-sep", []],
+    ["bar-group identity", ["id", "status running", "model ctx", "model speed", "model session-time"]],
+    ["bar-sep sep-setup", []],
+    ["bar-group setup", ["model settings-chip own", "model model-name served-mismatch", "model tools-chip", "model notes-chip", "model mem-chip"]],
+    ["bar-sep sep-relations", []],
     ["bar-group relations", ["model chain-link chain-prev", "model chain-link chain-next", "model parent", "model children-chip waiting"]],
-    ["bar-sep", []],
-    ["bar-group telemetry", ["dir", "model ctx", "model speed", "model session-time", "worker-badge"]],
+    ["bar-sep sep-trail", []],
+    ["bar-group trail", ["dir", "worker-badge"]],
   ]);
   assert.equal(div.querySelector(".id").textContent, "01234567");
   const [prev, next] = div.querySelectorAll(".chain-link");
@@ -118,11 +122,11 @@ test("renderInfoBar: the relations group (and its hairline) only with a relation
   const el = document.createElement("div");
   renderInfoBar(el, bare);
   assert.ok(el.querySelector(".relations") === null);
-  assert.equal(el.querySelectorAll(".bar-sep").length, 1);
+  assert.deepEqual([...el.querySelectorAll(".bar-sep")].map((sep) => sep.className), ["bar-sep sep-setup", "bar-sep sep-trail"]);
   const clock = el.querySelector(".session-time");
   renderInfoBar(el, { ...bare, participants: { text: "participants · invite", count: 0, present: false, title: "Invite" } });
   assert.equal(el.querySelector(".relations .participants-chip").textContent, "participants · invite");
-  assert.equal(el.querySelectorAll(".bar-sep").length, 2);
+  assert.deepEqual([...el.querySelectorAll(".bar-sep")].map((sep) => sep.className), ["bar-sep sep-setup", "bar-sep sep-relations", "bar-sep sep-trail"]);
   assert.ok(el.querySelector(".session-time") === clock);
 });
 
@@ -176,7 +180,9 @@ test("infoBarHtml: the ⚙ chip reads ⚙ alone while the session follows the mo
   assert.equal(gear.className, "model settings-chip");
   assert.equal(gear.textContent, "⚙");
   assert.equal(gear.getAttribute("aria-label"), "Session settings");
-  assert.equal(gear.previousElementSibling.className, "model model-name");
+  // ⚙ leads the setup group, the model after it.
+  assert.ok(gear.previousElementSibling === null);
+  assert.equal(gear.nextElementSibling.className, "model model-name");
   render(infoBarHtml({ ...bare, settings: { thinking: null, reasoningHistory: null, llmContext: null } }), div);
   assert.ok(div.querySelector(".settings-chip") === null);
 });

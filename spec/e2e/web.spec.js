@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
 import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
-import { expectNoHorizontalOverflow } from "./support/layout.js";
+import { barItemOnRow, clickBarItem, expectNoHorizontalOverflow } from "./support/layout.js";
 import { expectSameAfterReload } from "./support/history_shape.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 import { momentAt, pageNow, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
@@ -1004,31 +1004,57 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripGrip").click();
   await expect(stripCard).toBeVisible();
 
-  await expect(page.locator("#infoActions > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
-  // A long model name gives way (the chip cuts it) instead of pushing the
-  // telemetry chips under the buttons (the clock once read through continue →).
-  const overlaps = await page.evaluate(() => {
-    document.querySelector("#infoBar .meta .status + .model").textContent = "main:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0";
-    const hit = (a, b) => a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
-    const chips = [...document.querySelectorAll("#infoBar .meta .bar-group > *")].filter((el) => el.offsetParent);
-    const buttons = [...document.querySelectorAll("#infoActions > button")].filter((el) => el.offsetParent);
-    return chips.flatMap((c) => buttons.filter((b) => hit(c.getBoundingClientRect(), b.getBoundingClientRect()))
-      .map((b) => `${c.className} × ${b.id}`));
+  // The session bar is one row at every width (bar_fold.js): continue → and
+  // stop session on it, archive and delete in ⋯ alone.
+  await expect(page.locator("#infoActions > button:visible")).toHaveText(["continue →", "stop session"]);
+  // A long model name: its chip cuts it at its cap (40ch), the fold measures it.
+  await page.evaluate(() => {
+    document.querySelector("#infoBar .meta .model-name").textContent = "main:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0";
   });
-  expect(overlaps).toEqual([]);
-  // Too narrow for both, the buttons wrap as one group: all on one line, none left alone.
+  // Each width: one row (every drawn item on one line), no item over another,
+  // none past the info's right edge or the bar's, no sideways scroll; what
+  // folded has no box and is behind ⋯ (its count says how many).
   const viewport = page.viewportSize();
-  await page.setViewportSize({ width: 1100, height: viewport.height });
-  const tops = await page.locator("#infoActions > button:visible").evaluateAll((els) => els.map((b) => Math.round(b.getBoundingClientRect().top)));
-  expect(new Set(tops).size, `button tops ${tops}`).toBe(1);
-  // Narrower still, the info line's groups wrap: no chip is cut at the bar's right edge.
-  await page.setViewportSize({ width: 700, height: viewport.height });
-  const past = await page.locator("#infoBar").evaluate((bar) => {
-    const right = bar.getBoundingClientRect().right;
-    return [...bar.querySelectorAll(".meta .bar-group > *")]
-      .filter((el) => el.offsetParent && el.getBoundingClientRect().right > right + 0.5).map((el) => el.className);
-  });
-  expect(past).toEqual([]);
+  for (const width of [1280, 900, 640]) {
+    await page.setViewportSize({ width, height: viewport.height });
+    // The fold follows the bar's ResizeObserver: two frames on, it has run.
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    const shape = await page.locator("#infoBar").evaluate((bar) => {
+      const shown = (el) => el.getClientRects().length > 0;
+      const items = [...bar.querySelectorAll(".meta .bar-group > *, #infoActions > button, #infoMoreBtn")].filter(shown);
+      const boxes = items.map((el) => ({ name: el.className || el.id, r: el.getBoundingClientRect() }));
+      const mid = (r) => r.top + r.height / 2;
+      const hit = (a, b) => a.right > b.left + 0.5 && a.left < b.right - 0.5 && a.bottom > b.top && a.top < b.bottom;
+      const info = bar.querySelector(".info").getBoundingClientRect();
+      const right = bar.getBoundingClientRect().right;
+      const folded = (bar.dataset.folded || "").split(" ").filter(Boolean);
+      return {
+        lines: new Set(boxes.map((b) => Math.round(mid(b.r) / 4))).size,
+        overlaps: boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => hit(a.r, b.r)).map((b) => `${a.name} × ${b.name}`)),
+        past: boxes.filter((b) => b.r.right > right + 0.5 || (bar.querySelector(".info").contains(items[boxes.indexOf(b)]) && b.r.right > info.right + 0.5)).map((b) => b.name),
+        folded,
+        foldedShown: folded.filter((key) => key !== "archive" && key !== "delete").length,
+        count: bar.querySelector("#infoMoreBtn .more-count").textContent,
+        scroll: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    expect(shape.lines, `${width}px: one row`).toBe(1);
+    expect(shape.overlaps, `${width}px`).toEqual([]);
+    expect(shape.past, `${width}px`).toEqual([]);
+    expect(shape.scroll, `${width}px`).toBeLessThanOrEqual(0);
+    expect(shape.folded, `${width}px`).toEqual(expect.arrayContaining(["archive", "delete"]));
+    expect(Number(shape.count || 0), `${width}px: ⋯'s count, folded ${shape.folded}`).toBe(shape.foldedShown);
+  }
+  // At 640 something folded: ⋯ shows a count, and its menu holds the folded chips' rows.
+  const folded640 = await page.locator("#infoBar").getAttribute("data-folded");
+  expect(folded640.split(" ").length).toBeGreaterThan(2);
+  await expect(page.locator("#infoMoreBtn .more-count")).toHaveText(/^\d+$/);
+  await page.locator("#infoMoreBtn").click();
+  await expect(page.locator("#moreSheet")).toBeVisible();
+  await expect(page.locator("#moreSheet .more-grip")).toBeHidden();
+  await expect(page.locator("#moreSheet .more-act")).toHaveText(folded640.includes("stop") ? ["Archive", "Stop", "Delete"] : ["Archive", "Delete"]);
+  if (folded640.split(" ").includes("model")) await expect(page.locator('#moreSheet [data-row="model"]')).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.setViewportSize(viewport);
   // The active card's ✎ renames it (/title through the worker): the input
   // over the card's title, the card following the saved file.
@@ -1144,7 +1170,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(tallFloor);
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect.poll(promptH).toBe(tallFloor);
-  await page.locator("#infoArchiveBtn").click();
+  await clickBarItem(page, "archive");
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);
   await expect(stripCard).toHaveCount(0);
@@ -1177,7 +1203,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   // was for that visit only), unarchive still there.
   await expect(page.locator("#composer")).toBeHidden();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
-  await page.locator("#infoArchiveBtn").click();
+  await clickBarItem(page, "archive");
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
   await expect(stripCard).toBeVisible();
 });
@@ -1225,7 +1251,7 @@ async function continueAndCheck(page, first, kid) {
   // A fresh link: the picker shows its model; a pick runs /model in it, the
   // start page's remembered model and Recent stay, the opener stays.
   const pick = page.locator("#modelPick");
-  const infoModel = page.locator("#infoText .meta .status + .model");
+  const infoModel = page.locator("#infoText .meta .model-name");
   const stored = await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")]);
   await expect(pick).toBeVisible();
   await expect(pick).toHaveText("fake-script");
@@ -1273,7 +1299,7 @@ async function continueAndCheck(page, first, kid) {
   await expect(pick).toBeHidden();
   const forward = page.locator("#infoBar a.chain-link");
   await expect(forward).toHaveText(/^(\d{2}:\d{2}|\d{4}-\d{2}-\d{2}) →$/);
-  await forward.click();
+  await clickBarItem(page, "next");
   await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
   await expect(pick).toHaveText("fake-b");
@@ -1560,12 +1586,16 @@ test("the info bar: a click on the id copies the full id, delete removes the ses
   let confirmText = null;
   page.once("dialog", (dialog) => { confirmText = dialog.message(); dialog.accept(); });
   const deleted = page.waitForResponse((res) => res.url().includes(id) && res.request().method() === "DELETE");
-  await page.locator("#infoDeleteBtn").click();
+  // Delete is ⋯'s alone (never on the row): its action clicks the bar's button.
+  expect(await barItemOnRow(page, "delete")).toBe(false);
+  await clickBarItem(page, "delete");
   expect((await deleted).ok()).toBe(true);
   expect(confirmText).toContain(`Delete session ${id.slice(0, 8)}`);
   await expect(stripCard).toHaveCount(0);
   await expect(page).not.toHaveURL(new RegExp(id));
-  await expect(page.locator("#infoDeleteBtn")).toBeHidden();
+  // The start page: no bar, and ⋯'s menu closed with it.
+  await expect(page.locator("#infoBar")).toBeHidden();
+  await expect(page.locator("#moreSheet")).toBeHidden();
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
@@ -1619,7 +1649,7 @@ test("the start page's ⚙ panel and 🧰 list start the new session under the t
   await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low · ctx stale");
   await expect(page.locator("#infoBar .settings-chip")).toHaveClass(/\bown\b/);
   // 🧰 after ⚙: the session's kit, not the default one (GET /api/sessions/:id's toolkit_default).
-  await expect(page.locator("#infoBar .settings-chip + .tools-chip")).toHaveText("🧰 lean");
+  await expect(page.locator("#infoBar .settings-chip + .model-name + .tools-chip")).toHaveText("🧰 lean");
 
   await page.locator("#newBtn").click();
   await expect(gear).toBeVisible();
@@ -2024,7 +2054,7 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   const queuedSlot = page.locator("#turnStage .ts-queued .bubble.command");
   await expect(queuedSlot).toHaveCount(1);
   // The session's model in the info bar (not the new session's picker).
-  const model = page.locator("#infoText .meta .status + .model");
+  const model = page.locator("#infoText .meta .model-name");
   await expect(model).toHaveText(/^fake-script/);
 
   await page.reload();
@@ -2161,7 +2191,7 @@ test("a warn card stays in sight when its step closes mid-turn", async ({ page, 
   // The worker saved it with the session: stopped, a reload still shows it.
   page.once("dialog", (dialog) => dialog.accept());
   const stopped = page.waitForResponse((res) => /\/stop$/.test(res.url()) && res.request().method() === "POST");
-  await page.locator("#infoStopBtn").click();
+  await clickBarItem(page, "stop");
   expect((await stopped).ok()).toBe(true);
   await page.reload();
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
@@ -2208,10 +2238,12 @@ test("stop asks about the background task still running: the sheet, then Stop al
   await turnEnded(page, 1);
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
 
-  // A phone's bar: no swiping, ⚙'s target is the chip itself, and Stop is behind ⋯.
+  // A phone's bar: no swiping, its row status, ctx, speed, ⚙ and ⋯; ⚙'s
+  // target is the chip itself, and Stop is behind ⋯.
   await page.setViewportSize({ width: 390, height: 800 });
   await expectNoHorizontalOverflow(page);
-  await expect(page.locator("#infoBar .ctx")).toBeHidden();
+  await expect(page.locator("#infoBar .ctx")).toBeVisible();
+  await expect(page.locator("#infoBar .id")).toBeHidden();
   await expect(page.locator("#infoBar .meta")).toHaveCSS("overflow-x", "visible");
   const gearIsTop = await page.locator("#infoBar .settings-chip").evaluate((chip) => {
     const box = chip.getBoundingClientRect();

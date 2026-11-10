@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
+import { clickBarItem } from "./support/layout.js";
 
 test.use({ installed: "99.0.0" });
 
@@ -139,7 +140,7 @@ test("a worker on an older chi: the badge's Restart moves the session to a new w
     asked = dialog.message();
     dialog.accept();
   });
-  await badge.locator(".worker-restart").click();
+  await clickBarItem(page, "restart");
   await expect(page.locator("#toast")).toContainText("Restarted on chi");
   expect(asked).toContain("Restart this session's worker on chi 99.0.0");
   const after = sidecar(chi, id);
