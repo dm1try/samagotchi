@@ -544,6 +544,29 @@ RSpec.describe Samagotchi::Worker do
         expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "m1")).to be_nil
       end
 
+      it "drops a fallback file whose next-step steer was already merged" do
+        allow(engine).to receive(:claim_enqueued_id).and_call_original
+        allow(engine).to receive(:claim_enqueued_id).with("m1").and_return(true)
+        allow(Samagotchi::Log).to receive(:info).and_call_original
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          if prompt == "task"
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", enqueued_id: "m1", now: Time.at(1))
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "fallback", enqueued_id: "m1", now: Time.at(2))
+          end
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+          result
+        end
+        start_worker(poll_interval: 0.02)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", enqueued_id: "host-1",
+                                                               state_dir: tmpdir)
+
+        expect(next_turn&.last&.map(&:text)).to eq(["steer"])
+        expect(Samagotchi::SessionInbox.merged_into(session_dir, "m1")&.into).to eq("host-1")
+        expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
+        expect(Samagotchi::Log).to have_received(:info).with(:worker, "duplicate_input_dropped", enqueued_id: "m1")
+      end
+
       it "records no merge for a turn without an enqueued_id (a wait for the input infers it)" do
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
           Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", client_id: "cli:send", enqueued_id: "m1") if prompt == "task"

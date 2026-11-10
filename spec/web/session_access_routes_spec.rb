@@ -497,7 +497,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       allow(app).to receive(:live_bridge_client).and_return(bridge)
 
       expect(turn(session, { prompt: "long", client_id: "tui:1", no_interrupt: true }).first).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "long", client_id: "tui:1", no_interrupt: true)
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "long", client_id: "tui:1", no_interrupt: true,
+                                                                      enqueued_id: kind_of(String)))
 
       allow(app).to receive(:live_bridge_client).and_return(nil)
       expect(turn(session, { prompt: "long", client_id: "tui:1", no_interrupt: true })).to match([202, include("via" => "file")])

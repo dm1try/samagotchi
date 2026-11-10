@@ -50,7 +50,8 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
 
     expect(response.status).to eq(202)
     expect(response.json).to include("enqueued_id" => "e9", "via" => "bridge")
-    expect(bridge).to have_received(:post_turn).with(prompt: "go", client_id: "tui:1@mac", delivery: "queue", no_interrupt: true)
+    expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "go", client_id: "tui:1@mac", delivery: "queue",
+                                                                    no_interrupt: true, enqueued_id: kind_of(String)))
   end
 
   describe "the status mapper" do

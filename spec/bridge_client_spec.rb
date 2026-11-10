@@ -190,8 +190,11 @@ RSpec.describe Samagotchi::BridgeClient do
 
     expect(reply.status).to eq(202)
     expect(reply.json).to include("enqueued_id" => "e1")
-    expect(finish.call).to start_with("POST /session/s1/turn HTTP/1.1\r\n")
-      .and include('{"session_id":"s1","prompt":"hi","client_id":"web:1","deadline":')
+    request = finish.call
+    expect(request).to start_with("POST /session/s1/turn HTTP/1.1\r\n")
+    body = JSON.parse(request.split("\r\n\r\n", 2)[1])
+    expect(body).to include("session_id" => "s1", "prompt" => "hi", "client_id" => "web:1")
+    expect(body["enqueued_id"]).to match(/\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/)
   end
 
   it "gives a turn a deadline before its own read timeout, so a worker never runs one it gave up on" do

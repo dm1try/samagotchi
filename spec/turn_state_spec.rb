@@ -87,6 +87,64 @@ RSpec.describe Samagotchi::TurnState do
     end
   end
 
+  describe "enqueued input ids" do
+    it "allows one queued input claim and rejects repeated claims while running or ended" do
+      expect(state.reserve_enqueued_id("e1")).to be(true)
+      expect(state.reserve_enqueued_id("e1")).to be(false)
+      expect(state.claim_enqueued_id("e1")).to be(true)
+      expect(state.claim_enqueued_id("e1")).to be(false)
+
+      state.finish_enqueued_id("e1")
+
+      expect(state.claim_enqueued_id("e1")).to be(false)
+      expect(state.reserve_enqueued_id("e1")).to be(false)
+    end
+
+    it "accepts an input-file id not previously reserved by the Bridge" do
+      expect(state.claim_enqueued_id("file-id")).to be(true)
+      expect(state.claim_enqueued_id("file-id")).to be(false)
+    end
+
+    it "forgets a reservation whose Bridge input could not be written" do
+      expect(state.reserve_enqueued_id("e1")).to be(true)
+      state.forget_enqueued_id("e1")
+
+      expect(state.reserve_enqueued_id("e1")).to be(true)
+    end
+
+    it "marks a removed queued input ended so a late file cannot claim it" do
+      expect(state.reserve_enqueued_id("removed")).to be(true)
+
+      state.drop_enqueued_id("removed")
+
+      expect(state.claim_enqueued_id("removed")).to be(false)
+    end
+
+    it "keeps all live ids when none can be evicted" do
+      ids = ["queued", "running", *(1..described_class::ENQUEUED_ID_HISTORY).map { |index| "q#{index}" }]
+      state.reserve_enqueued_id("queued")
+      state.reserve_enqueued_id("running")
+      state.claim_enqueued_id("running")
+      ids.drop(2).each { |id| state.reserve_enqueued_id(id) }
+
+      expect(ids.select { |id| state.enqueued_id?(id) }).to eq(ids)
+    end
+
+    it "keeps only recent ended ids while retaining active ids" do
+      state.reserve_enqueued_id("active")
+      (1..(described_class::ENQUEUED_ID_HISTORY + 1)).each do |index|
+        id = "e#{index}"
+        state.reserve_enqueued_id(id)
+        state.claim_enqueued_id(id)
+        state.finish_enqueued_id(id)
+      end
+
+      expect(state.enqueued_id?("e1")).to be(false)
+      expect(state.enqueued_id?("e257")).to be(true)
+      expect(state.enqueued_id?("active")).to be(true)
+    end
+  end
+
   describe "the turn's context (TurnContext)" do
     def context(id, **) = Samagotchi::TurnContext.none(id: id, settings: nil, **)
     let(:settings) { Samagotchi::LLM::TurnSettings.none.with(model_name: "m") }

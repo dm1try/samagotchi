@@ -51,6 +51,18 @@ module Samagotchi
         @session_observer.synchronize(&)
       end
 
+      def reserve_enqueued_id(id) = @turn_state.reserve_enqueued_id(id)
+
+      def claim_enqueued_id(id) = @turn_state.claim_enqueued_id(id)
+
+      def finish_enqueued_id(id) = @turn_state.finish_enqueued_id(id)
+
+      def forget_enqueued_id(id) = @turn_state.forget_enqueued_id(id)
+
+      def drop_enqueued_id(id) = @turn_state.drop_enqueued_id(id)
+
+      def enqueued_id?(id) = @turn_state.enqueued_id?(id)
+
       # The working set's :working_set_updated, announced between turns
       # (after a command changed what the next request sends), when it
       # differs from the last one emitted (#emit_working_set). Under the

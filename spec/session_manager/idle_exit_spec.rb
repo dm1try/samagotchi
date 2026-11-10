@@ -32,6 +32,8 @@ RSpec.describe Samagotchi::SessionManager do
     before do
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(engine).to receive(:synchronize_events).and_yield
+      allow(engine).to receive(:claim_enqueued_id).and_return(true)
+      allow(engine).to receive(:finish_enqueued_id)
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
     end
 

@@ -1589,11 +1589,20 @@ module Samagotchi
 
           begin
             input = SessionInbox.read_input(claimed_file)
-            prompt = input.prompt.to_s.strip
-            # Which turn took it, on disk before its file goes (a wait for
-            # it reads this, not an inference: ReplyWait::Poll#follow_merge).
-            SessionInbox.mark_merged(@session_dir, input.origin.enqueued_id, into: @turn_enqueued_id) unless prompt.empty?
-            prompt.empty? ? nil : [prompt, input.origin]
+            enqueued_id = input.origin.enqueued_id
+            if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@engine.claim_enqueued_id(enqueued_id)
+              Log.info(:worker, "duplicate_input_dropped", enqueued_id: enqueued_id)
+              next
+            end
+            begin
+              prompt = input.prompt.to_s.strip
+              # Which turn took it, on disk before its file goes (a wait for
+              # it reads this, not an inference: ReplyWait::Poll#follow_merge).
+              SessionInbox.mark_merged(@session_dir, enqueued_id, into: @turn_enqueued_id) unless prompt.empty?
+              prompt.empty? ? nil : [prompt, input.origin]
+            ensure
+              @engine.finish_enqueued_id(enqueued_id)
+            end
           ensure
             FileUtils.rm_f(claimed_file)
           end

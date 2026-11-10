@@ -657,13 +657,56 @@ RSpec.describe Samagotchi::Bridge do
 
     it "writes the client's ids into the queued input" do
       start_bridge(input_format: 2)
-      _, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hi", client_id: "web:tab-1"))
+      id = "123e4567-e89b-12d3-a456-426614174000"
+      _, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hi", client_id: "web:tab-1", enqueued_id: id))
 
       input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
       queued = Dir.glob(File.join(input_dir, "*.json"))
       expect(queued.map { |f| JSON.parse(File.read(f)) }).to eq([
-        { "prompt" => "hi", "client_id" => "web:tab-1", "enqueued_id" => resp["enqueued_id"] }
+        { "prompt" => "hi", "client_id" => "web:tab-1", "enqueued_id" => id }
       ])
+      expect(resp["enqueued_id"]).to eq(id)
+    end
+
+    it "makes an id when an older or malformed client does not send a valid one" do
+      start_bridge
+      status, missing = post_turn(JSON.generate(session_id: @session.id, prompt: "older client"))
+      status2, invalid = post_turn(JSON.generate(session_id: @session.id, prompt: "malformed id", enqueued_id: "../bad"))
+
+      expect([status, status2]).to eq([202, 202])
+      expect(missing["enqueued_id"]).to match(/\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/)
+      expect(invalid["enqueued_id"]).to match(/\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/)
+      expect([missing["enqueued_id"], invalid["enqueued_id"]].uniq.size).to eq(2)
+    end
+
+    it "returns the original ack for a repeated id without writing or announcing another input" do
+      start_bridge
+      seen = []
+      @engine.subscribe(observer: ->(event) { seen << event if event[:type] == :turn_enqueued })
+      id = "123e4567-e89b-12d3-a456-426614174000"
+      allow(@engine).to receive(:cut_for_steer).and_return(:waits)
+      allow(@engine).to receive(:steer_cut_after).and_return(60)
+      body = JSON.generate(session_id: @session.id, prompt: "first", enqueued_id: id, client_id: "web:tab-1", delivery: "cut")
+      first_status, first = post_turn(body)
+      second_status, second = post_turn(body)
+
+      expect([first_status, second_status]).to eq([202, 202])
+      expect(first).to include("delivery" => "cut", "cut" => "waits", "cut_after" => 60)
+      expect(second).to eq(first)
+      expect(Dir.glob(File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input", "*.json")).size).to eq(1)
+      expect(seen.map { |event| event[:enqueued_id] }).to eq([id])
+    end
+
+    it "refuses a repeated enqueued id with a different prompt" do
+      start_bridge
+      id = "123e4567-e89b-12d3-a456-426614174000"
+      post_turn(JSON.generate(session_id: @session.id, prompt: "first", enqueued_id: id))
+
+      status, body = post_turn(JSON.generate(session_id: @session.id, prompt: "different", enqueued_id: id))
+
+      expect([status, body]).to eq([409, { "error" => "enqueued_id_conflict",
+                                           "detail" => "enqueued_id was already accepted for a different prompt" }])
+      expect(Dir.glob(File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input", "*.json")).size).to eq(1)
     end
 
     it "keeps a valid verify anchor in the queued input" do

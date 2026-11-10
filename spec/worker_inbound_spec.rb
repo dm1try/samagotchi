@@ -5,6 +5,7 @@ require "tmpdir"
 
 require "samagotchi/objectives"
 require "samagotchi/session_commands"
+require "samagotchi/turn_checkpoint"
 require "samagotchi/worker_inbound"
 require "samagotchi/worker_wakes"
 require "samagotchi/context_absorber"
@@ -22,9 +23,19 @@ RSpec.describe Samagotchi::WorkerInbound do
       def initialize(session)
         @session = session
         @announced = []
+        @enqueued_ids = {}
       end
 
       def announce(**event) = @announced << event
+
+      def claim_enqueued_id(id)
+        return true if id.to_s.empty?
+        return false if @enqueued_ids.key?(id)
+
+        @enqueued_ids[id] = true
+      end
+
+      def finish_enqueued_id(_id); end
       def command_registry = self
       def command?(text) = text.start_with?("/model", "!")
       def messages_checkpoint = @session.messages.map(&:dup)
@@ -269,6 +280,67 @@ RSpec.describe Samagotchi::WorkerInbound do
 
     it "yields nothing for a file another reader claimed" do
       expect { |b| inbound.take_input(File.join(session_dir, "input", "gone.json"), &b) }.not_to yield_control
+    end
+
+    it "consumes a repeated enqueued id without yielding another turn" do
+      id = "e1"
+      first = write("first", enqueued_id: id, now: Time.at(1))
+      duplicate = write("duplicate", enqueued_id: id, now: Time.at(2))
+      yielded = []
+
+      expect(Samagotchi::Log).to receive(:info).with(:worker, "duplicate_input_dropped", enqueued_id: id)
+      inbound.take_input(first) { |prompt| yielded << prompt.text }
+      inbound.take_input(duplicate) { |prompt| yielded << prompt.text }
+
+      expect(yielded).to eq(["first"])
+      expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
+    end
+
+    it "drops a fallback file already run by a previous worker" do
+      id = "e1"
+      session.last_turn = Samagotchi::LastTurn.new(enqueued_id: id)
+      session.save(state_dir: tmpdir)
+      restarted = described_class.new(
+        session: Samagotchi::Session.load(session.id, state_dir: tmpdir), state_dir: tmpdir, session_dir: session_dir,
+        engine: fake_engine.new(session), context_absorber: absorber, wakes: wakes,
+        awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] }, queue_command: ->(*) {}
+      )
+      fallback = write("already ran", enqueued_id: id)
+      yielded = []
+
+      expect(Samagotchi::Log).to receive(:info).with(:worker, "duplicate_input_dropped", enqueued_id: id)
+      restarted.take_input(fallback) { |prompt| yielded << prompt.text }
+
+      expect(yielded).to be_empty
+      expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
+    end
+
+    it "drops a fallback file whose interrupted turn was settled by the previous worker" do
+      id = "e1"
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.interrupted_turn = {
+        "id" => "t1", "started_at" => Time.now.iso8601(3), "iteration" => 1, "enqueued_id" => id
+      }
+      session.save(state_dir: tmpdir)
+
+      restarted_session = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      Samagotchi::TurnCheckpoint.settle(restarted_session, session_dir: session_dir)
+      restarted_session.save(state_dir: tmpdir)
+      restarted = described_class.new(
+        session: restarted_session, state_dir: tmpdir, session_dir: session_dir, engine: fake_engine.new(restarted_session),
+        context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] },
+        queue_command: ->(*) {}
+      )
+      fallback = write("already interrupted", enqueued_id: id)
+      yielded = []
+
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, id))
+        .to have_attributes(outcome: "canceled", cancel_reason: "worker_stopped")
+      expect(Samagotchi::Log).to receive(:info).with(:worker, "duplicate_input_dropped", enqueued_id: id)
+      restarted.take_input(fallback) { |prompt| yielded << prompt.text }
+
+      expect(yielded).to be_empty
+      expect(Samagotchi::SessionInbox.find_new_input_files(session_dir)).to be_empty
     end
   end
 

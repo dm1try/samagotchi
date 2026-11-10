@@ -15,6 +15,8 @@ module Samagotchi
   # so any lock may be held around a call into it, and it is never held
   # around anything else.
   class TurnState
+    ENQUEUED_ID_HISTORY = 256
+
     # @param clock [#call] monotonic seconds
     def initialize(clock:)
       @clock = clock
@@ -32,6 +34,80 @@ module Samagotchi
       @last_context = nil
       @steers = []
       @carried_steers = []
+      @enqueued_ids = {}
+      @enqueued_order = []
+    end
+
+    # Reserve an id for a Bridge-enqueued input. False means this id was
+    # already accepted in this worker.
+    def reserve_enqueued_id(id)
+      id = id.to_s
+      return false if id.empty?
+
+      @lock.synchronize do
+        next false if @enqueued_ids.key?(id)
+
+        remember_enqueued_id(id, :queued)
+        true
+      end
+    end
+
+    # Claim an input file. A Bridge reservation permits its first file claim;
+    # a duplicate file with the same id is refused. Unreserved files are
+    # accepted once too.
+    def claim_enqueued_id(id)
+      id = id.to_s
+      return true if id.empty?
+
+      @lock.synchronize do
+        case @enqueued_ids[id]
+        when :queued
+          @enqueued_ids[id] = :running
+          true
+        when nil
+          remember_enqueued_id(id, :running)
+          true
+        else
+          false
+        end
+      end
+    end
+
+    def finish_enqueued_id(id)
+      id = id.to_s
+      return if id.empty?
+
+      @lock.synchronize do
+        @enqueued_ids[id] = :ended if @enqueued_ids[id] == :running
+        prune_enqueued_ids
+      end
+    end
+
+    def forget_enqueued_id(id)
+      id = id.to_s
+      return if id.empty?
+
+      @lock.synchronize do
+        next unless @enqueued_ids[id] == :queued
+
+        @enqueued_ids.delete(id)
+        @enqueued_order.delete(id)
+      end
+    end
+
+    def drop_enqueued_id(id)
+      id = id.to_s
+      return if id.empty?
+
+      @lock.synchronize do
+        @enqueued_ids[id] = :ended if @enqueued_ids[id] == :queued
+        prune_enqueued_ids
+      end
+    end
+
+    def enqueued_id?(id)
+      id = id.to_s
+      !id.empty? && @lock.synchronize { @enqueued_ids.key?(id) }
     end
 
     # ── Activity clock ──────────────────────────────────────────────────
@@ -248,6 +324,23 @@ module Samagotchi
     # @return [Array<Hash>] the steers queued so far ({text:, source:}), taken
     def take_steers
       @lock.synchronize { @steers.tap { @steers = [] } }
+    end
+
+    private
+
+    def remember_enqueued_id(id, status)
+      @enqueued_ids[id] = status
+      @enqueued_order << id
+      prune_enqueued_ids
+    end
+
+    def prune_enqueued_ids
+      while @enqueued_ids.size > ENQUEUED_ID_HISTORY
+        index = @enqueued_order.index { |id| @enqueued_ids[id] == :ended }
+        break unless index
+
+        @enqueued_ids.delete(@enqueued_order.delete_at(index))
+      end
     end
   end
 end
