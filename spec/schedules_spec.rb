@@ -518,6 +518,25 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # C1: a chain firing that finds the head's last link still starting (a
+  # firing of another ticker just continued it) waits for the next tick.
+  it "skips a chain firing whose last link's worker is still starting" do
+    Dir.mktmpdir("schedules-starting") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      Samagotchi::StartingMarker.mark(anchor, state_dir: dir)
+
+      tick = schedules.tick(now: Time.now + 120)
+
+      expect(tick.outcomes.map(&:status)).to eq(["skipped"])
+      expect(tick.outcomes.first.detail).to eq("its worker is starting or leaving")
+      # Between the busy check and the firing, the archive refuses it the same way.
+      expect(Samagotchi::Schedules::SKIP_REASONS).to include("starting", "starting_child")
+    end
+  end
+
   it "leaves next_due alone when the target is busy, and disables after max_skips" do
     Dir.mktmpdir("schedules-skip") do |root|
       dir = File.join(root, "sessions")

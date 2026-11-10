@@ -63,7 +63,10 @@ module Samagotchi
     # Seconds a tick waits for a live worker's GET /activity.
     ACTIVITY_TIMEOUT = 2.0
     # Refusals that mean "not now" rather than "this schedule is broken".
-    SKIP_REASONS = %w[busy queued offer busy_child queued_child offer_child continued open_children].freeze
+    # (starting: the link's worker holds no lock yet, e.g. another ticker's
+    # firing just continued the chain.)
+    SKIP_REASONS = %w[busy queued offer busy_child queued_child offer_child starting starting_child continued
+                      open_children].freeze
 
     # The add itself is wrong (no prompt, two recurrence kinds, a scratch
     # target): a usage error, exit 2.
@@ -796,6 +799,11 @@ module Samagotchi
 
         nil
       end
+      # A worker being started for it holds no lock yet (another ticker's
+      # firing just continued the chain to it, a resume): a chain firing
+      # would archive it from under that worker (its archive refuses it too).
+      # A queued turn is fine: the starting worker takes it.
+      return [:skip, "its worker is starting or leaving"] if entry.mode == CHAIN && presence.starting?
 
       file_busy_reason(index.session(target), dir)
     end

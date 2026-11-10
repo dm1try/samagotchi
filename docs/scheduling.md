@@ -104,7 +104,10 @@ A cron tick cannot read a worker's memory, so the tick has two paths.
 
 **No live worker** (the usual case for a weekly schedule): the files say what can
 be known — the saved status is not `running` (and not inside the starting grace),
-`input/` is empty, no step-limit question is open. Nothing else can be busy.
+`input/` is empty, no step-limit question is open, and, for chain mode, no worker
+is being started for it (the `<id>/starting` marker every spawn writes: another
+ticker's firing that just continued the chain; its archive refuses it too, a
+skip). Nothing else can be busy.
 
 **A live worker**: ask it, over the new Bridge route
 `GET /session/:id/activity` (`Worker#activity_snapshot`, the same signals
