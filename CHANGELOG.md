@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   the race no longer counts toward `max_failures`. A chain you archived yourself still fails its schedules.
 - A context source from a bundle whose script is gone, or that its install record has no sha256 for, now says so
   (`scripts/pr.rb is missing (reinstall the bundle)`) instead of claiming the script "differs from the installed one".
+- A chain schedule whose session was archived between the tick's check and its firing now fails as `archived`, as the
+  check says, instead of `the chain is gone`.
 
 ## [0.164.0] - 2026-11-10
 
