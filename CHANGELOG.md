@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   chain's first id keeps working as its address. `--wait --format json` reports the link it waited on as `session_id`
   and the id you gave as `asked`. A send while the continue is still running waits a moment for the new link. With
   `--remote`, the other machine's chi web needs this release too; an older one sends to the id named, as before.
+- chi web has a new icon: a white brushed χ on the same dark tile (tab, Home Screen app, notifications). An iOS
+  Home Screen app keeps the old icon until you remove it and add it again.
 
 ## [0.163.0] - 2026-11-10
 
