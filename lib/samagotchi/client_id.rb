@@ -11,6 +11,10 @@ module Samagotchi
     WEB_RESTART = "web:restart"
     # A web page's first prompt when creating a session.
     WEB_CREATE = "web:create"
+    # The owner's turn route (POST /api/sessions/:id/turn) given no client_id
+    # (a script, curl with the owner's token): named at that seam, a web tab's
+    # rights, never a silent nil.
+    WEB_UNNAMED = "web:unnamed"
     # An attached chi TUI: tui:<pid>.
     TUI_PREFIX = "tui:"
     # chi send's turns and commands.
@@ -45,9 +49,13 @@ module Samagotchi
 
     # Input a human typed: a web tab, a chi TUI, chi send, a participant
     # (review:, a person or an agent they run: never automatic input), and
-    # nil (a worker's initial prompt; a web client may send none). An
-    # allowlist: delegates, plugins, reminders, context changes and any id
-    # chi doesn't know are not.
+    # nil, which reaches only a worker's own seams: its initial prompt
+    # (spawn_session saves no first_turn_client_id for a person's), a Bridge
+    # POST /turn naming none (the Bridge's secret holder: a local TUI or chi
+    # web, which names its sender) and an input file from an older chi.
+    # SessionManager.deliver_turn refuses nil; chi web's turn route names it
+    # (WEB_UNNAMED). An allowlist: delegates, plugins, reminders, context
+    # changes and any id chi doesn't know are not.
     HUMAN_PREFIXES = [WEB_PREFIX, TUI_PREFIX, REVIEW_PREFIX].freeze
     HUMAN_IDS = [CLI_SEND].freeze
 
@@ -58,6 +66,14 @@ module Samagotchi
     # A turn's origin by its sender (#origin, LastTurn#origin): the ids chi
     # runs turns for on its own, by prefix, and a participant's ("review");
     # system:reminder is "reminder", anything else "client".
+    # Which SessionInbox::WakePolicy row a turn delivery from a sender reads
+    # (#wake_kind): a person's (:send: un-stops, un-archives) by allowlist,
+    # like HUMAN_PREFIXES; the unattended senders' own rows; any other id
+    # the safe :automatic row (no un-stop, no un-archive).
+    PERSON_WAKE_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
+    WAKE_PREFIXES = { SCHEDULE_PREFIX => :schedule, DELEGATE_PREFIX => :delegate,
+                      REVIEW_PREFIX => :participant }.freeze
+
     ORIGIN_PREFIXES = { DELEGATE_PREFIX => "delegate", CHILD_PREFIX => "delegate_report",
                         CONTEXT_PREFIX => "context", TASK_PREFIX => "task", REVIEW_PREFIX => "review",
                         SCHEDULE_PREFIX => "schedule" }.freeze
@@ -91,6 +107,21 @@ module Samagotchi
 
       id = client_id.to_s
       HUMAN_IDS.include?(id) || HUMAN_PREFIXES.any? { |prefix| id.start_with?(prefix) }
+    end
+
+    # The WakePolicy row a turn delivery from +client_id+ reads (deliver_turn's
+    # two liveness checks): :send for a person (a web tab, a chi TUI, chi
+    # send), :schedule, :plugin, :delegate or :participant for those
+    # senders, :automatic for anything else (nil too: deliver_turn refuses it
+    # first). Only :send un-stops a stopped session or starts an archived one.
+    # @return [Symbol]
+    def wake_kind(client_id)
+      id = client_id.to_s
+      return :send if id == CLI_SEND || PERSON_WAKE_PREFIXES.any? { |prefix| id.start_with?(prefix) }
+      return :plugin if id == PLUGIN
+
+      WAKE_PREFIXES.each { |prefix, kind| return kind if id.start_with?(prefix) }
+      :automatic
     end
 
     # The client id a participant's turn carries (chi web's, from their

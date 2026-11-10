@@ -80,6 +80,20 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       .to eq([{ "participant" => grant.id, "status" => "accepted", "enqueued_id" => "e-1", "chars" => 15 }])
   end
 
+  # Pick 1 (R3, Q2): a participant restarts no session its owner stopped;
+  # the refusal is passed through, audited. (An archive revokes the grant
+  # first: token_revoked.)
+  it "refuses a turn to a stopped session (409), starting nothing, audited" do
+    allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_call_original
+    allow(Samagotchi::SessionManager).to receive(:resume_session)
+    Samagotchi::Session.mark_stopped(session.id, state_dir: state_dir)
+
+    expect(turn({ prompt: "still there?" })).to eq([409, Samagotchi::SessionManager::DeliverResult::STOPPED])
+    expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(true)
+    expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    expect(audit.map { |line| line["reason"] }).to eq(%w[session_stopped])
+  end
+
   it "passes a valid verify anchor but silently drops a malformed one" do
     verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
 

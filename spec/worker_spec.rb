@@ -303,7 +303,7 @@ RSpec.describe Samagotchi::Worker do
     it "picks up an input file written without a wake on the fallback tick" do
       start_worker(poll_interval: 0.02)
 
-      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "from another process", state_dir: tmpdir)
+      Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "from another process", state_dir: tmpdir)
 
       expect(next_turn&.first).to eq("from another process")
     end
@@ -665,7 +665,7 @@ RSpec.describe Samagotchi::Worker do
           result
         end
         start_worker(poll_interval: 0.02)
-        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", state_dir: tmpdir)
+        Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "task", state_dir: tmpdir)
 
         expect(pop!(merged, "the turn's merge").map(&:text)).to eq(["steer"])
         expect(merging).to include(["steer"])
@@ -937,7 +937,7 @@ RSpec.describe Samagotchi::Worker do
         start_worker(poll_interval: 5, signals: signals)
         post_turn("first")
         expect(pop!(in_turn, "the turn")).to eq("first")
-        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "second", state_dir: tmpdir,
+        Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "second", state_dir: tmpdir,
                                                                 no_interrupt: true)
 
         signals.fire("TERM")
@@ -2938,7 +2938,7 @@ RSpec.describe Samagotchi::Worker do
       it "runs commands queued before a prompt first" do
         start_worker(poll_interval: 5)
         # Written without a wake (another process); the command wakes the loop.
-        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "after", state_dir: tmpdir)
+        Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "after", state_dir: tmpdir)
         command_id = JSON.parse(post_command("/model").body)["command_id"]
 
         expect(next_turn&.first).to eq("after")

@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     end
     start_worker
 
-    Samagotchi::SessionManager.write_turn_input(session.id, prompt: "one", state_dir: tmpdir)
+    Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "one", state_dir: tmpdir)
     expect(pop!(turns, "the first turn")).to eq(["one", []])
     path = write_note("api moved")
     release << true
@@ -142,13 +142,13 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     release << true
 
     wait_for("the note to be saved after the turn") { saved_notes.any? }
-    Samagotchi::SessionManager.write_turn_input(session.id, prompt: "two", state_dir: tmpdir)
+    Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "two", state_dir: tmpdir)
     expect(pop!(turns, "the second turn")).to eq(["two", [File.basename(path, ".json")]])
   end
 
   it "takes notes that waited for the worker before it runs anything else" do
     path = write_note("waited")
-    Samagotchi::SessionManager.write_turn_input(session.id, prompt: "hello", state_dir: tmpdir)
+    Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "hello", state_dir: tmpdir)
 
     start_worker
 

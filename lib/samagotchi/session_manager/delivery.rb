@@ -44,7 +44,7 @@ module Samagotchi
       # tool's follow-up says it after "Error: session <id8>".
       # @return [String]
       def refusal_text
-        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? ||
+        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? || wake_refused? ||
                   DeliverResult::REMOTE_REFUSALS.include?(error)
         "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
       end
@@ -57,6 +57,10 @@ module Samagotchi
       # A followed send refused: a continue took the archived link it named
       # (deliver_turn's follow:); the sender resolves the head again.
       def continued? = error == DeliverResult::CONTINUED
+
+      # A stopped or archived session its sender may not wake
+      # (DeliverResult::STOPPED / ARCHIVED: only a person's message does).
+      def wake_refused? = DeliverResult::WAKE_REFUSALS.include?(error)
 
       # A --cut's outcome ("now", "waits", "off"), nil when nothing was cut.
       def cut = ack["cut"]
@@ -74,6 +78,15 @@ module Samagotchi
     # A followed send's refusal (DeliverResult#continued?), here and from a
     # remote's turn route alike.
     DeliverResult::CONTINUED = "link_continued"
+    # An unattended sender's turn (a schedule, a plugin, a delegate
+    # follow-up, a participant: ClientId.wake_kind) to a session its owner
+    # stopped or archived: refused, nothing written (a 409 from chi web).
+    # The one wording of each; a caller adds who and which session.
+    DeliverResult::STOPPED = { "error" => "session_stopped",
+                               "detail" => "the session is stopped; only its owner's message starts it again" }.freeze
+    DeliverResult::ARCHIVED = { "error" => "session_archived",
+                                "detail" => "the session is archived; only its owner's message brings it back" }.freeze
+    DeliverResult::WAKE_REFUSALS = [DeliverResult::STOPPED["error"], DeliverResult::ARCHIVED["error"]].freeze
 
     # The unclaimed input files +author+ wrote.
     PARTICIPANT_QUEUE_LOCK = "participants.lock"
@@ -87,14 +100,14 @@ module Samagotchi
       # the worker polls. Reused by the bridge's POST surface so a turn is
       # fire-and-forget and never calls run_turn across the thread/process
       # boundary. The file is JSON carrying the sender's ids.
-      # @param client_id [String, nil] the sending UI
+      # @param client_id [String] the sender (ClientId), always named
       # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
       # @param delivery [String, nil] the wire value: "next_step" (default),
       #   "cut" or "queue"
       # @param images [Array<Hash>] image refs ({file:, name:}) in the
       #   session's images/
       # @return [String, false] the input file's path, or false.
-      def write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil,
+      def write_turn_input(session_id, prompt:, client_id:, enqueued_id: nil, no_interrupt: false, state_dir: nil,
                            images: [], delivery: nil, author: nil, anchors: nil)
         session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
         SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
@@ -108,6 +121,12 @@ module Samagotchi
       # to the input file when the Bridge is gone (a worker closing it on idle
       # exit). Race-safe against a TUI taking the session, or the worker
       # exiting, between the resume and the write.
+      # @param client_id [String] the sender (ClientId), always named: its
+      #   kind picks the wake row (ClientId.wake_kind): a person's (chi send,
+      #   a web tab, a TUI) un-stops a stopped session and starts an archived
+      #   link; a schedule's, a plugin's, a delegate's, a participant's or an
+      #   unknown one's is refused there (:refused 409, DeliverResult::STOPPED
+      #   / ARCHIVED, nothing written)
       # @param images [Array<Hash>] refs ({file:, name:}) already in images/
       # @param delivery [String, nil] what the message asks the running turn
       #   for: "next_step" (default), "cut" or "queue"
@@ -141,10 +160,12 @@ module Samagotchi
       #   when it took the request but never answered (no file then), or
       #   :failed when the input file couldn't be written
       # @raise [OwnedByTUI] a one-turn chi run owns the session
-      # @raise [ArgumentError] no such session
-      def deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
+      # @raise [ArgumentError] no such session, or no client_id
+      def deliver_turn(session_id, prompt:, client_id:, images: [], delivery: nil, no_interrupt: false,
                        author: nil, pending_limit: nil, anchors: nil, follow: false, state_dir: nil, manager: self,
                        bridge: nil)
+        raise ArgumentError, "deliver_turn needs the sender's client_id" if client_id.to_s.empty?
+
         follow_guard(session_id, state_dir, follow) do
           deliver_turn_now(session_id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
                                        no_interrupt: no_interrupt, author: author, pending_limit: pending_limit,
@@ -187,7 +208,9 @@ module Samagotchi
         end
         # Its refusals (no session, a one-turn run's, a scratch one) are
         # resume_session's to raise, in their one wording.
-        start_for_send(manager, session_id, state_dir, before: true)
+        refused = start_for_send(manager, session_id, state_dir, client_id, before: true)
+        return refused if refused
+
         enqueued_id = SessionInbox.new_enqueued_id
         if (client = bridge.call)
           if (missing = anchors.present.find { |anchor| !worker_has?(client, anchor.class::FEATURE) })
@@ -264,7 +287,7 @@ module Samagotchi
         # A worker that idle-exited since the resume never reads it either:
         # wake a new one. (The exiting worker also looks for input it left;
         # one the first resume spawned that is still starting is left be.)
-        start_for_send(manager, session_id, state_dir, before: false) do
+        start_for_send(manager, session_id, state_dir, client_id, before: false) do
           FileUtils.rm_f(path) if path.is_a?(String)
           raise OwnedByTUI, session_id
         end
@@ -272,9 +295,13 @@ module Samagotchi
                           ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
       end
 
-      # deliver_turn's two liveness checks, on the session inbox's send row
-      # (SessionInbox::WakePolicy: send un-stops and starts an archived
-      # link). The row follows a chain, deliver_turn doesn't: it acts on
+      # deliver_turn's two liveness checks, on the sender's row of the session
+      # inbox (SessionInbox::WakePolicy.for_sender: a person's send un-stops
+      # and starts an archived link; an unattended sender's does neither,
+      # and +before+ the write it gets DeliverResult::STOPPED / ARCHIVED,
+      # nothing written; after it, a stop or archive that landed since wins
+      # and the input waits for the next start). The row follows a chain,
+      # deliver_turn doesn't: it acts on
       # the id it is given, and a caller that follows (chi send) resolves
       # the head first (SessionAccess#head): resume_session unless a
       # worker holds the session or one is being started. Its refusals (no
@@ -286,24 +313,34 @@ module Samagotchi
       # is leaving (OwnerLock::Owner#leaving?: its Bridge closed, the lock
       # held for its last work) has its input served by its own respawn
       # (WorkerBoot's leave): a stop that landed before this send is
-      # cleared, as resume_session clears it (a send un-stops); one that
-      # lands after it still wins.
-      private def start_for_send(manager, session_id, state_dir, before:)
+      # cleared, as resume_session clears it (a person's send un-stops); one
+      # that lands after it still wins.
+      # @return [DeliverResult, nil] the refusal of a wake the sender may not
+      #   make (+before+ only), else nil
+      private def start_for_send(manager, session_id, state_dir, client_id, before:)
         presence = delivery_presence(manager, session_id, state_dir)
-        policy = SessionInbox::WakePolicy.for(:send)
+        policy = SessionInbox::WakePolicy.for_sender(client_id)
         outcome = policy.decide(presence)
         yield if outcome == :owned && block_given?
-        if !before && outcome == :live && presence.stop_marked? && presence.owner&.leaving?
+        if %i[stopped archived].include?(outcome)
+          return nil unless before
+
+          refusal = outcome == :stopped ? DeliverResult::STOPPED : DeliverResult::ARCHIVED
+          Log.info(:worker, "send_wake_refused", sid: session_id[0, 8], kind: policy.kind, outcome: outcome)
+          return DeliverResult.new(status: :refused, code: 409, ack: refusal)
+        end
+        if !before && outcome == :live && policy.unstops && presence.stop_marked? && presence.owner&.leaving?
           Session.clear_stopped(session_id, state_dir: state_dir || Session.default_state_dir)
           Log.info(:worker, "send_unstopped_leaving", sid: session_id[0, 8])
         end
         if %i[live starting].include?(outcome)
-          return unless before
+          return nil unless before
 
           load = -> { Session.load(session_id, state_dir: state_dir || Session.default_state_dir) }
-          return unless policy.refusal(presence, load: load)
+          return nil unless policy.refusal(presence, load: load)
         end
         manager.resume_session(session_id, state_dir: state_dir)
+        nil
       end
 
       # Whether the worker +client+ talks to names +feature+: the features of

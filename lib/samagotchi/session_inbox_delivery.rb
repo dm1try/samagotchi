@@ -3,6 +3,7 @@
 require_relative "session"
 require_relative "session_inbox"
 require_relative "archive_store"
+require_relative "client_id"
 require_relative "worker_presence"
 require_relative "continue_intent"
 require_relative "session_chain/links"
@@ -65,8 +66,10 @@ module Samagotchi
     # What a delivery of one kind may do to a session's worker: one frozen
     # row per kind (ROWS), decided on WorkerPresence's predicates alone, in
     # one order for every kind (#decide).
-    # @!attribute kind [Symbol] :send, :note, :push, :ring, :fresh_verdict or
-    #   :leave (WorkerBoot's respawn, not a delivery)
+    # @!attribute kind [Symbol] :send, :note, :push, :ring, :fresh_verdict,
+    #   :leave (WorkerBoot's respawn, not a delivery), or a turn delivery's
+    #   unattended sender (deliver_turn, #for_sender): :schedule, :plugin,
+    #   :delegate, :participant, :automatic
     # @!attribute resolves [Symbol] which link it goes to (Head.resolve):
     #   :pinned the id named; :head the chain's newest link from it; :reader
     #   the link that reads the named one's file (a ring: the file stays with
@@ -74,15 +77,20 @@ module Samagotchi
     #   rings, so the wake goes one hop at most)
     # @!attribute starts [Boolean] it may start a worker
     # @!attribute unstops [Boolean] it starts a stopped session (a resume
-    #   clears the stop): send only
+    #   clears the stop): send only (a person's)
     # @!attribute starts_archived [Boolean] it starts an archived link
-    #   (input from a person un-archives it): send only
+    #   (input from a person un-archives it): send (and leave) only
     # @!attribute refuse_tui [Boolean] a one-turn chi run's session refuses it
     # @!attribute refuse_scratch [Boolean] a chi scratch session refuses it
     WakePolicy = Data.define(:kind, :resolves, :starts, :unstops, :starts_archived, :refuse_tui, :refuse_scratch) do
       # @return [WakePolicy]
       # @raise [ArgumentError] no such kind
       def self.for(kind) = WakePolicy::ROWS.fetch(kind) { raise ArgumentError, "no inbox kind #{kind.inspect}" }
+
+      # The row a turn delivery from +client_id+ reads: its kind by the
+      # sender (ClientId.wake_kind), never a caller's flag.
+      # @return [WakePolicy]
+      def self.for_sender(client_id) = self.for(ClientId.wake_kind(client_id))
 
       # Why the delivery is refused before anything is written, else nil:
       # :gone (no session), :owned (a one-turn chi run's), :scratch.
@@ -152,7 +160,16 @@ module Samagotchi
       # lock's release). A stop wins; an archived session's input still
       # starts it, as a send's would have.
       leave: WakePolicy.new(kind: :leave, resolves: :pinned, starts: true, unstops: false, starts_archived: true,
-                            refuse_tui: false, refuse_scratch: false)
+                            refuse_tui: false, refuse_scratch: false),
+      # A turn delivery's unattended senders (deliver_turn reads the row by
+      # the sender, ClientId.wake_kind): they start an idle session as a send
+      # does, but a stop and an archive are the owner's (the sender is
+      # refused, SessionManager::DeliverResult::STOPPED / ARCHIVED). They
+      # stay on the id they name. :automatic is any sender chi doesn't name.
+      **%i[schedule plugin delegate participant automatic].to_h do |kind|
+        [kind, WakePolicy.new(kind: kind, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
+                              refuse_tui: true, refuse_scratch: true)]
+      end
     }.freeze
 
     # Which link of a chain a delivery goes to.

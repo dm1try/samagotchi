@@ -142,7 +142,7 @@ RSpec.describe "session id check" do
         expect { described_class.delete_session(id, state_dir: state_dir) }.to raise_error(ArgumentError)
         expect { described_class.archive_session(id, state_dir: state_dir) }.to raise_error(ArgumentError)
         expect { described_class.stop_session(id, state_dir: state_dir) }.to raise_error(ArgumentError)
-        expect { described_class.deliver_turn(id, prompt: "hi", state_dir: state_dir) }.to raise_error(ArgumentError)
+        expect { described_class.deliver_turn(id, client_id: "cli:send", prompt: "hi", state_dir: state_dir) }.to raise_error(ArgumentError)
       end
       expect_nothing_outside
     end
