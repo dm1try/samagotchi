@@ -18,6 +18,11 @@ and commands may change between minor versions. How releases are made:
 - chi web has a new icon: a white brushed χ on the same dark tile (tab, Home Screen app, notifications). An iOS
   Home Screen app keeps the old icon until you remove it and add it again.
 
+### Fixed
+
+- chi web behind an auth proxy: when the proxy answered the widgets' stylesheet with its login page, `chi-ui` widgets
+  stayed unstyled until a reload; the next widget drawn now fetches the stylesheet again.
+
 ## [0.163.0] - 2026-11-10
 
 ### Added

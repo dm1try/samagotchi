@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWidgetDrawer, hostOf, TOGGLE_PICTURE } from "../../../lib/samagotchi/web/public/inline_widgets.js";
+import { createWidgetDrawer, hostOf, loadWidgetSheet, TOGGLE_PICTURE } from "../../../lib/samagotchi/web/public/inline_widgets.js";
 import { createBlockWatch } from "../../../lib/samagotchi/web/public/block_watch.js";
 import { figureOf, setSourceShown } from "../../../lib/samagotchi/web/public/block_source.js";
 import { viewOf } from "../../../lib/samagotchi/web/public/revise_switch.js";
@@ -33,6 +33,38 @@ const PICKS = {
     { id: "3", text: "No recommendation", options: ["yes", "no"] },
   ],
 };
+
+// ---- the sheet ----
+
+test("loadWidgetSheet: an answer that isn't CSS (a proxy's login page) is tried again; CSS is kept", async () => {
+  const answers = [
+    { ok: true, type: "text/html; charset=utf-8", body: "<html>log in</html>" },
+    { ok: false, type: "text/css", body: "" },
+    { ok: true, type: "text/css; charset=utf-8", body: ".x { color: red }" },
+  ];
+  const fetched = [];
+  const css = [];
+  const win = {
+    fetch: async (url) => {
+      fetched.push(url);
+      const a = answers.shift();
+      return { ok: a.ok, status: a.ok ? 200 : 401, headers: new Map([["content-type", a.type]]), text: async () => a.body };
+    },
+    CSSStyleSheet: class { replaceSync(text) { css.push(text); } },
+  };
+  const error = console.error;
+  console.error = () => {};
+  try {
+    await loadWidgetSheet(win);
+    await loadWidgetSheet(win);
+    const kept = await loadWidgetSheet(win);
+    assert.equal(await loadWidgetSheet(win), kept);
+  } finally {
+    console.error = error;
+  }
+  assert.equal(fetched.length, 3);
+  assert.deepEqual(css, ["", "", ".x { color: red }"]);
+});
 
 // ---- walk: routes ----
 

@@ -98,7 +98,8 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
 - **Shadow DOM.** The host has an open shadow root holding the widget, with `widgets.css` adopted
   (`adoptedStyleSheets`): the page fetches it once into a constructable `CSSStyleSheet` (`loadWidgetSheet`), and `draw`
   returns a Promise that places the widget once it is there, so no widget flashes unstyled and the view held
-  (`holdingView`) measures the styled one. A failed fetch draws unstyled and the next draw tries again. Its words are then out of the bubble's `textContent`, which the shown-texts dedupe (`seedSeenFromDom`), copy's
+  (`holdingView`) measures the styled one. A failed fetch (an error, a non-2xx, or an answer that isn't
+  `text/css`, such as an auth proxy's login page) draws unstyled and the next draw tries again. Its words are then out of the bubble's `textContent`, which the shown-texts dedupe (`seedSeenFromDom`), copy's
   fallback and an annotation's quote read, as with a renderer's `<img>`-only figure. chi's `:root` tokens reach it as
   inherited custom properties, so light and dark follow the page. Playwright's locators pierce an open shadow root;
   `page.evaluate`'s DOM calls don't. Whatever asks `document.activeElement` whether a field has the focus looks
