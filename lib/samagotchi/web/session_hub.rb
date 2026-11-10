@@ -342,8 +342,23 @@ module Samagotchi
 
         @installed = newest
         emit("chi", chi_state)
+        refresh_worker_compat
       rescue StandardError => e
         Log.warn(:web, "installed_check_failed", error: e.class.name, msg: e.message)
+      end
+
+      def refresh_worker_compat
+        # An installed-version change can stale a worker without changing its files.
+        @sessions.each_value do |entry|
+          summary = entry.summary
+          next unless summary&.dig(:worker_version)
+
+          compatibility = Compat.verdict(worker_version: summary[:worker_version], version: @installed || VERSION).to_s
+          next if summary[:worker_compat] == compatibility
+
+          entry.summary = summary.merge(worker_compat: compatibility)
+          emit("session", session: entry.summary)
+        end
       end
 
       # The state dir's files: a new id is parsed and emitted, an id gone
@@ -414,7 +429,8 @@ module Samagotchi
 
         entry.owner = owner
         entry.live = live
-        summary = SessionSummary.build(entry.session, owner: owner, session_dir: dir, registry: hub_registry)
+        summary = SessionSummary.build(entry.session, owner: owner, session_dir: dir, registry: hub_registry,
+                                       compat_version: @installed || VERSION)
         # A new worker (pid) or a new Bridge for the same session is an
         # event for the page even when the summary reads the same: it
         # reconnects its stream on it.

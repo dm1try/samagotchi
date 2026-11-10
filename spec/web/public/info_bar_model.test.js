@@ -112,11 +112,12 @@ test("stop while a worker runs it, or the page streams from one", () => {
 });
 
 test("an older worker's badge (with its Restart's busy state); none for a current one or a terminal's", () => {
-  const state = { ...emptySessionState(), owner: "worker", workerVersion: "0.9.0", workerFeatures: ["restart"] };
+  const state = { ...emptySessionState(), owner: "worker", workerVersion: "0.9.0", workerCompat: "restart_suggested",
+                  workerFeatures: ["restart"] };
   const { bar } = sessionBar(args({ state, restarting: new Set([ID]) }));
   assert.equal(bar.worker.badge.restart, true);
   assert.equal(bar.worker.busy, true);
-  assert.equal(workerBadgeFor(ID, { ...state, workerVersion: "1.0.0" }, { served: "1.0.0", installed: null }), null);
+  assert.equal(workerBadgeFor(ID, { ...state, workerVersion: "1.0.0", workerCompat: "ok" }, { served: "1.0.0", installed: null }), null);
   assert.equal(workerBadgeFor(ID, { ...state, owner: "tui" }, { served: "1.0.0", installed: null }), null);
   assert.equal(workerBadgeFor(null, state, { served: "1.0.0", installed: null }), null);
 });

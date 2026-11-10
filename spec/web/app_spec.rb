@@ -1157,6 +1157,29 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["capabilities"]).to eq("display" => false, "editor" => false)
     end
 
+    it "compares the session page's worker with the newest installed chi" do
+      state_dir = Dir.mktmpdir("web-session-compat")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.save(state_dir: state_dir)
+      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      live_sidecar_fixture(session_dir, port: 4321, version: "0.159.9")
+      installed = double("installed versions", newest: "0.161.0")
+      hub = Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed)
+      hub.refresh_installed
+      manager = FakeResponsesManager.new
+      allow(manager).to receive(:session_owner).with(session.id, state_dir: state_dir)
+        .and_return(Samagotchi::OwnerLock.owner(session_dir))
+      app = build_app(manager: manager, state_dir: state_dir, session_class: Samagotchi::Session, hub: hub)
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}"))
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.first).dig("session", "worker_compat")).to eq("restart_suggested")
+    ensure
+      hub&.stop
+      FileUtils.rm_rf(state_dir) if state_dir
+    end
+
     it "sends the Markdown tip in both session payloads while Markdown is off, and none once it is on" do
       off = build_app(state_dir: Dir.mktmpdir)
       tip = Samagotchi::Web::MarkdownRenderer.new.tip

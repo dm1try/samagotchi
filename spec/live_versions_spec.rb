@@ -48,6 +48,16 @@ RSpec.describe Samagotchi::LiveVersions do
     expect(File).to exist(File.join(state_dir, "c", "bridge.json"))
   end
 
+  it "marks every worker on an older version stale, including the previous minor" do
+    sidecar("current", port: listener.addr[1], version: "0.160.1")
+    sidecar("older-patch", port: listener.addr[1], version: "0.160.0")
+    sidecar("previous", port: listener.addr[1], version: "0.159.8")
+    sidecar("newer", port: listener.addr[1], version: "0.160.2")
+
+    expect(described_class.stale_workers("0.160.1", state_dir: state_dir).map(&:session_id))
+      .to contain_exactly("older-patch", "previous")
+  end
+
   it "skips a broken sidecar and one that is not an object" do
     sidecar("a", port: listener.addr[1], version: "0.3.1")
     { "b" => "{", "c" => "[1]" }.each do |id, body|

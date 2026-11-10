@@ -84,6 +84,8 @@ module Samagotchi
       # Those notes have been shown (Provenance#clear_merge_notes), under the lock.
       def clear_merge_notes(notes, files: [])
         with_lock { Provenance.new(name: BUNDLE_NAME).clear_merge_notes(notes, files: files) }
+      rescue StateFormat::InvalidDocument => e
+        e.message
       rescue StandardError
         nil
       end

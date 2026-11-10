@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "rubygems/version"
 require_relative "config"
 require_relative "session"
 require_relative "version"
@@ -38,9 +39,13 @@ module Samagotchi
       end
     end
 
-    # The live workers on another version than +version+ (unknown counts).
+    # The live workers older than the target chi (unknown versions count).
+    # Compat's N-1 verdict is for hints; these callers are adopting the new code.
     def stale_workers(version = VERSION, state_dir: Session.default_state_dir)
-      workers(state_dir: state_dir).reject { |w| w.version == version }
+      target = Gem::Version.new(version)
+      workers(state_dir: state_dir).select do |worker|
+        worker.version.nil? || !Gem::Version.correct?(worker.version) || Gem::Version.new(worker.version) < target
+      end
     end
 
     # The /api/info of a chi web on host:port, or nil when nothing (or not

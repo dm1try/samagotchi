@@ -120,6 +120,77 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(manifest[:files][key][:checksum]).to eq(expected_sha)
     end
 
+    it "carries unknown record fields through a rewrite" do
+      prov = described_class.new(name: "test-bundle")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/x")
+      path = File.join(prov.bundle_dir, "manifest.json")
+      raw = JSON.parse(File.read(path))
+      raw["future_record_key"] = { "kept" => true }
+      File.write(path, JSON.generate(raw))
+
+      prov.write(files: {}, scope: "system", version: "1.1", source_path: "/x")
+
+      expect(JSON.parse(File.read(path))).to include(
+        "record_format" => 1,
+        "future_record_key" => { "kept" => true }
+      )
+    end
+
+    it "says how to reinstall when required record fields are missing" do
+      prov = described_class.new(name: "test-bundle")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/x")
+      path = File.join(prov.bundle_dir, "manifest.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("files")))
+
+      expect { prov.ensure_supported_record_format! }
+        .to raise_error(
+          Samagotchi::StateFormat::InvalidDocument,
+          "manifest.json is missing required record fields; repair with chi bundle uninstall test-bundle --force, " \
+          "then chi bundle install <source> --force"
+        )
+    end
+
+    it "refuses to rewrite a newer record format without changing the record" do
+      prov = described_class.new(name: "test-bundle")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/x")
+      path = File.join(prov.bundle_dir, "manifest.json")
+      raw = JSON.parse(File.read(path)).merge("record_format" => 2)
+      File.write(path, JSON.generate(raw))
+      original = File.read(path)
+
+      expect do
+        prov.write(files: {}, scope: "system", version: "1.1", source_path: "/x")
+      end.to raise_error(Samagotchi::StateFormat::InvalidDocument, /record_format 2 is newer than supported 1/)
+      expect(File.read(path)).to eq(original)
+    end
+
+    it "refuses raw record rewrites for a newer format with the same message" do
+      prov = described_class.new(name: "test-bundle")
+      source = make_file(tmpdir, "a.md", "A\n")
+      prov.write(files: { "a.md" => source }, scope: "system", version: "1.0", source_path: "/x")
+      path = File.join(prov.bundle_dir, "manifest.json")
+      original = JSON.parse(File.read(path)).merge("record_format" => 2)
+      File.write(path, JSON.generate(original))
+      original_bytes = File.read(path)
+      incoming = make_file(File.join(tmpdir, "incoming"), "a.md", "A2\n")
+      error = "manifest.json record_format 2 is newer than supported 1; update chi before writing it"
+      marks = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")]
+
+      [
+        -> { prov.note_merged(["a.md"], version: "1.1", trash: nil) },
+        -> { prov.resolve_conflicts({}) },
+        -> { prov.record_restored("a.md", incoming) },
+        -> { prov.refresh_marks(marks, File.dirname(incoming)) }
+      ].each do |rewrite|
+        expect(&rewrite).to raise_error(Samagotchi::StateFormat::InvalidDocument, error)
+        expect(File.read(path)).to eq(original_bytes)
+      end
+      expect(prov.clear_merge_notes([], files: ["a.md"])).to eq(error)
+      expect(prov.adopt_manifest(tmpdir)).to eq(error)
+      expect(File.read(path)).to eq(original_bytes)
+      expect(File.read(prov.base_path("a.md"))).to eq("A\n")
+    end
+
     it "merges file entries on re-install (P2: no clobber)" do
       prov = described_class.new(name: "test-bundle")
       base_dir = File.join(tmpdir, "sources")
@@ -260,7 +331,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
                        session_setting_types: { "cap" => "number" }, settings: ["limit"], setting_types: { "limit" => "string" })
       raw = JSON.parse(File.read(File.join(bundles_dir, "kept", "manifest.json")))
       expect(raw.except("installed_at", "manifest_sha", "installed_by")).to eq(
-        "name" => "kept", "version" => "1.0.0", "scope" => "system", "source" => source,
+        "name" => "kept", "record_format" => 1, "version" => "1.0.0", "scope" => "system", "source" => source,
         "files" => { "a.md" => { "checksum" => Digest::SHA256.hexdigest("A\n") } }, "hooks" => {},
         "trust_level" => "reviewed", "requires_chi" => ">= 0.1", "needs" => [{ "command" => "gh" }],
         "context_providers" => [{ "match" => "\\Ax", "name" => "x", "cmd" => "c" }],
@@ -315,6 +386,13 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     def edit_source = File.write(File.join(source, "manifest.yml"), YAML.dump(yield(YAML.load_file(File.join(source, "manifest.yml")))))
 
     def raw = JSON.parse(File.read(File.join(bundles_dir, "old", "manifest.json")))
+
+    it "does not inspect a dev record before refusing manifest adoption" do
+      write_legacy(dev: true)
+      File.write(File.join(bundles_dir, "old", "manifest.json"), JSON.generate(raw.merge("record_format" => 2)))
+
+      expect(prov.adopt_manifest(source)).to eq("old is a dev install")
+    end
 
     it "keeps the source's manifest.yml and records its sha when the source is what's installed, touching nothing else" do
       write_legacy

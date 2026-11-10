@@ -2,6 +2,9 @@
 
 require "open3"
 require "prism"
+require "json"
+require "fileutils"
+require "tmpdir"
 require "yaml"
 require_relative "../../lib/samagotchi/memory_bundle/shas"
 
@@ -17,6 +20,8 @@ module ReleaseTools
   SYSTEM_MANIFEST = "#{BUNDLES_DIR}/#{SYSTEM_BUNDLE}/manifest.yml".freeze
   CHANGELOG = "CHANGELOG.md"
   VERSION_PATTERN = /\A\d+\.\d+\.\d+(?:\.[0-9A-Za-z.]+)?\z/
+  COMPAT_SESSION_ID = "compat-session"
+  COMPAT_STAMP = "2026-01-01T00:00:00Z"
 
   class Error < StandardError; end
 
@@ -27,6 +32,90 @@ module ReleaseTools
   def gem_version(root)
     File.read(File.join(root, VERSION_FILE))[/VERSION = "([^"]+)"/, 1] or raise Error, "no VERSION in #{VERSION_FILE}"
   end
+
+  # A release's small canonical files, produced through the current readers'
+  # corresponding writers. The corpus root is isolated from user state.
+  def write_compat_corpus!(root, version)
+    raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
+
+    corpus_dir = File.join(root, "spec", "compat", version)
+    raise Error, "compatibility corpus already exists for #{version}" if File.exist?(corpus_dir)
+
+    require_relative "../../lib/samagotchi/session"
+    require_relative "../../lib/samagotchi/worker_link"
+    require_relative "../../lib/samagotchi/worker_sidecar"
+    require_relative "../../lib/samagotchi/bridge/card_store"
+    require_relative "../../lib/samagotchi/schedules"
+    require_relative "../../lib/samagotchi/memory_bundle/provenance"
+
+    Dir.mktmpdir("chi-compat-corpus-") do |tmp|
+      staged = File.join(tmp, "corpus")
+      sessions_dir = File.join(staged, "sessions")
+      session_dir = File.join(sessions_dir, COMPAT_SESSION_ID)
+      FileUtils.mkdir_p([sessions_dir, session_dir])
+
+      isolated_env = %w[XDG_CONFIG_HOME XDG_STATE_HOME].to_h { |key| [key, ENV[key]] }
+      ENV["XDG_CONFIG_HOME"] = File.join(tmp, "config")
+      ENV["XDG_STATE_HOME"] = File.join(tmp, "state")
+      begin
+        at = Time.utc(2026, 1, 1)
+        Samagotchi::Session.new(id: COMPAT_SESSION_ID, mode: "assist", model_name: "compat:model",
+                                working_directory: "/compat-fixture", created_at: COMPAT_STAMP,
+                                updated_at: COMPAT_STAMP, messages: [{ role: "user", content: "compatibility corpus" }])
+                               .save(state_dir: sessions_dir, now: at)
+        session_path = Samagotchi::Session.session_file(COMPAT_SESSION_ID, state_dir: sessions_dir)
+        session_data = JSON.parse(File.read(session_path))
+        session_data["written_by"] = version
+        session_data["updated_at"] = COMPAT_STAMP
+        File.write(session_path, "#{JSON.pretty_generate(session_data)}\n")
+
+        Samagotchi::WorkerSidecar.new(port: 4321, bind: "127.0.0.1", session_id: COMPAT_SESSION_ID,
+                                      started_at: COMPAT_STAMP, version: version, features: ["restart"],
+                                      epoch: "compat-epoch", pid: 12_345, protocol: Samagotchi::WorkerLink::PROTOCOL)
+                               .write(session_dir)
+        Samagotchi::Bridge::CardStore.new(path: File.join(session_dir, Samagotchi::Bridge::CardStore::FILE))
+                                     .call(type: :hook_notice, hook: "compat", text: "compatibility corpus",
+                                           between_turns: true)
+
+        schedules = Samagotchi::Schedules.new(state_dir: sessions_dir, clock: -> { at })
+        schedules.add(target: COMPAT_SESSION_ID, prompt: "compatibility corpus", title: "Compatibility corpus",
+                      recurrence: Samagotchi::Schedules.recurrence(every: "1h"), catch_up: "once", keep_links: 5,
+                      max_failures: 3, max_skips: 12)
+        schedules_data = JSON.parse(File.read(schedules.path))
+        schedules_data["updated_at"] = COMPAT_STAMP
+        schedules_data["schedules"].first["id"] = "compat-schedule"
+        File.write(schedules.path, "#{JSON.pretty_generate(schedules_data)}\n")
+        FileUtils.rm_f(schedules.lock_path)
+
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: "compat")
+        provenance.write(files: {}, scope: "system", version: version, source_path: "compat-fixture")
+        manifest_path = File.join(provenance.bundle_dir, "manifest.json")
+        manifest = JSON.parse(File.read(manifest_path))
+        manifest["installed_at"] = COMPAT_STAMP
+        File.write(manifest_path, "#{JSON.pretty_generate(manifest)}\n")
+        bundle_record = File.join(staged, ".bundles", "compat", "manifest.json")
+        FileUtils.mkdir_p(File.dirname(bundle_record))
+        FileUtils.cp(manifest_path, bundle_record)
+
+        required = [
+          session_path,
+          File.join(session_dir, Samagotchi::WorkerSidecar::FILE),
+          File.join(session_dir, Samagotchi::Bridge::CardStore::FILE),
+          schedules.path,
+          bundle_record
+        ]
+        missing = required.reject { |path| File.file?(path) }
+        raise Error, "compatibility corpus writer omitted #{missing.join(", ")}" unless missing.empty?
+      ensure
+        isolated_env.each { |key, value| value ? ENV[key] = value : ENV.delete(key) }
+      end
+
+      FileUtils.mkdir_p(File.dirname(corpus_dir))
+      FileUtils.mv(staged, corpus_dir)
+    end
+    corpus_dir
+  end
+  private_class_method :write_compat_corpus!
 
   def system_bundle_version(root)
     YAML.safe_load_file(File.join(root, SYSTEM_MANIFEST))["version"].to_s
@@ -443,6 +532,7 @@ module ReleaseTools
     edit(root, "Gemfile.lock") { |t| t.gsub(/^(\s+)samagotchi \(#{Regexp.escape(current)}\)$/, "\\1samagotchi (#{version})") }
     File.write(changelog, new_changelog)
     raised.merge(profile_texts).merge(since_texts).each { |path, text| File.write(path, text) }
+    write_compat_corpus!(root, version)
     Bumped.new(old: current, raised: raised.keys.map { |path| File.basename(File.dirname(path)) }, profiles: profiles,
                since: since)
   end
@@ -568,12 +658,33 @@ module ReleaseTools
     out.lines.map(&:chomp)
   end
 
+  def compatibility_corpus_problem(root, version)
+    relative = "spec/compat/#{version}"
+    directory = File.join(root, relative)
+    return "#{relative} is missing" unless Dir.exist?(directory)
+
+    files = Dir.glob(File.join(directory, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) }
+    return "#{relative} is empty" if files.empty?
+
+    tracked, ok = git(root, "ls-files", "-z", "--", relative)
+    raise Error, "git ls-files failed: #{tracked}" unless ok
+
+    tracked = tracked.split("\0")
+    untracked = files.map { |path| path.delete_prefix("#{File.expand_path(root)}/") } - tracked
+    return "#{relative} has untracked files: #{untracked.join(", ")}" unless untracked.empty?
+    return "#{relative} has no tracked files" if tracked.empty?
+
+    nil
+  end
+
   # The checks that need no build: [problems].
   def consistency_problems(root)
     version = gem_version(root)
     problems = []
     dirty = dirty_tracked_files(root)
     problems << "uncommitted changes to tracked files:\n  #{dirty.join("\n  ")}" unless dirty.empty?
+    corpus = compatibility_corpus_problem(root, version)
+    problems << corpus if corpus
     system = system_bundle_version(root)
     problems << "VERSION #{version} != system bundle #{system}" unless system == version
     changelog = File.join(root, CHANGELOG)

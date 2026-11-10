@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../installed_versions"
+require_relative "../compat"
 require_relative "../version"
 require_relative "../chi_invocation"
 
@@ -24,7 +25,7 @@ module Samagotchi
 
         newest = [installed, terminal].select { |v| Gem::Version.correct?(v.to_s) && !v.to_s.empty? }
                                       .max_by { |v| Gem::Version.new(v) }
-        worker_old = InstalledVersions.newer?(newest, worker)
+        worker_old = Compat.verdict(worker_version: worker, version: newest) == :restart_suggested
         terminal_old = InstalledVersions.newer?(newest, terminal)
         return nil unless worker_old || terminal_old
 
@@ -51,7 +52,8 @@ module Samagotchi
       def across_machines(worker:, installed:, session_id:, terminal:, via:)
         there = [installed, worker].select { |v| Gem::Version.correct?(v.to_s) && !v.to_s.empty? }
                                    .max_by { |v| Gem::Version.new(v) }
-        worker_old = InstalledVersions.newer?(installed, worker)
+        worker_old = installed && !installed.to_s.empty? &&
+                     Compat.verdict(worker_version: worker, version: installed) == :restart_suggested
         terminal_old = InstalledVersions.newer?(there, terminal)
         return nil unless worker_old || terminal_old
 

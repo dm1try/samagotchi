@@ -127,7 +127,8 @@ namespace :release do
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
     bumped = ReleaseTools.bump!(ROOT, version)
-    puts "Bumped #{bumped.old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, Gemfile.lock, CHANGELOG.md"
+    puts "Bumped #{bumped.old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, " \
+         "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/"
     unless bumped.raised.empty?
       puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
     end

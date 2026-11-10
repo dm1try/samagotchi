@@ -8,8 +8,7 @@ module Samagotchi
   # A worker's bridge.json in its session directory: how clients reach its
   # Bridge (port, bind), when it started (a new worker behind the same
   # "worker" owner), the chi it runs (chi update, the web's stale-worker
-  # badge), the input-file format it reads (SessionInbox::INPUT_FORMAT) and
-  # what else it can do (Bridge::FEATURES), and its Bridge's epoch (the
+  # badge), what else it can do (Bridge::FEATURES), and its Bridge's epoch (the
   # one worker identity: the epoch in every event id, so a remote client
   # tells a restarted worker apart; nil from a worker before it), and its
   # Bridge's secret (every request names it in X-Chi-Bridge, Bridge#secret_ok?;
@@ -57,12 +56,12 @@ module Samagotchi
 
     # Written whole or not at all, readable by this user only (0600 from the
     # moment the file exists, AtomicFile: no other account learns the
-    # worker's port or its secret from it); input_format, epoch, secret, pid
+    # worker's port or its secret from it); epoch, secret, pid
     # and protocol only when they name one.
     def write(session_dir)
       FileUtils.mkdir_p(session_dir)
       record = to_h.transform_keys(&:to_s)
-      record.delete("input_format") if input_format.nil?
+      record.delete("input_format")
       record.delete("epoch") if epoch.nil?
       record.delete("secret") if secret.nil?
       record.delete("pid") if pid.nil?

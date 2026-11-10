@@ -68,6 +68,25 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
                                   "installed_by" => Samagotchi::VERSION)
       end
 
+      it "refuses a newer installed record before changing memories" do
+        original = write_bundle(tmpdir, { "identity.md" => "# Original\n" }, name: "test-bundle")
+        installer_for(source: original, name: "test-bundle").run
+        record_path = File.join(bundles_dir, "test-bundle", "manifest.json")
+        record = JSON.parse(File.read(record_path)).merge("record_format" => 2)
+        File.write(record_path, JSON.generate(record))
+        update = write_bundle(File.join(tmpdir, "update"), {
+          "identity.md" => "# Updated\n",
+          "added.md" => "# Added\n"
+        }, name: "test-bundle", version: "2.0.0")
+
+        expect do
+          described_class.new(source: update, name: "test-bundle", strict: true, upgrade: true).run
+        end.to raise_error(described_class::InstallError,
+                           "manifest.json record_format 2 is newer than supported 1; update chi before writing it")
+        expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Original\n")
+        expect(File).not_to exist(File.join(system_memories_dir, "added.md"))
+      end
+
       it "installs .md files into the system scope directory" do
         bundle_dir = write_bundle(tmpdir, {
           "identity.md" => "# Identity\n",

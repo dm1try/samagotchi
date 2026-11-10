@@ -201,6 +201,26 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(line("system bundle")).to match(/\s+#{Regexp.escape(Samagotchi::VERSION)}\s+installed\z/)
   end
 
+  it "reports a newer system-bundle record format on chi update's row without a traceback" do
+    name = Samagotchi::MemoryBundle::SystemBundle::BUNDLE_NAME
+    provenance = Samagotchi::MemoryBundle::Provenance.new(name: name)
+    provenance.write(files: {}, scope: "system", version: "999.0.0", source_path: shipped)
+    record_path = File.join(provenance.bundle_dir, "manifest.json")
+    record = JSON.parse(File.read(record_path)).merge(
+      "record_format" => 2,
+      "files" => { "identity.md" => { "merged_version" => "1.0.0", "merged_at" => "2026-11-05T10:00:00Z" } }
+    )
+    File.write(record_path, JSON.generate(record))
+
+    expect(run("--no-gem", "--no-bundles", "--no-desktop")).to eq(0)
+
+    expect(line("system bundle")).to include(
+      "manifest.json record_format 2 is newer than supported 1; update chi before writing it"
+    )
+    expect(line("system bundle").scan("record_format 2").size).to eq(1)
+    expect(err.string).to be_empty
+  end
+
   it "keeps the edited files on the row as well as in its status" do
     source = File.join(tmp, "gems", "samagotchi-0.0.1", "lib", "samagotchi", "bundles", "known-names")
     FileUtils.mkdir_p(File.dirname(source))
@@ -1226,6 +1246,17 @@ RSpec.describe Samagotchi::UpdateCommand do
 
   describe "live processes" do
     def listener = TCPServer.new("127.0.0.1", 0).tap { |s| servers << s }
+
+    it "reports a worker on the previous patch in the workers row" do
+      stub_const("Samagotchi::VERSION", "0.160.1")
+      session_dir = File.join(state_dir, "aaaaaaaa-1")
+      FileUtils.mkdir_p(session_dir)
+      live_sidecar_fixture(session_dir, port: 4321, version: "0.160.0")
+
+      run("--no-gem", "--no-bundles", "--no-desktop")
+
+      expect(line("workers")).to include("1 live on 0.160.0: they keep it until restarted")
+    end
 
     it "reports live workers on another version, without stopping them" do
       %w[aaaaaaaa-1 bbbbbbbb-2].each_with_index do |id, i|

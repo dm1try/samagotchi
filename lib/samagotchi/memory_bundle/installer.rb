@@ -124,10 +124,11 @@ module Samagotchi
       def run
         load_source
         refuse_too_new
+        @provenance = Provenance.new(name: @name)
+        refuse_newer_record_format
         warn_unknown_keys(@manifest) if @manifest
         @target_scope, @target_dir = resolve_target
         @file_descriptions = @manifest&.file_descriptions || {}
-        @provenance = Provenance.new(name: @name)
         @existing = @provenance.record
         check_source
         # A plain install over an installed bundle: its summary says so.
@@ -442,6 +443,12 @@ module Samagotchi
         return if failure.nil? || @force
 
         raise InstallError, "#{@name} can't be installed: #{failure} (chi update, or --force to install it anyway)"
+      end
+
+      def refuse_newer_record_format
+        @provenance.ensure_supported_record_format!
+      rescue StateFormat::InvalidDocument => e
+        raise InstallError, e.message
       end
 
       # The scope the files go to (the CLI's wins over the manifest's) and

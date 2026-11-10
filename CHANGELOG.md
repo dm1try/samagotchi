@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Worker restart hints now follow one compatibility rule: the current and previous minor release are supported.
 - `chi bundle install` and `chi bundle upgrade` refuse a memory, plugin or script whose bytes disagree with the
   sha256 its manifest declares, before writing anything (`Checksum mismatch for FILE: ...; chi bundle install
   --force installs it anyway`, exit 1). `--force` installs it anyway, as it already does for an edited memory (its

@@ -185,8 +185,10 @@ test("sessionStateFrom's title is cut with an ellipsis, also from messages", () 
 test("sessionStateFrom reads the live worker's version and features", () => {
   const st = sessionStateFrom(payload({ session: {
     worker_version: "0.66.0", worker_features: ["delivery", "task_stop"], bridge_up: true,
+    worker_compat: "restart_suggested",
   } }));
   assert.equal(st.workerVersion, "0.66.0");
+  assert.equal(st.workerCompat, "restart_suggested");
   assert.deepEqual(st.workerFeatures, ["delivery", "task_stop"]);
   assert.equal(st.bridgeUp, true);
 });
@@ -194,6 +196,7 @@ test("sessionStateFrom reads the live worker's version and features", () => {
 test("sessionStateFrom: no worker (or a features that is not a list) is null and []", () => {
   const none = sessionStateFrom(payload());
   assert.equal(none.workerVersion, null);
+  assert.equal(none.workerCompat, null);
   assert.deepEqual(none.workerFeatures, []);
   assert.equal(none.bridgeUp, false);
   assert.deepEqual(sessionStateFrom(payload({ session: { worker_features: "delivery" } })).workerFeatures, []);

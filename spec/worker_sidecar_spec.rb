@@ -9,15 +9,15 @@ RSpec.describe Samagotchi::WorkerSidecar do
 
   after { FileUtils.rm_rf(dir) }
 
-  it "writes bridge.json in the Bridge's key order, input_format, epoch and secret only when set, and reads it back" do
+  it "writes bridge.json without the unused input format, and writes epoch and secret only when set" do
     sidecar = described_class.new(port: 4321, bind: "127.0.0.1", session_id: "s1", started_at: "2026-09-30T10:00:00.000+02:00",
                                   version: "0.7.0", input_format: 3, features: ["restart"], epoch: "a1b2c3d4",
                                   secret: "5e" * 32)
     sidecar.write(File.join(dir, "s1"))
 
     expect(JSON.parse(File.read(File.join(dir, "s1", "bridge.json"))).keys)
-      .to eq(%w[port bind session_id started_at version input_format features epoch secret])
-    expect(described_class.read(File.join(dir, "s1"))).to eq(sidecar)
+      .to eq(%w[port bind session_id started_at version features epoch secret])
+    expect(described_class.read(File.join(dir, "s1"))).to have_attributes(port: 4321, version: "0.7.0", features: ["restart"])
 
     sidecar.with(input_format: nil, epoch: nil, secret: nil).write(dir)
     expect(JSON.parse(File.read(described_class.path(dir)))).not_to include("input_format", "epoch", "secret")

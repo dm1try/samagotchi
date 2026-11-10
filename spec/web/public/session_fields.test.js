@@ -10,6 +10,7 @@ import { withLiveStatus } from "../../../lib/samagotchi/web/public/format.js";
 const FULL = {
   session: {
     status: "idle", model_name: "m", working_directory: "/p", owner: "worker", worker_version: "1.2.0",
+    worker_compat: "restart_suggested",
     worker_features: ["delivery"], bridge_up: true, used_memory_names: ["a"], preloaded_memory_names: ["b"],
     muted_memory_names: ["c"], prompt_notes: [{ name: "n" }], verdicts: [{ check_turn_id: "t" }],
     verify_fresh: [{ of: "t", child_id: "c1" }], llm_context: { strategy: "forget" }, thinking: { level: "low" },
@@ -61,10 +62,11 @@ test("the payload sources are session_payload.js's 11", () => {
 
 test("fieldsFromCard: exactly the owner and the worker, never the status", () => {
   const got = fieldsFromCard(FULL.session);
-  assert.deepEqual(got, { owner: "worker", workerVersion: "1.2.0", workerFeatures: ["delivery"], bridgeUp: true });
+  assert.deepEqual(got, { owner: "worker", workerVersion: "1.2.0", workerFeatures: ["delivery"],
+                          workerCompat: "restart_suggested", bridgeUp: true });
   assert.equal("status" in got, false);
   assert.deepEqual(fieldsFromCard({ id: "s", status: "running" }),
-                   { owner: null, workerVersion: null, workerFeatures: [], bridgeUp: false });
+                   { owner: null, workerVersion: null, workerFeatures: [], workerCompat: null, bridgeUp: false });
 });
 
 test("statusWrite: the rule per source", () => {

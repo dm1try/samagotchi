@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require_relative "../atomic_file"
 require_relative "../events"
+require_relative "../state_format"
 require_relative "card_places"
 
 module Samagotchi
@@ -62,6 +63,11 @@ module Samagotchi
     # count becomes +base_since+, and new openings add to it (#seed_v1).
     class CardStore
       CAPACITY = 20
+      FORMAT_VERSION = 2
+      FORMAT = StateFormat.new(
+        version: FORMAT_VERSION,
+        members: [StateFormat.required(:type), StateFormat.extra(:extra, in_version: FORMAT_VERSION)]
+      )
       NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
       # Capped apart from the notices.
       LLM_CONTEXT_TYPES = %i[llm_context_edited].freeze
@@ -98,6 +104,8 @@ module Samagotchi
         @mutex = Mutex.new
         @entries = []
         @turn_log = []
+        @file_extra = {}
+        @format_read_only = false
         @running_turn = nil
         @continuing = false
         @failed_turn = nil
@@ -180,13 +188,14 @@ module Samagotchi
 
       def save
         return unless @path
+        return if @format_read_only
 
         entries = @entries.reject { |entry| entry[:type] == :guardrail_warning }
         # A session that never showed one gets no file.
         return if entries.empty? && !File.exist?(@path)
 
         FileUtils.mkdir_p(File.dirname(@path))
-        saved = { "version" => 2, "turn_log" => pruned_log(entries), "entries" => entries }
+        saved = @file_extra.merge("version" => FORMAT_VERSION, "turn_log" => pruned_log(entries), "entries" => entries)
         saved["failed_turn"] = @failed_turn if @failed_turn
         AtomicFile.write(@path, JSON.generate(saved))
       rescue StandardError
@@ -222,15 +231,34 @@ module Samagotchi
         return unless @path && File.file?(@path)
 
         data = JSON.parse(File.read(@path), symbolize_names: true)
-        return unless data.is_a?(Hash) && data[:entries].is_a?(Array)
+        return unless data.is_a?(Hash)
+
+        format_data = data.transform_keys(&:to_s)
+        format_data["entries"] = if data[:entries].is_a?(Array)
+                                   data[:entries].map { |entry| entry.is_a?(Hash) ? entry.transform_keys(&:to_s) : entry }
+                                 else
+                                   data[:entries]
+                                 end
+        document = FORMAT.read(format_data, collection: "entries")
+        if document.version > FORMAT_VERSION
+          raise StateFormat::InvalidDocument,
+                "cards.json has format version #{document.version}, newer than supported #{FORMAT_VERSION}; update chi before writing it"
+        end
+        @file_extra = document.extra.except("version", "entries", "turns", "turn_log", "failed_turn")
+        return unless data[:entries].is_a?(Array)
 
         if data[:turn_log].is_a?(Array)
           @turn_log = data[:turn_log].grep(String)
           @failed_turn = data[:failed_turn] if data[:failed_turn].is_a?(String)
-          @entries = seeded(data[:entries])
+          @entries = seeded(document.entries.map { |entry| entry.to_h.transform_keys(&:to_sym) })
         elsif data[:turns].is_a?(Integer)
           seed_v1(data)
         end
+      rescue StateFormat::InvalidDocument => e
+        @format_read_only = true
+        @turn_log = []
+        @entries = []
+        Log.warn(:bridge, "card_store_unreadable", error: e.message)
       rescue StandardError
         @turn_log = []
         @entries = []

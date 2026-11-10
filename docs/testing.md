@@ -144,6 +144,14 @@ either router adds its row there; a row where a UI differs on purpose (or a foun
 override and a `note`. The Ruby side runs each row with every core command (a new one fails its
 `CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
+## Compatibility corpus
+
+`spec/compat/readers_spec.rb` reads the newest recorded release before the
+current version (or the current corpus when it is the only one) through today's
+session, Bridge, CardStore, schedules and bundle-record readers. `rake
+release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers;
+commit those small samples with the release so the next version exercises N-1.
+
 ## Levels
 
 Each level owns its own share; a detail is asserted once, at the lowest level that has it.

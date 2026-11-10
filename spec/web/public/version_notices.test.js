@@ -10,7 +10,8 @@ import { createSessionStore } from "../../../lib/samagotchi/web/public/session_s
 
 function harness({ stored = {}, confirms = true, clipboard = null, restartSession = async () => ({ version: "0.20.0" }),
                   current = {} } = {}) {
-  const store = createSessionStore({ initial: { owner: "worker", workerVersion: "0.18.0", workerFeatures: ["restart"], ...current } });
+  const store = createSessionStore({ initial: { owner: "worker", workerVersion: "0.18.0", workerCompat: "restart_suggested",
+                                               workerFeatures: ["restart"], ...current } });
   store.update({ selected: "s1aaaaaaaa" });
   const touches = [];
   store.on("infoBar", () => touches.push("infoBar"));

@@ -1638,5 +1638,20 @@ Removed: hooks/guardrails.rb\n\z})
       expect(spawn("status")).to eq(["  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n", "", 0])
       expect(spawn("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
+
+    it "reports a newer record format on the status row without a traceback" do
+      expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))[2]).to eq(0)
+      record_path = File.join(@root, "cfg", "samagotchi", "memories", ".bundles", "sample-memory-bundle", "manifest.json")
+      record = JSON.parse(File.read(record_path)).merge("record_format" => 2).except("manifest_sha")
+      File.write(record_path, JSON.generate(record))
+      FileUtils.rm_f(File.join(File.dirname(record_path), "manifest.yml"))
+
+      stdout, stderr, status = spawn("status", "sample-memory-bundle")
+
+      expect(status).to eq(0)
+      expect(stdout).to include("Manifest: [from the install record]", "manifest.json record_format 2 is newer than supported 1")
+      expect(stdout.scan("record_format 2").size).to eq(1)
+      expect(stderr).to be_empty
+    end
   end
 end
