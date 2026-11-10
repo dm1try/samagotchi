@@ -201,6 +201,27 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
       expect(again.end).not_to have_key("turn_id")
     end
 
+    it "reads a call's status with no record from its output, as a reload did: no result, blocked, a grep's no match" do
+      calls = [{ id: "c1", name: "read", arguments: '{"path":"a"}' }, { id: "c2", name: "execute", arguments: '{"command":"rm -rf b"}' },
+               { id: "c3", name: "execute", arguments: '{"command":"rg zzz lib/"}' }]
+      messages = [head, { role: "user", content: "go", turn_id: "t1" }, { role: "model", content: "", tool_calls: calls },
+                  { role: "tool_response", content: "[execute] Error: denied by guardrail (rm): not here", tool_call_id: "c2" },
+                  { role: "tool_response", content: "[execute]\nexit: 1", tool_call_id: "c3" }, { role: "model", content: "ok" }]
+      line = described_class.line(messages, Samagotchi::Bridge::TurnRanges.of(messages).first)
+
+      expect(line.drawing["parts"].select { |p| p["kind"] == "tool" }.map { |p| p["status"] }).to eq(["no result", "blocked", "ok"])
+    end
+
+    it "takes a turn's tool records by its own id when no turn record came (a join's link)" do
+      messages = [head, { role: "user", content: "go", turn_id: "t1" },
+                  { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: '{"path":"a"}' }] },
+                  { role: "tool_response", content: "[read]\na", tool_call_id: "c1" }, { role: "model", content: "ok" }]
+      tools = [{ "turn_id" => "t1", "tool" => "read", "status" => "ok", "duration_ms" => 42 }]
+      line = described_class.line(messages, Samagotchi::Bridge::TurnRanges.of(messages).first, tools: tools)
+
+      expect(line.drawing["parts"].find { |p| p["kind"] == "tool" }).to include("duration_ms" => 42)
+    end
+
     it "draws a turn with no record without durations, its kind from its note" do
       messages = [head, { role: "user", content: "go", turn_id: "t1" },
                   { role: "model", content: "x", tool_calls: [{ id: "c1", name: "read", arguments: '{"path":"a"}' }] },
@@ -316,7 +337,7 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
       allow(Samagotchi::MessageParts).to receive(:for_message).and_raise(ArgumentError, "boom")
       allow(Samagotchi::Degrade).to receive(:note).and_call_original
 
-      line = described_class.safe_line(messages, range, record: { "id" => "t1", "status" => "failed" })
+      line = described_class.safe_line(messages, range, record: { "id" => "t1", "status" => "failed", "failure" => { "summary" => "down" } })
 
       expect(line.drawing).to include("prompt" => "go", "turn_id" => "t1", "parts" => [])
       expect(line.kind).to eq("failed")

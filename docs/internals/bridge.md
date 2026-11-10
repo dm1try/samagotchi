@@ -113,7 +113,11 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   answer without its rows), no prompt with a turn id, a rollback, a line of another version, one over the 1 MB a
   restart reads back (`TurnDrawings.sendable?`). An attaching TUI unfolds it (`TerminalUI::JoinReplay`, `TurnAccumulator.replay_events`) and draws
   that turn's rows through its `EventRenderer`, as a running turn's join does, then the end event's cancel or failure
-  line, else the saved answer; without it the rows are rebuilt from the messages as before. `chi --remote` attaches through chi web's stream proxy,
+  line, else the saved answer. Without it (an older worker, a line over 1 MB, a turn from before drawings) the TUI
+  makes that turn's line itself: `TurnRanges.of` over the snapshot's messages finds the prompt's range, and
+  `Synth.safe_line` draws it with the link's saved records (`LocalLink`, or `RemoteLink#saved_turn_record` /
+  `#saved_tool_records` through chi web for `--remote`) and the snapshot's cards, through the same renderer. Nothing
+  rebuilds rows from the messages any more. `chi --remote` attaches through chi web's stream proxy,
   which relays an owner's frames byte for byte, the field included. A participant never gets it: its stream's snapshot
   is bare (`ParticipantView`). An older TUI ignores the field; an older worker sends none.
 - **The show.** chi web's full read with `?parts=1&drawings=1` (the page's) draws every finished turn from a line:

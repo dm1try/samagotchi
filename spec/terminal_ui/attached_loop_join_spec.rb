@@ -7,6 +7,7 @@ require_relative "../support/worker_links"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
+require "samagotchi/bridge/card_store"
 require "support/turn_drawing_scenarios"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
@@ -506,6 +507,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     # The snapshot's last_turn_drawing (Bridge#snapshot): the last turn as
     # live drew it, from the shared scenarios (spec/shared/turn_drawings).
     describe "from the last turn's drawing" do
+      # The records some examples save (save_records) are this session's.
+      after { FileUtils.rm_rf(Samagotchi::Session.session_dir("s-1234")) }
+
       # The fixture's own time, so no gap divider depends on the clock or the zone.
       let(:now) { -> { Time.iso8601(TurnDrawingScenarios::AT) + 60 } }
 
@@ -514,15 +518,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       def plain(lines) = lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }
 
       # The join of +name+'s session, with its last line as the snapshot's
-      # drawing (+drawing+: false for none, or one of the caller's).
-      def joined(name, drawing: nil)
+      # drawing (+drawing+: false for none, or one of the caller's) and
+      # +cards+ as its CardStore list.
+      def joined(name, drawing: nil, cards: nil, messages: nil)
         data = fixture(name)
         line = data["lines"].last
         drawing = { drawing: line["drawing"], end: line["end"] } if drawing.nil?
         out = RecordingSurface.new(columns: 80)
         loop = described_class.new(client: client, screen: out, client_id: "tui:1", now: now)
-        snap = { messages: data["messages"], event_seq: 9 }
+        snap = { messages: messages || data["messages"], event_seq: 9 }
         snap[:last_turn_drawing] = drawing if drawing
+        snap[:cards] = cards if cards
         loop.handle_event(JSON.parse(JSON.generate(type: :snapshot, snapshot: snap, session_state_snapshot: { status: "idle" })))
         plain(out.lines)
       end
@@ -572,19 +578,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         end
       end
 
-      it "rebuilds the rows, as without one, from a drawing that isn't the last prompt's turn (a reminder's)" do
+      it "draws from the messages, as without one, from a drawing that isn't the last prompt's turn (a reminder's)" do
         expect(joined("reminder_only")).to eq(joined("reminder_only", drawing: false))
         expect(joined("reminder_only")).to eq(["user> earlier", "Tea time."])
       end
 
-      it "rebuilds the rows, as without one, from a drawing that isn't a Hash, and from a drawing of another turn" do
+      it "draws from the messages, as without one, from a drawing that isn't a Hash, and from a drawing of another turn" do
         without = joined("tools_answer", drawing: false)
         expect(joined("tools_answer", drawing: { drawing: "x", end: {} })).to eq(without)
         # No turn_id: not the prompt's turn, so its parts are never read.
         expect(joined("tools_answer", drawing: { drawing: { "parts" => "x" }, end: { "type" => "turn_completed" } })).to eq(without)
       end
 
-      it "rebuilds the rows, as without one, from the prompt's own drawing whose parts aren't a list of rows" do
+      it "draws from the messages, as without one, from the prompt's own drawing whose parts aren't a list of rows" do
         line = fixture("tools_answer")["lines"].last
         without = joined("tools_answer", drawing: false)
         ["x", ["x"], [nil]].each do |parts|
@@ -593,10 +599,82 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         end
       end
 
-      it "draws as before without a drawing (an older worker)" do
+      it "draws from its messages without a drawing (an older worker), without what only live had" do
         expect(joined("empty_retry", drawing: false)).to eq(["user> answer please", "Here it is."])
         expect(joined("tools_answer", drawing: false)).to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok',
                                                               "It says alpha, beta."])
+      end
+
+      # The snapshot's cards as a worker's CardStore lists them after +name+'s events.
+      def cards_of(name)
+        data = fixture(name)
+        store = Samagotchi::Bridge::CardStore.new
+        data["events"].each do |raw|
+          event = Samagotchi::Bridge::TurnAccumulator.from_wire(raw)
+          store.call(event.merge(type: event[:type].to_sym))
+        end
+        JSON.parse(JSON.generate(store.list(messages: data["messages"])))
+      end
+
+      # No line in the snapshot: an older worker (no field), a line over the
+      # 1 MB a snapshot sends, or a session before drawings. The prompt's turn
+      # is drawn from its messages and the snapshot's cards, through the
+      # renderer, as live drew it.
+      # The turn and tool records SessionMetrics saved for +name+'s turns,
+      # in the session's analytics.json, which the link reads.
+      def save_records(name)
+        turns = []
+        tools = []
+        turn_id = nil
+        fixture(name)["events"].each do |event|
+          turn_id = event["turn_id"] if event["type"] == "turn_started"
+          if event["type"] == "tool_call_completed"
+            tools << { "turn_id" => turn_id, "iteration" => event["iteration"], "call_index" => event["call_index"], "tool" => event["tool"],
+                       "status" => event.dig("activity", "status"), "duration_ms" => event["duration_ms"] }
+          end
+          next unless Samagotchi::Events::TURN_END.include?(event["type"].to_sym)
+
+          record = { "id" => event["turn_id"], "status" => Samagotchi::Bridge::TurnDrawings::KINDS.fetch(event["type"]),
+                     "duration_ms" => event["duration_ms"], "cancellation_reason" => event["cancellation_reason"] }.compact
+          record["failure"] = { "summary" => event["summary"], "kept_steps" => event["kept_steps"] }.compact if event["summary"]
+          turns << record
+        end
+        dir = Samagotchi::Session.session_dir("s-1234")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "analytics.json"), JSON.generate("turn_records" => turns, "tool_records" => tools))
+      end
+
+      # (A question's line and an in-turn card's place are the join's own,
+      # with a line or without: the line-drawn list above leaves them out too.)
+      %w[plain_answer tools_answer empty_retry no_answer canceled_steps failed_steps steer reminder_prompt continue_opener
+         hook_notice].each do |name|
+        it "draws #{name} from its messages, with no line in the snapshot, as the live terminal did" do
+          save_records(name)
+          expect(joined(name, drawing: false, cards: cards_of(name)).drop(1)).to eq(live(name).drop(1))
+        end
+      end
+
+      it "draws a turn's reminder line and its hook notice from the messages and the cards (no rebuild skips them)" do
+        expect(joined("reminder_prompt", drawing: false)).to include("reminder: tea")
+        expect(joined("hook_notice", drawing: false, cards: cards_of("hook_notice"))).to include(a_string_including("loop: make repeated"))
+      end
+
+      it "draws a wake turn whose report follows its note (the note opens the range from outside it)" do
+        note = Samagotchi::ContextNote.message(note_id: "n1", text: "child done", source: "delegate", created_at: "2026-11-08T09:00:00Z")
+                                      .merge(turn_start: true, turn_id: "tw")
+        messages = [{ role: "system", content: "You are chi." }, note,
+                    { role: "user", kind: "input", source: "delegate_report", content: "[report] done", turn_start: true, turn_id: "tw" },
+                    { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: '{"path":"r.md"}' }] },
+                    { role: "tool_response", content: "[read]\nok", tool_call_id: "c1" }, { role: "model", content: "Noted." }]
+        lines = joined("tools_answer", drawing: false, messages: JSON.parse(JSON.generate(messages)))
+        expect(lines).to include(a_string_matching(/reading file \(read path="r\.md"\): ok/))
+        expect(lines.last).to eq("Noted.")
+      end
+
+      it "draws a turn saved before turn ids from its messages" do
+        messages = fixture("tools_answer")["messages"].map { |m| m.except("turn_id") }
+        expect(joined("tools_answer", drawing: false, messages: messages))
+          .to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok', "It says alpha, beta."])
       end
     end
 
