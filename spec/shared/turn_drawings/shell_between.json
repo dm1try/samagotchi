@@ -317,5 +317,94 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-a",
+        "drawn": "turn-a"
+      },
+      {
+        "role": "assistant",
+        "content": "A.",
+        "drawn": "turn-a"
+      },
+      {
+        "role": "user",
+        "content": "!(ls)\na.txt",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-b",
+        "drawn": "turn-b"
+      },
+      {
+        "role": "assistant",
+        "content": "B.",
+        "drawn": "turn-b"
+      }
+    ],
+    "turn_drawings": {
+      "turn-a": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "one",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-a"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "A.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-a",
+          "duration_ms": 2400,
+          "record_id": "turn-a"
+        }
+      },
+      "turn-b": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "two",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-b"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "B.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-b",
+          "duration_ms": 2400,
+          "record_id": "turn-b"
+        }
+      }
+    }
   }
 }

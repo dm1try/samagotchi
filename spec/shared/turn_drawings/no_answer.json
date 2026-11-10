@@ -277,5 +277,82 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "say something",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-none",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "empty_answer",
+        "content": "",
+        "retries": 1,
+        "drawn": "turn-none"
+      }
+    ],
+    "turn_drawings": {
+      "turn-none": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "say something",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-none"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "first try",
+            "iteration": 1
+          },
+          {
+            "type": "empty_answer_retry",
+            "iteration": 1,
+            "attempt": 1,
+            "of": 1
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "second try",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-none",
+          "duration_ms": 2400,
+          "turn_summary": {
+            "empty_answer": {
+              "retries": 1
+            }
+          },
+          "record_id": "turn-none"
+        }
+      }
+    }
   }
 }

@@ -445,5 +445,125 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "long task",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-card",
+        "drawn": "turn-card"
+      },
+      {
+        "role": "assistant",
+        "content": "Working.",
+        "drawn": "turn-card"
+      },
+      {
+        "role": "assistant",
+        "content": "Finished.",
+        "drawn": "turn-card"
+      }
+    ],
+    "turn_drawings": {
+      "turn-card": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "long task",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-card"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Working.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"sleep 1\"",
+            "title": "sleep 1",
+            "view": {
+              "command": "sleep 1",
+              "steps": [
+                {
+                  "text": "sleep 1"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\n",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"sleep 1\"",
+              "title": "sleep 1",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "sleep 1",
+              "steps": [
+                {
+                  "text": "sleep 1"
+                }
+              ]
+            }
+          },
+          {
+            "id": "check-in",
+            "source": "check-in",
+            "title": "Check in",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/check-in nudge"
+              }
+            ],
+            "type": "card",
+            "in_turn": true
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Finished.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-card",
+          "duration_ms": 2400,
+          "record_id": "turn-card"
+        }
+      }
+    }
   }
 }

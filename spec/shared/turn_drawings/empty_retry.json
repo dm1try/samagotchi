@@ -232,5 +232,60 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "answer please",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-retry",
+        "drawn": "turn-retry"
+      },
+      {
+        "role": "assistant",
+        "content": "Here it is.",
+        "drawn": "turn-retry"
+      }
+    ],
+    "turn_drawings": {
+      "turn-retry": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "answer please",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-retry"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "empty_answer_retry",
+            "iteration": 1,
+            "attempt": 1,
+            "of": 1
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Here it is.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-retry",
+          "duration_ms": 2400,
+          "record_id": "turn-retry"
+        }
+      }
+    }
   }
 }

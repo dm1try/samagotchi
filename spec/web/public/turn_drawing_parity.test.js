@@ -129,6 +129,29 @@ for (const scenario of scenarios) {
   });
 }
 
+// The synth arm (H3 step L): the same turn reloaded from a drawing chi web
+// made from its messages (Bridge::TurnDrawings::Synth, the fixture's
+// `synth`), against the live turn. What the synth can't have is
+// Synth::LOSSES: the ones that change a shape are these, by their id there,
+// and each scenario names the ones it has.
+const SYNTH_LOSSES = {
+  // A step that streamed only thinking and was asked again: its thinking
+  // is saved nowhere, so its step (and a block of only such steps) is gone.
+  empty_step_thinking: ([live, synth]) => synth === null && (live.kind === "block" || (live.kind === "step" && live.text === "thinking")),
+};
+const SYNTH_LOSSES_OF = { empty_retry: ["empty_step_thinking"] };
+
+for (const scenario of scenarios) {
+  test(`${scenario.name}: drawn from its messages after a reload as live drew it`, async () => {
+    const live = await liveShape(lastTurnEvents(scenario.events));
+    const reloaded = drawnShape(scenario.synth);
+    const allowed = (SYNTH_LOSSES_OF[scenario.name] || []).map((id) => SYNTH_LOSSES[id]);
+    const left = compareShapes(live, reloaded).differences.filter((pair) => !allowed.some((loss) => loss(pair)));
+    assert.deepEqual(left, [], `${scenario.description}\nlive: ${JSON.stringify(live, null, 1)}\nsynth: ${JSON.stringify(reloaded, null, 1)}`);
+    assert.ok(reloaded.length > 0);
+  });
+}
+
 test("every shared scenario has a show with its drawing", () => {
   assert.ok(scenarios.length >= 16);
   for (const s of scenarios) assert.ok(Object.keys(s.show?.turn_drawings || {}).length, s.name);

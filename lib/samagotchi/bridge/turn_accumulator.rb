@@ -30,8 +30,12 @@ module Samagotchi
       #   TurnDrawings#append). It runs under this accumulator's mutex and the
       #   SessionObserver's lock: it must never call back in here. An error is
       #   logged and the fold goes on.
+      # @param raise_errors [Boolean] a fold that raises raises out of #call
+      #   (a drawing made from messages: TurnDrawings::Synth), never for a
+      #   live turn's observer
       def initialize(max_output_chars: ToolOutputCut::WEB_PREVIEW_CHARS,
-                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, on_turn_end: nil)
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, on_turn_end: nil, raise_errors: false)
+        @raise_errors = raise_errors
         @max_output_chars = max_output_chars
         @clock = clock
         @on_turn_end = on_turn_end
@@ -50,6 +54,8 @@ module Samagotchi
       def call(event)
         @mutex.synchronize { fold(event) }
       rescue StandardError
+        raise if @raise_errors
+
         nil # never break the running turn
       end
 

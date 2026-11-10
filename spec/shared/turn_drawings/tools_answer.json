@@ -345,5 +345,100 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "look at a.txt",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-tools",
+        "drawn": "turn-tools"
+      },
+      {
+        "role": "assistant",
+        "content": "Let me look.",
+        "drawn": "turn-tools"
+      },
+      {
+        "role": "assistant",
+        "content": "It says alpha, beta.",
+        "drawn": "turn-tools"
+      }
+    ],
+    "turn_drawings": {
+      "turn-tools": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "look at a.txt",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-tools"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "look first",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Let me look.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\nalpha\nbeta",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a.txt\"",
+              "title": "a.txt",
+              "action": "reading file"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "It says alpha, beta.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-tools",
+          "duration_ms": 2400,
+          "record_id": "turn-tools"
+        }
+      }
+    }
   }
 }

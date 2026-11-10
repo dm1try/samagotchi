@@ -195,5 +195,61 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "earlier",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-0"
+      },
+      {
+        "role": "assistant",
+        "content": "Earlier answer."
+      },
+      {
+        "role": "note",
+        "content": "pr-7 changed",
+        "label": "context",
+        "at": "2026-11-08T09:00:00.000Z",
+        "turn_start": true,
+        "turn_id": "turn-wake"
+      },
+      {
+        "role": "assistant",
+        "content": "Looked at pr-7.",
+        "drawn": "turn-wake"
+      }
+    ],
+    "turn_drawings": {
+      "turn-wake": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": null,
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-wake"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Looked at pr-7.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-wake",
+          "duration_ms": 2400,
+          "record_id": "turn-wake"
+        }
+      }
+    }
   }
 }
