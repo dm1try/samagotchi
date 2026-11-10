@@ -160,6 +160,13 @@ release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers
 (`ReleaseTools.write_compat_corpus!`); commit those small samples with the
 release so the next version exercises N-1.
 
+Compat shims (code kept only for another chi version's data or protocol) are
+registered in `Compat::SHIMS` (`lib/samagotchi/compat.rb`): an id, the release
+that added it, `remove_after` (nil: the owner hasn't dated it) and its files,
+each Ruby one naming it in a comment (`compat shim <id>`). `spec/compat_spec.rb`
+fails once `Samagotchi::VERSION` passes a shim's `remove_after`, naming it:
+remove the shim, or move its date with the owner's OK. A new shim gets a row.
+
 ## Levels
 
 Each level owns its own share; a detail is asserted once, at the lowest level that has it.

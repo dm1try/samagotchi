@@ -729,20 +729,23 @@ module Samagotchi
         return false unless reply.status == 404
         return true if reply.error == "context_missing"
 
-        # Older chi web used not_found for a missing context source.
+        # Older chi web used not_found for a missing context source
+        # (compat shim remote_refusal_details: Compat::SHIMS).
         reply.error == "not_found" && reply.json["detail"].to_s.start_with?("no source")
       end
 
       def no_provider?(reply)
         return true if reply.error == "no_provider"
 
-        # Older chi web didn't give this refusal its own error code.
+        # Older chi web didn't give this refusal its own error code
+        # (compat shim remote_refusal_details).
         reply.json["detail"].to_s.start_with?("no installed bundle resolves")
       end
 
       # chi web's 404 not_found detail for a session it doesn't have:
       # "no session X" (Session::NotFound), or "Session not found: X" from
-      # chi web 0.155.0 and older (compat N-1: the same line either way).
+      # chi web 0.155.0 and older (compat N-1: the same line either way;
+      # compat shim session_not_found_words: Compat::SHIMS).
       SESSION_NOT_FOUND = /\A(?:no session |Session not found: )(.+)\z/m
 
       # Session::NotFound for a missing session's 404, else an

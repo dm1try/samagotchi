@@ -399,7 +399,8 @@ module Samagotchi
       # merges it (that turn's end is its answer: the drain's merge record,
       # or ReplyWait's inference for a 0.156 child, ReplyWait::Poll#
       # follow_merge). Only from a worker that names turn_ids; nil
-      # otherwise: the wait takes the next reply.
+      # otherwise: the wait takes the next reply (compat shim merge_inference:
+      # Compat::SHIMS).
       # @return [String, nil]
       def self.follow_up_turn(id, enqueued_id, state_dir:)
         ReplyWait.turn_ids?(Session.session_dir(id, state_dir: state_dir)) ? enqueued_id : nil

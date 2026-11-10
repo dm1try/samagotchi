@@ -131,7 +131,8 @@ module Samagotchi
       # (#follow_into). Without one (a 0.156 worker, a turn with no id, a
       # merge from before the update) the merge is inferred
       # (ReplyWait.merged_elsewhere?) and waited for as the next reply past
-      # the cursor, as without turn:, never as a turn that will not come.
+      # the cursor, as without turn:, never as a turn that will not come
+      # (compat shim merge_inference: Compat::SHIMS).
       def follow_merge(session, merge)
         return unless may_follow?
 

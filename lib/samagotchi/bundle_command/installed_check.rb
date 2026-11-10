@@ -83,7 +83,8 @@ module Samagotchi
       private_class_method :answer_of
 
       # A 0.157 record's class-file hooks: they no longer load, and only an
-      # upgrade from a source that has moved them (or an uninstall) clears it.
+      # upgrade from a source that has moved them (or an uninstall) clears it
+      # (compat shim retired_class_file_hooks: Compat::SHIMS).
       def retired_hooks(bundle)
         Check::Finding.new(level: :warn, code: :"hooks-retired", file: "hooks/", line: nil,
                            message: MemoryBundle::Manifest::HooksRetired::WORDS,
