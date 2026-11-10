@@ -918,7 +918,7 @@ module Samagotchi
 
     # The session the entry would act on: its head, followed through every
     # continue made since it was last written — a chain firing's new link or a
-    # human `chi send --continues`/`chi resume` (SessionChain::Links#latest,
+    # person's `chi send --new --continues` or web `continue →` (SessionChain::Links#latest,
     # the walk SessionContinue.run does for `last:`). The chain's end, not the
     # send rule's first live link (Links#first_live): a chain continues only
     # its end, and a schedule never un-archives a retired chain. Both modes use the walk: a
@@ -957,10 +957,12 @@ module Samagotchi
 
     # Which chain an entry belongs to, for the one-firing-per-chain-per-tick
     # guard: the root of the chain its resolved target is in. Every entry of a
-    # chain has the same root, whichever link it was added against.
+    # chain has the same root, whichever link it was added against. One whose
+    # target doesn't resolve (gone, archived, being continued) gets a key of
+    # its own: it shares no chain with anyone this tick.
     def chain_key(links, entry)
       target, _reason = target_of(entry, links)
-      links.root(target)
+      target ? links.root(target) : "unresolved:#{entry.id}"
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no
@@ -1039,6 +1041,12 @@ module Samagotchi
       nil
     end
 
+    # A firing whose target no longer resolves (#target_of: gone, archived,
+    # or being continued since the tick's check): what #check would say.
+    def unresolved(entry, reason, kind)
+      Outcome.new(id: entry.id, title: entry.title, status: kind == :skip ? "skipped" : "failed", detail: reason, entry: entry)
+    end
+
     def fire_and_record(entry, links)
       outcome = fire(entry, links)
       record(entry, outcome)
@@ -1055,8 +1063,8 @@ module Samagotchi
     end
 
     def fire_chain(entry, links)
-      head, _reason = target_of(entry, links)
-      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "the chain is gone", entry: entry) if head.nil?
+      head, reason, kind = target_of(entry, links)
+      return unresolved(entry, reason, kind) if head.nil?
       # One stored before #add refused it: its link would refuse the line,
       # so it fails here, with no link started and nothing archived.
       if CommandIntake.shell_line?(entry.prompt)
@@ -1083,8 +1091,8 @@ module Samagotchi
     end
 
     def fire_same(entry, links)
-      target, reason = target_of(entry, links)
-      return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: reason, entry: entry) if target.nil?
+      target, reason, kind = target_of(entry, links)
+      return unresolved(entry, reason, kind) if target.nil?
 
       # Checked again, against the files: a continue made between the tick's
       # listing and this moment archives the target it just resolved to.

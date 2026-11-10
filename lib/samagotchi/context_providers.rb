@@ -149,8 +149,9 @@ module Samagotchi
     # installed (they run outside the guardrails gate, as a plugin loads:
     # checked the same way).
     # @return [String]
-    # @raise [Invalid] the bundle is gone, a script changed, or this chi
-    #   doesn't meet the bundle's requires_chi
+    # @raise [Invalid] the bundle is gone, a script is gone, unrecorded or
+    #   changed (Provenance#script_failure), or this chi doesn't meet the
+    #   bundle's requires_chi
     def command_for(source)
       return source.cmd unless source.provider
 
@@ -165,10 +166,8 @@ module Samagotchi
       end
 
       record.scripts.each do |file, sha|
-        path = File.join(provenance.scripts_dir, file)
-        next if File.file?(path) && MemoryBundle::Provenance.sha_matches?(path, sha)
-
-        raise Invalid, "bundle #{source.provider}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
+        failure = provenance.script_failure(file, sha)
+        raise Invalid, failure if failure
       end
       source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(provenance.bundle_dir) }.gsub(RUBY) { Shellwords.escape(RbConfig.ruby) }
     end

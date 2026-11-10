@@ -396,6 +396,30 @@ RSpec.describe AffectedSpecs::Picker do
                                                                 ["spec/pads_spec.rb", "calls pad_cells (lib/samagotchi/widget.rb)"]])
     end
 
+    # A method name alone is often another class's: SendCommand#deliver's
+    # change picked a dozen deliver specs ahead of spec/send_new_spec.rb,
+    # which names SendCommand, and the cap cut it.
+    it "ranks a spec naming only the method after the specs naming the class" do
+      files["spec/class_only_spec.rb"] = "Widget.new"
+      files["spec/both_spec.rb"] = "Widget.new.pad_cells"
+      lines["lib/samagotchi/widget.rb"] = [14]
+      result = pick("lib/samagotchi/widget.rb")
+
+      expect(result.ruby.map { |p| [p.path, p.reason] }.drop(1))
+        .to eq([["spec/both_spec.rb", "calls pad_cells (lib/samagotchi/widget.rb)"],
+                ["spec/class_only_spec.rb", "names Widget (lib/samagotchi/widget.rb)"],
+                ["spec/pads_spec.rb", "calls pad_cells (lib/samagotchi/widget.rb)"]])
+    end
+
+    it "keeps the callers' order when the class is a hub (its specs aren't listed)" do
+      (1..(AffectedSpecs::HUB_SPECS + 1)).each { |i| files["spec/hub#{i}_spec.rb"] = "Widget" }
+      lines["lib/samagotchi/widget.rb"] = [8]
+      result = pick("lib/samagotchi/widget.rb")
+
+      expect(paths(result.ruby)).to eq(%w[spec/samagotchi/widget_spec.rb spec/zzz_spec.rb spec/aaa_spec.rb])
+      expect(result.hints.grep(/hub: Widget/).size).to eq(1)
+    end
+
     it "gives a method named in more than HUB_SPECS spec files a note (for --why) instead of its specs" do
       (1..(AffectedSpecs::HUB_SPECS + 1)).each { |i| files["spec/hub#{i}_spec.rb"] = "pad_cells" }
       lines["lib/samagotchi/widget.rb"] = [14]

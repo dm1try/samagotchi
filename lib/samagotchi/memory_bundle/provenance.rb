@@ -98,6 +98,19 @@ module Samagotchi
         File.join(@bundle_dir, "scripts")
       end
 
+      # Why the installed scripts/+file+ isn't as installed, nil when it is:
+      # the record has no sha for it (+recorded+), it is gone, or it changed.
+      # The one check a provider's command and a block renderer's load make
+      # before chi runs or serves the file; a --dev install's links pass.
+      def script_failure(file, recorded)
+        path = File.join(scripts_dir, file)
+        return "bundle #{@name}'s scripts/#{file} isn't among its installed scripts (reinstall the bundle)" if self.class.recorded_sha(recorded).empty?
+        return "bundle #{@name}'s scripts/#{file} is missing (reinstall the bundle)" unless File.file?(path)
+        return nil if self.class.sha_matches?(path, recorded)
+
+        "bundle #{@name}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
+      end
+
       # The intent journal of a run that has not written its record yet
       # (#write_pending): its scope and target dir, plus the files and sha256s
       # of the texts a run meant to put there. #write removes it.

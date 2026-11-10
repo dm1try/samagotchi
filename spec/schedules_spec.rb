@@ -1067,6 +1067,42 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # The tick's check passed; the chain was archived (retired) before the
+  # firing's own look: the firing says "archived", as the check would.
+  it "fails a chain firing whose end was archived after the check as archived, not gone" do
+    Dir.mktmpdir("schedules-chain-archived") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::CHAIN)
+      Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
+      allow(Samagotchi::SessionContinue).to receive(:run)
+
+      outcome = schedules.send(:fire_chain, entry, Samagotchi::SessionChain::Links.new(state_dir: dir))
+
+      expect([outcome.status, outcome.detail]).to eq(%w[failed archived])
+      expect(Samagotchi::SessionContinue).not_to have_received(:run)
+    end
+  end
+
+  it "keys each chain entry whose target doesn't resolve on its own, not on a shared nil" do
+    Dir.mktmpdir("schedules-chain-key") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      first = schedules.add(target: session(dir).id, prompt: "A", recurrence: every("1m"), mode: described_class::CHAIN)
+      second = schedules.add(target: session(dir).id, prompt: "B", recurrence: every("1m"), mode: described_class::CHAIN)
+      [first, second].each do |entry|
+        FileUtils.rm_f(Samagotchi::Session.session_file(entry.anchor, state_dir: dir))
+        FileUtils.rm_rf(Samagotchi::Session.session_dir(entry.anchor, state_dir: dir))
+      end
+      links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+
+      keys = [first, second].map { |entry| schedules.send(:chain_key, links, entry) }
+
+      expect(keys).to eq(["unresolved:#{first.id}", "unresolved:#{second.id}"])
+    end
+  end
+
   it "queues a same-mode turn into the chain's latest link after a human continue" do
     Dir.mktmpdir("schedules-same-continue") do |root|
       dir = File.join(root, "sessions")
@@ -1120,7 +1156,7 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
-  # A person's continue of the chain's end (chi send --continues, a resume)
+  # A person's continue of the chain's end (chi send --new --continues, web continue →)
   # writes its intent and archives the link before its successor is saved: a
   # tick in that moment sees an archived end. It is "not now", not a retired
   # chain.

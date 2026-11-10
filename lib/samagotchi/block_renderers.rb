@@ -105,13 +105,10 @@ module Samagotchi
       return nil unless for_installed.any? { |renderer| renderer.bundle == bundle && renderer.files.include?(file) }
 
       provenance = MemoryBundle::Provenance.new(name: bundle)
-      path = File.join(provenance.scripts_dir, file)
-      recorded = provenance.record&.scripts&.fetch(file, nil)
-      raise Invalid, "bundle #{bundle}'s scripts/#{file} isn't among its installed scripts (reinstall the bundle)" if recorded.to_s.empty?
-      raise Invalid, "bundle #{bundle}'s scripts/#{file} is missing (reinstall the bundle)" unless File.file?(path)
-      return path if MemoryBundle::Provenance.sha_matches?(path, recorded)
+      failure = provenance.script_failure(file, provenance.record&.scripts&.fetch(file, nil))
+      raise Invalid, failure if failure
 
-      raise Invalid, "bundle #{bundle}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
+      File.join(provenance.scripts_dir, file)
     end
 
     # Its parsed renderers; a kept list that doesn't parse is the record's

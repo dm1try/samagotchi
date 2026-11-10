@@ -46,8 +46,9 @@ module AffectedSpecs
 
           Lists the spec files to run for a change, best first: changed specs, specs named
           after a changed file, the rules for specs that read docs or source as text, the
-          other name matches, specs that name a changed method (prism >= 1.0), then specs
-          that name the changed file's class. Ruby specs on stdout (--run runs them);
+          other name matches, specs that name a changed method and its class (prism >= 1.0),
+          specs that name the changed file's class, then specs that name only the method.
+          Ruby specs on stdout (--run runs them);
           node tests and hints on stderr.
 
           RANGE: A..B, A...B (from their merge-base), or a base REV (compared with the
