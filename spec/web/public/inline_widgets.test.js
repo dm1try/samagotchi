@@ -154,6 +154,21 @@ test("the drawn walk: a case click moves the step and the path, Back returns, ar
   assert.ok(box.querySelectorAll(".ww-cell")[1].classList.contains("seen"));
 });
 
+// A model writes a retry as a case back to its own step (spec/fixtures/inline_widgets,
+// r1-sonnet-walk-review.2): the parser takes it, and the page says so instead of a
+// button that does nothing.
+test("a case whose goto is its own step is a disabled button that says so", () => {
+  const walk = { actors: ["a", "b"], steps: [
+    { id: "s1", actor: "a", does: "starts", cases: [{ when: "the check fails", goto: "s1" }, { when: "it passes", goto: "s2" }] },
+    { id: "s2", actor: "b", does: "goes on" },
+  ] };
+  const box = drawWalk(walk, document);
+  document.body.append(box);
+  const cases = [...box.querySelectorAll(".ww-case")];
+  assert.deepEqual(cases.map((c) => c.textContent), ["the check failsthis step", "it passesstep 2 →"]);
+  assert.deepEqual(cases.map((c) => c.disabled), [true, false]);
+});
+
 test("a keyboard move that removes or hides the focused button keeps the focus in the widget", () => {
   const box = drawWalk(WALK, document);
   document.body.append(box);

@@ -159,6 +159,40 @@ test("a file the page can't fetch is a failed load", async () => {
   assert.equal(frame.dead(), true);
 });
 
+// Browser fetch has no timeout of its own: a stalled renderer file (a proxy or a
+// tunnel holding the request) must not leave ready pending for good.
+test("a fetch past its timeout is a failed load, and drops the frame", { timeout: 2000 }, async () => {
+  const { env, frame } = started({ timeoutMs: 10, fetchFile: () => new Promise(() => {}) });
+  env.say({ type: "loaded" });
+  await assert.rejects(frame.ready, (e) => e.load === true && e.timedOut === false && /timed out \(fetch\)/.test(e.message));
+  assert.equal(frame.dead(), true);
+  assert.equal(env.iframe.removed, true);
+  assert.equal(env.posted.length, 0, "no code is sent");
+});
+
+test("drop during the fetch rejects ready as dropped", { timeout: 2000 }, async () => {
+  const { env, frame } = started({ fetchFile: () => new Promise(() => {}) });
+  env.say({ type: "loaded" });
+  const pending = frame.render("A", {});
+  await new Promise((r) => setTimeout(r, 0));
+  frame.drop();
+  await assert.rejects(frame.ready, (e) => e.dropped === true);
+  await assert.rejects(pending, (e) => e.dropped === true);
+  assert.equal(env.listening(), false);
+});
+
+test("a fetch that ends after the frame is dropped sends no code", async () => {
+  let finish;
+  const { env, frame } = started({ fetchFile: () => new Promise((r) => { finish = r; }) });
+  env.say({ type: "loaded" });
+  await new Promise((r) => setTimeout(r, 0));
+  frame.drop();
+  finish("late");
+  await assert.rejects(frame.ready, (e) => e.dropped === true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(env.posted.length, 0);
+});
+
 // Its own bound: without a timeout firing, this test would otherwise wait forever.
 test("a render past its timeout says so, and drops the frame", { timeout: 2000 }, async () => {
   const { env, frame } = started({ timeoutMs: 10 });
