@@ -640,6 +640,18 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{margin:0}
 .code-wrap>.copy-btn{top:5px;right:5px}
 @media (hover:none){.copy-btn{opacity:.55}}
+/* On touch an answer's button is always drawn, so it floats in its corner (negative margins: back at 6px from it) and the
+   first line wraps short of it instead of running under it. A table or a code block first would only narrow beside it:
+   it starts under the button. Copied, the button keeps its width (a reflow on every tap): its label is drawn over the
+   text to its left, as the absolute button's is. */
+@media (hover:none){
+  .bubble.output>.copy-btn{position:relative;top:auto;right:auto;float:right;margin:-6px -8px 2px 6px}
+  .answer-fold:not(.folded)+.bubble.output>.copy-btn{margin-top:-2px}
+  .ts-answer>.bubble.output>.copy-btn{margin:0 0 2px 6px}
+  .bubble.output>.copy-btn+:is(table,.code-wrap,pre){clear:right}
+  .bubble.output>.copy-btn[data-copied]{min-width:26px}
+  .bubble.output>.copy-btn[data-copied]::after{position:absolute;top:-1px;right:-1px;bottom:-1px;display:flex;align-items:center;padding:0 7px;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg-raised)}
+}
 /* Where the code button always shows (touch) or a phone's narrow block, the code starts under it: a strip above the first line holds the button (a line as wide as the block, or one that scrolls, would run under it). */
 @media (max-width:600px),(hover:none){.bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{padding-top:32px}}
 /* The dock is the composer card (composer.css .composer-card): the text field, a toolbar row, the info bar as its footer. */
