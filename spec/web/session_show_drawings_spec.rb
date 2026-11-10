@@ -251,6 +251,18 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["turn_drawings"]["turn-again"]["end"]).to include("turn_id" => "turn-again")
   end
 
+  # Declared (docs/internals/bridge.md): the two runs' records share the id,
+  # so the made earlier turn takes none and only the re-run's line is timed.
+  it "gives a repeated id's made earlier turn no record: one timing line, the re-run's" do
+    saved = fixture("repeated_id")
+    write_lines(saved["lines"])
+    write_analytics([{ "id" => "turn-again", "status" => "failed", "duration_ms" => 5000 },
+                     { "id" => "turn-again", "status" => "completed", "duration_ms" => 1200 }])
+    data = show(app_for(saved["messages"]))
+
+    expect(data["turn_drawings"]["turn-again~1"]["end"]).to eq("type" => "turn_failed")
+  end
+
   # A real line written for the messages' [from, to) (a worker's), with no rows.
   def real_line(messages, id, from, to)
     digest = ->(m) { Samagotchi::Bridge::TurnDrawings.digest(m) }
