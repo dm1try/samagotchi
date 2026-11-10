@@ -46,6 +46,9 @@ module Samagotchi
     # The deepest legal block nests 6 (root, steps, a step, cases, a case, a
     # folded option); past this it is refused before the stack can overflow.
     MAX_DEPTH = 8
+    # What a row id may not start with: a shell line's ! and a session
+    # command's / (CommandIntake), with the spaces between them.
+    COMMAND_LEAD = %r{\A[!/\s]+}
     # How much of a bad type value an error repeats.
     MAX_ECHO = 40
 
@@ -212,7 +215,7 @@ module Samagotchi
         where = "row #{index + 1}"
         raise Refused, "#{where} isn't a mapping" unless row.is_a?(Hash)
 
-        id = text(row["id"], "#{where}'s id", required: true)
+        id = row_id(text(row["id"], "#{where}'s id", required: true), where)
         where = "row #{id}"
         options = list(row["options"], "#{where}'s options")
         raise Refused, "#{where} has #{options.size} options (#{OPTIONS.min}-#{OPTIONS.max})" unless OPTIONS.cover?(options.size)
@@ -228,6 +231,18 @@ module Samagotchi
 
         compact("id" => id, "text" => text(row["text"], "#{where}'s text", required: true, free: true), "options" => options,
                 "recommended" => recommended, "why" => text(row["why"], "#{where}'s why", free: true))
+      end
+
+      # A row's id leads the page's filled reply ("<id>: <option>"), so it never
+      # starts with ! or / (a shell line, a session command): those are dropped,
+      # a mend like a fold, and an id that is nothing else is refused.
+      def row_id(id, where)
+        safe = id.sub(COMMAND_LEAD, "")
+        return id if safe == id
+        raise Refused, "#{where}'s id is only ! and /" if safe.empty?
+
+        @folded = true
+        safe
       end
 
       def walk(tree)

@@ -57,6 +57,10 @@ Pure Ruby, no web, no Engine. `parse(source)` returns a `Result`: `ok?`, `type`,
   `next` or a `goto` goes. This is a mend, not a second lenient pass (`Tree#folds`, `Schema#text`).
 - **Normalised.** Ids are strings, unknown keys are dropped, a repeated key is last-wins (`Tree#mapping`), optional values are absent rather than null, and text is
   stripped. The page never sees model junk.
+- **A row id never starts a command.** Fill reply puts a picks row's id first in the composer, so a leading `!` (a
+  shell line) or `/` (a session command), with the spaces between them, is dropped from it (`Schema#row_id`,
+  `COMMAND_LEAD`): `!touch x` is the id `touch x`, the Result `lenient?`, a mend like a fold. An id of nothing else is
+  refused, and the uniqueness check sees the mended ids. A walk's ids never reach the composer and stay as written.
 
 ### The schemas
 
@@ -125,7 +129,9 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
 
 **The only way out is composer text.** Fill reply builds `id: option (note) · …` from the picked rows (a row with no
 pick is left out) and hands it to app.js's `fillComposer`, after a typed draft on a new line (`withDraft`; the draft
-is kept). It never sends: the owner reads the text and sends it or not. A walk has no way out at all. The model's
+is kept). It never sends: the owner reads the text and sends it or not. `replyText` drops a leading `!` or `/` from
+an id too (an id of only those is its row's number), so the filled text never starts a shell line or a session command
+even from data the normaliser didn't mend; the draft before it is the owner's own. A walk has no way out at all. The model's
 strings reach the page through `textContent` and attributes only, never `innerHTML`, so a step reading
 `<img src=x onerror=…>` shows as those characters.
 
