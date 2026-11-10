@@ -7,6 +7,7 @@ require_relative "guardrails/path_resolve"
 require_relative "memory_paths"
 require_relative "paths"
 require_relative "project_init"
+require_relative "project_subfolders"
 
 module Samagotchi
   # `chi project`: which project this folder is in (MemoryPaths.lookup: a
@@ -19,7 +20,7 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi project [init [--new-id] [DIR]]
+      Usage: chi project [init [--new-id | --merge-subfolders] [DIR]]
         (none)       this folder's project: how it was found (git, marker or none), its root, its
                      top, its id and its project memories folder
         init [DIR]   make DIR (default: this folder; created when missing) a chi project: writes
@@ -29,12 +30,20 @@ module Samagotchi
                      marked folder with no id: adopts one, moving its folders to it
         --new-id     a marked folder's own new id (a copied folder going its own way): its
                      memories and project context copied to it
+        --merge-subfolders
+                     move the memories sessions saved in DIR's subfolders before init (each
+                     keyed by its subfolder's path) into the project's; one the project has by
+                     that name stays and is named. Marks DIR first when it isn't yet. Not while
+                     a session in DIR runs
     TEXT
 
     SUBCOMMANDS = %w[init].freeze
     FLAGS = {
       nil => CLI::Flags.new(help: HELP_WORDS, args: false),
-      "init" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--new-id" }
+      "init" => CLI::Flags.new(help: HELP_WORDS) do |f|
+        f.switch "--new-id"
+        f.switch "--merge-subfolders"
+      end
     }.freeze
 
     # @param cwd [String] the folder asked about (Dir.pwd)
@@ -68,8 +77,15 @@ module Samagotchi
       return run_show unless @sub
       return usage_error("init takes one folder") if parsed.args.size > 1
 
+      if parsed.options[:new_id] && parsed.options[:merge_subfolders]
+        return usage_error("--merge-subfolders and --new-id don't go together")
+      end
+
       dir = File.expand_path(parsed.args.first || @cwd, @cwd)
-      parsed.options[:new_id] ? run_new_id(dir) : run_init(dir)
+      return run_new_id(dir) if parsed.options[:new_id]
+      return run_merge(dir) if parsed.options[:merge_subfolders]
+
+      run_init(dir)
     end
 
     private
@@ -89,6 +105,8 @@ module Samagotchi
       row("id", found.id) if found.id
       row("memories", memories_line(found))
       notes(found).each { |note| row("note", note) }
+      subfolders_note = found.marker? && subfolders_message(found.root)
+      row("note", subfolders_note) if subfolders_note
       CLI::Exit::OK
     end
 
@@ -124,7 +142,9 @@ module Samagotchi
       !@home.to_s.empty? && Guardrails::PathResolve.real(found.top) == Guardrails::PathResolve.real(@home)
     end
 
-    def run_init(dir)
+    # @param merging [Boolean] --merge-subfolders follows: no subfolders line
+    def run_init(dir, merging: false)
+      @merging = merging
       outcome = ProjectInit.adopt(dir, home: @home, env: @env, state_dir: @state_dir, sessions: adopt_rows(dir))
       case outcome.kind
       when :git
@@ -137,12 +157,14 @@ module Samagotchi
         CLI::Exit::FAILED
       when :already_marked
         @stdout.puts(outcome.message)
+        subfolders_line(outcome.root)
         CLI::Exit::OK
       when :created
         report_init(outcome)
         CLI::Exit::OK
       when :adopted
         @stdout.puts(outcome.message)
+        subfolders_line(outcome.root)
         CLI::Exit::OK
       end
     rescue SystemCallError => e
@@ -162,13 +184,58 @@ module Samagotchi
       CLI::Exit::OK
     end
 
+    # `chi project init --merge-subfolders`: refused while a session in
+    # DIR (or a subfolder: a pre-init one stored its own cwd) runs, checked
+    # before anything is written; then init as usual (marks or adopts an
+    # id), then ProjectSubfolders.merge into the project's memories folder.
+    def run_merge(dir)
+      root = Guardrails::PathResolve.real(dir)
+      running = ProjectSubfolders.running(root, sessions: session_rows, home: @home)
+      unless running.empty?
+        error_line("#{command_name}: #{ProjectSubfolders.running_message(root, running)}")
+        return CLI::Exit::FAILED
+      end
+
+      code = run_init(dir, merging: true)
+      return code unless code == CLI::Exit::OK
+
+      found = lookup(dir)
+      return CLI::Exit::OK unless found.marker? && found.id
+
+      target = File.join(MemoryPaths.projects_dir(env: @env), found.id)
+      subfolders = ProjectSubfolders.find(found.root, sessions: session_rows, env: @env, home: @home)
+      ProjectSubfolders.merge(subfolders, target: target, env: @env).each { |line| @stdout.puts(line) }
+      CLI::Exit::OK
+    rescue SystemCallError => e
+      error_line("#{command_name}: couldn't move the subfolders' memories: #{e.message}")
+      CLI::Exit::FAILED
+    end
+
+    # This machine's sessions, listed once per run (a walk of every session file).
+    def session_rows = @session_rows ||= @sessions.call
+
+    # ProjectSubfolders' text for +root+, or nil (none, or no listing).
+    def subfolders_message(root)
+      ProjectSubfolders.message(ProjectSubfolders.find(root, sessions: session_rows, env: @env, home: @home))
+    rescue StandardError => e
+      error_line("#{command_name}: couldn't list this machine's sessions (#{e.message})")
+      nil
+    end
+
+    def subfolders_line(root)
+      return if @merging
+
+      text = subfolders_message(root)
+      @stdout.puts(text) if text
+    end
+
     # The rows an adoption checks for running sessions: only for a marked
     # folder (a listing is a walk of every session file).
     def adopt_rows(dir)
       found = lookup(dir)
       return [] if found.git? || found.id
 
-      @sessions.call
+      session_rows
     end
 
     def report_init(outcome)
@@ -178,6 +245,7 @@ module Samagotchi
       row("id", outcome.id) if outcome.id
       row("memories", memories_line(lookup(root)))
       @stdout.puts(outcome.message) if outcome.message
+      subfolders_line(root)
       sessions_note(root)
     end
 
@@ -187,7 +255,7 @@ module Samagotchi
     # restarts; a running chi web groups the older ones after its restart
     # (SessionHub looked their project up once).
     def sessions_note(root, restart: nil)
-      rows = @sessions.call.select { |r| !r.cwd.to_s.empty? && lookup(r.cwd.to_s).root == root }
+      rows = session_rows.select { |r| !r.cwd.to_s.empty? && lookup(r.cwd.to_s).root == root }
       return if rows.empty?
 
       live = rows.select(&:live)
