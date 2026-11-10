@@ -43,6 +43,7 @@
   "parent_answers": null,
   "working_set_pins": [],
   "first_turn_id": "00000000-0000-4000-8000-000000000002",
+  "first_turn_client_id": "delegate:golden-0",
   "verify_fresh": {
     "of": "t-3",
     "anchor": {

@@ -289,7 +289,7 @@ RSpec.describe "Session file goldens (characterization)" do
       setup = Samagotchi::SessionSetup.new(preloaded_memory_names: Samagotchi::Tools::Delegate::CHILD_MEMORIES,
                                            toolkit: Samagotchi::Toolkit.new(name: "lean"),
                                            parent_answers: parent.parent_answers)
-      manager.spawn_session(prompt: "check the parser", working_directory: folder, model_name: parent.model_name,
+      spawn_session_for_spec(manager, prompt: "check the parser", working_directory: folder, model_name: parent.model_name,
                             parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir,
                             client_id: "delegate:#{parent.id[0, 8]}").id
     end
@@ -319,7 +319,7 @@ RSpec.describe "Session file goldens (characterization)" do
     end
 
     it "a plain spawn on the default setup (config's toolkit, origin default, a first turn)" do
-      id = manager.spawn_session(prompt: "hi", working_directory: folder, model_name: "main:gemma-small",
+      id = spawn_session_for_spec(manager, prompt: "hi", working_directory: folder, model_name: "main:gemma-small",
                                  state_dir: state_dir).id
       expect_path_golden("spawned.json", id)
     end

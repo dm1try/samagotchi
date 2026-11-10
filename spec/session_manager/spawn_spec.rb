@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::SessionManager do
       at_spawn = nil
       spawn_starter(-> { at_spawn = Dir.glob(File.join(tmpdir, "*", "starting")).map { |f| JSON.parse(File.read(f))["pid"] } })
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir)
 
       expect(at_spawn).to eq([Process.pid])
       expect(marker(session.id)).to include("pid" => @starter)
@@ -289,11 +289,15 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".spawn_session" do
+    it "requires callers to name the first prompt's sender" do
+      expect { described_class.spawn_session(prompt: nil) }.to raise_error(ArgumentError, /client_id/)
+    end
+
     it "refuses a model qualified with a host config.yml doesn't have, before anything is saved or spawned" do
       allow(Process).to receive(:spawn).and_return(12_345)
       stub_hosts_config("main" => { "host" => "localhost", "port" => 8080 })
 
-      expect { described_class.spawn_session(prompt: "hi", model_name: "nosuch:org/model", state_dir: tmpdir) }
+      expect { spawn_session_for_spec(described_class, prompt: "hi", model_name: "nosuch:org/model", state_dir: tmpdir) }
         .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch'.*configured hosts are main/)
       expect(Process).not_to have_received(:spawn)
       expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
@@ -314,7 +318,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       def spawn(toolkit = nil)
-        described_class.spawn_session(prompt: "hi", model_name: "m", state_dir: tmpdir,
+        spawn_session_for_spec(described_class, prompt: "hi", model_name: "m", state_dir: tmpdir,
                                       setup: Samagotchi::SessionSetup.new(toolkit: toolkit && Samagotchi::Toolkit.new(name: toolkit)))
       end
 
@@ -356,7 +360,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       it "starts it with a warning on the session, with a did-you-mean" do
-        session = described_class.spawn_session(prompt: "hi", model_name: "main:gemma-smal", state_dir: tmpdir)
+        session = spawn_session_for_spec(described_class, prompt: "hi", model_name: "main:gemma-smal", state_dir: tmpdir)
 
         expect(session.model_warning).to eq("host 'main' doesn't list model 'gemma-smal' (did you mean: gemma-small?); " \
                                             "started it anyway; `chi models` lists what the hosts serve")
@@ -364,7 +368,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       it "starts the session for an id the list has" do
-        session = described_class.spawn_session(prompt: nil, model_name: "main:gemma-small", state_dir: tmpdir)
+        session = spawn_session_for_spec(described_class, prompt: nil, model_name: "main:gemma-small", state_dir: tmpdir)
 
         expect(Process).to have_received(:spawn)
         expect(session.model_warning).to be_nil
@@ -372,12 +376,12 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       it "checks the host the ref names, whatever the configured default is" do
-        session = described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir)
+        session = spawn_session_for_spec(described_class, prompt: nil, model_name: "main:nosuch", state_dir: tmpdir)
         expect(session.model_warning).to start_with("host 'main' doesn't list model 'nosuch'")
       end
 
       it "checks nothing for an id with no host in front of it (routing picks the host)" do
-        expect { described_class.spawn_session(prompt: nil, model_name: "anything-at-all", state_dir: tmpdir) }
+        expect { spawn_session_for_spec(described_class, prompt: nil, model_name: "anything-at-all", state_dir: tmpdir) }
           .not_to raise_error
         expect(Process).to have_received(:spawn)
       end
@@ -385,7 +389,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "checks nothing for a stale list (a week old)" do
         Samagotchi::ModelListStore.save("main", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
 
-        expect { described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
+        expect { spawn_session_for_spec(described_class, prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
           .not_to raise_error
         expect(Process).to have_received(:spawn)
       end
@@ -393,7 +397,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "starts the session anyway when no list is saved for its host" do
         FileUtils.rm_f(Samagotchi::ModelListStore.path)
 
-        expect { described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
+        expect { spawn_session_for_spec(described_class, prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
           .not_to raise_error
         expect(Process).to have_received(:spawn)
       end
@@ -402,7 +406,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "starts a session with no prompt idle, with nothing to run" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      session = described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      session = spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)
@@ -413,8 +417,8 @@ RSpec.describe Samagotchi::SessionManager do
     it "gives the prompt a session starts with the turn id a sent message would have" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      started = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir)
-      idle = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+      started = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", state_dir: tmpdir)
+      idle = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir)
 
       expect(Samagotchi::Session.load(started.id, state_dir: tmpdir).first_turn_id)
         .to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
@@ -427,9 +431,9 @@ RSpec.describe Samagotchi::SessionManager do
     it "keeps the first prompt's sender beside its turn id; none for an idle session or a person's" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      sent = described_class.spawn_session(prompt: "look", model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
-      typed = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir)
-      idle = described_class.spawn_session(prompt: nil, model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
+      sent = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
+      typed = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", state_dir: tmpdir)
+      idle = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", client_id: "delegate:1234abcd", state_dir: tmpdir)
 
       expect(Samagotchi::Session.load(sent.id, state_dir: tmpdir).first_turn_client_id).to eq("delegate:1234abcd")
       expect(Samagotchi::Session.load(typed.id, state_dir: tmpdir).first_turn_client_id).to be_nil
@@ -445,7 +449,7 @@ RSpec.describe Samagotchi::SessionManager do
       def stored(session) = Samagotchi::Session.load(session.id, state_dir: tmpdir).toolkit
 
       it "is full with nothing configured" do
-        session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+        session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir)
         expect(stored(session)).to eq(Samagotchi::Toolkit.new(name: "full"))
       end
 
@@ -453,8 +457,8 @@ RSpec.describe Samagotchi::SessionManager do
         allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
         allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("my-child")
 
-        plain = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
-        child = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
+        plain = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+        child = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
                                               parent_id: "parent-1234")
         expect(stored(plain)).to eq(Samagotchi::Toolkit.new(name: "lean"))
         expect(stored(child)).to eq(Samagotchi::Toolkit.new(name: "my-child"))
@@ -462,7 +466,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "is the delegate call's for a delegate child whose setup names one" do
         allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("my-child")
-        child = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
+        child = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
                                               parent_id: "parent-1234",
                                               setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "coding")))
         expect(stored(child)).to eq(Samagotchi::Toolkit.new(name: "coding"))
@@ -471,7 +475,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "is the setup's own when it has one" do
         allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
         toolkit = Samagotchi::Toolkit.new(name: "coordinator", add: ["web_fetch"])
-        session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+        session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir,
                                                 setup: Samagotchi::SessionSetup.new(toolkit: toolkit))
         expect(stored(session)).to eq(toolkit)
       end
@@ -480,7 +484,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "stores the --memory and --mute lists on the session before the worker starts" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir,
                                               setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["cli_usage"],
                                                                                   muted_memory_names: ["gh-helper"]))
 
@@ -492,11 +496,11 @@ RSpec.describe Samagotchi::SessionManager do
     it "stores the parent session's id before the worker starts" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      session = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir,
+      session = spawn_session_for_spec(described_class, prompt: "look", model_name: "gemma4", state_dir: tmpdir,
                                               parent_id: "parent-1234")
 
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).parent_id).to eq("parent-1234")
-      expect(Samagotchi::Session.load(described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir).id,
+      expect(Samagotchi::Session.load(spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir).id,
                                       state_dir: tmpdir).parent_id).to be_nil
     end
 
@@ -504,7 +508,7 @@ RSpec.describe Samagotchi::SessionManager do
       seen = []
       allow(Process).to receive(:spawn) { seen << :spawn and 12_345 }
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, note: "hello",
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir, note: "hello",
                                               before_spawn: lambda { |s|
                                                 dir = Samagotchi::Session.session_dir(s.id, state_dir: tmpdir)
                                                 seen << [Samagotchi::Session.exist?(s.id, state_dir: tmpdir),
@@ -526,7 +530,7 @@ RSpec.describe Samagotchi::SessionManager do
         { role: "model", content: "a cat" }
       ]
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, parent_id: "p1",
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir, parent_id: "p1",
                                               messages: seed, images_from: parent_dir, preview: "btw: what is it?")
 
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
@@ -549,7 +553,7 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, title: "Coordinator",
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir, title: "Coordinator",
                                               preview: "hey chi")
 
       expect(seen).to eq([[["Coordinator", "hey chi"]]])
@@ -559,7 +563,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "previews a seeded session without a title by its first user message" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+      session = spawn_session_for_spec(described_class, prompt: nil, model_name: "gemma4", state_dir: tmpdir,
                                               messages: [{ role: "user", content: "the first question" }])
 
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).first_preview).to eq("the first question")
@@ -568,7 +572,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "records the first prompt as the preview, before the worker takes it" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
-      session = described_class.spawn_session(prompt: "  fix the\n  bug " + ("x" * 90), model_name: "gemma4", state_dir: tmpdir)
+      session = spawn_session_for_spec(described_class, prompt: "  fix the\n  bug " + ("x" * 90), model_name: "gemma4", state_dir: tmpdir)
 
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       expect(loaded.first_preview).to eq("fix the bug #{"x" * 68}…")
@@ -582,7 +586,7 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
 
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_env).to include("SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.5")
     ensure
@@ -599,9 +603,9 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       Samagotchi::Config.reload!(cli_overrides: { "default.model" => "gemma4" })
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
       Samagotchi::Config.reload!(cli_overrides: {})
-      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      spawn_session_for_spec(described_class, prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned[0]).to include("SAMAGOTCHI_DEFAULT_MODEL" => "gemma4", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => "1")
       expect(spawned[1].keys).not_to include("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI")

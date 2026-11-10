@@ -172,7 +172,7 @@ RSpec.describe Samagotchi::ModelRef do
 
       it "#2b a new session stores the target, and the alias as typed", step: :F1 do
         allow(Process).to receive(:spawn).and_return(12_345)
-        session = Samagotchi::SessionManager.spawn_session(prompt: nil, state_dir: File.join(tmp, "state"))
+        session = spawn_session_for_spec(Samagotchi::SessionManager, prompt: nil, state_dir: File.join(tmp, "state"))
         loaded = Samagotchi::Session.load(session.id, state_dir: File.join(tmp, "state"))
         expect([loaded.model_name, loaded.model_typed]).to eq(%w[gemma-small small])
       end
@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::ModelRef do
 
       it "is still discarded (the stored ref against the alias default)" do
         allow(Process).to receive(:spawn).and_return(12_345)
-        session = Samagotchi::SessionManager.spawn_session(prompt: nil, state_dir: state)
+        session = spawn_session_for_spec(Samagotchi::SessionManager, prompt: nil, state_dir: state)
         expect(Samagotchi::SessionManager.discardable?(session.id, state_dir: state, default_model: "small")).to be(true)
         expect(Samagotchi::SessionManager.discardable?(session.id, state_dir: state, default_model: "box:other")).to be(false)
       end
@@ -301,7 +301,7 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "refuses a session on a host:alias naming another host (a web 400)" do
       allow(Process).to receive(:spawn).and_return(12_345)
-      expect { Samagotchi::SessionManager.spawn_session(prompt: nil, model_name: "openrouter:tiny", state_dir: File.join(tmp, "state")) }
+      expect { spawn_session_for_spec(Samagotchi::SessionManager, prompt: nil, model_name: "openrouter:tiny", state_dir: File.join(tmp, "state")) }
         .to raise_error(Samagotchi::ModelProfile::UnknownHost, /alias 'tiny' names host 'box'/)
       expect(Process).not_to have_received(:spawn)
     end

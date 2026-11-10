@@ -120,7 +120,9 @@ module Samagotchi
                       ReviewStart.start(subjects: review.subjects, dir: dir || start_dir, model: folder[:model_name],
                                         setup: setup, state_dir: @state_dir)
                     else
-                      @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
+                      @manager.spawn_session(prompt: idle ? nil : prompt.to_s,
+                                             client_id: body["client_id"] || ClientId::WEB_CREATE,
+                                             state_dir: @state_dir, **folder)
                     end
         rescue ModelProfile::MissingModel => e
           # No model configured, or one qualified with an unknown host.
@@ -169,7 +171,8 @@ module Samagotchi
         return refused if refused
 
         session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, preview: preview.empty? ? nil : preview,
-                                              model: model.empty? ? nil : model)
+                                              model: model.empty? ? nil : model,
+                                              client_id: body["client_id"] || ClientId::WEB_CREATE)
         return error if error
 
         port = await_worker_link(session.id).then { |link| link.live? ? link.port : nil }
@@ -331,8 +334,9 @@ module Samagotchi
       # SessionContinue.run, its refusals as responses: [session,
       # nil] or [nil, the response]. Only its own errors: what fails after
       # the new link started is not a refusal of it.
-      def continue_from(given, prompt:, preview:, model:)
-        [SessionContinue.run(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir), nil]
+      def continue_from(given, prompt:, preview:, model:, client_id:)
+        [SessionContinue.run(given, prompt: prompt, preview: preview, model: model, state_dir: @state_dir,
+                                    client_id: client_id), nil]
       rescue SessionContinue::Refused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : {}
         [nil, refusal_response(409, e.reason.to_s, e, session_id: e.session_id, reason: e.reason.to_s, ids: e.ids, **extra)]

@@ -119,7 +119,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(connect).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: nil, state_dir: state_dir, setup: Samagotchi::SessionSetup.new, scratch: false)
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, setup: Samagotchi::SessionSetup.new,
+              scratch: false, client_id: nil)
       expect(Samagotchi::WorkerLink).to have_received(:await)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
@@ -132,7 +133,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: "fast", state_dir: state_dir,
-              setup: Samagotchi::SessionSetup.new, scratch: false)
+              setup: Samagotchi::SessionSetup.new, scratch: false, client_id: nil)
     end
 
     it "starts a new session with its own --llm-context values" do
@@ -154,7 +155,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .with(prompt: nil, model_name: nil, state_dir: state_dir,
               setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["cli_usage"],
                                                   muted_memory_names: ["gh-helper"]),
-              scratch: false)
+              scratch: false, client_id: nil)
     end
 
     it "starts a new session with --append-system-prompt's files in its setup" do
