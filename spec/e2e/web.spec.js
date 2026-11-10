@@ -669,6 +669,8 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   });
   const opened = () => page.evaluate(() => window.__refOpened.splice(0));
   const url = (line) => new RegExp(`^vscode://file/.+/${EDIT_ASK_FILE.replace(".", "\\.")}:${line}$`);
+  // No fold animation: its clipped box shifts what a click lands on on a loaded runner.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   script("edit");
   await send(page, "Make the font bigger");
   const card = page.locator(`${HC} .bubble.question.approval`);
@@ -726,11 +728,15 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   // The steps block, the edit's fold and its step, opened when they are closed.
   const openSteps = async () => {
     const block = page.locator("#history .turn-work");
+    const settled = () => block.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))));
     if (!(await block.evaluate((el) => el.open))) await block.locator("> summary .turn-steps").click();
+    await settled();
     const fold = block.locator("> .outline-fold");
     if (!(await fold.evaluate((el) => el.classList.contains("open")))) await fold.click();
+    await settled();
     const step = block.locator("> details.gen").nth(1);
     if (!(await step.evaluate((el) => el.open))) await step.locator("> summary").click();
+    await settled();
   };
   await openSteps();
   await check();
