@@ -327,12 +327,12 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       worker = Samagotchi::OwnerLock::Owner.new(kind: "worker")
 
       expect(described_class.build(s, owner: worker, session_dir: session_dir(s)))
-        .to include(worker_version: "0.18.1", worker_features: ["restart"])
+        .to include(worker_version: "0.18.1", worker_features: ["restart"], worker_compat: "restart_suggested")
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))
-        .to include(worker_version: nil, worker_features: [])
+        .to include(worker_version: nil, worker_features: [], worker_compat: nil)
       File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234))
       expect(described_class.build(s, owner: worker, session_dir: session_dir(s)))
-        .to include(worker_version: nil, worker_features: [])
+        .to include(worker_version: nil, worker_features: [], worker_compat: "restart_suggested")
     end
 
     it "gives the recap's preview from the session folder" do

@@ -4,9 +4,12 @@ require "spec_helper"
 require "tmpdir"
 require "samagotchi/web/update_ops"
 require "samagotchi/web/session_hub"
+require_relative "../support/worker_fixtures"
 
 # The operations the routes (app_spec) and AutoUpdate ask for, asked directly.
 RSpec.describe Samagotchi::Web::UpdateOps do
+  include WorkerFixtures
+
   let(:state_dir) { Dir.mktmpdir("update-ops-spec") }
   let(:installed) { double("installed versions", newest: "99.0.0") }
   let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed) }
@@ -203,6 +206,21 @@ RSpec.describe Samagotchi::Web::UpdateOps do
   end
 
   describe "#restart_workers" do
+    it "restarts a worker on the previous patch after a newer chi was installed" do
+      session_dir = File.join(state_dir, "one")
+      FileUtils.mkdir_p(session_dir)
+      live_sidecar_fixture(session_dir, port: 4321, version: "0.160.0", features: ["restart"])
+      allow(installed).to receive(:newest).and_return("0.160.1")
+      allow(hub).to receive(:touch)
+      allow(manager).to receive(:restart_session).with("one", state_dir: state_dir, client_id: Samagotchi::ClientId::WEB_RESTART)
+        .and_return(Samagotchi::SessionManager::Restarted.new(session_id: "one", from_version: "0.160.0", version: "0.160.1"))
+
+      result = ops.restart_workers(wait: true)
+
+      expect(result.rows).to eq([{ "session_id" => "one", "state" => "restarted",
+                                   "from_version" => "0.160.0", "version" => "0.160.1" }])
+    end
+
     it "restarts the stale workers and answers the final rows, its frames marked automatic when asked" do
       worker = Samagotchi::LiveVersions::Worker.new(session_id: "one", version: "0.122.0", restart: true)
       allow(Samagotchi::LiveVersions).to receive(:stale_workers).with("99.0.0", state_dir: state_dir).and_return([worker])

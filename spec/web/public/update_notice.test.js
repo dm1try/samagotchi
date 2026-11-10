@@ -144,8 +144,8 @@ test("compareVersions: Gem::Version's order, prereleases below their release", (
   assert.equal(newerVersion("0.19.0", "0.18.1"), true);
 });
 
-test("workerBadge: a worker on an older chi than the newest installed offers Restart when it can", () => {
-  const badge = workerBadge({ workerVersion: "0.18.1", features: ["restart"], installed: "0.19.0", served: "0.18.1",
+test("workerBadge: a restart-suggested worker offers Restart when it can", () => {
+  const badge = workerBadge({ workerVersion: "0.18.1", compatibility: "restart_suggested", features: ["restart"], installed: "0.19.0", served: "0.18.1",
                               sessionId: "abcdef123456" });
   assert.deepEqual(badge, {
     text: "chi 0.18.1",
@@ -155,21 +155,22 @@ test("workerBadge: a worker on an older chi than the newest installed offers Res
   });
 });
 
-test("workerBadge: a worker from before restarts gets the stop command, no button", () => {
-  const badge = workerBadge({ workerVersion: "0.18.1", features: [], installed: "0.19.0", sessionId: "abcdef123456" });
+test("workerBadge: a restart-suggested worker from before restarts gets the stop command, no button", () => {
+  const badge = workerBadge({ workerVersion: "0.18.1", compatibility: "restart_suggested", features: [], installed: "0.19.0", sessionId: "abcdef123456" });
   assert.equal(badge.restart, false);
   assert.equal(badge.text, "chi 0.18.1 · chi sessions stop abcdef12");
   assert.match(badge.title, /can't restart itself.*then any message starts it on chi 0\.19\.0/);
 });
 
 test("workerBadge: compares with chi web's own version while the installed one is unknown", () => {
-  assert.equal(workerBadge({ workerVersion: "0.17.0", features: ["restart"], installed: null, served: "0.18.1" }).newest,
+  assert.equal(workerBadge({ workerVersion: "0.17.0", compatibility: "restart_suggested", features: ["restart"], installed: null, served: "0.18.1" }).newest,
     "0.18.1");
 });
 
 test("workerBadge: nothing for a current worker, an unknown version or nothing to compare with", () => {
-  assert.equal(workerBadge({ workerVersion: "0.19.0", features: ["restart"], installed: "0.19.0", served: "0.18.1" }), null);
-  assert.equal(workerBadge({ workerVersion: "0.20.0", features: ["restart"], installed: "0.19.0" }), null);
+  assert.equal(workerBadge({ workerVersion: "0.19.0", compatibility: "ok", features: ["restart"], installed: "0.19.0", served: "0.18.1" }), null);
+  assert.equal(workerBadge({ workerVersion: "0.20.0", compatibility: "ok", features: ["restart"], installed: "0.19.0" }), null);
+  assert.equal(workerBadge({ workerVersion: "0.18.1", compatibility: "ok", features: ["restart"], installed: "0.19.0" }), null);
   assert.equal(workerBadge({ workerVersion: null, features: [], installed: "0.19.0" }), null);
   assert.equal(workerBadge({ workerVersion: "0.18.1", features: [], installed: null, served: null }), null);
   assert.equal(workerBadge(), null);

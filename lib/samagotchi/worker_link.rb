@@ -4,6 +4,7 @@ require "fileutils"
 require "time"
 require_relative "owner_lock"
 require_relative "version"
+require_relative "compat"
 require_relative "worker_sidecar"
 require_relative "bridge_client"
 require_relative "chi_invocation"
@@ -137,7 +138,9 @@ module Samagotchi
       return Starting.new(owner: owner, stuck: false) unless owner.worker?
       return Leaving.new(owner: owner) if owner.leaving?
       return Starting.new(owner: owner, stuck: stuck?(owner)) unless ours?(sidecar, owner)
-      return Skew.new(sidecar: sidecar, owner: owner, reason: :protocol) if sidecar.protocol.to_i > PROTOCOL
+      if Compat.verdict(worker_version: sidecar.version, worker_protocol: sidecar.protocol, protocol: PROTOCOL) == :refused
+        return Skew.new(sidecar: sidecar, owner: owner, reason: :protocol)
+      end
 
       Live.new(sidecar: sidecar, owner: owner)
     end

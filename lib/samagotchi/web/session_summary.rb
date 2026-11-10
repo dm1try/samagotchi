@@ -11,6 +11,7 @@ require_relative "../effective_model"
 require_relative "../host_registry"
 require_relative "../bridge_client"
 require_relative "../worker_link"
+require_relative "../compat"
 require_relative "../session_row"
 require_relative "../bridge/pending_card"
 
@@ -26,7 +27,7 @@ module Samagotchi
       WEB_KEYS = %i[id status mode model_name working_directory created_at updated_at last_prompt short_id test_run
                     used_memory_names preloaded_memory_names muted_memory_names prompt_notes parent_id delegate
                     continues review first_preview title owner recap auto_title ctx_pct tokens memory_index side
-                    archived project_root bridge_up worker_version worker_features pending_question pending_card
+                    archived project_root bridge_up worker_version worker_features worker_compat pending_question pending_card
                     last_turn verdicts verify_fresh last_verdict].freeze
 
       module_function
@@ -116,6 +117,7 @@ module Samagotchi
           # nil and [] without one): the page's stale-worker badge.
           worker_version: sidecar&.version,
           worker_features: sidecar ? sidecar.features : [],
+          worker_compat: sidecar && Compat.verdict(worker_version: sidecar.version).to_s,
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a

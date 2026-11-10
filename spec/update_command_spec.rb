@@ -1227,6 +1227,17 @@ RSpec.describe Samagotchi::UpdateCommand do
   describe "live processes" do
     def listener = TCPServer.new("127.0.0.1", 0).tap { |s| servers << s }
 
+    it "reports a worker on the previous patch in the workers row" do
+      stub_const("Samagotchi::VERSION", "0.160.1")
+      session_dir = File.join(state_dir, "aaaaaaaa-1")
+      FileUtils.mkdir_p(session_dir)
+      live_sidecar_fixture(session_dir, port: 4321, version: "0.160.0")
+
+      run("--no-gem", "--no-bundles", "--no-desktop")
+
+      expect(line("workers")).to include("1 live on 0.160.0: they keep it until restarted")
+    end
+
     it "reports live workers on another version, without stopping them" do
       %w[aaaaaaaa-1 bbbbbbbb-2].each_with_index do |id, i|
         FileUtils.mkdir_p(File.join(state_dir, id))
