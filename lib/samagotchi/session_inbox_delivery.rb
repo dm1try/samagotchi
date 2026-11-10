@@ -127,8 +127,10 @@ module Samagotchi
     end
 
     # A send follows a chain as a note does: input for a continued link
-    # goes to its chain's newest link (chi send resolves it once up front,
-    # SessionAccess#head; SessionManager.deliver_turn resolves nothing).
+    # goes to its chain's newest link (chi send resolves it up front,
+    # SessionAccess#head; SessionManager.deliver_turn resolves nothing, but
+    # refuses that followed send when a continue took the archived link
+    # since, and chi send resolves again: deliver_turn's follow:).
     # What stays on the id it names doesn't ask Head: the web composer (a
     # person on that page means that session), a participant's grant (one
     # session), delegate follow-ups, Plugin::Sessions and Schedules (the
@@ -164,10 +166,11 @@ module Samagotchi
       # file could make ends where it started); a :reader kind goes one hop
       # at most. Then, for a kind that would un-archive the link it reaches
       # (a send: WakePolicy#starts_archived), a continue of that link in
-      # flight (ContinueIntent.in_flight: its successor not saved yet) gives
-      # :continuing, the successor's id. A note needs no such check: written
-      # to the link before NoteMove.move it moves, after it the new link's
-      # worker adopts it (NoteMove.adoption).
+      # flight (ContinueIntent.in_flight) gives the successor's id: via
+      # :continuing while it is not saved yet, :head once it is
+      # (#continuing). A note needs no such check: written to the link
+      # before NoteMove.move it moves, after it the new link's worker adopts
+      # it (NoteMove.adoption).
       # @return [Resolved]
       def resolve(kind, id, state_dir:)
         policy = WakePolicy.for(kind)
@@ -193,14 +196,19 @@ module Samagotchi
         links.next_of(id) || id
       end
 
-      # +resolved+'s link being continued, its successor not saved yet: the
-      # successor, via :continuing; else nil (none in flight, or saved: the
-      # walk reached it).
+      # +resolved+'s link being continued: its successor, via :continuing
+      # while it is not saved yet, via :head once it is (saved after the
+      # walk's listing: the walk still named the old link, which a send
+      # would un-archive beside it); else nil (none in flight). A continue
+      # that ends after this look is deliver_turn's to catch (a followed
+      # send to an archived link with a successor is refused, and chi send
+      # resolves again).
       def continuing(resolved, state_dir)
         successor = ContinueIntent.in_flight(resolved.id, state_dir: state_dir)
-        return nil if successor.nil? || Session.exist?(successor, state_dir: state_dir)
+        return nil if successor.nil?
 
-        Resolved.new(id: successor, asked: resolved.asked, via: :continuing)
+        via = Session.exist?(successor, state_dir: state_dir) ? :head : :continuing
+        Resolved.new(id: successor, asked: resolved.asked, via: via)
       end
     end
 
