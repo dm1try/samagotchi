@@ -1246,8 +1246,6 @@ module Samagotchi
     #   the cards and notices it showed, held: they follow its command_ran,
     #   as its output
     def run_command_line(command)
-      return [shell_refused(command), []] if CommandIntake.refused?(command.line, command.client_id)
-
       @engine.holding_announcements do
         command_result(command) do
           @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
@@ -1283,6 +1281,8 @@ module Samagotchi
     # command for the line, is an error Result saying so.
     # @return [SessionCommands::Result]
     def command_result(command)
+      return shell_refused(command) if CommandIntake.refused?(command.line, command.client_id)
+
       yield || SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
     rescue StandardError => e
       SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
