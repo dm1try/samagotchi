@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
   (`scripts/pr.rb is missing (reinstall the bundle)`) instead of claiming the script "differs from the installed one".
 - A chain schedule whose session was archived between the tick's check and its firing now fails as `archived`, as the
   check says, instead of `the chain is gone`.
+- web: a ```` ```chi-ui ```` picks row whose id starts with `!` or `/` no longer makes **Fill reply** start a shell
+  line or a session command: the leading `!` and `/` are dropped from the id (`!touch x` reads `touch x: …`), and an id
+  of nothing else refuses the block.
 
 ## [0.164.0] - 2026-11-10
 

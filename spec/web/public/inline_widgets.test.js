@@ -283,6 +283,21 @@ test("the reply: id: option (note) per picked row, an unpicked row left out", ()
   assert.equal(replyText(PICKS.rows, picks.map(() => ({ pick: null, note: "x" }))), "");
 });
 
+// Audit r19 R4: the server drops these already (InlineWidgets#row_id); the
+// page holds to it too, so a filled reply never starts a shell line or a
+// session command.
+test("the reply never starts with ! or /: an id's leading ones are dropped, an id of only those is its row number", () => {
+  const rows = [
+    { id: "!touch /tmp/x #", options: ["a", "b"] },
+    { id: " / !/model x", options: ["a", "b"] },
+    { id: "!/ ", options: ["a", "b"] },
+  ];
+  const picks = rows.map(() => ({ pick: "a", note: "" }));
+  assert.equal(replyText(rows, picks), "touch /tmp/x #: a · model x: a · 3: a");
+  assert.equal(replyText(rows.slice(1), picks.slice(1)), "model x: a · 2: a");
+  assert.equal(withDraft("", replyText(rows, picks)).trimStart()[0], "t");
+});
+
 test("a draft keeps its text, and the reply goes after it on a new line", () => {
   assert.equal(withDraft("", "1: a"), "1: a");
   assert.equal(withDraft("   \n", "1: a"), "1: a");

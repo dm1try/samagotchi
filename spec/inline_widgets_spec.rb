@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/inline_widgets"
+require "samagotchi/command_intake"
 
 # A ```chi-ui fence's YAML: what the page draws, or why it stays source.
 RSpec.describe Samagotchi::InlineWidgets do
@@ -134,6 +135,26 @@ RSpec.describe Samagotchi::InlineWidgets do
       five = row.sub(/^( *)- skip\n/, "\\1- skip\n\\1- a\n\\1- b\n\\1- c\n")
       expect(parse(picks(five)).error).to eq("row 1 has 5 options (2-4)")
       expect(parse(picks(row.sub(/^( *)- skip\n/, "\\1- fix now\n"))).error).to eq('row 1: option "fix now" is listed twice')
+    end
+
+    # The page's Fill reply starts with a row's id ("<id>: <option>"), so an id
+    # starting with ! or / would make the owner's reply a shell line or a
+    # session command (audit r19, R4).
+    it "drops a leading ! or / from a row's id, so a filled reply never starts a command, and marks it lenient" do
+      shell = parse(picks(row.sub('id: "1"', 'id: "!touch /tmp/x #"')))
+      expect(shell).to be_ok
+      expect(shell).to be_lenient
+      expect(shell.data["rows"].first["id"]).to eq("touch /tmp/x #")
+      expect(Samagotchi::CommandIntake.shell_line?("#{shell.data["rows"].first["id"]}: fix now")).to be(false)
+
+      slash = parse(picks(row.sub('id: "1"', 'id: " / ! /model x"')))
+      expect(slash.data["rows"].first["id"]).to eq("model x")
+      expect(parse(picks(row)).lenient?).to be(false)
+    end
+
+    it "refuses a row id that is nothing but ! and /, and one that matches another once they are dropped" do
+      expect(parse(picks(row.sub('id: "1"', 'id: "! /"'))).error).to eq("row 1's id is only ! and /")
+      expect(parse(picks(row + row.sub('id: "1"', 'id: "!1"'))).error).to eq('row id "1" is used twice')
     end
 
     it "takes a value with a colon in it, through the lenient pass" do
