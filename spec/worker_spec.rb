@@ -24,6 +24,28 @@ RSpec.describe Samagotchi::Worker do
 
   def cmd(**fields) = Samagotchi::QueuedCommand.new(**fields)
 
+  describe "#activity_snapshot" do
+    it "reports the worker's running, queued, open-stream and idle-hold signals" do
+      Dir.mktmpdir("worker-activity-snapshot") do |dir|
+        worker = described_class.new(session_id: "session", state_dir: dir, session_dir: dir)
+        worker.instance_variable_get(:@command_queue) << :queued
+        worker.instance_variable_set(:@engine, double(turn_running?: true, reminder_store: double(any?: true)))
+        worker.instance_variable_set(:@turn_flow, double(awaiting_continue?: true))
+        worker.instance_variable_set(:@bridge, double(open_streams: 2))
+        worker.instance_variable_set(:@task_wakes, double(watch: double(holding: %i[one two])))
+
+        expect(worker.send(:activity_snapshot)).to eq(
+          turn_running: true,
+          input_pending: true,
+          awaiting_continue: true,
+          open_streams: 2,
+          reminders: 1,
+          tasks_holding: 2
+        )
+      end
+    end
+  end
+
   describe Samagotchi::Worker::Waker do
     let(:waker) { described_class.new }
 

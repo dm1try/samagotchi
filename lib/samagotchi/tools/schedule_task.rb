@@ -28,9 +28,11 @@ module Samagotchi
           mode: mode.nil? || mode.to_s.strip.empty? ? Schedules::CHAIN : mode.to_s.strip,
           keep_links: keep_links
         )
-        "Scheduled #{entry.id}: #{entry.target_words} · #{entry.recurrence_words} · next #{entry.next_due}. " \
-        "It fires outside this worker (chi schedule tick, run by cron or chi web's hub); " \
-        "chi schedule list and cancel_schedule show and stop it."
+        result = "Scheduled #{entry.id}: #{entry.target_words} · #{entry.recurrence_words} · next #{entry.next_due}. " \
+                 "It fires outside this worker (chi schedule tick, run by cron or chi web's hub); " \
+                 "chi schedule list and cancel_schedule show and stop it."
+        warning = schedules.tick_warning
+        warning ? "#{result}\n#{warning}" : result
       rescue Schedules::Usage, Session::NotFound, Session::AmbiguousId => e
         "Error: #{e.message}"
       end

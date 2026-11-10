@@ -739,7 +739,8 @@ module Samagotchi
           raise SessionManager::ScratchSession, sid if json["scratch"] == true
 
           raise SessionManager::OwnedByTUI, sid
-        when "worker_running", "still_stopping" then raise SessionManager::DeleteRefused.new(sid, reason)
+        when "worker_running", "still_stopping", "scheduled"
+          raise SessionManager::DeleteRefused.new(sid, reason, message: message)
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
         when "continued", "open_children", "folder_gone"

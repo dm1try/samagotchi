@@ -45,6 +45,7 @@ module Samagotchi
       # all sessions this often (a one-shot or an older chi's REPL that
       # opened an old session without saving it has no file signal until its first save).
       FULL_PROBE_INTERVAL = 10.0
+      SCHEDULE_TICK_STOP_WAIT = 5.0
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
@@ -107,6 +108,8 @@ module Samagotchi
         @root_cache = {}    # folder → project root, for sessions saved before project_root
         @next_full_probe = nil
         @next_schedule_tick = nil
+        @schedule_tick_in_flight = false
+        @schedule_tick_thread = nil
         @wakeup = Queue.new # stop wakes the tick thread out of its sleep
         @thread = nil
         @stopped = false
@@ -129,6 +132,8 @@ module Samagotchi
         thread = @thread
         @thread = nil
         thread&.join(@scan_interval + 1.0)
+        schedule_thread = @monitor.synchronize { @schedule_tick_thread }
+        schedule_thread&.join(SCHEDULE_TICK_STOP_WAIT)
         nil
       end
 
@@ -320,18 +325,40 @@ module Samagotchi
 
       # chi web can be the scheduler when the user opts in (schedule.auto_tick):
       # the same tick cron runs, gated by schedule.tick_interval_minutes and
-      # sharing schedules.lock, so cron and the hub never both fire.
+      # sharing schedules.lock, so cron and the hub never both fire. The scan
+      # loop only launches one tick at a time; it does not wait for a firing.
       def schedule_tick
         return unless Config.get("schedule.auto_tick")
 
         now = @now.call
-        return if @next_schedule_tick && now < @next_schedule_tick
+        @monitor.synchronize do
+          return if @schedule_tick_in_flight
+          return if @next_schedule_tick && now < @next_schedule_tick
 
-        @next_schedule_tick = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
+          @next_schedule_tick = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
+          @schedule_tick_in_flight = true
+          @schedule_tick_thread = Thread.new { run_schedule_tick }
+        end
+      rescue StandardError => e
+        @monitor.synchronize do
+          if @schedule_tick_in_flight && @schedule_tick_thread.nil?
+            @schedule_tick_in_flight = false
+            @next_schedule_tick = nil
+          end
+        end
+        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
+        nil
+      end
+
+      def run_schedule_tick
         Samagotchi::Schedules.new(state_dir: @state_dir).tick
       rescue StandardError => e
         Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
-        nil
+      ensure
+        @monitor.synchronize do
+          @schedule_tick_in_flight = false
+          @schedule_tick_thread = nil
+        end
       end
 
       # A change (the first look too, unless it finds nothing) is a `chi`

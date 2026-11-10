@@ -22,11 +22,21 @@ RSpec.describe Samagotchi::ScheduleCommand do
   end
 
   # A clock the test moves: `due` makes an `every 1m` entry added before it due.
-  before { @clock = Time.now }
+  before do
+    @clock = Time.now
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(false)
+    allow(Samagotchi::Config).to receive(:get).with("schedule.tick_interval_minutes").and_return(5)
+  end
 
   let(:schedules) { Samagotchi::Schedules.new(state_dir: @dir, clock: -> { @clock }) }
   let(:every) { Samagotchi::Schedules.recurrence(every: "1m") }
   let(:hourly) { Samagotchi::Schedules.recurrence(every: "1h") }
+
+  def tick_warning
+    "Warning: no schedule tick in the last 10 minutes; set schedule.auto_tick: true or " \
+      "run `chi schedule tick` from cron."
+  end
 
   def session(scratch: false)
     saved = Samagotchi::Session.new(
@@ -59,7 +69,8 @@ RSpec.describe Samagotchi::ScheduleCommand do
       id8 = printed.split.first
       entry = schedules.lookup(id8)
       expect(printed).to eq("#{id8} added: chain · #{id[0, 8]} · Mon 09:00 · " \
-                            "next #{Time.iso8601(entry.next_due).localtime.strftime("%Y-%m-%d %H:%M")}\n")
+                            "next #{Time.iso8601(entry.next_due).localtime.strftime("%Y-%m-%d %H:%M")}\n" \
+                            "#{tick_warning}\n")
       expect([entry.anchor, entry.head, entry.title, entry.mode, entry.recurrence_words])
         .to eq([id, id, "Audit", Samagotchi::Schedules::CHAIN, "Mon 09:00"])
     end
@@ -152,18 +163,19 @@ RSpec.describe Samagotchi::ScheduleCommand do
       id = session
       status, printed, error = run("list")
       expect(status).to eq(0), error
-      expect(printed).to eq("no schedules\n")
+      expect(printed).to eq("no schedules\n#{tick_warning}\n")
 
       entry = schedules.add(target: id, prompt: "Audit", recurrence: hourly)
       status, printed, error = run("list")
       expect(status).to eq(0), error
       expect(printed).to eq("#{entry.id}  chain  every 1h  " \
-                            "#{Time.iso8601(entry.next_due).localtime.strftime("%Y-%m-%d %H:%M")}  #{id[0, 8]}\n")
+                            "#{Time.iso8601(entry.next_due).localtime.strftime("%Y-%m-%d %H:%M")}  #{id[0, 8]}\n" \
+                            "#{tick_warning}\n")
 
       schedules.disable(entry.id)
       status, printed, error = run("list")
       expect(status).to eq(0), error
-      expect(printed).to eq("no schedules\n")
+      expect(printed).to eq("no schedules\n#{tick_warning}\n")
 
       status, printed, error = run("list", "--all")
       expect(status).to eq(0), error
@@ -180,6 +192,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(rows.size).to eq(1)
       expect([rows.first["id"], rows.first["mode"], rows.first["recurrence_words"]]).to eq([entry.id, "chain", "every 1m"])
       expect(rows.first["skip_window"]).to eq("≈1 h at a 5 min tick")
+      expect(error).to eq("#{tick_warning}\n")
     end
   end
 
@@ -193,6 +206,22 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(printed).to include("#{entry.id}  Audit", "  anchor: #{id}  head: #{id}  mode: chain",
                                  "  recurrence: every 1m", "  skips: 0 of 12  failures: 0 of 3",
                                  "  prompt: Audit the queue")
+    end
+
+    it "shows the last turn failure reason in list and show" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every)
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first["last_result"] = "turn failed: model unavailable"
+      File.write(schedules.path, JSON.generate(data))
+
+      status, printed, error = run("list")
+      expect(status).to eq(0), error
+      expect(printed).to include("last: turn failed: model unavailable")
+
+      status, printed, error = run("show", entry.id)
+      expect(status).to eq(0), error
+      expect(printed).to include("last result: turn failed: model unavailable")
     end
 
     it "exits 1 for an id that is not there and 2 for no id" do
@@ -231,7 +260,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       body = JSON.parse(printed)
       expect(body["locked"]).to be(false)
       outcome = body["outcomes"].first
-      expect([outcome["id"], outcome["status"]]).to eq([entry.id, "fired"])
+      expect([outcome["id"], outcome["status"]]).to eq([entry.id, "pending"])
       expect(outcome["detail"]).to match(/\Anew link \h{8}\z/)
 
       stored = schedules.lookup(entry.id)
@@ -273,6 +302,18 @@ RSpec.describe Samagotchi::ScheduleCommand do
       stored = schedules.lookup(entry.id)
       expect([stored.skips, stored.next_due, stored.last_result]).to eq([1, entry.next_due, "skipped"])
     end
+
+    it "reports a corrupt schedule file on one line and leaves it as is" do
+      File.write(schedules.path, "{broken")
+
+      status, printed, error = run("tick")
+
+      expect(status).to eq(1)
+      expect(printed).to be_empty
+      expect(error).to include(schedules.path, "left as is")
+      expect(error.lines.size).to eq(1)
+      expect(File.read(schedules.path)).to eq("{broken")
+    end
   end
 
   describe "run-now, enable, disable and cancel" do
@@ -312,7 +353,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
 
       status, printed, error = run("run-now", entry.id[0, 8])
       expect(status).to eq(0), error
-      expect(printed).to eq("#{entry.id[0, 8]}: fired · new link #{printed.split.last[0, 8]}\n")
+      expect(printed).to eq("#{entry.id[0, 8]}: pending · new link #{printed.split.last[0, 8]}\n")
       expect(schedules.lookup(entry.id).last_result).to start_with("new link")
     end
 

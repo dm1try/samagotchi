@@ -5,11 +5,13 @@ require "json"
 require "spec_helper"
 require "samagotchi/session_retention"
 require "samagotchi/owner_lock"
+require "samagotchi/schedules"
 
 RSpec.describe Samagotchi::SessionRetention do
-  let(:tmpdir) { Dir.mktmpdir("session-retention-spec") }
+  let(:root) { Dir.mktmpdir("session-retention-spec") }
+  let(:tmpdir) { File.join(root, "sessions").tap { |path| FileUtils.mkdir_p(path) } }
 
-  after { FileUtils.rm_rf(tmpdir) }
+  after { FileUtils.rm_rf(root) }
 
   describe ".apply" do
     it "with any_age deletes every eligible session however new, still keeping live and keep_status ones" do
@@ -75,6 +77,45 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(result[:kept]).to include(s_new.id)
       expect(File.exist?(path_old)).to be false
       expect(File.exist?(File.join(tmpdir, "#{s_new.id}.json"))).to be true
+    end
+
+    it "keeps the resolved target of an enabled schedule" do
+      sessions_dir = File.join(tmpdir, "sessions")
+      FileUtils.mkdir_p(sessions_dir)
+      scheduled = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      scheduled.save(state_dir: sessions_dir)
+      Samagotchi::Schedules.new(state_dir: sessions_dir).add(
+        target: scheduled.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h")
+      )
+
+      result = described_class.apply(state_dir: sessions_dir, days: 0, max_count: 0, any_age: true)
+
+      expect(result[:kept]).to include(scheduled.id)
+      expect(result[:deleted]).not_to include(scheduled.id)
+      expect(File.exist?(File.join(sessions_dir, "#{scheduled.id}.json"))).to be true
+    end
+
+    it "keeps a schedule's stored anchor and head as well as its resolved target" do
+      sessions_dir = File.join(tmpdir, "sessions")
+      FileUtils.mkdir_p(sessions_dir)
+      anchor = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      anchor.save(state_dir: sessions_dir)
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      head.continues = anchor.id
+      head.save(state_dir: sessions_dir)
+      target = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      target.continues = head.id
+      target.save(state_dir: sessions_dir)
+      schedules = Samagotchi::Schedules.new(state_dir: sessions_dir)
+      schedules.add(target: anchor.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      data = JSON.parse(File.read(schedules.path))
+      data.fetch("schedules").first["head"] = head.id
+      File.write(schedules.path, JSON.generate(data))
+
+      result = described_class.apply(state_dir: sessions_dir, days: 0, max_count: 0, any_age: true)
+
+      expect(result[:kept]).to include(anchor.id, head.id, target.id)
+      expect(result[:deleted]).not_to include(anchor.id, head.id, target.id)
     end
 
     def save_aged(status:, days_old: 20)

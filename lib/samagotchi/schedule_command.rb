@@ -137,6 +137,7 @@ module Samagotchi
       end
 
       @stdout.puts("#{entry.id} added: #{entry.target_words} · #{entry.recurrence_words} · next #{clock(entry.next_due)}")
+      print_tick_warning
       CLI::Exit::OK
     end
 
@@ -144,13 +145,16 @@ module Samagotchi
       entries = @schedules.entries(include_disabled: @opts[:include_disabled] ? true : false)
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate(entries.map { |entry| entry_line_json(entry) }))
+        print_tick_warning(@stderr)
         return CLI::Exit::OK
       end
       if entries.empty?
         @stdout.puts("no schedules")
+        print_tick_warning
         return CLI::Exit::OK
       end
       entries.each { |entry| @stdout.puts(entry_line(entry)) }
+      print_tick_warning
       CLI::Exit::OK
     end
 
@@ -194,6 +198,8 @@ module Samagotchi
         @stdout.puts("#{outcome.id}  #{word}  #{outcome.detail}")
       end
       CLI::Exit::OK
+    rescue Schedules::Corrupt => e
+      failed("#{e.message.lines.first.chomp}; left as is")
     end
 
     def act
@@ -231,6 +237,7 @@ module Samagotchi
       note = ""
       note += " skips #{entry.skips} of #{entry.max_skips} (#{skip_window(entry)})" if entry.skips.positive?
       note += " disabled after #{entry.failures} failures" unless entry.enabled
+      note += " last: #{entry.last_result}" if entry.last_result
       "#{entry.id}  #{entry.mode}  #{entry.recurrence_words}  #{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
     end
 
@@ -247,6 +254,11 @@ module Samagotchi
         "recurrence_words" => entry.recurrence_words,
         "skip_window" => skip_window(entry)
       )
+    end
+
+    def print_tick_warning(stream = @stdout)
+      warning = @schedules.tick_warning
+      stream.puts(warning) if warning
     end
   end
 end

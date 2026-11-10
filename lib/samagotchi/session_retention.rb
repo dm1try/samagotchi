@@ -200,6 +200,9 @@ module Samagotchi
     def self.apply(state_dir: Session.default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
                    empty_check: nil, any_age: false, now: Time.now)
+      require_relative "schedules"
+      schedules = Schedules.new(state_dir: state_dir)
+      scheduled_targets = schedules.protected_session_ids
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = Session.list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -221,6 +224,11 @@ module Samagotchi
         # Only when json present
         unless File.exist?(path)
           skipped << session.id
+          next
+        end
+
+        if scheduled_targets.include?(session.id)
+          kept << session.id
           next
         end
 
@@ -293,6 +301,8 @@ module Samagotchi
         # Looked at again right before its files go (the list was read
         # once, at the start): resumed or taken by a worker since, it stays.
         elsif held?(session.id, state_dir, alive_check)
+          kept << session.id
+        elsif scheduled_targets.include?(session.id)
           kept << session.id
         else
           begin

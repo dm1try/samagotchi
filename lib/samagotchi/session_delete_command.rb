@@ -70,7 +70,9 @@ module Samagotchi
       @stdout.puts("#{short}  refused: it is #{OwnerLock::TUI_BUSY}; let it finish first")
       false
     rescue SessionManager::DeleteRefused => e
-      line = if e.reason == :still_stopping then "its worker is still shutting down; try again in a moment"
+      line = case e.reason
+             when :still_stopping then "its worker is still shutting down; try again in a moment"
+             when :scheduled then e.message
              else "its worker is running (--force stops it first)"
              end
       @stdout.puts("#{short}  refused: #{line}")

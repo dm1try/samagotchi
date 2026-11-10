@@ -52,7 +52,8 @@ test("chainNeighbours: the previous link (from the open session's own continues 
   // A deleted previous link: no ← link (it would open a not-found page), and the
   // page knows the link is gone, so it can say "earlier links pruned" (chains.js).
   assert.deepEqual(chainNeighbours([d3], "d3"), { prev: null, next: null, pruned: true });
-  assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: null, next: null, pruned: true });
+  assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: null, next: null, pruned: false });
+  assert.deepEqual(chainNeighbours([d1], "d4", { continues: "gone" }), { prev: null, next: null, pruned: false });
   assert.deepEqual(chainNeighbours([lone], "lone"), { prev: null, next: null, pruned: false });
 });
 
