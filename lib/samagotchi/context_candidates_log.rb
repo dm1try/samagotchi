@@ -65,7 +65,16 @@ module Samagotchi
     # its prompts. Never raises.
     # @return [Integer] how many lines were dropped
     def purge_session(session_id, state_dir: nil)
-      log_for(state_dir).prune { |line| line["session_id"] != session_id.to_s }
+      purge_sessions([session_id], state_dir: state_dir)
+    end
+
+    # Many sessions' lines, pruned in one pass through the log. Never raises.
+    # @return [Integer] how many lines were dropped
+    def purge_sessions(session_ids, state_dir: nil)
+      ids = Array(session_ids).map(&:to_s).reject(&:empty?).to_h { |id| [id, true] }
+      return 0 if ids.empty?
+
+      log_for(state_dir).prune { |line| !ids[line["session_id"]] }
     rescue StandardError => e
       Log.warn(:context, "context_candidates_log_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       0

@@ -72,7 +72,7 @@ RSpec.describe Samagotchi::ContextCandidatesLog do
       described_class.event("proposed", session_id: "other", name: "b", state_dir: state)
       log = described_class.log_for(state)
       before = File.stat(log.path).mtime
-      expect(described_class).not_to receive(:purge_session)
+      expect(described_class).not_to receive(:purge_sessions)
 
       Samagotchi::SessionManager.delete_session(session.id, state_dir: state, purge_runs: false)
 

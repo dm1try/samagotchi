@@ -228,14 +228,14 @@ RSpec.describe "Runs at the session's edges" do
   it "a session its worker left empty is deleted without reading the runs" do
     session = new_session
     allow(Samagotchi::SessionManager).to receive(:discardable?).and_return(true)
-    expect(Samagotchi::SystemOne::Runs).not_to receive(:purge_session)
+    expect(Samagotchi::SystemOne::Runs).not_to receive(:purge_sessions)
     Samagotchi::WorkerBoot.send(:discard_left_session, session.id, state_dir: sessions, default_model: "m")
     expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: sessions))).to be(false)
   end
 
   it "a delete goes on when the purge fails" do
     session = new_session
-    allow(Samagotchi::SystemOne::Runs).to receive(:purge_session).and_raise(IOError, "no")
+    allow(Samagotchi::SystemOne::Runs).to receive(:purge_sessions).and_raise(IOError, "no")
     allow(Samagotchi::Log).to receive(:warn)
     expect(Samagotchi::SessionManager.delete_session(session.id, state_dir: sessions)[:id]).to eq(session.id)
     expect(Samagotchi::Log).to have_received(:warn).with(:worker, "session_runs_purge_failed", anything)

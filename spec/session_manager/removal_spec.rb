@@ -5,6 +5,8 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/session_continue"
+require "samagotchi/session_retention"
 require "samagotchi/schedules"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
@@ -29,6 +31,47 @@ RSpec.describe Samagotchi::SessionManager do
       File.write(File.join(session_dir, "output", "1.txt"), "answer")
     end
 
+    def new_session_in(state_dir, test_run: false, model_name: "gemma4", working_directory: "/tmp")
+      Samagotchi::Session.new_session(mode: "assist", model_name: model_name, working_directory: working_directory,
+                                      test_run: test_run).tap { |s| s.save(state_dir: state_dir) }
+    end
+
+    def populate_session_stores(session, state_dir)
+      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      FileUtils.mkdir_p(session_dir)
+      File.write(File.join(session_dir, "store-marker"), session.id)
+      plugin_state = File.join(Samagotchi::Paths.state_dir, "plugins", "check-in", "sessions", "#{session.id}.json")
+      FileUtils.mkdir_p(File.dirname(plugin_state))
+      File.write(plugin_state, "{}")
+      context = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
+      context.mute("pr-1")
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
+      issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir)
+      runs_store = Samagotchi::SystemOne::RunsStore.new(File.dirname(state_dir))
+      runs = Samagotchi::SystemOne::Runs.new(store: runs_store)
+      question = Samagotchi::SystemOne::Question.new(id: "allow", type: :noul, instructions: "Allow?")
+      runs.record(id: "approvals.allow/#{SecureRandom.uuid}", judgment: "approvals.allow", questions: [question],
+                  state: "git push", session_id: session.id)
+      Samagotchi::ContextCandidatesLog.event("proposed", session_id: session.id, name: "candidate", state_dir: state_dir)
+      { issued: issued, runs_store: runs_store }
+    end
+
+    def expect_session_stores_removed(session_id, state_dir, stores)
+      roots = [state_dir, File.dirname(state_dir), Samagotchi::Paths.state_home, Samagotchi::Paths.config_home]
+      named_paths = roots.uniq.flat_map do |root|
+        Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).reject do |path|
+          %w[. ..].include?(File.basename(path))
+        end.select { |path| path.include?(session_id) }
+      end
+      expect(named_paths).to be_empty
+      expect(Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)).lookup(stores[:issued].token)
+        .state(Time.now)).to eq(:revoked)
+      expect(stores[:runs_store].lines("approvals.allow").none? { |line| line["session_id"] == session_id }).to be(true)
+      expect(Samagotchi::ContextCandidatesLog.log_for(state_dir).records.none? do |line|
+        line["session_id"] == session_id
+      end).to be(true)
+    end
+
     it "removes the session file and its whole directory, and says what it removed" do
       fill_session_dir
 
@@ -37,6 +80,35 @@ RSpec.describe Samagotchi::SessionManager do
       expect(result).to eq(id: session.id, removed: [session_file, session_dir], stopped: false)
       expect(File.exist?(session_file)).to be false
       expect(Dir.exist?(session_dir)).to be false
+    end
+
+    it "removes every populated per-session store through delete, retention and failed-continue cleanup" do
+      deleted = new_session_in(tmpdir)
+      deleted_stores = populate_session_stores(deleted, tmpdir)
+
+      described_class.delete_session(deleted.id, state_dir: tmpdir)
+      expect_session_stores_removed(deleted.id, tmpdir, deleted_stores)
+
+      pruned = new_session_in(tmpdir, test_run: true)
+      pruned_stores = populate_session_stores(pruned, tmpdir)
+      Samagotchi::SessionRetention.apply(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)
+      expect_session_stores_removed(pruned.id, tmpdir, pruned_stores)
+
+      previous = new_session_in(tmpdir, model_name: "main:gemma-small")
+      failed_stores = nil
+      failed_id = nil
+      allow(Process).to receive(:spawn) do
+        successor_id = Samagotchi::SessionChain.next_of(previous.id, state_dir: tmpdir)
+        failed_id = successor_id
+        failed_stores = populate_session_stores(Samagotchi::Session.load(successor_id, state_dir: tmpdir), tmpdir)
+        raise Errno::EAGAIN
+      end
+      expect do
+        Samagotchi::SessionContinue.run(previous.id, state_dir: tmpdir, recap_wait: 0, archive_wait: 0)
+      end.to raise_error(Errno::EAGAIN)
+      expect_session_stores_removed(failed_id, tmpdir, failed_stores)
+    ensure
+      FileUtils.rm_rf(File.join(Samagotchi::Paths.state_dir, "plugins"))
     end
 
     it "refuses to delete an enabled schedule target, even with stop" do

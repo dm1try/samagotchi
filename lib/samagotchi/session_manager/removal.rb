@@ -57,6 +57,12 @@ module Samagotchi
     # workers stopped first; discarded: empty sessions its stopping worker deleted.
     ArchiveResult = Data.define(:id, :archived, :stopped, :discarded)
 
+    # Every store with session-scoped state. Deletion, retention and failed
+    # continuation cleanup all pass through this registry.
+    SESSION_STATE_STORES = %i[
+      session_files plugin_session_state context_sources participants system_one_runs context_candidates_log
+    ].freeze
+
     # Removal: archive, unarchive and delete a session (an archive takes its
     # delegates too), and the retention sweep's entry. Calls LifecyclePart's
     # stop_session, ListingPart's descendant_ids and the facade's ownership
@@ -187,15 +193,45 @@ module Samagotchi
           raise DeleteRefused.new(id, :still_stopping) unless stop_held(id, state_dir: sd, wait: wait)
         end
 
-        removed = remove_session_files(id, path, dir, state_dir: sd)
-        PluginSessionState.remove(id)
-        removed.concat(ContextSources.remove_session(id, state_dir: sd))
-        Participants.end_sessions([id], by: "delete", state_dir: sd)
-        if purge_runs
-          purge_session_runs(id, sd)
-          ContextCandidatesLog.purge_session(id, state_dir: sd)
-        end
+        removed = remove_files(id, path, dir, state_dir: sd, purge_runs: purge_runs)
         { id: id, removed: removed, stopped: held }
+      end
+
+      # Remove every store with state scoped to +id+. The file and sidecar
+      # directory keep the deleting owner lock; the other stores have their
+      # own locking where they need it.
+      # @return [Array<String>] the session file, sidecar and context paths removed
+      def remove_files(id, path, dir, state_dir:, purge_runs: true)
+        removed = []
+        SESSION_STATE_STORES.each do |store|
+          case store
+          when :session_files
+            removed.concat(remove_session_files(id, path, dir, state_dir: state_dir))
+          when :plugin_session_state
+            PluginSessionState.remove(id)
+          when :context_sources
+            removed.concat(ContextSources.remove_session(id, state_dir: state_dir))
+          when :participants
+            Participants.end_sessions([id], by: "delete", state_dir: state_dir)
+          when :system_one_runs
+            next
+          when :context_candidates_log
+            next
+          else
+            raise ArgumentError, "no cleanup for session store #{store.inspect}"
+          end
+        end
+        purge_removal_stores([id], state_dir: state_dir) if purge_runs
+        removed
+      end
+
+      # The session-scoped logs are expensive to scan; callers removing a
+      # batch purge them once after the session files are gone.
+      def purge_removal_stores(ids, state_dir:)
+        return if ids.empty?
+
+        purge_session_runs(ids, state_dir)
+        ContextCandidatesLog.purge_sessions(ids, state_dir: state_dir)
       end
 
       # The session's file and directory, removed while this process holds
@@ -206,7 +242,7 @@ module Samagotchi
       # without waiting: one that took it since the check keeps the session.
       # The lock file goes with the directory; a worker starting after that
       # makes a new one, and finds no session (Session.load). The delete and
-      # the retention sweep remove through here.
+      # the retention sweep and failed-continue cleanup use #remove_files.
       # @return [Array<String>] the paths removed
       # @raise [DeleteRefused] a worker took the lock, or a start was
       #   claimed, after the caller's check
@@ -246,10 +282,10 @@ module Samagotchi
       end
 
       # Never a reason a delete fails: one warn, and the sweep ages them out.
-      private def purge_session_runs(id, state_dir)
-        SystemOne::Runs.purge_session(id, sessions_dir: state_dir)
+      private def purge_session_runs(ids, state_dir)
+        SystemOne::Runs.purge_sessions(ids, sessions_dir: state_dir)
       rescue StandardError => e
-        Log.warn(:worker, "session_runs_purge_failed", sid: id, error: e.class.name, msg: e.message.to_s[0, 200])
+        Log.warn(:worker, "session_runs_purge_failed", sid: ids.first, error: e.class.name, msg: e.message.to_s[0, 200])
       end
     end
 

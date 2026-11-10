@@ -217,6 +217,7 @@ module Samagotchi
       deleted = []
       kept = []
       skipped = []
+      purge_ids = []
       passed_over = 0
 
       all.each_with_index do |session, idx|
@@ -307,10 +308,10 @@ module Samagotchi
         else
           begin
             # Under the owner lock, the start read again (as a delete).
-            SessionManager.remove_session_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir)
-            PluginSessionState.remove(session.id)
-            ContextSources.remove_session(session.id, state_dir: state_dir)
+            SessionManager.remove_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir,
+                                        purge_runs: false)
             deleted << session.id
+            purge_ids << session.id
           rescue SessionManager::DeleteRefused
             kept << session.id
           rescue StandardError
@@ -319,6 +320,7 @@ module Samagotchi
         end
       end
 
+      SessionManager.purge_removal_stores(purge_ids, state_dir: state_dir)
       { deleted: deleted, kept: kept, skipped: skipped }
     end
   end
