@@ -30,7 +30,8 @@ model. The TUI is untouched: it shows a fence as source.
    move isn't over when it is seen:** a block waiting to come near is watched by its scroller's observer, so one that moves
    to another scroller (the stage's `.ts-scroll` hands a long answer to `#history`) is watched there, or it never draws.
 4. `block_frame.js` (`createBlockFrame`): one hidden frame per language, made on first need, one render at a time, 15 s per
-   call. A timeout, a dead frame or a session switch drops it. Handshake `loaded` → `code {files}` → `ready | failed`,
+   call, the renderer files' fetch included (browser `fetch` has no timeout; a fetch past it is a failed load). A timeout, a
+   dead frame or a session switch drops it, and a drop rejects whatever is pending, the load too. Handshake `loaded` → `code {files}` → `ready | failed`,
    then `render {id, source, theme}` → `done {id, svg} | error {id, message}`.
 5. On success a `<figure class="block-drawn">` goes right before the `<pre>`, which stays in the DOM, `hidden`, so whatever
    reads text (copy, a claim's walk, fold thresholds) sees what it did. **The DOM is the state** (`block_source.js`): a Revise
