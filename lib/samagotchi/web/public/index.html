@@ -129,7 +129,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.markdown,.bubble.user>.user-message.markdown{white-space:normal}
 .bubble.output.markdown pre,.bubble.user>.user-message.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:var(--bg-inset)}
 .bubble.output.markdown code,.bubble.user>.user-message.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-.bubble.output.markdown :not(pre)>code,.bubble.user>.user-message.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text)}
+.bubble.output.markdown :not(pre)>code,.bubble.user>.user-message.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 3px;color:var(--text)}
 .bubble.output.markdown pre,.bubble.user>.user-message.markdown pre{font-size:13px;line-height:1.45;border:1px solid var(--border)}
 /* Code highlighting (markdown_renderer.rb): syntect scope classes, hl-prefixed, coloured from the palette's --code-* tokens. More classes win over fewer (a function name is also "entity"). */
 .syntax-highlighting{color:var(--code-text)}
@@ -460,7 +460,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .md-compact hr{border:0;border-top:1px solid var(--border);margin:8px 0}
 .md-compact blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--md-blockquote-color)}
 .md-compact code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-.md-compact :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 4px;color:var(--md-code-color)}
+.md-compact :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:0 3px;color:var(--md-code-color)}
 .md-compact strong{color:var(--md-strong-color)}
 .md-compact pre{overflow:auto;padding:6px 8px;border-radius:6px;background:var(--bg-inset);border:1px solid var(--border);font-size:var(--md-pre-size);line-height:1.45;white-space:pre}
 .md-compact table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
@@ -616,7 +616,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .card-body ul,.card-body ol{margin:0 0 6px 20px}
 .card-body pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
 .card-body>pre:only-child{background:transparent;border:none;padding:0;font-family:inherit;font-size:inherit}
-.card-body :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.88em}
+.card-body :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 3px;font-size:.88em}
 .card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .card-action{font-size:12.5px;padding:4px 10px}
 .card-error{color:var(--danger);font-size:12px;margin-top:6px}
