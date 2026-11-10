@@ -24,7 +24,7 @@ const markupOf = (template) => {
 test("infoBarHtml: a bare session's line, as the string builder wrote it", () => {
   assert.equal(markupOf(infoBarHtml(bare)), canon(
     `<div class="meta"><span class="bar-group setup"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
-    `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span></span>` +
+    `<span class="status idle"><span>idle</span></span><span class="model model-name" title="qwen">qwen</span></span>` +
     `<span class="bar-sep" aria-hidden="true"></span><span class="bar-group telemetry">` +
     `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span>` +
     `<span class="model session-time empty" title="This session's time: no turn yet">–</span></span></div>`,
@@ -73,9 +73,9 @@ test("infoBarHtml: every part, in the bar's order", () => {
   render(infoBarHtml(full), div);
   const parts = [...div.querySelector(".meta").children].map((el) => [el.className, [...el.children].map((kid) => kid.className)]);
   assert.deepEqual(parts, [
-    ["bar-group setup", ["id", "status running", "model served-mismatch", "model settings-chip own", "model tools-chip", "model notes-chip", "model mem-chip"]],
+    ["bar-group setup", ["id", "status running", "model model-name served-mismatch", "model settings-chip own", "model tools-chip", "model notes-chip", "model mem-chip"]],
     ["bar-sep", []],
-    ["bar-group relations", ["model chain-link", "model chain-link", "model parent", "model children-chip waiting"]],
+    ["bar-group relations", ["model chain-link chain-prev", "model chain-link chain-next", "model parent", "model children-chip waiting"]],
     ["bar-sep", []],
     ["bar-group telemetry", ["dir", "model ctx", "model speed", "model session-time", "worker-badge"]],
   ]);
@@ -153,7 +153,7 @@ test("a chain whose previous link was pruned: the bar says so, with no link to a
 
 test("chainLinkTemplate: the short id when the link has no date", () => {
   assert.equal(markupOf(chainLinkTemplate({ id: "cccccccc3" }, PREV, "Prev")),
-               canon('<a class="model chain-link" href="#/s/cccccccc3" title="Prev: cccccccc">← cccccccc</a>'));
+               canon('<a class="model chain-link chain-prev" href="#/s/cccccccc3" title="Prev: cccccccc">← cccccccc</a>'));
   assert.match(markupOf(chainLinkTemplate({ id: "cccccccc3", date: "10-10" }, NEXT, "Next")), />10-10 →</);
 });
 
@@ -176,7 +176,7 @@ test("infoBarHtml: the ⚙ chip reads ⚙ alone while the session follows the mo
   assert.equal(gear.className, "model settings-chip");
   assert.equal(gear.textContent, "⚙");
   assert.equal(gear.getAttribute("aria-label"), "Session settings");
-  assert.equal(gear.previousElementSibling.className, "model");
+  assert.equal(gear.previousElementSibling.className, "model model-name");
   render(infoBarHtml({ ...bare, settings: { thinking: null, reasoningHistory: null, llmContext: null } }), div);
   assert.ok(div.querySelector(".settings-chip") === null);
 });

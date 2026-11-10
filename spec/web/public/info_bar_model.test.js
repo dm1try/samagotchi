@@ -1,9 +1,11 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
-  chainLinkView, infoBarModel, infoButtons, sessionBar, SPEED_NONE, workerBadgeFor,
+  BAR_ITEMS, barItemKeys, chainLinkView, infoBarModel, infoButtons, sessionBar, SPEED_NONE, workerBadgeFor,
 } from "../../../lib/samagotchi/web/public/info_bar_model.js";
+import { renderInfoBar } from "../../../lib/samagotchi/web/public/info_bar.js";
 import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
 
 const ID = "0123456789abcdef";
@@ -185,4 +187,67 @@ test("the status chip says waiting while a card blocks the running turn, and onl
   assert.equal(sessionBar(args({ state: running, running: true, waiting: true })).bar.status, "waiting");
   // A summary that hasn't caught up with the turn's end says nothing here.
   assert.equal(sessionBar(args({ waiting: true })).bar.status, "idle");
+});
+
+// The bar's items (BAR_ITEMS): one per key, each found by its selector.
+const INDEX = readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
+// index.html's #infoBar: its info line, context chips, the four buttons and ⋯.
+function infoBarEl() {
+  const start = INDEX.indexOf('<div id="infoBar"');
+  const more = INDEX.indexOf('id="infoMoreBtn"', start);
+  const end = INDEX.indexOf("</div>", INDEX.indexOf("</button>", more)) + "</div>".length;
+  const host = document.createElement("div");
+  host.innerHTML = INDEX.slice(start, end);
+  return host.firstElementChild;
+}
+
+const allButtons = () => infoButtons({ id: ID, state: { owner: "worker" }, chain: { next: null }, archived: false, continuing: false, streaming: false });
+// Every chip a bar can have; the working set stands in the memories' place,
+// "earlier links pruned" in ←'s, so the second bar has those.
+const fullBar = {
+  id: ID, status: "running", model: { text: "qwen", title: "qwen", mismatch: false },
+  chain: { prev: { id: "aaaaaaaa1", date: "10-09" }, next: { id: "bbbbbbbb2", date: "" } },
+  parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
+  kids: { text: "2 delegates", title: "2 delegates", waitingText: null },
+  settings: { thinking: { level: "low", source: "session", own: "low" }, reasoningHistory: null, llmContext: null },
+  toolkit: { summary: null, defaultKit: null },
+  notes: { text: "notes 1", title: "deepseek" }, memories: ["a"], workingSet: null,
+  participants: { text: "1 participant", count: 1, present: false, title: "Participants: x" },
+  dir: "/p", ctx: { text: "ctx 8%", tip: "t" }, speed: { text: "42 tok/s", tip: "s", empty: false }, clock: "5s",
+  worker: { badge: { text: "chi 0.1", title: "older", restart: true }, busy: false },
+};
+const altBar = { ...fullBar, chain: { prev: null, next: null, pruned: true }, workingSet: { chip: { n: 1, changed: false } } };
+
+test("BAR_ITEMS: one item per key, each with a rank and a phone place", () => {
+  const keys = BAR_ITEMS.map((item) => item.key);
+  assert.equal(new Set(keys).size, keys.length);
+  for (const item of BAR_ITEMS) {
+    assert.ok(item.rank === "pinned" || item.rank === "menu" || Number.isInteger(item.rank), item.key);
+    assert.ok(["row", "menu"].includes(item.phone), item.key);
+  }
+  assert.deepEqual(BAR_ITEMS.filter((item) => item.compact).map((item) => item.key), ["settings"]);
+});
+
+test("BAR_ITEMS: every item the session's bar has is exactly one element of #infoBar; the chips it hasn't, none", () => {
+  for (const bar of [fullBar, altBar]) {
+    const el = infoBarEl();
+    renderInfoBar(el.querySelector("#infoText"), bar);
+    const present = barItemKeys(bar, allButtons());
+    for (const item of BAR_ITEMS) {
+      const found = el.querySelectorAll(item.selector).length;
+      // The four buttons are in the markup always (app.js hides the ones not shown).
+      if (present.includes(item.key) || item.group === "actions") assert.equal(found, 1, item.key);
+      else assert.equal(found, 0, item.key);
+    }
+  }
+  assert.deepEqual(barItemKeys(fullBar, allButtons()).filter((k) => !barItemKeys(altBar, allButtons()).includes(k)), ["prev", "next", "memories"]);
+  assert.deepEqual(barItemKeys(altBar, allButtons()).filter((k) => !barItemKeys(fullBar, allButtons()).includes(k)), ["pruned", "workingSet"]);
+});
+
+test("barItemKeys: a bare session's keys; a button not shown is absent; no session, none", () => {
+  const { buttons, bar } = sessionBar(args());
+  assert.deepEqual(barItemKeys(bar, buttons), ["status", "ctx", "more", "id", "continue", "speed", "time", "model", "toolkit", "dir", "archive", "delete"]);
+  const tui = sessionBar(args({ state: { ...emptySessionState(), owner: "tui", status: "idle", model: "qwen", dir: "/p" } }));
+  assert.ok(!barItemKeys(tui.bar, tui.buttons).includes("continue"));
+  assert.deepEqual(barItemKeys(null, buttons), []);
 });

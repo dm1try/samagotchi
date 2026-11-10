@@ -4,7 +4,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMoreSheet, moreActions, moreAttention, moreRows } from "../../../lib/samagotchi/web/public/more_sheet.js";
+import { ACTION_KEYS, createMoreSheet, moreActions, moreAttention, moreRows, ROW_KEYS } from "../../../lib/samagotchi/web/public/more_sheet.js";
 import { infoButtons } from "../../../lib/samagotchi/web/public/info_bar_model.js";
 
 const ID = "0123456789abcdef";
@@ -94,6 +94,39 @@ test("the actions follow the buttons' rules", () => {
   const busy = moreActions(buttonsFor({ continuing: true }))[0];
   assert.equal(busy.text, "Continuing…");
   assert.equal(busy.disabled, true);
+});
+
+// The sheet's order is BAR_ITEMS' menuOrder: today's rows, with the three a
+// fold adds (id, ⚙, earlier links pruned) in their places.
+test("the rows' and the actions' order, from BAR_ITEMS", () => {
+  assert.deepEqual(ROW_KEYS, ["id", "model", "settings", "toolkit", "workingSet", "memories", "participants", "pruned", "prev", "next", "parent", "delegates", "notes", "worker"]);
+  assert.deepEqual(ROW_KEYS.filter((k) => !["id", "settings", "pruned"].includes(k)),
+                   ["model", "toolkit", "workingSet", "memories", "participants", "prev", "next", "parent", "delegates", "notes", "worker"]);
+  assert.deepEqual(ACTION_KEYS, ["continue", "archive", "stop", "delete"]);
+});
+
+const settings = { thinking: { level: "low", source: "session", own: "low" }, reasoningHistory: null, llmContext: null };
+
+test("without a fold the id, ⚙ and pruned rows don't show; with one, only the folded rows do", () => {
+  const bar = { ...bare, settings, chain: { prev: null, next: null, pruned: true }, notes: { text: "notes: gemma", title: "t" } };
+  assert.deepEqual(keys(bar), ["model", "toolkit", "notes"]);
+  const folded = (...names) => moreRows(bar, new Set(names)).map((r) => r.key);
+  assert.deepEqual(folded(), []);
+  assert.deepEqual(folded("notes", "id", "settings", "pruned", "dir"), ["id", "settings", "pruned", "notes"]);
+  const rows = moreRows(bar, new Set(["id", "settings", "pruned"]));
+  assert.deepEqual(rows.map((r) => [r.label, r.value, r.go]), [
+    ["Session id", "01234567", "id"], ["Settings", "think low", "settings"], ["Earlier links pruned", "by a schedule", undefined]]);
+  // A ← link there is no pruned row (the bar draws the link instead).
+  assert.deepEqual(moreRows({ ...bar, chain: { prev: { id: "p".repeat(16), date: "" }, next: null, pruned: true } }, new Set(["pruned", "prev"])).map((r) => r.key), ["prev"]);
+});
+
+test("with a fold, Continue and Stop only when folded; Archive and Delete always; the dot from folded rows alone", () => {
+  const shown = (folded) => moreActions(buttonsFor(), folded).map((a) => a.key);
+  assert.deepEqual(shown(new Set()), ["archive", "delete"]);
+  assert.deepEqual(shown(new Set(["continue", "stop"])), ["continue", "archive", "stop", "delete"]);
+  const waiting = { ...bare, kids: { text: "⑂ 2", waitingText: "1 waiting" } };
+  assert.equal(moreAttention(waiting, new Set()).kind, null);
+  assert.equal(moreAttention(waiting, new Set(["delegates"])).kind, "warn");
 });
 
 function sheet() {
