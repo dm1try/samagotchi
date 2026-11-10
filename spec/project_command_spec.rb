@@ -165,6 +165,62 @@ RSpec.describe Samagotchi::ProjectCommand do
       )
     end
 
+    it "names memories saved from a subfolder before init, pointing at --merge-subfolders" do
+      notes = File.join(@tmp, "notes")
+      sub = File.join(notes, "sub").tap { |dir| FileUtils.mkdir_p(dir) }
+      FileUtils.mkdir_p(File.join(projects, key(sub)))
+      File.write(File.join(projects, key(sub), "a.md"), "a")
+      rows.push(session_row("aaaaaaaa-1", sub, live: false, project: sub))
+
+      expect(run("init", notes)).to eq(0), err.string
+      expect(out.string).to include("memories saved from subfolders before init: #{sub} (1 memory); move them " \
+                                    "into the project with chi project init --merge-subfolders\n")
+    end
+
+    describe "--merge-subfolders" do
+      let(:notes) { File.join(@tmp, "notes") }
+      let(:sub) { File.join(notes, "sub").tap { |dir| FileUtils.mkdir_p(dir) } }
+      let(:old) { File.join(projects, key(sub)) }
+
+      before do
+        FileUtils.mkdir_p(old)
+        File.write(File.join(old, "a.md"), "a")
+      end
+
+      it "marks the folder when it isn't yet and moves the subfolder's memories into the project" do
+        rows.push(session_row("aaaaaaaa-1", sub, live: false, project: sub))
+
+        expect(run("init", "--merge-subfolders", notes)).to eq(0), err.string
+        target = File.join(projects, id_of(notes))
+        expect(out.string).to include("#{notes} is now a chi project")
+        expect(out.string).not_to include("memories saved from subfolders before init")
+        expect(out.string.lines.last(2)).to eq(["moved 1 memory saved from #{sub} into #{target}: a\n",
+                                                "removed the emptied #{old}\n"])
+        expect(File.read(File.join(target, "a.md"))).to eq("a")
+      end
+
+      it "is refused, moving nothing, while a session in a subfolder runs" do
+        run("init", notes)
+        rows.push(session_row("aaaaaaaa-1", sub, live: true, project: sub))
+
+        expect(run("init", "--merge-subfolders", notes)).to eq(1)
+        expect(err.string).to start_with("chi project init: #{notes} has running sessions (aaaaaaaa): stop them " \
+                                         "(chi sessions stop ID) and rerun chi project init --merge-subfolders")
+        expect(File.exist?(File.join(old, "a.md"))).to be(true)
+      end
+
+      it "says when nothing was found, and takes no --new-id with it" do
+        run("init", notes)
+        out.truncate(0)
+        out.rewind
+        expect(run("init", "--merge-subfolders", notes)).to eq(0)
+        expect(out.string.lines.last).to eq("no memories saved from subfolders before init to move\n")
+
+        expect(run("init", "--merge-subfolders", "--new-id", notes)).to eq(2)
+        expect(err.string).to include("--merge-subfolders and --new-id")
+      end
+    end
+
     it "takes one folder at most" do
       expect(run("init", "a", "b")).to eq(2)
       expect(err.string).to include("init takes one folder")
@@ -182,6 +238,21 @@ RSpec.describe Samagotchi::ProjectCommand do
       expect(run(cwd: File.join(notes, "sub"))).to eq(0)
       expect(out.string).to eq("kind     marker\nroot     #{notes}\ntop      #{notes}\nid       #{id_of(notes)}\n" \
                                "memories #{File.join(projects, id_of(notes))}\n")
+    end
+
+    it "notes memories saved from a subfolder before init" do
+      notes = File.join(@tmp, "notes")
+      run("init", notes)
+      out.truncate(0)
+      out.rewind
+      sub = File.join(notes, "sub").tap { |dir| FileUtils.mkdir_p(dir) }
+      FileUtils.mkdir_p(File.join(projects, key(sub)))
+      File.write(File.join(projects, key(sub), "a.md"), "a")
+      rows.push(session_row("aaaaaaaa-1", sub, live: false, project: sub))
+
+      expect(run(cwd: sub)).to eq(0)
+      expect(out.string.lines.last).to eq("note     memories saved from subfolders before init: #{sub} (1 memory); " \
+                                          "move them into the project with chi project init --merge-subfolders\n")
     end
 
     it "says git, and that a marker inside the repository is ignored" do

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi project init` and `chi project` name memories saved from a project's subfolders before init (found from this
+  machine's sessions), and `chi project init --merge-subfolders` moves them into the project's memories folder.
+
 ## [0.162.0] - 2026-11-10
 
 ### Changed
