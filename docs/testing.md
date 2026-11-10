@@ -182,11 +182,17 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   rewrites their lines and show after an intended change) feed `turn_drawing_parity.test.js`, which draws each one
   live (the real stream handlers and stage) and from its drawing and compares the shapes with no allow list.
   `spec/shared/turn_ranges.json` (`UPDATE_TURN_RANGES=1 bundle exec rspec spec/bridge/turn_ranges_spec.rb`) pins
-  `Bridge::TurnRanges`' turns and record pairing against `timing.js turnGroups` (timing.test.js). Each scenario's
+  `Bridge::TurnRanges`' turns, their record pairing, the items as the show stamps them and each turn's drawing end;
+  timing.test.js checks `turnGroups` (stamps only) against it. Each scenario's
   fixture also holds `synth`, the show drawn from `TurnDrawings::Synth`'s lines (written by
   `spec/bridge/turn_drawings_synth_spec.rb`, which also compares each synth line with the live one minus
   `Synth::LOSSES`); the parity test's synth arm draws it against live, each scenario naming the losses that change its
-  shape (`SYNTH_LOSSES_OF`). The
+  shape (`SYNTH_LOSSES_OF`). Rewrite the fixtures in this order after an intended change, each spec merging its own
+  keys: `UPDATE_TURN_DRAWINGS=1` over `spec/bridge/turn_drawings_spec.rb`, then `spec/web/session_show_drawings_spec.rb`,
+  then `spec/bridge/turn_drawings_synth_spec.rb`; `UPDATE_TURN_RANGES=1` over `spec/bridge/turn_ranges_spec.rb`. A
+  node test of a reloaded history feeds drawn input as the show sends it: `spec/web/public/drawn_history.js` stamps
+  its items into turns and gives each a minimal drawing (not the synthesizer: what a real drawing holds is the
+  fixtures'). The
   `lan` project's chi web is on the LAN only
   when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
   loopback.

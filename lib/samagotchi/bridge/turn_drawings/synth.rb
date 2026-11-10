@@ -56,12 +56,16 @@ module Samagotchi
           tool_action: "a plugin tool's own action words (its label when saved, else 'calling tool')",
           wake_start: "a wake turn's start time when no message of its own is stamped: its note's, written before it began",
           failure_detail: "a failed turn's error message and class when its record keeps a summary (SessionMetrics#failure_fields)",
-          repeated_turn_id: "a range whose turn id an earlier one has (…~N): no record, no CardStore entries (whose they are " \
-                            "can't be told)",
+          repeated_turn_id: "a range whose turn id an earlier one has (…~N), or a made range renamed because a kept line " \
+                            "has its id (a failed turn's kept steps, then its re-run): no record (no timing line), no " \
+                            "CardStore entries (the runs' records share the id: whose they are can't be told)",
           continued_steps: "a Continue's steps right after its turn read as that turn's (no message tells them apart): " \
                            "the turn's record and kind, the Continue's calls untimed, its own CardStore entries left out",
           unopened_turn: "a turn with no opening (a reminder's, a Continue's) has no id in the messages: a made-up one, " \
-                         "and no record to pair by"
+                         "and no record to pair by",
+          fork_before_first_turn: "a /btw keep child saved without its system head: the lines it carried keep the " \
+                                  "parent's indices and hold only once its first turn puts the head back; until " \
+                                  "then its turns are made, without CardStore rows (the child's store is empty)"
         }.freeze
 
         # A Synth line that couldn't be made (its minimal line stands in).

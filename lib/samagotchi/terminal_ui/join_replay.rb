@@ -146,8 +146,8 @@ module Samagotchi
 
       # The snapshot's drawing as [turn, end event] when it is +prompt+'s
       # turn (a Continue's or a reminder's drawing isn't the prompt's: the
-      # rows are rebuilt), else nil; nil too for one whose parts aren't a
-      # list of rows.
+      # prompt's turn is made from its messages, #made_turn), else nil; nil
+      # too for one whose parts aren't a list of rows.
       def drawn_turn(drawing, prompt)
         return nil unless drawing.is_a?(Hash) && drawing[:drawing].is_a?(Hash) && drawing[:end].is_a?(Hash)
 
