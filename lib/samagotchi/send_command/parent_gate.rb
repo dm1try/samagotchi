@@ -24,10 +24,13 @@ module Samagotchi
     # goes.
     class ParentGate
       # @param options [Hash] chi send's parsed options (:new, :continues,
-      #   :parent_answers, :ids)
-      def initialize(options, state_dir:)
+      #   :parent_answers)
+      # @param ids [Array<String>, nil] the sessions the ids name, as chi send
+      #   sends to them (a continued one's newest link); nil with --new
+      def initialize(options, state_dir:, ids: nil)
         @options = options
         @state_dir = state_dir
+        @ids = ids
       end
 
       # A /continue yes (or bare /continue) from a parent agent's process.
@@ -69,8 +72,8 @@ module Samagotchi
       private
 
       # The targets' own parent_answers values. An id that doesn't resolve
-      # is skipped (SendCommand#resolve reports it later); none left is
-      # config.yml's alone ([nil]).
+      # is skipped (SendCommand reports it later); none left is config.yml's
+      # alone ([nil]).
       def target_values
         @target_values ||= if @options[:new] && !@options[:continues]
                              [@options[:parent_answers]]
@@ -78,7 +81,7 @@ module Samagotchi
                              sessions = if @options[:new]
                                           [target_session { SessionChain.resolve(@options[:continues], state_dir: @state_dir) }]
                                         else
-                                          @options[:ids].map { |given| target_session { Session.resolve_id(given, state_dir: @state_dir) } }
+                                          Array(@ids).map { |id| target_session { id } }
                                         end
                              values = sessions.compact.map(&:parent_answers)
                              values.empty? ? [nil] : values

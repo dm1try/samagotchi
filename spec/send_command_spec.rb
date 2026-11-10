@@ -10,6 +10,7 @@ require "json"
 require "spec_helper"
 require "samagotchi/send_command"
 require "samagotchi/owner_lock"
+require "samagotchi/archive_store"
 require "samagotchi/engine"
 require "samagotchi/bridge"
 require_relative "support/fake_provider_server"
@@ -564,6 +565,192 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(live).size).to eq(1)
     end
 
+    # An agent keeps one id for a coordinator; once it is continued, input
+    # for it goes to its chain's newest link, as chi note's does, and the
+    # old link stays archived.
+    describe "to a continued session" do
+      def archived(session)
+        Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+        session
+      end
+
+      def link_after(previous, owner: nil, status: nil)
+        make(owner: owner, status: status).tap do |s|
+          s.continues = previous.id
+          s.save(state_dir: tmpdir)
+        end
+      end
+
+      def archived?(session) = Samagotchi::ArchiveStore.archived?(dir_of(session))
+
+      def label(old, newer) = "#{short(old)} → #{short(newer)} (continued)"
+
+      it "goes to the chain's newest link, named in chi note's wording; the old link stays archived" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        serve(newer)
+
+        expect(run("-m", "still there?", short(old))).to eq(0), err.string
+        expect(out.string).to eq("#{label(old, newer)}  sent\n")
+        expect(inputs_of(newer)).to contain_exactly(include("prompt" => "still there?"))
+        expect(inputs_of(old)).to be_empty
+        expect(archived?(old)).to be(true)
+      end
+
+      # Its worker un-archives it when it takes the input (Worker: a human's
+      # input un-archives the session); the links before it get nothing.
+      it "walks a retired chain to its last link and starts only that one" do
+        stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+        allow(Process).to receive(:spawn).and_return(40_007)
+        first = archived(make)
+        second = archived(link_after(first))
+        third = archived(link_after(second))
+
+        expect(run("-m", "wake up", first.id)).to eq(0), err.string
+        expect(out.string).to eq("#{label(first, third)}  sent (started its worker)\n")
+        expect(inputs_of(third).first["prompt"]).to eq("wake up")
+        expect(inputs_of(first) + inputs_of(second)).to be_empty
+        expect([archived?(first), archived?(second)]).to eq([true, true])
+      end
+
+      it "sends once to an old id and its newest link named together" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        serve(newer)
+
+        expect(run("-m", "once", old.id, newer.id)).to eq(0), err.string
+        expect(out.string).to eq("#{label(old, newer)}  sent\n")
+        expect(inputs_of(newer).size).to eq(1)
+      end
+
+      it "runs a session command in the newest link" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        queued = []
+        serve(newer, on_command: ->(command) { queued << command })
+
+        expect(run("-m", "/model qwen", old.id)).to eq(0), err.string
+        expect(out.string).to eq("#{label(old, newer)}  sent as a session command\n")
+        expect(queued.map(&:line)).to eq(["/model qwen"])
+      end
+
+      it "refuses a UI-only command naming the newest link" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        serve(newer)
+
+        expect(run("-m", "/stats", old.id)).to eq(1)
+        expect(out.string).to start_with("#{label(old, newer)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(newer)}")
+      end
+
+      it "with --wait waits on the newest link: its JSON's session_id, and asked the id given" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        serve(newer)
+
+        expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", old.id)).to eq(4), err.string
+        expect(JSON.parse(out.string)).to include("status" => "running", "session_id" => newer.id, "asked" => old.id)
+        expect(err.string).to start_with("#{label(old, newer)}  sent")
+        expect(inputs_of(newer)).to contain_exactly(include("prompt" => "hello"))
+        expect(archived?(old)).to be(true)
+      end
+
+      it "leaves the --format json line as it was for a link nobody continued (no asked)" do
+        a = make(owner: "worker")
+        serve(a)
+
+        expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
+        expect(JSON.parse(out.string)).not_to have_key("asked")
+      end
+
+      it "with --wait and no message waits on the newest link; with --turn of the old link, on it" do
+        old = archived(make)
+        last = Samagotchi::Session.load(old.id, state_dir: tmpdir)
+        last.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (Time.now - 2).iso8601(3), enqueued_id: "turn-old")
+        last.save(state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_output(dir_of(old), "the old answer", enqueued_id: "turn-old")
+        newer = link_after(old, owner: "worker")
+        serve(newer)
+
+        expect(run("--wait", "--timeout", "0.3", "--format", "json", old.id)).to eq(4), err.string
+        expect(JSON.parse(out.string)).to include("session_id" => newer.id, "asked" => old.id)
+
+        out.truncate(0)
+        out.rewind
+        expect(run("--wait", "--turn", "turn-old", "--format", "json", old.id)).to eq(0), err.string
+        expect(JSON.parse(out.string)).to include("status" => "answered", "session_id" => old.id, "text" => "the old answer")
+        expect(JSON.parse(out.string)).not_to have_key("asked")
+      end
+
+      it "holds a parent's /continue yes to the newest link's own parent_answers",
+         local_only: "refused here before anything is sent; remotely the target's turn route refuses its own" do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers").and_return("soft")
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        newer.parent_answers = "hard"
+        newer.save(state_dir: tmpdir)
+        queued = []
+        serve(newer, on_command: ->(command) { queued << command })
+
+        expect(run("-m", "/continue yes", old.id)).to eq(1)
+        expect(err.string).to include("(parent_answers: hard (this session))")
+        expect(queued).to be_empty
+      end
+
+      # SessionContinue writes the old link's intent under its lock, archives
+      # it, and saves the new link only after.
+      describe "while a continue of it is in flight" do
+        let(:successor) { "7b2d41aa-0000-4000-8000-000000000000" }
+
+        def continuing(session)
+          FileUtils.mkdir_p(dir_of(session))
+          File.write(File.join(dir_of(session), Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor))
+          @lock = File.open(File.join(dir_of(session), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
+          @lock.flock(File::LOCK_EX)
+        end
+
+        after { @lock&.close }
+
+        it "waits a moment, then sends to the new link once it is saved; the old link stays archived" do
+          old = archived(make)
+          continuing(old)
+          looks = 0
+          created = nil
+          allow(described_class).to receive(:pause) do
+            looks += 1
+            next if created || looks < 2
+
+            created = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app")
+            created.id = successor
+            created.continues = old.id
+            created.last_prompt = "hi"
+            created.save(state_dir: tmpdir)
+            locks << Samagotchi::OwnerLock.acquire(dir_of(created), kind: "worker")
+            serve(created)
+          end
+
+          expect(run("-m", "made it", old.id)).to eq(0), err.string
+          expect(out.string).to eq("#{label(old, created)}  sent\n")
+          expect(inputs_of(created)).to contain_exactly(include("prompt" => "made it"))
+          expect(archived?(old)).to be(true)
+        end
+
+        it "refuses after the wait, nothing written, the old link still archived" do
+          stub_const("#{described_class}::CONTINUING_WAIT", 0.05)
+          allow(described_class).to receive(:pause)
+          old = archived(make)
+          continuing(old)
+
+          expect(run("-m", "too soon", old.id)).to eq(1)
+          expect(out.string).to eq("#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment\n")
+          expect(inputs_of(old)).to be_empty
+          expect(archived?(old)).to be(true)
+        end
+      end
+    end
+
     describe "without a locale (Finder, launchd: stdin and ARGV aren't UTF-8)" do
       it "keeps non-ASCII text from stdin and -m" do
         a = make(owner: "worker")
@@ -696,6 +883,20 @@ RSpec.describe Samagotchi::SendCommand do
         expect(input).to include("prompt" => "why is this red?", "client_id" => "cli:send")
         expect(images_in(a, input)).to eq(["tiny.png"])
         expect(events.first).to include(type: :turn_enqueued, images: [include(name: "tiny.png")])
+      end
+
+      it "uploads the images to a continued session's newest link, where the message goes" do
+        old = make
+        Samagotchi::ArchiveStore.archive(old.id, state_dir: tmpdir)
+        newer = make(owner: "worker")
+        newer.continues = old.id
+        newer.save(state_dir: tmpdir)
+        serve(newer)
+
+        expect(run("--image", png, "-m", "and this?", short(old))).to eq(0), err.string
+        expect(out.string).to eq("#{short(old)} → #{short(newer)} (continued)  sent with 1 image\n")
+        expect(images_in(newer, inputs_of(newer).first)).to eq(["tiny.png"])
+        expect(Dir.exist?(File.join(dir_of(old), "images"))).to be(false)
       end
 
       it "sends each image to each session, from its own images/, ingesting a file once",
