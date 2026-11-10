@@ -1,0 +1,13 @@
+{
+  "port": 4321,
+  "bind": "127.0.0.1",
+  "session_id": "compat-session",
+  "started_at": "2026-01-01T00:00:00Z",
+  "version": "0.164.0",
+  "features": [
+    "restart"
+  ],
+  "epoch": "compat-epoch",
+  "pid": 12345,
+  "protocol": 1
+}

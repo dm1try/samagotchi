@@ -1,0 +1,10 @@
+{
+  "name": "compat",
+  "record_format": 1,
+  "version": "0.164.0",
+  "scope": "system",
+  "source": "compat-fixture",
+  "installed_at": "2026-01-01T00:00:00Z",
+  "files": {},
+  "hooks": {}
+}
