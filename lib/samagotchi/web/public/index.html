@@ -1808,6 +1808,42 @@ body.all-view #allHead{display:flex}
   #topStrip #allTile{width:auto}
 }
 a{color:var(--accent)}
+/* Touch: tap targets of about 40px. A small control grows an invisible pseudo-element over what's around it (never over
+   a link or another control: the sides that have a neighbour stay short); one that clips (the scope pill:
+   overflow:hidden) or sits in a clipping strip (the card's ✎) grows its own box, its look unchanged; the composer's
+   🖼 and Send grow visibly. */
+@media (pointer:coarse){
+  /* Revise: the unstacked one sits over the answer's bottom-right corner, so it grows down (the answer's text is above). */
+  .revise-btn{position:relative}
+  .revise-btn::after{content:"";position:absolute;inset:-2px -4px -19px}
+  .revise-row.stacked .revise-btn::after{inset:-11px 0 -10px}
+  /* Copy: ::after is the "copied" label. The answer's grows up and right, out of its text; a code block's left and down,
+     inside its own strip; a prompt's left and down, away from its bubble and the strip's grip above it. */
+  .copy-btn::before{content:"";position:absolute}
+  .bubble.output>.copy-btn::before{inset:-15px -8px -2px -6px}
+  .code-wrap>.copy-btn::before{inset:-5px -5px -12px -10px}
+  .bubble.user>.copy-btn::before{inset:0 -2px -17px -13px}
+  /* The top bar. A phone's has two rows 2px apart (the scope pill over the title's ✎): the pill grows up only, the ✎
+     mostly down. */
+  .title-rename{position:relative;z-index:1}
+  .title-rename::after{content:"";position:absolute;inset:-5px -9px -16px}
+  #notifyBtn{position:relative}
+  #notifyBtn::after{content:"";position:absolute;inset:-7px}
+  #scope .scope-all{position:relative}
+  #scope .scope-all::after{content:"";position:absolute;inset:-14px -4px -11px -3px}
+  /* The pill: its box 40px tall and borderless, its border drawn at the box's bottom at the old height (21px) with the
+     text in its middle, the box's extra height above taken back by a negative margin so the row keeps its height; the box's
+     corners no rounder than the drawn pill's (overflow:hidden would clip them). */
+  #scope .scope-name,#scope .scope-name.error{position:relative;min-height:40px;margin:-19px 0 0;padding-top:21px;border-color:transparent;border-radius:11px}
+  #scope .scope-name::before{content:"";position:absolute;left:0;right:0;top:19px;bottom:0;border:1px solid var(--border-strong);border-radius:999px;pointer-events:none}
+  #scope .scope-name.error::before{border-color:var(--warn-border)}
+  /* The active strip card's ✎: inside the strip (overflow-x:auto clips), so its own box grows, into the card's padding. */
+  #topStrip .card-rename{padding:9px 13px;margin:-9px -8px}
+  /* 🖼 and Send at 36px; the one-line field's line centred on Send (the field is 27px: it sits 4.5px up). */
+  #composer .actions-col #attachBtn{width:36px;height:36px;min-height:36px;line-height:36px}
+  #composer .actions-col #actionBtn{height:36px;min-height:36px;line-height:36px}
+  body.has-session #composer .compose-col{margin-bottom:4.5px}
+}
 /* Under 16px iOS Safari zooms the page on focus (and a Home Screen app never zooms back), at any width: every text
    field gets 16px on a phone or a touch device. Last in the sheet so it wins over each field's own size; keep new text
    fields in this list (stage.spec.js's phone step checks the visible ones). */
