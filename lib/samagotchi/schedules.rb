@@ -966,11 +966,16 @@ module Samagotchi
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no
-    # worker the files say what the tick can know.
+    # worker the files say what the tick can know. A session its owner
+    # stopped is a skip first, in both modes: a schedule restarts nothing
+    # the owner stopped (deliver_turn would refuse a same-mode firing too,
+    # SessionManager::DeliverResult::STOPPED, in the same words).
     def busy_reason(entry, links, target)
       dir = Session.session_dir(target, state_dir: @state_dir)
       owner = SessionManager.session_owner(target, state_dir: @state_dir)
       presence = WorkerPresence.read(target, state_dir: @state_dir, owner: owner, link: :look)
+      return [:skip, SessionManager::DeliverResult::STOPPED["detail"]] if presence.stop_marked?
+
       link = presence.link
 
       if presence.worker_owned?
@@ -1126,6 +1131,9 @@ module Samagotchi
         # one fired into, so the walk survives a link deleted in between.
         Outcome.new(id: entry.id, title: entry.title, status: "pending", detail: "queued a turn",
                     entry: entry.with(head: target, pending_session_id: target, pending_turn_id: result.enqueued_id))
+      elsif result.wake_refused?
+        # Stopped (or archived) since the tick's check: a skip, as the check's.
+        Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: result.detail, entry: entry)
       else
         Outcome.new(id: entry.id, title: entry.title, status: "failed",
                     detail: "the turn was not accepted (#{result.status}: #{result.error || result.detail})", entry: entry)
