@@ -652,6 +652,16 @@ body.has-session #stage,body.has-session #history{background:transparent}
 body.no-glass.has-session #center{background:var(--bg);border-color:var(--border)}
 body.has-session #dock{position:absolute;left:16px;right:16px;bottom:16px;margin:0;z-index:3}
 body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
+/* A phone's session panel runs edge to edge: its sides, corners and bottom line go (main's 16px side padding is taken
+   back), so only the message cards are framed and an answer gets the width. The history, the objectives' strip and the
+   card keep 8px sides; the card's bottom offset (16px) and the history's bottom padding stay, so stage_frame.js's fitCap
+   reads the same. */
+@media(max-width:600px){
+  body.has-session #center{margin:0 -16px;border-width:1px 0 0;border-radius:0}
+  body.has-session #history{padding-left:8px;padding-right:8px}
+  body.has-session #objectivesStrip{padding-left:8px;padding-right:8px}
+  body.has-session #dock{left:8px;right:8px}
+}
 /* The delivery line (delivery_line.js): a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised; a phone gets the short text and chips. */
 #deliveryLine{display:flex;align-items:center;gap:10px}
 #deliveryLine[hidden]{display:none}
