@@ -101,9 +101,12 @@ async function liveShape(events) {
   return historyShape(historyEl);
 }
 
+// The last turn's events, from the wake note announced just before it (a
+// context wake's opening, which live drew as the note came in).
 function lastTurnEvents(events) {
   const starts = events.map((e, i) => (e.type === "turn_started" ? i : -1)).filter((i) => i >= 0);
-  return events.slice(starts[starts.length - 1]);
+  const start = starts[starts.length - 1];
+  return events.slice(events[start - 1]?.type === "context_added" ? start - 1 : start);
 }
 
 // The reloaded turn's shape: the show drawn, the drawn turn's pieces only.
@@ -122,6 +125,29 @@ for (const scenario of scenarios) {
     const reloaded = drawnShape(scenario.show);
     const verdict = compareShapes(live, reloaded);
     assert.ok(verdict.same, `${scenario.description}\nlive: ${JSON.stringify(live, null, 1)}\nreloaded: ${JSON.stringify(reloaded, null, 1)}`);
+    assert.ok(reloaded.length > 0);
+  });
+}
+
+// The synth arm (H3 step L): the same turn reloaded from a drawing chi web
+// made from its messages (Bridge::TurnDrawings::Synth, the fixture's
+// `synth`), against the live turn. What the synth can't have is
+// Synth::LOSSES: the ones that change a shape are these, by their id there,
+// and each scenario names the ones it has.
+const SYNTH_LOSSES = {
+  // A step that streamed only thinking and was asked again: its thinking
+  // is saved nowhere, so its step (and a block of only such steps) is gone.
+  empty_step_thinking: ([live, synth]) => synth === null && (live.kind === "block" || (live.kind === "step" && live.text === "thinking")),
+};
+const SYNTH_LOSSES_OF = { empty_retry: ["empty_step_thinking"] };
+
+for (const scenario of scenarios) {
+  test(`${scenario.name}: drawn from its messages after a reload as live drew it`, async () => {
+    const live = await liveShape(lastTurnEvents(scenario.events));
+    const reloaded = drawnShape(scenario.synth);
+    const allowed = (SYNTH_LOSSES_OF[scenario.name] || []).map((id) => SYNTH_LOSSES[id]);
+    const left = compareShapes(live, reloaded).differences.filter((pair) => !allowed.some((loss) => loss(pair)));
+    assert.deepEqual(left, [], `${scenario.description}\nlive: ${JSON.stringify(live, null, 1)}\nsynth: ${JSON.stringify(reloaded, null, 1)}`);
     assert.ok(reloaded.length > 0);
   });
 }

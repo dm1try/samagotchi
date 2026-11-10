@@ -1,0 +1,525 @@
+{
+  "description": "A hook's notice in a tool step: a row of the step, kept by CardStore for a drawing made from the messages.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "run it",
+      "turn_id": "turn-hook",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Running.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"make\"",
+      "tool_id": "t1",
+      "title": "make",
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t1",
+      "output": "[execute]\nok",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"make\"",
+        "action": "running command",
+        "title": "make"
+      },
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
+      }
+    },
+    {
+      "type": "hook_notice",
+      "hook": "loop-guard",
+      "text": "loop: make repeated",
+      "level": "warn"
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-hook",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 5,
+      "turn_summary": {
+        "output": "Done."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "run it",
+      "turn_id": "turn-hook",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Running.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "execute",
+          "arguments": "{\"command\":\"make\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[execute]\nok",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "model",
+      "content": "Done."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-hook",
+      "kind": "completed",
+      "from": 1,
+      "to": 5,
+      "from_digest": "17a591d7cbdd7908c4937dd39d888fea043f3f9b",
+      "to_digest": "a0291988e9e0c265580e796a0d4aed6c51efb79d",
+      "drawing": {
+        "prompt": "run it",
+        "turn_id": "turn-hook",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Running."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "params": "command=\"make\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            },
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "action": "running command",
+            "duration_ms": 120
+          },
+          {
+            "kind": "notice",
+            "event": {
+              "type": "hook_notice",
+              "hook": "loop-guard",
+              "text": "loop: make repeated",
+              "level": "warn"
+            }
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          },
+          {
+            "kind": "text",
+            "iteration": 2,
+            "text": "Done."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-hook",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-hook": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "run it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-hook"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Running.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "params": "command=\"make\"",
+          "title": "make",
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "execute",
+          "tool_id": "t1",
+          "output": "[execute]\nok",
+          "output_truncated": false,
+          "activity": {
+            "tool": "execute",
+            "status": "ok",
+            "params": "command=\"make\"",
+            "title": "make",
+            "action": "running command"
+          },
+          "duration_ms": 120,
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
+        },
+        {
+          "type": "hook_notice",
+          "hook": "loop-guard",
+          "text": "loop: make repeated",
+          "level": "warn"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Done.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-hook",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "run it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-hook",
+        "drawn": "turn-hook"
+      },
+      {
+        "role": "assistant",
+        "content": "Running.",
+        "drawn": "turn-hook"
+      },
+      {
+        "role": "assistant",
+        "content": "Done.",
+        "drawn": "turn-hook"
+      }
+    ],
+    "turn_drawings": {
+      "turn-hook": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "run it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-hook"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"make\"",
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"make\"",
+              "title": "make",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "hook_notice",
+            "hook": "loop-guard",
+            "text": "loop: make repeated",
+            "level": "warn"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Done.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-hook",
+          "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "run it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-hook",
+        "drawn": "turn-hook"
+      },
+      {
+        "role": "assistant",
+        "content": "Running.",
+        "drawn": "turn-hook"
+      },
+      {
+        "role": "assistant",
+        "content": "Done.",
+        "drawn": "turn-hook"
+      }
+    ],
+    "turn_drawings": {
+      "turn-hook": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "run it",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-hook"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"make\"",
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"make\"",
+              "title": "make",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "hook_notice",
+            "hook": "loop-guard",
+            "text": "loop: make repeated",
+            "level": "warn"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Done.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-hook",
+          "duration_ms": 2400,
+          "record_id": "turn-hook"
+        }
+      }
+    }
+  }
+}

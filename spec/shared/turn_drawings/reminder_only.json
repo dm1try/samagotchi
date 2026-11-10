@@ -207,5 +207,58 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "earlier",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-0"
+      },
+      {
+        "role": "assistant",
+        "content": "Earlier answer."
+      },
+      {
+        "role": "assistant",
+        "content": "Tea time.",
+        "drawn": "m3-a1b0333e"
+      }
+    ],
+    "turn_drawings": {
+      "m3-a1b0333e": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": null,
+            "origin": null,
+            "continue": false,
+            "turn_id": "m3-a1b0333e"
+          },
+          {
+            "type": "reminder_injected",
+            "reminders": [
+              {
+                "name": "tea"
+              }
+            ]
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Tea time.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed"
+        }
+      }
+    }
   }
 }

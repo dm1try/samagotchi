@@ -27,7 +27,15 @@
       "tool": "execute",
       "params": "command=\"make\"",
       "tool_id": "t1",
-      "title": "make"
+      "title": "make",
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
+      }
     },
     {
       "type": "tool_call_completed",
@@ -44,6 +52,14 @@
         "params": "command=\"make\"",
         "action": "running command",
         "title": "make"
+      },
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
       }
     },
     {
@@ -165,6 +181,14 @@
             "status": "ok",
             "tool_id": "t1",
             "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            },
             "output": "[execute]\nbuilt",
             "output_truncated": false,
             "action": "running command",
@@ -226,7 +250,15 @@
           "tool": "execute",
           "tool_id": "t1",
           "params": "command=\"make\"",
-          "title": "make"
+          "title": "make",
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
         },
         {
           "type": "tool_call_completed",
@@ -243,7 +275,15 @@
             "title": "make",
             "action": "running command"
           },
-          "duration_ms": 120
+          "duration_ms": 120,
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
         },
         {
           "type": "pending_input_merged",
@@ -333,7 +373,15 @@
             "tool": "execute",
             "tool_id": "t1",
             "params": "command=\"make\"",
-            "title": "make"
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
           },
           {
             "type": "tool_call_completed",
@@ -350,7 +398,15 @@
               "title": "make",
               "action": "running command"
             },
-            "duration_ms": 120
+            "duration_ms": 120,
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
           },
           {
             "type": "pending_input_merged",
@@ -378,6 +434,129 @@
           "type": "turn_completed",
           "turn_id": "turn-steer",
           "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "build it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-steer",
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "assistant",
+        "content": "Building.",
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "steer",
+        "content": "keep going",
+        "source": "check-in",
+        "step": 2,
+        "drawn": "turn-steer"
+      },
+      {
+        "role": "assistant",
+        "content": "Built.",
+        "drawn": "turn-steer"
+      }
+    ],
+    "turn_drawings": {
+      "turn-steer": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "build it",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-steer"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Building.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"make\"",
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nbuilt",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"make\"",
+              "title": "make",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
+          },
+          {
+            "type": "pending_input_merged",
+            "count": 0,
+            "content": null,
+            "steers": [
+              {
+                "source": "check-in",
+                "text": "keep going"
+              }
+            ]
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Built.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-steer",
+          "duration_ms": 2400,
+          "record_id": "turn-steer"
         }
       }
     }

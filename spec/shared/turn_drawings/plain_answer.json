@@ -162,5 +162,50 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-plain",
+        "drawn": "turn-plain"
+      },
+      {
+        "role": "assistant",
+        "content": "Hello there.",
+        "drawn": "turn-plain"
+      }
+    ],
+    "turn_drawings": {
+      "turn-plain": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "hi",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-plain"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Hello there.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-plain",
+          "duration_ms": 2400,
+          "record_id": "turn-plain"
+        }
+      }
+    }
   }
 }

@@ -87,6 +87,21 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   (`m<from>-<digest8>`) or a repeated one (`<id>~<from>`); `TurnRanges.records` pairs each with its turn record by id,
   else by place among the openings, as `timing.js turnGroups` does (`spec/shared/turn_ranges.json` holds the cases both
   suites read).
+- **Made from the messages.** `TurnDrawings::Synth` (`bridge/turn_drawings/synth.rb`, not yet drawn by any show) makes
+  a turn's line from its saved messages, for a `TurnRanges` range no live line covers: the events live would have
+  emitted (`turn_started`, the reminders, each step's thinking, text and calls with `MessageParts`' fields and the
+  output as `preview:`, steers and merged lines, the end from the turn record), folded by a fresh `TurnAccumulator`,
+  so every drawing comes from the one fold. The turn's tool records give each row's status and duration (by tool, in
+  call order), and CardStore's entries of the turn (`of_turn`) go in at the step they name (`iteration`, `calls`; an
+  in-turn card keeps them too): its cards, hook notices, retries (a retried step is drawn empty), steer cuts, ✂ rows
+  and questions. A made-up id (`m…`, `…~<from>`) stays off the end's `turn_id` (no Revise); the end carries the
+  record's `record_id`. `Synth::LOSSES` lists what it can't have (a prompt's origin, a merged line's senders, a
+  retried step's thinking, evicted CardStore entries, untimed rows, …; `events_drift_spec` makes each `:row` event
+  synthesized or listed; a repeated id's later range and a Continue's steps read as its turn's are declared too).
+  The fold raises what it can't fold (`TurnAccumulator.new(raise_errors: true)`), and `safe_line` never raises: a
+  minimal line (opening, end kind, no parts, `turn_synth_failed`, once), else a constant one (`constant`: the range and
+  a completed end); `memoized` keeps lines per range (key: session, range, every message's digest in it, the turn's
+  records and its entries without CardStore's listing fields) in a process-wide LRU of `MEMO_BYTES`.
 - **The snapshot.** `Bridge#snapshot` (the snapshot and reset frames, `GET /snapshot`) adds `last_turn_drawing:
   {drawing, end}`: the line of the last prompt's turn (the last user message that opens a turn, the one the TUI draws),
   the newest for that turn id that holds against the snapshot's messages (`#last`, else the file's, `TurnDrawings.read`),

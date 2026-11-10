@@ -938,7 +938,7 @@ RSpec.describe "Cards" do
         { type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: "warn", in_turn: true, of_turn: "t1",
           iteration: 3, calls: 1, earlier: true, turns_since: 0, opening_id: "t1", current: false },
         { type: :card, id: "stop", source: "loop-guard", title: "stop", body: "**why**", level: "warn", actions: [],
-          in_turn: true, of_turn: "t1", earlier: true, turns_since: 0, opening_id: "t1", current: false }
+          in_turn: true, of_turn: "t1", iteration: 3, calls: 1, earlier: true, turns_since: 0, opening_id: "t1", current: false }
       ])
       turn(:turn_started, :turn_completed, on: later)
       expect(listed(later).map { |entry| entry[:turns_since] }).to eq([1, 1])

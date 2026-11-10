@@ -176,5 +176,56 @@
         }
       }
     }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "note",
+        "content": "from the parent",
+        "label": "continue",
+        "at": "2026-11-08T09:00:00.000Z"
+      },
+      {
+        "role": "user",
+        "content": "carry on",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-continue",
+        "drawn": "turn-continue"
+      },
+      {
+        "role": "assistant",
+        "content": "Carrying on.",
+        "drawn": "turn-continue"
+      }
+    ],
+    "turn_drawings": {
+      "turn-continue": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "carry on",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-continue"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Carrying on.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-continue",
+          "duration_ms": 2400,
+          "record_id": "turn-continue"
+        }
+      }
+    }
   }
 }

@@ -367,10 +367,15 @@ module Samagotchi
           # (a command's answer from another thread; a turn's proposal its own
           # button's command replaced, which nobody typed).
           old = @entries[index]
-          @entries[index] = card.except(:command).merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since,
-                                                                                   :past_idless, :after_opening, :after_failed, :command))
+          # Its step too (iteration, calls): the first one's place, as live.
+          @entries[index] = card.except(:command).merge(updated: true, **old.slice(:in_turn, :turn_id, :iteration, :calls, :during, :continued,
+                                                                                   :base_since, :past_idless, :after_opening, :after_failed,
+                                                                                   :command))
         else
           entry = card.merge(in_turn: event[:in_turn] ? true : false, turn_id: anchor)
+          # The step it came in (a turn's row's place): where a drawing made
+          # from the turn's messages draws it (TurnDrawings::Synth).
+          entry.merge!({ iteration: @iteration, calls: @calls }.compact) if @running_turn && event[:in_turn]
           entry[:during] = true if @running_turn && !event[:in_turn]
           entry[:continued] = true if @running_turn && event[:in_turn] && @continuing
           push(entry)

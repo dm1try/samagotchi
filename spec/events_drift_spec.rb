@@ -101,6 +101,21 @@ RSpec.describe "Events drift" do
     expect(replay).to include(*replay_rows)
   end
 
+  it "has each row event synthesized into a turn drawing made from messages, or declared lost" do
+    require "samagotchi/bridge/turn_drawings/synth"
+    synth = Samagotchi::Bridge::TurnDrawings::Synth
+    rows = Samagotchi::Events::CLASSIFICATION.filter_map { |type, kind| type if kind == :row }
+    emitted = read.call("lib/samagotchi/bridge/turn_drawings/synth.rb").scan(/type: :([a-z_]+)/).flatten.map(&:to_sym)
+
+    expect(rows - synth::SYNTHESIZED - synth::LOSSES.keys).to eq([])
+    expect(synth::SYNTHESIZED & synth::LOSSES.keys).to eq([])
+    # What it says it synthesizes, it emits: a turn end by its END_TYPES, a
+    # CardStore row by the entry's own type, a merged line as the input part
+    # TurnAccumulator replays as merged_input.
+    indirect = Samagotchi::Events::TURN_END + %i[hook_notice empty_answer_retry steer_cut llm_context_edited merged_input]
+    expect(synth::SYNTHESIZED - emitted - indirect).to eq([])
+  end
+
   it "replays the same turn part kinds in the web and the TUI as TurnAccumulator writes" do
     accumulator = read.call("lib/samagotchi/bridge/turn_accumulator.rb")
     written = accumulator.scan(/kind: "([a-z]+)"/).flatten + accumulator.scan(/append_text\([^,]+, "([a-z]+)"/).flatten

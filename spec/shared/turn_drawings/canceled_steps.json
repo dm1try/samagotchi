@@ -27,7 +27,15 @@
       "tool": "execute",
       "params": "command=\"rake\"",
       "tool_id": "t1",
-      "title": "rake"
+      "title": "rake",
+      "view": {
+        "command": "rake",
+        "steps": [
+          {
+            "text": "rake"
+          }
+        ]
+      }
     },
     {
       "type": "tool_call_completed",
@@ -44,6 +52,14 @@
         "params": "command=\"rake\"",
         "action": "running command",
         "title": "rake"
+      },
+      "view": {
+        "command": "rake",
+        "steps": [
+          {
+            "text": "rake"
+          }
+        ]
       }
     },
     {
@@ -145,6 +161,14 @@
             "status": "ok",
             "tool_id": "t1",
             "title": "rake",
+            "view": {
+              "command": "rake",
+              "steps": [
+                {
+                  "text": "rake"
+                }
+              ]
+            },
             "output": "[execute]\nok",
             "output_truncated": false,
             "action": "running command",
@@ -201,7 +225,15 @@
           "tool": "execute",
           "tool_id": "t1",
           "params": "command=\"rake\"",
-          "title": "rake"
+          "title": "rake",
+          "view": {
+            "command": "rake",
+            "steps": [
+              {
+                "text": "rake"
+              }
+            ]
+          }
         },
         {
           "type": "tool_call_completed",
@@ -218,7 +250,15 @@
             "title": "rake",
             "action": "running command"
           },
-          "duration_ms": 120
+          "duration_ms": 120,
+          "view": {
+            "command": "rake",
+            "steps": [
+              {
+                "text": "rake"
+              }
+            ]
+          }
         },
         {
           "type": "generation_started",
@@ -291,7 +331,15 @@
             "tool": "execute",
             "tool_id": "t1",
             "params": "command=\"rake\"",
-            "title": "rake"
+            "title": "rake",
+            "view": {
+              "command": "rake",
+              "steps": [
+                {
+                  "text": "rake"
+                }
+              ]
+            }
           },
           {
             "type": "tool_call_completed",
@@ -308,7 +356,15 @@
               "title": "rake",
               "action": "running command"
             },
-            "duration_ms": 120
+            "duration_ms": 120,
+            "view": {
+              "command": "rake",
+              "steps": [
+                {
+                  "text": "rake"
+                }
+              ]
+            }
           },
           {
             "type": "generation_started",
@@ -326,6 +382,112 @@
           "turn_id": "turn-cancel",
           "duration_ms": 3100,
           "cancellation_reason": "user"
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "run the tests",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-cancel",
+        "drawn": "turn-cancel"
+      },
+      {
+        "role": "assistant",
+        "content": "Starting.",
+        "drawn": "turn-cancel"
+      },
+      {
+        "role": "assistant",
+        "content": "Halfway",
+        "drawn": "turn-cancel"
+      }
+    ],
+    "turn_drawings": {
+      "turn-cancel": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "run the tests",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-cancel"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Starting.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"rake\"",
+            "title": "rake",
+            "view": {
+              "command": "rake",
+              "steps": [
+                {
+                  "text": "rake"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"rake\"",
+              "title": "rake",
+              "action": "running command"
+            },
+            "duration_ms": 120,
+            "view": {
+              "command": "rake",
+              "steps": [
+                {
+                  "text": "rake"
+                }
+              ]
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Halfway",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_canceled",
+          "turn_id": "turn-cancel",
+          "duration_ms": 3100,
+          "cancellation_reason": "user",
+          "record_id": "turn-cancel"
         }
       }
     }

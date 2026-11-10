@@ -65,7 +65,8 @@
       "activity": {
         "tool": "ask_user_question",
         "status": "ok",
-        "params": "question=\"Which one?\""
+        "params": "question=\"Which one?\"",
+        "action": "asking user"
       }
     },
     {
@@ -169,6 +170,7 @@
             "tool_id": "t1",
             "output": "[ask_user_question]\nA",
             "output_truncated": false,
+            "action": "asking user",
             "duration_ms": 900
           },
           {
@@ -264,7 +266,8 @@
           "activity": {
             "tool": "ask_user_question",
             "status": "ok",
-            "params": "question=\"Which one?\""
+            "params": "question=\"Which one?\"",
+            "action": "asking user"
           },
           "duration_ms": 900
         },
@@ -375,7 +378,8 @@
             "activity": {
               "tool": "ask_user_question",
               "status": "ok",
-              "params": "question=\"Which one?\""
+              "params": "question=\"Which one?\"",
+              "action": "asking user"
             },
             "duration_ms": 900
           },
@@ -419,6 +423,118 @@
           "type": "turn_completed",
           "turn_id": "turn-question",
           "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "pick one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-question",
+        "drawn": "turn-question"
+      },
+      {
+        "role": "assistant",
+        "content": "Which one do you want?",
+        "drawn": "turn-question"
+      },
+      {
+        "role": "assistant",
+        "content": "A it is.",
+        "drawn": "turn-question"
+      }
+    ],
+    "turn_drawings": {
+      "turn-question": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "pick one",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-question"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Which one do you want?",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "tool_id": "t1",
+            "params": "question=\"Which one?\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "tool_id": "t1",
+            "output": "[ask_user_question]\nA",
+            "output_truncated": false,
+            "activity": {
+              "tool": "ask_user_question",
+              "status": "ok",
+              "params": "question=\"Which one?\"",
+              "action": "asking user"
+            },
+            "duration_ms": 900
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "q1",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            }
+          },
+          {
+            "type": "question_answered",
+            "id": "q1",
+            "answer": {
+              "selected": [
+                "A"
+              ]
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "A it is.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-question",
+          "duration_ms": 2400,
+          "record_id": "turn-question"
         }
       }
     }

@@ -1,0 +1,255 @@
+{
+  "description": "A context wake's turn: its note (outside the range, announced before the turn) opens it, no prompt.",
+  "events": [
+    {
+      "type": "context_added",
+      "note_id": "n9",
+      "source": "context",
+      "label": "context",
+      "text": "pr-7 changed",
+      "created_at": "2026-11-08T09:00:00Z"
+    },
+    {
+      "type": "turn_started",
+      "prompt": null,
+      "turn_id": "turn-wake",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "system:context"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Looked at pr-7.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-wake",
+      "duration_ms": 2400,
+      "kept_from": 4,
+      "kept_to": 5,
+      "turn_summary": {
+        "output": "Looked at pr-7."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "earlier",
+      "turn_id": "turn-0",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Earlier answer."
+    },
+    {
+      "role": "system",
+      "kind": "note",
+      "note_id": "n9",
+      "source": "context",
+      "content": "[CONTEXT NOTE from context, 10:00]\npr-7 changed\n[END NOTE]",
+      "at": "2026-11-08T09:00:00.000Z",
+      "turn_start": true,
+      "turn_id": "turn-wake"
+    },
+    {
+      "role": "model",
+      "content": "Looked at pr-7."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-wake",
+      "kind": "completed",
+      "from": 4,
+      "to": 5,
+      "from_digest": "c4e4dda39ff7a70570521bd54a331c61e83add8e",
+      "to_digest": "c4e4dda39ff7a70570521bd54a331c61e83add8e",
+      "drawing": {
+        "prompt": null,
+        "turn_id": "turn-wake",
+        "origin": {
+          "client_id": "system:context"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Looked at pr-7."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-wake",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-wake": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": null,
+          "origin": {
+            "client_id": "system:context"
+          },
+          "continue": false,
+          "turn_id": "turn-wake"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Looked at pr-7.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-wake",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "earlier",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-0"
+      },
+      {
+        "role": "assistant",
+        "content": "Earlier answer."
+      },
+      {
+        "role": "note",
+        "content": "pr-7 changed",
+        "label": "context",
+        "at": "2026-11-08T09:00:00.000Z",
+        "turn_start": true,
+        "turn_id": "turn-wake"
+      },
+      {
+        "role": "assistant",
+        "content": "Looked at pr-7.",
+        "drawn": "turn-wake"
+      }
+    ],
+    "turn_drawings": {
+      "turn-wake": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": null,
+            "origin": {
+              "client_id": "system:context"
+            },
+            "continue": false,
+            "turn_id": "turn-wake"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Looked at pr-7.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-wake",
+          "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "earlier",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-0"
+      },
+      {
+        "role": "assistant",
+        "content": "Earlier answer."
+      },
+      {
+        "role": "note",
+        "content": "pr-7 changed",
+        "label": "context",
+        "at": "2026-11-08T09:00:00.000Z",
+        "turn_start": true,
+        "turn_id": "turn-wake"
+      },
+      {
+        "role": "assistant",
+        "content": "Looked at pr-7.",
+        "drawn": "turn-wake"
+      }
+    ],
+    "turn_drawings": {
+      "turn-wake": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": null,
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-wake"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Looked at pr-7.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-wake",
+          "duration_ms": 2400,
+          "record_id": "turn-wake"
+        }
+      }
+    }
+  }
+}

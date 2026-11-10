@@ -49,7 +49,7 @@
       "turn_id": "turn-none",
       "duration_ms": 2400,
       "kept_from": 1,
-      "kept_to": 4,
+      "kept_to": 3,
       "turn_summary": {
         "output": "",
         "empty_answer": {
@@ -70,15 +70,23 @@
       "at": "2026-11-08T10:00:00.000+01:00"
     },
     {
-      "role": "model",
-      "content": ""
-    },
-    {
       "role": "system",
       "content": "[SYSTEM: the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.]",
       "kind": "turn_note",
       "empty_answer": {
-        "retries": 1
+        "retries": 1,
+        "steps": [
+          {
+            "role": "model",
+            "content": "",
+            "thinking": "first try"
+          },
+          {
+            "role": "model",
+            "content": "",
+            "thinking": "second try"
+          }
+        ]
       }
     }
   ],
@@ -88,7 +96,7 @@
       "turn_id": "turn-none",
       "kind": "completed",
       "from": 1,
-      "to": 4,
+      "to": 3,
       "from_digest": "3a4d769fda468887f52d08ed8e72c20083c82217",
       "to_digest": "5f10cb773632d536e40a16a2a4f1bcac51aec122",
       "drawing": {
@@ -202,6 +210,16 @@
         "drawn": "turn-none"
       },
       {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
         "role": "empty_answer",
         "content": "",
         "retries": 1,
@@ -256,6 +274,83 @@
               "retries": 1
             }
           }
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "say something",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-none",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "empty_answer",
+        "content": "",
+        "retries": 1,
+        "drawn": "turn-none"
+      }
+    ],
+    "turn_drawings": {
+      "turn-none": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "say something",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-none"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "first try",
+            "iteration": 1
+          },
+          {
+            "type": "empty_answer_retry",
+            "iteration": 1,
+            "attempt": 1,
+            "of": 1
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "",
+            "thinking": "second try",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-none",
+          "duration_ms": 2400,
+          "turn_summary": {
+            "empty_answer": {
+              "retries": 1
+            }
+          },
+          "record_id": "turn-none"
         }
       }
     }
