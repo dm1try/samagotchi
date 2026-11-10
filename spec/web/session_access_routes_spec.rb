@@ -94,6 +94,22 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
   end
 
+  describe "GET /api/sessions/resolve?head=1" do
+    it "answers the chain's newest link of a continued one, with the id asked and how (SessionInbox::Head's send walk)" do
+      old = make
+      Samagotchi::ArchiveStore.archive(old.id, state_dir: state_dir)
+      newer = make
+      newer.continues = old.id
+      newer.save(state_dir: state_dir)
+
+      expect(call("/api/sessions/resolve?id=#{old.id[0, 6]}&head=1"))
+        .to eq([200, { "id" => newer.id, "asked" => old.id, "via" => "head" }])
+      expect(call("/api/sessions/resolve?id=#{newer.id}&head=1"))
+        .to eq([200, { "id" => newer.id, "asked" => newer.id, "via" => "same" }])
+      expect(call("/api/sessions/resolve?id=#{old.id}")).to eq([200, { "id" => old.id }])
+    end
+  end
+
   describe "GET /api/sessions/summaries" do
     it "carries what chi sessions list prints: status, live, owner, recap, ctx_pct, waiting" do
       waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })

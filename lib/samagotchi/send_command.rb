@@ -46,6 +46,14 @@ module Samagotchi
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
     # A cut's outcomes in the Bridge's ack (SteerCut#cut_for_steer).
     CUT_OUTCOMES = %w[now waits off].freeze
+    # How long a send to a link being continued waits for the new link to
+    # be saved (SessionInbox::Head's :continuing; the spawn is quick), and
+    # how often it asks again; then it is refused.
+    CONTINUING_WAIT = 10.0
+    CONTINUING_POLL = 0.2
+
+    # The pause between two looks at a continue in flight (a seam for specs).
+    def self.pause(seconds) = sleep(seconds)
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
@@ -56,7 +64,10 @@ module Samagotchi
              chi send --wait [--timeout S] [--format json] [--turn T] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one takes it at its next step. A stopped session's
-        worker starts.
+        worker starts. A session that was continued: the newest link of its
+        chain gets it (OLD → NEW (continued)), and the old link stays
+        archived; one being continued right now waits a moment for its new
+        link. A chain's first id is a stable address for it.
         A session command (/model x, !cmd) runs as the command; --wait
         then has no reply to wait for (exit 0, status command).
         -m TEXT     the message; stdin, when piped too, goes above it as a
@@ -295,7 +306,7 @@ module Samagotchi
       # check the line chi send's client_id marks; the worker checks a
       # CLI_ANSWER /continue again).
       unless @access.remote?
-        gate = ParentGate.new(options, state_dir: @state_dir)
+        gate = ParentGate.new(options, state_dir: @state_dir, ids: (resolved_ids(options) unless options[:new]))
         if prompt && (refusal = gate.continue_refusal(prompt))
           @stderr.puts("chi send: #{refusal}")
           return CLI::Exit::FAILED
@@ -313,15 +324,16 @@ module Samagotchi
       return run_new(prompt, options) if options[:new]
       return run_wait(prompt, options) if options[:wait]
 
-      # One id at a time, so each line follows the order of the ids given.
+      # One id at a time, so each line follows the order of the ids given;
+      # two that reach the same link (an old id and its newest link) send
+      # once.
       seen = {}
-      results = options[:ids].uniq.map do |given|
-        id = resolve(given)
-        next false unless id
-        next true if seen[id]
+      results = targets(options).map do |target|
+        next unsent(target) unless target.is_a?(SessionInbox::Resolved)
+        next true if seen[target.id]
 
-        seen[id] = true
-        deliver(id, prompt)
+        seen[target.id] = true
+        deliver(target, prompt)
       end
       results.all? ? 0 : 1
     ensure
@@ -583,8 +595,9 @@ module Samagotchi
     # enqueued_id), whatever runs before it.
     # @return [Integer] the exit status
     def run_wait(prompt, options)
-      id = resolve(options[:ids].first) or return 1
-      return run_participant_wait(id, prompt, options) if @access.participant?
+      target = wait_target(options) or return 1
+      id = target.id
+      return run_participant_wait(target, prompt, options) if @access.participant?
 
       # Local: one read for the check and the baseline; remotely the
       # server's wait prepare route reads both (Busy's words).
@@ -595,7 +608,7 @@ module Samagotchi
       end
 
       start = @access.prepare_wait(id, session: session)
-      return 1 unless deliver(id, prompt)
+      return 1 unless deliver(target, prompt)
       return report_command(id) if @sent_command
 
       target = ReplyWait::Target.message(start, @delivered, queue: @queue)
@@ -609,8 +622,9 @@ module Samagotchi
     # wait routes take only a turn of theirs: the wait is on the one just
     # queued, as --wait --turn T.
     # @return [Integer] the exit status
-    def run_participant_wait(id, prompt, options)
-      return 1 unless deliver(id, prompt)
+    def run_participant_wait(target, prompt, options)
+      id = target.id
+      return 1 unless deliver(target, prompt)
 
       turn = @delivered.enqueued_id.to_s
       if turn.empty?
@@ -634,10 +648,17 @@ module Samagotchi
     # idle in the gap between waits: that turn's end is the answer — its
     # reply, or its no-reply outcome — so the wait returns it at once
     # (ReplyWait's ended_before:) instead of timing out "running" again.
+    # A continued session's wait is on its newest link, but --turn T of the
+    # old link (from before the continue) waits on the old one.
     # @return [Integer] the exit status
     def run_wait_only(options)
-      id = resolve(options[:ids].first) or return 1
+      target = wait_target(options) or return 1
       requested_turn = options[:turn]&.to_s
+      id = target.id
+      if requested_turn && target.asked != id && @access.prepare_wait(target.asked, turn: requested_turn).known_turn
+        @wait_target = target = SessionInbox::Resolved.new(id: target.asked, asked: target.asked, via: :same)
+        @session_id = id = target.id
+      end
       start = @access.prepare_wait(id, turn: requested_turn)
       if requested_turn && !start.known_turn
         error_line("chi send: turn #{requested_turn} is not a running, queued, or last ended turn")
@@ -708,12 +729,13 @@ module Samagotchi
       elsif options[:wait]
         # --wait: the JSON line goes to stdout, @info is stderr; an unknown
         # or ambiguous id gets resolve's own error line.
-        id = resolve(options[:ids].first) or return CLI::Exit::FAILED
-        @stderr.puts("#{id[0, 8]}  refused: #{local_refusal(entry.name, id)}")
+        target = wait_target(options) or return CLI::Exit::FAILED
+        @stderr.puts("#{target.label}  refused: #{local_refusal(entry.name, target.id)}")
       else
-        options[:ids].uniq.each do |given|
-          id = resolve(given) or next
-          @info.puts("#{id[0, 8]}  refused: #{local_refusal(entry.name, id)}")
+        targets(options).each do |target|
+          next unsent(target) unless target.is_a?(SessionInbox::Resolved)
+
+          @info.puts("#{target.label}  refused: #{local_refusal(entry.name, target.id)}")
         end
       end
       CLI::Exit::FAILED
@@ -727,7 +749,7 @@ module Samagotchi
     def report_command(id)
       detail = "#{SENT_COMMAND}: no reply to wait for (its output shows in #{@access.invocation.open_it(id)})"
       if @json
-        @stdout.puts(JSON.generate({ status: "command", session_id: id, detail: detail }))
+        @stdout.puts(JSON.generate({ status: "command", session_id: id, **asked_extra, detail: detail }))
         @stdout.flush
         @reported = true
       else
@@ -736,9 +758,11 @@ module Samagotchi
       CLI::Exit::OK
     end
 
+    # @param target [SessionInbox::Resolved] the session (#target)
     # @return [Boolean] whether the message was queued
-    def deliver(id, prompt)
-      short = id[0, 8]
+    def deliver(target, prompt)
+      id = target.id
+      short = target.label
       session = @access.show(id)
       # Machine-local (this machine's model registry): remotely the
       # server's (P2), as for --new.
@@ -844,12 +868,77 @@ module Samagotchi
     # unchanged otherwise): the delivery the worker applied (next_step to
     # an idle session) and a cut's outcome (now, waits, off). --cut --wait
     # is refused for a running turn, so its json line says next_step.
+    # A continued session's names the id asked too (asked_extra).
     def report_extra
-      return {} unless @cut || @queue
+      return asked_extra unless @cut || @queue
 
-      extra = { delivery: @sent_delivery || Delivery::NEXT_STEP }
+      extra = asked_extra.merge(delivery: @sent_delivery || Delivery::NEXT_STEP)
       extra[:cut] = @sent_cut if @sent_cut
       extra
+    end
+
+    # The sessions the ids name, each once and in the order given, resolved
+    # once up front (#target): what ParentGate checks, what the message
+    # goes to, what --wait waits on.
+    # @return [Array<SessionInbox::Resolved, Unsent>]
+    def targets(options)
+      @targets ||= options[:ids].uniq.map { |given| target(given) }
+    end
+
+    # The targets' ids, for ParentGate (one that names none is skipped:
+    # its line comes where it is sent).
+    def resolved_ids(options) = targets(options).grep(SessionInbox::Resolved).map(&:id)
+
+    # --wait's one target, kept for the JSON lines (@session_id: its id);
+    # nil after its line.
+    # @return [SessionInbox::Resolved, nil]
+    def wait_target(options)
+      target = targets(options).first
+      unless target.is_a?(SessionInbox::Resolved)
+        unsent(target)
+        return nil
+      end
+
+      @session_id = target.id
+      @wait_target = target
+    end
+
+    # The --format json line's asked: the id given, when the wait is on a
+    # later link of its chain (session_id); {} otherwise.
+    def asked_extra
+      @wait_target && @wait_target.asked != @wait_target.id ? { asked: @wait_target.asked } : {}
+    end
+
+    # An id given that names no session to send to, and the line that says
+    # why: an error line (no such session, a prefix of several) or a
+    # refusal on the info stream (a continue in flight).
+    Unsent = Data.define(:line, :error)
+
+    # +given+'s session (an id or a prefix), then where input for it goes
+    # (SessionAccess#head): a continued session's chain's newest link. A
+    # continue of it in flight (:continuing: the new link not saved yet)
+    # is asked again for up to CONTINUING_WAIT, then refused; the old link
+    # is never sent to (a send would un-archive it beside the new one).
+    # @return [SessionInbox::Resolved, Unsent]
+    def target(given)
+      id = @access.resolve(given)
+      head = @access.head(id)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + self.class::CONTINUING_WAIT
+      while head.continuing? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        self.class.pause(self.class::CONTINUING_POLL)
+        head = @access.head(id)
+      end
+      return Unsent.new(line: "#{id[0, 8]}  refused: #{head.continuing_refusal}", error: false) if head.continuing?
+
+      head
+    rescue ArgumentError => e
+      Unsent.new(line: "#{command_name}: #{e.message}", error: true)
+    end
+
+    # Prints +unsent+'s line. @return [false]
+    def unsent(unsent)
+      unsent.error ? error_line(unsent.line) : @info.puts(unsent.line)
+      false
     end
 
     # What to say when +model_name+ is known not to take images, or nil

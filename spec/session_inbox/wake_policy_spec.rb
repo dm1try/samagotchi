@@ -99,7 +99,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     expect(described_class::ROWS.values.select(&:unstops).map(&:kind)).to eq([:send])
     expect(described_class::ROWS.values.select(&:starts_archived).map(&:kind)).to eq(%i[send leave])
     expect(described_class::ROWS.transform_values(&:resolves))
-      .to eq(send: :pinned, note: :head, push: :pinned, ring: :reader, fresh_verdict: :pinned, leave: :pinned)
+      .to eq(send: :head, note: :head, push: :pinned, ring: :reader, fresh_verdict: :pinned, leave: :pinned)
     expect { described_class.for(:bogus) }.to raise_error(ArgumentError)
   end
 end

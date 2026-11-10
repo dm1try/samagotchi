@@ -225,7 +225,9 @@ module Samagotchi
 
       # deliver_turn's two liveness checks, on the session inbox's send row
       # (SessionInbox::WakePolicy: send un-stops and starts an archived
-      # link; it is pinned to the id it names): resume_session unless a
+      # link). The row follows a chain, deliver_turn doesn't: it acts on
+      # the id it is given, and a caller that follows (chi send) resolves
+      # the head first (SessionAccess#head): resume_session unless a
       # worker holds the session or one is being started. Its refusals (no
       # session, a one-turn run's, a scratch one) are resume_session's to
       # raise, in their one wording: +before+ the write, a session it would

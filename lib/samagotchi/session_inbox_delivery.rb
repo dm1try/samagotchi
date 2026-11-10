@@ -4,6 +4,7 @@ require_relative "session"
 require_relative "session_inbox"
 require_relative "archive_store"
 require_relative "worker_presence"
+require_relative "continue_intent"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -18,9 +19,28 @@ module Samagotchi
   # (spec/samagotchi/testing/sandbox_spec.rb) stays as it was.
   module SessionInbox
     # Where a delivery for +asked+ goes: +id+, reached +via+ :pinned (the
-    # kind never follows a chain), :same (followed, nothing to follow) or
-    # :head (a later link of +asked+'s chain).
-    Resolved = Data.define(:id, :asked, :via)
+    # kind never follows a chain), :same (followed, nothing to follow),
+    # :head (a later link of +asked+'s chain) or :continuing (a send whose
+    # link is being continued: +id+ is the successor, not saved yet; the
+    # sender asks again in a moment, Head.resolve).
+    Resolved = Data.define(:id, :asked, :via) do
+      # How a line names where it went: +asked+'s short id, or
+      # "OLD → NEW (continued)" when a later link took it (chi send's and
+      # chi note's one wording).
+      def self.label(asked, id)
+        return asked[0, 8] if asked == id
+
+        "#{asked[0, 8]} → #{id[0, 8]} (continued)"
+      end
+
+      def label = Resolved.label(asked, id)
+
+      def continuing? = via == :continuing
+
+      # The refusal of a send whose link is still being continued once the
+      # sender's wait is over.
+      def continuing_refusal = "being continued as #{id[0, 8]}; send again in a moment"
+    end
 
     # A delivery's outcome.
     # @!attribute kind [Symbol] the WakePolicy row
@@ -105,8 +125,15 @@ module Samagotchi
       private def scratch?(load) = load ? load.call.scratch == true : false
     end
 
+    # A send follows a chain as a note does: input for a continued link
+    # goes to its chain's newest link (chi send resolves it once up front,
+    # SessionAccess#head; SessionManager.deliver_turn resolves nothing).
+    # What stays on the id it names doesn't ask Head: the web composer (a
+    # person on that page means that session), a participant's grant (one
+    # session), delegate follow-ups, Plugin::Sessions and Schedules (their
+    # own rule).
     WakePolicy::ROWS = {
-      send: WakePolicy.new(kind: :send, resolves: :pinned, starts: true, unstops: true, starts_archived: true,
+      send: WakePolicy.new(kind: :send, resolves: :head, starts: true, unstops: true, starts_archived: true,
                            refuse_tui: true, refuse_scratch: true),
       note: WakePolicy.new(kind: :note, resolves: :head, starts: false, unstops: false, starts_archived: false,
                            refuse_tui: true, refuse_scratch: true),
@@ -133,12 +160,22 @@ module Samagotchi
       # Else the walk forward over archived links that have a successor:
       # to the first link not archived, or the last (a loop a hand-edited
       # file could make ends where it started); a :reader kind goes one hop
-      # at most.
+      # at most. Then, for a kind that would un-archive the link it reaches
+      # (a send: WakePolicy#starts_archived), a continue of that link in
+      # flight (ContinueIntent.in_flight: its successor not saved yet) gives
+      # :continuing, the successor's id. A note needs no such check: written
+      # to the link before NoteMove.move it moves, after it the new link's
+      # worker adopts it (NoteMove.adoption).
       # @return [Resolved]
       def resolve(kind, id, state_dir:)
-        how = WakePolicy.for(kind).resolves
-        return Resolved.new(id: id, asked: id, via: :pinned) if how == :pinned
+        policy = WakePolicy.for(kind)
+        return Resolved.new(id: id, asked: id, via: :pinned) if policy.resolves == :pinned
 
+        resolved = walk(policy.resolves, id, state_dir)
+        (continuing(resolved, state_dir) if policy.starts_archived) || resolved
+      end
+
+      def walk(how, id, state_dir)
         same = Resolved.new(id: id, asked: id, via: :same)
         return same unless archived?(id, state_dir)
 
@@ -149,6 +186,16 @@ module Samagotchi
           break if how == :reader || !archived?(following, state_dir)
         end
         seen.size == 1 ? same : Resolved.new(id: seen.last, asked: id, via: :head)
+      end
+
+      # +resolved+'s link being continued, its successor not saved yet: the
+      # successor, via :continuing; else nil (none in flight, or saved: the
+      # walk reached it).
+      def continuing(resolved, state_dir)
+        successor = ContinueIntent.in_flight(resolved.id, state_dir: state_dir)
+        return nil if successor.nil? || Session.exist?(successor, state_dir: state_dir)
+
+        Resolved.new(id: successor, asked: resolved.asked, via: :continuing)
       end
 
       def archived?(id, state_dir)

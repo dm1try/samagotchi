@@ -84,10 +84,15 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
 1. **bin/chi → Dispatch.** The flag is removed. `send` and `send --message` / `--wait` are `SUPPORTED`. `Remotes.find("studio")`
    reads `$XDG_CONFIG_HOME/samagotchi/remotes.yml`. Then `SendCommand.new(argv, access: Remote.new(entry)).run`.
 2. **SendCommand.** The client-side checks (UI-only slash commands, image ingest) run. The machine-local ones are
-   skipped (next section). `run_wait` → `ParentWait#resolve` → `Remote#resolve`.
+   skipped (next section). Every id is resolved once up front (`SendCommand#target`): `Remote#resolve`, then
+   `Remote#head`, where input for it goes (a continued session's chain's newest link).
 3. **Remote → HTTPTransport.** The first request on a `Remote` is preceded by `check_server!`, which sends
    `GET /api/info` and needs `app: "chi-web"` plus the `session_commands` feature. Next come
-   `GET /api/sessions/resolve?id=ab12` and `POST …/wait/prepare {busy: true, queue:}` (`Remote#busy`), then
+   `GET /api/sessions/resolve?id=ab12`, `GET /api/sessions/resolve?id=<full id>&head=1` (`{id, asked, via}`:
+   `SessionInbox::Head.resolve(:send, …)` on the server, `via` `same`, `head` or `continuing`; an older chi web
+   ignores `head=1` and answers `{id}`, read as `same`, so the message goes to the id named as before; a participant's
+   token never asks, and the participant branch of the route answers `{id}` alone) and
+   `POST …/wait/prepare {busy: true, queue:}` (`Remote#busy`) on the id it answered, then
    `POST …/wait/prepare {turn, created}` for the `WaitStart`. `deliver` calls `Remote#show` and `#owner` (each
    `GET /api/sessions/:id?brief=1`), then
    `POST …/turn {prompt, client_id: "cli:send", history: false}`. A 202 ack becomes a `DeliverResult` with `via`

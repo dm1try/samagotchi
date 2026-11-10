@@ -121,12 +121,9 @@ module Samagotchi
       result.delivered?
     end
 
-    # The id, or for a session that was continued the link that took it.
-    def where(id, result)
-      return id[0, 8] unless result.continued?
-
-      "#{id[0, 8]} → #{result.id[0, 8]} (continued)"
-    end
+    # The id, or for a session that was continued the link that took it
+    # (chi send's wording too).
+    def where(id, result) = SessionInbox::Resolved.label(id, result.id)
 
     def outcome(result)
       case result.status

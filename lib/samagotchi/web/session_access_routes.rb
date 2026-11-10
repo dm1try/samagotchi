@@ -76,12 +76,19 @@ module Samagotchi
       # GET /api/sessions/resolve?id=PREFIX: the full id of the session an id
       # or a unique prefix names (SessionAccess::Local#resolve). 200 {id};
       # 404 not_found; 400 ambiguous_id with ids (the sessions it names).
+      # With head=1 (the owner's alone: a participant's answer stays {id}),
+      # where input for it goes (SessionAccess::Local#head): 200 {id, asked,
+      # via}, id the chain's newest link of a continued one.
       def handle_resolve(req)
         given = req.params["id"].to_s
         return session_not_found(given) unless Session.valid_id?(given)
         return participant_resolve(principal(req).grant, given) unless principal(req).owner?
 
-        json_response(200, { id: session_access.resolve(given) })
+        id = session_access.resolve(given)
+        return json_response(200, { id: id }) unless truthy_param?(req.params["head"])
+
+        head = session_access.head(id)
+        json_response(200, { id: head.id, asked: head.asked, via: head.via.to_s })
       rescue Session::AmbiguousId => e
         refusal_response(400, "ambiguous_id", e, ids: e.ids)
       rescue ArgumentError # NotFound, a file that won't load

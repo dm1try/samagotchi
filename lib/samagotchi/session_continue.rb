@@ -14,6 +14,7 @@ require_relative "starting_marker"
 require_relative "context_move"
 require_relative "note_move"
 require_relative "archive_store"
+require_relative "continue_intent"
 require_relative "recap_store"
 require_relative "bridge_client"
 require_relative "worker_link"
@@ -59,9 +60,10 @@ module Samagotchi
     # recap (IdleRecap's own request timeout).
     RECAP_WAIT = 30.0
     # In the previous link's folder: one continue of a session at a time.
-    LOCK = "continue.lock"
-    # A durable record in the previous link's folder, written before archive.
-    CONTINUE_INTENT = "continue.json"
+    LOCK = ContinueIntent::LOCK
+    # A durable record in the previous link's folder, written before archive
+    # (a send in flight reads it: ContinueIntent.in_flight).
+    CONTINUE_INTENT = ContinueIntent::FILE
     # How often a last:<id> continue looks again when another continue
     # moved the chain's end while it waited for the lock.
     TRIES = 3

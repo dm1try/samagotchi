@@ -233,6 +233,15 @@ answers from any local process.
   turn is the answer: its reply comes back (`answered`), or its end when it
   left no reply (`failed`, `canceled`, `limit`, …) — so a turn that finished
   in the gap between waits is reported, not waited for.
+- A session you keep one id for (a coordinator, say) may be continued meanwhile
+  (`chi send --new --continues`, a chain schedule): `chi send` to that id goes
+  to its chain's newest link, and the old link stays archived. Keep the
+  chain's first id as its address. With `--format json`, `session_id` is the
+  link the message went to and `asked` the id you gave (only when they differ);
+  `chi answer` and `--wait --turn T` take that `session_id` (a `--turn` of the
+  old link, from before the continue, waits on the old link). A send while the
+  continue itself runs waits a moment for the new link, else exits 1 with
+  `being continued as <id>; send again in a moment`.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next. Its
   JSON then has `"answered_here": false` (absent when the answer went in), so

@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi send` to a session that was continued goes to the newest link of its chain, as `chi note` does, and the old
+  link stays archived (it used to come back beside the new one): `3f9a1c2e → 7b2d41aa (continued)  sent`. So a
+  chain's first id keeps working as its address. `--wait --format json` reports the link it waited on as `session_id`
+  and the id you gave as `asked`. A send while the continue is still running waits a moment for the new link. With
+  `--remote`, the other machine's chi web needs this release too; an older one sends to the id named, as before.
+
 ## [0.163.0] - 2026-11-10
 
 ### Added
