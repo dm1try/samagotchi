@@ -296,7 +296,7 @@ RSpec.describe Samagotchi::ProjectInit do
       expect(fresh).not_to eq(id)
       expect(File.read(marker(notes))).to eq("# an older marker\nother: kept\nid: #{fresh}\n")
       expect(File.read(File.join(projects, fresh, "notes.md"))).to eq("shared")
-      expect(File.exist?(File.join(projects, fresh, ".root"))).to be(false)
+      expect(File.read(File.join(projects, fresh, ".root"))).to eq("#{notes}\n")
       expect(File.read(File.join(projects, id, "notes.md"))).to eq("shared")
       expect(File.exist?(File.join(contexts, fresh, "ci.json"))).to be(true)
       expect(outcome.message.lines.map(&:chomp)).to eq([
@@ -304,6 +304,24 @@ RSpec.describe Samagotchi::ProjectInit do
         "copied #{File.join(projects, id)} to #{File.join(projects, fresh)}",
         "copied #{File.join(contexts, id)} to #{File.join(contexts, fresh)}"
       ])
+    end
+
+    it "does not copy a memory folder taken by another project's path key when assigning a new id" do
+      victim = File.join(@tmp, "victim")
+      FileUtils.mkdir_p(File.join(victim, ".git"))
+      victim_key = Samagotchi::MemoryPaths.key_for_root(File.realpath(victim))
+      File.write(marker(notes), "# an older marker\nother: kept\nid: #{victim_key}\n")
+      taken = File.join(projects, victim_key)
+      remember(taken, "victim.md", "not notes' memory")
+
+      outcome = described_class.new_id(notes, home: home, env: env, state_dir: state_dir)
+
+      expect(outcome.kind).to eq(:new_id)
+      expect(outcome.id).to match(/\Anotes-\h{8}\z/)
+      expect(File.read(marker(notes))).to include("id: #{outcome.id}")
+      expect(File.exist?(File.join(projects, outcome.id, "victim.md"))).to be(false)
+      expect(File.read(File.join(taken, "victim.md"))).to eq("not notes' memory")
+      expect(outcome.message).to include("did not copy", taken)
     end
 
     it "refuses --new-id outside a marked folder's top" do

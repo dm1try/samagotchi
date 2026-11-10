@@ -86,6 +86,9 @@ module Samagotchi
       return run_merge(dir) if parsed.options[:merge_subfolders]
 
       run_init(dir)
+    rescue MemoryPaths::ProjectIdConflict => e
+      error_line("#{command_name}: #{e.message}")
+      CLI::Exit::FAILED
     end
 
     private
@@ -114,7 +117,7 @@ module Samagotchi
 
     # @param found [MemoryPaths::ProjectLookup] the project (its root and id key the folder)
     def memories_line(found)
-      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: found.root, id: found.id))
+      dir = File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: found.root, id: found.id, env: @env))
       count = memory_count(dir)
       "#{Paths.tilde(dir)}#{" (#{count} #{count == 1 ? "memory" : "memories"})" if count.positive?}"
     end
