@@ -655,6 +655,30 @@ RSpec.describe Samagotchi::SendCommand do
         expect(archived?(old)).to be(true)
       end
 
+      it "with --wait refuses a busy newest link in the chain's label, asked in its JSON" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+        serve(newer)
+
+        expect(run("--wait", "--format", "json", "-m", "hello", old.id)).to eq(1)
+        expect(err.string).to start_with("#{label(old, newer)}  busy: a turn is running")
+        expect(JSON.parse(out.string)).to include("status" => "error", "session_id" => newer.id, "asked" => old.id)
+        expect(inputs_of(newer)).to be_empty
+      end
+
+      it "with --wait names the chain's label for a session command, asked in its JSON" do
+        old = archived(make)
+        newer = link_after(old, owner: "worker")
+        serve(newer, on_command: ->(_command) {})
+
+        expect(run("--wait", "-m", "/model qwen", old.id)).to eq(0), err.string
+        expect(err.string.lines.last).to start_with("#{label(old, newer)}  sent as a session command: no reply to wait for")
+        out.truncate(0)
+        out.rewind
+        expect(run("--wait", "--format", "json", "-m", "/model qwen", old.id)).to eq(0), err.string
+        expect(JSON.parse(out.string)).to include("status" => "command", "session_id" => newer.id, "asked" => old.id)
+      end
+
       it "leaves the --format json line as it was for a link nobody continued (no asked)" do
         a = make(owner: "worker")
         serve(a)
@@ -735,6 +759,18 @@ RSpec.describe Samagotchi::SendCommand do
           expect(out.string).to eq("#{label(old, created)}  sent\n")
           expect(inputs_of(created)).to contain_exactly(include("prompt" => "made it"))
           expect(archived?(old)).to be(true)
+        end
+
+        it "with --wait --format json refuses after the wait with asked the id given (session_id null)" do
+          stub_const("#{described_class}::CONTINUING_WAIT", 0.05)
+          allow(described_class).to receive(:pause)
+          old = archived(make)
+          continuing(old)
+
+          expect(run("--wait", "--format", "json", "-m", "too soon", old.id)).to eq(1)
+          expect(err.string).to eq("#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment\n")
+          expect(JSON.parse(out.string)).to eq("status" => "error", "session_id" => nil, "asked" => old.id,
+                                               "detail" => "#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment")
         end
 
         it "refuses after the wait, nothing written, the old link still archived" do
