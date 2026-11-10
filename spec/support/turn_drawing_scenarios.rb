@@ -201,6 +201,22 @@ module TurnDrawingScenarios
           [HEAD, user("long task", id), model("Working.", tool_calls: [call("c1", "execute", { command: "sleep 1" })]),
            response("c1", "t1", "[execute]\n"), model("Finished.")])
     },
+    checkin_card_replaced: lambda {
+      id = "turn-card-again"
+      card = { type: :card, id: "check-in", source: "check-in", title: "Check in", body: "Still on it?", level: "info",
+               actions: [{ label: "Nudge", command: "/check-in nudge" }], in_turn: true }
+      one("A check-in card shown in step 1 and again (its next tick) in step 2: its latest version, in its first place.",
+          [started(id, "long task"), gen(1), text(1, "Working."),
+           *tool(1, 1, "execute", 'command="sleep 1"', "[execute]\n", tool_id: "t1", args: { content: "sleep 1" },
+                                                                         action: "running command", title: "sleep 1"),
+           card, done(1), gen(2), text(2, "Still working."),
+           *tool(2, 1, "execute", 'command="sleep 2"', "[execute]\n", tool_id: "t2", args: { content: "sleep 2" },
+                                                                         action: "running command", title: "sleep 2"),
+           card.merge(body: "Still on it? (2)"), done(2), gen(3), text(3, "Finished."), done(3), completed(id, 1, 7, "Finished.")],
+          [HEAD, user("long task", id), model("Working.", tool_calls: [call("c1", "execute", { command: "sleep 1" })]),
+           response("c1", "t1", "[execute]\n"), model("Still working.", tool_calls: [call("c2", "execute", { command: "sleep 2" })]),
+           response("c2", "t2", "[execute]\n"), model("Finished.")])
+    },
     long_output: lambda {
       id = "turn-long"
       output = "[execute]\n#{(1..800).map { |n| "line #{n}" }.join("\n")}"
