@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.163.0] - 2026-11-10
+
 ### Added
 
 - `chi project init` and `chi project` name memories saved from a project's subfolders before init (found from this
@@ -17,6 +19,9 @@ and commands may change between minor versions. How releases are made:
 
 - One way to draw a finished turn on reload. A tab opened before 0.157 shows turns without their steps until it
   reloads.
+
+Update with `chi update`, then restart chi web (it draws every finished turn from its drawing now); workers from
+0.162.0 keep working (N-1).
 
 ## [0.162.0] - 2026-11-10
 
@@ -6039,7 +6044,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.162.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.163.0...HEAD
+[0.163.0]: https://github.com/dm1try/samagotchi/compare/v0.162.0...v0.163.0
 [0.162.0]: https://github.com/dm1try/samagotchi/compare/v0.161.0...v0.162.0
 [0.161.0]: https://github.com/dm1try/samagotchi/compare/v0.160.0...v0.161.0
 [0.160.0]: https://github.com/dm1try/samagotchi/compare/v0.159.0...v0.160.0
