@@ -61,7 +61,10 @@ the payload, so an edit and a continue carry none: a new link starts with no las
 ## Editing
 
 `/objectives` (`ObjectivesCommand`, registered `anytime`) reads `Objectives.current`. An edit goes out through
-`NoteDelivery.deliver(objectives:)`, which means:
+`NoteDelivery.deliver(objectives:, pin: true)`, which means:
+
+- It stays in its own session, even one that was continued: the list is built from this conversation, so it never
+  follows the chain to the newest link (as other notes do) and overwrites that link's list.
 
 - One edit's read and write are one step (`Objectives.with_lock`, a file lock in the session's folder, across threads
   and processes), and the worker's absorb holds it from its claim to the files' delete, so no edit reads between them.
@@ -176,7 +179,10 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   `SessionChain.note_text` (capped; the last answer gets what the recap leaves). It reads the previous link fresh,
   with its unabsorbed newest file. A failure is only logged (`continue_objectives_failed`), because it runs inside the
   continue's rollback. A review link's list stays behind, as its last answer does: the next link's participants could
-  differ.
+  differ. The previous link's other waiting notes move after it (`NoteMove.move`, the step after: moved first, the
+  carry would miss a pending edit, and the stale list would be the batch's newest); its objectives notes never move,
+  and the new link's worker never adopts one from it (`NoteMove.adoption`), so a list from the archived link can't
+  overwrite the carried one.
 - **Rollback**: a note survives `TurnFlow#restore`, and an unabsorbed edit is on disk, untouched.
 - **Fork, delegate**: a plugin fork copies what it is passed. A delegate starts with an empty fold, so the tool answers
   that there are none.

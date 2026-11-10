@@ -432,8 +432,10 @@ module Samagotchi
       # POST /api/sessions/:id/notes {text, source}: a context note for the
       # session (NoteDelivery, as chi note; source: where it came from,
       # "cli" by default, never "broadcast"). 200 {status: "queued" (a
-      # worker adds it) or "waits" (the next start does), session_id,
-      # queued}; 409 owned_by_tui (status refused: a one-turn chi run has it); 400
+      # worker adds it) or "waits" (the next start does), session_id, id
+      # (the session that has it: session_id, or its chain's newest link
+      # when session_id was continued), queued}; 409 owned_by_tui (status refused: a one-turn chi run has it, or a
+      # scratch session: scratch; id as above); 400
       # note_rejected (empty, or over 16 KiB).
       def handle_notes(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
@@ -446,12 +448,13 @@ module Samagotchi
         session_access.show(id)
         result = session_access.note(id, text: text, source: source.strip)
         if result.status == :refused
-          error = result.scratch ? SessionManager::ScratchSession.new(id) : SessionManager::OwnedByTUI.new(id)
-          return refusal_response(409, "owned_by_tui", error, session_id: id, status: "refused", queued: 0,
-                                                             scratch: result.scratch || nil)
+          # Named by the link that refused it (its chain's newest, for a continued one).
+          error = result.scratch ? SessionManager::ScratchSession.new(result.id) : SessionManager::OwnedByTUI.new(result.id)
+          return refusal_response(409, "owned_by_tui", error, session_id: id, id: result.id, status: "refused",
+                                                             queued: 0, scratch: result.scratch || nil)
         end
 
-        json_response(200, { status: result.status.to_s, session_id: id, queued: result.queued })
+        json_response(200, { status: result.status.to_s, session_id: id, id: result.id, queued: result.queued })
       rescue SessionInbox::NoteRejected => e
         error_response(400, "note_rejected", e.message)
       end

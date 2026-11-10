@@ -443,6 +443,13 @@ RSpec.describe Samagotchi::SessionInbox do
       expect(JSON.parse(File.read(path))).to include("from_session" => "3f2a1c00-1111", "from_cwd" => "/work/foo")
     end
 
+    it "doesn't bring back a session that is gone (deleted: no file, no folder)" do
+      gone = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").id
+
+      expect { described_class.write_note(gone, text: "late", state_dir: tmpdir) }.to raise_error(Samagotchi::Session::NotFound)
+      expect(Dir.exist?(Samagotchi::Session.session_dir(gone, state_dir: tmpdir))).to be(false)
+    end
+
     it "defaults the source to cli" do
       path = described_class.write_note(session.id, text: "x", state_dir: tmpdir)
       expect(JSON.parse(File.read(path))["source"]).to eq("cli")

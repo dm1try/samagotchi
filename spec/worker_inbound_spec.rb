@@ -10,6 +10,7 @@ require "samagotchi/worker_inbound"
 require "samagotchi/worker_wakes"
 require "samagotchi/context_absorber"
 require "samagotchi/context_sources"
+require "samagotchi/archive_store"
 
 # What comes into a worker's session between turns and how each kind is
 # saved; the turns they start are the Worker's (worker_*_spec).
@@ -134,6 +135,28 @@ RSpec.describe Samagotchi::WorkerInbound do
       inbound.absorb_notes
 
       expect(Samagotchi::SessionInbox.find_new_note_files(session_dir).map { |f| File.extname(f) }).to eq([".processing"])
+    end
+
+    describe "a note left in the link this one continues" do
+      let(:previous) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, now: Time.now - 60)
+                           .tap { |s| s.save(state_dir: tmpdir) }
+      end
+      let(:session) do
+        Samagotchi::ArchiveStore.archive(previous.id, state_dir: tmpdir)
+        Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, continues: previous.id)
+                           .tap { |s| s.save(state_dir: tmpdir) }
+      end
+
+      it "is adopted on the next pass, once the link exists (a straggler, an older chi's writer)" do
+        inbound.absorb_notes
+        Samagotchi::SessionInbox.write_note(previous.id, text: "straggler", state_dir: tmpdir)
+
+        inbound.absorb_notes
+
+        expect(saved.messages.map { |m| Samagotchi::ContextNote.text_of(m) }).to include("the build is red", "straggler")
+        expect(Samagotchi::SessionInbox.find_new_note_files(Samagotchi::Session.session_dir(previous.id, state_dir: tmpdir))).to be_empty
+      end
     end
 
     it "leaves the notes queued in a stopped session" do

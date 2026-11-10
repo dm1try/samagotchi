@@ -304,8 +304,9 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       own(live)
       idle = make
 
-      expect(note(live, { text: "fyi", source: "ci" })).to eq([200, { "status" => "queued", "session_id" => live.id, "queued" => 0 }])
-      expect(note(idle, { text: "one" })).to eq([200, { "status" => "waits", "session_id" => idle.id, "queued" => 1 }])
+      expect(note(live, { text: "fyi", source: "ci" }))
+        .to eq([200, { "status" => "queued", "session_id" => live.id, "id" => live.id, "queued" => 0 }])
+      expect(note(idle, { text: "one" })).to eq([200, { "status" => "waits", "session_id" => idle.id, "id" => idle.id, "queued" => 1 }])
       expect(note(idle, { text: "two" }).last).to include("queued" => 2)
       sources = Dir[File.join(dir_of(live), "notes", "*")].map { |f| File.read(f) }
       expect(sources.join).to include("ci")

@@ -174,6 +174,11 @@ module Samagotchi
       # (#wake).
       # @param wake [Boolean] the delivery may ask for a worker; the block's
       #   value says whether it does (truthy: asks)
+      # @param pin [Boolean] write under +target+ itself, whatever the kind's
+      #   row resolves (a writer whose text is +target+'s own: an
+      #   /objectives list built from its conversation)
+      # @param resolved [Resolved, nil] the link, as the caller resolved it
+      #   already (Head.resolve for this kind): not walked again
       # @param owner [#call, nil] (id) the owner lock's holder (a stand-in
       #   manager's session_owner); nil: SessionManager.session_owner
       # @param start [#call, nil] (id) starts a worker, returns :woken (or
@@ -181,10 +186,11 @@ module Samagotchi
       # @yieldparam id [String] the session it is written under
       # @yieldreturn [Boolean] whether it asks for a worker
       # @return [Delivered]
-      def deliver(kind, target, state_dir: nil, wake: true, owner: nil, start: nil)
+      def deliver(kind, target, state_dir: nil, wake: true, pin: false, resolved: nil, owner: nil, start: nil)
         sd = state_dir || Session.default_state_dir
         policy = WakePolicy.for(kind)
-        resolved = Head.resolve(kind, target, state_dir: sd)
+        resolved = Resolved.new(id: target, asked: target, via: :pinned) if pin
+        resolved ||= Head.resolve(kind, target, state_dir: sd)
         at = policy.resolves == :reader ? resolved.asked : resolved.id
         if (why = refusal(policy, at, sd, owner))
           return Delivered.new(kind: kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
@@ -222,8 +228,18 @@ module Samagotchi
                                                                                                     event: START_EVENTS.fetch(policy.kind))
                     end
         end
-        Delivered.new(kind: policy.kind, id: id, asked: resolved.asked, via: resolved.via,
-                      status: %i[live woken starting].include?(outcome) ? :queued : :waits, wake: outcome)
+        status = %i[live woken starting].include?(outcome) ? :queued : :waits
+        Delivered.new(kind: policy.kind, id: id, asked: resolved.asked, via: resolved.via, status: status,
+                      wake: outcome, queued: notes_waiting(policy, status, id, state_dir))
+      end
+
+      # A note's count of the notes waiting for a start (0 when a worker
+      # sees them); nil for the other kinds.
+      def notes_waiting(policy, status, id, state_dir)
+        return nil unless policy.kind == :note
+        return 0 unless status == :waits
+
+        SessionInbox.find_new_note_files(Session.session_dir(id, state_dir: state_dir)).size
       end
 
       def presence(id, state_dir, owner)

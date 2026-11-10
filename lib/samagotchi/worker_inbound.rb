@@ -10,6 +10,7 @@ require_relative "command_intake"
 require_relative "config"
 require_relative "context_note"
 require_relative "log"
+require_relative "note_move"
 require_relative "objectives"
 require_relative "session"
 require_relative "session_inbox"
@@ -108,6 +109,21 @@ module Samagotchi
       @queue_command = queue_command
       @initial_prompt_taken = false
       @context_wake_waiting = false
+      # The link this one continues, when its notes may still come here
+      # (NoteMove.adoption): one listing, at the start.
+      @note_adoption = NoteMove.adoption(session, state_dir: state_dir)
+    end
+
+    # Take the notes written to the link this session continues since it
+    # was continued (NoteMove::Adoption): a writer that resolved the old id
+    # just before this link was saved, an older chi's. Each pass, before
+    # the notes are read; a failure is logged, the pass goes on.
+    # @return [Array<String>] the note files adopted
+    def adopt_notes
+      @note_adoption ? @note_adoption.call : []
+    rescue StandardError => e
+      Log.warn(:worker, "notes_adopt_failed", sid: @session.id[0, 8], error: e.class.name, msg: e.message)
+      []
     end
 
     # Add the queued context notes to the conversation (between turns only,
@@ -119,7 +135,9 @@ module Samagotchi
     # starts a turn nor keeps an idle worker up. Of the objectives notes in
     # a batch only the newest goes in: each is a whole list, so the older
     # ones (edits made during a turn) would only be sent for nothing.
+    # The predecessor's late notes come first (#adopt_notes).
     def absorb_notes
+      adopt_notes
       files = SessionInbox.find_new_note_files(@session_dir)
       return if files.empty? || @stopped.call
 

@@ -351,6 +351,9 @@ module Samagotchi
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file,
                                                                  enqueued_id: enqueued_id, author: author)
                                    })
+      # Notes its predecessor got after a continue that died before its
+      # move, or from a writer that knew no head (ChildMove.adopt's twin).
+      @inbound.adopt_notes
       # /model's default is the config's; the Engine started
       # on the session's model.  nil when there is no default.model.
       @default_model = ModelProfile.default_model_name

@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/objectives_command"
 require "samagotchi/worker_inbound"
 require "samagotchi/owner_lock"
+require "samagotchi/archive_store"
 
 RSpec.describe Samagotchi::ObjectivesCommand do
   let(:tmpdir) { Dir.mktmpdir("objectives-command") }
@@ -68,6 +69,17 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     run("set first\n  second   line\n\n")
     expect(list.items.map(&:text)).to eq(["first", "second line"])
     expect(list.items.map(&:id)).to eq(%w[O3 O4])
+  end
+
+  it "keeps the list in its own session when that one was continued: it is this conversation's" do
+    Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+    head = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, continues: session.id)
+                              .tap { |s| s.save(state_dir: tmpdir) }
+
+    run("set Aim")
+
+    expect(files.size).to eq(1)
+    expect(Samagotchi::SessionInbox.find_new_note_files(Samagotchi::Session.session_dir(head.id, state_dir: tmpdir))).to be_empty
   end
 
   it "writes a note file a worker reads back as the objectives note" do

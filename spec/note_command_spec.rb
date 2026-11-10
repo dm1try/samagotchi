@@ -10,6 +10,7 @@ require "timeout"
 require "spec_helper"
 require "samagotchi/note_command"
 require "samagotchi/owner_lock"
+require "samagotchi/archive_store"
 require_relative "support/remote_backend"
 
 RSpec.describe Samagotchi::NoteCommand do
@@ -71,6 +72,29 @@ RSpec.describe Samagotchi::NoteCommand do
       run("-m", "two", a.id)
 
       expect(out.string.lines.last).to eq("#{a.id[0, 8]}  waits for the session's next start (2 notes queued)\n")
+    end
+
+    it "gives a note for a continued session to its chain's newest link, and says so" do
+      old = make.tap { |s| Samagotchi::ArchiveStore.archive(s.id, state_dir: tmpdir) }
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+                                             test_run: false, continues: old.id).tap { |s| s.save(state_dir: tmpdir) }
+
+      expect(run("-m", "deploy frozen", old.id)).to eq(0), err.string
+
+      expect(notes_of(old)).to be_empty
+      expect(notes_of(head)).to contain_exactly(include("text" => "deploy frozen"))
+      expect(out.string).to eq("#{old.id[0, 8]} → #{head.id[0, 8]} (continued)  " \
+                               "waits for the session's next start (1 note queued)\n")
+    end
+
+    it "names the newest link in a refusal of a continued session's note too" do
+      old = make.tap { |s| Samagotchi::ArchiveStore.archive(s.id, state_dir: tmpdir) }
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+                                             test_run: false, continues: old.id).tap { |s| s.save(state_dir: tmpdir) }
+      locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(head.id, state_dir: tmpdir), kind: "tui")
+
+      expect(run("-m", "x", old.id)).to eq(1)
+      expect(out.string).to start_with("#{old.id[0, 8]} → #{head.id[0, 8]} (continued)  refused: ")
     end
 
     it "refuses a session open in a one-turn chi run and exits 1, still queueing the others" do
