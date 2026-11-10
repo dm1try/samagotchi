@@ -8,6 +8,7 @@ require "json"
 require "samagotchi/web/session_hub"
 require "samagotchi/schedules"
 require "samagotchi/session"
+require "samagotchi/session_continue"
 require "samagotchi/owner_lock"
 
 # The hub keeps chi web's one projection of the session list, fed by a scan
@@ -62,6 +63,20 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(types).to eq(%w[session session])
       expect(events.map { |e| e.data[:session][:last_prompt] }).to contain_exactly("first", "second")
       expect(events.map(&:seq)).to eq([1, 2])
+    end
+
+    it "repairs an interrupted continuation before publishing the web-list projection" do
+      session = save_session
+      hub.scan
+      dir = session_dir(session)
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+      intent_path = File.join(dir, Samagotchi::SessionContinue::CONTINUE_INTENT)
+      File.write(intent_path, JSON.generate(successor_id: SecureRandom.uuid))
+
+      hub.scan
+
+      expect(hub.snapshot.find { |summary| summary[:id] == session.id }[:archived]).to be(false)
+      expect(File.exist?(intent_path)).to be(false)
     end
 
     it "never shows a chi scratch session" do

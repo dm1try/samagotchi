@@ -59,13 +59,18 @@ module Samagotchi
       # @param client_id [String, nil] who sent +prompt+ when no person did
       #   (a ClientId: a delegating parent, a schedule's chain link): its
       #   first turn's origin (Session#first_turn_client_id)
+      # @param session_id [String, nil] an id reserved by a durable operation
       # @return [Session] with #seed_images_dropped: refs whose file was gone,
       #   and #model_warning: an id its host's saved list doesn't have
       def spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                         parent_id: nil, messages: [], images_from: nil, preview: nil, title: nil, delegate: false,
                         setup: SessionSetup.new, continues: nil, note: nil, note_source: "chi", before_spawn: nil,
-                        review: nil, verify_fresh: nil, scratch: false, client_id: nil)
+                        review: nil, verify_fresh: nil, scratch: false, client_id: nil, session_id: nil)
         sd = state_dir || Session.default_state_dir
+        if session_id && (!Session.valid_id?(session_id) || Session.exist?(session_id, state_dir: sd))
+          raise ArgumentError, "invalid or existing session id #{session_id.inspect}"
+        end
+
         # The resolved ref is stored (a resumed session keeps its model when an
         # alias is retargeted), with the name as typed beside it. A wrong host
         # refuses here, before anything is saved or spawned; a model id the
@@ -88,6 +93,7 @@ module Samagotchi
           review: review,
           scratch: scratch
         )
+        session.id = session_id if session_id
         session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
         session.toolkit_origin = setup.toolkit_origin || "default"
         # Saved before the worker starts: its first turn is already the requester's.

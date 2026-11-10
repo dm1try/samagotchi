@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
+require "securerandom"
+require_relative "atomic_file"
 require_relative "session"
 require_relative "session_setup"
 require_relative "session_inbox"
@@ -57,6 +60,8 @@ module Samagotchi
     RECAP_WAIT = 30.0
     # In the previous link's folder: one continue of a session at a time.
     LOCK = "continue.lock"
+    # A durable record in the previous link's folder, written before archive.
+    CONTINUE_INTENT = "continue.json"
     # How often a last:<id> continue looks again when another continue
     # moved the chain's end while it waited for the lock.
     TRIES = 3
@@ -67,6 +72,29 @@ module Samagotchi
     # What #check! decided before anything changes: the delegates to move
     # (ChildMove::Plan) and the new link's model (ModelChoice).
     Checked = Data.define(:plan, :choice)
+
+    # Repair an interrupted continue before showing sessions or starting
+    # another continue. An active continue holds LOCK, so its intent is left
+    # alone; after a crash, an unsaved successor means the previous link is
+    # unarchived.
+    def self.repair_interrupted(state_dir:)
+      return unless Dir.exist?(state_dir)
+
+      paths = Dir.glob(File.join(state_dir, "*", CONTINUE_INTENT))
+      return if paths.empty?
+
+      sessions = Session.list(state_dir: state_dir, include_archived: true)
+      by_id = sessions.to_h { |session| [session.id, session] }
+      paths.each do |path|
+        id = File.basename(File.dirname(path))
+        session = by_id[id]
+        if session
+          repair_intent(session, state_dir, path, sessions)
+        else
+          quarantine_intent(path, id, message: "session file could not be loaded")
+        end
+      end
+    end
 
     # Start the next link of a chain: a new session that continues
     # +id_or_ref+ (Session#continues) in its folder, on its model (the name
@@ -106,6 +134,7 @@ module Samagotchi
     def self.run(id_or_ref, prompt: nil, preview: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5,
                  client_id: nil)
       sd = state_dir || Session.default_state_dir
+      repair_interrupted(state_dir: sd)
       TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
         result = with_lock(id, sd) do
@@ -141,26 +170,100 @@ module Samagotchi
       already = [id, *SessionManager.descendant_ids(id, state_dir, except: plan.move)].select do |sid|
         ArchiveStore.archived?(Session.session_dir(sid, state_dir: state_dir))
       end
+      successor_id = SecureRandom.uuid
+      intent_path = continue_intent_path(id, state_dir)
+      intent_data = { successor_id: successor_id, previously_archived: already }
+      AtomicFile.write(intent_path, "#{JSON.generate(intent_data)}\n", perm: 0o600)
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive.archived - already
+      intent_data[:archived_ids] = archived
+      AtomicFile.write(intent_path, "#{JSON.generate(intent_data)}\n", perm: 0o600)
       # The notes the new link took from this one (NoteMove.move).
       notes = []
       begin
-        spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                     move: plan.move, client_id: client_id, notes: notes)
-      rescue StandardError
+        link = spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
+                                  move: plan.move, client_id: client_id, notes: notes, session_id: successor_id)
+      rescue StandardError, Interrupt
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
         # to spawn goes (left, it would hold the chain: "continued already",
         # last: to it), its notes given back first.
-        undo_move(id, state_dir, moved: plan.move)
-        begin
+        undo_failed_continue(id, state_dir, moved: plan.move, archived: archived) do
           discard_failed_link(id, state_dir, notes: notes)
-        ensure
-          archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
-          wake_for_rings(id, state_dir) unless plan.move.empty?
         end
+        FileUtils.rm_f(intent_path)
         raise
+      else
+        FileUtils.rm_f(intent_path)
+        link
+      end
+    end
+
+    private_class_method def self.continue_intent_path(id, state_dir)
+      File.join(Session.session_dir(id, state_dir: state_dir), CONTINUE_INTENT)
+    end
+
+    private_class_method def self.repair_intent(session, state_dir, path, sessions)
+      lock_path = File.join(Session.session_dir(session.id, state_dir: state_dir), LOCK)
+      File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
+        next unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+        next unless File.file?(path)
+
+        intent = JSON.parse(File.read(path))
+        intent = {} unless intent.is_a?(Hash)
+        successor_id = intent["successor_id"]
+        successor_path = Session.session_file(successor_id, state_dir: state_dir) if Session.valid_id?(successor_id)
+        successor = JSON.parse(File.read(successor_path)) if successor_path && File.file?(successor_path)
+        unless successor.is_a?(Hash) && successor["continues"] == session.id
+          previously_archived = Array(intent["previously_archived"]).select { |id| Session.valid_id?(id) }
+          archived = if intent["archived_ids"].is_a?(Array)
+                       intent["archived_ids"].select { |id| Session.valid_id?(id) }
+                     else
+                       archived_descendants(session.id, sessions, state_dir) - previously_archived
+                     end
+          undo_failed_continue(session.id, state_dir, moved: [], archived: archived)
+        end
+        FileUtils.rm_f(path)
+      end
+    rescue JSON::ParserError => e
+      quarantine_intent(path, session.id, error: e)
+    rescue Errno::ENOENT
+      nil
+    end
+
+    private_class_method def self.quarantine_intent(path, session_id, error: nil, message: nil)
+      File.rename(path, "#{path}.bad")
+      Log.warn(:worker, "continue_repair_failed", sid: session_id, path: path,
+                                                    error: error&.class&.name || "SessionUnavailable",
+                                                    msg: (message || error.message).to_s[0, 200])
+    rescue Errno::ENOENT
+      nil
+    end
+
+    private_class_method def self.archived_descendants(id, sessions, state_dir)
+      children = sessions.group_by(&:parent_id)
+      queue = [id]
+      descendants = []
+      until queue.empty?
+        children.fetch(queue.shift, []).each do |child|
+          next if descendants.include?(child.id)
+
+          descendants << child.id
+          queue << child.id
+        end
+      end
+      [id, *descendants].select do |session_id|
+        ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
+      end
+    end
+
+    private_class_method def self.undo_failed_continue(id, state_dir, moved:, archived:)
+      undo_move(id, state_dir, moved: moved)
+      begin
+        yield if block_given?
+      ensure
+        archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
+        wake_for_rings(id, state_dir) unless moved.empty?
       end
     end
 
@@ -230,7 +333,7 @@ module Samagotchi
     # StartingMarker.fresh?).
     # @param notes [Array<String>] gets the names of the notes moved to it
     private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, notes:,
-                                                     client_id: nil)
+                                                     session_id:, client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
@@ -252,7 +355,8 @@ module Samagotchi
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
         model_name: choice.model, setup: SessionSetup.of(previous), review: previous.review,
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap, state_dir: state_dir),
-        note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn, client_id: client_id
+        note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn, client_id: client_id,
+        session_id: session_id
       )
       link.moved_children = move
       link.moved_context = moved_context

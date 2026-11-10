@@ -489,6 +489,76 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id)).to eq([previous.id])
     end
 
+    it "rolls back an interruption before the successor is saved" do
+      previous = make
+      intent_path = File.join(dir_of(previous.id), "continue.json")
+      allow(manager).to receive(:spawn_session) do
+        expect(JSON.parse(File.read(intent_path))).to include("successor_id" => match(/\A[0-9a-f-]{36}\z/))
+        raise Interrupt, "interrupted before successor save"
+      end
+
+      expect { continue(previous.id) }.to raise_error(Interrupt, "interrupted before successor save")
+      expect(archived?(previous.id)).to be(false)
+      expect(File.exist?(intent_path)).to be(false)
+
+      listed = manager.list_sessions(state_dir: tmpdir)
+
+      expect(listed.map(&:id)).to include(previous.id)
+    end
+
+    it "unarchives delegates that were archived with an interrupted continuation" do
+      previous = make
+      child = make(parent_id: previous.id, delegate: true)
+      intent_path = File.join(dir_of(previous.id), Samagotchi::SessionContinue::CONTINUE_INTENT)
+      FileUtils.mkdir_p(dir_of(previous.id))
+      File.write(intent_path, JSON.generate(successor_id: SecureRandom.uuid, previously_archived: []))
+      [previous, child].each { |session| Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir) }
+
+      described_class.repair_interrupted(state_dir: tmpdir)
+
+      expect([previous, child].map { |session| archived?(session.id) }).to eq([false, false])
+      expect(File.exist?(intent_path)).to be(false)
+    end
+
+    it "moves a corrupt continuation intent aside and warns once" do
+      previous = make
+      intent_path = File.join(dir_of(previous.id), Samagotchi::SessionContinue::CONTINUE_INTENT)
+      FileUtils.mkdir_p(File.dirname(intent_path))
+      File.write(intent_path, "{broken")
+      expect(Samagotchi::Log).to receive(:warn).with(
+        :worker, "continue_repair_failed", hash_including(sid: previous.id, path: intent_path)
+      ).once
+
+      2.times { described_class.repair_interrupted(state_dir: tmpdir) }
+
+      expect(File.exist?(intent_path)).to be(false)
+      expect(File.exist?("#{intent_path}.bad")).to be(true)
+    end
+
+    it "moves the intent aside when its session file is corrupt" do
+      previous = make
+      intent_path = File.join(dir_of(previous.id), Samagotchi::SessionContinue::CONTINUE_INTENT)
+      FileUtils.mkdir_p(File.dirname(intent_path))
+      File.write(intent_path, JSON.generate(successor_id: SecureRandom.uuid))
+      File.write(Samagotchi::Session.session_file(previous.id, state_dir: tmpdir), "{broken")
+      expect(Samagotchi::Log).to receive(:warn).with(
+        :worker, "continue_repair_failed", hash_including(sid: previous.id, path: intent_path)
+      ).once
+
+      2.times { described_class.repair_interrupted(state_dir: tmpdir) }
+
+      expect(File.exist?(intent_path)).to be(false)
+      expect(File.exist?("#{intent_path}.bad")).to be(true)
+    end
+
+    it "does not read session JSON when there are no continuation intents" do
+      make
+      expect(Samagotchi::Session).not_to receive(:list)
+      expect(Samagotchi::Session).not_to receive(:load)
+
+      described_class.repair_interrupted(state_dir: tmpdir)
+    end
+
     it "go back with one sent to the previous link after the give-back, and with an older chi's late write" do
       previous = make
       allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
@@ -912,6 +982,25 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
         .to contain_exactly(previous.id, child.id)
       expect(notes_of(child.id).last[:text]).to start_with("Your parent session is #{previous.id[0, 8]} (#{previous.id}) " \
                                                            "again: the continue that moved you to its next link failed.")
+    end
+
+    it "undoes the move and gives notes back when interrupted after saving the successor" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      Samagotchi::SessionInbox.write_note(previous.id, text: "waiting", state_dir: tmpdir)
+      allow(manager).to receive(:spawn_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs)
+        raise Interrupt, "interrupted after successor save"
+      end
+
+      expect { continue(previous.id) }.to raise_error(Interrupt, "interrupted after successor save")
+
+      expect(load(child.id).parent_id).to eq(previous.id)
+      expect(notes_of(previous.id).map { |note| note[:text] }).to include("waiting")
+      expect([archived?(previous.id), archived?(child.id)]).to eq([false, false])
+      expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id))
+        .to contain_exactly(previous.id, child.id)
     end
 
     it "gives back a ring a child wrote into the failed link as it was moved back, and wakes the previous link for it" do

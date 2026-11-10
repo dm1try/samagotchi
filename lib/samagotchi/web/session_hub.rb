@@ -6,6 +6,7 @@ require "time"
 
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../session_continue"
 require_relative "../schedules"
 require_relative "../bridge_client"
 require_relative "../worker_link"
@@ -148,6 +149,7 @@ module Samagotchi
       def scan
         @monitor.synchronize do
           full = full_probe_due?
+          SessionContinue.repair_interrupted(state_dir: @state_dir)
           scan_files
           @sessions.each_key { |id| refresh(id, probe: full) }
           if full

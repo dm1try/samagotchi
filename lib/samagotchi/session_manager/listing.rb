@@ -11,7 +11,9 @@ module Samagotchi
       # +include_archived+: archived sessions too (Session#archived says which).
       def list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0, project_root: nil,
                         include_archived: false)
-        Session.list(state_dir: state_dir || Session.default_state_dir, sort: sort, order: order, limit: limit,
+        sd = state_dir || Session.default_state_dir
+        SessionContinue.repair_interrupted(state_dir: sd)
+        Session.list(state_dir: sd, sort: sort, order: order, limit: limit,
                      offset: offset, project_root: project_root, include_archived: include_archived)
       end
 
@@ -34,6 +36,7 @@ module Samagotchi
       def session_rows(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
                        project_root: nil, include_archived: false, sort: nil, order: nil)
         sd = state_dir || Session.default_state_dir
+        SessionContinue.repair_interrupted(state_dir: sd)
         root = cwd && folder_path(cwd)
         roots = {}
         # One registry per listing, built only when a row has a saved context
