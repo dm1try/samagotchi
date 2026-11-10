@@ -531,3 +531,39 @@ test("turnGroups: a no-match tool record's flag reaches its row, from the parts 
   const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Done." }];
   assert.deepEqual(turnGroups(plain, timing)[0].steps.flatMap((s) => s.tools.map((t) => t.no_match)), [true, true]);
 });
+
+// Shared contract: spec/shared/turn_ranges.json (Bridge::TurnRanges, written by
+// spec/bridge/turn_ranges_spec.rb). The page's turns pair with the same
+// records as the Ruby ranges do: by turn id, else by place among openings.
+const turnRanges = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../../spec/shared/turn_ranges.json", import.meta.url)), "utf8"),
+);
+
+for (const [name, spec] of Object.entries(turnRanges)) {
+  test(`turnGroups pairs records as Bridge::TurnRanges does: ${name}`, () => {
+    const timing = normalizeTiming({ turn_records: spec.records });
+    const got = turnGroups(spec.items, timing)
+      .filter((g) => g.kind === "turn")
+      .map((g) => [typeof g.turnId === "string" ? g.turnId : null, g.record?.id ?? null]);
+    const opened = spec.turns.filter((t) => t.opening !== null);
+    const want = opened.map((t) => [t.turn_id ?? null, t.record_id]);
+    // A repeated id's later turn (…~N): Ruby gives it no record; the page,
+    // undrawn, pairs it by id (a drawn one reads end.record_id, none).
+    const repeated = opened.map((t) => typeof t.id === "string" && t.id.includes("~"));
+    assert.deepEqual(got.filter((_, k) => !repeated[k]), want.filter((_, k) => !repeated[k]), spec.description);
+  });
+
+  test(`turnGroups holds the items Bridge::TurnRanges' ranges do: ${name}`, () => {
+    const groups = turnGroups(spec.items, normalizeTiming({ turn_records: spec.records })).filter((g) => g.kind === "turn");
+    const itemsOf = (g) => {
+      const all = [g.user, ...(g.steps || []).map((s) => s.i), g.answer, ...(g.merged || []), ...(g.steers || []), g.emptyAnswer];
+      // A wake's note opens its group from outside the range (stamped by its id, not its place).
+      return [...new Set(all.filter((i) => i != null && !(i === g.user && spec.items[i]?.role === "note")))].sort((a, b) => a - b);
+    };
+    const opened = spec.turns.filter((t) => t.opening !== null);
+    opened.forEach((turn, k) => {
+      if (spec.diverges?.[turn.turn_id ?? ""]) return;
+      assert.deepEqual(itemsOf(groups[k]), turn.items, `${spec.description} (turn ${k})`);
+    });
+  });
+}
