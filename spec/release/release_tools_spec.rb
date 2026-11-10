@@ -335,6 +335,12 @@ RSpec.describe ReleaseTools do
       expect(read("Gemfile.lock")).to eq("PATH\n  specs:\n    samagotchi (0.2.0)\n      reline\n\nCHECKSUMS\n  samagotchi (0.2.0)\n  webmock (3.26.2) sha256=ab\n")
       expect(read("CHANGELOG.md")).to include("## [0.2.0] - 2026-09-28\n\n- chi.")
       expect(read("lib/samagotchi/bundles/mcp/manifest.yml")).to include('">= 0.1.37"')
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session/bridge.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session/cards.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/schedules.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/.bundles/compat/manifest.json"))
+      expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/schedules.lock"))
     end
 
     it "raises a marked bundle's requires_chi to the new version and drops the marker; leaves the others" do
@@ -412,6 +418,7 @@ RSpec.describe ReleaseTools do
         write(ReleaseTools::VERSION_FILE, %(module Samagotchi\n  VERSION = "0.1.37"\nend\n))
         write(ReleaseTools::SYSTEM_MANIFEST, "---\nname: samagotchi-system\nversion: 0.1.37\nfiles: {}\n")
         write("Gemfile.lock", "PATH\n  specs:\n    samagotchi (0.1.37)\n")
+        FileUtils.rm_rf(File.join(tmp, "spec", "compat", "0.2.0"))
         write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n#{changelog_body}\n## [0.1.37] - 2026-09-01\n\n- old.\n" \
                               "Update with `chi update` (the dev profile 0.7.0).\n")
         write("lib/samagotchi/bundles/coord/manifest.yml", "name: coord\nversion: 0.6.0\nrequires_chi_next: true\n")
@@ -571,6 +578,7 @@ RSpec.describe ReleaseTools do
       write(ReleaseTools::VERSION_FILE, %(VERSION = "0.2.0"\n))
       write(ReleaseTools::SYSTEM_MANIFEST, "version: 0.2.0\n")
       write("CHANGELOG.md", "## [Unreleased]\n\n## [0.2.0] - 2026-09-28\n\n- chi.\n")
+      write("spec/compat/0.2.0/sessions/example.json", "{}\n")
       git("init", "-q")
       git("add", ".")
       git("commit", "-q", "-m", "one")
@@ -579,6 +587,21 @@ RSpec.describe ReleaseTools do
     it "is empty for a clean, consistent tree (untracked files don't count)" do
       write("scratch.txt", "x")
       expect(described_class.consistency_problems(tmp)).to eq([])
+    end
+
+    it "requires the current version's compatibility corpus to exist and be tracked" do
+      git("rm", "-q", "-r", "spec/compat/0.2.0")
+      git("commit", "-q", "-m", "remove corpus")
+      expect(described_class.consistency_problems(tmp)).to include("spec/compat/0.2.0 is missing")
+
+      write("spec/compat/0.2.0/sessions/example.json", "{}\n")
+      expect(described_class.consistency_problems(tmp)).to include(a_string_starting_with("spec/compat/0.2.0 has untracked files:"))
+    end
+
+    it "requires every compatibility corpus file to be tracked" do
+      write("spec/compat/0.2.0/extra.json", "{}\n")
+
+      expect(described_class.consistency_problems(tmp)).to include(a_string_starting_with("spec/compat/0.2.0 has untracked files:"))
     end
 
     it "names a dirty tracked file, a version mismatch and a missing CHANGELOG section" do

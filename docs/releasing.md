@@ -76,7 +76,7 @@ as the GitHub release body.
 | `rake lint` / `rake lint:fix` | RuboCop over the repo (must report no offenses; CI runs it) / its safe autocorrect (`rubocop -a`). |
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
-| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit. |
+| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, a compatibility corpus at `spec/compat/X.Y.Z/` written through the current state writers, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit; commit the corpus with the release. |
 | `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, no `# Unreleased` comment left in `Plugin::Api::SINCE` or `Manifest::SINCE`, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
@@ -97,9 +97,12 @@ The agent does each step and stops where the user has to say yes.
    markers are gone) and the profiles it raised with them (a patch bump of
    each one's version, none for a profile already bumped since the last tag),
    which it names in the CHANGELOG's "Update with `chi update`" line, and the
-   SINCE entries it moved out of their `# Unreleased` comments.
-5. **Check.** Commit first (the check wants a clean tree), then run it:
-   `git commit -am "Release X.Y.Z"` and `bundle exec rake release:check`.
+   SINCE entries it moved out of their `# Unreleased` comments. It also records
+   the release's session, bridge, cards, schedules and bundle state under
+   `spec/compat/X.Y.Z/`; commit those samples with the release so the next
+   release's reader spec checks them as N-1 data.
+5. **Check.** Add all release files, including the new compatibility corpus, then run it:
+   `git add -A && git commit -m "Release X.Y.Z"` and `bundle exec rake release:check`.
    Fix anything it finds in new commits and run it again.
 6. **Push main.** `git push origin main`; wait for CI to go green.
 7. **Tag and push the tag.**
