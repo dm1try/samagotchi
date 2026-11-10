@@ -114,16 +114,29 @@ module Samagotchi
       # day files under the lock.
       # @return [Integer] the runs purged
       def purge_session(session_id)
-        needle = session_id.to_s
-        return 0 if needle.empty?
+        purge_sessions([session_id])
+      end
+
+      # Many sessions' runs, found with one pass over the judgment day files.
+      # @return [Integer] the runs purged
+      def purge_sessions(session_ids)
+        needles = Array(session_ids).map(&:to_s).reject(&:empty?).uniq
+        return 0 if needles.empty?
 
         names.sum do |name|
-          files = day_files(name).select { |path| read(path).include?(needle) }
-          ids = files.flat_map { |path| session_run_ids(path, needle) }
+          files = day_files(name)
+          ids = files.flat_map do |path|
+            read(path).each_line.filter_map do |text|
+              next unless needles.any? { |needle| text.include?(needle) }
+
+              data = parse(text)
+              data["id"] if data && data["kind"] == "run" && needles.include?(data["session_id"])
+            end
+          end.uniq
           next 0 if ids.empty?
 
           known = ids.to_h { |id| [id, true] }
-          day_files(name).each { |path| rewrite_without(path, known) }
+          files.each { |path| rewrite_without(path, known) }
           remove_if_empty(name)
           ids.size
         end
@@ -195,15 +208,6 @@ module Samagotchi
         data.is_a?(Hash) ? data : nil
       rescue JSON::ParserError
         nil
-      end
-
-      def session_run_ids(path, session_id)
-        read(path).each_line.filter_map do |text|
-          next unless text.include?(session_id)
-
-          data = parse(text)
-          data["id"] if data && data["kind"] == "run" && data["session_id"] == session_id
-        end
       end
 
       def rewrite_without(path, ids)

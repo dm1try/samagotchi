@@ -14,6 +14,26 @@ RSpec.describe Samagotchi::SessionRetention do
   after { FileUtils.rm_rf(root) }
 
   describe ".apply" do
+    it "purges session-scoped logs once for a batch of deleted sessions" do
+      sessions = Array.new(3) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                        test_run: true).tap { |s| s.save(state_dir: tmpdir) }
+      end
+      ids = sessions.map(&:id)
+      expect(Samagotchi::SystemOne::Runs).to receive(:purge_sessions).once do |purged, sessions_dir:|
+        expect(purged).to match_array(ids)
+        expect(sessions_dir).to eq(tmpdir)
+      end
+      expect(Samagotchi::ContextCandidatesLog).to receive(:purge_sessions).once do |purged, state_dir:|
+        expect(purged).to match_array(ids)
+        expect(state_dir).to eq(tmpdir)
+      end
+
+      result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)
+
+      expect(result[:deleted]).to match_array(ids)
+    end
+
     it "with any_age deletes every eligible session however new, still keeping live and keep_status ones" do
       mk = ->(**attrs) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true).tap { |x| attrs.each { |k, v| x.public_send("#{k}=", v) }; x.save(state_dir: tmpdir) } }
       fresh = mk.call
@@ -56,6 +76,27 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(Dir.exist?(loc.dir)).to be false
     ensure
       FileUtils.rm_rf(loc.dir) if loc
+    end
+
+    it "ends participants and purges System 1 runs and candidate records" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                                test_run: true)
+      session.save(state_dir: tmpdir)
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
+      issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: tmpdir)
+      runs_store = Samagotchi::SystemOne::RunsStore.new(File.dirname(tmpdir))
+      runs = Samagotchi::SystemOne::Runs.new(store: runs_store)
+      question = Samagotchi::SystemOne::Question.new(id: "allow", type: :noul, instructions: "Allow?")
+      runs.record(id: "approvals.allow/one", judgment: "approvals.allow", questions: [question], state: "git push",
+                  session_id: session.id)
+      Samagotchi::ContextCandidatesLog.event("proposed", session_id: session.id, name: "candidate", state_dir: tmpdir)
+
+      result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, test_only: true, any_age: true)
+
+      expect(result[:deleted]).to eq([session.id])
+      expect(grants.lookup(issued.token).state(Time.now)).to eq(:revoked)
+      expect(runs_store.lines("approvals.allow")).to be_empty
+      expect(Samagotchi::ContextCandidatesLog.log_for(tmpdir).records).to be_empty
     end
 
     it "deletes sessions older than days" do

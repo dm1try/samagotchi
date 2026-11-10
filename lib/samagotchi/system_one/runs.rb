@@ -69,7 +69,12 @@ module Samagotchi
       # Explicit `chi sessions delete`: that session's runs and their later
       # lines go, whatever system_one.runs says now.
       def self.purge_session(session_id, sessions_dir:)
-        RunsStore.new(File.dirname(sessions_dir)).purge_session(session_id)
+        purge_sessions([session_id], sessions_dir: sessions_dir)
+      end
+
+      # A retention sweep's runs, purged with one pass over the store.
+      def self.purge_sessions(session_ids, sessions_dir:)
+        RunsStore.new(File.dirname(sessions_dir)).purge_sessions(session_ids)
       end
 
       # Whether a bundle may declare +name+ (safe as a folder, not core's).

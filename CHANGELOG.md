@@ -35,6 +35,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Session deletion and retention now also end participant grants and purge System 1 runs and context-candidate records.
 - A note sent to a session that was continued (`chi note`, `send_note`, `chi broadcast`, chi web) reaches the new link
   (`chi note` prints `OLD → NEW (continued)`), and notes waiting when it was continued move with it; a note that
   still lands in the old link as it is continued is taken by the new link's worker, and a continue that fails gives
