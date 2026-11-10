@@ -130,7 +130,7 @@ module Samagotchi
         def line(messages, range, record: nil, tools: [], entries: [], cwd: nil)
           list = Array(messages)
           record &&= TurnAccumulator.from_wire(record)
-          own_tools = own_tool_records(tools, record)
+          own_tools = own_tool_records(tools, record, range)
           own_entries = own_entries(entries, range)
           events, untimed = Events.new(list, range, record, own_tools, own_entries, cwd).build
           turn, end_event = fold(events)
@@ -230,11 +230,14 @@ module Samagotchi
         end
         private_class_method :line_of
 
-        def own_tool_records(tools, record)
-          return [] unless record && record[:id]
+        # The turn's tool records: those of its record's id, else its own
+        # turn id's (a caller's records of the turn, no turn record saved).
+        def own_tool_records(tools, record, range)
+          id = (record && record[:id]) || (range.turn_id if range.own_id?)
+          return [] unless id
 
           Array(tools).filter_map { |t| TurnAccumulator.from_wire(t) if t.is_a?(Hash) }
-                      .select { |t| t[:turn_id] == record[:id] }
+                      .select { |t| t[:turn_id] == id }
                       .sort_by { |t| [t[:iteration].to_i, t[:call_index].to_i] }
         end
         private_class_method :own_tool_records

@@ -21,6 +21,9 @@ module ReleaseTools
   CHANGELOG = "CHANGELOG.md"
   VERSION_PATTERN = /\A\d+\.\d+\.\d+(?:\.[0-9A-Za-z.]+)?\z/
   COMPAT_SESSION_ID = "compat-session"
+  # A session whose one turn a Bridge drew (turn_drawings.jsonl); the other
+  # has none (a turn from before drawings).
+  COMPAT_DRAWN_ID = "compat-drawn"
   COMPAT_STAMP = "2026-01-01T00:00:00Z"
 
   class Error < StandardError; end
@@ -45,6 +48,8 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/worker_link"
     require_relative "../../lib/samagotchi/worker_sidecar"
     require_relative "../../lib/samagotchi/bridge/card_store"
+    require_relative "../../lib/samagotchi/bridge/turn_accumulator"
+    require_relative "../../lib/samagotchi/bridge/turn_drawings"
     require_relative "../../lib/samagotchi/schedules"
     require_relative "../../lib/samagotchi/memory_bundle/provenance"
 
@@ -77,6 +82,8 @@ module ReleaseTools
                                      .call(type: :hook_notice, hook: "compat", text: "compatibility corpus",
                                            between_turns: true)
 
+        drawn_path = write_compat_drawn_session!(sessions_dir, version, at)
+
         schedules = Samagotchi::Schedules.new(state_dir: sessions_dir, clock: -> { at })
         schedules.add(target: COMPAT_SESSION_ID, prompt: "compatibility corpus", title: "Compatibility corpus",
                       recurrence: Samagotchi::Schedules.recurrence(every: "1h"), catch_up: "once", keep_links: 5,
@@ -101,6 +108,7 @@ module ReleaseTools
           session_path,
           File.join(session_dir, Samagotchi::WorkerSidecar::FILE),
           File.join(session_dir, Samagotchi::Bridge::CardStore::FILE),
+          drawn_path,
           schedules.path,
           bundle_record
         ]
@@ -116,6 +124,43 @@ module ReleaseTools
     corpus_dir
   end
   private_class_method :write_compat_corpus!
+
+  # COMPAT_DRAWN_ID: a prompt, a read and its answer, and the line a Bridge's
+  # TurnDrawings writes for that turn (the accumulator's fold of its events).
+  # @return [String] the drawings file
+  def write_compat_drawn_session!(sessions_dir, version, at)
+    stamp = "2026-01-01T00:00:00.000Z"
+    messages = [
+      { role: "user", content: "compatibility corpus", turn_id: "compat-turn", at: stamp },
+      { role: "model", content: "Reading.", tool_calls: [{ id: "c1", name: "read", arguments: '{"path":"README.md"}' }] },
+      { role: "tool_response", content: "[read]\ncompat", tool_call_id: "c1", tool_ids: ["compat-t1"] },
+      { role: "model", content: "It says compat." }
+    ]
+    Samagotchi::Session.new(id: COMPAT_DRAWN_ID, mode: "assist", model_name: "compat:model", working_directory: "/compat-fixture",
+                            created_at: COMPAT_STAMP, updated_at: COMPAT_STAMP, messages: messages)
+                       .save(state_dir: sessions_dir, now: at)
+    session_path = Samagotchi::Session.session_file(COMPAT_DRAWN_ID, state_dir: sessions_dir)
+    data = JSON.parse(File.read(session_path))
+    data["written_by"] = version
+    data["updated_at"] = COMPAT_STAMP
+    File.write(session_path, "#{JSON.pretty_generate(data)}\n")
+    session_dir = Samagotchi::Session.session_dir(COMPAT_DRAWN_ID, state_dir: sessions_dir)
+    path = File.join(session_dir, Samagotchi::Bridge::TurnDrawings::FILE)
+    drawings = Samagotchi::Bridge::TurnDrawings.new(path: path, messages: -> { messages })
+    accumulator = Samagotchi::Bridge::TurnAccumulator.new(clock: -> { 0.0 }, on_turn_end: drawings.method(:append))
+    activity = { tool: "read", status: "ok", params: 'path="README.md"', action: "reading file", title: "README.md" }
+    [{ type: :turn_started, prompt: "compatibility corpus", turn_id: "compat-turn", at: stamp, origin: { client_id: "web:compat" } },
+     { type: :generation_started, iteration: 1 }, { type: :generation_chunk, iteration: 1, text: "Reading.", thinking: "" },
+     { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", params: 'path="README.md"', tool_id: "compat-t1",
+       title: "README.md" },
+     { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", tool_id: "compat-t1", output: "[read]\ncompat",
+       output_truncated: false, duration_ms: 12, activity: activity },
+     { type: :generation_started, iteration: 2 }, { type: :generation_chunk, iteration: 2, text: "It says compat.", thinking: "" },
+     { type: :turn_completed, turn_id: "compat-turn", duration_ms: 40, kept_from: 0, kept_to: messages.size }]
+      .each { |event| accumulator.call(event) }
+    path
+  end
+  private_class_method :write_compat_drawn_session!
 
   def system_bundle_version(root)
     YAML.safe_load_file(File.join(root, SYSTEM_MANIFEST))["version"].to_s

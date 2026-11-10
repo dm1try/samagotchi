@@ -157,11 +157,13 @@
         "role": "user",
         "content": "earlier",
         "at": "2026-11-08T10:00:00.000+01:00",
-        "turn_id": "turn-0"
+        "turn_id": "turn-0",
+        "drawn": "turn-0"
       },
       {
         "role": "assistant",
-        "content": "Earlier answer."
+        "content": "Earlier answer.",
+        "drawn": "turn-0"
       },
       {
         "role": "assistant",
@@ -170,6 +172,31 @@
       }
     ],
     "turn_drawings": {
+      "turn-0": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "earlier",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-0"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Earlier answer.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-0"
+        }
+      },
       "turn-reminder-only": {
         "events": [
           {

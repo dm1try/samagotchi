@@ -76,7 +76,13 @@ module Samagotchi
         # A live worker from before turn drawings lists no of_turn on its
         # cards: its turns all draw as before.
         drawings = parts && req.params["drawings"] == "1" && (!live || worker_draws?(id))
-        drawn = drawings ? drawn_lines(id, raw_messages) : []
+        raw_cards = live_or_saved(turn_snapshot, "cards") { saved_cards(id, messages: raw_messages) }
+        drawn = if drawings
+                  drawn_lines(id, raw_messages, timing: timing, entries: raw_cards, cwd: session.working_directory,
+                                                skip_turn_id: current_turn.is_a?(Hash) ? current_turn["turn_id"] : nil)
+                else
+                  []
+                end
         messages = messages_for_display(raw_messages, parts: parts, cwd: session.working_directory,
                                                       drawings: drawn, strip_drawn: true)
         json_response(200, {
@@ -100,7 +106,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: snapshot_list(turn_snapshot, "init_tasks"),
-          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id, messages: raw_messages) }, cwd: session.working_directory),
+          cards: cards_for_display(raw_cards, cwd: session.working_directory),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
@@ -148,14 +154,18 @@ module Samagotchi
       end
 
       # The lines the show draws +messages+' turns from (the live snapshot's
-      # messages, else the file's): Bridge::TurnDrawings.cover over the
-      # session's file (.read, cached by its size and mtime); the newest
-      # SHOWN_MAX of them. A drawing that can't be read draws its turn as
-      # before.
-      def drawn_lines(id, messages)
-        Degrade.call(:web, "turn_drawings_unreadable", fallback: []) do
-          dir = @session_class.session_dir(id, state_dir: default_state_dir)
-          Bridge::TurnDrawings.cover(Bridge::TurnDrawings.read(dir), messages).last(Bridge::TurnDrawings::SHOWN_MAX)
+      # messages, else the file's), one per finished turn:
+      # Bridge::TurnDrawings.cover over the session's file (.read, cached by
+      # its size and mtime), the turns no line covers made from their
+      # messages with the show's +timing+ records and CardStore +entries+.
+      # A file that can't be read gives no lines: every turn is made. Should
+      # the cover itself fail, the show draws its turns as before (no line).
+      def drawn_lines(id, messages, timing:, entries:, cwd:, skip_turn_id:)
+        dir = @session_class.session_dir(id, state_dir: default_state_dir)
+        lines = Degrade.call(:web, "turn_drawings_unreadable", fallback: []) { Bridge::TurnDrawings.read(dir) }
+        Degrade.call(:web, "turn_drawings_uncovered", fallback: []) do
+          Bridge::TurnDrawings.cover(lines, messages, timing: timing, entries: entries, skip_turn_id: skip_turn_id,
+                                                      session_id: id, cwd: cwd)
         end
       end
 
@@ -163,7 +173,7 @@ module Samagotchi
       # (chi web's one unfold of a drawing, its cards too); nothing without
       # one.
       def turn_drawings_field(lines, messages)
-        stamped = messages.filter_map { |item| item[:drawn] }.uniq
+        stamped = messages.to_set { |item| item[:drawn] }
         shown = lines.select { |line| stamped.include?(line.turn_id) }
         return {} if shown.empty?
 
