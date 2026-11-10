@@ -2477,6 +2477,23 @@ RSpec.describe Samagotchi::Web::App do
         end
       end
 
+      # One rule (MessageParts.something?) for both: a step the review shows
+      # with its parts is one the owner keeps, and one it drops the owner drops.
+      it "keeps the same text-less steps in the owner's show as in the participant review" do
+        app = build_app(state_dir: Dir.mktmpdir)
+        steps = [{ "role" => "model", "content" => "", "thinking" => "hm" },
+                 { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read", "arguments" => "{}" }] },
+                 { "role" => "model", "content" => "<think>look</think>" },
+                 { "role" => "model", "content" => " ", "thinking" => "" },
+                 { "role" => "model", "content" => "", "tool_calls" => [] }]
+        steps.each do |step|
+          messages = [{ "role" => "user", "content" => "go", "turn_id" => "t1" }, step]
+          review = app.send(:messages_for_display, messages, parts: true, markdown: false).count { |m| m[:role] == "assistant" }
+          owner = app.send(:messages_for_display, messages, markdown: false, drawings: []).count { |m| m[:role] == "assistant" }
+          expect([owner, review]).to eq([review, review]), "step #{step.inspect}"
+        end
+      end
+
       it "draws a turn with no answer from its note's marker: the empty steps, then the notice; never the note" do
         note = JSON.parse(JSON.generate(Samagotchi::TurnNote.empty(retries: 1, steps: [
           { role: "model", content: "<think>first</think>" }, { role: "model", content: "", thinking: "second" }

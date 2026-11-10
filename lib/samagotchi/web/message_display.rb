@@ -161,7 +161,7 @@ module Samagotchi
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
           step = %w[model assistant].include?(role)
           did = parts && step ? message_parts(list, index, cwd, marks) : nil
-          next if stripped.empty? && did.nil? && !(steps && step && did_something?(m, content))
+          next if stripped.empty? && did.nil? && !(steps && step && MessageParts.something?(m))
 
           norm_role = role == "model" ? "assistant" : role
           # normalize assistant vs model, keep user as is
@@ -232,14 +232,6 @@ module Samagotchi
         stamp_drawn(filtered, origins, Array(drawings))
       rescue StandardError
         []
-      end
-
-      # Whether a text-less model message did something a drawing draws as
-      # a step: a call or thinking (MessageParts' own read, without
-      # parsing the calls).
-      def did_something?(message, content)
-        calls = message[:tool_calls] || message["tool_calls"]
-        (calls.is_a?(Array) && !calls.empty?) || !content.strip.empty? || !(message[:thinking] || message["thinking"]).to_s.strip.empty?
       end
 
       # The ✂ marks of the outputs right after the model message at +index+,

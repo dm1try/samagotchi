@@ -73,6 +73,8 @@ module Samagotchi
     # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, title:,
     #   output:, output_truncated:, images:, tool_id:, edit: }] } with only what it found; nil for nothing
     def for_message(message, responses, registry: Tools::Builtins.default, cwd: nil, marks: {})
+      return nil unless something?(message)
+
       content = field(message, :content).to_s
       calls = field(message, :tool_calls)
       tools = if calls.is_a?(Array) && !calls.empty?
@@ -87,6 +89,17 @@ module Samagotchi
       parts.empty? ? nil : parts
     rescue StandardError
       nil
+    end
+
+    # Whether +message+ can have parts (.for_message gives none without):
+    # a native call, content (its markup calls and thinking are read from
+    # it) or thinking. Cheap, nothing parsed: the owner show keeps a
+    # text-less step by it (Web::MessageDisplay), the participant review by
+    # its parts, so a new kind of part goes here for both.
+    def something?(message)
+      calls = field(message, :tool_calls)
+      (calls.is_a?(Array) && !calls.empty?) || !field(message, :content).to_s.strip.empty? ||
+        !field(message, :thinking).to_s.strip.empty?
     end
 
     def thinking_of(content)

@@ -50,6 +50,18 @@ RSpec.describe Samagotchi::MessageParts do
       expect(described_class.for_message({ content: "Just text." }, [])).to be_nil
     end
 
+    it "gives no parts for a message .something? says has nothing (no call, content or thinking)" do
+      [{ content: "" }, { content: "  \n", thinking: " " }, { "content" => "", "tool_calls" => [] }].each do |message|
+        expect(described_class.something?(message)).to be(false)
+        expect(described_class.for_message(message, [])).to be_nil
+      end
+      [{ content: "", thinking: "hm" }, { "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read", "arguments" => "{}" }] },
+       { content: qwen_call("execute", command: "ls") }].each do |message|
+        expect(described_class.something?(message)).to be(true)
+        expect(described_class.for_message(message, [])).not_to be_nil
+      end
+    end
+
     it "caps a long output" do
       part = described_class.for_message({ content: qwen_call("read", path: "big") }, [{ content: "x" * 5000 }])[:tools].first
 
