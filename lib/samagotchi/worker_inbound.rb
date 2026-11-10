@@ -245,11 +245,20 @@ module Samagotchi
 
       begin
         input = SessionInbox.read_input(claimed_file)
-        return if input.prompt.to_s.strip.empty?
-        return if input.images.empty? && queue_as_command(input.prompt, input.origin, File.basename(input_file))
+        enqueued_id = input.origin.enqueued_id
+        if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@engine.claim_enqueued_id(enqueued_id)
+          Log.info(:worker, "duplicate_input_dropped", enqueued_id: enqueued_id)
+          return
+        end
+        begin
+          return if input.prompt.to_s.strip.empty?
+          return if input.images.empty? && queue_as_command(input.prompt, input.origin, File.basename(input_file))
 
-        yield Prompt.new(text: input.prompt, origin: input.origin, no_interrupt: input.no_interrupt, images: input.images,
-                         delivery: input.delivery, anchors: input.anchors)
+          yield Prompt.new(text: input.prompt, origin: input.origin, no_interrupt: input.no_interrupt, images: input.images,
+                           delivery: input.delivery, anchors: input.anchors)
+        ensure
+          @engine.finish_enqueued_id(enqueued_id)
+        end
       ensure
         FileUtils.rm_f(claimed_file)
       end

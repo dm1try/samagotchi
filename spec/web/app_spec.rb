@@ -3627,23 +3627,26 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       verify = { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "the claim" }
-      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil, anchors: anything).and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "check", client_id: nil, anchors: anything,
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+                                                               )
 
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
                                                         body: JSON.generate(prompt: "check", verify: verify)))
       expect(status).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil,
-                                                       anchors: Samagotchi::TurnAnchors.new(verify: verify))
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "check", client_id: nil,
+                                                                      anchors: Samagotchi::TurnAnchors.new(verify: verify),
+                                                                      enqueued_id: kind_of(String))).once
 
-      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil).and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "check", client_id: nil,
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+                                                               )
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
                                                         body: '{"prompt":"check","verify":{"turn_id":"bad","quote":"x"}}'))
       expect(status).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil)
+      expect(bridge).to have_received(:post_turn).with(hash_excluding(:anchors)).once
     end
 
     it "forwards a valid Revise draft and drops a malformed one" do
@@ -3657,13 +3660,15 @@ RSpec.describe Samagotchi::Web::App do
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
                                                         body: JSON.generate(prompt: "shorter", revises: revises)))
       expect(status).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "shorter", client_id: nil,
-                                                       anchors: Samagotchi::TurnAnchors.new(revises: revises))
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "shorter", client_id: nil,
+                                                                      anchors: Samagotchi::TurnAnchors.new(revises: revises),
+                                                                      enqueued_id: kind_of(String)))
 
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
                                                         body: '{"prompt":"again","revises":{"turn_id":"v1"}}'))
       expect(status).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "again", client_id: nil)
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "again", client_id: nil,
+                                                                      enqueued_id: kind_of(String)))
     end
 
     it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do
@@ -3671,9 +3676,10 @@ RSpec.describe Samagotchi::Web::App do
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).with("s1").and_return(bridge)
-      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "web:tab-1").and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e-bridge","session_id":"s1"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "hi", client_id: "web:tab-1",
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e-bridge","session_id":"s1"}')
+                                                               )
       expect(manager).not_to receive(:write_turn_input)
 
       status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi","client_id":"web:tab-1"}'))
@@ -3732,7 +3738,7 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "later", client_id: "web:tab-1", delivery: "cut")
+        .with(hash_including(prompt: "later", client_id: "web:tab-1", delivery: "cut", enqueued_id: kind_of(String)))
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
 
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
@@ -3754,7 +3760,7 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "later", client_id: "web:tab-1", delivery: "queue")
+        .with(hash_including(prompt: "later", client_id: "web:tab-1", delivery: "queue", enqueued_id: kind_of(String)))
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","delivery":"queue"}'))
 
       status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST",

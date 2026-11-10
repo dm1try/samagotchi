@@ -72,12 +72,22 @@ RSpec.describe "a turn's author" do
     def input_files = Dir.glob(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")).map { |p| read_file(p) }
 
     it "posts the author to the Bridge only when there is one" do
-      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "web:t", author: "p:p_1").and_return(accepted)
-      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "web:t").and_return(accepted)
+      allow(bridge).to receive(:post_turn).and_return(accepted)
 
       expect(deliver(author: "p:p_1").status).to eq(:accepted)
       expect(deliver(author: nil).status).to eq(:accepted)
       expect(bridge).to have_received(:post_turn).twice
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "hi", client_id: "web:t", author: "p:p_1"))
+      expect(bridge).to have_received(:post_turn).with(satisfy { |options| options[:prompt] == "hi" && !options.key?(:author) })
+    end
+
+    it "uses the Bridge's enqueued id in the fallback input file" do
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+      result = deliver
+
+      expect(result.via).to eq(:file)
+      expect(input_files.fetch(0)).to include("enqueued_id" => result.enqueued_id)
     end
 
     it "writes the author into the fallback file only when there is one (a participant's when no worker holds it)" do

@@ -8,6 +8,7 @@ require_relative "degrade"
 require_relative "worker_sidecar"
 require_relative "bridge_secret"
 require_relative "delivery"
+require_relative "session_inbox"
 require_relative "chi_invocation"
 require_relative "bridge_client/stream_open"
 require_relative "bridge_client/sse_parser"
@@ -197,9 +198,10 @@ module Samagotchi
     #   many of their turns may be running or waiting (429 too_many_turns past it)
     # @param anchors [TurnAnchors, Hash, nil] a Verify turn's claim, a Revise
     #   turn's draft: their own body keys ("verify", "revises")
-    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil, pending_limit: nil,
-                  anchors: nil)
-      body = { session_id: @session_id, prompt: prompt, client_id: client_id }
+    def post_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil,
+                  pending_limit: nil, anchors: nil)
+      body = { session_id: @session_id, prompt: prompt, client_id: client_id,
+               enqueued_id: enqueued_id || SessionInbox.new_enqueued_id }
       body[:no_interrupt] = true if no_interrupt
       body[:author] = author if author
       body[:pending_limit] = pending_limit if author && pending_limit

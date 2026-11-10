@@ -160,6 +160,9 @@ module Samagotchi
       @connection_threads = []
       @stopped = false
       @mutex = Monitor.new
+      @post_turn_mutex = Mutex.new
+      @enqueued_requests = {}
+      @enqueued_request_order = []
       @refused_log_mutex = Mutex.new
       @refused_logged_at = {}
       @open_streams = 0
@@ -1218,29 +1221,47 @@ module Samagotchi
         end
       end
 
-      enqueued_id = SecureRandom.uuid
-      # Before it is queued: a drain after this may have taken it (#cut_for_steer).
-      epoch = @engine.input_epoch
-      # Whether a queue waits for a running turn: read with the write under
-      # the event log, so no :turn_started or :turn_completed falls between.
-      # To an idle worker the queued file simply runs as the next turn.
-      queued_behind_turn = false
-      # Write and announce with the event log held: the worker can't emit
-      # this turn's :turn_started (or merge it mid-turn) before
-      # :turn_enqueued, and a failed write announces nothing.
-      enqueued = @engine.synchronize_events do
-        raise IntakeClosed if stopped?
-        next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
-        next :too_many if pending_limit && pending_turns(author) >= pending_limit
+      enqueued_id = fetched(parsed, "enqueued_id")
+      enqueued_id = SessionInbox.new_enqueued_id unless SessionInbox.valid_enqueued_id?(enqueued_id)
+      enqueue_post_turn(sid: sid, prompt: prompt, client_id: client_id, no_interrupt: no_interrupt, author: author,
+                        anchors: anchors, images: images, delivery: delivery, deadline: deadline, pending_limit: pending_limit,
+                        enqueued_id: enqueued_id)
+    end
 
-        # The owner's input never goes into a participant's read-only
-        # review turn (a steer, a cut): it queues behind it as the owner's
-        # own turn, and the ack and :turn_enqueued say so.
-        delivery = Delivery::QUEUE if @accumulator.participant_turn?
-        queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
-        enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                     no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, anchors: anchors).tap do |ok|
-          next unless ok
+    def enqueue_post_turn(sid:, prompt:, client_id:, no_interrupt:, author:, anchors:, images:, delivery:, deadline:,
+                          pending_limit:, enqueued_id:)
+      # Before it is queued: a drain after this may have taken it (#cut_for_steer).
+      @post_turn_mutex.synchronize do
+        epoch = @engine.input_epoch
+        # Whether a queue waits for a running turn: read with the write under
+        # the event log, so no :turn_started or :turn_completed falls between.
+        # To an idle worker the queued file simply runs as the next turn.
+        queued_behind_turn = false
+        # Write and announce with the event log held: the worker can't emit
+        # this turn's :turn_started (or merge it mid-turn) before
+        # :turn_enqueued, and a failed write announces nothing.
+        enqueued = @engine.synchronize_events do
+          raise IntakeClosed if stopped?
+
+          existing = @enqueued_requests[enqueued_id]
+          if existing
+            next(existing[:prompt] == prompt.to_s ? :duplicate : :conflict)
+          end
+          next :duplicate if @engine.enqueued_id?(enqueued_id)
+          next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
+          next :too_many if pending_limit && pending_turns(author) >= pending_limit
+          next :duplicate unless @engine.reserve_enqueued_id(enqueued_id)
+
+          # The owner's input never goes into a participant's read-only
+          # review turn (a steer, a cut): it queues behind it as the owner's
+          # own turn, and the ack and :turn_enqueued say so.
+          delivery = Delivery::QUEUE if @accumulator.participant_turn?
+          queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
+          unless enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
+                              no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, anchors: anchors)
+            @engine.forget_enqueued_id(enqueued_id)
+            next false
+          end
 
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
           enqueued_event[:images] = images unless images.empty?
@@ -1248,26 +1269,43 @@ module Samagotchi
           enqueued_event[:author] = author if author
           @engine.announce(enqueued_event)
           @on_input&.call
+          true
         end
-      end
-      return deadline_passed("turn") if enqueued == :expired
-      return [{}, 429, { error: "too_many_turns", detail: ParticipantMessages::TOO_MANY_TURNS }] if enqueued == :too_many
-      return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
+        if enqueued == :duplicate
+          ack = @enqueued_requests.dig(enqueued_id, :ack) ||
+                { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id }
+          return [{}, 202, ack]
+        end
+        if enqueued == :conflict
+          return [{}, 409, { error: "enqueued_id_conflict",
+                             detail: "enqueued_id was already accepted for a different prompt" }]
+        end
+        return deadline_passed("turn") if enqueued == :expired
+        return [{}, 429, { error: "too_many_turns", detail: ParticipantMessages::TOO_MANY_TURNS }] if enqueued == :too_many
+        return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
-      # Queued (outside the event lock): a message sent as +cut+ cuts a
-      # running generation that has only been thinking for long, unless a
-      # plugin or a client chi doesn't know sent it. An image input never
-      # merges mid-turn, so it never cuts. Nothing else cuts: a message
-      # that says nothing (an older client, the web composer) goes in at
-      # the running turn's next step.
-      cut = nil
-      cut = @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
-      # A queue to an idle worker is a turn now: the ack says next_step.
-      ack_delivery = Delivery.queue?(delivery) && !queued_behind_turn ? Delivery::NEXT_STEP : delivery
-      ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: ack_delivery }
-      ack[:cut] = cut.to_s if cut
-      ack[:cut_after] = @engine.steer_cut_after if cut == :waits
-      [{}, 202, ack]
+        # Queued (outside the event lock): a message sent as +cut+ cuts a
+        # running generation that has only been thinking for long, unless a
+        # plugin or a client chi doesn't know sent it. An image input never
+        # merges mid-turn, so it never cuts. Nothing else cuts: a message
+        # that says nothing (an older client, the web composer) goes in at
+        # the running turn's next step.
+        cut = nil
+        cut = @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
+        # A queue to an idle worker is a turn now: the ack says next_step.
+        ack_delivery = Delivery.queue?(delivery) && !queued_behind_turn ? Delivery::NEXT_STEP : delivery
+        ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: ack_delivery }
+        ack[:cut] = cut.to_s if cut
+        ack[:cut_after] = @engine.steer_cut_after if cut == :waits
+        remember_enqueued_request(enqueued_id, prompt, ack)
+        [{}, 202, ack]
+      end
+    end
+
+    def remember_enqueued_request(id, prompt, ack)
+      @enqueued_requests[id] = { prompt: prompt.to_s, ack: ack }
+      @enqueued_request_order << id
+      @enqueued_requests.delete(@enqueued_request_order.shift) while @enqueued_requests.size > TurnState::ENQUEUED_ID_HISTORY
     end
 
     # POST /session/:id/turn/dequeue {enqueued_id, client_id?, deadline?}:
@@ -1299,7 +1337,10 @@ module Samagotchi
         next [:expired, nil] if expired?("dequeue_expired", deadline, sid: session_id, enqueued_id: id)
 
         SessionInbox.take_queued_input(session_dir, id).tap do |status, _|
-          @engine.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id) if status == :removed
+          if status == :removed
+            @engine.drop_enqueued_id(id)
+            @engine.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id)
+          end
         end
       end
       dequeue_reply(taken, id, input)

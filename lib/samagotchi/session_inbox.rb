@@ -203,6 +203,11 @@ module Samagotchi
     # An id that is safe in a file name (a Bridge's or deliver_turn's
     # uuid); anything else leaves the name bare.
     ENQUEUED_ID_NAME = /\A[A-Za-z0-9_-]{1,64}\z/
+    ENQUEUED_ID_UUID = /\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/i
+
+    def self.new_enqueued_id = SecureRandom.uuid
+
+    def self.valid_enqueued_id?(id) = id.is_a?(String) && ENQUEUED_ID_UUID.match?(id)
 
     def self.output_name(timestamp, enqueued_id)
       id = enqueued_id.to_s
@@ -219,6 +224,21 @@ module Samagotchi
 
       suffix = "-#{id}.txt"
       Dir.children(dir).select { |f| f.end_with?(suffix) }.max
+    end
+
+    # Evidence that a prior worker took this input: a saved or interrupted
+    # turn, its reply, or a mid-turn merge record. A restarted worker's
+    # in-memory id ledger cannot cover these deliveries.
+    def self.input_taken?(session_dir, session, enqueued_id)
+      id = enqueued_id.to_s
+      return false if id.empty?
+      return true if [session.last_turn&.enqueued_id, session.interrupted_turn&.enqueued_id].include?(id)
+      return true if reply_for(session_dir, id)
+
+      require_relative "turn_checkpoint"
+      return true if TurnCheckpoint.settled_turn(session_dir, id)
+
+      !merged_into(session_dir, id).nil?
     end
 
     # The output files' text, oldest first; with +since_time+ only files

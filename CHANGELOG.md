@@ -30,6 +30,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `chi send`, delegate or schedule delivery whose Bridge answered an error after it had queued the prompt no
+  longer runs it twice: the client makes the enqueued id, the input-file fallback reuses it, and the worker runs
+  each id once (also after a restart, a turn that already ran or was cut off by the worker's death).
 - The continue's carry note of unabsorbed pushed context keeps the sources after one trimmed to the per-source 4 KiB
   cap: a source that fits the room left is carried whole even when that room is under the cap, the note ends only at a
   source it has no room for, and "[additional pushed text omitted]" is added whenever text is left out.

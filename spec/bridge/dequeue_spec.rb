@@ -63,6 +63,7 @@ RSpec.describe Samagotchi::Bridge, "dequeue" do
     expect(events.map { |e| e[:type] }).to eq(%i[turn_enqueued turn_dequeued])
     expect(events.last).to include(enqueued_id: id, client_id: "web:tab-2")
     expect(accumulator.queued).to eq([])
+    expect(engine.claim_enqueued_id(id)).to be(false)
   end
 
   it "does not wake the worker: a removal is no input" do

@@ -137,6 +137,7 @@ module Samagotchi
           link.live? ? link.client(session_id) : nil
         end
         manager.resume_session(session_id, state_dir: state_dir)
+        enqueued_id = SessionInbox.new_enqueued_id
         if (client = bridge.call)
           if (missing = anchors.present.find { |anchor| !worker_has?(client, anchor.class::FEATURE) })
             return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE)
@@ -148,7 +149,7 @@ module Samagotchi
           return review_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::REVIEW_FEATURE)
 
           begin
-            options = { prompt: prompt, client_id: client_id }
+            options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }
             options[:images] = images unless images.empty?
             # An old worker ignores the field: it cuts anyway (its own default).
             options[:delivery] = delivery unless Delivery.next_step?(delivery)
@@ -188,7 +189,6 @@ module Samagotchi
                                    ack: { "error" => "worker_timeout",
                                           "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
         end
-        enqueued_id = SecureRandom.uuid
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
         input[:images] = images unless images.empty?
         input[:delivery] = delivery unless Delivery.next_step?(delivery)

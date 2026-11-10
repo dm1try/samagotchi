@@ -509,7 +509,8 @@ RSpec.describe "a participant's author on delivery" do
       client = remote.attach_client(session.id, worker: { "epoch" => "e1", "started_at" => "t" })
 
       expect(client.post_turn(prompt: "go", client_id: "tui:1@mac", author: "p:p_forged").status).to eq(202)
-      expect(bridge).to have_received(:post_turn).with(prompt: "go", client_id: "tui:1@mac")
+      expect(bridge).to have_received(:post_turn).with(hash_including(prompt: "go", client_id: "tui:1@mac",
+                                                                      enqueued_id: kind_of(String)))
     end
   end
 end

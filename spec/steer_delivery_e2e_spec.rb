@@ -114,6 +114,54 @@ RSpec.describe "steering a running turn (chi send)" do
     end
   end
 
+  it "runs a Bridge-accepted message once when a 500 triggers file fallback, and waits for that id" do
+    server.default("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("RIGHT ANSWER"), stop])
+    start_worker
+    bridge_client = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir)
+    bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+    allow(bridge).to receive(:post_turn) do |**options|
+      expect(bridge_client.post_turn(**options).status).to eq(202)
+      Samagotchi::BridgeClient::Response.new(status: 500, body: '{"error":"server_error"}')
+    end
+    access = Samagotchi::SessionAccess::Local.new(state_dir: tmpdir)
+    delivered_ids = []
+    allow(access).to receive(:deliver_turn) do |id, **options|
+      Samagotchi::SessionManager.deliver_turn(id, **options, state_dir: tmpdir, bridge: -> { bridge })
+        .tap { |result| delivered_ids << result.enqueued_id }
+    end
+
+    status = Samagotchi::SendCommand.new(["--queue", "--wait", "--timeout", "15", "-m", "one delivery", session.id],
+                                         stdin: StringIO.new(""), stdout: out, stderr: err, state_dir: tmpdir,
+                                         access: access).run
+
+    expect(status).to eq(0), err.string
+    expect(out.string).to eq("RIGHT ANSWER\n")
+    wait_for("the duplicate fallback input to be consumed", timeout: 10) do
+      Samagotchi::SessionInbox.find_new_input_files(session_dir).empty?
+    end
+    expect(events.count { |entry| entry[:type] == :turn_started && entry[:prompt] == "one delivery" }).to eq(1)
+    expect(delivered_ids.size).to eq(1)
+    session_after = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+    expect(session_after.last_turn.enqueued_id).to eq(delivered_ids.fetch(0))
+    expect(Samagotchi::SessionInbox.reply_for(session_dir, delivered_ids.fetch(0))).not_to be_nil
+  end
+
+  it "runs a POST repeated with the same enqueued id only once" do
+    server.default("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("ONE ANSWER"), stop])
+    start_worker
+    bridge_client = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir)
+    id = "123e4567-e89b-12d3-a456-426614174000"
+
+    first = bridge_client.post_turn(prompt: "one delivery", enqueued_id: id)
+    second = bridge_client.post_turn(prompt: "one delivery", enqueued_id: id)
+
+    expect([first.status, second.status]).to eq([202, 202])
+    expect([first.json["enqueued_id"], second.json["enqueued_id"]]).to eq([id, id])
+    wait_for("the turn to finish", timeout: 15) { events.any? { |entry| entry[:type] == :turn_completed } }
+    wait_for("the input files to be consumed", timeout: 10) { Samagotchi::SessionInbox.find_new_input_files(session_dir).empty? }
+    expect(events.count { |entry| entry[:type] == :turn_started && entry[:prompt] == "one delivery" }).to eq(1)
+  end
+
   it "takes a plain message at the next step boundary, without cutting the thinking" do
     stream_thinking
     run_turn("have a long think")

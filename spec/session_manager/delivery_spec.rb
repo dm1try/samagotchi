@@ -64,9 +64,10 @@ RSpec.describe Samagotchi::SessionManager do
     it "posts through a live Bridge and writes no file" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
-      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "cli:send").and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1","session_id":"s"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "hi", client_id: "cli:send",
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1","session_id":"s"}')
+                                                               )
 
       result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
 
@@ -80,9 +81,10 @@ RSpec.describe Samagotchi::SessionManager do
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
       anchors = Samagotchi::TurnAnchors.new(verify: verify)
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
-      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: "web:1", anchors: anchors).and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "check", client_id: "web:1", anchors: anchors,
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+                                                               )
 
       expect(described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", anchors: anchors,
                                                        state_dir: tmpdir, bridge: -> { bridge }).status)
@@ -99,9 +101,10 @@ RSpec.describe Samagotchi::SessionManager do
       own("worker")
       anchors = Samagotchi::TurnAnchors.new(revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" })
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
-      allow(bridge).to receive(:post_turn).with(prompt: "shorter", client_id: "web:1", anchors: anchors).and_return(
-        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
-      )
+      allow(bridge).to receive(:post_turn).with(hash_including(prompt: "shorter", client_id: "web:1", anchors: anchors,
+                                                               enqueued_id: kind_of(String))).and_return(
+                                                                 Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+                                                               )
 
       expect(described_class.deliver_turn(session.id, prompt: "shorter", client_id: "web:1", anchors: anchors,
                                                        state_dir: tmpdir, bridge: -> { bridge }).status)
@@ -118,10 +121,10 @@ RSpec.describe Samagotchi::SessionManager do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "later", client_id: "cli:send", delivery: "queue")
+        .with(hash_including(prompt: "later", client_id: "cli:send", delivery: "queue", enqueued_id: kind_of(String)))
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "now", client_id: "cli:send")
+        .with(hash_including(prompt: "now", client_id: "cli:send", enqueued_id: kind_of(String)))
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
 
       expect(described_class.deliver_turn(session.id, prompt: "later", client_id: "cli:send", delivery: "queue",
@@ -136,7 +139,7 @@ RSpec.describe Samagotchi::SessionManager do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "long", client_id: "tui:1", no_interrupt: true)
+        .with(hash_including(prompt: "long", client_id: "tui:1", no_interrupt: true, enqueued_id: kind_of(String)))
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
 
       expect(described_class.deliver_turn(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true,
@@ -168,12 +171,17 @@ RSpec.describe Samagotchi::SessionManager do
     it "falls back to the input file when the Bridge refuses the connection" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
-      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      posted_id = nil
+      allow(bridge).to receive(:post_turn) do |**args|
+        posted_id = args.fetch(:enqueued_id)
+        raise Errno::ECONNREFUSED
+      end
 
       result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
 
       expect(result).to have_attributes(status: :accepted, via: :file,
                                         ack: { "status" => "accepted", "enqueued_id" => kind_of(String), "session_id" => session.id })
+      expect(posted_id).to eq(result.enqueued_id)
       expect(input_files.map { |path| JSON.parse(File.read(path)) })
         .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result.enqueued_id }])
     end
@@ -487,6 +495,8 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0, messages_checkpoint: [])
+      allow(engine).to receive(:claim_enqueued_id).and_return(true)
+      allow(engine).to receive(:finish_enqueued_id)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       expect do
         Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
