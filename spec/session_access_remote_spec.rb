@@ -233,6 +233,36 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "#head" do
+    it "asks resolve?head=1: a continued link's newest one, as on this machine" do
+      old = make
+      Samagotchi::ArchiveStore.archive(old.id, state_dir: tmpdir)
+      newer = make
+      newer.continues = old.id
+      newer.save(state_dir: tmpdir)
+
+      expect(remote.head(old.id).to_h).to eq(id: newer.id, asked: old.id, via: :head)
+      expect(transport.requests.last).to eq([:get, "/api/sessions/resolve?id=#{old.id}&head=1"])
+    end
+
+    # One with no resolve route at all failed the resolve before (RemoteTooOld).
+    it "reads an older chi web's answer, which ignores head=1 ({id}), or another refusal, as the id itself (as before)" do
+      older, = scripted([200, { id: "s-1" }])
+      expect(older.head("s-1").to_h).to eq(id: "s-1", asked: "s-1", via: :same)
+
+      gone, = scripted([404, { error: "not_found", detail: "no session s-1" }])
+      expect(gone.head("s-1").to_h).to eq(id: "s-1", asked: "s-1", via: :same)
+    end
+
+    it "never asks for a participant: a grant is for one session" do
+      participant, calls = scripted([200, { id: "other", asked: "s-1", via: "head" }])
+      allow(participant).to receive(:participant?).and_return(true)
+
+      expect(participant.head("s-1").to_h).to eq(id: "s-1", asked: "s-1", via: :pinned)
+      expect(calls).to be_empty
+    end
+  end
+
   describe "the errors a refusal raises, as on this machine" do
     it "resolves a prefix on the server: an unknown one comes back as given, several raise AmbiguousId with the ids" do
       a = make(id: "abcd1111-0000-0000-0000-000000000000")

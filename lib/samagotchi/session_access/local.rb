@@ -81,6 +81,12 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def show(id) = Session.load(id, **dir)
 
+      # Where input for +id+ goes: its chain's newest link when it was
+      # continued (SessionInbox::Head's send walk; :continuing while a
+      # continue of it is in flight), else +id+.
+      # @return [SessionInbox::Resolved]
+      def head(id) = SessionInbox::Head.resolve(:send, id, state_dir: state_dir!)
+
       # @return [OwnerLock::Owner, nil] the worker or one-turn chi run that owns it
       def owner(id) = SessionManager.session_owner(id, **dir)
 

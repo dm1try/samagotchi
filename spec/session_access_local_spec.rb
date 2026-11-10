@@ -43,6 +43,17 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: wake, hint: nil)
   end
 
+  describe "#head" do
+    it "is SessionInbox::Head's send walk: a continued link's newest one, else the id" do
+      old = saved_session
+      Samagotchi::ArchiveStore.archive(old.id, state_dir: tmpdir)
+      newer = saved_session(continues: old.id)
+
+      expect(access.head(old.id).to_h).to eq(id: newer.id, asked: old.id, via: :head)
+      expect(access.head(newer.id).to_h).to eq(id: newer.id, asked: newer.id, via: :same)
+    end
+  end
+
   describe "#context_push" do
     before do
       allow(Samagotchi::Config).to receive(:get).and_call_original

@@ -7,6 +7,7 @@ require_relative "../remotes"
 require_relative "../reply_wait"
 require_relative "../pending_question"
 require_relative "../note_delivery"
+require_relative "../session_inbox"
 require_relative "../owner_lock"
 require_relative "../context_sources"
 require_relative "../bridge_client"
@@ -146,6 +147,30 @@ module Samagotchi
 
         id
       end
+
+      # Where input for +id+ goes, as chi web resolves it there
+      # (Local#head): GET /api/sessions/resolve?id=X&head=1. An older chi
+      # web ignores head=1 and answers {id}, and a refusal (the session
+      # gone since) is the send's to report: +id+ itself (:same, as before
+      # it followed). A participant never
+      # asks: their grant is for one session (:pinned).
+      # @return [SessionInbox::Resolved]
+      def head(id)
+        return SessionInbox::Resolved.new(id: id, asked: id, via: :pinned) if participant?
+
+        same = SessionInbox::Resolved.new(id: id, asked: id, via: :same)
+        reply = request(:get, "/api/sessions/resolve", query: { id: id.to_s, head: 1 })
+        return same unless reply.status == 200
+
+        json = reply.json
+        via = HEAD_VIAS[json["via"]] if json.is_a?(Hash)
+        return same unless via && Session.valid_id?(json["id"])
+
+        SessionInbox::Resolved.new(id: json["id"], asked: id, via: via)
+      end
+
+      # The ways resolve?head=1 answers (SessionInbox::Resolved#via).
+      HEAD_VIAS = { "same" => :same, "head" => :head, "continuing" => :continuing }.freeze
 
       # @return [SessionView]
       # @raise [ArgumentError] no such session
