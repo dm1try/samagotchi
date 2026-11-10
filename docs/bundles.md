@@ -1376,8 +1376,10 @@ this API (`lib/samagotchi/bundles/inline-widgets/plugin.rb`) and has no settings
   choose from.
 - **Where it draws**: chi web, in the answers. The terminal shows the block's YAML, and a block chi can't read stays
   YAML with a short note under it.
-- **Where the prompt has none**: a delegate child (its parent reads the report, nobody sees it drawn) and a one-shot
-  `chi -p … --non-interactive`. `/stats` lists the sections a session's prompt holds: `picks (inline-widgets), walk
+- **Where the prompt has none**: a delegate child (its parent reads the report, nobody sees it drawn), a one-shot
+  `chi -p … --non-interactive`, and a review session (`chi review`: its participants' page draws no widgets, so they
+  would read the YAML). A working session you pair in keeps them: your page draws them, and inviting someone later
+  doesn't change the prompt. `/stats` lists the sections a session's prompt holds: `picks (inline-widgets), walk
   (inline-widgets)`.
 - **Cost**: about 2,900 characters in the stable part of the prompt, the same at every build, so the prompt cache keeps.
 - **Uninstall**: `chi bundle uninstall inline-widgets` takes the sections out of new sessions' prompts (a session you
