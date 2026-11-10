@@ -1,0 +1,455 @@
+{
+  "description": "A failed turn's kept steps, then its re-run under the same turn id: both lines on disk, the newest kept for the id; the earlier turn is made from its messages under an id of its own.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "fix it",
+      "turn_id": "turn-again",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Step one.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"b.rb\"",
+      "tool_id": "t1",
+      "title": "b.rb"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t1",
+      "output": "[read]\nb",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"b.rb\"",
+        "action": "reading file",
+        "title": "b.rb"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "turn_failed",
+      "turn_id": "turn-again",
+      "duration_ms": 5000,
+      "summary": "the model server is unreachable",
+      "message": "connection refused",
+      "error_class": "Errno::ECONNREFUSED",
+      "kept_steps": 1,
+      "kept_from": 1,
+      "kept_to": 5
+    },
+    {
+      "type": "turn_started",
+      "prompt": "fix it",
+      "turn_id": "turn-again",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Fixed.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-again",
+      "duration_ms": 2400,
+      "kept_from": 5,
+      "kept_to": 7,
+      "turn_summary": {
+        "output": "Fixed."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "fix it",
+      "turn_id": "turn-again",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Step one.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "read",
+          "arguments": "{\"path\":\"b.rb\"}"
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "content": "[read]\nb",
+      "tool_call_id": "c1",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "system",
+      "content": "[SYSTEM: the previous turn failed after 1 tool step: the model server is unreachable. Its work so far (tool calls, file changes) stays; the user's last message is not answered yet.]",
+      "kind": "turn_note"
+    },
+    {
+      "role": "user",
+      "content": "fix it",
+      "turn_id": "turn-again",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "Fixed."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-again",
+      "kind": "failed",
+      "from": 1,
+      "to": 5,
+      "from_digest": "fa65e5ef28092fd241cf6c939ccdaba37805f599",
+      "to_digest": "12c6b4b214ee35610bebc459a169c9c4b3e6d389",
+      "drawing": {
+        "prompt": "fix it",
+        "turn_id": "turn-again",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Step one."
+          },
+          {
+            "kind": "tool",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "params": "path=\"b.rb\"",
+            "status": "ok",
+            "tool_id": "t1",
+            "title": "b.rb",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "action": "reading file",
+            "duration_ms": 120
+          },
+          {
+            "kind": "generation",
+            "iteration": 2
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_failed",
+        "turn_id": "turn-again",
+        "duration_ms": 5000,
+        "summary": "the model server is unreachable",
+        "message": "connection refused",
+        "error_class": "Errno::ECONNREFUSED",
+        "kept_steps": 1
+      }
+    },
+    {
+      "v": 1,
+      "turn_id": "turn-again",
+      "kind": "completed",
+      "from": 5,
+      "to": 7,
+      "from_digest": "fa65e5ef28092fd241cf6c939ccdaba37805f599",
+      "to_digest": "c6720c2564d841eea4790db542f032a4cc3f7bc7",
+      "drawing": {
+        "prompt": "fix it",
+        "turn_id": "turn-again",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "Fixed."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-again",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-again": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "fix it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-again"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Fixed.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-again",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "fix it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-again",
+        "drawn": "turn-again~1"
+      },
+      {
+        "role": "assistant",
+        "content": "Step one.",
+        "drawn": "turn-again~1"
+      },
+      {
+        "role": "user",
+        "content": "fix it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-again",
+        "drawn": "turn-again"
+      },
+      {
+        "role": "assistant",
+        "content": "Fixed.",
+        "drawn": "turn-again"
+      }
+    ],
+    "turn_drawings": {
+      "turn-again~1": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "fix it",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-again~1"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Step one.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"b.rb\"",
+            "title": "b.rb",
+            "ref": {
+              "kind": "file",
+              "path": "/work/b.rb"
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b.rb\"",
+              "title": "b.rb",
+              "action": "reading file"
+            },
+            "ref": {
+              "kind": "file",
+              "path": "/work/b.rb"
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_failed"
+        }
+      },
+      "turn-again": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "fix it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-again"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Fixed.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-again",
+          "duration_ms": 2400
+        }
+      }
+    }
+  },
+  "synth": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "fix it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-again"
+      },
+      {
+        "role": "assistant",
+        "content": "Step one.",
+        "parts": {
+          "tools": [
+            {
+              "tool": "read",
+              "params": "path=\"b.rb\"",
+              "title": "b.rb",
+              "output": "[read]\nb",
+              "tool_id": "t1"
+            }
+          ]
+        }
+      },
+      {
+        "role": "user",
+        "content": "fix it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-again",
+        "drawn": "turn-again~5"
+      },
+      {
+        "role": "assistant",
+        "content": "Fixed.",
+        "drawn": "turn-again~5"
+      }
+    ],
+    "turn_drawings": {
+      "turn-again~5": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "fix it",
+            "origin": null,
+            "continue": false,
+            "turn_id": "turn-again~5"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Fixed.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed"
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web draws every finished turn the way it was drawn live; turns from before drawings (and past the newest 100)
+  are drawn from a drawing rebuilt from their messages, with small differences (no hook notices or durations that were
+  never kept).
+
 ### Fixed
 
 - The copied-folder notice (two folders sharing a chi project id) no longer tells the original to take a new id: it

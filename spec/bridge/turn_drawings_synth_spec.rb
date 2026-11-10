@@ -135,7 +135,8 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
         expect(index).not_to be_nil, "no range #{real.from}...#{real.to} in #{ranges.inspect}"
         synth = described_class.line(scenario[:messages], ranges[index], record: records[index], tools: kept[:tools],
                                                                           entries: kept[:entries])
-        unopened = ranges[index].opening.nil?
+        # A range whose id repeats an earlier one's (…~N) has none of the turn's ids or records either.
+        unopened = ranges[index].opening.nil? || !ranges[index].own_id?
         woken = !unopened && ranges[index].opening < ranges[index].from
         expect(comparable(synth, unopened: unopened, woken: woken)).to eq(comparable(real, unopened: unopened, woken: woken))
         expect(synth.end["record_id"]).to eq(real.turn_id) unless unopened

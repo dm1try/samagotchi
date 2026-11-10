@@ -5,6 +5,7 @@ require "fileutils"
 require "json"
 require_relative "../log"
 require_relative "../message_time"
+require_relative "../degrade"
 require_relative "../steer"
 
 module Samagotchi
@@ -31,17 +32,18 @@ module Samagotchi
     # SessionObserver's delivery: the line is on disk before any stream gets
     # the end frame. That departs from SessionObserver's "enqueue-only" note,
     # as CardStore's save does: one append per turn end.
+    # Both read TurnDrawings at load: loaded on first use (no require cycle).
+    autoload :TurnRanges, File.expand_path("turn_ranges", __dir__)
+
     class TurnDrawings
+      autoload :Synth, File.expand_path("turn_drawings/synth", __dir__)
+
       FILE = "turn_drawings.jsonl"
       # In the sidecar's features (Bridge::FEATURES): this worker's CardStore
       # lists an in-turn entry's of_turn, which a page drawing the turn needs
       # to leave that entry to the drawing. chi web draws no drawings for a
       # live worker without it (an older one: its rows would show twice).
       FEATURE = "turn_drawings"
-      # A show draws at most this many turns from their drawings, the newest
-      # (the payload and the page's offscreen render stay bounded in a long
-      # session); older turns draw as before, from their messages.
-      SHOWN_MAX = 100
       VERSION = 1
       # The end event's keys the page draws a finished turn's end from (not
       # the answer: its text, html and refs stay the message's; not the range:
@@ -190,7 +192,8 @@ module Samagotchi
 
           lines = parse(File.binread(path))
           cache_mutex.synchronize do
-            cache.shift while cache.size >= CACHE_SIZE
+            cache.delete(path)
+            cache.shift while !cache.empty? && (cache.size >= CACHE_SIZE || cache.sum { |_, (k, _)| k[0] } + stat.size > CACHE_BYTES)
             cache[path] = [key, lines]
           end
           lines
@@ -225,11 +228,67 @@ module Samagotchi
         end
 
         # The lines a show draws the session's finished turns from: pure,
-        # over the file's +lines+ (.read) and the session's +messages+. Today
-        # the valid ones (.valid); the turns no valid line covers draw from
-        # their messages (H3: a drawing made from them takes their place).
+        # over the file's +lines+ (.read) and the session's +messages+. The
+        # valid ones (.valid), and for each turn (TurnRanges) no valid line
+        # overlaps, a line made from its messages (Synth, memoized per
+        # range), so every finished turn has one. +timing+: the session's
+        # records (turn_records, tool_records: the show's timing payload);
+        # +entries+: CardStore's listed entries (the show's cards);
+        # +skip_turn_id+: the running turn's id (its messages may be in
+        # while its line isn't written yet: never synthesized). A file whose
+        # lines can't be checked counts as none: every turn synthesized.
         # @return [Array<Line>] ordered by their range
-        def cover(lines, messages) = valid(lines, messages)
+        def cover(lines, messages, timing: nil, entries: [], skip_turn_id: nil, session_id: nil, cwd: nil)
+          messages = Array(messages)
+          real = Degrade.call(:web, "turn_drawings_unreadable", fallback: []) { valid(lines, messages) }
+          ranges = TurnRanges.of(messages)
+          open = uncovered(ranges, real)
+          ranges = reserve_ids(ranges, open, real)
+          turn_records = list_of(timing, :turn_records)
+          records = TurnRanges.records(ranges, turn_records)
+          tools = list_of(timing, :tool_records).group_by { |t| field(t, :turn_id) }
+          own = Array(entries).select { |e| e.is_a?(Hash) && field(e, :of_turn) }.group_by { |e| field(e, :of_turn) }
+          made = open.filter_map do |i|
+            range = ranges[i]
+            next if skip_turn_id && range.turn_id == skip_turn_id
+
+            record = records[i]
+            # The turn's tool records by its record's id, else its own (a
+            # record lost, its tool records saved: the TUI's join does so too).
+            tool_id = record ? field(record, :id) : (range.turn_id if range.own_id?)
+            Synth.memoized(session_id, messages, range, record: record, tools: tool_id ? tools.fetch(tool_id, []) : [],
+                                                        entries: own.fetch(range.turn_id, []), cwd: cwd)
+          end
+          (real + made).sort_by(&:from)
+        end
+
+        # +ranges+ with each one to be made (+open+, indexes) whose id a kept
+        # line has (a failed turn's kept steps, then its re-run under the same
+        # turn id: .valid keeps the newest line for an id) renamed "<id>~<from>":
+        # never two lines with one id (the page would draw them as one turn),
+        # and not its turn's own (no end turn_id, record or entries).
+        def reserve_ids(ranges, open, lines)
+          taken = lines.to_set(&:turn_id)
+          return ranges if taken.empty?
+
+          made = open.to_set
+          ranges.each_with_index.map do |range, i|
+            made.include?(i) && taken.include?(range.id) ? range.with(id: "#{range.id}~#{range.from}") : range
+          end
+        end
+        private :reserve_ids
+
+        # The indexes of +ranges+ no line of +lines+ (sorted by from, apart)
+        # overlaps: one walk over both.
+        def uncovered(ranges, lines)
+          at = 0
+          ranges.each_index.reject do |i|
+            range = ranges[i]
+            at += 1 while at < lines.size && lines[at].to >= 0 && lines[at].to <= range.from
+            at < lines.size && lines[at].from < range.to
+          end
+        end
+        private :uncovered
 
         # The last parseable line of +path+, or nil.
         # @return [Line, nil]
@@ -263,16 +322,24 @@ module Samagotchi
           message.key?(key) ? message[key] : message[key.to_s]
         end
 
+        def field(hash, key) = hash.is_a?(Hash) ? fetch(hash, key) : nil
+
+        def list_of(timing, key) = Array(timing.is_a?(Hash) ? fetch(timing, key) : nil).grep(Hash)
+
         def cache = (@cache ||= {})
         def cache_mutex = (@cache_mutex ||= Mutex.new)
       end
 
       # Sessions whose parsed file chi web keeps (a long one's is tens of MB
-      # of objects; the mtime moves at every turn end anyway).
+      # of objects; the mtime moves at every turn end anyway), and the files'
+      # bytes they may sum to (the newest one is always kept). Both bound the
+      # files' and lines' JSON bytes, not the heap: parsed lines take several
+      # times that (as Synth::MEMO_BYTES does).
       CACHE_SIZE = 8
+      CACHE_BYTES = 64 * 1024 * 1024
       # Read from the end at start (#last): a drawing is a few KB, its outputs cut.
       TAIL_BYTES = 1024 * 1024
-      private_constant :CACHE_SIZE, :TAIL_BYTES
+      private_constant :CACHE_SIZE, :CACHE_BYTES, :TAIL_BYTES
     end
   end
 end

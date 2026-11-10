@@ -567,3 +567,19 @@ for (const [name, spec] of Object.entries(turnRanges)) {
     });
   });
 }
+
+test("turnGroups pairs a drawn turn with the record its end names (a made-up id's, by place), else its own id's", () => {
+  const items = [{ role: "user", content: "old", drawn: "m1-0a1b2c3d" }, { role: "assistant", content: "a", drawn: "m1-0a1b2c3d" },
+    { role: "user", content: "new", turn_id: "t2", drawn: "t2" }, { role: "assistant", content: "b", drawn: "t2" }];
+  const drawing = (end) => ({ events: [{ type: "turn_started" }], end });
+  const drawings = { "m1-0a1b2c3d": drawing({ type: "turn_completed", record_id: "r1" }), t2: drawing({ type: "turn_completed", turn_id: "t2" }) };
+  const timing = normalizeTiming({ turn_records: [{ id: "r1", status: "completed", duration_ms: 1500 }, { id: "t2", status: "completed", duration_ms: 900 }] });
+  const turns = turnGroups(items, timing, { drawings }).filter((g) => g.kind === "turn");
+  assert.deepEqual(turns.map((g) => g.record?.id ?? null), ["r1", "t2"]);
+});
+
+test("turnGroups keeps a repeated turn id's two turns apart: the made one has an id of its own (spec/shared/turn_drawings/repeated_id.json)", () => {
+  const { show } = JSON.parse(readFileSync(fileURLToPath(new URL("../../../spec/shared/turn_drawings/repeated_id.json", import.meta.url)), "utf8"));
+  const turns = turnGroups(show.messages, normalizeTiming({}), { drawings: show.turn_drawings }).filter((g) => g.kind === "turn");
+  assert.deepEqual(turns.map((g) => g.drawn), ["turn-again~1", "turn-again"]);
+});

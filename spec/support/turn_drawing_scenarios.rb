@@ -255,6 +255,22 @@ module TurnDrawingScenarios
         ends: [[HEAD, user("again", first), model("Same.")], messages],
         messages: messages }
     },
+    repeated_id: lambda {
+      id = "turn-again"
+      note = Samagotchi::TurnNote.failed_after("the model server is unreachable", 1)
+      failed = [HEAD, user("fix it", id), model("Step one.", tool_calls: [call("c1", "read", { path: "b.rb" })]),
+                response("c1", "t1", "[read]\nb"), note]
+      messages = failed + [user("fix it", id), model("Fixed.")]
+      { description: "A failed turn's kept steps, then its re-run under the same turn id: both lines on disk, the newest " \
+                     "kept for the id; the earlier turn is made from its messages under an id of its own.",
+        events: [started(id, "fix it"), gen(1), text(1, "Step one."),
+                 *tool(1, 1, "read", 'path="b.rb"', "[read]\nb", tool_id: "t1", title: "b.rb"), done(1), gen(2),
+                 { type: :turn_failed, turn_id: id, duration_ms: 5000, summary: "the model server is unreachable",
+                   message: "connection refused", error_class: "Errno::ECONNREFUSED", kept_steps: 1, kept_from: 1, kept_to: 5 },
+                 started(id, "fix it"), gen(1), text(1, "Fixed."), done(1), completed(id, 5, 7, "Fixed.")],
+        ends: [failed, messages],
+        messages: messages }
+    },
     hook_notice: lambda {
       id = "turn-hook"
       one("A hook's notice in a tool step: a row of the step, kept by CardStore for a drawing made from the messages.",

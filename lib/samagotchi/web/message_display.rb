@@ -231,11 +231,15 @@ module Samagotchi
       # draws (the opening, steps, steers, merged lines, the empty answer):
       # a context note, a `!cmd`'s record and anything else keep today's
       # place. +origins+: each item's message index.
+      # One walk: +drawings+ are sorted apart by range, +origins+ never go
+      # back.
       def stamp_drawn(items, origins, drawings, strip:)
         return items if drawings.empty?
 
+        at = 0
         items.each_with_index.map do |item, i|
-          line = drawings.find { |l| l.range.cover?(origins[i]) }
+          at += 1 while at < drawings.size && drawings[at].to <= origins[i]
+          line = drawings[at] if at < drawings.size && drawings[at].range.cover?(origins[i])
           next item unless line && drawn_kind?(item)
 
           stamped = item.merge(drawn: line.turn_id)

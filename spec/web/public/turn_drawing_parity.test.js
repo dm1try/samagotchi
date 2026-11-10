@@ -152,6 +152,24 @@ for (const scenario of scenarios) {
   });
 }
 
+// A drawing chi web made up an id for (a turn saved before turn ids): its
+// answer has no data-answer-turn (no Revise, no fold key for it), a live
+// line's keeps its turn's.
+test("a drawn answer is keyed by its end's own turn id only", () => {
+  const plain = scenarios.find((s) => s.name === "plain_answer").show;
+  const keyOf = (show) => {
+    document.body.innerHTML = '<div id="history"></div>';
+    const historyEl = document.getElementById("history");
+    historyEl.append(turnHistoryNodes(show.messages, {}, { thumbs: () => null, drawings: show.turn_drawings }));
+    return historyEl.querySelector(".bubble.output")?.getAttribute("data-answer-turn") ?? null;
+  };
+  assert.equal(keyOf(plain), "turn-plain");
+  const made = JSON.parse(JSON.stringify(plain).replaceAll("turn-plain", "m1-0a1b2c3d"));
+  delete made.turn_drawings["m1-0a1b2c3d"].end.turn_id;
+  for (const item of made.messages) delete item.turn_id;
+  assert.equal(keyOf(made), null);
+});
+
 test("every shared scenario has a show with its drawing", () => {
   assert.ok(scenarios.length >= 16);
   for (const s of scenarios) assert.ok(Object.keys(s.show?.turn_drawings || {}).length, s.name);

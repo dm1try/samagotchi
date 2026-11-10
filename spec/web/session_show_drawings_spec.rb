@@ -7,6 +7,8 @@ require "rack/mock"
 
 require "samagotchi/web/app"
 require "samagotchi/session"
+require "samagotchi/analytics_file"
+require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
 require "support/turn_drawing_scenarios"
 
@@ -20,6 +22,8 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
   let(:state_dir) { Dir.mktmpdir }
   let(:dir) { File.join(state_dir, "s1") }
 
+  # The made-up lines are kept per range across shows (Synth::MEMO): each example starts with none.
+  before { Samagotchi::Bridge::TurnDrawings::Synth::MEMO.clear }
   after { FileUtils.rm_rf(state_dir) }
 
   # A session loader whose file has +messages+ (symbol keys on top, as
@@ -28,7 +32,7 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     list = messages.map { |m| m.transform_keys(&:to_sym) }
     Class.new do
       define_singleton_method(:load) do |_id, state_dir: nil|
-        Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap { |s| s.messages = list }
+        Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: "/work").tap { |s| s.messages = list }
       end
       define_singleton_method(:session_dir) { |id, state_dir: nil| File.join(state_dir.to_s, id) }
       define_singleton_method(:exist?) { |_id, state_dir: nil| true }
@@ -78,8 +82,9 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
         else
           expect(shown).to eq(saved["show"]), "run with UPDATE_TURN_DRAWINGS=1 to write the fixture"
         end
-        expect(data["turn_drawings"].keys).to eq(saved["drawn"].keys)
-        expect(data["turn_drawings"]).to eq(saved["drawn"])
+        # Its live lines' turns as they drew; any other turn (an earlier one
+        # with no line) is made from its messages.
+        expect(data["turn_drawings"].slice(*saved["drawn"].keys)).to eq(saved["drawn"])
       end
     end
   end
@@ -122,24 +127,27 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(app.send(:worker_draws?, "s1")).to be(false)
   end
 
-  it "drops a rolled-back turn: its items keep their parts and no stamp" do
+  it "drops a rolled-back turn's line: what is left of it is drawn from its messages" do
     saved = fixture("tools_answer")
     write_lines(saved["lines"])
 
     data = show(app_for(saved["messages"].first(3)))
 
-    expect(data["messages"].map { |m| m["drawn"] }).to eq([nil, nil])
-    expect(data["messages"].last).to have_key("parts")
-    expect(data).not_to have_key("turn_drawings")
+    expect(data["messages"].map { |m| m["drawn"] }).to eq(%w[turn-tools turn-tools])
+    expect(data["messages"].none? { |m| m.key?("parts") }).to be(true)
+    events = data.dig("turn_drawings", "turn-tools", "events")
+    expect(events.map { |e| e["type"] }).to include("tool_call_started")
+    expect(events.find { |e| e["type"] == "tool_call_completed" }).to include("tool" => "read")
   end
 
-  it "stamps a reminder-only turn's items (no prompt of its own) and not the turn before it" do
+  it "stamps a reminder-only turn's items (no prompt of its own) apart from the turn before it, made from its messages" do
     saved = fixture("reminder_only")
     write_lines(saved["lines"])
 
     data = show(app_for(saved["messages"]))
 
-    expect(data["messages"].map { |m| [m["role"], m["drawn"]] }).to eq([["user", nil], ["assistant", nil], %w[assistant turn-reminder-only]])
+    expect(data["messages"].map { |m| [m["role"], m["drawn"]] }).to eq([%w[user turn-0], %w[assistant turn-0], %w[assistant turn-reminder-only]])
+    expect(data["turn_drawings"]["turn-0"]["events"].first).to include("type" => "turn_started", "prompt" => "earlier")
   end
 
   it "leaves a context note inside a range unstamped (it keeps today's place)" do
@@ -164,27 +172,127 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["messages"][1]).to include("drawn" => "turn-tools", "marks" => { "t1" => { "kind" => "forgot" } })
   end
 
-  it "draws only the newest SHOWN_MAX turns from their drawings: older ones keep their parts and today's reload" do
-    stub_const("Samagotchi::Bridge::TurnDrawings::SHOWN_MAX", 1)
-    first = fixture("reminder_only")
-    messages = first["messages"]
-    older = { "v" => 1, "turn_id" => "turn-0", "kind" => "completed", "from" => 1, "to" => 3,
-              "from_digest" => Samagotchi::Bridge::TurnDrawings.digest(messages[1]),
-              "to_digest" => Samagotchi::Bridge::TurnDrawings.digest(messages[2]), "drawing" => { "prompt" => "earlier", "parts" => [] },
-              "end" => { "type" => "turn_completed" } }
-    write_lines([older, *first["lines"]])
+  # Every turn item of a session drawn (stamped, with its drawing sent).
+  def all_drawn(data)
+    turn_items = data["messages"].reject { |m| m["role"] == "note" && !m["turn_start"] }
+    turn_items.all? { |m| m["drawn"] && data["turn_drawings"].key?(m["drawn"]) } && turn_items.none? { |m| m.key?("parts") }
+  end
+
+  def write_analytics(turns, tools = [])
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, Samagotchi::AnalyticsFile::NAME), JSON.generate("turn_records" => turns, "tool_records" => tools))
+  end
+
+  # +n+ turns of a prompt, a read and an answer; +ids+: whether they carry turn ids.
+  def long_session(n, ids: true)
+    head = [{ "role" => "system", "content" => "You are chi." }]
+    head + (1..n).flat_map do |k|
+      prompt = { "role" => "user", "content" => "q#{k}", "at" => TurnDrawingScenarios::AT }
+      prompt["turn_id"] = "t#{k}" if ids
+      [prompt,
+       { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c#{k}", "name" => "read", "arguments" => %({"path":"f#{k}"}) }] },
+       { "role" => "tool_response", "content" => "[read]\n#{k}", "tool_call_id" => "c#{k}" },
+       { "role" => "model", "content" => "a#{k}" }]
+    end
+  end
+
+  it "draws every turn of a session from before turn drawings (no file), each from its messages" do
+    data = show(app_for(fixture("plain_answer")["messages"]))
+
+    expect(all_drawn(data)).to be(true)
+    expect(data["turn_drawings"].keys).to eq(["turn-plain"])
+  end
+
+  it "draws every turn of a 150-turn session, past the 100 a show drew before" do
+    messages = long_session(150)
+    data = show(app_for(messages))
+
+    expect(all_drawn(data)).to be(true)
+    expect(data["turn_drawings"].size).to eq(150)
+    expect(data["turn_drawings"]["t1"]["events"].map { |e| e["type"] }).to include("tool_call_completed")
+  end
+
+  it "draws a one-shot session's turns (no Bridge wrote a line), with their records" do
+    messages = long_session(2)
+    write_analytics([{ "id" => "t1", "status" => "completed", "duration_ms" => 1200 }, { "id" => "t2", "status" => "canceled",
+                                                                                         "duration_ms" => 900, "cancellation_reason" => "user" }],
+                    [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "read", "status" => "ok", "duration_ms" => 33 }])
+    data = show(app_for(messages))
+
+    expect(all_drawn(data)).to be(true)
+    expect(data["turn_drawings"]["t1"]["end"]).to include("type" => "turn_completed", "duration_ms" => 1200, "record_id" => "t1")
+    expect(data["turn_drawings"]["t2"]["end"]).to include("type" => "turn_canceled", "cancellation_reason" => "user")
+    read = data["turn_drawings"]["t1"]["events"].find { |e| e["type"] == "tool_call_completed" }
+    expect(read).to include("duration_ms" => 33)
+  end
+
+  it "keeps an unlined turn's in-turn hook notice, from CardStore, after a reload (H1)" do
+    messages = long_session(1)
+    store = Samagotchi::Bridge::CardStore.new(path: File.join(dir, Samagotchi::Bridge::CardStore::FILE))
+    store.call({ type: :turn_started, turn_id: "t1" })
+    store.call({ type: :generation_started, iteration: 1 })
+    store.call({ type: :tool_call_started, iteration: 1, call_index: 1 })
+    store.call({ type: :hook_notice, hook: "loop-guard", text: "loop: read repeated", level: :warn })
+    store.call({ type: :turn_completed })
 
     data = show(app_for(messages))
 
-    expect(data["turn_drawings"].keys).to eq(["turn-reminder-only"])
-    expect(data["messages"].map { |m| m["drawn"] }).to eq([nil, nil, "turn-reminder-only"])
+    events = data["turn_drawings"]["t1"]["events"]
+    notice = events.index { |e| e["type"] == "hook_notice" }
+    expect(events[notice]).to include("hook" => "loop-guard", "text" => "loop: read repeated")
+    expect(notice).to be > events.index { |e| e["type"] == "tool_call_started" }
+    expect(data["cards"].find { |c| c["type"] == "hook_notice" }).to include("of_turn" => "t1")
   end
 
-  it "has no turn_drawings without a file" do
-    data = show(app_for(fixture("plain_answer")["messages"]))
+  it "pairs a session saved before turn ids with its records by place: its timing line stays (M2)" do
+    write_analytics([{ "id" => "r1", "status" => "completed", "duration_ms" => 1500 }, { "id" => "r2", "status" => "completed",
+                                                                                         "duration_ms" => 2500 }])
+    data = show(app_for(long_session(2, ids: false)))
 
-    expect(data).not_to have_key("turn_drawings")
-    expect(data["messages"].none? { |m| m.key?("drawn") }).to be(true)
+    expect(all_drawn(data)).to be(true)
+    ends = data["turn_drawings"].values.map { |d| d["end"] }
+    expect(ends.map { |e| [e["record_id"], e["duration_ms"]] }).to eq([["r1", 1500], ["r2", 2500]])
+    expect(ends.none? { |e| e.key?("turn_id") }).to be(true)
+  end
+
+  it "draws every turn when the file is damaged or a turn's drawing can't be made (M6)" do
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, Samagotchi::Bridge::TurnDrawings::FILE), "{not json\n\x00\xff\n")
+    expect(all_drawn(show(app_for(long_session(2))))).to be(true)
+
+    Samagotchi::Bridge::TurnDrawings::Synth::MEMO.clear
+    allow(Samagotchi::Bridge::TurnDrawings::Synth).to receive(:line).and_raise(ArgumentError, "boom")
+    data = show(app_for(long_session(2)))
+    expect(data["messages"].map { |m| m["drawn"] }.uniq).to eq(%w[t1 t2])
+    expect(data["turn_drawings"]["t1"]["events"].map { |e| e["type"] }).to eq(%w[turn_started])
+    expect(data["turn_drawings"]["t1"]["end"]).to include("type" => "turn_completed")
+  end
+
+  it "makes a repeated id's earlier turn under an id of its own: never two turns stamped as one (the re-run keeps its line)" do
+    saved = fixture("repeated_id")
+    write_lines(saved["lines"])
+    data = show(app_for(saved["messages"]))
+
+    expect(data["messages"].map { |m| m["drawn"] }).to eq(%w[turn-again~1 turn-again~1 turn-again turn-again])
+    expect(data["turn_drawings"]["turn-again~1"]["end"]).to eq("type" => "turn_failed")
+    expect(data["turn_drawings"]["turn-again"]["end"]).to include("turn_id" => "turn-again")
+  end
+
+  it "gives a turn with no turn record its saved tool records' durations" do
+    write_analytics([], [{ "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "read", "status" => "ok", "duration_ms" => 77 }])
+    data = show(app_for(long_session(1)))
+
+    read = data["turn_drawings"]["t1"]["events"].find { |e| e["type"] == "tool_call_completed" }
+    expect(read).to include("duration_ms" => 77)
+  end
+
+  it "never makes the running turn's drawing (its line comes at its end, L3)" do
+    messages = long_session(1) + [{ "role" => "user", "content" => "now", "turn_id" => "t2" }]
+    live = { "snapshot" => { "messages" => messages, "current_turn" => { "turn_id" => "t2", "prompt" => "now", "parts" => [] } } }
+    data = show(app_for([], live: live))
+
+    expect(data["messages"].map { |m| m["drawn"] }).to eq(["t1", "t1", "t1", nil])
+    expect(data["turn_drawings"].keys).to eq(["t1"])
   end
 
   # An open tab across the upgrade keeps its old page: it never sends

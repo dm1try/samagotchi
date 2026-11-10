@@ -338,6 +338,8 @@ RSpec.describe ReleaseTools do
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session.json"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session/bridge.json"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-session/cards.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-drawn.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/sessions/compat-drawn/turn_drawings.jsonl"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/schedules.json"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/.bundles/compat/manifest.json"))
       expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/schedules.lock"))
