@@ -6,6 +6,7 @@ require_relative "../atomic_file"
 require_relative "../events"
 require_relative "../state_format"
 require_relative "card_places"
+require_relative "turn_notice"
 
 module Samagotchi
   class Bridge
@@ -68,15 +69,18 @@ module Samagotchi
         version: FORMAT_VERSION,
         members: [StateFormat.required(:type), StateFormat.extra(:extra, in_version: FORMAT_VERSION)]
       )
-      NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
+      # A question's events (TurnNotice's too): one :question entry, never
+      # pushed out while open.
+      QUESTION_EVENTS = %i[question_requested question_answered question_cancelled].freeze
       # Capped apart from the notices.
       LLM_CONTEXT_TYPES = %i[llm_context_edited].freeze
-      LLM_CONTEXT_FIELDS = %i[type moment why freed_tokens tail_tokens staged text groups].freeze
+      # A turn's rows (TurnNotice::FIELDS, the fields a join replays them
+      # with) other than questions and ✂ rows, plus the load warnings.
+      NOTICE_TYPES = (TurnNotice::FIELDS.keys - QUESTION_EVENTS - LLM_CONTEXT_TYPES + %i[guardrail_warning]).freeze
       FILE = "cards.json"
       # The events after which the file is written again: the ones that
       # change an entry or the turn log.
-      SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
-                     question_cancelled question_relay] + Events::TURN_END).freeze
+      SAVED_ON = (%i[turn_started card question_relay] + TurnNotice::FIELDS.keys + Events::TURN_END).uniq.freeze
       # What only the store reads: never listed.
       INTERNAL_FIELDS = %i[turn_id continued base_since past_idless after_opening during after_failed command].freeze
 
@@ -320,11 +324,8 @@ module Samagotchi
         # that turn: it anchors before the turn.
         when :guardrail_warning then push({ type: :guardrail_warning, message: event[:message], label: event[:label] }
                                             .compact.merge(in_turn: false, turn_id: @running_turn ? @turn_log[-2] : @turn_log.last))
-        when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by, :malformed)) if @running_turn
-        when :steer_cut then add_turn_row(event.slice(:type, :source)) if @running_turn
-        when :llm_context_edited then add_turn_row(Marshal.load(Marshal.dump(event.slice(*LLM_CONTEXT_FIELDS)))) if @running_turn
-        when :question_requested
-          add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running_turn
+        when :empty_answer_retry, :steer_cut, :llm_context_edited then add_turn_row(notice_row(event)) if @running_turn
+        when :question_requested then add_turn_row(notice_row(event).merge(type: :question)) if @running_turn
         when :question_answered then resolve_question(event[:id], answer: event[:answer])
         when :question_cancelled then resolve_question(event[:id], cancelled: true, reason: event[:reason])
         when :question_relay then mark_relay(event[:id], event[:relayed_to])
@@ -376,8 +377,12 @@ module Samagotchi
         end
       end
 
+      # A TurnNotice event as the store keeps it: its FIELDS, deep-copied,
+      # and its type as a Symbol.
+      def notice_row(event) = TurnNotice.slice(event).merge(type: event[:type])
+
       def add_notice(event)
-        notice = event.slice(:type, :hook, :text, :level, :fallback_for)
+        notice = notice_row(event)
         if event[:between_turns] || !@running_turn
           push(notice.merge(in_turn: false, turn_id: anchor))
         else
@@ -387,7 +392,7 @@ module Samagotchi
 
       # A row of the running turn's current step.
       def add_turn_row(row)
-        entry = row.merge(in_turn: true, turn_id: @running_turn, iteration: @iteration, calls: @calls).compact
+        entry = row.merge(in_turn: true, turn_id: @running_turn, iteration: @iteration || row[:iteration], calls: @calls).compact
         entry[:continued] = true if @continuing
         push(entry)
       end
