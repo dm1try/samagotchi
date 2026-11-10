@@ -122,29 +122,6 @@ module Samagotchi
     # resume_session's hold-off, after the owner: a start pending.
     def resume_held_off? = start_pending?
 
-    # Why a ring or a context wake (SpawnPart's wake_existing_session) starts
-    # no worker, from the files alone, in its order: :gone, :owned, :stopped
-    # (the marker), :archived (the caller may follow the chain), :starting;
-    # nil when the session's own fields decide (#wake_refusal_by_session).
-    # @return [Symbol, nil]
-    def wake_refusal
-      return :gone unless exists?
-      return :owned if owned?
-      return :stopped if stop_marked?
-      return :archived if archived?
-
-      :starting if starting?
-    end
-
-    # The rest of wake_existing_session's checks, on the loaded session
-    # (#with_session): :stopped (the turn status) or :scratch, else nil.
-    # @return [Symbol, nil]
-    def wake_refusal_by_session
-      return :stopped if turn_stopped?
-
-      :scratch if scratch?
-    end
-
     # The Bridge answers (WorkerLink::Live). False when the link wasn't read.
     def live? = link&.live? == true
 

@@ -252,7 +252,16 @@ you're away from the terminal. All of these must hold:
 - the session's worker is up and idle: no turn running, nothing queued, no
   question or continue offer waiting, not just started. A changed push from a
   session-scoped source can start an idle-exited worker; it never restarts an
-  explicitly stopped session;
+  explicitly stopped session (the push waits for its next start). Only the
+  stop marker (`chi sessions stop`) counts as stopped. `chi context push`
+  ends its line with what that wake did: `· chi woken`, `· chi is stopped: it
+  sees this at its next start` or `· chi is starting` (nothing when the
+  worker is up, or the push asked no wake; chi web's push answer carries it
+  as `wake`). `· chi woken` means this push started the worker; one another
+  start had begun says `· chi is starting`. A worker from an older chi woken
+  for a session whose file still says stopped with no `chi sessions stop`
+  behind it exits at once: the line still says woken; restarting chi on the
+  new version covers it;
 - under `session.max_wakes` turns in a row with no message from you (the
   budget delegate reports and finished background tasks use too; a turn that
   failed, or was stopped before the model call, pauses wakes until you write);

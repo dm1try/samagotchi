@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
   paths and a delegate child's boundary. A plugin tool whose targets declare a `command:` a delegate child's
   boundary checks for what chi can read for sure only: git that changes what every checkout shares, and a `cwd:`
   outside the child's folder.
+- `chi context push` says what a wake push did: `· chi woken` (an idle-exited session started), `· chi is stopped:
+  it sees this at its next start` (a stopped session is never started) or `· chi is starting`; chi web's push
+  answer carries it as `wake`. A delegate's report, or a push, now wakes a session whose file still said stopped
+  without a `chi sessions stop` behind it: only the stop marker means stopped.
 
 ### Fixed
 

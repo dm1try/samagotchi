@@ -134,7 +134,19 @@ module Samagotchi
       # Ensure an existing session has a live worker process.
       # Returns the loaded session after state reconciliation.
       # @raise [OwnedByTUI] when the interactive TUI owns the session
+      # @yieldparam outcome [Symbol] what it did, when a block is given:
+      #   :woken (it spawned the worker), :live (a worker holds the session,
+      #   or took it since the first read) or :starting (another start is
+      #   pending, or won the claim)
       def resume_session(session_id, state_dir: nil)
+        session, outcome = resume(session_id, state_dir: state_dir)
+        yield outcome if block_given?
+        session
+      end
+
+      # resume_session's work, with its outcome.
+      # @return [Array(Session, Symbol)]
+      private def resume(session_id, state_dir:)
         sd = state_dir || Session.default_state_dir
         session = Session.load(session_id, state_dir: sd)
         # Its terminal's worker came from spawn_session; nothing wakes another.
@@ -142,14 +154,16 @@ module Samagotchi
 
         presence = WorkerPresence.read(session.id, state_dir: sd, owner: session_owner(session.id, state_dir: sd))
         raise OwnedByTUI, session.id if presence.tui_owned?
-        return session if presence.owned?
+        return [session, :live] if presence.owned?
 
         # A worker being started for it, by this process or another (chi web,
         # a `chi send`, a child's ring; a continue moving delegates to its new
         # link), may not hold the lock yet: a second one would only lose it,
         # or race the move (#resume_held_off?).
-        return session if presence.resume_held_off?
-        return session unless claim_start(session.id, state_dir: sd, stopped: presence.stop_marked?)
+        return [session, :starting] if presence.resume_held_off?
+
+        claimed = claim_start(session.id, state_dir: sd, stopped: presence.stop_marked?)
+        return [session, claimed] unless claimed == :claimed
 
         # The new worker must not find the session stopped (it would exit).
         # Nothing else is written: the file is the worker's, which turns a
@@ -163,7 +177,7 @@ module Samagotchi
           StartingMarker.clear(session.id, state_dir: sd)
           raise
         end
-        session
+        [session, :woken]
       end
 
       # A ring waits in a parent's children/ (a failed continue's previous
@@ -184,41 +198,20 @@ module Samagotchi
         outcome == :live ? :owned : outcome
       end
 
-      # A pushed context source asked for a wake: start an idle-exited
-      # session, but never clear a stop or forward an archived link.
-      # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
-      #   :scratch, :owned, :starting)
-      def wake_for_context(session_id, state_dir: nil)
-        wake_existing_session(session_id, state_dir: state_dir || Session.default_state_dir, forward: false,
-                              event: :context_woke_session)
-      end
-
-      # Its checks in order: WorkerPresence#wake_refusal (gone, owned, the
-      # stop marker, archived, a continue starting), then the loaded
-      # session's (#wake_refusal_by_session: the turn status, scratch).
-      private def wake_existing_session(session_id, state_dir:, forward:, event:)
-        presence = WorkerPresence.read(session_id, state_dir: state_dir, owner: -> { session_owner(session_id, state_dir: state_dir) })
-        if (why = presence.wake_refusal) == :archived
-          following = forward && SessionChain.next_of(session_id, state_dir: state_dir)
-          return following ? wake_existing_session(following, state_dir: state_dir, forward: false, event: event) : :archived
-        end
-        return why if why
-
-        why = presence.with_session(Session.load(session_id, state_dir: state_dir)).wake_refusal_by_session
-        return why if why
-
-        start_for_inbox(session_id, state_dir: state_dir, event: event)
-      end
-
       # Start a worker for a delivery whose WakePolicy decided :start
       # (SessionInbox.deliver): resume_session, which keeps its own checks
       # (a claim on the starting marker: of starts racing, one spawns),
       # logged as +event+.
       # @param event [Symbol] :delegate_woke_parent (a ring) or :context_woke_session (a push)
-      # @return [Symbol] :woken, or :owned (a one-turn chi run or its
-      #   terminal's scratch session took it since)
+      # @return [Symbol] :woken (this start spawned it), :starting (another
+      #   start won the claim, or is pending), :live (a worker took it since)
+      #   or :owned (a one-turn chi run or its terminal's scratch session did)
       def start_for_inbox(session_id, state_dir:, event:)
-        resume_session(session_id, state_dir: state_dir)
+        # A stand-in resume_session that yields nothing counts as a start.
+        outcome = :woken
+        resume_session(session_id, state_dir: state_dir) { |done| outcome = done }
+        return outcome unless outcome == :woken
+
         details = event == :delegate_woke_parent ? { parent: session_id[0, 8] } : { sid: session_id[0, 8] }
         Log.info(:worker, event, **details)
         :woken
@@ -232,14 +225,15 @@ module Samagotchi
       # earlier start's marker, and keeps the session. After a stop, a start
       # marked before it is taken over (a stop cancels the hold-off), one a
       # resume made after it holds (two sends after a stop start one worker).
-      # @return [Boolean] whether this resume spawns
+      # @return [Symbol] :claimed (this resume spawns), :starting (another
+      #   start holds the claim) or :live (a worker took the lock since)
       private def claim_start(session_id, state_dir:, stopped:)
         over_before = stopped ? stopped_at(session_id, state_dir) : nil
-        return false unless StartingMarker.claim(session_id, state_dir: state_dir, over_before: over_before)
-        return true unless session_owner(session_id, state_dir: state_dir)
+        return :starting unless StartingMarker.claim(session_id, state_dir: state_dir, over_before: over_before)
+        return :claimed unless session_owner(session_id, state_dir: state_dir)
 
         StartingMarker.clear(session_id, state_dir: state_dir)
-        false
+        :live
       end
 
       # When the stop marker was written (Session.stopped_at); nil when it

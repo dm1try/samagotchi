@@ -244,10 +244,12 @@ RSpec.describe "delegate reports" do
     end
   end
 
-  describe "SessionManager.wake_for_context" do
+  # A push's wake (SessionInbox.wake :push, as Local#context_push's delivery).
+  describe "a push's wake" do
     before { allow(Samagotchi::SessionManager).to receive(:resume_session) }
 
-    def wake(session = parent) = Samagotchi::SessionManager.wake_for_context(session.id, state_dir: tmpdir)
+    def wake(session = parent) = push_wake(session.id)
+    def push_wake(id) = Samagotchi::SessionInbox.wake(:push, id, state_dir: tmpdir).wake
 
     it "resumes an idle session" do
       expect(wake).to eq(:woken)
@@ -272,7 +274,7 @@ RSpec.describe "delegate reports" do
 
       owned = make
       own(owned, kind: "worker")
-      expect(wake(owned)).to eq(:owned)
+      expect(wake(owned)).to eq(:live)
 
       starting = make
       Samagotchi::StartingMarker.mark(starting.id, state_dir: tmpdir)
@@ -286,7 +288,7 @@ RSpec.describe "delegate reports" do
     end
 
     it "answers :gone for an id that isn't one, as for a ring" do
-      expect(Samagotchi::SessionManager.wake_for_context("../bogus", state_dir: tmpdir)).to eq(:gone)
+      expect(push_wake("../bogus")).to eq(:gone)
       expect(Samagotchi::SessionManager.wake_for_report("../bogus", state_dir: tmpdir)).to eq(:gone)
       expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
     end

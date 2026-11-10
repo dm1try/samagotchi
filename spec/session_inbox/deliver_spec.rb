@@ -106,6 +106,37 @@ RSpec.describe "SessionInbox.deliver" do
       .with(session.id, state_dir: tmpdir, event: :context_woke_session)
   end
 
+  describe "SessionManager.start_for_inbox" do
+    before { allow(Process).to receive(:spawn) }
+
+    def start_for(id) = Samagotchi::SessionManager.start_for_inbox(id, state_dir: tmpdir, event: :context_woke_session)
+
+    it "says :starting, not :woken, when another start won the claim, and logs no wake" do
+      allow(Samagotchi::StartingMarker).to receive(:claim).and_return(false)
+      expect(Samagotchi::Log).not_to receive(:info).with(:worker, :context_woke_session, anything)
+
+      expect(start_for(session.id)).to eq(:starting)
+      result = Samagotchi::SessionInbox.deliver(:push, session.id, state_dir: tmpdir) { true }
+      expect(result).to have_attributes(status: :queued, wake: :starting)
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "says :live when a worker took the lock between the read and the claim" do
+      allow(Samagotchi::SessionManager).to receive(:session_owner).and_return(nil, worker)
+
+      expect(start_for(session.id)).to eq(:live)
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "says :woken when it spawned the worker" do
+      allow(Process).to receive(:spawn).and_return(999_999)
+      allow(Process).to receive(:waitpid).and_raise(Errno::ECHILD)
+
+      expect(start_for(session.id)).to eq(:woken)
+      expect(Process).to have_received(:spawn).once
+    end
+  end
+
   it "wakes without a write (SessionInbox.wake)" do
     result = Samagotchi::SessionInbox.wake(:ring, session.id, state_dir: tmpdir, owner: ->(_) {}, start: start)
 

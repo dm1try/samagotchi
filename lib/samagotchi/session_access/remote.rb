@@ -508,7 +508,10 @@ module Samagotchi
         reply = request(:post, "#{session_path(target.session_id)}/context/#{name}/push",
                         body: { text: fetched.text, summary: fetched.summary, wake: fetched.wake, hint: fetched.hint })
         case reply.status
-        when 200 then ContextPush.new(status: :pushed, before: reply.json["before"], revision: reply.json["revision"])
+        when 200
+          # An older chi web's answer names no wake: the line is as it was.
+          wake = ContextPush::WAKES.find { |known| known.to_s == reply.json["wake"] }
+          ContextPush.new(status: :pushed, before: reply.json["before"], revision: reply.json["revision"], wake: wake)
         when 404
           return ContextPush.new(status: :missing) if context_missing?(reply)
 

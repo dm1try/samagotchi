@@ -271,9 +271,15 @@ module Samagotchi
     # chi context push's outcome: :pushed (+before+ the revision it had,
     # +revision+ the new one), :missing (no such source), :not_push (a
     # command source, whose text is its command's) or :continued (the
-    # session was continued, as +next_id+: nothing was written).
-    ContextPush = Data.define(:status, :before, :revision, :next_id) do
-      def initialize(status:, before: nil, revision: nil, next_id: nil) = super
+    # session was continued, as +next_id+: nothing was written). +wake+:
+    # what a push that asked for a wake did (SessionInbox.deliver :push:
+    # :woken, :live, :stopped, :starting, :archived, :scratch, :owned,
+    # :gone), nil when it asked none (or an older chi web's answer has none).
+    ContextPush = Data.define(:status, :before, :revision, :next_id, :wake) do
+      def initialize(status:, before: nil, revision: nil, next_id: nil, wake: nil) = super
+
+      # What chi context push adds to its line for the wake, else nil.
+      def wake_line = ContextPush::WAKE_LINES[wake]
 
       # Why a push to +name+ was refused as :not_push: a command source's
       # text is its command's, and a push between two fetches would read
@@ -289,5 +295,12 @@ module Samagotchi
           "attach it to #{next_id} (or pair again with #{next_id}) and push there"
       end
     end
+
+    # The wakes a chi web's push answer may name (Remote reads no other).
+    ContextPush::WAKES = %i[woken live stopped starting archived scratch owned gone].freeze
+    # chi context push's words for a wake; none for the others (:live: the
+    # worker sees it as any push).
+    ContextPush::WAKE_LINES = { woken: "chi woken", stopped: "chi is stopped: it sees this at its next start",
+                                starting: "chi is starting" }.freeze
   end
 end
