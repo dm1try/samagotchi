@@ -2885,7 +2885,12 @@ RSpec.describe Samagotchi::Web::App do
       app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","model":"  "}'))
       app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
-      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([{ model_name: "box:gemma4-26b" }, { model_name: "Qwen3-14B" }, {}, {}])
+      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([
+        { client_id: Samagotchi::ClientId::WEB_CREATE, model_name: "box:gemma4-26b" },
+        { client_id: Samagotchi::ClientId::WEB_CREATE, model_name: "Qwen3-14B" },
+        { client_id: Samagotchi::ClientId::WEB_CREATE },
+        { client_id: Samagotchi::ClientId::WEB_CREATE }
+      ])
     end
   end
 
@@ -2913,7 +2918,11 @@ RSpec.describe Samagotchi::Web::App do
       create(manager, { "strategy" => "default", "apply" => "Default" })
       create(manager, {})
 
-      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([{}, {}, {}])
+      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([
+        { client_id: Samagotchi::ClientId::WEB_CREATE },
+        { client_id: Samagotchi::ClientId::WEB_CREATE },
+        { client_id: Samagotchi::ClientId::WEB_CREATE }
+      ])
     end
 
     it "answers 400 invalid_llm_context for a bad word, an unknown key or a value that isn't a word, and spawns nothing" do
@@ -3005,7 +3014,11 @@ RSpec.describe Samagotchi::Web::App do
       app.call(env_for("/api/sessions", method: "POST", body: '{"idle":true,"preview":"  "}'))
       app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","preview":"other"}'))
 
-      expect(manager.spawn_calls.map { |c| [c[:prompt], c[:extra]] }).to eq([[nil, { preview: "Say pong" }], [nil, {}], ["hi", {}]])
+      expect(manager.spawn_calls.map { |c| [c[:prompt], c[:extra]] }).to eq([
+        [nil, { client_id: Samagotchi::ClientId::WEB_CREATE, preview: "Say pong" }],
+        [nil, { client_id: Samagotchi::ClientId::WEB_CREATE }],
+        ["hi", { client_id: Samagotchi::ClientId::WEB_CREATE }]
+      ])
     end
   end
 

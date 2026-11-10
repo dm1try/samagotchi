@@ -247,7 +247,8 @@ RSpec.describe Samagotchi::Web::App do
       call("/api/sessions", method: "POST", body: JSON.generate(prompt: "hi", dir: repo_a))
       call("/api/sessions", method: "POST", body: JSON.generate(prompt: "hi"))
 
-      expect(manager.spawn_calls).to eq([{ working_directory: repo_a }, { working_directory: Dir.pwd }])
+      expect(manager.spawn_calls).to eq([{ client_id: Samagotchi::ClientId::WEB_CREATE, working_directory: repo_a },
+                                         { client_id: Samagotchi::ClientId::WEB_CREATE, working_directory: Dir.pwd }])
     end
 
     it "starts a chat without one in chi web's start folder, not its cwd" do
@@ -255,7 +256,7 @@ RSpec.describe Samagotchi::Web::App do
       app.call(Rack::MockRequest.env_for("/api/sessions", "HTTP_HOST" => "127.0.0.1", method: "POST",
                                                           input: JSON.generate(prompt: "hi")))
 
-      expect(manager.spawn_calls).to eq([{ working_directory: repo_b }])
+      expect(manager.spawn_calls).to eq([{ client_id: Samagotchi::ClientId::WEB_CREATE, working_directory: repo_b }])
     end
 
     it "refuses a folder that doesn't exist" do
