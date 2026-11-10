@@ -25,13 +25,10 @@ RSpec.describe Samagotchi::ProjectIdClash do
 
   def check(cwd) = described_class.check(env: env, cwd: cwd, home: home)
 
-  it "claims the id folder for this root at session start, only once the folder exists" do
+  it "claims a new id folder for this root at session start" do
     notes = marked("notes")
     expect(check(notes)).to be_nil
-    expect(File.exist?(memories)).to be(false)
-
-    FileUtils.mkdir_p(memories)
-    expect(check(File.join(notes))).to be_nil
+    expect(File.directory?(memories)).to be(true)
     expect(File.read(claim)).to eq("#{notes}\n")
     mtime = File.mtime(claim)
     expect(check(notes)).to be_nil
@@ -40,15 +37,15 @@ RSpec.describe Samagotchi::ProjectIdClash do
 
   it "tells a copy it shares the original's id, every session start, keeping the original's claim" do
     notes = marked("notes")
-    FileUtils.mkdir_p(memories)
-    check(notes)
+    expect(check(notes)).to be_nil
     copy = File.join(tmp, "copy")
     FileUtils.cp_r(notes, copy)
 
     clash = check(copy)
-    expect(clash).to eq(described_class.new(root: copy, other: notes, id: id))
-    expect(clash.message).to eq("#{copy} and #{notes} share chi project id #{id} (a copied folder?): they share " \
-                                "memories. Run `chi project init --new-id` in the copy to give it its own.")
+    expect(clash).to eq(described_class.new(root: copy, other: notes, id: id, folder: memories))
+    expect(clash.message).to eq("#{copy} and #{notes} share chi project id #{id} (a copied folder?): " \
+                                "#{memories} is already in use. Run `chi project init --new-id` in the copy " \
+                                "to give it its own.")
     expect(check(copy)).to eq(clash)
     expect(check(notes)).to be_nil
     expect(File.read(claim)).to eq("#{notes}\n")
@@ -56,8 +53,7 @@ RSpec.describe Samagotchi::ProjectIdClash do
 
   it "takes the claim over without a word after a move, or when the other folder has another id now" do
     notes = marked("notes")
-    FileUtils.mkdir_p(memories)
-    check(notes)
+    expect(check(notes)).to be_nil
     moved = File.join(tmp, "moved")
     File.rename(notes, moved)
 
@@ -76,6 +72,45 @@ RSpec.describe Samagotchi::ProjectIdClash do
     File.write(File.join(notes, Samagotchi::MemoryPaths::MARKER), "")
 
     expect(check(notes)).to be_nil
+  end
+
+  it "uses and claims a legacy id folder with no claim (an older init or chi wrote it)" do
+    FileUtils.mkdir_p(memories)
+    File.write(File.join(memories, "notes.md"), "kept")
+    notes = marked("notes")
+
+    expect(Samagotchi::MemoryPaths.project_key(notes, env: env, home: home)).to eq(id)
+    expect(check(notes)).to be_nil
+    expect(File.read(claim)).to eq("#{notes}\n")
+    expect(File.read(File.join(memories, "notes.md"))).to eq("kept")
+  end
+
+  it "says nothing, and raises nothing, when the memories folder can't be made" do
+    FileUtils.mkdir_p(File.join(tmp, "xdg", "samagotchi"))
+    File.write(File.join(tmp, "xdg", "samagotchi", "memories"), "not a folder")
+
+    expect(check(marked("notes"))).to be_nil
+  end
+
+  it "refuses a marker id that names a git project's existing path-keyed memory folder" do
+    victim = File.join(tmp, "victim")
+    FileUtils.mkdir_p(File.join(victim, ".git"))
+    victim_root = File.realpath(victim)
+    victim_key = Samagotchi::MemoryPaths.key_for_root(victim_root)
+    FileUtils.mkdir_p(memories_dir = File.join(File.dirname(memories), victim_key))
+    File.write(File.join(memories_dir, "private.md"), "victim memory")
+    intruder = marked("intruder", victim_key)
+
+    expect(check(intruder)).to have_attributes(root: File.realpath(intruder), other: "", id: victim_key)
+    expect { Samagotchi::MemoryPaths.project_key(intruder, env: env, home: home) }
+      .to raise_error(Samagotchi::MemoryPaths::ProjectIdConflict) { |error|
+        expect(error.message).to include(memories_dir, "chi project init --new-id")
+      }
+    expect do
+      Samagotchi::ContextSources.project_location_for(intruder, project_id: victim_key, env: env)
+    end.to raise_error(Samagotchi::MemoryPaths::ProjectIdConflict)
+    expect(File.exist?(File.join(memories_dir, ".root"))).to be(false)
+    expect(File.read(File.join(memories_dir, "private.md"))).to eq("victim memory")
   end
 
   describe "the session-start warning (Engine)" do

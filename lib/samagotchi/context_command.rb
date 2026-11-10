@@ -130,6 +130,9 @@ module Samagotchi
     rescue ContextSources::Invalid => e
       error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
+    rescue MemoryPaths::ProjectIdConflict => e
+      error_line("#{command_name}: #{e.message}")
+      CLI::Exit::FAILED
     end
 
     private

@@ -19,6 +19,17 @@ module Samagotchi
     # The file that makes a folder in no git repository a chi project
     # (`chi project init`). The file, not the bare .chi/ dir, is the marker.
     MARKER = File.join(".chi", "project.yml").freeze
+    CLAIM = ".root"
+
+    class ProjectIdConflict < ArgumentError
+      attr_reader :folder
+
+      def initialize(folder)
+        @folder = folder
+        super("project memory folder #{folder} is already in use; run `chi project init --new-id` " \
+              "to give this project its own id")
+      end
+    end
 
     # How a folder's project was found (#lookup): +kind+ is :git, :marker or
     # :none; +root+ is what memories are keyed on (#project_root: git's
@@ -80,19 +91,58 @@ module Samagotchi
 
     # One folder per project: a marked project's id (ProjectId), else its
     # root's path key (#key_for_root).
-    def project_key(cwd = Dir.pwd)
-      found = lookup(cwd)
-      key_for(root: found.root, id: found.id)
+    def project_key(cwd = Dir.pwd, env: ENV, home: default_home)
+      found = lookup(cwd, home: home)
+      key_for(root: found.root, id: found.id, env: env, home: home)
     end
 
     # The key of a project already resolved: +id+ (a ProjectLookup's, a
     # session's project_id) when there is one, else +root+'s path key. Every
     # caller holding a root keys here, with the id that came with it.
-    def key_for(root:, id:) = id || key_for_root(root)
+    def key_for(root:, id:, env: ENV, home: default_home)
+      return key_for_root(root) unless id
+
+      conflict = project_id_conflict(root: root, id: id, env: env, home: home)
+      raise conflict if conflict
+
+      id
+    end
+
+    # The shape of a #key_for_root name (`<basename>_<8 lowercase hex>`);
+    # generated ids (ProjectId.generate) are `<name>-<8 hex>`.
+    PATH_KEY_SHAPE = /_[0-9a-f]{8}\z/
+    private_constant :PATH_KEY_SHAPE
+
+    # An existing id folder is safe only when it is claimed by this root, or
+    # the caller or its previous claimant no longer has this id. An unclaimed
+    # folder is taken only when its name has the path-key shape (another
+    # project's path-keyed folder); one of any other name is a legacy id
+    # folder (an older `chi project init` or chi wrote no claim):
+    # ProjectIdClash.check claims it at session start.
+    def project_id_conflict(root:, id:, env: ENV, home: default_home)
+      folder = File.join(projects_dir(env: env), id)
+      return nil unless File.exist?(folder) || File.symlink?(folder)
+      return ProjectIdConflict.new(folder) unless File.directory?(folder)
+
+      claim_path = File.join(folder, CLAIM)
+      other = File.file?(claim_path) ? File.read(claim_path, 4096).to_s.lines.first.to_s.strip : ""
+      if other.empty?
+        return path_key_shape?(id) ? ProjectIdConflict.new(folder) : nil
+      end
+      return nil if other == root || !same_project?(root, id, home)
+      return ProjectIdConflict.new(folder) if same_project?(other, id, home)
+
+      nil
+    rescue SystemCallError
+      ProjectIdConflict.new(folder)
+    end
 
     # The path key: basename + 8 hex chars of MD5(full root path). Pure: it
-    # reads no file (#key_for adds the id).
+    # reads no file.
     def key_for_root(root) = "#{File.basename(root)}_#{Digest::MD5.hexdigest(root)[0..7]}"
+
+    # Whether +key+ looks like a #key_for_root name.
+    def path_key_shape?(key) = PATH_KEY_SHAPE.match?(key)
 
     # The id in the marker at +root+, or nil (none, or not a valid one: one
     # debug line says why).
@@ -227,10 +277,17 @@ module Samagotchi
     rescue SystemCallError
       gitdir
     end
-    private_class_method :find_dot_git, :git_root, :gitdir_from_file, :common_dir
+
+    def same_project?(other, id, home)
+      return false if other.empty? || !File.directory?(other)
+
+      found = lookup(other, home: home)
+      found.marker? && found.root == File.realpath(other) && found.id == id
+    end
+    private_class_method :find_dot_git, :git_root, :gitdir_from_file, :common_dir, :same_project?
 
     def project_dir(env: ENV, cwd: Dir.pwd)
-      File.join(projects_dir(env: env), project_key(cwd))
+      File.join(projects_dir(env: env), project_key(cwd, env: env))
     end
 
     # The folder of a memory scope: "system" (or blank) or "project"; nil for

@@ -24,10 +24,6 @@ module Samagotchi
     # @!attribute computed_exists [Boolean] whether +computed+ is a folder (empty of memories)
     Found = Data.define(:computed, :candidates, :computed_exists)
 
-    # A project keyed by its path is <name>_<8 hex>; a marked project's folder is
-    # its id, <name>-<8 hex>.
-    PATH_HASH = /_\h{8}\z/
-
     module_function
 
     # A candidate folder's key, in words: an earlier path's hash, or a chi project
@@ -37,8 +33,9 @@ module Samagotchi
       hash_keyed?(candidate) ? "another path's hash" : "project id #{File.basename(candidate)}"
     end
 
-    # Internal: is this candidate keyed by its path rather than by a project id?
-    def hash_keyed?(candidate) = File.basename(candidate).match?(PATH_HASH)
+    # Internal: is this candidate keyed by its path (<name>_<8 hex>) rather
+    # than by a project id (<name>-<8 hex>)?
+    def hash_keyed?(candidate) = MemoryPaths.path_key_shape?(File.basename(candidate))
     private_class_method :hash_keyed?
 
     # The orphan candidates for +cwd+'s project, or nil: only inside a
@@ -66,7 +63,7 @@ module Samagotchi
       return nil if candidates.empty?
 
       Found.new(computed: computed, candidates: candidates, computed_exists: File.directory?(computed))
-    rescue SystemCallError
+    rescue MemoryPaths::ProjectIdConflict, SystemCallError
       nil
     end
 

@@ -365,8 +365,11 @@ RSpec.describe Samagotchi::MemoryUsage do
     notes = File.join(tmp, "notes")
     FileUtils.mkdir_p(File.join(notes, ".chi"))
     File.write(File.join(notes, Samagotchi::MemoryPaths::MARKER), "id: notes-0a1b2c3d\n")
-    write_index(project_dir(notes), ["- **near** · project · 2026-11-01 · 10 — A memory of the marked project"])
-    remember(project_dir(notes), "near", "n" * 40)
+    memories = project_dir(notes)
+    FileUtils.mkdir_p(memories)
+    File.write(File.join(memories, Samagotchi::MemoryPaths::CLAIM), "#{File.realpath(notes)}\n")
+    write_index(memories, ["- **near** · project · 2026-11-01 · 10 — A memory of the marked project"])
+    remember(memories, "near", "n" * 40)
     save_session("before-move", working_directory: File.join(tmp, "gone"), project_root: File.join(tmp, "gone"),
                                 project_id: "notes-0a1b2c3d", messages: [
                                   { "role" => "user", "content" => "go" },

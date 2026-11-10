@@ -636,10 +636,10 @@ module Samagotchi
     # @param project_root [String, nil] Session#project_root
     # @param project_id [String, nil] Session#project_id (a marked project's
     #   id keys its folder: MemoryPaths.key_for)
-    def project_location_for(project_root, project_id: nil, state_dir: nil)
+    def project_location_for(project_root, project_id: nil, state_dir: nil, env: ENV)
       return nil if project_root.to_s.empty?
 
-      project_location(MemoryPaths.key_for(root: project_root, id: project_id), state_dir: state_dir)
+      project_location(MemoryPaths.key_for(root: project_root, id: project_id, env: env), state_dir: state_dir)
     end
 
     # A session's sources: its own, then the project's it doesn't shadow

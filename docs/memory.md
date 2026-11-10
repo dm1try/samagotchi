@@ -32,8 +32,13 @@ the folder is left as is: it is created when missing, nothing is marked).
   (`chi context --project`) are named by the marker's `id:` (`<folder name>-<8 random hex>`), not
   by its path, so moving or renaming the folder keeps them: a session started there after the move
   finds them, and one saved before it (its file stores `project_id`) keys its context sources by the
-  id too. A folder chi already ran in at its top keeps its memories after `init`: they move to the
-  id. A later `git init` in the folder makes it a repository, keyed by its path again (git wins): its
+  id too. An existing id folder is used only when its `.root` claims this project, or when its
+  previous claimant or a saved session's root no longer has this id after a move; otherwise chi
+  refuses and says to run `chi project init --new-id`. An id folder with no `.root` is taken when its
+  name has a path key's shape (`<name>_<8 hex>`: another project's folder); one of any other name (an
+  older chi's id folder) is used and claimed at session start. A folder chi
+  already ran in at its top keeps its memories after `init`: they move to the id. A later `git init`
+  in the folder makes it a repository, keyed by its path again (git wins): its
   memories stay in the id folder until you move them, and chi names the id folder at session start
   (and under a `memory_read` miss) while the repository's own folder holds no memories. Memories saved from a *subfolder* before
   `init` stay in that subfolder's own folder (keyed by its path); `chi project init` and `chi project`
@@ -59,11 +64,11 @@ the folder is left as is: it is created when missing, nothing is marked).
   but never moves folders: a folder it marks that already has path-keyed memories gets no id until
   `chi project init`.
 - **A copy shares memories.** A copied marked folder (`cp -R`) keeps the id, so the two share one
-  memories folder; at session start in the copy chi says so (a `memory>` load warning: "… share chi
-  project id … (a copied folder?)"; the id folder's `.root` names the folder that started a session
-  with it last, the original keeps it). `chi project init --new-id` in the copy gives it a fresh id,
-  with a copy of the memories and project context sources it had: each folder goes its own way.
-  After a move, the new path just takes `.root` over, with no warning.
+  id folder. At session start chi claims a new id folder in `.root`; if another marked folder still
+  has that id, chi warns and refuses to use the folder's memories or project context sources.
+  `chi project init --new-id` in the copy gives it a fresh id, but does not copy an id folder claimed
+  by another project. After a move, the new path takes `.root` over when the old path no longer has
+  that id, with no warning.
 - **Restart what runs there.** A session running in the folder when it is marked keeps the old memories
   folder and AGENTS.md chain in its prompt until `chi sessions restart ID` (init names them); a running
   `chi web` groups the folder's older sessions under the project after its restart.

@@ -126,16 +126,31 @@ module Samagotchi
       end
 
       root = found.root
-      old_key = MemoryPaths.key_for(root: root, id: found.id)
+      conflict = nil
+      old_key = begin
+        MemoryPaths.key_for(root: root, id: found.id, env: env, home: home)
+      rescue MemoryPaths::ProjectIdConflict => e
+        conflict = e
+        nil
+      end
       id = ProjectId.generate(File.basename(root))
       lines = ["#{Paths.tilde(root)} has a chi project id of its own now: #{id} (was #{found.id || "none: keyed by its path"})"]
-      places(env: env, state_dir: state_dir || SessionPaths.default_state_dir(env: env)).each do |place|
-        from = place.path(old_key)
-        next unless File.directory?(from)
+      if conflict
+        lines << "did not copy #{Paths.tilde(conflict.folder)} because it is already used by another project"
+      else
+        project_places = places(env: env, state_dir: state_dir || SessionPaths.default_state_dir(env: env))
+        project_places.each do |place|
+          from = place.path(old_key)
+          next unless File.directory?(from)
 
-        to = place.path(id)
-        copy_folder(File.realpath(from), to)
-        lines << "copied #{Paths.tilde(from)} to #{Paths.tilde(to)}"
+          to = place.path(id)
+          copy_folder(File.realpath(from), to)
+          lines << "copied #{Paths.tilde(from)} to #{Paths.tilde(to)}"
+        end
+        memory_folder = project_places.first.path(id)
+        if File.directory?(memory_folder)
+          AtomicFile.write(File.join(memory_folder, MemoryPaths::CLAIM), "#{root}\n")
+        end
       end
       write_id(root, id)
       Outcome.new(kind: :new_id, reason: nil, root: root, top: root, nested_in: nil, message: lines.join("\n"), id: id)
@@ -181,6 +196,8 @@ module Samagotchi
                "with it when the folder moves or is renamed"]
       lines << "#{problem}: replaced" if problem
       list.each { |place| lines.concat(move_folder(place.path(path_key), place.path(id))) }
+      memory_folder = list.first.path(id)
+      AtomicFile.write(File.join(memory_folder, MemoryPaths::CLAIM), "#{root}\n") if File.directory?(memory_folder)
       write_id(root, id)
       if orphans
         keys = orphans.candidates.map { |candidate| "#{Paths.tilde(candidate)} (#{MemoryOrphans.key_note(candidate)})" }

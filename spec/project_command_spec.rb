@@ -100,6 +100,7 @@ RSpec.describe Samagotchi::ProjectCommand do
       fresh = id_of(notes)
       expect(out.string).to eq("#{notes} has a chi project id of its own now: #{fresh} (was #{id})\n" \
                                "copied #{File.join(projects, id)} to #{File.join(projects, fresh)}\n")
+      expect(File.read(File.join(projects, fresh, "a.md"))).to eq("x")
       expect(run("init", "--new-id", @tmp)).to eq(1)
       expect(err.string).to eq("chi project init --new-id: #{@tmp} is not a marked chi project folder: --new-id gives " \
                                "one (made with chi project init) an id of its own\n")

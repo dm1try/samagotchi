@@ -96,6 +96,9 @@ module Samagotchi
       return usage_error("unknown scope #{scope.inspect}: use --scope project|system") if scope && !SCOPES.include?(scope)
 
       send(:"run_#{@sub}", parsed.options, parsed.args)
+    rescue MemoryPaths::ProjectIdConflict => e
+      error_line("#{command_name}: #{e.message}")
+      CLI::Exit::FAILED
     end
 
     # The memories of +scope+ (project first, then system, when nil), by

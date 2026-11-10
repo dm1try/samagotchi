@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 - A schedule no longer restarts a session you stopped: it skips it (`the session is stopped; …`), in both modes, and a
   stop that lands just before a firing counts as a skip, not a failure.
+- Project marker ids no longer reuse another project's memory folder; `chi project init --new-id` gives it a safe id.
 - A schedule that comes due while you are continuing its session (`chi send --new --continues`, web `continue →`) is
   skipped for that tick (`being continued as 7b2d41aa; retry at the next tick`) instead of failing as `archived`, so
   the race no longer counts toward `max_failures`. A chain you archived yourself still fails its schedules.

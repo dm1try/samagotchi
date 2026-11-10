@@ -351,7 +351,7 @@ module Samagotchi
 
     def project_dir_of(session)
       root, id = session_project(session)
-      root ? File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: root, id: id)) : nil
+      root ? File.join(MemoryPaths.projects_dir(env: @env), MemoryPaths.key_for(root: root, id: id, env: @env)) : nil
     end
 
     # A session of this folder's project (worktrees of one repository share
