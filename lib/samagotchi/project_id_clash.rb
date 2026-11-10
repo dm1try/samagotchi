@@ -18,7 +18,7 @@ module Samagotchi
     # The one text for the condition.
     def message
       "#{Paths.tilde(root)} and #{Paths.tilde(other)} share chi project id #{id} (a copied folder?): they share " \
-        "memories; `chi project init --new-id` gives this one its own."
+        "memories. Run `chi project init --new-id` in the copy to give it its own."
     end
   end
 
