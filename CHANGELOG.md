@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.162.0] - 2026-11-10
+
 ### Changed
 
 - chi web draws every finished turn the way it was drawn live; turns from before drawings (and past the newest 100)
@@ -25,6 +27,9 @@ and commands may change between minor versions. How releases are made:
   stalls (behind a proxy or a tunnel): the download is bounded at 15 s like the rest of the load.
 - A chi-ui walk's case that goes back to its own step (a retry) is drawn disabled as "this step" instead of a button
   that did nothing.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`): workers from 0.161.0
+keep working (N-1); the turn drawing changes apply to workers started by 0.162.0.
 
 ## [0.161.0] - 2026-11-10
 
@@ -6024,7 +6029,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.161.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.162.0...HEAD
+[0.162.0]: https://github.com/dm1try/samagotchi/compare/v0.161.0...v0.162.0
 [0.161.0]: https://github.com/dm1try/samagotchi/compare/v0.160.0...v0.161.0
 [0.160.0]: https://github.com/dm1try/samagotchi/compare/v0.159.0...v0.160.0
 [0.159.0]: https://github.com/dm1try/samagotchi/compare/v0.158.0...v0.159.0
