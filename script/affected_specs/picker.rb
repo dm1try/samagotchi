@@ -143,8 +143,9 @@ module AffectedSpecs
   # order: (1) changed specs, (2) specs named after a changed file,
   # (3) RULES and the goldens of a changed file's layer, (4) weaker name matches (a spec matching more of the changed
   # files first, then one beside the file, see #place), (5) specs naming a
-  # method the change touches (#add_callers, Prism 1.0+), (6) specs naming
-  # the changed file's main constant. +tree+ answers spec_files, node_tests,
+  # method the change touches and the file's class (#add_callers, Prism
+  # 1.0+), (6) specs naming the changed file's main constant, (5b) specs
+  # naming only such a method. +tree+ answers spec_files, node_tests,
   # read(path), mentions(word, paths, word:) (spec path => count),
   # mentions_each(words, paths) (word => { spec path => count }),
   # changed_lines(path) and added_lines(path) (TimingHints).
@@ -172,8 +173,10 @@ module AffectedSpecs
       # every weak name match before any grep hit.
       code_files.each { |path| add_weak(path) } # rubocop:disable Style/CombinableLoops
       add_name_matches
-      add_callers
+      callers = caller_hits
+      add_callers(callers, of_constant: true)
       code_files.each { |path| add_mentions(path) }
+      add_callers(callers, of_constant: false)
       @unmatched = code_files.reject { |path| matched?(path) }
       @hints << web_hint if @changed.any? { |path| web?(path) }
       @hints.concat(TimingHints.new(changed: @changed, tree: @tree).hints)
@@ -394,13 +397,26 @@ module AffectedSpecs
     # first. Per name, most mentions first; a name in more than HUB_SPECS
     # spec files gets a note instead (--why: a method hub is common, a
     # constant hub's hint is not). Generic names (#generic_method?) skip.
-    def add_callers
+    # A spec that also names the file's class (#constant_hits) goes before
+    # tier 6; one naming only the method comes after it: a method name alone
+    # is often another class's (SendCommand#deliver vs a deliver in
+    # another spec), and those crowded the class's own specs past the cap.
+    def add_callers(hits, of_constant:)
+      hits.each do |spec, name, path|
+        next unless constant_hits(path).key?(spec) == of_constant
+
+        add(spec, "calls #{name} (#{path})", path)
+      end
+    end
+
+    # [[spec, method name, changed path]] for tier 5, in its order.
+    def caller_hits
       files = code_files.select { |path| ruby_code?(path) && !bundle?(path) }
-      return if files.empty?
+      return [] if files.empty?
 
       unless ChangedDefs.available?
         @notes << "callers tier skipped: needs prism >= #{ChangedDefs::MIN_PRISM}"
-        return
+        return []
       end
 
       wanted = files.flat_map do |path|
@@ -410,16 +426,16 @@ module AffectedSpecs
         ChangedDefs.names(source(path).to_s, lines).reject { |name| generic_method?(name) }.map { |name| [name, path] }
       end
       wanted = wanted.uniq(&:first).first(MAX_CALLER_NAMES)
-      return if wanted.empty?
+      return [] if wanted.empty?
 
       hits = @tree.mentions_each(wanted.map(&:first), spec_files)
-      wanted.each do |name, path|
+      wanted.flat_map do |name, path|
         specs = hits.fetch(name, {})
         if specs.size > HUB_SPECS
           @notes << "hub: method #{name} (#{path}) is named in #{specs.size} spec files"
-          next
+          next []
         end
-        specs.sort_by { |spec, count| [-count, spec] }.each { |spec, _| add(spec, "calls #{name} (#{path})", path) }
+        specs.sort_by { |spec, count| [-count, spec] }.map { |spec, _| [spec, name, path] }
       end
     end
 
@@ -433,17 +449,29 @@ module AffectedSpecs
     # 6: specs naming the file's main constant, most mentions first; a
     # constant in more than HUB_SPECS spec files gets a hint instead.
     def add_mentions(path)
-      return unless ruby_code?(path) && !bundle?(path)
-
-      constant = main_constant(path)
+      constant, hits = constant_mentions(path)
       return unless constant
 
-      hits = @tree.mentions(constant, spec_files, word: true)
       if hits.size > HUB_SPECS
         @hints << "hub: #{constant} (#{path}) is named in #{hits.size} spec files; the full run covers it"
         return
       end
       hits.sort_by { |spec, count| [-count, spec] }.each { |spec, _| add(spec, "names #{constant} (#{path})", path) }
+    end
+
+    # The specs tier 6 picks for +path+: { spec => count }, {} for a hub.
+    def constant_hits(path)
+      _, hits = constant_mentions(path)
+      hits.size > HUB_SPECS ? {} : hits
+    end
+
+    # [constant, { spec => count }] for +path+'s main constant, [nil, {}]
+    # when it has none (one grep per file).
+    def constant_mentions(path)
+      (@constant_mentions ||= {}).fetch(path) do
+        constant = main_constant(path) if ruby_code?(path) && !bundle?(path)
+        @constant_mentions[path] = [constant, constant ? @tree.mentions(constant, spec_files, word: true) : {}]
+      end
     end
 
     # The class or module the file is named after (foo_bar.rb -> FooBar,
