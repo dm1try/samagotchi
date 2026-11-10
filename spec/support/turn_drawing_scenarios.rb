@@ -102,13 +102,15 @@ module TurnDrawingScenarios
     },
     no_answer: lambda {
       id = "turn-none"
-      empty = Samagotchi::TurnNote.empty(retries: 1)
+      # The empty steps stay out of the conversation, on the marker (TurnEndings).
+      steps = [{ role: "model", content: "", thinking: "first try" }, { role: "model", content: "", thinking: "second try" }]
+      empty = Samagotchi::TurnNote.empty(retries: 1, steps: steps)
       one("No answer after a retry: two empty steps, the empty-answer notice.",
           [started(id, "say something"), gen(1), text(1, "", thinking: "first try"), done(1),
            { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 },
            gen(2), text(2, "", thinking: "second try"), done(2),
-           completed(id, 1, 4, "", empty: { retries: 1 })],
-          [HEAD, user("say something", id), model(""), empty])
+           completed(id, 1, 3, "", empty: { retries: 1 })],
+          [HEAD, user("say something", id), empty])
     },
     canceled_steps: lambda {
       id = "turn-cancel"
@@ -251,6 +253,40 @@ module TurnDrawingScenarios
         events: [started(first, "again"), gen(1), text(1, "Same."), done(1), completed(first, 1, 3, "Same."),
                  started(second, "again"), gen(1), text(1, "Same."), done(1), completed(second, 1, 3, "Same.")],
         ends: [[HEAD, user("again", first), model("Same.")], messages],
+        messages: messages }
+    },
+    hook_notice: lambda {
+      id = "turn-hook"
+      one("A hook's notice in a tool step: a row of the step, kept by CardStore for a drawing made from the messages.",
+          [started(id, "run it"), gen(1), text(1, "Running."),
+           *tool(1, 1, "execute", 'command="make"', "[execute]\nok", tool_id: "t1", args: { content: "make" },
+                                                                         action: "running command", title: "make"),
+           { type: :hook_notice, hook: "loop-guard", text: "loop: make repeated", level: "warn" },
+           done(1), gen(2), text(2, "Done."), done(2), completed(id, 1, 5, "Done.")],
+          [HEAD, user("run it", id), model("Running.", tool_calls: [call("c1", "execute", { command: "make" })]),
+           response("c1", "t1", "[execute]\nok"), model("Done.")])
+    },
+    wake_turn: lambda {
+      id = "turn-wake"
+      note = Samagotchi::ContextNote.message(note_id: "n9", text: "pr-7 changed", source: "context", created_at: "2026-11-08T09:00:00Z")
+                                   .merge(turn_start: true, turn_id: id)
+      one("A context wake's turn: its note (outside the range, announced before the turn) opens it, no prompt.",
+          [{ type: :context_added, note_id: "n9", source: "context", label: Samagotchi::ContextNote.label_of(note), text: "pr-7 changed",
+             created_at: "2026-11-08T09:00:00Z" },
+           { type: :turn_started, prompt: nil, turn_id: id, at: AT, origin: { client_id: "system:context" } },
+           gen(1), text(1, "Looked at pr-7."), done(1), completed(id, 4, 5, "Looked at pr-7.")],
+          [HEAD, user("earlier", "turn-0"), model("Earlier answer."), note, model("Looked at pr-7.")])
+    },
+    shell_between: lambda {
+      first = "turn-a"
+      second = "turn-b"
+      shell = { role: "user", content: "!(ls)\na.txt", at: AT }
+      before = [HEAD, user("one", first), model("A.")]
+      messages = before + [shell, user("two", second), model("B.")]
+      { description: "A `!cmd`'s record between two turns: no turn's, outside both ranges.",
+        events: [started(first, "one"), gen(1), text(1, "A."), done(1), completed(first, 1, 3, "A."),
+                 started(second, "two"), gen(1), text(1, "B."), done(1), completed(second, 4, 6, "B.")],
+        ends: [before, messages],
         messages: messages }
     }
   }.freeze

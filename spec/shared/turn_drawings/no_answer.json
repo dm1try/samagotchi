@@ -49,7 +49,7 @@
       "turn_id": "turn-none",
       "duration_ms": 2400,
       "kept_from": 1,
-      "kept_to": 4,
+      "kept_to": 3,
       "turn_summary": {
         "output": "",
         "empty_answer": {
@@ -70,15 +70,23 @@
       "at": "2026-11-08T10:00:00.000+01:00"
     },
     {
-      "role": "model",
-      "content": ""
-    },
-    {
       "role": "system",
       "content": "[SYSTEM: the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.]",
       "kind": "turn_note",
       "empty_answer": {
-        "retries": 1
+        "retries": 1,
+        "steps": [
+          {
+            "role": "model",
+            "content": "",
+            "thinking": "first try"
+          },
+          {
+            "role": "model",
+            "content": "",
+            "thinking": "second try"
+          }
+        ]
       }
     }
   ],
@@ -88,7 +96,7 @@
       "turn_id": "turn-none",
       "kind": "completed",
       "from": 1,
-      "to": 4,
+      "to": 3,
       "from_digest": "3a4d769fda468887f52d08ed8e72c20083c82217",
       "to_digest": "5f10cb773632d536e40a16a2a4f1bcac51aec122",
       "drawing": {
@@ -199,6 +207,16 @@
         "content": "say something",
         "at": "2026-11-08T10:00:00.000+01:00",
         "turn_id": "turn-none",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "drawn": "turn-none"
+      },
+      {
+        "role": "assistant",
+        "content": "",
         "drawn": "turn-none"
       },
       {

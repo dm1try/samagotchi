@@ -1,0 +1,321 @@
+{
+  "description": "A `!cmd`'s record between two turns: no turn's, outside both ranges.",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "one",
+      "turn_id": "turn-a",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "A.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-a",
+      "duration_ms": 2400,
+      "kept_from": 1,
+      "kept_to": 3,
+      "turn_summary": {
+        "output": "A."
+      }
+    },
+    {
+      "type": "turn_started",
+      "prompt": "two",
+      "turn_id": "turn-b",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "B.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-b",
+      "duration_ms": 2400,
+      "kept_from": 4,
+      "kept_to": 6,
+      "turn_summary": {
+        "output": "B."
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are chi."
+    },
+    {
+      "role": "user",
+      "content": "one",
+      "turn_id": "turn-a",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "A."
+    },
+    {
+      "role": "user",
+      "content": "!(ls)\na.txt",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "user",
+      "content": "two",
+      "turn_id": "turn-b",
+      "at": "2026-11-08T10:00:00.000+01:00"
+    },
+    {
+      "role": "model",
+      "content": "B."
+    }
+  ],
+  "lines": [
+    {
+      "v": 1,
+      "turn_id": "turn-a",
+      "kind": "completed",
+      "from": 1,
+      "to": 3,
+      "from_digest": "1fb3624f20761297dd3ba01215144d5dc277d746",
+      "to_digest": "b8ba6b8a704f99902cc63e376796b9deda3aa9cc",
+      "drawing": {
+        "prompt": "one",
+        "turn_id": "turn-a",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "A."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-a",
+        "duration_ms": 2400
+      }
+    },
+    {
+      "v": 1,
+      "turn_id": "turn-b",
+      "kind": "completed",
+      "from": 4,
+      "to": 6,
+      "from_digest": "7c937192e935b53bf3f42d1887a4cb82afb584f3",
+      "to_digest": "52efd0ee9e65eef674e64e3f9599b31d9595690f",
+      "drawing": {
+        "prompt": "two",
+        "turn_id": "turn-b",
+        "origin": {
+          "client_id": "web:me"
+        },
+        "continue": false,
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "parts": [
+          {
+            "kind": "generation",
+            "iteration": 1
+          },
+          {
+            "kind": "text",
+            "iteration": 1,
+            "text": "B."
+          }
+        ]
+      },
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-b",
+        "duration_ms": 2400
+      }
+    }
+  ],
+  "drawn": {
+    "turn-a": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "one",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-a"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "A.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-a",
+        "duration_ms": 2400
+      }
+    },
+    "turn-b": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "two",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "turn_id": "turn-b"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "B.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-b",
+        "duration_ms": 2400
+      }
+    }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "one",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-a",
+        "drawn": "turn-a"
+      },
+      {
+        "role": "assistant",
+        "content": "A.",
+        "drawn": "turn-a"
+      },
+      {
+        "role": "user",
+        "content": "!(ls)\na.txt",
+        "at": "2026-11-08T10:00:00.000+01:00"
+      },
+      {
+        "role": "user",
+        "content": "two",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-b",
+        "drawn": "turn-b"
+      },
+      {
+        "role": "assistant",
+        "content": "B.",
+        "drawn": "turn-b"
+      }
+    ],
+    "turn_drawings": {
+      "turn-a": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "one",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-a"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "A.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-a",
+          "duration_ms": 2400
+        }
+      },
+      "turn-b": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "two",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-b"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "B.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-b",
+          "duration_ms": 2400
+        }
+      }
+    }
+  }
+}

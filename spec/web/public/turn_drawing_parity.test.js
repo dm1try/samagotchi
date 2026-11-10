@@ -101,9 +101,12 @@ async function liveShape(events) {
   return historyShape(historyEl);
 }
 
+// The last turn's events, from the wake note announced just before it (a
+// context wake's opening, which live drew as the note came in).
 function lastTurnEvents(events) {
   const starts = events.map((e, i) => (e.type === "turn_started" ? i : -1)).filter((i) => i >= 0);
-  return events.slice(starts[starts.length - 1]);
+  const start = starts[starts.length - 1];
+  return events.slice(events[start - 1]?.type === "context_added" ? start - 1 : start);
 }
 
 // The reloaded turn's shape: the show drawn, the drawn turn's pieces only.
