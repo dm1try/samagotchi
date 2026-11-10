@@ -9,8 +9,11 @@
 #
 # The text is eval 0013's round-2 hint, split in two. It is static, so the
 # prompt cache keeps: same text at every build. A delegate child's answer is
-# read by its parent, not drawn for a user, and a one-shot (-p --non-interactive)
-# prints to a terminal: neither gets a section.
+# read by its parent, not drawn for a user, a one-shot (-p --non-interactive)
+# prints to a terminal, and a review session (chi review) is read by its
+# participants, whose page draws no widgets: none of them gets a section. A
+# working session the owner pairs in keeps them: the owner's page draws them,
+# and a participant invited later mustn't change the prompt (the cache).
 class Plugin
   PICKS = <<~TEXT
     The web UI draws fenced ```chi-ui code blocks (YAML inside) as interactive widgets; the terminal shows their source. Use one whenever it helps the user more than prose: a widget replaces the long explanation, it doesn't sit beside one. Never use one for what markdown shows well (tables, lists, key-value). At most one widget per answer; keep the prose around it to a few sentences and don't repeat the widget's content.
@@ -71,6 +74,7 @@ class Plugin
 
   private
 
-  # Whether the session's answers reach a web page that draws them.
-  def drawn?(ctx) = ctx.frontend != :one_shot && !ctx.delegate?
+  # Whether the session's answers reach a web page that draws them. Decided by
+  # the session's kind, so the same at every build.
+  def drawn?(ctx) = ctx.frontend != :one_shot && !ctx.delegate? && !ctx.review?
 end

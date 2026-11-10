@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A review session (`chi review`) no longer teaches the model the `chi-ui` picks and walk widgets: its participants'
+  page doesn't draw them, so they read raw YAML. The owner's working sessions, paired ones too, keep them.
+  (inline-widgets 0.1.1)
 - chi web behind an auth proxy: when the proxy answered the widgets' stylesheet with its login page, `chi-ui` widgets
   stayed unstyled until a reload; the next widget drawn now fetches the stylesheet again.
 - chi web: a `chi-ui` walk step whose only cases loop back (a retry from an earlier step) no longer hides Next, so
