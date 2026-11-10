@@ -108,7 +108,7 @@ module Samagotchi
 
             @warnings << "Kept #{file_key_str}: bundle #{others.join(", ")} has it too"
             unless ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys.map(&:to_s), target_dir: target_dir)
-              retag(target_scope, target_path, file_key_str, others.first)
+              retag(target_scope, target_path, file_key_str, others.first, target_dir: target_dir)
             end
             next
           end
@@ -173,9 +173,11 @@ module Samagotchi
       end
 
       # A kept shared file's index line names the bundle that still has it
-      # (a model overlay has none: the caller skips it).
-      def retag(scope, path, file_key, bundle)
-        IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle)
+      # (a model overlay has none: the caller skips it). +target_dir+ is the
+      # folder the file lives in, which for an install interrupted before its
+      # record is the journal's target dir, not the current folder's.
+      def retag(scope, path, file_key, bundle, target_dir:)
+        IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle, target_dir: target_dir)
       rescue StandardError => e
         @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not updated (#{e.message})"
       end
