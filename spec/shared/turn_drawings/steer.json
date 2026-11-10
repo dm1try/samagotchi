@@ -27,7 +27,15 @@
       "tool": "execute",
       "params": "command=\"make\"",
       "tool_id": "t1",
-      "title": "make"
+      "title": "make",
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
+      }
     },
     {
       "type": "tool_call_completed",
@@ -44,6 +52,14 @@
         "params": "command=\"make\"",
         "action": "running command",
         "title": "make"
+      },
+      "view": {
+        "command": "make",
+        "steps": [
+          {
+            "text": "make"
+          }
+        ]
       }
     },
     {
@@ -165,6 +181,14 @@
             "status": "ok",
             "tool_id": "t1",
             "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            },
             "output": "[execute]\nbuilt",
             "output_truncated": false,
             "action": "running command",
@@ -226,7 +250,15 @@
           "tool": "execute",
           "tool_id": "t1",
           "params": "command=\"make\"",
-          "title": "make"
+          "title": "make",
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
         },
         {
           "type": "tool_call_completed",
@@ -243,7 +275,15 @@
             "title": "make",
             "action": "running command"
           },
-          "duration_ms": 120
+          "duration_ms": 120,
+          "view": {
+            "command": "make",
+            "steps": [
+              {
+                "text": "make"
+              }
+            ]
+          }
         },
         {
           "type": "pending_input_merged",
@@ -333,7 +373,15 @@
             "tool": "execute",
             "tool_id": "t1",
             "params": "command=\"make\"",
-            "title": "make"
+            "title": "make",
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
           },
           {
             "type": "tool_call_completed",
@@ -350,7 +398,15 @@
               "title": "make",
               "action": "running command"
             },
-            "duration_ms": 120
+            "duration_ms": 120,
+            "view": {
+              "command": "make",
+              "steps": [
+                {
+                  "text": "make"
+                }
+              ]
+            }
           },
           {
             "type": "pending_input_merged",

@@ -65,7 +65,8 @@
       "activity": {
         "tool": "ask_user_question",
         "status": "ok",
-        "params": "question=\"Which one?\""
+        "params": "question=\"Which one?\"",
+        "action": "asking user"
       }
     },
     {
@@ -169,6 +170,7 @@
             "tool_id": "t1",
             "output": "[ask_user_question]\nA",
             "output_truncated": false,
+            "action": "asking user",
             "duration_ms": 900
           },
           {
@@ -264,7 +266,8 @@
           "activity": {
             "tool": "ask_user_question",
             "status": "ok",
-            "params": "question=\"Which one?\""
+            "params": "question=\"Which one?\"",
+            "action": "asking user"
           },
           "duration_ms": 900
         },
@@ -375,7 +378,8 @@
             "activity": {
               "tool": "ask_user_question",
               "status": "ok",
-              "params": "question=\"Which one?\""
+              "params": "question=\"Which one?\"",
+              "action": "asking user"
             },
             "duration_ms": 900
           },

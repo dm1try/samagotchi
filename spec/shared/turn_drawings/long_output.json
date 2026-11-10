@@ -27,7 +27,15 @@
       "tool": "execute",
       "params": "command=\"seq\"",
       "tool_id": "t1",
-      "title": "seq"
+      "title": "seq",
+      "view": {
+        "command": "seq",
+        "steps": [
+          {
+            "text": "seq"
+          }
+        ]
+      }
     },
     {
       "type": "tool_call_completed",
@@ -44,6 +52,14 @@
         "params": "command=\"seq\"",
         "action": "running command",
         "title": "seq"
+      },
+      "view": {
+        "command": "seq",
+        "steps": [
+          {
+            "text": "seq"
+          }
+        ]
       },
       "preview": "[execute]\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50\nline 51\nline 52\nline 53\nline 54\nline 55\nline 56\nline 57\nline 58\nline 59\nline 60\nline 61\n[cut: 5146 of 7101 chars not shown]\nline 638\nline 639\nline 640\nline 641\nline 642\nline 643\nline 644\nline 645\nline 646\nline 647\nline 648\nline 649\nline 650\nline 651\nline 652\nline 653\nline 654\nline 655\nline 656\nline 657\nline 658\nline 659\nline 660\nline 661\nline 662\nline 663\nline 664\nline 665\nline 666\nline 667\nline 668\nline 669\nline 670\nline 671\nline 672\nline 673\nline 674\nline 675\nline 676\nline 677\nline 678\nline 679\nline 680\nline 681\nline 682\nline 683\nline 684\nline 685\nline 686\nline 687\nline 688\nline 689\nline 690\nline 691\nline 692\nline 693\nline 694\nline 695\nline 696\nline 697\nline 698\nline 699\nline 700\nline 701\nline 702\nline 703\nline 704\nline 705\nline 706\nline 707\nline 708\nline 709\nline 710\nline 711\nline 712\nline 713\nline 714\nline 715\nline 716\nline 717\nline 718\nline 719\nline 720\nline 721\nline 722\nline 723\nline 724\nline 725\nline 726\nline 727\nline 728\nline 729\nline 730\nline 731\nline 732\nline 733\nline 734\nline 735\nline 736\nline 737\nline 738\nline 739\nline 740\nline 741\nline 742\nline 743\nline 744\nline 745\nline 746\nline 747\nline 748\nline 749\nline 750\nline 751\nline 752\nline 753\nline 754\nline 755\nline 756\nline 757\nline 758\nline 759\nline 760\nline 761\nline 762\nline 763\nline 764\nline 765\nline 766\nline 767\nline 768\nline 769\nline 770\nline 771\nline 772\nline 773\nline 774\nline 775\nline 776\nline 777\nline 778\nline 779\nline 780\nline 781\nline 782\nline 783\nline 784\nline 785\nline 786\nline 787\nline 788\nline 789\nline 790\nline 791\nline 792\nline 793\nline 794\nline 795\nline 796\nline 797\nline 798\nline 799\nline 800"
     },
@@ -147,6 +163,14 @@
             "status": "ok",
             "tool_id": "t1",
             "title": "seq",
+            "view": {
+              "command": "seq",
+              "steps": [
+                {
+                  "text": "seq"
+                }
+              ]
+            },
             "output": "[execute]\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50\nline 51\nline 52\nline 53\nline 54\nline 55\nline 56\nline 57\nline 58\nline 59\nline 60\nline 61\n[cut: 5146 of 7101 chars not shown]\nline 638\nline 639\nline 640\nline 641\nline 642\nline 643\nline 644\nline 645\nline 646\nline 647\nline 648\nline 649\nline 650\nline 651\nline 652\nline 653\nline 654\nline 655\nline 656\nline 657\nline 658\nline 659\nline 660\nline 661\nline 662\nline 663\nline 664\nline 665\nline 666\nline 667\nline 668\nline 669\nline 670\nline 671\nline 672\nline 673\nline 674\nline 675\nline 676\nline 677\nline 678\nline 679\nline 680\nline 681\nline 682\nline 683\nline 684\nline 685\nline 686\nline 687\nline 688\nline 689\nline 690\nline 691\nline 692\nline 693\nline 694\nline 695\nline 696\nline 697\nline 698\nline 699\nline 700\nline 701\nline 702\nline 703\nline 704\nline 705\nline 706\nline 707\nline 708\nline 709\nline 710\nline 711\nline 712\nline 713\nline 714\nline 715\nline 716\nline 717\nline 718\nline 719\nline 720\nline 721\nline 722\nline 723\nline 724\nline 725\nline 726\nline 727\nline 728\nline 729\nline 730\nline 731\nline 732\nline 733\nline 734\nline 735\nline 736\nline 737\nline 738\nline 739\nline 740\nline 741\nline 742\nline 743\nline 744\nline 745\nline 746\nline 747\nline 748\nline 749\nline 750\nline 751\nline 752\nline 753\nline 754\nline 755\nline 756\nline 757\nline 758\nline 759\nline 760\nline 761\nline 762\nline 763\nline 764\nline 765\nline 766\nline 767\nline 768\nline 769\nline 770\nline 771\nline 772\nline 773\nline 774\nline 775\nline 776\nline 777\nline 778\nline 779\nline 780\nline 781\nline 782\nline 783\nline 784\nline 785\nline 786\nline 787\nline 788\nline 789\nline 790\nline 791\nline 792\nline 793\nline 794\nline 795\nline 796\nline 797\nline 798\nline 799\nline 800",
             "output_truncated": true,
             "action": "running command",
@@ -202,7 +226,15 @@
           "tool": "execute",
           "tool_id": "t1",
           "params": "command=\"seq\"",
-          "title": "seq"
+          "title": "seq",
+          "view": {
+            "command": "seq",
+            "steps": [
+              {
+                "text": "seq"
+              }
+            ]
+          }
         },
         {
           "type": "tool_call_completed",
@@ -219,7 +251,15 @@
             "title": "seq",
             "action": "running command"
           },
-          "duration_ms": 120
+          "duration_ms": 120,
+          "view": {
+            "command": "seq",
+            "steps": [
+              {
+                "text": "seq"
+              }
+            ]
+          }
         },
         {
           "type": "generation_started",
@@ -291,7 +331,15 @@
             "tool": "execute",
             "tool_id": "t1",
             "params": "command=\"seq\"",
-            "title": "seq"
+            "title": "seq",
+            "view": {
+              "command": "seq",
+              "steps": [
+                {
+                  "text": "seq"
+                }
+              ]
+            }
           },
           {
             "type": "tool_call_completed",
@@ -308,7 +356,15 @@
               "title": "seq",
               "action": "running command"
             },
-            "duration_ms": 120
+            "duration_ms": 120,
+            "view": {
+              "command": "seq",
+              "steps": [
+                {
+                  "text": "seq"
+                }
+              ]
+            }
           },
           {
             "type": "generation_started",
