@@ -264,6 +264,21 @@ RSpec.describe Samagotchi::Plugin::Sessions do
         .to raise_error(described_class::Error, /refused the message \(delivery_unavailable: this session's worker predates/)
     end
 
+    # Pick 1 (R3): a plugin is no person; a stop and an archive are the owner's.
+    it "raises, starting nothing, for a session its owner stopped or archived" do
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      Samagotchi::Session.mark_stopped(parent.id, state_dir: tmpdir)
+
+      expect { sessions.send(parent.id, "x") }
+        .to raise_error(described_class::Error, /refused the message \(session_stopped: the session is stopped/)
+      Samagotchi::Session.clear_stopped(parent.id, state_dir: tmpdir)
+      Samagotchi::ArchiveStore.archive(parent.id, state_dir: tmpdir)
+      expect { sessions.send(parent.id, "x") }
+        .to raise_error(described_class::Error, /refused the message \(session_archived: the session is archived/)
+      expect(Samagotchi::Session.stopped_marker?(parent.id, state_dir: tmpdir)).to be(false)
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+    end
+
     it "raises when the session didn't take it, or there is none" do
       allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, ack: nil))
 

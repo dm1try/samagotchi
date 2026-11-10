@@ -1010,6 +1010,51 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # Pick 1 (R3, Q1): a schedule respects a stop, in both modes: a skip
+  # (the stop's own words), nothing delivered, the stop kept.
+  it "skips an entry whose session its owner stopped, in both modes" do
+    Dir.mktmpdir("schedules-stopped") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      same = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
+      chain = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      Samagotchi::Session.mark_stopped(anchor, state_dir: dir)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+      allow(Samagotchi::SessionContinue).to receive(:run)
+
+      outcomes = schedules.tick(now: Time.now + 120).outcomes
+
+      detail = Samagotchi::SessionManager::DeliverResult::STOPPED["detail"]
+      expect(outcomes.map { |o| [o.id, o.status, o.detail] })
+        .to contain_exactly([same.id, "skipped", detail], [chain.id, "skipped", detail])
+      expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      expect(Samagotchi::SessionContinue).not_to have_received(:run)
+      expect(Samagotchi::Session.stopped_marker?(anchor, state_dir: dir)).to be(true)
+      expect(schedules.lookup(same.id)).to have_attributes(skips: 1, failures: 0)
+    end
+  end
+
+  # A stop that lands between the tick's check and the firing: deliver_turn
+  # refuses the schedule's wake, and that counts as a skip, not a failure.
+  it "counts a same-mode firing deliver_turn refused as stopped as a skip" do
+    Dir.mktmpdir("schedules-stopped-race") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :refused, code: 409,
+                                                      ack: Samagotchi::SessionManager::DeliverResult::STOPPED)
+      )
+
+      outcome = schedules.tick(now: Time.now + 120).outcomes.first
+
+      expect(outcome).to have_attributes(status: "skipped", detail: Samagotchi::SessionManager::DeliverResult::STOPPED["detail"])
+      expect(schedules.lookup(entry.id)).to have_attributes(skips: 1, failures: 0)
+    end
+  end
+
   it "waits for the tick lock and does not fire an entry the tick already reserved" do
     Dir.mktmpdir("schedules-run-now-lock") do |root|
       dir = File.join(root, "sessions")

@@ -76,4 +76,15 @@ RSpec.describe Samagotchi::ClientId do
       expect(origins.keys.to_h { |id| [id, described_class.origin(id)] }).to eq(origins)
     end
   end
+
+  describe ".wake_kind" do
+    it "gives a person's ids the send row by allowlist, the unattended senders theirs, anything else the safe one" do
+      kinds = { "cli:send" => :send, "web:x" => :send, described_class::WEB_UNNAMED => :send, "tui:1" => :send,
+                described_class.schedule("s1") => :schedule, described_class::PLUGIN => :plugin,
+                described_class.delegate("0123abcd") => :delegate, described_class.review("p_1") => :participant,
+                nil => :automatic, "" => :automatic, "webby" => :automatic, "system:reminder" => :automatic,
+                "relay:ab12cd34" => :automatic }
+      expect(kinds.keys.to_h { |id| [id, described_class.wake_kind(id)] }).to eq(kinds)
+    end
+  end
 end

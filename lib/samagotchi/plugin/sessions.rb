@@ -112,7 +112,8 @@ module Samagotchi
       end
 
       # Send +text+ to session +id+ as a user message (it runs as a turn;
-      # a stopped session is woken). Waits up to 5 s for its worker, so call
+      # an idle session is woken, but one its owner stopped or archived is
+      # not: refused). Waits up to 5 s for its worker, so call
       # it from an anytime command or your own thread, never a tool or hook
       # of a running turn. A running turn takes it at its next step; with
       # +delivery: :queue+ it runs as a turn of its own after that one
@@ -121,7 +122,8 @@ module Samagotchi
       #   :queue
       # @return [String] the id of the session it went to
       # @raise [Error] no such session, a one-shot owns it, it wasn't taken
-      #   (a worker older than queueing refuses a queue), or delivery is
+      #   (a worker older than queueing refuses a queue; a stopped or
+      #   archived session: session_stopped / session_archived), or delivery is
       #   :cut or unknown
       def send(id, text, delivery: nil)
         raise Error, "nothing to send" if text.to_s.strip.empty?

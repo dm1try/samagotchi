@@ -92,7 +92,7 @@ RSpec.describe "steering a running turn (chi send)" do
   end
 
   def run_turn(prompt)
-    Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, state_dir: tmpdir)
+    Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: prompt, state_dir: tmpdir)
   end
 
   def types = events.map { |e| e[:type] }
@@ -247,7 +247,7 @@ RSpec.describe "steering a running turn (chi send)" do
     server.enqueue("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("RUNNING ANSWER"), stop])
     server.default("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("QUEUED ANSWER"), stop])
     # As chi send or the Bridge writes it: with its enqueued_id.
-    Samagotchi::SessionManager.write_turn_input(session.id, prompt: "pick one", enqueued_id: "x1", state_dir: tmpdir)
+    Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "pick one", enqueued_id: "x1", state_dir: tmpdir)
     start_worker
     pending = wait_until(timeout: 15) { Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question }
     expect(pending).to be_truthy, "events: #{types.tally}"

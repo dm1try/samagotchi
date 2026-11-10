@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "decides the worker's exit: 0 on a stop, without resuming for queued input or discarding; 1 on a crash" do
-      described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+      described_class.write_turn_input(session.id, client_id: nil, prompt: "queued", state_dir: tmpdir)
       allow(described_class).to receive(:resume_session)
       allow(described_class).to receive(:discardable?).and_return(true)
       allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:stopped)
@@ -312,7 +312,7 @@ RSpec.describe Samagotchi::SessionManager do
       { idle_exit: nil, exit_requested: nil, signal: 0 }.each do |result, status|
         session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
         session.save(state_dir: tmpdir)
-        described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+        described_class.write_turn_input(session.id, client_id: nil, prompt: "queued", state_dir: tmpdir)
         worker = instance_double(Samagotchi::Worker, scratch?: false, discard?: true, wake_due?: true)
         allow(worker).to receive(:run) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
@@ -339,7 +339,7 @@ RSpec.describe Samagotchi::SessionManager do
       { scratch_left: nil, idle_exit: nil, signal: 0, stopped: 0 }.each do |result, status|
         session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", scratch: true)
         session.save(state_dir: tmpdir)
-        described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+        described_class.write_turn_input(session.id, client_id: nil, prompt: "queued", state_dir: tmpdir)
         allow(Samagotchi::Worker).to receive(:new)
           .and_return(instance_double(Samagotchi::Worker, scratch?: true, run: result, discard?: false, wake_due?: true))
 
@@ -378,7 +378,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "wakes a new worker after a signal when input is queued (behind the turn the signal stopped), once the lock is free" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
-      described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+      described_class.write_turn_input(session.id, client_id: nil, prompt: "queued", state_dir: tmpdir)
       allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :signal))
       owner_at_resume = :unset
       allow(described_class).to receive(:resume_session) do |id, state_dir:|

@@ -90,7 +90,7 @@ RSpec.describe Samagotchi::SessionManager do
       calls = 0
       allow(engine).to receive(:synchronize_events) do |&block|
         calls += 1
-        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir) if calls == 1
+        described_class.write_turn_input(session.id, client_id: nil, prompt: "late", state_dir: tmpdir) if calls == 1
         block.call
       end
       allow(engine).to receive(:run_turn) do
@@ -105,7 +105,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "wakes a new worker for input queued after its last check" do
       # Written after the check, while this worker still holds the lock.
       allow(engine).to receive(:stop_idle) do
-        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir)
+        described_class.write_turn_input(session.id, client_id: nil, prompt: "late", state_dir: tmpdir)
       end
       allow(Process).to receive(:spawn).and_return(40_004)
 
@@ -117,7 +117,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "wakes a new worker for input queued as it left on a client's request too" do
       allow_any_instance_of(Samagotchi::Worker).to receive(:run) do
-        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir)
+        described_class.write_turn_input(session.id, client_id: nil, prompt: "late", state_dir: tmpdir)
         :exit_requested
       end
       allow(Process).to receive(:spawn).and_return(40_005)

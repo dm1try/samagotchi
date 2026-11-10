@@ -178,7 +178,10 @@ module Samagotchi
         return handle_participant_turn(req, id, body) unless principal(req).owner?
 
         prompt = body["prompt"] || body[:prompt]
-        client_id = body["client_id"] || body[:client_id]
+        # The page names its tab and chi --remote names chi send; an owner's
+        # script that names none is named here (deliver_turn needs a sender).
+        client_id = (body["client_id"] || body[:client_id]).to_s
+        client_id = ClientId::WEB_UNNAMED if client_id.empty?
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end

@@ -952,6 +952,17 @@ RSpec.describe "delegate tools" do
         expect(out).to eq("session: #{child.id}\nstatus: answered\n---\nthe follow-up's answer")
       end
 
+      # Pick 1 (R3): a follow-up doesn't restart a child its owner stopped.
+      it "says a stopped child stays stopped, and starts no worker" do
+        allow(Samagotchi::SessionManager).to receive(:resume_session)
+        Samagotchi::Session.mark_stopped(child.id, state_dir: tmpdir)
+
+        expect(described_class.call("and?", session: child.id[0, 8], peers: peers))
+          .to eq("Error: session #{child.id[0, 8]} refused: #{Samagotchi::SessionManager::DeliverResult::STOPPED["detail"]}")
+        expect(Samagotchi::Session.stopped_marker?(child.id, state_dir: tmpdir)).to be(true)
+        expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
+      end
+
       it "delivers the message as delegate:<parent> and returns the reply after it, not the earlier one" do
         write_reply(child, "the first answer")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, client_id:, state_dir:|

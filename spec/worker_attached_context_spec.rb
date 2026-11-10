@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       loop_rounds
       expect(saved_context_notes).to be_empty
 
-      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "hello", state_dir: state_dir)
+      Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "hello", state_dir: state_dir)
 
       expect(pop!(turns, "the first prompt's turn")).to eq(["hello", ["notes"]])
     end
@@ -147,7 +147,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       propose("ci-x", "sleep 0.3; printf 'ci is green'", ["feat/foo-bar"])
       start_worker
 
-      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look at feat/foo-bar please", state_dir: state_dir)
+      Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "look at feat/foo-bar please", state_dir: state_dir)
 
       expect(pop!(turns, "the mentioning turn")).to eq(["look at feat/foo-bar please", ["ci-x"]])
       expect(own.source("ci-x")).to have_attributes(why: "you mentioned feat/foo-bar", title: "the ci-x", added_by: "plugin:spec")
@@ -158,7 +158,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       propose("ci-x", "printf 'ci is green'", ["feat/foo-bar"])
       start_worker
 
-      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "something else", state_dir: state_dir)
+      Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "something else", state_dir: state_dir)
       expect(pop!(turns, "the first turn")).to eq(["something else", []])
       expect(own.source("ci-x")).to be_nil
     end

@@ -14,9 +14,15 @@ and commands may change between minor versions. How releases are made:
   (the folder and 🧰 first, then the notes, set and participants, the model, the clock…); `⋯` is on the row everywhere,
   with a count of what it holds on a desktop and its dot when a folded item asks for a look. Archive and delete live in
   `⋯` alone. A chain whose earlier links a schedule pruned now says so on the bar (`↩ earlier links pruned`).
+- A session you stopped or archived stays that way for senders other than you: a schedule's firing, a plugin's
+  `sessions.send`, a `delegate` follow-up and a participant's turn start an idle session as before, but no longer
+  un-stop or un-archive one (`the session is stopped; only its owner's message starts it again`). `chi send`, a web tab
+  and a terminal still do.
 
 ### Fixed
 
+- A schedule no longer restarts a session you stopped: it skips it (`the session is stopped; …`), in both modes, and a
+  stop that lands just before a firing counts as a skip, not a failure.
 - A schedule that comes due while you are continuing its session (`chi send --new --continues`, web `continue →`) is
   skipped for that tick (`being continued as 7b2d41aa; retry at the next tick`) instead of failing as `archived`, so
   the race no longer counts toward `max_failures`. A chain you archived yourself still fails its schedules.

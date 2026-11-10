@@ -52,7 +52,7 @@ RSpec.describe "Images in transport" do
 
   describe "SessionManager input files" do
     it "writes and reads a turn's image refs" do
-      path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir)
+      path = Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "look", images: [wire_ref], state_dir: tmpdir)
       expect(JSON.parse(File.read(path))["images"]).to eq([{ "file" => ref[:file], "name" => "shot.png" }])
 
       claimed = Samagotchi::SessionInbox.claim_input_file(path)
@@ -61,7 +61,7 @@ RSpec.describe "Images in transport" do
 
     it "writes the refs whatever input format the sidecar advertises" do
       write_sidecar(2)
-      path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir)
+      path = Samagotchi::SessionManager.write_turn_input(session.id, client_id: nil, prompt: "look", images: [wire_ref], state_dir: tmpdir)
       expect(JSON.parse(File.read(path))["images"]).to eq([{ "file" => ref[:file], "name" => "shot.png" }])
     end
   end

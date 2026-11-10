@@ -107,6 +107,13 @@ time zones.
 
 A cron tick cannot read a worker's memory, so the tick has two paths.
 
+**Stopped by its owner** (`chi sessions stop`, the web's Stop: the stop marker,
+`WorkerPresence#stop_marked?`) comes first, in both modes: a skip ("the session is
+stopped; only its owner's message starts it again"), never a restart. A stop that
+lands between the check and a same-mode firing is the same skip: `deliver_turn`
+refuses a schedule's wake of a stopped session (a schedule is no person,
+`ClientId.wake_kind`).
+
 **No live worker** (the usual case for a weekly schedule): the files say what can
 be known — the saved status is not `running` (and not inside the starting grace),
 `input/` is empty, no step-limit question is open, and, for chain mode, no worker

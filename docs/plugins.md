@@ -1260,7 +1260,9 @@ ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review se
   review session's id. The test kit's `bundle.sessions` answers `review-1`,
   `review-2`…
 - `send(id, text)` sends a user message to a session (an id or a unique
-  prefix); it runs as a turn, and a stopped session is woken. It waits up to
+  prefix); it runs as a turn, and an idle session is woken. A session its
+  owner stopped or archived is not: `Error` (`session_stopped` /
+  `session_archived`), nothing sent. It waits up to
   5 s for the session's worker, so call it from an anytime command or a
   thread of your own, never from a tool or hook of a running turn. A
   session a `--non-interactive` one-shot has can't take it.
