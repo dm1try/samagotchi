@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 - chi --attach draws the last turn as live even when a note came after it.
 - chi web no longer leaves a language's diagrams as source for the whole session when a renderer file's download
   stalls (behind a proxy or a tunnel): the download is bounded at 15 s like the rest of the load.
+- A chi-ui walk's case that goes back to its own step (a retry) is drawn disabled as "this step" instead of a button
+  that did nothing.
 
 ## [0.161.0] - 2026-11-10
 

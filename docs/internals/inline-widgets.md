@@ -60,7 +60,7 @@ Pure Ruby, no web, no Engine. `parse(source)` returns a `Result`: `ok?`, `type`,
 | | Required | Optional | Rules |
 |---|---|---|---|
 | picks | `rows`: rows of `id`, `text`, `options` (2-4 texts) | `title`; on a row `recommended`, `why` | ids unique; a row's options unique; `recommended` is one of the options |
-| walk | `title`, `actors` (2-5 texts), `steps`: steps of `id`, `actor`, `does` or `sees` | on a step `behind`, `next`, `cases` (each `when` + `goto`) | ids unique, none of them `end`; actors unique; `actor` is one of the actors; `next` names a step or is `end`, and not the step itself; every `goto` names a step |
+| walk | `title`, `actors` (2-5 texts), `steps`: steps of `id`, `actor`, `does` or `sees` | on a step `behind`, `next`, `cases` (each `when` + `goto`) | ids unique, none of them `end`; actors unique; `actor` is one of the actors; `next` names a step or is `end`, and not the step itself; every `goto` names a step, its own included (a retry, as models write it: the page draws that case disabled, "this step") |
 
 Eval round 1's `branches:` (the same shape as `cases:`) is read as `cases`.
 
