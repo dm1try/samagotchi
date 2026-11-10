@@ -15,7 +15,8 @@ model. The TUI is untouched: it shows a fence as source.
    didn't know the key draws once a kept manifest is there) lists
    who draws what: `GET /api/block_renderers`, `:owner`. `GET /api/block_renderers/:bundle/:file` serves a file, `:owner`:
    the URL's names go through `BlockRenderers.script_path` (membership in a listed renderer's `load` before any path is
-   made), then `Provenance.sha_matches?`; a changed file is 409 `renderer_changed`. ETag + `no-cache`, as static files. A `block_renderers:` list that
+   made), then `Provenance.sha_matches?`; a file with no recorded sha, a missing one or a changed one is 409
+   `renderer_changed`, each with its own reason. ETag + `no-cache`, as static files. A `block_renderers:` list that
    doesn't parse is logged once per bundle and problem (each list request and file fetch reads it).
 3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; `participant.js`
    isn't) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an

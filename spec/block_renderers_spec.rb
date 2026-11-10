@@ -256,19 +256,22 @@ RSpec.describe Samagotchi::BlockRenderers do
     it "refuses a file that changed since the install" do
       File.write(File.join(bundles_dir, "drawer", "scripts", "draw.js"), "evil()")
 
-      expect { described_class.script_path("drawer", "draw.js") }.to raise_error(described_class::Invalid, /draw\.js.*reinstall/)
+      expect { described_class.script_path("drawer", "draw.js") }
+        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js differs from the installed one (reinstall the bundle)")
     end
 
     it "refuses a file the record has no sha for" do
       path = File.join(bundles_dir, "drawer", "manifest.json")
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scripts" => {})))
 
-      expect { described_class.script_path("drawer", "draw.js") }.to raise_error(described_class::Invalid)
+      expect { described_class.script_path("drawer", "draw.js") }
+        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js isn't among its installed scripts (reinstall the bundle)")
     end
 
     it "refuses a file that is gone" do
       FileUtils.rm_f(File.join(bundles_dir, "drawer", "scripts", "draw.js"))
-      expect { described_class.script_path("drawer", "draw.js") }.to raise_error(described_class::Invalid)
+      expect { described_class.script_path("drawer", "draw.js") }
+        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js is missing (reinstall the bundle)")
     end
 
     it "doesn't check a --dev install's links" do
