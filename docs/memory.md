@@ -44,8 +44,10 @@ the folder is left as is: it is created when missing, nothing is marked).
   by its path (memories, project context sources, the skills bundle's kept versions) move to the id,
   each leaving a link by its old name (an older chi, keying by path, finds the same folder), then the
   id is written. It refuses while a session of the project runs (stop it first, so nothing writes to
-  the old folder mid-move), and names memories an earlier path left (the same folder name with
-  another hash: a folder moved before it had an id), merging nothing. A link stays behind: a new
+  the old folder mid-move), and names memories an earlier key left (the same folder name with
+  another path's hash: moved before it had an id, or a `chi project init` id folder,
+  `<basename>-<8 hex>`, left behind when `git init` turns that marked folder into a repository),
+  merging nothing. A link stays behind: a new
   folder (or git repository) made later at the old path reaches the moved project's memories
   through it; delete the link to stop that. chi web's project picker marks a new folder with an id
   but never moves folders: a folder it marks that already has path-keyed memories gets no id until
