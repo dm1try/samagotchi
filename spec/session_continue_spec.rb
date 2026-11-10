@@ -7,6 +7,7 @@ require "samagotchi/worker_link"
 require "samagotchi/session_continue"
 require "samagotchi/session_chain"
 require "samagotchi/objectives"
+require "samagotchi/note_delivery"
 require "samagotchi/tools/delegate_cursor"
 require_relative "support/worker_links"
 
@@ -421,6 +422,101 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
         expect(text.bytesize).to be <= limit
         expect(text).to end_with("…")
       end
+    end
+  end
+
+  describe "the previous link's notes" do
+    def notes_of(id)
+      Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
+    end
+
+    it "move to the new link, names kept, ahead of its chain note" do
+      previous = make
+      path = Samagotchi::SessionInbox.write_note(previous.id, text: "deploy frozen", state_dir: tmpdir)
+
+      link = continue(previous.id)
+
+      expect(notes_of(previous.id)).to eq([])
+      waiting, chain = notes_of(link.id)
+      expect(waiting).to include(text: "deploy frozen", source: "cli", note_id: File.basename(path, ".json"))
+      expect(chain[:source]).to eq(Samagotchi::SessionChain::NOTE_SOURCE)
+    end
+
+    it "move after the objectives' carry: a pending /objectives edit reaches the new link's list" do
+      list = Samagotchi::Objectives::List.new.add("Ship it")
+      previous = make
+      previous.messages += [Samagotchi::ContextNote.message(note_id: "n1", text: list.text, source: "objectives",
+                                                            header: Samagotchi::ContextNote::OBJECTIVES_HEADER,
+                                                            objectives: list.to_payload)]
+      previous.save(state_dir: tmpdir)
+      edited = list.add("Stay small")
+      Samagotchi::SessionInbox.write_note(previous.id, text: edited.text, source: "objectives",
+                                                       objectives: edited.to_payload, state_dir: tmpdir)
+
+      link = continue(previous.id)
+
+      lists = notes_of(link.id).select { |n| n[:objectives] }
+      expect(lists.size).to eq(1)
+      expect(Samagotchi::Objectives.from_payload(lists.last[:objectives])).to eq(edited)
+    end
+
+    it "take a note an old worker claimed and never absorbed, un-claimed, logging it" do
+      previous = make
+      Samagotchi::SessionInbox.claim_note_file(Samagotchi::SessionInbox.write_note(previous.id, text: "taken", state_dir: tmpdir))
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+
+      link = continue(previous.id)
+
+      expect(notes_of(previous.id)).to eq([])
+      expect(Samagotchi::SessionInbox.find_new_note_files(dir_of(link.id)).map { |f| File.extname(f) }).to eq([".json"] * 2)
+      expect(notes_of(link.id).map { |n| n[:text] }.first).to eq("taken")
+      expect(Samagotchi::Log).to have_received(:info).with(:worker, "notes_moved_claimed", hash_including(count: 1))
+    end
+
+    it "go back when the new link's worker fails to spawn, with a note sent to the new link meanwhile" do
+      previous = make
+      Samagotchi::SessionInbox.write_note(previous.id, text: "waiting", state_dir: tmpdir)
+      allow(Process).to receive(:spawn) do
+        link = Samagotchi::SessionChain.next_of(previous.id, state_dir: tmpdir)
+        Samagotchi::NoteDelivery.deliver(previous.id, text: "sent during the start", source: "slack", state_dir: tmpdir)
+        expect(notes_of(link).map { |n| n[:text] }).to include("waiting", "sent during the start")
+        raise Errno::EAGAIN
+      end
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(notes_of(previous.id).map { |n| n[:text] }).to eq(["waiting", "sent during the start"])
+      expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id)).to eq([previous.id])
+    end
+
+    it "go back with one sent to the previous link after the give-back, and with an older chi's late write" do
+      previous = make
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+      orphan = nil
+      allow(Samagotchi::NoteMove).to receive(:give_back).and_wrap_original do |original, **kwargs|
+        first = orphan.nil?
+        orphan ||= kwargs[:from]
+        original.call(**kwargs).tap do
+          # Before the link is deleted: it is out of the chain already.
+          if first
+            Samagotchi::NoteDelivery.deliver(previous.id, text: "sent as it was undone", source: "slack", state_dir: tmpdir)
+          end
+        end
+      end
+      allow(manager).to receive(:delete_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          # An older chi, which resolved the link earlier, writes after the delete.
+          dir = File.join(dir_of(orphan), "notes")
+          FileUtils.mkdir_p(dir)
+          File.write(File.join(dir, "20991231000000000000000-abcdef.json"),
+                     JSON.generate("text" => "late", "source" => "cli", "created_at" => Time.now.iso8601))
+        end
+      end
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(notes_of(previous.id).map { |n| n[:text] }).to eq(["sent as it was undone", "late"])
+      expect(Dir.exist?(dir_of(orphan))).to be(false)
     end
   end
 

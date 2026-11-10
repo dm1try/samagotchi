@@ -103,11 +103,17 @@ module Samagotchi
     # @param now [Time] the time the file is named and stamped by (a spec's clock)
     # @return [String] the note file's path
     # @raise [NoteRejected] for an empty note or one over 16 KiB (never cut)
+    # @raise [Session::NotFound] for a session that is gone: no file and no
+    #   folder (deleted since the writer resolved it), which a note would
+    #   otherwise bring back as a stray folder (as Session#save skips one)
     def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil,
                         objectives: nil, now: Time.now)
       body = checked_text(text)
       sd = state_dir || Session.default_state_dir
-      notes_dir = File.join(Session.session_dir(session_id, state_dir: sd), NOTES_DIR)
+      session_dir = Session.session_dir(session_id, state_dir: sd)
+      raise Session::NotFound, session_id unless Dir.exist?(session_dir) || Session.exist?(session_id, state_dir: sd)
+
+      notes_dir = File.join(session_dir, NOTES_DIR)
       FileUtils.mkdir_p(notes_dir)
 
       # The random part keeps two writers in one nanosecond apart; the

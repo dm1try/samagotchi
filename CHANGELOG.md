@@ -35,6 +35,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A note sent to a session that was continued (`chi note`, `send_note`, `chi broadcast`, chi web) reaches the new link
+  (`chi note` prints `OLD → NEW (continued)`), and notes waiting when it was continued move with it; a note that
+  still lands in the old link as it is continued is taken by the new link's worker, and a continue that fails gives
+  the notes back. An `/objectives` edit stays in its own session.
 - `chi bundle uninstall NAME` of a bundle whose install was interrupted before its record (only the
   `pending.json` journal left) retags the index line of a kept shared file in the journal's own target folder, not the
   current folder's: run from another project, it no longer edits that project's `index.md` for a file living elsewhere.

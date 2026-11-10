@@ -6,6 +6,7 @@ require "open3"
 require "spec_helper"
 require "samagotchi/tools/list_sessions"
 require "samagotchi/tools/send_note"
+require "samagotchi/archive_store"
 require "samagotchi/owner_lock"
 
 # list_sessions and send_note: one session tells another something as a
@@ -166,6 +167,27 @@ RSpec.describe "peer tools" do
 
       expect(described_class.call("x", peers: peers, session: other.id)).to include("waits for its next start")
       expect(notes_of(other).size).to eq(1)
+    end
+
+    it "gives a note for a continued session to its chain's newest link" do
+      old = make.tap { |s| Samagotchi::ArchiveStore.archive(s.id, state_dir: tmpdir) }
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/w",
+                                             continues: old.id, now: next_stamp).tap { |s| s.save(state_dir: tmpdir) }
+
+      expect(Samagotchi::Session).to receive(:list).once.and_call_original # one walk of the chain
+      out = described_class.call("x", peers: peers, session: old.id)
+
+      expect(out).to include("Queued a note for session #{head.id[0, 8]} (#{old.id[0, 8]} was continued")
+      expect([notes_of(old).size, notes_of(head).size]).to eq([0, 1])
+    end
+
+    it "refuses the link this session continues: the note would come back to it" do
+      old = make.tap { |s| Samagotchi::ArchiveStore.archive(s.id, state_dir: tmpdir) }
+      me.continues = old.id
+      me.save(state_dir: tmpdir)
+
+      expect(described_class.call("x", peers: peers, session: old.id)).to start_with("Error:").and include("continued into this session")
+      expect([notes_of(old), notes_of(me)]).to eq([[], []])
     end
 
     it "refuses this session, a one-turn run's, an unknown id and an empty note" do

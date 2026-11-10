@@ -5,34 +5,34 @@ require_relative "owner_lock"
 require_relative "session_inbox"
 
 module Samagotchi
-  # Loaded on first use (a note): keeps the bundle test kit's load budget
-  # (spec/samagotchi/testing/sandbox_spec.rb).
-  autoload :WorkerPresence, File.expand_path("worker_presence", __dir__)
-
-  # Loaded on first use: this autoload keeps SessionManager and its ~80
-  # files unloaded until the delegate/session path needs them.
-  autoload :SessionManager, File.expand_path("session_manager", __dir__)
-
   # The one rule for putting a context note into a session, shared by
-  # `chi note`, the agent's send_note and `chi broadcast`: a session a
-  # one-turn chi run owns, or a chi scratch session, refuses it; any other
-  # gets the note in its notes/ folder, which a live worker adds within
-  # seconds and a session with no worker at its next start. Callers word
-  # the outcome (#refusal for a refused one).
+  # `chi note`, the agent's send_note, `chi broadcast` and /objectives: a
+  # note delivery (SessionInbox.deliver :note). A note to a link that was
+  # continued goes to its chain's newest link (SessionInbox::Head); a
+  # session a one-turn chi run owns, or a chi scratch session, refuses it;
+  # any other gets the note in its notes/ folder, which a live worker adds
+  # within seconds and a session with no worker at its next start (a note
+  # never starts one). Callers word the outcome (#refusal for a refused one).
   module NoteDelivery
     # Why a one-turn chi run's session takes no note.
     ONE_SHOT_REFUSAL = "it is #{OwnerLock::TUI_BUSY}; send the note once it ends"
 
     # The outcome for one session.
-    # @!attribute status [Symbol] :queued (a worker runs it), :waits (no
-    #   worker: it waits for the next start) or :refused (a one-turn chi run
-    #   owns it, or it is a chi scratch session: +scratch+)
+    # @!attribute id [String] the session that has the note: +asked+, or
+    #   the newest link of its chain
+    # @!attribute status [Symbol] :queued (a worker runs it or is starting),
+    #   :waits (no worker: it waits for the next start) or :refused (a
+    #   one-turn chi run owns it, or it is a chi scratch session: +scratch+)
     # @!attribute queued [Integer] notes waiting in its notes/ folder
     #   (:waits only; 0 otherwise)
-    Result = Data.define(:id, :status, :queued, :scratch) do
-      def initialize(id:, status:, queued:, scratch: false) = super
+    # @!attribute asked [String] the id the caller named (+id+ by default)
+    Result = Data.define(:id, :status, :queued, :scratch, :asked) do
+      def initialize(id:, status:, queued:, scratch: false, asked: nil) = super(id:, status:, queued:, scratch:, asked: asked || id)
 
       def delivered? = status != :refused
+
+      # The note went on to a later link of +asked+'s chain.
+      def continued? = asked != id
 
       # Why a refused note was refused, in its condition's one wording.
       def refusal = scratch ? Session::SCRATCH_REFUSED : ONE_SHOT_REFUSAL
@@ -42,19 +42,25 @@ module Samagotchi
 
     # @param id [String] a full session id (resolved by the caller)
     # @param objectives [Hash, nil] an objectives note's payload
+    # @param pin [Boolean] keep it in +id+, never its chain's newest link
+    #   (an /objectives list is the conversation of +id+'s own)
+    # @param resolved [SessionInbox::Resolved, nil] the link the caller
+    #   resolved already (SessionInbox::Head.resolve(:note, id)): no second walk
     # @return [Result]
     # @raise [SessionInbox::NoteRejected] an empty note or one over 16 KiB
-    def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil)
-      presence = WorkerPresence.read(id, state_dir: state_dir, owner: SessionManager.session_owner(id, state_dir: state_dir))
-      return Result.new(id: id, status: :refused, queued: 0) if presence.tui_owned?
-      # Its terminal's alone, live or left behind.
-      return Result.new(id: id, status: :refused, queued: 0, scratch: true) if Session.load(id, state_dir: state_dir).scratch
+    # @raise [Session::NotFound] no such session
+    def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil, pin: false,
+                resolved: nil)
+      body = SessionInbox.checked_text(text)
+      delivered = SessionInbox.deliver(:note, id, state_dir: state_dir, pin: pin, resolved: resolved) do |at|
+        SessionInbox.write_note(at, text: body, source: source, from_session: from_session, from_cwd: from_cwd,
+                                    objectives: objectives, state_dir: state_dir)
+        false
+      end
+      raise Session::NotFound, id if delivered.wake == :gone
 
-      path = SessionInbox.write_note(id, text: text, source: source, from_session: from_session, from_cwd: from_cwd,
-                                         objectives: objectives, state_dir: state_dir)
-      return Result.new(id: id, status: :queued, queued: 0) if presence.owned?
-
-      Result.new(id: id, status: :waits, queued: SessionInbox.find_new_note_files(File.dirname(path, 2)).size)
+      Result.new(id: delivered.id, asked: delivered.asked, status: delivered.status, queued: delivered.queued || 0,
+                 scratch: delivered.refused? && delivered.wake == :scratch)
     end
   end
 end

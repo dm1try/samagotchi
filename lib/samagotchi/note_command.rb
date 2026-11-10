@@ -20,6 +20,7 @@ module Samagotchi
       Usage: chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
         Adds TEXT (or stdin) to each session as a context note: background
         the model sees on its next turn, not a prompt. It starts no turn.
+        A session that was continued: the newest link of its chain gets it.
         --source NAME  where it came from, shown to the model (default: cli)
         -m TEXT        the note; without it, stdin is read
         --all          every session a worker runs now, in every project
@@ -116,8 +117,15 @@ module Samagotchi
     # @return [Boolean] whether the note was queued
     def deliver(id, text, source)
       result = @access.note(id, text: text, source: source)
-      @stdout.puts("#{id[0, 8]}  #{outcome(result)}")
+      @stdout.puts("#{where(id, result)}  #{outcome(result)}")
       result.delivered?
+    end
+
+    # The id, or for a session that was continued the link that took it.
+    def where(id, result)
+      return id[0, 8] unless result.continued?
+
+      "#{id[0, 8]} → #{result.id[0, 8]} (continued)"
     end
 
     def outcome(result)

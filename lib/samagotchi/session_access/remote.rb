@@ -317,14 +317,17 @@ module Samagotchi
       def note(id, text:, source:)
         reply = request(:post, "#{session_path(id)}/notes", body: { text: text, source: source })
         json = reply.json.is_a?(Hash) ? reply.json : {}
+        # id: the link that has it, or refused it (a chi web before it names none: +id+).
+        head = Session.valid_id?(json["id"]) ? json["id"] : id
         case reply.status
         when 200
           raise_refusal(reply) unless json["status"].is_a?(String)
 
-          NoteDelivery::Result.new(id: id, status: json["status"].to_sym, queued: json["queued"].to_i)
+          NoteDelivery::Result.new(id: head, asked: id, status: json["status"].to_sym, queued: json["queued"].to_i)
         when 409
           if json["error"] == "owned_by_tui"
-            return NoteDelivery::Result.new(id: id, status: :refused, queued: 0, scratch: json["scratch"] == true)
+            return NoteDelivery::Result.new(id: head, asked: id, status: :refused, queued: 0,
+                                            scratch: json["scratch"] == true)
           end
 
           raise_refusal(reply)

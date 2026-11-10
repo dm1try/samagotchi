@@ -9,6 +9,7 @@ require_relative "objectives"
 require_relative "child_move"
 require_relative "starting_marker"
 require_relative "context_move"
+require_relative "note_move"
 require_relative "archive_store"
 require_relative "recap_store"
 require_relative "bridge_client"
@@ -142,17 +143,19 @@ module Samagotchi
       end
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive.archived - already
+      # The notes the new link took from this one (NoteMove.move).
+      notes = []
       begin
         spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                     move: plan.move, client_id: client_id)
+                                     move: plan.move, client_id: client_id, notes: notes)
       rescue StandardError
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
         # to spawn goes (left, it would hold the chain: "continued already",
-        # last: to it).
+        # last: to it), its notes given back first.
         undo_move(id, state_dir, moved: plan.move)
         begin
-          discard_failed_link(id, state_dir)
+          discard_failed_link(id, state_dir, notes: notes)
         ensure
           archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
           wake_for_rings(id, state_dir) unless plan.move.empty?
@@ -175,10 +178,16 @@ module Samagotchi
     # The link a failed #run saved (no other continues +id+:
     # check! made sure under the lock): its worker stopped if one
     # started, then the rings a moved delegate wrote into it just before
-    # the undo go back to +id+, then the link goes. A worker that outlives
-    # the stop is raised (SessionManager::DeleteRefused): the link stays,
-    # and the caller hears it.
-    private_class_method def self.discard_failed_link(id, state_dir)
+    # the undo go back to +id+. Then its session file goes first, so the
+    # link is out of the chain (a note to +id+ stays there:
+    # SessionInbox::Head) and a writer that resolved it before finds it gone,
+    # then the notes it moved there (+notes+) go back with any sent to it
+    # meanwhile (NoteMove.give_back), then the link's folder goes, and one
+    # last look gives back a note an older chi wrote after the delete
+    # (its write_note recreates the folder). A worker that outlives the
+    # stop is raised (SessionManager::DeleteRefused): the link stays, and
+    # the caller hears it.
+    private_class_method def self.discard_failed_link(id, state_dir, notes:)
       orphan = SessionChain.next_of(id, state_dir: state_dir) or return
       if SessionManager.refuse_tui!(orphan, state_dir: state_dir) &&
          !SessionManager.stop_session(orphan, state_dir: state_dir, wait: SessionManager::STOP_WAIT)
@@ -186,11 +195,24 @@ module Samagotchi
       end
 
       ChildMove.return_rings(from: orphan, to: id, state_dir: state_dir)
+      FileUtils.rm_f(Session.session_file(orphan, state_dir: state_dir))
+      NoteMove.give_back(from: orphan, to: id, moved: notes, state_dir: state_dir)
       SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true)
+      give_back_strays(orphan, id, state_dir)
     rescue SessionManager::DeleteRefused
       raise
     rescue StandardError => e
       Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
+    # A failed link's folder an older chi's note brought back after its
+    # delete: the note goes back to +id+, the folder goes again.
+    private_class_method def self.give_back_strays(orphan, id, state_dir)
+      dir = Session.session_dir(orphan, state_dir: state_dir)
+      return unless Dir.exist?(dir) && !Session.exist?(orphan, state_dir: state_dir)
+
+      NoteMove.give_back(from: orphan, to: id, moved: [], state_dir: state_dir)
+      FileUtils.rm_rf(dir)
     end
 
     # A failed continue's previous link, back in the lists, with rings that
@@ -206,7 +228,9 @@ module Samagotchi
     # The new link, holding off any worker but its own while +move+ goes to
     # it (spawn_session marks it starting before its file is saved:
     # StartingMarker.fresh?).
-    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, client_id: nil)
+    # @param notes [Array<String>] gets the names of the notes moved to it
+    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, notes:,
+                                                     client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
@@ -215,8 +239,14 @@ module Samagotchi
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
         # Its movable context too, with a note saying what moved and stayed.
         moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
-        # Its objectives last: the list reads as the latest word.
+        # Its objectives: the list reads as the latest word.
         Objectives.carry(previous, to: link.id, state_dir: state_dir)
+        # Its waiting notes last: the carry above read a pending /objectives
+        # edit from them first. They keep their names, so they still sort
+        # ahead of the link's own notes. A note sent to the previous link
+        # from here on goes to this one (SessionInbox::Head), and a
+        # straggler is adopted by its worker (NoteMove.adoption).
+        notes.concat(NoteMove.move(from: previous.id, to: link.id, state_dir: state_dir))
       end
       link = SessionManager.spawn_session(
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,

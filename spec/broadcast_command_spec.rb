@@ -4,6 +4,7 @@ require "stringio"
 require "tmpdir"
 require "json"
 require "spec_helper"
+require "samagotchi/archive_store"
 require "samagotchi/broadcast_command"
 require "samagotchi/note_command"
 require "samagotchi/owner_lock"
@@ -279,6 +280,30 @@ RSpec.describe Samagotchi::BroadcastCommand do
       json = JSON.parse(out.string)
       expect(json.last).to include("id" => id, "corrections" => [include("sessions" => include("session" => docs.id,
                                                                                                "result" => "delivered"))])
+    end
+
+    it "delivers once to two links of one chain, to its newest link, and logs it there" do
+      run("-m", "PAY-123 is fixed upstream")
+      id = broadcast_id
+      Samagotchi::ArchiveStore.archive(docs.id, state_dir: state_dir)
+      head = make("docs2", prompts: ["more docs"], continues: docs.id)
+      out.truncate(0)
+      out.rewind
+
+      # One walk of the chain, for the archived link (the other isn't walked).
+      expect(Samagotchi::Session).to receive(:list).once.and_call_original
+      expect(run("deliver", id, short(docs), short(head))).to eq(0)
+      RSpec::Mocks.space.proxy_for(Samagotchi::Session).reset
+      expect(out.string.lines.map(&:chomp)).to eq(
+        ["#{short(docs)}  delivered  by hand; to #{short(head)}, its chain's newest link; waits for its next start"]
+      )
+      expect([notes_of(docs).size, notes_of(head).size]).to eq([0, 1])
+      expect(log.records.last.corrections.first.sessions.map(&:to_h)).to eq([{ session: head.id, result: "delivered" }])
+
+      out.truncate(0)
+      out.rewind
+      expect(run("deliver", id, short(docs))).to eq(0)
+      expect(out.string).to include("skipped    it got #{id} already")
     end
 
     it "delivers once to a session named twice, by different prefixes" do

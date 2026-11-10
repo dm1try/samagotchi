@@ -249,12 +249,19 @@ module Samagotchi
     # +decisions+, prints a line per recipient and the summary, and logs it.
     def deliver_all(broadcast, decisions, cards)
       ok = true
+      # Two links of one chain are one session: the note goes once (Head).
+      got = {}
       lines = decisions.map do |d|
         next [d, "skipped", d.verdict.reason] unless d.deliver?
 
+        head = SessionInbox::Head.resolve(:note, d.recipient.id, state_dir: @state_dir)
+        next [d, "skipped", "#{head.id[0, 8]}, its chain's newest link, got it already"] if got[head.id]
+
         result = NoteDelivery.deliver(d.recipient.id, text: body(broadcast.text, d.verdict), source: SOURCE,
-                                                      state_dir: @state_dir)
+                                                      state_dir: @state_dir, resolved: head)
         next [d, "skipped", OwnerLock::TUI_BUSY] unless result.delivered?
+
+        got[result.id] = true
 
         [d, "delivered", "#{d.verdict.reason}#{"; waits for its next start" if result.status == :waits}"]
       rescue SessionInbox::NoteRejected, SystemCallError => e
@@ -333,7 +340,9 @@ module Samagotchi
         return 1
       end
       ids = sessions.map { |given| resolve_session(given) }
-      results = ids.compact.uniq.map { |id| deliver_anyway(record, id) }
+      # Two links of one chain are one session: the note goes once (Head).
+      results = ids.compact.map { |id| SessionInbox::Head.resolve(:note, id, state_dir: @state_dir) }
+                   .uniq(&:id).map { |head| deliver_anyway(record, head) }
       unless results.empty?
         begin
           @log.append_correction(id: record.id, at: @now, sessions: results)
@@ -359,22 +368,29 @@ module Samagotchi
       nil
     end
 
-    # @param id [String] a full session id (#resolve_session)
+    # @param head [SessionInbox::Resolved] the session named (+asked+, a full
+    #   id: #resolve_session) and the link that gets it (a continued one's
+    #   chain's newest)
     # @return [Broadcast::TriageLog::Delivery]
-    def deliver_anyway(record, id)
-      if record.delivered?(id)
+    def deliver_anyway(record, head)
+      id = head.asked
+      if record.delivered?(id) || record.delivered?(head.id)
         @stdout.puts(line_for(id, "skipped", "it got #{record.id} already"))
         return Broadcast::TriageLog::Delivery.new(session: id, result: "had it")
       end
 
-      result = NoteDelivery.deliver(id, text: passed_on_body(record), source: SOURCE, state_dir: @state_dir)
+      result = NoteDelivery.deliver(id, text: passed_on_body(record), source: SOURCE, state_dir: @state_dir,
+                                        resolved: head)
       unless result.delivered?
         @stdout.puts(line_for(id, "skipped", OwnerLock::TUI_BUSY))
         return Broadcast::TriageLog::Delivery.new(session: id, result: "refused")
       end
 
-      @stdout.puts(line_for(id, "delivered", "by hand#{"; waits for its next start" if result.status == :waits}"))
-      Broadcast::TriageLog::Delivery.new(session: id, result: "delivered")
+      how = "by hand#{"; to #{result.id[0, 8]}, its chain's newest link" if result.continued?}" \
+            "#{"; waits for its next start" if result.status == :waits}"
+      @stdout.puts(line_for(id, "delivered", how))
+      # Logged under the link that has it, so the next deliver finds it.
+      Broadcast::TriageLog::Delivery.new(session: result.id, result: "delivered")
     rescue SessionInbox::NoteRejected, SystemCallError => e
       @stdout.puts(line_for(id, "failed", e.message))
       Broadcast::TriageLog::Delivery.new(session: id, result: "failed")
