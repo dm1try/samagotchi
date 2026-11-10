@@ -24,7 +24,10 @@ its spec holds to a strict parse. Without it nothing here changes, and blocks al
    drawers for one block.
 
 **Safety.** The JSON is an attribute value: Nokogiri escapes its quotes, and `<`, `>` and `&` in it are `\u` escapes
-(`JSON_MARKUP`), so the HTML holds no model markup even as attribute text. The page draws its strings as text.
+(`JSON_MARKUP`), so `data-widget`'s JSON holds no model markup even as attribute text. `data-widget-error` is not
+escaped that way: a refusal quotes model values (`recommended "<b>z</b>" isn't one of its options`), so it can hold a raw
+`<` or `>` inside its quoted value. The page reads it only as data (`failBlock`'s dataset, CSS, `aria-label`), never as
+markup, and no consumer should treat rendered HTML with a regex. The page draws all strings as text.
 
 ## The parse (`Samagotchi::InlineWidgets`)
 
@@ -52,7 +55,7 @@ Pure Ruby, no web, no Engine. `parse(source)` returns a `Result`: `ok?`, `type`,
   the key to the value's end when both sit on one line, else `key: value`. The Result is then `lenient?`. A mapping
   of several pairs, or one holding a list or a mapping, stays an error, and so does one where an id, an actor, a
   `next` or a `goto` goes. This is a mend, not a second lenient pass (`Tree#folds`, `Schema#text`).
-- **Normalised.** Ids are strings, unknown keys are dropped, optional values are absent rather than null, and text is
+- **Normalised.** Ids are strings, unknown keys are dropped, a repeated key is last-wins (`Tree#mapping`), optional values are absent rather than null, and text is
   stripped. The page never sees model junk.
 
 ### The schemas
