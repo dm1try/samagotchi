@@ -218,15 +218,42 @@ createFamilyPop`) still place their own. Every popover behaves the same (`popove
 none behind. `model_picker.js`, `command_list.js` (listboxes: the focus stays in the input), `ref_menu.js` (a menu)
 and `update_sheet.js` (a native modal `<dialog>`) aren't popovers in that sense.
 
-**A phone's session bar** (`more_sheet.js`): CSS alone folds the chips and the bar's buttons away at 600 px or less
-(`display:none`, so the same `.meta` draws both layouts and `info_bar.js` knows nothing of it); they stay in the DOM.
-⋯'s sheet (`#infoMoreBtn`) draws its rows from the bar's model, and a row or an action clicks the real chip or button, so
-each keeps one set of handlers, confirmations and in-flight rules. A chip the sheet opens has no box to be placed at, so
-`chip_popover.js` places it, marks `aria-expanded` and gives focus back at the page's `[data-anchor-stand-in]` (⋯); that
-matters at exactly 600 px, where the CSS is a phone's but the shell (`SHEET_MAX`, `<`) still draws a popover, not a sheet.
-A new chip on the bar needs its place in that CSS's hidden list and a row in `moreRows`, and its attention state in the row, or
-it is lost on a phone. `app.js`'s `updateInfoBar` feeds the sheet (`update`) on every redraw; its rows and actions draw into
-fixed slots, so a row that joins keeps the focus where it was. `composer_mode.js`'s phone-width listener closes the sheet when the window grows.
+**The session bar: one row** (`bar_fold.js`, `more_sheet.js`): `#infoBar` is one row at every width, and what doesn't
+fit folds into ⋯. Every chip and button is an **item** of `info_bar_model.js` `BAR_ITEMS`: `{key, selector, group,
+rank, phone, compact, menuOrder}`. `rank` is the desktop fold order (higher stays longer; `pinned` never folds: status,
+ctx, ⋯; `menu` is never on the row: archive, delete); `phone: row` items are the only row candidates at 600 px or less
+(status, ctx, speed, ⚙, ⋯); ⚙ alone has a `compact` form (its icon, the dot when the session set its own), tried before
+it folds, and the phone's from the start. `info_bar.js` draws the `.meta` as four groups (identity: id, status, ctx,
+speed, clock | setup: ⚙, model, 🧰, notes, set/mem | relations | trail: folder, worker badge), each `.bar-sep` classed
+by the group it precedes; `#infoActions` (continue →, stop session) and ⋯ follow, right-aligned.
+
+The **fold** is `foldPlan` (pure): every candidate full, then while the row is wider than the bar the lowest rank on it
+(all items of that rank together) goes compact, else folds; pinned items never fold (the row clips). Its widths are
+measured, never read from a squeezed box: the row's children are `flex:none` and the caps (model 40ch, folder 48ch)
+hold always, so a drawn chip's width is its natural one. `createBarFold` caches them per key + text; a folded item has
+no box, so a text first seen while folded is measured by dropping the fold's attributes for one synchronous pass
+(before paint). ⋯'s count joins the row's width once something it counts folds. The live chips (ctx, speed, clock) are
+cached per key as a budget (their CSS reserve is their `min-width`): a tick within it costs a width read, no refold.
+A recompute runs only when an input changes: `foldSignature(bar, buttons)` (the items present and every non-live
+text: a status, `set 9 → set 10`, a delegate starting to wait), the bar's width (`ResizeObserver` on `#infoBar`), the
+phone profile, a live chip past its budget, the fonts ready or a zoom (those clear the cache). A recompute it starts by
+itself calls `onChange` (app.js touches `infoBar`) so ⋯ follows. Call order in `app.js updateInfoBar`: `renderInfoBar`
+→ `barFold.update` → `moreSheet.update({bar, buttons, folded})`, in one task. The plan is three attributes on
+`#infoBar` (lit renders into `#infoText` inside it, so they survive the redraws): `data-folded="notes toolkit dir"`,
+`data-compact="settings"`, `data-empty-groups="relations"`; index.html has one `display:none` selector per key and
+hides an empty group with its hairline. **A new chip needs a `BAR_ITEMS` entry and its `data-folded` selector**
+(`bar_fold.test.js` checks every foldable key has one), or it can't fold.
+
+⋯'s menu (`more_sheet.js`) is a popover above 600 px and a bottom sheet under it (`chip_popover.js`, `SHEET_MAX`; its
+own resize handling switches them, so a width change doesn't close it). It holds a row only for a folded item (the id,
+⚙ when folded and not compact, "earlier links pruned" included), the folded ones of speed, clock and folder on its
+telemetry line (none: no line), archive and delete always, continue and stop when folded. Its dot (`moreAttention`)
+and its count (`moreCount`, a desktop's, none at 0; archive and delete don't count) are from folded items alone: a chip
+on the row shows its own state. Folded items stay in the DOM, display:none: a row or an action clicks the real chip or
+button, so each keeps one set of handlers, confirmations and in-flight rules, and what a chip opens has no box to be
+placed at, so `chip_popover.js` places it, marks `aria-expanded` and gives focus back at the page's
+`[data-anchor-stand-in]` (⋯). Rows and actions draw into fixed slots, so a row that joins keeps the focus where it was.
+The e2e reach an item wherever it is with `spec/e2e/support/layout.js` `clickBarItem` (the row, else ⋯'s `[data-row]`).
 
 
 ## The stage's height

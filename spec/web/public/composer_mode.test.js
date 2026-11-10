@@ -65,7 +65,6 @@ function harness({ narrow = false } = {}) {
   els.history.append(el("p"));
   const store = createSessionStore({ initial: { owner: null } });
   const liveTurn = { running: false };
-  let sheetOpen = true;
   const mode = createComposerMode({
     els, store, liveTurn,
     startPage: {
@@ -74,12 +73,11 @@ function harness({ narrow = false } = {}) {
       dropChoices: () => log.push("dropChoices"),
     },
     deliveryControl: { show: (m) => log.push(`delivery ${m}`) },
-    moreSheet: { isOpen: () => sheetOpen, close: () => { sheetOpen = false; log.push("closeSheet"); } },
     fitPrompt: () => log.push("fitPrompt"),
     placeToast: () => log.push("placeToast"),
     win: { matchMedia: () => media },
   });
-  return { mode, els, store, liveTurn, log, media, listeners, isSheetOpen: () => sheetOpen };
+  return { mode, els, store, liveTurn, log, media, listeners };
 }
 
 test("the apply: the has-session toggle's hooks run first, and only when it flips", () => {
@@ -121,7 +119,9 @@ test("the apply: a running turn leaves the button's disabled as a send left it",
   assert.equal(h.els.attach.hidden, true);
 });
 
-test("a window crossing the phone's width redraws, and a grown one closes ⋯'s sheet", () => {
+// ⋯'s menu is no longer a phone's alone: the window's width doesn't close it
+// (chip_popover.js turns a sheet into a popover on the resize).
+test("a window crossing the phone's width redraws the composer, and nothing else", () => {
   const h = harness({ narrow: true });
   h.store.update({ selected: "s1", current: { owner: "worker" } });
   h.liveTurn.running = true;
@@ -130,9 +130,9 @@ test("a window crossing the phone's width redraws, and a grown one closes ⋯'s 
   h.media.matches = false;
   h.listeners.forEach((fn) => fn());
   assert.equal(h.els.prompt.placeholder.startsWith("Running…"), true);
-  assert.equal(h.isSheetOpen(), false);
   h.media.matches = true;
   h.log.length = 0;
   h.listeners.forEach((fn) => fn());
-  assert.equal(h.log.includes("closeSheet"), false);
+  assert.equal(h.els.prompt.placeholder, "Steer the turn…");
+  assert.deepEqual(h.log, ["syncModelPick", "dropChoices", "delivery running"]);
 });

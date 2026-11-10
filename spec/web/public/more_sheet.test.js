@@ -1,10 +1,11 @@
-// The phone's ⋯ sheet (more_sheet.js): which rows a session has, ⋯'s dot, the
-// actions' rules, and that an open sheet follows a redraw without losing its
-// nodes (the clock ticks every second while a turn runs).
+// ⋯'s menu (more_sheet.js): which rows a session has, the folded ones only
+// with a fold, ⋯'s dot and count, the telemetry line, the actions' rules, and
+// that an open sheet follows a redraw without losing its nodes (the clock
+// ticks every second while a turn runs).
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ACTION_KEYS, createMoreSheet, moreActions, moreAttention, moreRows, ROW_KEYS } from "../../../lib/samagotchi/web/public/more_sheet.js";
+import { ACTION_KEYS, createMoreSheet, moreActions, moreAttention, moreCount, moreRows, moreTelemetry, ROW_KEYS } from "../../../lib/samagotchi/web/public/more_sheet.js";
 import { infoButtons } from "../../../lib/samagotchi/web/public/info_bar_model.js";
 
 const ID = "0123456789abcdef";
@@ -132,7 +133,7 @@ test("with a fold, Continue and Stop only when folded; Archive and Delete always
 function sheet() {
   const el = document.createElement("div");
   el.id = "infoBar";
-  el.innerHTML = '<button id="infoMoreBtn">⋯</button><button id="infoContinueBtn"></button><button id="infoDeleteBtn"></button><div id="infoText"><button class="ws-chip"></button></div>';
+  el.innerHTML = '<button id="infoMoreBtn">⋯<span class="more-count"></span></button><button id="infoContinueBtn"></button><button id="infoDeleteBtn"></button><div id="infoText"><button class="ws-chip"></button></div>';
   document.body.append(el);
   const button = el.querySelector("#infoMoreBtn");
   let sid = ID;
@@ -211,4 +212,44 @@ test("a tooltip-only chip's row unfolds its tooltip in place; a link is a link; 
   ctl.update({ bar, buttons: buttonsFor() });
   assert.equal(ctl.isOpen(), false);
   done();
+});
+
+test("the telemetry line: all of it without a fold; with one only the folded speed, clock and folder, none when none", () => {
+  assert.deepEqual(moreTelemetry(bare), ["ctx", "speed", "time", "dir"]);
+  assert.deepEqual(moreTelemetry({ ...bare, speed: null }), ["ctx", "time", "dir"]);
+  assert.deepEqual(moreTelemetry(bare, new Set(["ctx", "time", "dir", "notes"])), ["time", "dir"]);
+  assert.deepEqual(moreTelemetry(bare, new Set(["notes"])), []);
+  const { ctl, button, done } = sheet();
+  ctl.update({ bar: bare, buttons: buttonsFor(), folded: new Set(["time", "dir"]) });
+  button.click();
+  assert.equal(ctl.pop.querySelector(".more-telemetry").textContent.replace(/\s+/g, " "), "1m 12s/p");
+  assert.ok(ctl.pop.querySelector(".more-ctx") === null, "ctx is on the row");
+  ctl.update({ bar: bare, buttons: buttonsFor(), folded: new Set(["notes"]) });
+  assert.ok(ctl.pop.querySelector(".more-telemetry") === null);
+  done();
+});
+
+test("⋯'s count: the folded rows, telemetry and actions; Archive and Delete never count; none at 0", () => {
+  const bar = { ...bare, settings, notes: { text: "notes: gemma", title: "t" } };
+  assert.equal(moreCount(bar, buttonsFor(), null), 0);
+  assert.equal(moreCount(bar, buttonsFor(), new Set(["archive", "delete"])), 0);
+  // notes, toolkit (rows), dir (telemetry), continue (an action); a compact ⚙ isn't folded.
+  assert.equal(moreCount(bar, buttonsFor(), new Set(["notes", "toolkit", "dir", "continue", "archive", "delete"])), 4);
+  // A folded key the session hasn't (no participants chip) doesn't count.
+  assert.equal(moreCount(bar, buttonsFor(), new Set(["participants"])), 0);
+  const { ctl, button, done } = sheet();
+  ctl.update({ bar, buttons: buttonsFor(), folded: new Set(["notes", "toolkit", "archive", "delete"]) });
+  assert.equal(button.querySelector(".more-count").textContent, "2");
+  assert.equal(button.getAttribute("aria-label"), "More (2 folded)");
+  ctl.update({ bar, buttons: buttonsFor(), folded: new Set(["archive", "delete"]) });
+  assert.equal(button.querySelector(".more-count").textContent, "");
+  assert.equal(button.getAttribute("aria-label"), "More");
+  done();
+});
+
+test("the ⚙ row says the session's own values, or that it follows the model", () => {
+  const follows = { thinking: { level: "high", source: "models: qwen", own: null }, reasoningHistory: null, llmContext: null };
+  const row = (s) => moreRows({ ...bare, settings: s }, new Set(["settings"]))[0];
+  assert.deepEqual([row(settings).label, row(settings).value], ["Settings", "think low"]);
+  assert.equal(row(follows).value, "follows the model");
 });

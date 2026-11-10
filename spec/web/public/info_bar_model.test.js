@@ -32,7 +32,7 @@ test("a session's line: id, status, model, folder, no chain, parent or delegates
   assert.equal(bar.status, "idle");
   assert.equal(bar.model.text, "qwen");
   assert.equal(bar.dir, "/p");
-  assert.deepEqual(bar.chain, { prev: null, next: null });
+  assert.deepEqual(bar.chain, { prev: null, next: null, pruned: false });
   assert.equal(bar.parent, null);
   assert.equal(bar.kids, null);
   assert.equal(bar.worker, null);
