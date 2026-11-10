@@ -17,8 +17,12 @@
   "pending_question": null,
   "used_memory_names": [],
   "project_root": null,
-  "preloaded_memory_names": [],
-  "muted_memory_names": [],
+  "preloaded_memory_names": [
+    "system/delegated"
+  ],
+  "muted_memory_names": [
+    "system/noisy"
+  ],
   "prompt_notes": [],
   "parent_id": null,
   "scratch": false,

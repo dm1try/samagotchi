@@ -300,7 +300,8 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:spawn).and_return(12_345)
 
       session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
-                                              memories: ["cli_usage"], muted_memories: ["gh-helper"])
+                                              setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["cli_usage"],
+                                                                                  muted_memory_names: ["gh-helper"]))
 
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       expect(loaded.preloaded_memory_names).to eq(["cli_usage"])

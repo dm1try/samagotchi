@@ -65,7 +65,8 @@ RSpec.describe Samagotchi::Session do
 
     it "writes every FIELDS key, in that order (an OPTIONAL_FIELDS one only when set), and reads the same session back from it" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
-                                            preloaded_memory_names: %w[notes], parent_id: "p1")
+                                            setup: Samagotchi::SessionSetup.new(preloaded_memory_names: %w[notes]),
+                                            parent_id: "p1")
       session.messages << { role: "user", content: "hi" }
       session.last_turn = { "outcome" => "completed" }
       session.save(state_dir: tmpdir)
@@ -315,8 +316,10 @@ RSpec.describe Samagotchi::Session do
 
     it "round-trips the preloaded and muted memory names, normalized" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
-                                            preloaded_memory_names: ["cli_usage", " cli_usage ", ""],
-                                            muted_memory_names: ["gh-helper", nil, "gh-helper"])
+                                            setup: Samagotchi::SessionSetup.new(
+                                              preloaded_memory_names: ["cli_usage", " cli_usage ", ""],
+                                              muted_memory_names: ["gh-helper", nil, "gh-helper"]
+                                            ))
       expect(session.preloaded_memory_names).to eq(["cli_usage"])
       expect(session.muted_memory_names).to eq(["gh-helper"])
       session.save(state_dir: tmpdir)
@@ -641,14 +644,15 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))).to include("delegate" => true)
 
       older = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
-                                          parent_id: "p1", preloaded_memory_names: ["system/delegated"])
+                                          parent_id: "p1",
+                                          setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["system/delegated"]))
       expect(older.delegate?).to be(true)
 
       fork = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp", parent_id: "p1")
       fork.save(state_dir: tmpdir)
       expect(described_class.load(fork.id, state_dir: tmpdir).delegate?).to be(false)
       top = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
-                                        preloaded_memory_names: ["system/delegated"])
+                                        setup: Samagotchi::SessionSetup.new(preloaded_memory_names: ["system/delegated"]))
       expect(top.delegate?).to be(false)
     end
 

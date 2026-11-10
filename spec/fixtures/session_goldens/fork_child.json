@@ -62,7 +62,9 @@
   "used_memory_names": [],
   "project_root": null,
   "preloaded_memory_names": [],
-  "muted_memory_names": [],
+  "muted_memory_names": [
+    "system/noisy"
+  ],
   "prompt_notes": [],
   "parent_id": "golden-0001-every-field",
   "scratch": false,

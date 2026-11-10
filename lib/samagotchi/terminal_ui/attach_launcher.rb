@@ -262,8 +262,9 @@ module Samagotchi
                     SessionManager.resume_session(resume, state_dir: sd)
                   else
                     SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
-                                                 memories: memories, muted_memories: muted_memories,
-                                                 setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
+                                                 setup: SessionSetup.new(preloaded_memory_names: memories,
+                                                                         muted_memory_names: muted_memories,
+                                                                         llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
                                                                          thinking: Thinking.session_level(thinking),
                                                                          appended_prompt_files: appended_prompt_files,
                                                                          toolkit: toolkit, settings: settings,

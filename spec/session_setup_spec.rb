@@ -18,6 +18,18 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: {}))).to be_empty
     expect(described_class.new(parent_answers: "hard")).not_to be_empty
     expect(described_class.new(working_set_pins: [{ "kind" => "file", "key" => "/r/a.rb" }])).not_to be_empty
+    expect(described_class.new(preloaded_memory_names: ["notes"])).not_to be_empty
+    expect(described_class.new(muted_memory_names: ["noisy"])).not_to be_empty
+  end
+
+  it "normalizes and freezes preloaded and muted memory names" do
+    setup = described_class.new(preloaded_memory_names: [" a ", "", :b, "a"],
+                                muted_memory_names: [" noisy ", nil, "noisy"])
+
+    expect(setup.preloaded_memory_names).to eq(%w[a b])
+    expect(setup.preloaded_memory_names).to be_frozen
+    expect(setup.muted_memory_names).to eq(["noisy"])
+    expect(setup.muted_memory_names).to be_frozen
   end
 
   it "keeps bundle settings frozen, string-keyed" do
@@ -50,9 +62,25 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.of(session).settings.core).to eq("recap.enabled" => false)
     session.parent_answers = "standard"
     expect(described_class.of(session).parent_answers).to eq("standard")
+    session.preloaded_memory_names = %w[project/a system/b]
+    session.muted_memory_names = %w[project/noisy system/noisy]
+    expect(described_class.of(session).preloaded_memory_names).to eq(%w[project/a system/b])
+    expect(described_class.of(session).muted_memory_names).to eq(%w[project/noisy system/noisy])
     session.working_set_pins = [{ "kind" => "file", "key" => "/r/a.rb" }]
     expect(described_class.of(session).working_set_pins).to eq([Samagotchi::WorkingSetPin.new(kind: "file", key: "/r/a.rb")])
     expect(described_class.of(nil)).to be_empty
+  end
+
+  it "carries the delegate memory only when the new session is a delegate" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd,
+                                              parent_id: "parent", delegate: true,
+                                              setup: described_class.new(preloaded_memory_names: %w[user/a system/delegated]))
+
+    expect(described_class.of(session).preloaded_memory_names).to eq(["user/a"])
+    ordinary = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd,
+                                               setup: described_class.new(preloaded_memory_names: ["system/delegated"]))
+    expect(described_class.of(ordinary).preloaded_memory_names).to eq(["system/delegated"])
+    expect(described_class.of(ordinary, forked: true).preloaded_memory_names).to be_empty
   end
 
   it "starts a new session with its settings" do
@@ -61,12 +89,15 @@ RSpec.describe Samagotchi::SessionSetup do
                                               setup: described_class.new(llm_context: override, thinking: :medium,
                                                                          reasoning_history: :drop,
                                                                          appended_prompt_files: ["/r/a.md"],
+                                                                         preloaded_memory_names: ["notes"],
+                                                                         muted_memory_names: ["noisy"],
                                                                          settings: Samagotchi::SessionConfig::Settings.new(bundles: { "x" => { "k" => 1 } }),
                                                                          parent_answers: "hard",
                                                                          working_set_pins: [{ kind: "memory", key: "notes" }]))
 
     expect(session).to have_attributes(llm_context: override, thinking: :medium, reasoning_history: :drop,
                                        appended_prompt_files: ["/r/a.md"], settings: Samagotchi::SessionConfig::Settings.new(bundles: { "x" => { "k" => 1 } }),
+                                       preloaded_memory_names: ["notes"], muted_memory_names: ["noisy"],
                                        parent_answers: "hard",
                                        working_set_pins: [Samagotchi::WorkingSetPin.new(kind: "memory", key: "notes")])
   end

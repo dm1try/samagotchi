@@ -22,9 +22,6 @@ module Samagotchi
       # Returns the session object with its ID. Every worker always starts its
       # per-session Bridge (the single live client transport), so external
       # clients can reach it once the sidecar is published.
-      # @param memories [Array<String>] --memory: preloaded into the worker's prompt
-      # @param muted_memories [Array<String>] --mute: hidden from the session
-      #   (both are session fields, so a respawn keeps them)
       # @param parent_id [String, nil] the session that delegates this one (the
       #   `delegate` tool) or was forked from; a session field too
       # @param messages [Array<Hash>] a conversation to start from (a plugin's
@@ -35,9 +32,9 @@ module Samagotchi
       # @param title [String, nil] the session's own name (Session#title; a
       #   continue's link inherits its previous link's), saved before the
       #   worker starts: the worker owns the file from then on
-      # @param setup [SessionSetup] the session's own settings (chi
-      #   --llm-context; a fork and a continue copy their session's; a delegate
-      #   child the toolkit its delegate call named); without a toolkit the
+      # @param setup [SessionSetup] the session's own settings (chi --memory,
+      #   --mute, --llm-context; a fork and a continue copy their session's;
+      #   a delegate child the memory and toolkit its delegate call named); without a toolkit the
       #   session is stored on config's toolkit.default, a delegate child on
       #   toolkit.child (Toolkit.configured)
       # @param continues [String, nil] the session this one continues (a
@@ -60,10 +57,9 @@ module Samagotchi
       # @return [Session] with #seed_images_dropped: refs whose file was gone,
       #   and #model_warning: an id its host's saved list doesn't have
       def spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
-                        memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                        preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                        note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil, scratch: false,
-                        client_id: nil)
+                        parent_id: nil, messages: [], images_from: nil, preview: nil, title: nil, delegate: false,
+                        setup: SessionSetup.new, continues: nil, note: nil, note_source: "chi", before_spawn: nil,
+                        review: nil, verify_fresh: nil, scratch: false, client_id: nil)
         sd = state_dir || Session.default_state_dir
         # The resolved ref is stored (a resumed session keeps its model when an
         # alias is retargeted), with the name as typed beside it. A wrong host
@@ -79,8 +75,6 @@ module Samagotchi
           model_name: ref,
           model_typed: typed == ref ? nil : typed,
           working_directory: working_directory || Dir.pwd,
-          preloaded_memory_names: memories,
-          muted_memory_names: muted_memories,
           parent_id: parent_id,
           messages: messages,
           delegate: delegate,

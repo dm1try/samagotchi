@@ -179,10 +179,11 @@ module Samagotchi
 
         # The parent's own parent_answers, as it is now (a snapshot): the
         # child's answers are held at least as tight.
-        setup = SessionSetup.new(toolkit: toolkit.empty? ? nil : Toolkit.new(name: toolkit),
+        setup = SessionSetup.new(preloaded_memory_names: CHILD_MEMORIES,
+                                 toolkit: toolkit.empty? ? nil : Toolkit.new(name: toolkit),
                                  parent_answers: parent.parent_answers)
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,
-                                             model_name: child_model(model, parent), memories: CHILD_MEMORIES,
+                                             model_name: child_model(model, parent),
                                              parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir,
                                              client_id: ClientId.delegate(parent.id))
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)

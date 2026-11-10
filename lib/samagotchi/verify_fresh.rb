@@ -86,7 +86,8 @@ module Samagotchi
         refuse_busy!(parent.id, of, author, state_dir)
 
         child = spawn.call(prompt: prompt_for(anchor.quote), working_directory: parent.working_directory,
-                           model_name: parent.model_name, memories: [Session::DELEGATE_MEMORY],
+                           model_name: parent.model_name,
+                           setup: SessionSetup.new(preloaded_memory_names: [Session::DELEGATE_MEMORY]),
                            parent_id: parent.id, delegate: true, verify_fresh: origin, state_dir: state_dir)
         append_ledger(dir, { "child_id" => child.id, "of" => of, "author" => author, "at" => Time.now.utc.iso8601(3) })
         child

@@ -114,16 +114,16 @@
     "continue": "absent"
   },
   "preloaded_memory_names": {
-    "fork": "default",
-    "delegate": "same",
+    "fork": "same",
+    "delegate": "own",
     "respawn": "same",
-    "continue": "default"
+    "continue": "same"
   },
   "muted_memory_names": {
-    "fork": "default",
+    "fork": "same",
     "delegate": "default",
     "respawn": "same",
-    "continue": "default"
+    "continue": "same"
   },
   "prompt_notes": {
     "fork": "default",

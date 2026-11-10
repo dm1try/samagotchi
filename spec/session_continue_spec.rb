@@ -103,6 +103,31 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                               "\n\nIts last answer:\nok")
   end
 
+  it "keeps the previous link's preloaded and muted memory names" do
+    previous = make
+    previous.preloaded_memory_names = ["a"]
+    previous.muted_memory_names = ["b"]
+    previous.save(state_dir: tmpdir)
+
+    link = continue(previous.id)
+    saved = load(link.id)
+
+    expect(saved).to have_attributes(preloaded_memory_names: ["a"], muted_memory_names: ["b"])
+  end
+
+  it "does not carry a delegate child's reserved memory into a non-delegate continuation" do
+    previous = make(parent_id: "parent", delegate: true)
+    previous.preloaded_memory_names = %w[system/delegated user/a]
+    previous.muted_memory_names = ["user/b"]
+    previous.save(state_dir: tmpdir)
+
+    link = continue(previous.id)
+    saved = load(link.id)
+
+    expect(saved).to have_attributes(parent_id: nil, preloaded_memory_names: ["user/a"], muted_memory_names: ["user/b"])
+    expect(saved.delegate?).to be(false)
+  end
+
   it "sets the new link's opener (not saved) from a previous link that is itself a continuation, nil from a first link" do
     first = make
     second = continue(first.id)

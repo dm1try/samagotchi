@@ -124,6 +124,19 @@ RSpec.describe Samagotchi::ReviewStart do
       expect(Samagotchi::SessionChain.next_of(source.id, state_dir: state_dir)).to be_nil
     end
 
+    it "carries the source's muted memories, but not its preloaded memories" do
+      source = working
+      source.preloaded_memory_names = ["a"]
+      source.muted_memory_names = ["b"]
+      source.save(state_dir: state_dir)
+
+      review = described_class.fork(from: source.id, state_dir: state_dir, recap_wait: 0)
+      saved = Samagotchi::Session.load(review.id, state_dir: state_dir)
+
+      expect(saved.preloaded_memory_names).to be_empty
+      expect(saved.muted_memory_names).to eq(["b"])
+    end
+
     it "asks the source's live worker for a fresh recap first" do
       source = working
       allow(Samagotchi::SessionContinue).to receive(:recap_before_archive)
