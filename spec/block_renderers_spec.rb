@@ -197,6 +197,17 @@ RSpec.describe Samagotchi::BlockRenderers do
       expect(Samagotchi::Log).to receive(:warn).with(:web, "block_renderers_unreadable", hash_including(bundle: "drawer"))
       expect(described_class.for_installed).to eq([])
     end
+
+    it "logs a list that doesn't parse once, however often it is read" do
+      install(source)
+      FileUtils.rm_f(File.join(bundles_dir, "drawer", "manifest.yml"))
+      path = File.join(bundles_dir, "drawer", "manifest.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("block_renderers" => [{ "lang" => "BAD" }])))
+      expect(Samagotchi::Log).to receive(:warn).with(:web, "block_renderers_unreadable", hash_including(bundle: "drawer")).once
+
+      3.times { described_class.for_installed }
+      expect(described_class.script_path("drawer", "draw.js")).to be_nil
+    end
   end
 
   describe "a record with bytes that aren't UTF-8 (one from before chi kept its manifest.yml)" do

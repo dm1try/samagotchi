@@ -38,6 +38,9 @@ module Samagotchi
     # Languages core draws itself: a bundle's renderer for one would be a
     # second drawer for the same block.
     RESERVED = [InlineWidgets::LANG].freeze
+    # The [bundle, problem] pairs .renderers has logged in this process.
+    WARNED = Set.new
+    WARNED_LOCK = Mutex.new
 
     module_function
 
@@ -109,13 +112,18 @@ module Samagotchi
       raise Invalid, "bundle #{bundle}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
     end
 
-    # Its parsed renderers; a list that doesn't parse is none (logged).
+    # Its parsed renderers; a kept list that doesn't parse is the record's
+    # mirror, else none. Logged once per bundle and problem: this runs on each
+    # list request and each renderer file fetch.
     def renderers(bundle, manifest)
-      if (problem = manifest.problems["block_renderers"])
+      if (problem = manifest.problems["block_renderers"]) && WARNED_LOCK.synchronize { WARNED.add?([bundle, problem]) }
         Log.warn(:web, "block_renderers_unreadable", bundle: bundle, msg: problem)
       end
       manifest.block_renderers
     end
     private_class_method :renderers
+
+    # Forget what was logged (specs).
+    def reset_warnings! = WARNED_LOCK.synchronize { WARNED.clear }
   end
 end
