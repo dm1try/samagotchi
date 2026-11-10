@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "tmpdir"
 require "support/fake_provider_server"
+require "support/detached_session"
 
 # `chi -p X </dev/null` (attached): the prompt runs once. In the old
 # in-process REPL a failed turn restored its prompt for a retry, and Reline,
@@ -12,6 +13,8 @@ require "support/fake_provider_server"
 # The error shows once and chi exits 1; the provider's retries inside the
 # turn still run.
 RSpec.describe "chi -p with no terminal" do
+  include SpecDetachedSession
+
   let(:server) { FakeProviderServer.start }
   let(:dir) { Dir.mktmpdir("chi-p-pipe") }
 
@@ -25,7 +28,7 @@ RSpec.describe "chi -p with no terminal" do
   # A real bin/chi each: the bug was Reline's, which a fork (the suite's
   # stubbed Reline) can't show. The retries' backoff is short: their count
   # is what is checked, not their delay.
-  def run_chi(retries:)
+  def run_prompt(retries:)
     FileUtils.mkdir_p(File.join(dir, "config", "samagotchi"))
     File.write(File.join(dir, "config", "samagotchi", "config.yml"), <<~YAML)
       default:
@@ -39,7 +42,10 @@ RSpec.describe "chi -p with no terminal" do
         base_delay: 0.01
       recap: false
     YAML
-    out, _err, status = super("-p", "hello", env: isolated_chi_env(dir), timeout: 30)
+    env = isolated_chi_env(dir)
+    out, _err, status = run_chi("-p", "hello", env: env, timeout: 30)
+    # chi -p detaches: end its worker before the dir goes.
+    stop_detached_session(out, env: env)
     [out, status]
   end
 
@@ -48,7 +54,7 @@ RSpec.describe "chi -p with no terminal" do
   it "sends a prompt its host refuses once, prints the error once and exits 1" do
     server.default("/v1/chat/completions", status: 400, json: { error: { message: "fake is not a valid model ID" } })
 
-    out, status = run_chi(retries: 0)
+    out, status = run_prompt(retries: 0)
 
     expect(chat_requests).to eq(1)
     expect(status.exitstatus).to eq(1)
@@ -59,7 +65,7 @@ RSpec.describe "chi -p with no terminal" do
   it "stops after the retry policy's attempts when the host keeps failing" do
     server.default("/v1/chat/completions", status: 503, json: { error: { message: "overloaded" } })
 
-    _out, status = run_chi(retries: 2)
+    _out, status = run_prompt(retries: 2)
 
     expect(chat_requests).to eq(3)
     expect(status.exitstatus).to eq(1)
@@ -68,7 +74,7 @@ RSpec.describe "chi -p with no terminal" do
   it "exits 0 after an answer" do
     server.default("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
 
-    out, status = run_chi(retries: 0)
+    out, status = run_prompt(retries: 0)
 
     expect(chat_requests).to eq(1)
     expect(status.exitstatus).to eq(0)
