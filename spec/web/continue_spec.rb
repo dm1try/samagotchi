@@ -160,7 +160,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
                                             parent_id: previous.id, delegate: true)
     child.save(state_dir: state_dir)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: state_dir), "done")
-    hub = instance_double(Samagotchi::Web::SessionHub, touch: nil)
+    hub = instance_double(Samagotchi::Web::SessionHub, touch: nil, installed: nil)
     @app = described_class.new(manager: Samagotchi::SessionManager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub)
 
     status, body = create(continues: previous.id, idle: true)

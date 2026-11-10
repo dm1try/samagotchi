@@ -46,9 +46,10 @@ module Samagotchi
       #   the smaller of that budget and the window, as the live meter
       #   does). nil: one is built here; a caller that builds many summaries
       #   (the session hub) keeps one and passes it.
+      # @param compat_version [String] the newest chi the worker badge compares with
       # @return [Hash] symbol keys
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil,
-                registry: nil)
+                registry: nil, compat_version: VERSION)
         link = WorkerLink.resolve(session_dir, unlink: false, owner: owner)
         up = link.live?
         sidecar = up ? link.sidecar : nil
@@ -117,7 +118,7 @@ module Samagotchi
           # nil and [] without one): the page's stale-worker badge.
           worker_version: sidecar&.version,
           worker_features: sidecar ? sidecar.features : [],
-          worker_compat: sidecar && Compat.verdict(worker_version: sidecar.version).to_s,
+          worker_compat: sidecar && Compat.verdict(worker_version: sidecar.version, version: compat_version).to_s,
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a

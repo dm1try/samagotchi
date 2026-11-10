@@ -1896,7 +1896,7 @@ module Samagotchi
       def session_to_json(s, status: s.status, owner: nil)
         SessionSummary.build(s, status: status, owner: owner,
                                 session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir),
-                                registry: host_registry)
+                                registry: host_registry, compat_version: @hub&.installed || VERSION)
       end
 
       def parse_json(str)

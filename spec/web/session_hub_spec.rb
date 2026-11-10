@@ -117,6 +117,25 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.map { |e| e.data[:session][:pending_question] }).to eq([{ id: "q1", kind: "question" }, nil])
     end
 
+    it "updates worker compatibility when a newer chi is installed" do
+      a = save_session
+      lock = Samagotchi::OwnerLock.acquire(session_dir(a), kind: "worker", wait: 0)
+      File.write(File.join(session_dir(a), "bridge.json"),
+                 JSON.generate(port: 4321, version: Samagotchi::VERSION, features: ["restart"]))
+      hub.scan
+      expect(hub.snapshot.first[:worker_compat]).to eq("ok")
+      events.clear
+
+      installed.newest = "99.0.0"
+      hub.refresh_installed
+
+      expect(types).to eq(%w[chi session])
+      expect(hub.snapshot.first[:worker_compat]).to eq("restart_suggested")
+      expect(events.last.data[:session]).to include(worker_version: Samagotchi::VERSION, worker_compat: "restart_suggested")
+    ensure
+      lock&.release
+    end
+
     it "reports no question from a file whose worker is gone (it died waiting; nobody can answer it)" do
       a = save_session(status: "running")
       a.pending_question = { id: "q1", question: "Which?" }
