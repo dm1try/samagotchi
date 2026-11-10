@@ -94,7 +94,7 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings::Synth do
 
       public :messages_for_display, :turn_drawings_field
     end.new
-    items = host.messages_for_display(messages, parts: true, markdown: false, drawings: lines, strip_drawn: true)
+    items = host.messages_for_display(messages, markdown: false, drawings: lines)
     JSON.parse(JSON.generate({ messages: items, **host.turn_drawings_field(lines, items) }))
   end
 

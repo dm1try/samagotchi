@@ -399,18 +399,7 @@
       },
       {
         "role": "assistant",
-        "content": "Step one.",
-        "parts": {
-          "tools": [
-            {
-              "tool": "read",
-              "params": "path=\"b.rb\"",
-              "title": "b.rb",
-              "output": "[read]\nb",
-              "tool_id": "t1"
-            }
-          ]
-        }
+        "content": "Step one."
       },
       {
         "role": "user",
