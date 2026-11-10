@@ -41,6 +41,9 @@ and commands may change between minor versions. How releases are made:
   (`chi note` prints `OLD → NEW (continued)`), and notes waiting when it was continued move with it; a note that
   still lands in the old link as it is continued is taken by the new link's worker, and a continue that fails gives
   the notes back. An `/objectives` edit stays in its own session.
+- A `chi sessions stop` that lands while a session's worker is leaving (an idle exit, `/exit`, a signal) is no longer
+  undone by a new worker started for input or delegate reports that were waiting: the session stays stopped and
+  they wait for its next start, as a stop during a restart already did.
 - `chi bundle uninstall NAME` of a bundle whose install was interrupted before its record (only the
   `pending.json` journal left) retags the index line of a kept shared file in the journal's own target folder, not the
   current folder's: run from another project, it no longer edits that project's `index.md` for a file living elsewhere.

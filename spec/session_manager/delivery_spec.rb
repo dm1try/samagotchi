@@ -434,6 +434,81 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files.size).to eq(1)
     end
 
+    # P5: a send pins the id it names (docs/sessions.md, Which link): an
+    # archived link that was continued gets the message, and its own worker.
+    it "pins a send to the link it names, an archived one that was continued too" do
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                             continues: session.id)
+      head.save(state_dir: tmpdir)
+      allow(described_class).to receive(:resume_session)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
+
+      expect(result).to have_attributes(status: :accepted, via: :file)
+      expect(result.ack["session_id"]).to eq(session.id)
+      expect(input_files.size).to eq(1)
+      expect(Samagotchi::SessionInbox.find_new_input_files(Samagotchi::Session.session_dir(head.id, state_dir: tmpdir)))
+        .to be_empty
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir).twice
+      expect(described_class).not_to have_received(:resume_session).with(head.id, anything)
+    end
+
+    # The two liveness checks read WakePolicy's send row: a session a worker
+    # holds, or one being started, gets no second start.
+    it "starts no worker when one holds the session, or one is being started" do
+      allow(described_class).to receive(:resume_session)
+      own("worker")
+      described_class.deliver_turn(session.id, prompt: "a", state_dir: tmpdir, bridge: -> {})
+      locks.pop.release
+      Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
+      described_class.deliver_turn(session.id, prompt: "b", state_dir: tmpdir, bridge: -> {})
+
+      expect(described_class).not_to have_received(:resume_session)
+      expect(input_files.size).to eq(2)
+    end
+
+    # A send un-stops, also when the stop landed while a worker is leaving
+    # (its Bridge closed, the lock held for its recap): the input is left to
+    # the leaving worker's respawn (WorkerBoot's leave row), which a stop
+    # would drop, so the send clears the stop as resume_session would.
+    it "clears a stop that landed while a worker is leaving, so the leave's respawn serves the input" do
+      allow(described_class).to receive(:resume_session)
+      own("worker")
+      locks.last.mark_leaving(wait: 5)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
+
+      expect(result).to have_attributes(status: :accepted, via: :file)
+      expect(input_files.size).to eq(1)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(false)
+      expect(described_class).not_to have_received(:resume_session)
+    end
+
+    it "leaves a stop alone while a worker that isn't leaving holds the session" do
+      own("worker")
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
+
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true)
+    end
+
+    # chi web's turn route names no state dir: the default one's session.
+    it "posts to a live worker of a session in the default state dir, no state_dir given" do
+      default = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      default.save
+      locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(default.id), kind: "worker")
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+      allow(bridge).to receive(:post_turn).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1"}')
+      )
+
+      expect(described_class.deliver_turn(default.id, prompt: "hi", bridge: -> { bridge }))
+        .to have_attributes(status: :accepted, via: :bridge)
+    end
+
     it "refuses a chi scratch session, live worker or not, in its one wording, and queues nothing" do
       session.scratch = true
       session.save(state_dir: tmpdir)

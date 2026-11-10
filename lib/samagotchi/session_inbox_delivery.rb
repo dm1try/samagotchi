@@ -44,7 +44,8 @@ module Samagotchi
     # What a delivery of one kind may do to a session's worker: one frozen
     # row per kind (ROWS), decided on WorkerPresence's predicates alone, in
     # one order for every kind (#decide).
-    # @!attribute kind [Symbol] :send, :note, :push, :ring or :fresh_verdict
+    # @!attribute kind [Symbol] :send, :note, :push, :ring, :fresh_verdict or
+    #   :leave (WorkerBoot's respawn, not a delivery)
     # @!attribute resolves [Symbol] which link it goes to (Head.resolve):
     #   :pinned the id named; :head the chain's newest link from it; :reader
     #   the link that reads the named one's file (a ring: the file stays with
@@ -65,13 +66,13 @@ module Samagotchi
       # Why the delivery is refused before anything is written, else nil:
       # :gone (no session), :owned (a one-turn chi run's), :scratch.
       # @param load [#call, nil] the session, read only when the scratch
-      #   flag decides and +presence+ hasn't it (#with_session)
+      #   flag decides (nil: not a scratch session)
       # @return [Symbol, nil]
       def refusal(presence, load: nil)
         return :gone unless presence.exists?
         return :owned if refuse_tui && presence.tui_owned?
 
-        :scratch if refuse_scratch && scratch?(presence, load)
+        :scratch if refuse_scratch && scratch?(load)
       end
 
       # What the delivery means for the session's worker, in this order:
@@ -96,16 +97,12 @@ module Samagotchi
         return :starting if unstops ? presence.start_pending? : presence.starting?
         return :none unless starts
         return :off unless wake
-        return :scratch if scratch?(presence, load)
+        return :scratch if scratch?(load)
 
         :start
       end
 
-      private def scratch?(presence, load)
-        return presence.scratch? unless presence.scratch.nil?
-
-        load ? load.call.scratch == true : false
-      end
+      private def scratch?(load) = load ? load.call.scratch == true : false
     end
 
     WakePolicy::ROWS = {
@@ -118,7 +115,13 @@ module Samagotchi
       ring: WakePolicy.new(kind: :ring, resolves: :reader, starts: true, unstops: false, starts_archived: false,
                            refuse_tui: false, refuse_scratch: false),
       fresh_verdict: WakePolicy.new(kind: :fresh_verdict, resolves: :pinned, starts: false, unstops: false,
-                                    starts_archived: false, refuse_tui: false, refuse_scratch: false)
+                                    starts_archived: false, refuse_tui: false, refuse_scratch: false),
+      # Not a delivery: a worker's own leave starting its successor for
+      # what waits (input, rings) or a restart (WorkerBoot, after the
+      # lock's release). A stop wins; an archived session's input still
+      # starts it, as a send's would have.
+      leave: WakePolicy.new(kind: :leave, resolves: :pinned, starts: true, unstops: false, starts_archived: true,
+                            refuse_tui: false, refuse_scratch: false)
     }.freeze
 
     # Which link of a chain a delivery goes to.

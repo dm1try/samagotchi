@@ -184,6 +184,23 @@ RSpec.describe Samagotchi::VerifyFresh do
       expect(session.messages.size).to eq(1)
     end
 
+    # A fresh verdict is the session inbox's fresh_verdict kind: pinned to
+    # the child's parent (its original verdict's card is there), never a
+    # worker started for it (display state).
+    it "is an inbox delivery pinned to the parent, a continued one too, that starts no worker" do
+      Samagotchi::ArchiveStore.archive(parent.id, state_dir: state_dir)
+      head = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: parent.id)
+      head.save(state_dir: state_dir)
+      allow(Samagotchi::SessionInbox).to receive(:deliver).and_call_original
+      expect(Samagotchi::SessionManager).not_to receive(:start_for_inbox)
+
+      expect(described_class.forward(child, [record], state_dir: state_dir)).to eq(1)
+
+      expect(Samagotchi::SessionInbox).to have_received(:deliver).with(:fresh_verdict, parent.id, hash_including(wake: false))
+      expect(described_class.pending(parent_dir).size).to eq(1)
+      expect(described_class.pending(Samagotchi::Session.session_dir(head.id, state_dir: state_dir))).to eq([])
+    end
+
     it "never rings the parent: nothing enters its conversation" do
       expect(Samagotchi::ChildRing.ring(child, why: "turn_end", state_dir: state_dir)).to be_nil
       expect(Samagotchi::SessionInbox.find_ring_files(parent_dir)).to eq([])

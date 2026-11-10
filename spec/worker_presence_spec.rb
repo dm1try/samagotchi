@@ -25,8 +25,7 @@ RSpec.describe Samagotchi::WorkerPresence do
   describe ".read" do
     it "reads a saved session with nothing on it as there, unowned and unmarked" do
       expect(read).to have_attributes(session_id: id, exists?: true, owned?: false, tui_owned?: false, stop_marked?: false,
-                                      starting?: false, start_pending?: false, archived?: false, link: nil,
-                                      turn_status: nil, scratch: nil)
+                                      starting?: false, start_pending?: false, archived?: false, link: nil)
     end
 
     it "reads a missing session as not there" do
@@ -119,37 +118,6 @@ RSpec.describe Samagotchi::WorkerPresence do
       presence = read(owner: owner, link: :look)
       expect(presence.link).to eq(Samagotchi::WorkerLink::Starting.new(owner: owner, stuck: false))
       expect(presence).to have_attributes(live?: false, worker_owned?: true)
-    end
-  end
-
-  describe ".stop_marked?" do
-    it "reads the stop marker alone" do
-      expect(Samagotchi::OwnerLock).not_to receive(:owner)
-      expect(Samagotchi::StartingMarker).not_to receive(:fresh?)
-      expect(described_class.stop_marked?(id, state_dir: state_dir)).to be(false)
-
-      Samagotchi::Session.mark_stopped(id, state_dir: state_dir)
-      expect(described_class.stop_marked?(id, state_dir: state_dir)).to be(true)
-      expect(described_class.stop_marked?("../x", state_dir: state_dir)).to be(false)
-    end
-  end
-
-  describe "#with_session" do
-    it "adds the loaded session's status and scratch flag" do
-      presence = read.with_session(session)
-      expect(presence).to have_attributes(turn_status: "idle", turn_stopped?: false, scratch?: false)
-
-      session.status = Samagotchi::Session::STATUS_STOPPED
-      session.scratch = true
-      expect(read.with_session(session)).to have_attributes(turn_stopped?: true, scratch?: true)
-    end
-
-    it "keeps the turn status apart from the stop marker" do
-      Samagotchi::Session.mark_stopped(id, state_dir: state_dir)
-
-      expect(read).to have_attributes(stop_marked?: true, turn_stopped?: false)
-      loaded = read.with_session(Samagotchi::Session.load(id, state_dir: state_dir))
-      expect(loaded).to have_attributes(stop_marked?: true, turn_stopped?: true)
     end
   end
 
