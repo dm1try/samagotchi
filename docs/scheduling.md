@@ -62,6 +62,10 @@ a participant's review or pair turn is denied them ([guardrails.md](guardrails.m
   `head` through the chain: once the session is continued — by a chain schedule or
   by a `chi send --continues` — the turn goes to the new link, not to the archived
   anchor the schedule was made against.
+  Both modes resolve the **chain's end** (`SessionChain::Links#latest`), not the
+  first live link a `chi send` takes: a chain firing can only continue the end, and
+  an archived end (a chain you retired) fails the firing instead of being brought
+  back as a send would.
 
 A `scratch` session is refused at `add`: it is deleted when its terminal leaves.
 A prompt is checked at `add` too — non-empty and at most 16 KiB

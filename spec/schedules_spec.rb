@@ -524,6 +524,27 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # The tick's dominant cost is the chain walk: every entry's target, its
+  # chain key and its busy check resolve over one SessionChain::Links.
+  it "lists the sessions once for a whole tick's checks" do
+    Dir.mktmpdir("schedules-one-listing") do |root|
+      dir = File.join(root, "sessions")
+      first = session(dir)
+      Samagotchi::ArchiveStore.archive(first.id, state_dir: dir)
+      head = session(dir, continues: first.id).id
+      other = session(dir).id
+      schedules = store(dir)
+      schedules.add(target: first.id, prompt: "Audit", recurrence: every("1m"))
+      schedules.add(target: head, prompt: "Check", recurrence: every("1m"), mode: "same")
+      schedules.add(target: other, prompt: "Sweep", recurrence: every("1m"))
+
+      expect(Samagotchi::Session).to receive(:list).once.and_call_original
+      tick = schedules.tick(dry_run: true, now: Time.now + 60)
+
+      expect(tick.outcomes.map(&:status)).to eq(%w[dry dry dry])
+    end
+  end
+
   it "takes the earliest due entry first, so a chain's entries take turns" do
     Dir.mktmpdir("schedules-fair") do |root|
       dir = File.join(root, "sessions")
