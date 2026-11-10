@@ -341,9 +341,9 @@ is what `targets:` says:
   it when the call writes, never when it only reads (a read's paths are
   `path:` rule material, not a write); a tool without it is judged as
   today.
-- `command:`: a shell command the call runs; `command:` rules match it, and
-  a delegate child's boundary checks where it runs and whether it changes
-  what every checkout shares (as for `execute`).
+- `command:`: a shell command the call runs; `tool: shell` and `command:`
+  rules match it, and a delegate child's boundary checks it as it does
+  `execute` and `task_create`.
 - `cwd:`: where it runs, for the repo root and relative paths.
 - `acts_as:`: the tool a call stands for, when the tool runs other tools
   (chi's `call_tool`, which calls a tool a [source](#chitool_sourcecall-acts_as-label-wait-prefix) published). Rules keyed by that tool's name match the

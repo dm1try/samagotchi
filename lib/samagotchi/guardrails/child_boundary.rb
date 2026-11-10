@@ -21,16 +21,14 @@ module Samagotchi
     #     the call writes (writes: true), the same declaration
     #     ProtectedPaths reads — a call is judged by what its targets say it
     #     acts on, not by its tool's name;
-    #   execute, task_create: mutating git runs in a dir outside root
+    #   a shell call (execute, task_create, or a plugin tool whose targets:
+    #     carry a command): mutating git runs in a dir outside root
     #     (ShellGitDirs), or a command that isn't read-only starts outside
     #     root (its cwd:, else Dir.pwd) or names a path in the repository's
     #     other checkouts (the main one and sibling worktrees) or its
     #     common git dir; or it runs git that changes what all checkouts
     #     share, from anywhere (SharedGit: config, update-ref, worktree add,
-    #     stash clear, tags, another branch's delete). A plugin tool's
-    #     declared command: is checked for what chi can read for sure only:
-    #     SharedGit, and whether the call's cwd: is outside root (its text
-    #     may not be shell; Targets#rule_command).
+    #     stash clear, tags, another branch's delete).
     # Paths elsewhere in a command (/usr/bin, ~/.gem) don't count, and
     # read-only commands never ask, nor do ones that only write into a tmp
     # dir (> / >>, cp's destination, tee; Targets#read_only_but_tmp_writes?). Paths resolve under chi's env and the
@@ -41,8 +39,6 @@ module Samagotchi
       RULE = "child-boundary"
       SOURCE = "core"
       SCOPES = %w[once session].freeze
-      SHELL_TOOLS = %w[execute task_create].freeze
-
       # @param root [#call] → String, nil: the child's folder (nil: no check)
       # @param worktrees [#call] → Array<String>: every checkout of root's
       #   repository (GitInfo#worktrees); root's own is left out here
@@ -74,36 +70,20 @@ module Samagotchi
       def crosses?(targets, root)
         case targets.tool
         when "write", "edit" then paths_cross?(targets, root)
-        when *SHELL_TOOLS then shell_crosses?(targets, root)
         else
+          return true if !Targets::CORE_TOOLS.include?(targets.tool) && targets.writes? && paths_cross?(targets, root)
+          return shell_crosses?(targets, root) if targets.shell?
+
           # chi's other own tools (read, memory_write, …) are unchanged:
           # memory_write carries writes: for ProtectedPaths, but its paths
           # are memory files (Outside exempts them) and its `..` entry names
           # asked for nothing here before.
-          return false if Targets::CORE_TOOLS.include?(targets.tool)
-
-          plugin_crosses?(targets, root)
+          false
         end
       end
 
       def paths_cross?(targets, root)
         targets.paths.any? { |path| Outside.outside?(path, root: root) }
-      end
-
-      # A plugin tool, by what its targets: say it acts on (Targets#writes?,
-      # #command, #cwd), not by its name: paths its targets say it writes
-      # like a write's, and a declared command like a shell's — but for the
-      # command only what chi can read for sure: git that changes what every
-      # checkout shares (SharedGit), and where the call runs (its cwd:). A
-      # plugin's command text may not be shell (Targets#rule_command), so
-      # the shell half's git-dir, cd and redirect reads are left out; a
-      # plugin that wants more can bring a rule of its own.
-      def plugin_crosses?(targets, root)
-        return true if targets.writes? && paths_cross?(targets, root)
-        return :shared if targets.command && SharedGit.changes?(targets.command, own_branch: @branch.call)
-        return true if targets.command && targets.cwd && Outside.outside?(targets.cwd, root: root)
-
-        false
       end
 
       def shell_crosses?(targets, root)

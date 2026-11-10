@@ -160,9 +160,8 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(save_note(memory)).to be_allow
     end
 
-    # A plugin tool's command isn't read as shell (rule_command): only what
-    # chi can tell for sure is used — git that every checkout shares, and
-    # where the call runs. Nothing here asks twice for a built-in tool.
+    # A command in targets: is a shell command the plugin runs, so it gets
+    # the same command analysis as execute and task_create.
     it "asks for a command that changes what every checkout shares, from its own folder too" do
       expect(push_note("git worktree add ../x")).to be_ask
       expect(push_note("git config user.email t@t")).to be_ask
@@ -172,11 +171,15 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(push_note("git diff main...feat")).to be_allow
     end
 
-    it "asks for a command that runs in another checkout, read-only or not" do
+    it "applies the same other-checkout command checks as execute" do
       expect(push_note("git push -f", cwd: main)).to be_ask
-      expect(push_note("git log --oneline", cwd: main)).to be_ask
+      expect(push_note("git log --oneline", cwd: main)).to be_allow
       expect(push_note("git push -f", cwd: child)).to be_allow
       expect(push_note("git push -f", cwd: sibling)).to be_ask
+      expect(push_note("git -C #{main} commit -am x")).to be_ask
+      expect(run("git -C #{main} commit -am x")).to be_ask
+      expect(push_note("git -C #{main} log --oneline")).to be_allow
+      expect(run("git -C #{main} log --oneline")).to be_allow
     end
 
     # Guardrails ask about what a plugin declares, never about a name chi

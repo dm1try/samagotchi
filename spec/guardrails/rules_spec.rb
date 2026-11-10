@@ -19,10 +19,10 @@ RSpec.describe Samagotchi::Guardrails::Rules do
     described_class.new(described_class.parse(raw.map { |r| r.transform_keys(&:to_s) }, source: source), enabled: enabled)
   end
 
-  def verdict_for(call, set)
+  def verdict_for(call, set, registry: nil)
     v = Samagotchi::Guardrails::Verdict.new(call: call)
     v.context = context
-    v.targets = Samagotchi::Guardrails::Targets.for(call, context)
+    v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
     set.check(v)
   end
 
@@ -35,6 +35,27 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect([v.decision, v.rule, v.source, v.reason, v.decided_by]).to eq([:ask, "git-push", "config", "publishes commits", "rule"])
       expect(verdict_for({ name: "task_create", content: "cd x && git push" }, set)).to be_ask
       expect(verdict_for({ name: "execute", content: "git status" }, set)).to be_allow
+    end
+
+    it "matches shell rules by a plugin target's command, not the plugin's name" do
+      registry = Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("run_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                               targets: ->(call) { { command: call[:args]["command"], acts_as: call[:args]["acts_as"] } })
+      end
+      command = { name: "run_note", args: { "command" => "rm -rf /x" } }
+      no_command = { name: "run_note", args: {} }
+      shell = rules({ id: "shell", tool: "shell", command: "rm -rf /x", verdict: "ask" })
+      execute = rules({ id: "execute", tool: "execute", verdict: "deny" })
+
+      expect(verdict_for(command, shell, registry: registry)).to be_ask
+      expect(verdict_for(no_command, shell, registry: registry)).to be_allow
+      expect(verdict_for(command, execute, registry: registry)).to be_allow
+      expect(verdict_for({ name: "execute", content: "rm -rf /x" }, execute)).to be_deny
+      expect(verdict_for({ name: "task_create", content: "rm -rf /x" }, execute)).to be_allow
+
+      acts_as = rules({ id: "acting-tool", tool: %w[shell mcp_tool], verdict: "ask" })
+      via_tool = { name: "run_note", args: { "command" => "rm -rf /x", "acts_as" => "mcp_tool" } }
+      expect(verdict_for(via_tool, acts_as, registry: registry)).to be_ask
     end
 
     it "doesn't match a command rule on a file tool" do
