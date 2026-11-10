@@ -43,6 +43,10 @@ and commands may change between minor versions. How releases are made:
   from the session instead of replaying from the middle of a turn.
 - Stop (the web button, Ctrl-C in the terminal) names the turn it was pressed for, so one pressed as that turn ends no
   longer cancels the queued turn that starts next.
+- A session being started is no longer pulled from under its worker: a session resumed while the retention sweep runs
+  is not deleted, two starts at once (chi web and a `chi send`, a delegate's report) start one worker, and a second
+  continue of a chain can't archive the link the first one just started. A deleted session no longer comes back
+  when a worker that still had it saves.
 - `chi bundle install` and `upgrade` check that the plugin and scripts the manifest names are in the bundle before
   they write anything, so a bundle that lacks one is refused with your memories, plugin and record as they were.
 - A bundle install or upgrade that is killed or fails after it copied memories (a `pending.json` journal in
