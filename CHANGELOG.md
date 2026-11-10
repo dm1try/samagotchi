@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - A schedule that comes due while you are continuing its session (`chi send --new --continues`, web `continue →`) is
   skipped for that tick (`being continued as 7b2d41aa; retry at the next tick`) instead of failing as `archived`, so
   the race no longer counts toward `max_failures`. A chain you archived yourself still fails its schedules.
+- A context source from a bundle whose script is gone, or that its install record has no sha256 for, now says so
+  (`scripts/pr.rb is missing (reinstall the bundle)`) instead of claiming the script "differs from the installed one".
 
 ## [0.164.0] - 2026-11-10
 

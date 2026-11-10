@@ -128,7 +128,22 @@ RSpec.describe Samagotchi::ContextProviders do
       dir = install
       File.write(File.join(dir, "scripts", "pr.rb"), "puts 'edited'\n")
       expect { described_class.command_for(source) }
-        .to raise_error(described_class::Invalid, %r{bundle prs's scripts/pr.rb differs from the installed one})
+        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb differs from the installed one (reinstall the bundle)")
+    end
+
+    it "refuses a script that is gone" do
+      dir = install
+      FileUtils.rm_f(File.join(dir, "scripts", "pr.rb"))
+      expect { described_class.command_for(source) }
+        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb is missing (reinstall the bundle)")
+    end
+
+    it "refuses a script the record has no sha for" do
+      dir = install
+      path = File.join(dir, "manifest.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scripts" => { "pr.rb" => { "sha256" => "" } })))
+      expect { described_class.command_for(source) }
+        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb isn't among its installed scripts (reinstall the bundle)")
     end
 
     it "refuses a script edited after a normal bundle install" do
@@ -138,7 +153,7 @@ RSpec.describe Samagotchi::ContextProviders do
       File.write(script_path, "puts 'edited after install'\n")
 
       expect { described_class.command_for(source) }
-        .to raise_error(described_class::Invalid, %r{bundle prs's scripts/pr.rb differs from the installed one})
+        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb differs from the installed one (reinstall the bundle)")
     end
   end
 
