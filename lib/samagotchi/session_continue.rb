@@ -174,12 +174,10 @@ module Samagotchi
       end
       successor_id = SecureRandom.uuid
       intent_path = continue_intent_path(id, state_dir)
-      intent_data = { successor_id: successor_id, previously_archived: already }
-      AtomicFile.write(intent_path, "#{JSON.generate(intent_data)}\n", perm: 0o600)
+      ContinueIntent.write(intent_path, successor_id: successor_id, previously_archived: already)
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive.archived - already
-      intent_data[:archived_ids] = archived
-      AtomicFile.write(intent_path, "#{JSON.generate(intent_data)}\n", perm: 0o600)
+      ContinueIntent.write(intent_path, successor_id: successor_id, previously_archived: already, archived_ids: archived)
       # The notes the new link took from this one (NoteMove.move).
       notes = []
       begin
@@ -211,18 +209,11 @@ module Samagotchi
         next unless lock.flock(File::LOCK_EX | File::LOCK_NB)
         next unless File.file?(path)
 
-        intent = JSON.parse(File.read(path))
-        intent = {} unless intent.is_a?(Hash)
-        successor_id = intent["successor_id"]
-        successor_path = Session.session_file(successor_id, state_dir: state_dir) if Session.valid_id?(successor_id)
+        intent = ContinueIntent.read(path)
+        successor_path = Session.session_file(intent.successor_id, state_dir: state_dir) if intent.successor_id
         successor = JSON.parse(File.read(successor_path)) if successor_path && File.file?(successor_path)
         unless successor.is_a?(Hash) && successor["continues"] == session.id
-          previously_archived = Array(intent["previously_archived"]).select { |id| Session.valid_id?(id) }
-          archived = if intent["archived_ids"].is_a?(Array)
-                       intent["archived_ids"].select { |id| Session.valid_id?(id) }
-                     else
-                       archived_descendants(session.id, sessions, state_dir) - previously_archived
-                     end
+          archived = intent.archived_ids || (archived_descendants(session.id, sessions, state_dir) - intent.previously_archived)
           undo_failed_continue(session.id, state_dir, moved: [], archived: archived)
         end
         FileUtils.rm_f(path)

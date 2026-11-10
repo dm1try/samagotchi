@@ -873,8 +873,9 @@ module Samagotchi
 
     # Mark a session as stopped (STOPPED_FILE); its session file stays as
     # it is.
+    # @param now [Time] the marker's at (a spec's, the corpus's clock)
     # @raise [NotFound] when there is no such session
-    def self.mark_stopped(session_id, state_dir: default_state_dir)
+    def self.mark_stopped(session_id, state_dir: default_state_dir, now: Time.now)
       raise NotFound, session_id unless exist?(session_id, state_dir: state_dir)
 
       dir = session_dir(session_id, state_dir: state_dir)
@@ -882,7 +883,7 @@ module Samagotchi
       # Its own at, on the clock the starting marker's at is written with
       # (StartingMarker; resume_session compares them): a file's mtime may be
       # coarse or skewed. Older chi readers ask only whether it exists.
-      AtomicFile.write(File.join(dir, STOPPED_FILE), JSON.generate({ "at" => Time.now.iso8601(6) }))
+      AtomicFile.write(File.join(dir, STOPPED_FILE), JSON.generate({ "at" => now.iso8601(6) }))
     end
 
     # When the stop marker was written: its own at, or (an older chi's empty
