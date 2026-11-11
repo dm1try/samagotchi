@@ -3,14 +3,22 @@
 require "spec_helper"
 require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
+require "samagotchi/continue_intent"
 require "samagotchi/memory_bundle/installed_bundle"
+require "samagotchi/memory_bundle/provenance"
 require "samagotchi/schedules"
 require "samagotchi/session"
+require "samagotchi/session_inbox"
 require "samagotchi/web/message_display"
 require "samagotchi/worker_sidecar"
+require_relative "../../script/release/release_tools"
 
 RSpec.describe "the recorded compatibility corpus" do
   let(:compat_root) { File.join(__dir__) }
+  # The last release whose corpus has no live-session files (input, note,
+  # continue intent, stop marker) and no install journal: a later one must
+  # hold them.
+  let(:live_files_after) { Gem::Version.new("0.164.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -42,11 +50,19 @@ RSpec.describe "the recorded compatibility corpus" do
     lines
   end
 
-  it "reads the newest previous-release samples with today's state readers" do
-    version = corpus_version
-    expect(version).not_to be_nil, "record a compatibility corpus with release:bump"
+  # Whether +version+'s corpus holds +path+: a corpus from before the file
+  # was recorded may not (skipped), a later one must.
+  def recorded?(path, version, after)
+    return true if File.exist?(path)
 
-    root = File.join(compat_root, version)
+    expect(Gem::Version.new(version)).to be <= after, "#{version}'s corpus has no #{path}"
+    false
+  end
+
+  # Every file of the corpus at +root+ (recorded by +version+), read by
+  # today's readers. +since+: the newest version allowed to lack the
+  # live-session files.
+  def expect_corpus_read(root, version, since:)
     sessions_dir = File.join(root, "sessions")
     session = Samagotchi::Session.load("compat-session", state_dir: sessions_dir)
     expect(session).to have_attributes(id: "compat-session", model_name: "compat:model")
@@ -72,5 +88,75 @@ RSpec.describe "the recorded compatibility corpus" do
     manifest_path = File.join(root, ".bundles", "compat", "manifest.json")
     record = Samagotchi::MemoryBundle::InstalledBundle.read("compat", manifest_path)
     expect(record).to have_attributes(name: "compat", version: version, scope: "system", source: "compat-fixture")
+
+    expect_live_files_read(sessions_dir, session_dir, version, since)
+    expect_install_journal_read(root, version, since)
+  end
+
+  # An install journal (pending.json) beside the bundle record: what the
+  # next install, maybe another chi's, reads.
+  def expect_install_journal_read(root, version, since)
+    journal = File.join(root, ".bundles", "compat", "pending.json")
+    return unless recorded?(journal, version, since)
+
+    Dir.mktmpdir("chi-compat-journal-") do |home|
+      with_config_home(home) do
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: "compat")
+        FileUtils.mkdir_p(provenance.bundle_dir)
+        FileUtils.cp(journal, provenance.pending_path)
+        expect(provenance.pending_scope).to eq("system")
+        expect(provenance.pending_shas("compat.md", target_dir: "/compat-fixture/memories")).to eq(["sha256:compat"])
+      end
+    end
+  end
+
+  # The files other chi versions write into a live session's folder.
+  def expect_live_files_read(sessions_dir, session_dir, version, since)
+    input_dir = File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR)
+    if recorded?(input_dir, version, since)
+      inputs = Samagotchi::SessionInbox.find_new_input_files(session_dir)
+      expect(inputs.size).to eq(1)
+      input = Samagotchi::SessionInbox.read_input(inputs.first)
+      expect(input).to have_attributes(prompt: "compatibility corpus", delivery: "queue",
+                                       images: [{ file: "compat.png", name: "compat.png" }])
+      expect(input.origin).to have_attributes(client_id: "web:compat", enqueued_id: ReleaseTools::COMPAT_ENQUEUED_ID,
+                                              author: "p:compat")
+      expect(Samagotchi::SessionInbox.waits_for_turn_end?(inputs.first)).to be(true)
+    end
+
+    notes_dir = File.join(session_dir, Samagotchi::SessionInbox::NOTES_DIR)
+    if recorded?(notes_dir, version, since)
+      notes = Samagotchi::SessionInbox.find_new_note_files(session_dir).map { |file| Samagotchi::SessionInbox.read_note(file) }
+      expect(notes).to match([a_hash_including(text: "compatibility corpus", source: "cli", from_session: "compat-drawn",
+                                               from_cwd: "/compat-fixture", created_at: "2026-01-01T00:00:00Z")])
+    end
+
+    intent_path = File.join(session_dir, Samagotchi::ContinueIntent::FILE)
+    if recorded?(intent_path, version, since)
+      expect(Samagotchi::ContinueIntent.read(intent_path))
+        .to eq(Samagotchi::ContinueIntent::Intent.new(successor_id: "compat-successor", previously_archived: ["compat-drawn"],
+                                                      archived_ids: ["compat-session"]))
+    end
+
+    stopped_path = File.join(session_dir, Samagotchi::Session::STOPPED_FILE)
+    return unless recorded?(stopped_path, version, since)
+
+    expect(Samagotchi::Session.stopped_at("compat-session", state_dir: sessions_dir)).to eq(Time.utc(2026, 1, 1))
+    expect(Samagotchi::Session.load("compat-session", state_dir: sessions_dir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
+  end
+
+  it "reads the newest previous-release samples with today's state readers" do
+    version = corpus_version
+    expect(version).not_to be_nil, "record a compatibility corpus with release:bump"
+
+    expect_corpus_read(File.join(compat_root, version), version, since: live_files_after)
+  end
+
+  it "reads every file the corpus writer records now (the next release's corpus)" do
+    Dir.mktmpdir("chi-compat-now-") do |tmp|
+      # Private: only release:bump records a corpus in the repository.
+      root = ReleaseTools.send(:write_compat_corpus!, tmp, Samagotchi::VERSION)
+      expect_corpus_read(root, Samagotchi::VERSION, since: Gem::Version.new("0"))
+    end
   end
 end

@@ -35,7 +35,8 @@ module Samagotchi
     # The hooks: config.yml's (Hooks::Loader; an empty Registry without a
     # hooks config). An installed record that still has class-file hooks (a
     # 0.157 install) adds a not-required failure each, which the Engine
-    # announces at the first turn: they don't load (#tell_retired_hooks).
+    # announces at the first turn: they don't load (#tell_retired_hooks;
+    # compat shim retired_class_file_hooks: Compat::SHIMS).
     # @return [Hooks::Registry]
     def hooks
       tell_retired_hooks

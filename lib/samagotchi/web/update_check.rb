@@ -11,6 +11,7 @@ require_relative "../installed_gem"
 require_relative "../installed_versions"
 require_relative "../log"
 require_relative "../paths"
+require_relative "../state_format"
 require_relative "../version"
 require_relative "auto_update_record"
 
@@ -29,6 +30,20 @@ module Samagotchi
       FIRST_CHECK = 30
       # A failed check (offline at start) tries again this soon, not a whole check_hours later.
       RETRY = 3600
+      # update_check.json's format. A file with no version is one from
+      # before it (the same members); a newer chi's keeps its version and
+      # the keys this one doesn't know through a write.
+      STATE_FORMAT_VERSION = 1
+      STATE_FORMAT = StateFormat.new(
+        version: STATE_FORMAT_VERSION, members: [],
+        document_members: [
+          StateFormat.added(:checked_at, in_version: 1, default: nil),
+          StateFormat.added(:available, in_version: 1, default: nil),
+          StateFormat.added(:notified, in_version: 1, default: []),
+          StateFormat.added(:auto, in_version: 1, default: nil),
+          StateFormat.added(:auto_failed, in_version: 1, default: [])
+        ]
+      )
 
       # @param enabled [Boolean] update.notify: the answer goes to the page
       # @param auto [Boolean] update.auto is install: check even when +enabled+ is not
@@ -205,18 +220,21 @@ module Samagotchi
       def blocked_reason = self.class.blocked_reason(gem_spec: @gem_spec, bundler: @bundler, gem_dir: @gem_dir)
 
       def load_state
+        @document = STATE_FORMAT.read({}, collection: nil)
         return empty_state unless File.file?(@state_file)
 
-        data = JSON.parse(File.read(@state_file))
+        @document = STATE_FORMAT.read(JSON.parse(File.read(@state_file)), collection: nil)
+        data = @document.attributes
         {
-          checked_at: data["checked_at"],
-          available: data["available"],
-          notified: strings(data["notified"]),
-          auto: AutoUpdateRecord.from_h(data["auto"]),
-          auto_failed: strings(data["auto_failed"])
+          checked_at: data[:checked_at],
+          available: data[:available],
+          notified: strings(data[:notified]),
+          auto: AutoUpdateRecord.from_h(data[:auto]),
+          auto_failed: strings(data[:auto_failed])
         }
-      rescue JSON::ParserError, SystemCallError => e
+      rescue JSON::ParserError, SystemCallError, StateFormat::InvalidDocument => e
         Log.warn(:web, "update_check_failed", error: e.class.name, msg: e.message)
+        @document = STATE_FORMAT.read({}, collection: nil)
         empty_state
       end
 
@@ -226,7 +244,8 @@ module Samagotchi
 
       def persist(state)
         FileUtils.mkdir_p(File.dirname(@state_file))
-        AtomicFile.write(@state_file, JSON.generate(state.merge(auto: state[:auto]&.to_store)), perm: 0o600)
+        stored = @document.with(attributes: state.merge(auto: state[:auto]&.to_store))
+        AtomicFile.write(@state_file, JSON.generate(STATE_FORMAT.write(stored, collection: nil, updated_at: nil)), perm: 0o600)
         @state = state
       end
 

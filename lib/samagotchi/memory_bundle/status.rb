@@ -85,7 +85,8 @@ module Samagotchi
 
       # The class-file hooks the record still has (a 0.157 install's; chi
       # loads none, Manifest::HooksRetired), each "present" or "missing" in
-      # hooks/, by name; {} for none.
+      # hooks/, by name; {} for none (compat shim retired_class_file_hooks:
+      # Compat::SHIMS).
       # @return [Hash{String => String}]
       def self.retired_hooks(provenance, bundle)
         bundle.hooks.keys.sort.to_h do |file|

@@ -538,6 +538,51 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     end
   end
 
+  describe "the install journal's format (pending.json, PENDING_FORMAT)" do
+    let(:prov) { described_class.new(name: "journal") }
+    let(:target) { File.join(tmpdir, "memories") }
+
+    def journal = JSON.parse(File.read(prov.pending_path))
+
+    def write_journal(data)
+      FileUtils.mkdir_p(File.dirname(prov.pending_path))
+      File.write(prov.pending_path, JSON.generate(data))
+    end
+
+    it "stamps pending_format and keeps reading the shas it wrote" do
+      prov.write_pending(version: "1.0.0", scope: "system", target_dir: target, files: { "a.md" => "sha256:a" })
+
+      expect(journal).to include("pending_format" => described_class::PENDING_FORMAT_VERSION, "version" => "1.0.0",
+                                 "scope" => "system", "files" => { "a.md" => ["sha256:a"] })
+      expect(prov.pending_shas("a.md", target_dir: target)).to eq(["sha256:a"])
+      expect(prov.pending_scope).to eq("system")
+    end
+
+    it "reads a journal an older chi wrote (no pending_format) and adds to it" do
+      write_journal("version" => "1.0.0", "scope" => "system", "target_dir" => File.expand_path(target),
+                    "files" => { "a.md" => ["sha256:a"] })
+
+      expect(prov.pending_shas("a.md", target_dir: target)).to eq(["sha256:a"])
+      prov.write_pending(version: "2.0.0", scope: "system", target_dir: target, files: { "a.md" => "sha256:b" })
+      expect(journal).to include("pending_format" => 1, "files" => { "a.md" => %w[sha256:a sha256:b] })
+    end
+
+    it "keeps a newer chi's format and the keys it doesn't know for the same target" do
+      write_journal("pending_format" => 2, "version" => "1.0.0", "scope" => "system",
+                    "target_dir" => File.expand_path(target), "files" => {}, "later" => "kept")
+
+      prov.write_pending(version: "1.0.0", scope: "system", target_dir: target, files: { "a.md" => "sha256:a" })
+      expect(journal).to include("pending_format" => 2, "later" => "kept", "files" => { "a.md" => ["sha256:a"] })
+    end
+
+    it "reads a journal with no scope or target as none" do
+      write_journal("version" => "1.0.0", "files" => { "a.md" => ["sha256:a"] })
+
+      expect(prov.pending_scope).to be_nil
+      expect(prov.pending_shas("a.md", target_dir: target)).to eq([])
+    end
+  end
+
   describe "#read" do
     it "returns nil when not installed" do
       prov = described_class.new(name: "nonexistent")

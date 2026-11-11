@@ -148,9 +148,24 @@ override and a `note`. The Ruby side runs each row with every core command (a ne
 
 `spec/compat/readers_spec.rb` reads the newest recorded release before the
 current version (or the current corpus when it is the only one) through today's
-session, Bridge, CardStore, schedules and bundle-record readers. `rake
-release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers;
-commit those small samples with the release so the next version exercises N-1.
+session, Bridge, CardStore, schedules and bundle-record readers, and the files
+other chi versions write into a live session's folder: a queued input file, a
+context note, a continue's intent (`continue.json`) and the stop marker (the
+starting marker isn't recorded: a recorded one is always stale), and a bundle's
+install journal (`.bundles/compat/pending.json`). A corpus from
+0.164.0 or before has none of those and skips them; a later one must hold them.
+A second example reads a corpus the writer records now, so a writer change that
+today's readers can't read goes red before the release. `rake
+release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers
+(`ReleaseTools.write_compat_corpus!`); commit those small samples with the
+release so the next version exercises N-1.
+
+Compat shims (code kept only for another chi version's data or protocol) are
+registered in `Compat::SHIMS` (`lib/samagotchi/compat.rb`): an id, the release
+that added it, `remove_after` (nil: the owner hasn't dated it) and its files,
+each Ruby one naming it in a comment (`compat shim <id>`). `spec/compat_spec.rb`
+fails once `Samagotchi::VERSION` passes a shim's `remove_after`, naming it:
+remove the shim, or move its date with the owner's OK. A new shim gets a row.
 
 ## Levels
 

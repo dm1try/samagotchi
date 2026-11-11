@@ -179,8 +179,10 @@ its removal, so no edit is lost, and the record isn't written, so a retry is the
 failed run already placed stay, and the intent journal says they are the bundle's.
 
 **The intent journal.** After `check_named_files` and before the first write, a real run with a manifest writes
-`.bundles/<name>/pending.json` (`Provenance#write_pending`, atomically like the record): `{"version": "2.0.0",
-"scope": "project", "target_dir": "/path/to/project-memories", "files": {"a.md": ["<sha256>"]}}`: the target
+`.bundles/<name>/pending.json` (`Provenance#write_pending`, atomically like the record): `{"pending_format": 1,
+"version": "2.0.0", "scope": "project", "target_dir": "/path/to/project-memories", "files": {"a.md": ["<sha256>"]}}`
+(`pending_format` is its `StateFormat`, `PENDING_FORMAT`: a journal without it is an older chi's, the same members; a
+newer chi's keeps its format and unknown keys through a retry's write, and the release corpus records one): the target
 `version` is the latest run's target version, while `files` holds the union of incoming shas recorded by interrupted
 runs for that scope/target directory. A retry of another version in the same target adds its incoming shas; a journal
 for another scope directory is ignored. `Provenance#write` removes it with the record write; an uninstall's `rm_rf`

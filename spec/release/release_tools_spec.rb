@@ -343,6 +343,12 @@ RSpec.describe ReleaseTools do
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/schedules.json"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/.bundles/compat/manifest.json"))
       expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/schedules.lock"))
+      live = File.join(tmp, "spec/compat/0.2.0/sessions/compat-session")
+      expect(Dir.glob(File.join(live, "input", "*.json")).size).to eq(1)
+      expect(Dir.glob(File.join(live, "notes", "*.json")).size).to eq(1)
+      expect(File).to exist(File.join(live, "continue.json"))
+      expect(File).to exist(File.join(live, "stopped"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/.bundles/compat/pending.json"))
     end
 
     it "raises a marked bundle's requires_chi to the new version and drops the marker; leaves the others" do

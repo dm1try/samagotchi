@@ -271,7 +271,8 @@ module Samagotchi
       # A file from before the turn log: each entry's place by the count it was
       # saved with, killed turn included (nothing in it can say where a drifted
       # card was). New openings add to it. The next save keeps +base_since+.
-      # Can go a retention period after the release that wrote version 2.
+      # Can go a retention period after the release that wrote version 2
+      # (compat shim cards_v1_seed: Compat::SHIMS).
       def seed_v1(data)
         killed_in_turn = data[:running] == true
         turns_done = data[:turns] + (killed_in_turn ? 1 : 0)

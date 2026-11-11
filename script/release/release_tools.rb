@@ -25,6 +25,9 @@ module ReleaseTools
   # has none (a turn from before drawings).
   COMPAT_DRAWN_ID = "compat-drawn"
   COMPAT_STAMP = "2026-01-01T00:00:00Z"
+  # The queued input's ids, and the successor a continue intent names.
+  COMPAT_ENQUEUED_ID = "00000000-0000-4000-8000-000000000001"
+  COMPAT_SUCCESSOR_ID = "compat-successor"
 
   class Error < StandardError; end
 
@@ -52,6 +55,8 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/bridge/turn_drawings"
     require_relative "../../lib/samagotchi/schedules"
     require_relative "../../lib/samagotchi/memory_bundle/provenance"
+    require_relative "../../lib/samagotchi/session_inbox"
+    require_relative "../../lib/samagotchi/continue_intent"
 
     Dir.mktmpdir("chi-compat-corpus-") do |tmp|
       staged = File.join(tmp, "corpus")
@@ -83,6 +88,7 @@ module ReleaseTools
                                            between_turns: true)
 
         drawn_path = write_compat_drawn_session!(sessions_dir, version, at)
+        live_paths = write_compat_live_files!(sessions_dir, session_dir, at)
 
         schedules = Samagotchi::Schedules.new(state_dir: sessions_dir, clock: -> { at })
         schedules.add(target: COMPAT_SESSION_ID, prompt: "compatibility corpus", title: "Compatibility corpus",
@@ -103,6 +109,12 @@ module ReleaseTools
         bundle_record = File.join(staged, ".bundles", "compat", "manifest.json")
         FileUtils.mkdir_p(File.dirname(bundle_record))
         FileUtils.cp(manifest_path, bundle_record)
+        # An install journal (an upgrade interrupted before its record):
+        # the next run, maybe another chi's, reads its shas.
+        provenance.write_pending(version: version, scope: "system", target_dir: "/compat-fixture/memories",
+                                 files: { "compat.md" => "sha256:compat" })
+        bundle_journal = File.join(File.dirname(bundle_record), "pending.json")
+        FileUtils.cp(provenance.pending_path, bundle_journal)
 
         required = [
           session_path,
@@ -110,7 +122,9 @@ module ReleaseTools
           File.join(session_dir, Samagotchi::Bridge::CardStore::FILE),
           drawn_path,
           schedules.path,
-          bundle_record
+          bundle_record,
+          bundle_journal,
+          *live_paths
         ]
         missing = required.reject { |path| File.file?(path) }
         raise Error, "compatibility corpus writer omitted #{missing.join(", ")}" unless missing.empty?
@@ -124,6 +138,31 @@ module ReleaseTools
     corpus_dir
   end
   private_class_method :write_compat_corpus!
+
+  # The files other chi versions write into a live session's folder, each by
+  # its one writer: a queued input file (SessionInbox.write_input), a context
+  # note (SessionInbox.write_note), a continue's intent (ContinueIntent.write)
+  # and the stop marker (Session.mark_stopped). The starting marker isn't
+  # among them: a recorded one is always stale, so no reader could tell it
+  # from a broken one (StartingMarker; spec/worker_contract_spec.rb).
+  # @return [Array<String>] the files
+  def write_compat_live_files!(sessions_dir, session_dir, at)
+    input = Samagotchi::SessionInbox.write_input(session_dir, prompt: "compatibility corpus", client_id: "web:compat",
+                                                              enqueued_id: COMPAT_ENQUEUED_ID, delivery: "queue",
+                                                              images: [{ file: "compat.png", name: "compat.png" }],
+                                                              author: "p:compat", now: at)
+    raise Error, "compatibility corpus: the input file wasn't written" unless input
+
+    note = Samagotchi::SessionInbox.write_note(COMPAT_SESSION_ID, text: "compatibility corpus", source: "cli",
+                                                                  from_session: COMPAT_DRAWN_ID, from_cwd: "/compat-fixture",
+                                                                  state_dir: sessions_dir, now: at)
+    intent = File.join(session_dir, Samagotchi::ContinueIntent::FILE)
+    Samagotchi::ContinueIntent.write(intent, successor_id: COMPAT_SUCCESSOR_ID, previously_archived: [COMPAT_DRAWN_ID],
+                                             archived_ids: [COMPAT_SESSION_ID])
+    Samagotchi::Session.mark_stopped(COMPAT_SESSION_ID, state_dir: sessions_dir, now: at)
+    [input, note, intent, File.join(session_dir, Samagotchi::Session::STOPPED_FILE)]
+  end
+  private_class_method :write_compat_live_files!
 
   # COMPAT_DRAWN_ID: a prompt, a read and its answer, and the line a Bridge's
   # TurnDrawings writes for that turn (the accumulator's fold of its events).
