@@ -76,6 +76,8 @@ form.obj-row{align-items:center}
 /* A move's state beside its id: words, never colour alone (objectives_state.js). */
 .obj-state{font-size:12px;color:var(--text-2);white-space:nowrap}
 .obj-state.done{font-weight:600}
+/* A done move its turn's runs don't back (Objectives::Backing): muted words. */
+.obj-unbacked{font-size:12px;color:var(--text-muted);font-style:italic}
 .obj-concerns .obj-pill{margin-right:4px}
 .obj-notyet{flex:none}
 .obj-moves:not(.newest) .obj-notyet{display:none}

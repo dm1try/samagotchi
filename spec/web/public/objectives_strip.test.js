@@ -193,6 +193,18 @@ test("the list's last move says claims done or blocked; progress adds no word", 
   assert.ok(pop().querySelector('[data-row="O1"] .obj-state.done'));
 });
 
+test("the list's row marks a flagged move, muted; an unflagged one adds nothing; moveOf reads the view", () => {
+  const { el, control, pop } = strip();
+  const flagged = { note: "green", evidence: "", state: "done", backing: { edits: 1, command: "failed", edited_after_command: false, unbacked: true } };
+  control.seed({ items: [{ id: "O1", text: "A", status: "active", move: flagged },
+                         { id: "O2", text: "B", status: "active", move: { note: "n", evidence: "", state: "done", backing: { unbacked: false } } }], pending: false });
+  el.querySelector(".obj-edit").click();
+  assert.equal(pop().querySelector('[data-row="O1"] .obj-unbacked').textContent, "not backed: the last command failed");
+  assert.ok(pop().querySelector('[data-row="O2"] .obj-unbacked') === null);
+  assert.deepEqual(control.moveOf("O1"), flagged);
+  assert.equal(control.moveOf("O9"), null);
+});
+
 test("a check on a dropped objective isn't offered", () => {
   const { el, control, pop } = strip();
   control.seed({ items: [{ id: "O1", text: "A", status: "dropped", move: { note: "x", evidence: "" } }, { id: "O2", text: "B", status: "active" }], pending: false });

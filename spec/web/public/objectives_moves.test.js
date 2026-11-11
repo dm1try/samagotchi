@@ -32,6 +32,20 @@ test("a move line says claims done or blocked beside the id, as words with a cla
   assert.deepEqual(movesInBlock(historyEl.querySelector(".turn-work")).map((m) => m.state ?? null), ["done", "blocked", null]);
 });
 
+test("a flagged backing shows on the newest line naming that objective only, and goes when it's clean", () => {
+  const historyEl = document.createElement("div");
+  document.body.appendChild(historyEl);
+  historyEl.innerHTML = '<div class="turn-work"><span data-move-id="O1" data-move-note="old"></span></div>'
+    + '<div class="turn-work"><span data-move-id="O1" data-move-note="new" data-move-state="done"></span><span data-move-id="O2" data-move-note="b"></span></div>';
+  let backing = { unbacked: true, command: "ok", edited_after_command: true };
+  const control = createObjectivesMoves({ historyEl, latestMove: (id) => (id === "O1" ? { backing } : null) });
+  const marks = () => [...historyEl.querySelectorAll(".obj-moves")].map((l) => [...l.querySelectorAll(".obj-unbacked")].map((m) => m.textContent));
+  assert.deepEqual(marks(), [[], ["not backed: edited after the last command ran"]]);
+  backing = { unbacked: false, command: "ok" };
+  control.decorate();
+  assert.deepEqual(marks(), [[], []]);
+});
+
 test("a block's moves are its marked rows, in order", () => {
   const block = document.createElement("div");
   block.innerHTML = '<span data-move-id="O1" data-move-note="a"></span><span class="x"></span><span data-move-id="O2" data-move-note="b"></span>';

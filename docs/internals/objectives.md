@@ -105,6 +105,23 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
   `claims done: ` or `blocked: `; the view's `move` carries `state`; Check this's request says "The agent claims this
   objective is done" for a done move. `ObjectivesCheck.mark_of` leaves the state out: `Move#ref` already makes a new
   call a new move, and a state in it would drop every saved verdict at the upgrade.
+- **Backing** (`Objectives::Backing`, `objectives_backing.rb`): what the move's own turn ran before it, derived by the
+  harness, since the model sees run ids only with the forget layer on and can't cite a run in general; its `evidence`
+  stays free text. `moves_in` builds it from the same `paired_runs`: the runs after the nearest turn opening before the
+  move's entry (`Steer.turn_prompt?`, what bounds a turn's slice), up to the move, those before it in its own batch
+  too. `edits` counts the edit and write runs that succeeded (not a failed, denied or interrupted one); `command` is the
+  last finished `execute` or `task_wait` run's `ok` or `failed`, read on the text after `ToolActivity.saved_result_text`
+  (with `tool_activity_status`, so a grep that found nothing is `ok`). No command: one the guardrails denied, stopped or
+  interrupted, an execute handed over as a task (it still runs), a `task_wait` whose task hadn't finished (a timeout, a
+  waiting message: its header's `status:` isn't `completed` or `failed`) or that waited on nothing.
+  `edited_after_command`: an edit or write succeeded after that command. The one flag, `unbacked`, is only for a `done`
+  move after a command ran: that command failed, or an edit came after it. A `progress` or `blocked` move never flags,
+  and neither does a turn with edits and no command (a docs change would flag every time) or one with neither: those
+  are Check this's business. A result `paired_runs` can't pair is left out without a word, so there is no "unknown"
+  value. A rollback that drops the turn drops its runs with its move. The forget layer changes what is sent, not the
+  stored entries, so a forgotten run's status still reads. The view's `move` carries `backing` (`edits`, `command`,
+  `edited_after_command`, `unbacked`); `/objectives` says `not backed: edited after the last command ran` or `not backed:
+  the last command failed` under a flagged move, and nothing for any other.
 - **The answer** says it recorded a move, that the list is unchanged and that the user edits it with `/objectives`; so
   does the schema's description. Other actions get an `Error:` with the same sentence. A small model told to edit the
   list has nothing to call, and this is the only place it is told so: no stable-prompt line.
@@ -174,7 +191,10 @@ command), which absorbs the file. It no longer waits for the fallback tick.
 - **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
   `data-move-id` (and `data-move-state` for blocked or done, drawn as "blocked" / "claims done" beside the id, a word
   with a class, never colour alone; the words are `objectives_state.js`'s, a module of its own so that no existing
-  module imports a new export of another). The list's `last move:` says the same words. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
+  module imports a new export of another). The list's `last move:` says the same words. A flagged backing is a muted
+  `not backed: …` under the list's move and on the newest move line that names that objective (the view's move is the
+  latest one), drawn only while no turn runs and none is held in the stage (`objectives_wiring.js`, through
+  `strip.moveOf?.()`, so a cached older strip draws nothing). An unflagged move adds nothing on screen. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
   a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's
   `Concerns O2` gets the chip there too.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every

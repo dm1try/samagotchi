@@ -85,3 +85,25 @@ test("Short version shows only with a list, the command, no running turn and non
   assert.equal(historyEl.querySelector(".obj-short button").disabled, false);
   objectives.reset();
 });
+
+test("a flagged move's mark follows the view, not while a turn runs or one is held in the stage", () => {
+  let running = false;
+  let holding = false;
+  const { historyEl, objectives } = wired({ running: () => running, holding: () => holding });
+  historyEl.innerHTML = '<div class="turn-work"><span data-move-id="O1" data-move-note="n" data-move-state="done"></span></div>';
+  const mark = () => historyEl.querySelector(".obj-moves .obj-unbacked")?.textContent ?? null;
+  const backing = { unbacked: true, command: "failed" };
+  objectives.seed({ pending: false, items: [{ id: "O1", text: "A", status: "active", move: { note: "n", evidence: "", state: "done", backing } }] });
+  assert.equal(mark(), "not backed: the last command failed");
+  running = true;
+  objectives.redraw();
+  assert.equal(mark(), null);
+  running = false;
+  holding = true;
+  objectives.redraw();
+  assert.equal(mark(), null);
+  holding = false;
+  objectives.redraw();
+  assert.equal(mark(), "not backed: the last command failed");
+  objectives.reset();
+});
