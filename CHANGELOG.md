@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.166.0] - 2026-11-11
+
 ### Added
 
 - Web: a running turn that has sent nothing for 30 s says so in the stage ("quiet 0:40", "thinking quietly 0:50"
@@ -38,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   conversation stays and the session bar's status says "reconnecting…", then "can't reach chi web" once the retries
   run out; it clears when chi web is back and the session is read again.
 - `chi web --help`: `--new-token` says it replaces chi web's access token for every way in (LAN, `--tunnel tailscale`, a proxy), not only the LAN's.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.165.0] - 2026-11-11
 
@@ -6149,7 +6153,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.165.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.166.0...HEAD
+[0.166.0]: https://github.com/dm1try/samagotchi/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/dm1try/samagotchi/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/dm1try/samagotchi/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/dm1try/samagotchi/compare/v0.162.0...v0.163.0
