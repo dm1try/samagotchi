@@ -10,7 +10,11 @@
 <meta name="apple-mobile-web-app-title" content="Chi">
 <!-- viewport-fit=cover: the page runs under the notch and the home indicator; what must stay clear of them pads by --safe-* (below). -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<!-- The phone's status bar and Safari's toolbar take the page's own background (tokens.css --bg), per theme. -->
+<!-- The phone's status bar and Safari's toolbar take the page's own background, per theme: on a phone (600px and less) the
+     colour its top edge starts with (tokens.css --bg-top, the top bar's tint), so the status bar and the bar under it are one
+     surface; elsewhere --bg. The first meta that matches wins. -->
+<meta name="theme-color" content="#131d29" media="(prefers-color-scheme: dark) and (max-width: 600px)">
+<meta name="theme-color" content="#dde8f4" media="(prefers-color-scheme: light) and (max-width: 600px)">
 <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="/assets/tokens.css">
@@ -30,6 +34,10 @@
 /* No iOS text autosizing: it grows text in a box sized for the text as written (it clipped the session cards). */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column}
+/* A phone: the accent's tint runs down from the top edge, flat across it (--bg-top, the status bar's theme-color above),
+   not from the top-left corner: the status bar, which iOS paints in theme-color (the Home Screen app) or over the page's
+   top (a Safari tab), meets the top bar with no seam. */
+@media(max-width:600px){body{background:linear-gradient(var(--bg-top),var(--bg) 420px)}}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 .turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 @media(hover:hover){#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}}

@@ -68,7 +68,7 @@ const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(|
 // whose stroke only shapes the mask; the icon takes currentColor), the
 // theme-color metas (a meta can't read a token: the next test pins them to
 // --bg) and comments.
-const THEME_COLOR = /<meta name="theme-color" content="([^"]*)" media="\(prefers-color-scheme: (dark|light)\)">/g;
+const THEME_COLOR = /<meta name="theme-color" content="([^"]*)" media="\(prefers-color-scheme: (dark|light)\)( and \(max-width: 600px\))?">/g;
 function outsideTokens(text) {
   return text
     .replace(THEME_COLOR, "")
@@ -89,9 +89,12 @@ test("theme: tokens.css and the pages have no raw colour outside the token block
   assert.deepEqual(hits, []);
 });
 
-test("theme: the owner page's theme-color metas are each theme's --bg (the phone's status bar and toolbar)", () => {
-  const metas = Object.fromEntries([...HTML.matchAll(THEME_COLOR)].map((m) => [m[2], m[1]]));
-  assert.deepEqual(metas, { dark: DARK["--bg"], light: LIGHT["--bg"] });
+test("theme: the owner page's theme-color metas are each theme's --bg-top on a phone, first, then its --bg (the status bar and toolbar)", () => {
+  const metas = [...HTML.matchAll(THEME_COLOR)].map((m) => [m[2] + (m[3] ? " phone" : ""), m[1]]);
+  assert.deepEqual(metas, [["dark phone", DARK["--bg-top"]], ["light phone", LIGHT["--bg-top"]],
+    ["dark", DARK["--bg"]], ["light", LIGHT["--bg"]]]);
+  // A phone's page starts from --bg-top at its top edge, so the status bar above it continues it.
+  assert.match(HTML, /@media\(max-width:600px\)\{body\{background:linear-gradient\(var\(--bg-top\),var\(--bg\) 420px\)\}\}/);
 });
 
 test("theme: both pages link tokens.css, then the shared stylesheets", () => {

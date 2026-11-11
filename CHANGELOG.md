@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
 - chi web: when the page can't reach chi web, the session bar's status chip says "retrying", then "offline" (the full
   words in its tooltip) instead of "reconnecting…" / "can't reach chi web", so the bar no longer shifts; during a running
   turn only the stage says "reconnecting…" and the chip keeps "running".
+- chi web on a phone: the status bar takes the top bar's tint (the theme-color under 600px wide is the colour the page's
+  top edge starts with, and the page's accent tint now runs down from that edge), so there is no seam between them in
+  the Home Screen app or a Safari tab, light or dark.
 
 ## [0.166.0] - 2026-11-11
 
