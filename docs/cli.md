@@ -1057,7 +1057,9 @@ The prompt stays open while a turn runs in an attached terminal:
   web's composer points at the × on the bubble.
 - **The web composer** has a row above the text field in a session (always
   there, so the composer never changes height): the keys while idle, and while
-  the turn runs the delivery line, where a message sent now goes in (`↳ goes in after this
+  the turn runs the delivery line (a phone has no such row: while the turn runs
+  the line, short, and its `cut in` and `queue` chips take the session bar's
+  left, where status, ctx and speed are until the turn ends), where a message sent now goes in (`↳ goes in after this
   thinking step · 0:42 · 3k chars`, `… after this tool call (execute · 0:12)`,
   `… after this answer; the turn may go on`, `… once the card above is
   answered`), then two links. **Enter** (or Send) is the next step;
