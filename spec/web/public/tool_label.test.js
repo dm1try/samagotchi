@@ -54,7 +54,8 @@ test("a reloaded row and its step title show the label saved with the result", (
   assert.match(html, /<summary>working with mcp · 1 tool call<\/summary>/);
   assert.match(html, /<span class="activity-tool">mcp<\/span>/);
   assert.match(html, /chrome\/take_screenshot/);
-  assert.doesNotMatch(html, /call_tool/);
+  // Not in what the row shows: its data-tool stamp (what a finished block's readers go by) is the raw name.
+  assert.doesNotMatch(html.replace(/ data-tool="[^"]*"/g, ""), /call_tool/);
 });
 
 // Tool titles (the server's `title`: a project-relative path, a command

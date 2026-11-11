@@ -499,3 +499,20 @@ test("flush cadence: an empty late frame doesn't count as a flush, so the next f
   c.say("next. ");
   assert.equal(c.frames.pending(), 1, "the interval runs from the flush that wrote, 151 ms ago");
 });
+
+test("a finished block says how it ended and whose turn it was; its rows say their tool (objectives_moves.js reads them)", () => {
+  const { turnBlock, host } = liveBlock();
+  stepOne(turnBlock);
+  turnBlock.turnEnded({ kind: "canceled" });
+  const block = host.querySelector(".turn-work");
+  assert.equal(block.dataset.end, "canceled");
+  assert.equal(block.dataset.participant, undefined);
+  assert.equal(block.querySelector(".activity-row").dataset.tool, "read");
+
+  const other = liveBlock();
+  other.turnBlock.turnStarted({ prompt: "p", author: "p:p_0001abcd" });
+  other.turnBlock.toolStarted({ iteration: 1, call_index: 1, tool: "edit", params: 'path="a"' });
+  other.turnBlock.turnEnded({ kind: "completed" });
+  assert.equal(other.host.querySelector(".turn-work").dataset.participant, "1");
+  assert.equal(other.host.querySelector(".turn-work").dataset.end, "completed");
+});

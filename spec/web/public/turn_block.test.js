@@ -285,3 +285,13 @@ test("Apply under a review turn's reply, none under a pair turn; the badge says 
   assert.match(pair, /data-participant-mode="pair"/);
   assert.match(pair, /title="A turn from Sam, a participant: it acted with this session's tools, its asks came to you"/);
 });
+
+test("a reloaded participant's block says so, as live stamps it; the owner's doesn't", () => {
+  const turn = (author) => [
+    { role: "user", content: "q", turn_id: "T1", ...(author ? { author } : {}) },
+    { role: "assistant", content: "", parts: { tools: [{ name: "edit", params: 'path="a"', output: "[edit]\nok" }] } },
+    { role: "assistant", content: "done" },
+  ];
+  assert.match(historyHtml(turn("p:p_0001abcd")), /<details class="turn-work done" data-end="completed" data-participant="1"/);
+  assert.doesNotMatch(historyHtml(turn(null)), /data-participant/);
+});
