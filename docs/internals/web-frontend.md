@@ -261,7 +261,9 @@ The e2e reach an item wherever it is with `spec/e2e/support/layout.js` `clickBar
 The owner page runs under a phone's notch, status bar and home indicator (`viewport-fit=cover`; the body is `100dvh`,
 so a Safari tab's toolbar never covers the composer). index.html's `:root` names the insets once, `--safe-t/r/b/l`
 (`env(safe-area-inset-*)`, 0 on a desktop), and only these read them: main's padding (16px, or the inset where it is
-wider; its bottom is 16px less than `--safe-b`, since the session's card floats 16px above main's bottom), a bottom
+wider; its bottom is 16px less than `--safe-b`, since the session's card floats 16px above main's bottom; a phone's
+session panel has no bottom padding and runs to the screen's bottom, its card at `--dock-bottom`, 16px or the
+indicator's line), a bottom
 sheet's offset (`chip_popover.js place`: 8px above the indicator, or a keyboard's offset alone), the update sheet, the
 toast's fallback place (in a session `--toast-bottom` already sits it above the card), the lightbox's padding and the
 signed-out banner (`auth_lost.js`, `env()` itself: the participant page has no `--safe-*`). A new fixed or bottom-anchored
@@ -271,7 +273,8 @@ as Chromium has no insets. The theme-color metas are tokens.css's `--bg` per the
 ## The stage's height
 
 `stage_frame.js` is the one writer. The cap is a ceiling: 60% of the page, 80% with the cloud open, 85% while a card has
-the room, and never above the session panel. The frame is grow-only while a turn runs, so a change inside the stage
+the room, and never above the session panel (less the card, its offset from the panel's bottom as computed: index.html
+`--dock-bottom`, and 16px). The frame is grow-only while a turn runs, so a change inside the stage
 never moves its top edge, with one exception: **the next step after a blocking card's answer lets the frame go, once**
 (`stage_view.js releaseHeldWait`, from `generationStarted`). The `held-wait` class says it is due: set with `waiting`,
 cleared there, so a later step, which calls it again, does nothing. What goes together: the live slots' waiting height, a
