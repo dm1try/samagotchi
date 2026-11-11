@@ -1542,7 +1542,7 @@ body.has-session #newBtn .brand-new{display:inline}
 /* The scope chip: "<project> · all", or "all projects" and where a new session starts (start page only). */
 #scope{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted)}
 #scope[hidden]{display:none}
-#scope .scope-name{display:inline-flex;align-items:center;flex-shrink:0;padding:2px 9px;border:1px solid var(--border-strong);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;line-height:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw;cursor:pointer;transition:none}
+#scope .scope-name{display:inline-flex;align-items:center;flex-shrink:0;min-height:28px;padding:0 9px;border:1px solid var(--border-strong);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;line-height:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw;cursor:pointer;transition:none}
 #scope .scope-name:hover:not(:disabled){filter:none}
 #scope .scope-name.error{color:var(--warn-text);border-color:var(--warn-border)}
 #scope .scope-all{color:var(--text-muted);text-decoration:none}
@@ -1589,11 +1589,10 @@ body.all-view #scope .scope-where{display:none}
   #scope{gap:6px}
   #newBtn .brand-new-word{display:none}
   #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #stripStatus{padding:3px 8px}
-  /* In a session the brand gives its room to the bar: a bare drawn plus, a 32px round button centred on the row (the start
-     page keeps "chi"); its extra 4px taken back so the bar keeps its height. The plus is centred by flex, not by its line. */
+  /* In a session the brand gives its room to the bar: a bare drawn plus, a 28px round button centred on the row, as the bell
+     (the start page keeps "chi"). The plus is centred by flex, not by its line. */
   body.has-session #newBtn .brand-name{display:none}
-  body.has-session #newBtn.brand{align-self:center;width:32px;height:32px;margin:-2px 0;padding:0;justify-content:center;align-items:center;border-radius:999px;border:1px solid var(--border-strong)}
+  body.has-session #newBtn.brand{align-self:center;width:28px;height:28px;padding:0;justify-content:center;align-items:center;border-radius:999px;border:1px solid var(--border-strong)}
   body.has-session #newBtn .brand-new{display:flex;color:var(--text-2)}
   body.has-session #newBtn .brand-plus{width:13px;height:13px;margin:0}
 }
@@ -1618,12 +1617,13 @@ body.all-view #scope .scope-where{display:none}
    a wrapping line counts) and grow to their text, the pill first; the scope chip cuts with an ellipsis before the pill does.
    The pill drops its session count while it says live or waiting, so the scope chip keeps its words. */
 @media(max-width:600px){
-  #topBar{flex-wrap:wrap;row-gap:2px}
+  #topBar{flex-wrap:wrap;row-gap:5px}
   #sessionTitleRow{flex-basis:100%;order:10}
   #sessionTitle{font-size:12px}
   .title-rename{font-size:12px;line-height:18px}
   #scope,#stripStatus{flex:1 1 0;min-width:0;max-width:max-content}
-  #stripStatus{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
+  /* clip, not hidden: the ellipsis as before, and the touch tap box (its ::after) reaches out above and below. */
+  #stripStatus{flex-grow:1000;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis}
   /* A session page: the chip gives way to the pill. The start page has the "new session in …" path beside the chip:
      there the chip keeps its words and the path is what cuts. */
   body.has-session #scope .scope-name{flex-shrink:1;min-width:0}
@@ -1715,15 +1715,15 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .scope-error{grid-column:1/-1;font-size:13px;color:var(--warn-text)}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
 .strip-toggle:hover{color:var(--text-2);border-color:var(--border-strong)}
-#stripStatus{display:none;align-self:center;white-space:nowrap;flex-shrink:0}
+/* The sessions pill: the scope pill's twin (28px, the bell's height; 12px text), at every width. Sizes only on the bare id:
+   a colour there would beat .strip-toggle[aria-pressed="true"], the all view's pressed look. */
+#stripStatus{display:none;align-self:center;height:28px;min-height:0;padding:0 10px;font-size:12px;line-height:26px;white-space:nowrap;flex-shrink:0}
+#stripStatus:not([aria-pressed="true"]){border-color:var(--border-strong)}
+#stripStatus:hover{filter:none}
 #stripStatus .live{color:var(--ok-text);white-space:nowrap}
 #stripStatus .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
 #stripStatus .waiting{color:var(--warn-text);white-space:nowrap}
 #stripStatus .waiting-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:4px;vertical-align:1px}
-/* A narrow window's strip scrolls sideways, and the grip's own target there is thin: the status pill gets a finger-sized one. */
-@media(max-width:900px){
-  #stripStatus{min-height:30px;padding:4px 12px;font-size:12px}
-}
 body.strip-hidden #stripStatus{display:block}
 body.strip-hidden #topStrip{display:none}
 /* In the all view the pill is the view's own button, pressed (app.js applyView), whatever the strip's state: a click goes
@@ -1888,19 +1888,25 @@ a{color:var(--accent)}
   .bubble.output>.copy-btn::before{inset:-15px -8px -2px -6px}
   .code-wrap>.copy-btn::before{inset:-5px -5px -12px -10px}
   .bubble.user>.copy-btn::before{inset:0 -2px -17px -13px}
-  /* The top bar. A phone's has two rows 2px apart (the scope pill over the title's ✎): the pill grows up only, the ✎
-     mostly down. */
+  /* The top bar. A phone's has two rows 5px apart (the scope pill over the title's ✎): the pill grows up only, the ✎
+     mostly down, its area ending at the pills' row. The sessions pill keeps a 30px tap box and a phone's round "+" a 32px
+     one (the old sizes) with an invisible pseudo-element. */
   .title-rename{position:relative;z-index:1}
   .title-rename::after{content:"";position:absolute;inset:-5px -9px -16px}
   #notifyBtn{position:relative}
   #notifyBtn::after{content:"";position:absolute;inset:-7px}
   #scope .scope-all{position:relative}
   #scope .scope-all::after{content:"";position:absolute;inset:-14px -4px -11px -3px}
-  /* The pill: its box 40px tall and borderless, its border drawn at the box's bottom at the old height (21px) with the
-     text in its middle, the box's extra height above taken back by a negative margin so the row keeps its height; the box's
+  #stripStatus{position:relative}
+  #stripStatus::after{content:"";position:absolute;inset:-2px 0}
+  #newBtn{position:relative}
+  #newBtn::after{content:"";position:absolute;inset:-3px}
+  /* The pill: its box 40px tall and borderless (no border at all: a transparent one would put the ::before 1px inside, a
+     26px pill beside the 28px "all"; the side padding takes its 1px), its border drawn at the box's bottom at the pill's
+     height (28px) with the text in its middle, the box's extra height above taken back by a negative margin so the row keeps its height; the box's
      corners no rounder than the drawn pill's (overflow:hidden would clip them). */
-  #scope .scope-name,#scope .scope-name.error{position:relative;min-height:40px;margin:-19px 0 0;padding-top:21px;border-color:transparent;border-radius:11px}
-  #scope .scope-name::before{content:"";position:absolute;left:0;right:0;top:19px;bottom:0;border:1px solid var(--border-strong);border-radius:999px;pointer-events:none}
+  #scope .scope-name,#scope .scope-name.error{position:relative;min-height:40px;margin:-12px 0 0;padding:12px 10px 0;border-width:0;border-radius:11px}
+  #scope .scope-name::before{content:"";position:absolute;left:0;right:0;top:12px;bottom:0;border:1px solid var(--border-strong);border-radius:999px;pointer-events:none}
   #scope .scope-name.error::before{border-color:var(--warn-border)}
   /* The active strip card's ✎: inside the strip (overflow-x:auto clips), so its own box grows, into the card's padding. */
   #topStrip .card-rename{padding:9px 13px;margin:-9px -8px}
