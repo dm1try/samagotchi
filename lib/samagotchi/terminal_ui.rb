@@ -173,6 +173,20 @@ module Samagotchi
       end
     end
 
+    # The setup a new one-shot session starts with (a resumed one keeps
+    # its own; #run lays --llm-context* and --thinking over it). It is made
+    # with Session.new_session, not spawn_session, so config's default
+    # toolkit is filled in here.
+    # @return [SessionSetup]
+    def new_session_setup
+      llm_context = LLMContextOverride.update(nil, @llm_context_words) unless @llm_context_words.empty?
+      setup = SessionSetup.from_request(memories: @requested_memories, muted: @muted_memory_names,
+                                        llm_context: llm_context, thinking: @thinking_word,
+                                        appended_prompt_files: @appended_prompt_files, toolkit: @toolkit,
+                                        settings: @session_settings, parent_answers: @parent_answers)
+      @toolkit ? setup : setup.with(toolkit: Toolkit.configured, toolkit_origin: "default")
+    end
+
     # Run the -p prompt as one turn (a session command as that command),
     # then return; with no prompt, nothing (no session is made).
     # @return [Symbol, nil] :turn_failed when the turn failed or the command
@@ -192,18 +206,15 @@ module Samagotchi
         model_name: @effective_model_name,
         working_directory: Dir.pwd,
         scratch: @scratch,
-        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured,
-                                toolkit_origin: @toolkit ? "chosen" : "default", settings: @session_settings,
-                                parent_answers: @parent_answers, preloaded_memory_names: @requested_memories,
-                                muted_memory_names: @muted_memory_names)
+        setup: new_session_setup
       ))
-      # --llm-context*: the session's own values, over a resumed one's.
-      # Saved at once on a resumed one: leaving before a turn keeps them.
-      # --thinking: the session's own level, saved at once on a resumed one.
-      unless @llm_context_words.empty? && @thinking_word.nil?
+      # --llm-context* and --thinking on a resumed one: the session's own
+      # values, over its own (a new one's are in its setup). Saved at once:
+      # leaving before a turn keeps them.
+      if @resume_session && !(@llm_context_words.empty? && @thinking_word.nil?)
         session.llm_context = LLMContextOverride.update(session.llm_context, @llm_context_words) unless @llm_context_words.empty?
         session.thinking = Thinking.session_level(@thinking_word) if @thinking_word
-        session.save if @resume_session
+        session.save
       end
       warn_toolkit_flags_ignored(session) if @resume_session
       claim_session!(session.id) unless @owner_lock
