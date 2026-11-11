@@ -3,6 +3,7 @@
 require "spec_helper"
 require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
+require "samagotchi/chi_home"
 require "samagotchi/child_move"
 require "samagotchi/context_sources"
 require "samagotchi/continue_intent"
@@ -97,6 +98,18 @@ RSpec.describe "the recorded compatibility corpus" do
     expect_live_files_read(sessions_dir, session_dir, version, since)
     expect_install_journal_read(root, version, since)
     expect_store_files_read(sessions_dir, session_dir, version, since)
+    expect_home_read(root, version, since)
+  end
+
+  # The chi home (home.json) every chi launch reads, whichever chi wrote it.
+  def expect_home_read(root, version, since)
+    path = File.join(root, Samagotchi::ChiHome::FILE)
+    return unless recorded?(path, version, since)
+
+    expect(Samagotchi::ChiHome.read(path: path))
+      .to eq(Samagotchi::ChiHome::Record.new(ruby: "/compat-fixture/ruby/bin/ruby", gem_home: "/compat-fixture/gems",
+                                             gem_path: "/compat-fixture/gems", mise: "/compat-fixture/bin/mise",
+                                             set_at: "2026-01-01T00:00:00Z", set_by_version: version))
   end
 
   # An ask for +command+ under +rule+ in the corpus session, as the gate

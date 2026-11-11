@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::ChiHome do
     it "is the recorded home when its ruby runs and has samagotchi" do
       write_home
       expect(described_class.current(path: path, gem_spec: gem_spec)).to eq(home)
-      expect(JSON.parse(File.read(path)).keys).to eq(%w[ruby gem_home gem_path mise set_at set_by_version])
+      expect(JSON.parse(File.read(path)).keys).to eq(%w[ruby gem_home gem_path mise set_at set_by_version version])
     end
 
     it "is nil without home.json" do
@@ -89,6 +89,43 @@ RSpec.describe Samagotchi::ChiHome do
       expect(described_class.current(path: path, gem_spec: gem_spec)).to be_nil
       expect(Samagotchi::Log).to have_received(:warn).with(:config, "home_unusable", path: path,
                                                                                      problem: /no samagotchi/)
+    end
+  end
+
+  describe "home.json's format (STATE_FORMAT)" do
+    def stored = JSON.parse(File.read(path))
+
+    def store(data)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, JSON.generate(data))
+    end
+
+    it "stamps its version and reads back what it wrote" do
+      write_home
+      expect(stored).to eq(home.to_h.merge("version" => described_class::STATE_FORMAT_VERSION))
+      expect(described_class.read(path: path)).to eq(home)
+    end
+
+    it "reads a home.json an older chi wrote (no version, no mise)" do
+      store(home.to_h.except("mise"))
+      expect(described_class.read(path: path)).to eq(home)
+    end
+
+    it "still refuses one without its ruby" do
+      store(home.to_h.except("ruby"))
+      expect { described_class.read(path: path) }.to raise_error(described_class::Invalid, /ruby is missing/)
+    end
+
+    it "keeps a newer chi's version and keys through a write of the same home, not of another" do
+      store(home.to_h.merge("version" => 2, "later" => "kept"))
+      expect(described_class.read(path: path)).to eq(home)
+
+      write_home(home.with(set_at: "2026-11-11T00:00:00Z"))
+      expect(stored).to include("version" => 2, "later" => "kept", "set_at" => "2026-11-11T00:00:00Z")
+
+      other = File.join(tmp, "other", "bin", "ruby").tap { |f| make_executable(f) }
+      write_home(home.with(ruby: other))
+      expect(stored).to eq(home.with(ruby: other).to_h.merge("version" => described_class::STATE_FORMAT_VERSION))
     end
   end
 

@@ -10,6 +10,7 @@ require_relative "bundler_env"
 require_relative "installed_gem"
 require_relative "log"
 require_relative "paths"
+require_relative "state_format"
 require_relative "version"
 
 module Samagotchi
@@ -40,6 +41,23 @@ module Samagotchi
     PROBE = "require 'json'; print JSON.generate('ruby' => RbConfig.ruby, 'gem_home' => Gem.dir, " \
             "'gem_path' => Gem.path.join(File::PATH_SEPARATOR))"
     GEMSPEC = /\Asamagotchi-(#{Gem::Version::VERSION_PATTERN})\.gemspec\z/
+    # home.json's format (document members only), in its version key. A
+    # home.json with no version is one from before it (the same members); a
+    # newer chi's keeps its version and the keys this one doesn't know
+    # through a write of the same home (#write!). Record.from_h checks the
+    # members.
+    STATE_FORMAT_VERSION = 1
+    STATE_FORMAT = StateFormat.new(
+      version: STATE_FORMAT_VERSION, members: [],
+      document_members: [
+        StateFormat.required(:ruby),
+        StateFormat.required(:gem_home),
+        StateFormat.required(:gem_path),
+        StateFormat.added(:mise, in_version: 1, default: nil),
+        StateFormat.added(:set_at, in_version: 1, default: nil),
+        StateFormat.added(:set_by_version, in_version: 1, default: nil)
+      ]
+    )
 
     class Invalid < StandardError
     end
@@ -132,7 +150,7 @@ module Samagotchi
       data = JSON.parse(File.read(path))
       raise Invalid, "#{Paths.tilde(path)} is not a JSON object" unless data.is_a?(Hash)
 
-      Record.from_h(data)
+      Record.from_h(fields(STATE_FORMAT.read(data, collection: nil)))
     rescue JSON::ParserError, SystemCallError => e
       raise Invalid, "#{Paths.tilde(path)}: #{e.message.lines.first.to_s.strip}"
     rescue Invalid => e
@@ -238,10 +256,34 @@ module Samagotchi
     end
 
     # @raise [SystemCallError]
+    # A home.json naming the same home (its ruby and gem_home) keeps its
+    # version and the keys this chi doesn't know; another home's are its
+    # own, so they go (as an install journal for another target's do).
     def write!(home, path: self.path)
+      earlier = stored_document(path)
+      same = earlier && earlier.attributes.values_at(:ruby, :gem_home) == [home.ruby, home.gem_home]
+      document = (same ? earlier : STATE_FORMAT.read({}, collection: nil))
+                 .with(attributes: home.to_h.transform_keys(&:to_sym))
+      body = STATE_FORMAT.write(document, collection: nil, updated_at: nil)
       FileUtils.mkdir_p(File.dirname(path))
-      AtomicFile.write(path, "#{JSON.pretty_generate(home.to_h)}\n", perm: 0o644)
+      AtomicFile.write(path, "#{JSON.pretty_generate(body)}\n", perm: 0o644)
       home
+    end
+
+    # A document's members as Record.from_h takes them: a missing required
+    # one left out.
+    def fields(document)
+      document.attributes.reject { |_key, value| value.equal?(StateFormat::REQUIRED) }.transform_keys(&:to_s)
+    end
+
+    # home.json as STATE_FORMAT reads it, nil without one or when it doesn't
+    # read (a write replaces it).
+    # @return [StateFormat::Document, nil]
+    def stored_document(path)
+      data = JSON.parse(File.read(path))
+      data.is_a?(Hash) ? STATE_FORMAT.read(data, collection: nil) : nil
+    rescue JSON::ParserError, SystemCallError
+      nil
     end
 
     # The first record, once, from an installed chi (chi bootstrap, chi

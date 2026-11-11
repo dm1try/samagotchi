@@ -68,6 +68,7 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/guardrails"
     require_relative "../../lib/samagotchi/grants"
     require_relative "../../lib/samagotchi/participants"
+    require_relative "../../lib/samagotchi/chi_home"
 
     Dir.mktmpdir("chi-compat-corpus-") do |tmp|
       staged = File.join(tmp, "corpus")
@@ -127,6 +128,14 @@ module ReleaseTools
                                  files: { "compat.md" => "sha256:compat" })
         bundle_journal = File.join(File.dirname(bundle_record), "pending.json")
         FileUtils.cp(provenance.pending_path, bundle_journal)
+        # The chi home every chi launch reads, whichever chi wrote it.
+        home_path = File.join(staged, Samagotchi::ChiHome::FILE)
+        Samagotchi::ChiHome.write!(Samagotchi::ChiHome::Record.new(ruby: "/compat-fixture/ruby/bin/ruby",
+                                                                   gem_home: "/compat-fixture/gems",
+                                                                   gem_path: "/compat-fixture/gems",
+                                                                   mise: "/compat-fixture/bin/mise",
+                                                                   set_at: COMPAT_STAMP, set_by_version: version),
+                                   path: home_path)
 
         required = [
           session_path,
@@ -136,6 +145,7 @@ module ReleaseTools
           schedules.path,
           bundle_record,
           bundle_journal,
+          home_path,
           *live_paths,
           *store_paths
         ]

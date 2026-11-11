@@ -156,7 +156,8 @@ install journal (`.bundles/compat/pending.json`), and the stores another chi
 version shares: an interrupted continue's `move.json` (`ChildMove`), a
 continue's `context/sessions/<id>/left.json`, stored approvals
 (`guardrails/approvals.json`), and a participant's grant
-(`web-grants/grants.json`) with its `participants.json` sidecar. A corpus from
+(`web-grants/grants.json`) with its `participants.json` sidecar, and the chi
+home (`home.json`). A corpus from
 0.164.0 or before has none of those and skips them; a later one must hold them.
 Bridge wire payloads (`/state`, `/snapshot`, SSE frames) aren't recorded: a
 sample needs a live Engine and Bridge at release time.
