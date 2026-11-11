@@ -106,6 +106,9 @@ module Samagotchi
           chi bundle build --scope system --out ./my-bundle/ identity.md work.md
     TEXT
     TRASH_HELP = "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
+    STATUS_HELP = "Usage: chi bundle status [<bundle>]"
+    DIFF_HELP = "Usage: chi bundle diff <bundle> [file]"
+    LIST_HELP = "Usage: chi bundle list"
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -134,6 +137,8 @@ module Samagotchi
       f.switch "--dry-run"
       f.value "--older-than"
     end
+    # status, diff and list take no flag: --help, else an unknown one.
+    NO_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/)
 
     # @param argv [Array<String>] the arguments after "bundle"
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr)
@@ -157,7 +162,7 @@ module Samagotchi
       when "uninstall" then uninstall(@argv[1..])
       when "status" then status(@argv[1..])
       when "diff" then diff(@argv[1..])
-      when "list" then list
+      when "list" then list(@argv[1..])
       when "build" then build(@argv[1..])
       when "trash" then trash(@argv[1..])
       when "new" then new_bundle(@argv[1..])
@@ -536,7 +541,10 @@ module Samagotchi
     end
 
     def status(rest)
-      name = rest.find { |a| !a.start_with?("--") }
+      parsed = parse_flags(NO_FLAGS, rest, "status", help: STATUS_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      name = parsed.args.first
       require "json"
       if name
         st = Samagotchi::MemoryBundle::Status.bundle_status(name)
@@ -636,7 +644,10 @@ module Samagotchi
     def status_scope(st) = st.scope_error ? "#{st.scope} (unknown)" : st.scope
 
     def diff(rest)
-      args = rest.reject { |a| a.start_with?("--") }
+      parsed = parse_flags(NO_FLAGS, rest, "diff", help: DIFF_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      args = parsed.args
       bname = args[0]
       file_arg = args[1]
       if bname.nil? || bname.empty?
@@ -744,7 +755,10 @@ module Samagotchi
       @stdout.puts File.exist?(current) ? File.read(current) : "(missing)"
     end
 
-    def list
+    def list(rest)
+      parsed = parse_flags(NO_FLAGS, rest, "list", help: LIST_HELP)
+      return parsed if parsed.is_a?(Integer)
+
       listing = Samagotchi::MemoryBundle::Listing
       shipped = listing.shipped
       installed = listing.installed(shipped: shipped)
