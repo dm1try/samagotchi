@@ -279,7 +279,8 @@ never an approval, no coordinator path reads it, and nothing enters the conversa
 **Why not a `VerifyFresh` child.** The plan said "VerifyFresh-like, fit unchecked". It fits poorly:
 
 - `VerifyFresh.start` starts from a saved unclear verdict and its `VerifyAnchor`, a quote of at most 200 characters that
-  `verify_anchor_source_session` holds against the parent's text. A move has neither, and a faked one would land in `session.verdicts`.
+  `TurnStages::VerifyAnchors#verified` checks against the source session's answer (`#source_session` loads the parent
+  for a fresh child). A move has neither, and a faked one would land in `session.verdicts`.
 - A child is an agent on the session's model with the owner's tools: an unknown number of requests, approvals waiting
   on the child, a place in `session.max_children` and in the session lists, and its spend outside the parent's line.
   Keeping it read-only and out of the delegate paths (`ChildRing`, `ChildrenStatus`) needs a new session field.

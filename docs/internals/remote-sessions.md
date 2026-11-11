@@ -333,7 +333,7 @@ sends twice on a 408; 5 s, `JOIN_READ_TIMEOUT`, for the join's reads: the childr
 
 | chi web's answer | What the loop gets |
 |---|---|
-| 503 `not_live`, 404 `not_found` | raises `Unreachable` (< `IOError`): "no live worker for session ID on NAME" (`NO_WORKER`) |
+| 503 `not_live`, 404 `not_found` | raises `Unreachable` (< `IOError`): "no live worker for session ID on NAME" (`WorkerLink.not_live` plus " on NAME", in `WebBridgeClient::Mapping.response`) |
 | 502 `bridge_secret` (stream) | `Refused(:bridge_secret)`; `EventStream` ends with `stream_closed bridge_secret` |
 | 504 (any) | `Response(408, {error: deadline_passed})`: the loop's late line |
 | 501 with `command` (`/command`) | `Response(400, {error: unknown_command, command})`: the loop names the command |
