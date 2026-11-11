@@ -627,6 +627,23 @@ test("a card answered at the view's top stays exactly there, with its line's bla
   }
 });
 
+test("a card answered with the view's top exactly at its line's edge: the line comes back (the edge is rounded)", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+  try {
+    const scroller = $(view, ".ts-scroll");
+    const extras = $(view, ".ts-extras");
+    Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
+    scroller.scrollTop = 220;
+    await answer(card);
+    assert.equal(scroller.scrollTop, 192);
+  } finally {
+    view.reset();
+  }
+});
+
 test("a card answered leaves alone a reader who still sees where it was", async (t) => {
   const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
   try {
