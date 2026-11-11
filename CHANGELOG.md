@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web: the question waiting above the composer has one fold, the stage's ▾. Folded, its row says "waiting for you"
+  and the question (on a phone, on a second line), so the conversation gets the room; a tap on the row brings the card
+  back. The fold is for that question only and isn't saved: a question always arrives open, also when you keep the
+  stage folded while chi works, and after the answer the stage is as you had it.
+
+### Fixed
+
+- chi web: a card waiting in the stage (a question, an approval) no longer closes to its title line in an empty box
+  when its title is clicked; its own ▾ is gone while it waits.
+
 ## [0.168.0] - 2026-11-11
 
 ### Changed
