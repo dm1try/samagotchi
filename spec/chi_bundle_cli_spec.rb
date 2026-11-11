@@ -1344,6 +1344,36 @@ Removed: hooks/guardrails.rb\n\z})
       chi("uninstall", "assets")
     end
 
+    it "list refuses an extra argument and lists with none" do
+      expect(chi("list", "extra")).to eq(["", "chi bundle list takes no arguments (unexpected extra)\n", 2])
+
+      out, err, code = chi("list")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("sample-memory-bundle")
+    end
+
+    it "status refuses a second argument and still takes one bundle" do
+      expect(chi("status", "sample-plugin", "extra")).to eq(
+        ["", "chi bundle status takes at most one bundle (unexpected extra)\n", 2]
+      )
+
+      out, err, code = chi("status", "sample-plugin")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Bundle: sample-plugin")
+      expect(chi("status").last).to eq(0)
+    end
+
+    it "diff refuses a third argument and still takes bundle and file" do
+      expect(chi("diff", "sample-memory-bundle", "identity.md", "extra")).to eq(
+        ["", "chi bundle diff takes at most two arguments (unexpected extra)\n", 2]
+      )
+
+      out, err, code = chi("diff", "sample-memory-bundle", "identity.md")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("=== identity.md ===")
+      expect(chi("diff", "sample-memory-bundle").last).to eq(0)
+    end
+
     it "status, diff and list take --help and refuse any other --flag (exit 2), never reading its value as the name" do
       expect(chi("status", "--format", "json")).to eq(["", "Unknown bundle status flag: --format\n", 2])
       expect(chi("status", "--scope", "project", "sample-plugin")).to eq(["", "Unknown bundle status flag: --scope\n", 2])

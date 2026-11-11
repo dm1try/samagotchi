@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle list`, `status` and `diff`: an extra argument is refused (exit 2) instead of ignored.
+
 ## [0.167.0] - 2026-11-11
 
 ### Added

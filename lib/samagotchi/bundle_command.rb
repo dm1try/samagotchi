@@ -541,7 +541,7 @@ module Samagotchi
     end
 
     def status(rest)
-      parsed = parse_flags(NO_FLAGS, rest, "status", help: STATUS_HELP)
+      parsed = parse_flags(NO_FLAGS, rest, "status", help: STATUS_HELP, max_positionals: 1, noun: "bundle")
       return parsed if parsed.is_a?(Integer)
 
       name = parsed.args.first
@@ -644,7 +644,7 @@ module Samagotchi
     def status_scope(st) = st.scope_error ? "#{st.scope} (unknown)" : st.scope
 
     def diff(rest)
-      parsed = parse_flags(NO_FLAGS, rest, "diff", help: DIFF_HELP)
+      parsed = parse_flags(NO_FLAGS, rest, "diff", help: DIFF_HELP, max_positionals: 2)
       return parsed if parsed.is_a?(Integer)
 
       args = parsed.args
@@ -756,7 +756,7 @@ module Samagotchi
     end
 
     def list(rest)
-      parsed = parse_flags(NO_FLAGS, rest, "list", help: LIST_HELP)
+      parsed = parse_flags(NO_FLAGS, rest, "list", help: LIST_HELP, max_positionals: 0)
       return parsed if parsed.is_a?(Integer)
 
       listing = Samagotchi::MemoryBundle::Listing
@@ -1026,7 +1026,7 @@ module Samagotchi
     # @return [CLI::Flags::Result, Integer] the result, or the exit status
     #   after the help or an unknown flag (a value flag without its value
     #   reads as one)
-    def parse_flags(flags, rest, sub, help:)
+    def parse_flags(flags, rest, sub, help:, max_positionals: nil, noun: "argument")
       parsed = flags.parse(rest)
       if parsed.help
         @stdout.puts help
@@ -1034,6 +1034,21 @@ module Samagotchi
       end
       if parsed.error
         @stderr.puts "Unknown bundle #{sub} flag: #{parsed.error.arg}"
+        return CLI::Exit::USAGE
+      end
+      if max_positionals && parsed.args.size > max_positionals
+        extra = parsed.args[max_positionals..]
+        count = if max_positionals == 1
+                  "one"
+                else
+                  max_positionals == 2 ? "two" : max_positionals.to_s
+                end
+        allowed = if max_positionals.zero?
+                    "no #{noun}s"
+                  else
+                    "at most #{count} #{max_positionals == 1 ? noun : "#{noun}s"}"
+                  end
+        @stderr.puts "chi bundle #{sub} takes #{allowed} (unexpected #{extra.join(", ")})"
         return CLI::Exit::USAGE
       end
       parsed
