@@ -684,8 +684,9 @@ body.has-session #stage,body.has-session #history{background:transparent}
 body.no-glass.has-session #center{background:var(--bg);border-color:var(--border)}
 /* --dock-bottom: the card's offset from the panel's bottom (16px; a phone's is below). stage_frame.js fitCap reads it.
    Its sides are the history's column (#history's padding, both in #center): the stage and the composer are as wide as
-   the conversation, so a text moved from the stage into the history keeps its line breaks. */
-body.has-session #dock{position:absolute;left:max(16px,calc((100% - 960px)/2));right:max(16px,calc((100% - 960px)/2));bottom:var(--dock-bottom,16px);margin:0;z-index:3}
+   the conversation, so a text moved from the stage into the history keeps its line breaks. A classic scrollbar on the
+   history narrows its column on the right: --history-sb (dock_reserve.js) moves the dock's right edge with it. */
+body.has-session #dock{position:absolute;left:max(16px,calc((100% - 960px)/2));right:calc(max(16px,calc((100% - 960px)/2)) + var(--history-sb,0px));bottom:var(--dock-bottom,16px);margin:0;z-index:3}
 body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 16px + var(--dock-bottom,16px))}
 /* A phone's session panel runs edge to edge: its sides, corners and bottom line go (main's 16px side padding is taken
    back), so only the message cards are framed and an answer gets the width. The history, the objectives' strip and the
@@ -697,7 +698,7 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 16px + var(-
   body.has-session #center{margin:0 -16px;border-width:1px 0 0;border-radius:0}
   body.has-session #history{padding-left:8px;padding-right:8px}
   body.has-session #objectivesStrip{padding-left:8px;padding-right:8px}
-  body.has-session #dock{left:8px;right:8px}
+  body.has-session #dock{left:8px;right:calc(8px + var(--history-sb,0px))}
 }
 /* The delivery line (delivery_line.js): above a phone's width, a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised. A phone has no such row (its composer is shorter, and as steady): while a turn runs the line, its short text and chips, lies over the session bar's left, where status, ctx and speed are (hidden while it shows), up to ⚙, only while you type or have a choice armed (below). */
 #deliveryLine{display:flex;align-items:center;gap:10px}
