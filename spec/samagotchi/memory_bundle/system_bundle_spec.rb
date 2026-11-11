@@ -370,6 +370,20 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(installed_identity).to eq("old\n")
       end
 
+      it "shows a checksum mismatch in a dry plan for a fresh install, as the install itself warns" do
+        ship("0.1.6", "old\n")
+        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                                 version: "0.1.6", scope: "system",
+                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+        mismatch = "Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("old\n")[0..7]}..."
+
+        expect(described_class.sync(dry_run: true)).to have_attributes(status: :installed, to: "0.1.6", warnings: [mismatch])
+        expect(Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).read).to be_nil
+        expect(File.exist?(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))).to be(false)
+
+        expect(described_class.sync.warnings).to include(mismatch)
+      end
+
       it "shows a checksum mismatch in a dry plan for a system bundle update" do
         ship("0.1.6", "old\n")
         described_class.sync

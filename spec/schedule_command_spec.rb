@@ -196,6 +196,16 @@ RSpec.describe Samagotchi::ScheduleCommand do
     end
   end
 
+  it "refuses a --format other than text or json for list and tick, exit 2 and nothing ticked" do
+    expect(schedules).not_to receive(:tick)
+    %w[list tick].each do |sub|
+      status, printed, error = run(sub, "--format", "xml")
+      expect([status, printed]).to eq([2, ""])
+      expect(error).to start_with(%(chi schedule #{sub}: unknown format "xml": use --format text|json\n))
+    end
+    expect(run("list", "--format", "text").first).to eq(0)
+  end
+
   describe "show" do
     it "prints the entry, by id or a unique prefix" do
       id = session

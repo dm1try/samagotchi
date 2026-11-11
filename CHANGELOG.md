@@ -50,6 +50,15 @@ and commands may change between minor versions. How releases are made:
 - chi web on a phone: the status bar takes the top bar's tint (the theme-color under 600px wide is the colour the page's
   top edge starts with, and the page's accent tint now runs down from that edge), so there is no seam between them in
   the Home Screen app or a Safari tab, light or dark.
+- `chi schedule add --date`: a day the month doesn't have (2026-02-30, 2026-04-31) is refused as not a real date
+  instead of rolling into the next month.
+- `chi sessions list`: an unknown `--sort` or `--order` value is refused (exit 2, naming the ones it takes) instead of
+  listing in the default order under a footer that names the bogus value.
+- `chi schedule list` and `chi schedule tick`: a `--format` other than `text` or `json` is refused (exit 2), as the
+  other commands' `--format` is, instead of printing text; `tick` fires nothing then.
+- `chi bundle status`, `diff` and `list`: an unknown flag is refused (exit 2) as for `install`, instead of being dropped
+  and its value read as the bundle's name (`chi bundle status --format json` looked for a bundle `json`); `--help`
+  prints their usage.
 
 ## [0.166.0] - 2026-11-11
 

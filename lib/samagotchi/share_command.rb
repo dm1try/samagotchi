@@ -135,7 +135,8 @@ module Samagotchi
       return usage_error("ls takes at most one session ID") if args.size > 1
 
       format = options[:format]
-      return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
+      refused = format_refusal(format)
+      return refused if refused
 
       id = args.first && @access.resolve(args.first)
       rows = @access.participants(id)

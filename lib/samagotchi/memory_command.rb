@@ -179,7 +179,8 @@ module Samagotchi
       return usage_error("ls takes no NAME (unexpected #{args.first})") unless args.empty?
 
       format = options[:format]
-      return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
+      refused = format_refusal(format)
+      return refused if refused
 
       rows = self.class.entries(options[:scope])
       if format == "json"
@@ -215,7 +216,8 @@ module Samagotchi
       return usage_error("usage takes no NAME (unexpected #{args.first})") unless args.empty?
 
       format = options[:format]
-      return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
+      refused = format_refusal(format)
+      return refused if refused
       return usage_error("--top must be a positive integer") unless options[:top].nil? || options[:top].to_s.match?(/\A[1-9]\d*\z/)
       return usage_error("--top must be at most #{TOP_LIMIT}") if options[:top].to_i > TOP_LIMIT
 

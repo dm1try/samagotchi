@@ -1344,9 +1344,15 @@ Removed: hooks/guardrails.rb\n\z})
       chi("uninstall", "assets")
     end
 
-    # quirk: status takes the first non --arg as the name, a flag's value too
-    it "status --scope project NAME takes 'project' as the name" do
-      expect(chi("status", "--scope", "project", "sample-plugin")).to eq(["Bundle 'project' not installed.\n", "", 0])
+    it "status, diff and list take --help and refuse any other --flag (exit 2), never reading its value as the name" do
+      expect(chi("status", "--format", "json")).to eq(["", "Unknown bundle status flag: --format\n", 2])
+      expect(chi("status", "--scope", "project", "sample-plugin")).to eq(["", "Unknown bundle status flag: --scope\n", 2])
+      expect(chi("diff", "sample-memory-bundle", "--stat")).to eq(["", "Unknown bundle diff flag: --stat\n", 2])
+      expect(chi("list", "--format", "json")).to eq(["", "Unknown bundle list flag: --format\n", 2])
+      expect(chi("status", "--help")).to eq(["#{Samagotchi::BundleCommand::STATUS_HELP}\n", "", 0])
+      expect(chi("diff", "--help")).to eq(["#{Samagotchi::BundleCommand::DIFF_HELP}\n", "", 0])
+      expect(chi("list", "--help")).to eq(["#{Samagotchi::BundleCommand::LIST_HELP}\n", "", 0])
+      expect(chi("status", "sample-plugin").last).to eq(0)
     end
 
     it "diff shows every file, one file, and an unknown file: an older chi's hook is none of the bundle's" do
