@@ -93,8 +93,9 @@ test("theme: the owner page's theme-color metas are each theme's --bg-top on a p
   const metas = [...HTML.matchAll(THEME_COLOR)].map((m) => [m[2] + (m[3] ? " phone" : ""), m[1]]);
   assert.deepEqual(metas, [["dark phone", DARK["--bg-top"]], ["light phone", LIGHT["--bg-top"]],
     ["dark", DARK["--bg"]], ["light", LIGHT["--bg"]]]);
-  // A phone's page starts from --bg-top at its top edge, so the status bar above it continues it.
-  assert.match(HTML, /@media\(max-width:600px\)\{body\{background:linear-gradient\(var\(--bg-top\),var\(--bg\) 420px\)\}\}/);
+  // A phone's page starts from --bg-top at its top edge, so the status bar above it continues it; the colour layer
+  // (the body's background-color) is what iOS 26's Home Screen app paints the status bar strip in.
+  assert.match(HTML, /@media\(max-width:600px\)\{body\{background:linear-gradient\(var\(--bg-top\),var\(--bg\) 420px\),var\(--bg-top\)\}\}/);
 });
 
 test("theme: both pages link tokens.css, then the shared stylesheets", () => {
