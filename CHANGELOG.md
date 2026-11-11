@@ -34,6 +34,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Web: the Invite form's note on binding a link says "their account", as its field and `chi share --identity` do,
+  not "their email".
 - chi web on iPhone: the composer, the all view's search and the rename field ask Safari not to offer its AutoFill
   Contact bar (as the cards' text fields already did).
 - chi web on iPhone: the composer no longer gets Safari's "AutoFill Contact" bar after a picks note or the invite form
