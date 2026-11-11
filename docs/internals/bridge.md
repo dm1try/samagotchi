@@ -5,6 +5,8 @@ localhost HTTP server in the worker's process, next to the `Engine` it reads and
 terminal are its clients; no browser reaches it. [architecture.md](../architecture.md) places it among the layers;
 this page is the surface: what it keeps, how a client joins and catches up, and every route.
 
+Bridge Engine calls are listed with their reasons in `Bridge::ENGINE_CALLS`; add each new Engine call there.
+
 ## What a Bridge keeps
 
 `Bridge#start` binds a port (OS-assigned, `127.0.0.1`), then subscribes four persistent observers to the Engine
