@@ -988,7 +988,8 @@ title (its strip card, or the top bar) does it. See [Session titles](sessions.md
 
 <a id="session-objectives"></a>
 `/objectives` shows what the session is to achieve, each objective's latest move under it (`last move: …`, recorded by
-the model's `objectives` tool; `last move: claims done: …` or `last move: blocked: …` for a move with that state); [Objectives](sessions.md#objectives) has what that does.
+the model's `objectives` tool; `last move: claims done: …` or `last move: blocked: …` for a move with that state, and under a done move its turn's
+runs don't back, `not backed: the last command failed` or `not backed: edited after the last command ran`); [Objectives](sessions.md#objectives) has what that does.
 - `/objectives set Two coffees | Stops before checkout (done when: no order is placed)`: a new list. Parts are split by
   ` | ` or by lines; a part may end `(done when: …)`. It replaces the list, and ids go on from the old one's.
 - `/objectives add TEXT`: one more (several with ` | `).

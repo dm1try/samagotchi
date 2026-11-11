@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - Objectives: a move says where its objective stands, `progress` (the default), `blocked` or `done` (the `objectives`
   tool's new `state`). `/objectives` and the web's move line and list say "claims done" or "blocked" beside the move;
   a done move is the agent's claim, and you still mark the objective done yourself.
+- Objectives: a done move whose own turn's last command failed, or that edited files after its last command ran, is
+  marked `not backed: …` under it (muted, in `/objectives` and the web), read from the turn's runs by chi, not the model.
 
 ### Changed
 

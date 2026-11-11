@@ -123,7 +123,8 @@ module Samagotchi
     end
 
     def item_lines(item, move, check)
-      ["  #{item.line}", *("    last move: #{move.line}" if move), *("    #{ObjectivesCheck.line_of(check)}" if check)]
+      flag = move&.backing&.flag_words
+      ["  #{item.line}", *("    last move: #{move.line}" if move), *("    #{flag}" if flag), *("    #{ObjectivesCheck.line_of(check)}" if check)]
     end
   end
 end

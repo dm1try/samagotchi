@@ -266,6 +266,18 @@ RSpec.describe Samagotchi::ObjectivesCommand do
       expect(run("").first).to include("last move: blocked: Closed")
     end
 
+    it "says under a done move when its turn's runs don't back it, and nothing when they do" do
+      call = ->(id, name, args) { { role: "model", content: "", tool_calls: [{ id: id, name: name, arguments: args }] } }
+      result = ->(id, name, text) { { role: "tool_response", content: "[#{name}]\n#{text}", tool_call_id: id, tool_ids: ["t#{id}"] } }
+      session.messages += [{ role: "user", content: "go", turn_id: "t9", turn_start: true },
+                           call.call("w", "edit", { path: "a.rb" }), result.call("w", "edit", "Edited a.rb"),
+                           call.call("x", "execute", { command: "rspec" }), result.call("x", "execute", "exit: 0"),
+                           call.call("y", "edit", { path: "a.rb" }), result.call("y", "edit", "Edited a.rb"),
+                           call.call("z", "objectives", { id: "O1", note: "green", state: "done" }), result.call("z", "objectives", "Recorded a move on O1.")]
+      expect(run("").first).to include("O1 Two coffees\n    last move: claims done: green\n    not backed: edited after the last command ran\n  O2")
+      expect(run("").first.scan("not backed").size).to eq(1)
+    end
+
     it "shows a move of the running turn, which session.messages doesn't hold yet" do
       engine.live_conversation = [
         { role: "model", content: "", tool_calls: [{ id: "b", name: "objectives", arguments: { id: "O1", note: "Mid-turn" } }] },
