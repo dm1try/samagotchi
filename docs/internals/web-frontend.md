@@ -268,7 +268,7 @@ sheet's offset (`chip_popover.js place`: 8px above the indicator, or a keyboard'
 toast's fallback place (in a session `--toast-bottom` already sits it above the card), the lightbox's padding and the
 signed-out banner (`auth_lost.js`, `env()` itself: the participant page has no `--safe-*`). A new fixed or bottom-anchored
 piece reads `--safe-*`, never `env()`: the e2e set the names by hand (`web.spec.js`, a portrait phone and a landscape one),
-as Chromium has no insets. The theme-color metas are tokens.css's `--bg-top` per theme up to 600px wide (a phone's page starts from that colour at its top edge, so the status bar meets the top bar with no seam), else its `--bg` (`theme.test.js` pins them).
+as Chromium has no insets. The theme-color metas are tokens.css's `--bg-top` per theme up to 600px wide (a phone's page starts from that colour at its top edge, so the status bar meets the top bar with no seam), else its `--bg` (`theme.test.js` pins them). An iOS 26 Home Screen app ignores them for the status bar strip: it paints the strip in the body's `background-color`, so a phone's body gradient keeps a `--bg-top` colour layer under it (black strip without one).
 
 ## The stage's height
 

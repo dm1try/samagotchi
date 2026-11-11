@@ -36,8 +36,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column}
 /* A phone: the accent's tint runs down from the top edge, flat across it (--bg-top, the status bar's theme-color above),
    not from the top-left corner: the status bar, which iOS paints in theme-color (the Home Screen app) or over the page's
-   top (a Safari tab), meets the top bar with no seam. */
-@media(max-width:600px){body{background:linear-gradient(var(--bg-top),var(--bg) 420px)}}
+   top (a Safari tab), meets the top bar with no seam. The colour layer under the gradient is never seen in the page
+   (the gradient covers the body): it is the body's background-color, which is what iOS 26's Home Screen app paints
+   the status bar strip in (not theme-color, not html's background; with no colour the strip is black). */
+@media(max-width:600px){body{background:linear-gradient(var(--bg-top),var(--bg) 420px),var(--bg-top)}}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 .turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 @media(hover:hover){#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}}
