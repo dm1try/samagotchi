@@ -268,6 +268,71 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(aside.map { |f| File.read(f) }).to eq(["[1,"])
     expect(warnings.size).to eq(1)
   end
+
+  describe "the store's shape" do
+    let(:entry) do
+      { "scope" => "session", "tool" => "execute", "rule" => "git-push", "source" => "config", "session_id" => "s1",
+        "key" => "execute:git push origin main", "repo_root" => repo }
+    end
+
+    def write_store(data)
+      FileUtils.mkdir_p(File.dirname(store.path))
+      File.write(store.path, JSON.generate(data))
+    end
+
+    def stored = JSON.parse(File.read(store.path))
+
+    it "reads a versioned store and matches its entries" do
+      write_store("version" => 1, "approvals" => [entry])
+      expect(store.entries).to eq([entry])
+      expect(store.match(ask)).to include("scope" => "session")
+      expect(warnings).to be_empty
+    end
+
+    it "keeps a versioned store versioned through #add, with its version and the keys it doesn't know" do
+      write_store("version" => 2, "approvals" => [entry], "later" => { "a" => 1 })
+      store.add(ask(command: "git push origin other"), "session")
+      expect(stored).to include("version" => 2, "later" => { "a" => 1 })
+      expect(stored["approvals"].map { |e| e["key"] }).to eq(["execute:git push origin main", "execute:git push origin other"])
+      expect(warnings).to be_empty
+    end
+
+    it "keeps a versioned store versioned through #revoke" do
+      write_store("version" => 1, "approvals" => [entry, entry.merge("session_id" => "s2")])
+      expect(store.revoke(0)).to include("session_id" => "s1")
+      expect(stored).to include("version" => 1)
+      expect(stored["approvals"].map { |e| e["session_id"] }).to eq(%w[s2])
+    end
+
+    it "keeps an entry it can't read (no scope) through a write, matching nothing" do
+      odd = { "tool" => "execute", "later" => true }
+      write_store("version" => 1, "approvals" => [odd])
+      expect(store.match(ask)).to be_nil
+      store.add(ask, "session")
+      expect(stored["approvals"].first).to eq(odd)
+      expect(stored["approvals"].size).to eq(2)
+    end
+
+    it "sets aside a versioned store whose approvals isn't a list, once" do
+      write_store("version" => 1, "approvals" => { "scope" => "session" })
+      expect(store.entries).to eq([])
+      expect(store.entries).to eq([])
+      expect(warnings.size).to eq(1)
+      expect(Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")].size).to eq(1)
+    end
+
+    # A 0.165 reader sets an object aside, so the list stays the written
+    # shape until 0.167 (compat shim approvals_array_write).
+    it "writes a list when there was no store, and keeps a list a list" do
+      store.add(ask, "session")
+      expect(stored).to be_a(Array)
+
+      store.add(ask(command: "git push origin other"), "session")
+      expect(stored).to be_a(Array)
+      expect(stored.size).to eq(2)
+      expect(warnings).to be_empty
+    end
+  end
 end
 
 RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
