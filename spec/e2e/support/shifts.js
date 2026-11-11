@@ -78,7 +78,9 @@ export const watchFrames = (page) => page.evaluate(() => {
     const s = document.querySelector("#turnStage");
     const waits = !!s.querySelector(".ts-extras .bubble.question:not(.answered):not(.cancelled)");
     const infinite = s.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity).length;
-    window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, phase: s.dataset.phase, t: performance.now(), blocked: s.classList.contains("waiting"), infinite });
+    // said: a reason bubble whose card waits (a turn opened in the history, stage_opened.js).
+    const said = !!document.querySelector("#history .bubble.said.pending");
+    window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, said, phase: s.dataset.phase, t: performance.now(), blocked: s.classList.contains("waiting"), infinite });
     window.framesRaf = requestAnimationFrame(tick);
   };
   tick();

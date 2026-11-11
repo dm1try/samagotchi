@@ -10,11 +10,21 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- chi web: when the model asks its own question after a reply, the reply is a bubble in the conversation (`chi · step N
+  · asking you`) and the stage keeps only the question's card above the composer, so you can scroll back through the
+  conversation while it waits; the turn's prompt and steps move into the conversation with it, and the card's
+  `↑ its reason` leads back to the reply. Answered, the card sits under the reply; when the turn ends the reply folds
+  into the card's two lines as before. The same after a reload while the card waits or after it was answered. The
+  question's own room and its `❓ Answer ↓` pill are gone. Approvals, relayed and hook questions are unchanged.
 - chi web: in a session the running turn's stage and the composer are as wide as the conversation's column (at most
-  960 px, centred), so a wide window no longer draws them wider than the messages above.
+  960 px, centred, and clear of an always-shown scrollbar), so a wide window no longer draws them wider than the
+  messages above.
 
 ### Fixed
 
+- chi web: after a reload mid-turn, a question answered earlier in the running turn keeps the reply that asked it (its
+  two muted lines), as it does live.
+- chi web: the opt-in reload check (`web.reload_check`) no longer reports every turn with a question as different.
 - `chi bundle list`, `status` and `diff`: an extra argument is refused (exit 2) instead of ignored.
 
 ## [0.167.0] - 2026-11-11

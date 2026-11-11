@@ -191,18 +191,21 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
 const stillWhileWaiting = (page) => stageEl(page).evaluate((el) => {
   const infinite = () => el.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity);
   const still = infinite().length;
-  el.classList.remove("waiting");
+  // The asking form hides the chip (its ticks): shown for the probe too.
+  const form = el.classList.contains("asking-form");
+  el.classList.remove("waiting", "asking-form");
   const moving = infinite().map((a) => a.effect.target).map((t) => (t.matches(".ts-tick.running") ? "tick" : t.className));
   el.classList.add("waiting");
+  if (form) el.classList.add("asking-form");
   return { still, tick: moving.includes("tick"), dot: moving.includes("ts-mark") };
 });
 
 // A phone (390×700): the stage's cap is low and the top bar wraps its title.
-test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
+test("a question card sits in the stage, its reason in the history (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
   await page.setViewportSize({ width: 390, height: 700 });
   script("question");
-  // Every frame: whether a card waits and whether the asking text shows. They
-  // land in one frame (no frame with one and not the other).
+  // Every frame: whether a card waits and whether its reason shows in the
+  // history. They land in one frame (no frame with one and not the other).
   await watchFrames(page);
   await watchShifts(page);
   await watchStage(page);
@@ -214,11 +217,19 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
   await expect(page.locator("#history .bubble.question")).toHaveCount(0);
-  // The whole reply that asked, in the headline's place (not only its last sentence).
-  const asking = stageEl(page).locator(".ts-asking");
+  // The whole reply that asked is a bubble in the conversation (the turn
+  // opened in the history: its prompt and steps went there too); the stage
+  // shows its asking form, the card alone.
+  const asking = page.locator("#history .bubble.said");
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
-  await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
-  expect((await frames(page)).filter((f) => f.waits !== f.asking)).toEqual([]);
+  await expect(asking).toHaveClass(/pending/);
+  await expect(asking.locator(".said-label")).toHaveText("chi · step 1asking you");
+  await expect(page.locator("#history > .bubble.user")).toHaveText(/Read a file of my choice/);
+  await expect(page.locator("#history > .turn-work")).toHaveCount(1);
+  await expect(stageEl(page)).toHaveClass(/asking-form/);
+  await expect(stageEl(page).locator(".ts-live")).toBeHidden();
+  await expect(stageEl(page).locator(".ts-asking")).toBeHidden();
+  expect((await frames(page)).filter((f) => f.waits !== f.said)).toEqual([]);
   // Movement means chi is working: the dot blinks until the card waits, and
   // from then on the stage is still (every frame). The ask's own tick lands in
   // the card's frame, so it is seen moving only through stillWhileWaiting.
@@ -229,7 +240,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // With web.markdown on, it reads as markdown: its heading, and its link opens a new tab.
   await expect(asking.locator("h2")).toHaveText("Two files");
   await expect(asking.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
-  // A plugin's ref on the reply that asks (e2e-answer-refs, :question_asked): paired in the slot.
+  // A plugin's ref on the reply that asks (e2e-answer-refs, :question_asked): paired in the bubble.
   const askRef = asking.locator('[data-ref-kind="issue"]');
   await expect(askRef).toHaveText("JIRA-7");
   await expect(askRef).toHaveAttribute("title", "JIRA-7 Login fails");
@@ -350,20 +361,19 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await watchStage(page);
   await startSnaps(page);
   const submitAt = await pageNow(page);
-  await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
   const heldHeight = await stageEl(page).evaluate((el) => el.offsetHeight);
   const runningDock = await page.locator("#dock").evaluate((el) => el.offsetHeight);
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
-  await expect(asking).toBeHidden();
+  // The answered card went under its reason in the history, which no longer
+  // asks; the stage is back to its working form.
+  await expect(page.locator("#history .bubble.said:not(.pending) + .bubble.question.answered")).toHaveCount(1);
+  await expect(stageEl(page)).not.toHaveClass(/asking-form/);
   const nextStepAt = momentAt(await stageMarks(page), (m) => !/\bheld-wait\b/.test(m.cls), submitAt);
   expect(await shiftSum(page, { from: submitAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
-  // The card stays where it was until then (its collapse and the swap above
-  // it happen inside the held stage).
-  expect(await snaps(page, { from: submitAt, to: nextStepAt - 1, keys: ["card"] })).toEqual([]);
-  // It went: the stage is shorter than the tall card's height it held.
-  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBeLessThan(heldHeight);
+  // The next step let the held height go: the stage is no taller than it held.
+  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBeLessThanOrEqual(heldHeight);
   // The frames are sampled at the next frame after the answer: wait for the answered one.
   await expect.poll(async () => (await frames(page)).some((f) => f.phase === "answered")).toBe(true);
   const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
@@ -385,7 +395,11 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(line).toBeHidden();
   await expect(page.locator("#infoBar .meta .status")).toHaveCSS("visibility", "visible");
   expect(await page.locator("#dock").evaluate((el) => el.offsetHeight)).toBe(runningDock);
-  expect(await shiftSum(page, { from: leaveAt })).toBeLessThan(0.01);
+  // The end fold (stage_opened.js end): the reason goes and the answered
+  // card shows its two lines. This history is too short to scroll once the
+  // stage has gone, so the card takes the reason's place (with room, the
+  // card the reader sees stays put); nothing else moves.
+  expect(await shiftSources(page, { from: leaveAt })).toEqual(["div#stage > div#history > details.bubble.question.answered"]);
   expect(await snaps(page, { from: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
   // Their classes without the arrival animation's (gone when it ends), and
@@ -403,80 +417,106 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   });
 });
 
-// A long "plan, then ask" reply: the question room. The stage's cap rises
-// (0.85 of the page, never above the session panel), the reply reads from
-// its start in the stage's one scroll, and a pill leads to the card.
-test("a long reply that asks gets the question room: read from its start, a pill to the card, the answer moves nothing until the next step", async ({ page, script }) => {
-  await page.setViewportSize({ width: 390, height: 420 });
+// A long "plan, then ask" reply: the turn opens in the history (stage_opened.js). The reply is a bubble there, on the
+// conversation's column, read from its first line; the card is docked in the stage and stays put while the history
+// scrolls; its link leads back to the reply. Answered, the card sits under its reason; at the hand-off the reason folds
+// into the card's two lines, and the reload check (web.reload_check, switched on in the page) finds the turn as a reload
+// draws it.
+test("a long reply that asks: its reason in the history, the card docked while the history scrolls, the reload check agrees", async ({ page, script }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   script("question_long");
-  await watchShifts(page);
-  await watchStage(page);
+  const checks = [];
+  await page.route("**/reload_check", async (route) => {
+    checks.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204, body: "" });
+  });
+  await page.evaluate(() => { document.body.dataset.reloadCheck = "1"; });
   await send(page, "Plan it, then ask me");
+  await page.mouse.move(0, 0);
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
-  await expect(stageEl(page)).toHaveClass(/question-room/);
-  const asking = stageEl(page).locator(".ts-asking");
-  await expect(asking.locator("h2")).toHaveText("A plan before I start");
-  // The raised cap, read as fitCap reads the room; the stage grows to it.
-  const want = await page.evaluate(() => {
-    const room = document.querySelector("#center").clientHeight - (document.querySelector("#dock").offsetHeight + 10) - 32;
-    return Math.min(0.85 * window.innerHeight, room) - 2;
-  });
-  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBeGreaterThanOrEqual(want);
-  // The asking slot has no scroll of its own.
-  expect(await asking.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
-  const scroller = stageEl(page).locator(".ts-scroll");
-  const inSight = async () => {
-    const [c, v] = [await card.boundingBox(), await scroller.boundingBox()];
-    return c.y + Math.min(c.height, 40) <= v.y + v.height && c.y + c.height > v.y;
+  const reason = page.locator("#history .bubble.said");
+  await expect(reason.locator("h2")).toHaveText("A plan before I start");
+  await expect(stageEl(page)).toHaveClass(/asking-form/);
+  // On the conversation's column, as wide as the stage.
+  const [r, s] = [await reason.boundingBox(), await stageEl(page).boundingBox()];
+  expect(Math.round(r.x)).toBe(Math.round(s.x));
+  expect(Math.round(r.width)).toBe(Math.round(s.width));
+  // Read from its first line: its top at the history's top.
+  const history = page.locator("#history");
+  const atTop = async () => {
+    const [b, h] = [await reason.boundingBox(), await history.boundingBox()];
+    return b.y >= h.y - 1 && b.y < h.y + 40;
   };
-  // Read from the reply's start: its top in the stage's view, the card below it.
-  await expect.poll(async () => {
-    const [a, v] = [await asking.boundingBox(), await scroller.boundingBox()];
-    return a.y >= v.y - 1 && a.y < v.y + v.height;
-  }).toBe(true);
-  expect(await inSight()).toBe(false);
-  const pill = stageEl(page).locator(".ts-room-pill");
-  await expect(pill).toBeVisible();
-  await expect(pill).toHaveAccessibleName("Go to the question");
+  await expect.poll(atTop).toBe(true);
+  await page.waitForFunction(() => !document.querySelector("#history[data-following], #history[data-reading]"));
+  // The history scrolls; the card stays where it is.
+  const cardAt = (await card.boundingBox()).y;
+  await history.evaluate((el) => { el.scrollTop = 0; });
+  await expect.poll(atTop).toBe(false);
+  expect((await card.boundingBox()).y).toBe(cardAt);
+  // Its link leads back to the reply.
+  await card.locator(".question-reason-link").click();
+  await expect.poll(atTop).toBe(true);
+  // The steps open in place; the asking step doesn't repeat the reply.
+  const steps = page.locator("#history > .turn-work");
+  await steps.locator(":scope > summary").click();
+  await expect(steps.locator(".gen").first().locator(".activity-row")).toBeVisible();
+  await expect(steps.locator(".gen").first().locator(":scope > .gen-text")).toBeHidden();
+  await steps.locator(":scope > summary").click();
+  await card.locator(".question-reason-link").click();
+  await expect.poll(atTop).toBe(true);
   await expectNoHorizontalOverflow(page);
-  await pill.click();
-  await expect.poll(inSight).toBe(true);
-  await expect(pill).toBeHidden();
-  // A wider window: the stage (on the history's 960 px column) grows under
-  // the raised cap and may bring the card into sight by itself; else the
-  // pill leads to it.
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await settled(page, { stage: true });
-  if (await pill.isVisible()) await pill.click();
-  await expect.poll(inSight).toBe(true);
-  // The whole card in view before the record starts: a click on an option
-  // of a card cut at its top focuses its radio, and the browser scrolls it
-  // into view (a move the record would count).
-  await card.scrollIntoViewIfNeeded();
-  await settled(page, { stage: true });
-  // From the answer until the next step nothing moves on its own.
-  await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
-  await page.waitForFunction(() => !document.querySelector("#turnStage [data-following]")); // the pill's ease is over
-  await watchFrames(page);
-  await startSnaps(page);
-  const submitAt = await pageNow(page);
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
+  await expect(page.locator("#history .bubble.said:not(.pending) + .bubble.question.answered")).toHaveCount(1);
+  await expect(stageEl(page)).not.toHaveClass(/asking-form/);
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
-  await expect(stageEl(page)).not.toHaveClass(/question-room/);
-  await expect(pill).toBeHidden();
-  const nextStepAt = momentAt(await stageMarks(page), (m) => !/\bheld-wait\b/.test(m.cls), submitAt);
-  expect(await shiftSum(page, { from: submitAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
-  expect(await snaps(page, { from: submitAt, to: nextStepAt - 1, keys: ["card"] })).toEqual([]);
-  // The next step brought the raised cap back down.
-  const capNow = await stageEl(page).evaluate((el) => parseFloat(el.style.getPropertyValue("--stage-max")));
-  expect(capNow).toBeLessThanOrEqual(Math.round(0.6 * page.viewportSize().height));
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
+  // The reason folded into the answered card's two lines.
+  await expect(page.locator("#history .bubble.said")).toHaveCount(0);
+  await expect(page.locator("#history .bubble.question .question-said")).toContainText("A plan before I start");
   const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
+  // The reload check ran on the whole turn and found no difference.
+  await expect.poll(() => checks.length).toBe(1);
+  expect(checks[0], JSON.stringify(checks[0])).toMatchObject({ same: true, undrawn: 0 });
+  await expectSameAfterReload(page, async (p) => {
+    await handedOff(p, 1);
+  });
+});
+
+// A reload after the turn's question was answered, while the turn still
+// runs (the next step holds 6 s): the replay brings the question after its
+// call completed (TurnAccumulator.join_events), and the page draws what
+// live drew: the reason with the answered card under it in the history;
+// at the end the reason folds into the card's two lines.
+test("a reload after a question answered mid-turn draws the reason and its card as live did", async ({ page, script }) => {
+  script("question_hold");
+  await send(page, "Read a file of my choice");
+  await page.mouse.move(0, 0);
+  const card = stageEl(page).locator(".ts-extras .bubble.question");
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await expect(stageEl(page).locator(".ts-tick")).toHaveCount(2);
+  const drawn = () => page.evaluate(() => ({
+    history: [...document.querySelector("#history").children].map((el) => [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 3).join(" ")),
+    said: document.querySelector("#history .bubble.said .said-text")?.textContent || "",
+    extras: document.querySelector("#turnStage .ts-extras").children.length,
+  }));
+  const live = await drawn();
+  expect(live.history).toEqual(["bubble user", "turn-work", "bubble said", "bubble question answered"]);
+  expect(live.said).toContain("I can start from either file");
+  await page.reload();
+  await expect(page.locator("#history .bubble.said + .bubble.question.answered")).toHaveCount(1);
+  expect(await drawn()).toEqual(live);
+  await expect(stageEl(page)).not.toHaveClass(/held-wait/);
+  await page.mouse.move(0, 0);
+  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator("#history .bubble.said")).toHaveCount(0);
+  await expect(page.locator("#history .bubble.question .question-said")).toContainText("Two files");
 });
 
 // The fake holds 60 s before its first token: on the page's clock
