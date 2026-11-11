@@ -68,6 +68,67 @@ module Samagotchi
     # moved the chain's end while it waited for the lock.
     TRIES = 3
 
+    # One thing a continue carries from the previous link to the new one.
+    # +carry+ names the method run in spawn_session's before_spawn (once the
+    # link and its chain note are saved, before its worker spawns): it takes
+    # a CarryContext and returns what the step carried, kept in #run's
+    # +carried+ under +name+. +undo+ maps an UNDO_PHASES phase to the method
+    # (taking an UndoContext) that gives it back when the continue fails;
+    # empty when there is nothing to undo (CARRY's comment says why).
+    # +store+ is the SessionManager::SESSION_STATE_STORES store it carries.
+    CarryStep = Data.define(:name, :store, :carry, :undo)
+    # What a carry step works on: the previous link (a Session), the new
+    # link's id, the delegates moving (ChildMove::Plan#move).
+    CarryContext = Data.define(:previous, :to, :state_dir, :move)
+    # What an undo works on: the previous link's id, the failed link (nil in
+    # :moved_back, which looks it up itself), the delegates the plan moved,
+    # and what the forward carry kept (#run's +carried+, by step name).
+    UndoContext = Data.define(:from, :link, :state_dir, :moved, :carried)
+
+    # When a failed continue undoes each step, in time order: :moved_back
+    # while the failed link's worker may still run (before
+    # #discard_failed_link), :link_stopped once its worker is stopped,
+    # :link_unlinked once its session file is gone (out of the chain: a note
+    # to the previous link stays there), :link_deleted once its folder is
+    # gone. Within a phase, the steps undo in reverse CARRY order.
+    UNDO_PHASES = %i[moved_back link_stopped link_unlinked link_deleted].freeze
+
+    # What a continue carries, in order (the forward carry runs them first
+    # to last, in the new link's before_spawn). A new per-session store a
+    # continue should carry is added here, with its undo.
+    CARRY = [
+      # Its open delegates (ChildMove): given back to the previous link
+      # first, then the rings one rang the link with just before the undo.
+      CarryStep.new(name: :children, store: :session_files, carry: :carry_children,
+                    undo: { moved_back: :undo_move, link_stopped: :return_rings }),
+      # Its movable context too, with a note saying what moved and stayed.
+      # No undo: ContextSources.move copies (the previous link keeps its
+      # sources), and the link's copies go with its delete (remove_files).
+      CarryStep.new(name: :context, store: :context_sources, carry: :carry_context, undo: {}),
+      # Its objectives: the list reads as the latest word. No undo: a note
+      # written into the link only (NoteMove::CONTINUE_SOURCES: never given
+      # back), which goes with its delete.
+      CarryStep.new(name: :objectives, store: :session_files, carry: :carry_objectives, undo: {}),
+      # Its waiting notes last: the carry above read a pending /objectives
+      # edit from them first. They keep their names, so they still sort
+      # ahead of the link's own notes. A note sent to the previous link
+      # from here on goes to this one (SessionInbox::Head), and a
+      # straggler is adopted by its worker (NoteMove.adoption). Given back
+      # once the link is out of the chain, and again for a note an older chi
+      # wrote after its folder went.
+      CarryStep.new(name: :notes, store: :session_files, carry: :carry_notes,
+                    undo: { link_unlinked: :give_back_notes, link_deleted: :give_back_strays })
+    ].freeze
+
+    # The SessionManager::SESSION_STATE_STORES a continue deliberately
+    # leaves with the previous link, and why: every store is in CARRY or here.
+    NOT_CARRIED = {
+      plugin_session_state: "a bundle's per-session state (ctx.session_dir) stays with the archived link",
+      participants: "the archive ends the previous link's review (D8); a continue copies no grants",
+      system_one_runs: "System 1's saved runs record the previous link's own turns",
+      context_candidates_log: "the candidates log records the previous link's own turns"
+    }.freeze
+
     # The model a new link runs on (#model_for): the name to spawn it with,
     # and why it isn't the previous link's (nil when it is, or was given).
     ModelChoice = Data.define(:model, :warning)
@@ -178,18 +239,18 @@ module Samagotchi
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive.archived - already
       ContinueIntent.write(intent_path, successor_id: successor_id, previously_archived: already, archived_ids: archived)
-      # The notes the new link took from this one (NoteMove.move).
-      notes = []
+      # What each CARRY step took to the new link, by name.
+      carried = {}
       begin
         link = spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                  move: plan.move, client_id: client_id, notes: notes, session_id: successor_id)
+                                  move: plan.move, client_id: client_id, carried: carried, session_id: successor_id)
       rescue StandardError, Interrupt
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
         # to spawn goes (left, it would hold the chain: "continued already",
         # last: to it), its notes given back first.
-        undo_failed_continue(id, state_dir, moved: plan.move, archived: archived) do
-          discard_failed_link(id, state_dir, notes: notes)
+        undo_failed_continue(id, state_dir, moved: plan.move, archived: archived, carried: carried) do
+          discard_failed_link(id, state_dir, moved: plan.move, carried: carried)
         end
         FileUtils.rm_f(intent_path)
         raise
@@ -250,8 +311,8 @@ module Samagotchi
       end
     end
 
-    private_class_method def self.undo_failed_continue(id, state_dir, moved:, archived:)
-      undo_move(id, state_dir, moved: moved)
+    private_class_method def self.undo_failed_continue(id, state_dir, moved:, archived:, carried: {})
+      undo_carry(:moved_back, UndoContext.new(from: id, link: nil, state_dir: state_dir, moved: moved, carried: carried))
       begin
         yield if block_given?
       ensure
@@ -260,41 +321,81 @@ module Samagotchi
       end
     end
 
+    # The CARRY steps' undos for +phase+ (UNDO_PHASES), in reverse CARRY order.
+    private_class_method def self.undo_carry(phase, ctx)
+      CARRY.reverse_each do |step|
+        method = step.undo[phase]
+        send(method, ctx) if method
+      end
+    end
+
+    # CARRY's forward steps (CarryContext).
+    private_class_method def self.carry_children(ctx)
+      ChildMove.apply(ctx.move, from: ctx.previous.id, to: ctx.to, state_dir: ctx.state_dir)
+    end
+
+    private_class_method def self.carry_context(ctx)
+      ContextMove.call(from: ctx.previous.id, to: ctx.to, mode: :continue, state_dir: ctx.state_dir)
+    end
+
+    private_class_method def self.carry_objectives(ctx)
+      Objectives.carry(ctx.previous, to: ctx.to, state_dir: ctx.state_dir)
+    end
+
+    # @return [Array<String>] the names of the notes moved to the link
+    private_class_method def self.carry_notes(ctx)
+      NoteMove.move(from: ctx.previous.id, to: ctx.to, state_dir: ctx.state_dir)
+    end
+
     # The delegates a failed #run moved, or began to (its
-    # intent names them), go back to +id+.
-    private_class_method def self.undo_move(id, state_dir, moved:)
+    # intent names them), go back to the previous link.
+    private_class_method def self.undo_move(ctx)
+      id = ctx.from
+      state_dir = ctx.state_dir
       link = SessionChain.next_of(id, state_dir: state_dir) or return
-      ids = ChildMove.read_intent(link, state_dir: state_dir)&.ids || moved
+      ids = ChildMove.read_intent(link, state_dir: state_dir)&.ids || ctx.moved
       ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: true)
       ChildMove.clear_intent(link, state_dir: state_dir)
     rescue StandardError => e
       Log.warn(:worker, "continue_undo_move_failed", sid: id, error: e.class.name, msg: e.message)
     end
 
+    # The rings a moved delegate wrote into the failed link just before the
+    # undo go back to the previous link.
+    private_class_method def self.return_rings(ctx)
+      ChildMove.return_rings(from: ctx.link, to: ctx.from, state_dir: ctx.state_dir)
+    end
+
+    # The notes the link took (CARRY's :notes), with any sent to it meanwhile.
+    private_class_method def self.give_back_notes(ctx)
+      NoteMove.give_back(from: ctx.link, to: ctx.from, moved: Array(ctx.carried[:notes]), state_dir: ctx.state_dir)
+    end
+
     # The link a failed #run saved (no other continues +id+:
     # check! made sure under the lock): its worker stopped if one
     # started, then the rings a moved delegate wrote into it just before
-    # the undo go back to +id+. Then its session file goes first, so the
-    # link is out of the chain (a note to +id+ stays there:
-    # SessionInbox::Head) and a writer that resolved it before finds it gone,
-    # then the notes it moved there (+notes+) go back with any sent to it
-    # meanwhile (NoteMove.give_back), then the link's folder goes, and one
-    # last look gives back a note an older chi wrote after the delete
-    # (its write_note recreates the folder). A worker that outlives the
-    # stop is raised (SessionManager::DeleteRefused): the link stays, and
-    # the caller hears it.
-    private_class_method def self.discard_failed_link(id, state_dir, notes:)
+    # the undo go back to +id+ (CARRY's :link_stopped undos). Then its
+    # session file goes first, so the link is out of the chain (a note to
+    # +id+ stays there: SessionInbox::Head) and a writer that resolved it
+    # before finds it gone, then the notes it moved there go back with any
+    # sent to it meanwhile (:link_unlinked: NoteMove.give_back), then the
+    # link's folder goes, and one last look gives back a note an older chi
+    # wrote after the delete (:link_deleted; its write_note recreates the
+    # folder). A worker that outlives the stop is raised
+    # (SessionManager::DeleteRefused): the link stays, and the caller hears it.
+    private_class_method def self.discard_failed_link(id, state_dir, moved:, carried:)
       orphan = SessionChain.next_of(id, state_dir: state_dir) or return
       if SessionManager.refuse_tui!(orphan, state_dir: state_dir) &&
          !SessionManager.stop_session(orphan, state_dir: state_dir, wait: SessionManager::STOP_WAIT)
         raise SessionManager::DeleteRefused.new(orphan, :still_stopping)
       end
 
-      ChildMove.return_rings(from: orphan, to: id, state_dir: state_dir)
+      ctx = UndoContext.new(from: id, link: orphan, state_dir: state_dir, moved: moved, carried: carried)
+      undo_carry(:link_stopped, ctx)
       FileUtils.rm_f(Session.session_file(orphan, state_dir: state_dir))
-      NoteMove.give_back(from: orphan, to: id, moved: notes, state_dir: state_dir)
+      undo_carry(:link_unlinked, ctx)
       SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true)
-      give_back_strays(orphan, id, state_dir)
+      undo_carry(:link_deleted, ctx)
     rescue SessionManager::DeleteRefused
       raise
     rescue StandardError => e
@@ -303,11 +404,13 @@ module Samagotchi
 
     # A failed link's folder an older chi's note brought back after its
     # delete: the note goes back to +id+, the folder goes again.
-    private_class_method def self.give_back_strays(orphan, id, state_dir)
+    private_class_method def self.give_back_strays(ctx)
+      orphan = ctx.link
+      state_dir = ctx.state_dir
       dir = Session.session_dir(orphan, state_dir: state_dir)
       return unless Dir.exist?(dir) && !Session.exist?(orphan, state_dir: state_dir)
 
-      NoteMove.give_back(from: orphan, to: id, moved: [], state_dir: state_dir)
+      NoteMove.give_back(from: orphan, to: ctx.from, moved: [], state_dir: state_dir)
       FileUtils.rm_rf(dir)
     end
 
@@ -324,25 +427,15 @@ module Samagotchi
     # The new link, holding off any worker but its own while +move+ goes to
     # it (spawn_session marks it starting before its file is saved:
     # StartingMarker.fresh?).
-    # @param notes [Array<String>] gets the names of the notes moved to it
-    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, notes:,
+    # @param carried [Hash] gets what each CARRY step took to it, by name
+    private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, carried:,
                                                      session_id:, client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
-      moved_context = nil
       before_spawn = lambda do |link|
-        ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
-        # Its movable context too, with a note saying what moved and stayed.
-        moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
-        # Its objectives: the list reads as the latest word.
-        Objectives.carry(previous, to: link.id, state_dir: state_dir)
-        # Its waiting notes last: the carry above read a pending /objectives
-        # edit from them first. They keep their names, so they still sort
-        # ahead of the link's own notes. A note sent to the previous link
-        # from here on goes to this one (SessionInbox::Head), and a
-        # straggler is adopted by its worker (NoteMove.adoption).
-        notes.concat(NoteMove.move(from: previous.id, to: link.id, state_dir: state_dir))
+        ctx = CarryContext.new(previous: previous, to: link.id, state_dir: state_dir, move: move)
+        CARRY.each { |step| carried[step.name] = send(step.carry, ctx) }
       end
       link = SessionManager.spawn_session(
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
@@ -352,7 +445,7 @@ module Samagotchi
         session_id: session_id
       )
       link.moved_children = move
-      link.moved_context = moved_context
+      link.moved_context = carried[:context]
       link.opener = SessionChain.opener_for(previous)
       # The fallback's warning first: spawn_session set its own.
       warnings = [choice.warning, link.model_warning].compact
