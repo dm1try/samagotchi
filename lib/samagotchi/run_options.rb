@@ -267,7 +267,7 @@ module Samagotchi
         opts.on("--no-default-input", "Skip the default input typed into a new session's first read (SAMAGOTCHI_DEFAULT_INPUT)") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
         opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
         opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
-        opts.on("--new-token", "`chi web`: replace the LAN access token (web.host: lan); links and QR codes made with the old one stop working") { options[:new_token] = true }
+        opts.on("--new-token", "`chi web`: replace its access token (LAN link, --tunnel tailscale, proxy); old links, QR codes and cookies stop working, participant grants stay") { options[:new_token] = true }
         opts.on("--tunnel PROVIDER", %w[tailscale],
                 "`chi web`: reach it over https from your tailnet through Tailscale Serve (never Funnel), for this run; " \
                 "turned off on exit") { |v| options[:tunnel] = v }
