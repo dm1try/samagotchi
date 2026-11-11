@@ -39,6 +39,8 @@ and commands may change between minor versions. How releases are made:
   just as the send goes in: it resends to the new link (or says `refused: being continued; send again in a moment`
   after 10 s), and a same-mode schedule firing at that moment queues its turn in the new link instead of failing as
   `archived`. With `--remote`, the other machine's chi web needs this release for the send half.
+- `chi send OLD NEW` no longer sends twice when a continue makes NEW out of OLD just as the send goes in, and a send
+  with `--image` that resends that way no longer leaves its images copied into the old link (on this machine).
 
 ## [0.164.0] - 2026-11-10
 

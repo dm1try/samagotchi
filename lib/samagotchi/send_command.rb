@@ -326,14 +326,18 @@ module Samagotchi
 
       # One id at a time, so each line follows the order of the ids given;
       # two that reach the same link (an old id and its newest link) send
-      # once.
+      # once, also when an old id's send followed a continue (#deliver) to
+      # a link named after it: seen is where each one went.
       seen = {}
       results = targets(options).map do |target|
         next unsent(target) unless target.is_a?(SessionInbox::Resolved)
         next true if seen[target.id]
 
         seen[target.id] = true
-        deliver(target, prompt)
+        @sent_to = nil
+        sent = deliver(target, prompt)
+        seen[@sent_to.id] = true if sent && @sent_to
+        sent
       end
       results.all? ? 0 : 1
     ensure
@@ -803,6 +807,8 @@ module Samagotchi
       result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery,
                                         follow: target.via != :pinned)
       if result.continued?
+        # Copied in before the refusal: not the old link's to keep.
+        @access.discard_images(id, refs)
         deadline ||= monotonic + self.class::CONTINUING_WAIT
         again = follow_again(target, deadline)
         return unsent(again) if again.is_a?(Unsent)

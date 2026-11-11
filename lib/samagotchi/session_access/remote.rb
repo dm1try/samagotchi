@@ -241,6 +241,11 @@ module Samagotchi
         end
       end
 
+      # Local#discard_images' counterpart: nothing. chi web has no route
+      # to take an upload back, so a refused send's copies stay there
+      # unused, as a web composer's removed upload does.
+      def discard_images(_id, _refs) = nil
+
       # @return [SessionManager::DeliverResult]
       # @raise [SessionManager::OwnedByTUI]
       # @param follow [Boolean] +id+ is the head #head resolved: sent only

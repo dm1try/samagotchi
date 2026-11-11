@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "socket"
 
 require_relative "../session"
@@ -181,8 +182,22 @@ module Samagotchi
       def upload_images(id, refs, from:)
         to = session_dir(id)
         refs.map do |ref|
+          target = File.join(to, ref[:file].to_s)
+          (@uploaded ||= Set.new) << target unless File.exist?(target)
           ImageStore.copy_file(ref, from: from, to: to)
           { file: ref[:file], name: ref[:name] }
+        end
+      end
+
+      # Takes back the copies #upload_images made of +refs+ in the session
+      # (a send its delivery refused: chi send's link_continued): only the
+      # files it wrote, never one there before (a name is its content's
+      # hash, so an earlier turn's image may share it).
+      def discard_images(id, refs)
+        dir = session_dir(id)
+        refs.each do |ref|
+          target = File.join(dir, ref[:file].to_s)
+          FileUtils.rm_f(target) if @uploaded&.delete?(target)
         end
       end
 
