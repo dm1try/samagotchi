@@ -597,7 +597,7 @@ exit: 0"
   end
 
   describe ".replay_events" do
-    # Shared contract with the web (turn_events.js snapshotEvents).
+    # Shared with the web's join (.join_events below).
     let(:fixture) { JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__))) }
     let(:symbolize) { ->(value) { described_class.from_wire(value).then { |e| e.merge(type: e[:type].to_sym) } } }
 
@@ -646,7 +646,7 @@ exit: 0"
   end
 
   describe ".join_events" do
-    # The page's unfold, shared with turn_events.js snapshotEvents.
+    # The page's unfold (chi web's `replay`).
     let(:fixture) { JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__))) }
 
     def join(snapshot)

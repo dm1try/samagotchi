@@ -6,7 +6,7 @@ import {
   chipName, chipsAfterSend, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText, uploadChips,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
-import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { restoreAction } from "../../../lib/samagotchi/web/public/restore.js";
 import { addCompleted, newActivity } from "../../../lib/samagotchi/web/public/activity.js";
 
@@ -113,14 +113,9 @@ test("a failed prompt of this tab gives its images back as chips", () => {
   assert.equal(other.images, undefined);
 });
 
-test("another client's prompt bubble and a joined turn carry their images", () => {
+test("another client's prompt bubble carries its images", () => {
   const known = () => false;
   assert.deepEqual(promptOps({ type: "turn_enqueued", enqueued_id: "e2", client_id: "tui:1", prompt: "look", images: [REF] }, { myId: ME, known })[0].images, [REF]);
-  const events = snapshotEvents({
-    current_turn: { prompt: "look", origin: {}, images: [REF], parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "read", status: "ok", images: [REF] }] },
-    queued: [{ enqueued_id: "e3", prompt: "next", images: [REF] }],
-  });
-  assert.deepEqual(events.map((e) => e.images), [[REF], undefined, [REF], [REF]]);
 });
 
 test("a tool row keeps the image its tool read", () => {

@@ -222,9 +222,8 @@ test("addCompleted keeps a grep's no_match on an ok row, and none on a plain one
   assert.equal(plain.no_match, undefined);
 });
 
-test("the row field lists are copied by addStarted, addCompleted's synthesized row and the snapshot replay", async () => {
+test("the row field lists are copied by addStarted and addCompleted's synthesized row", async () => {
   const { ACTIVITY_FIELDS, EVENT_FIELDS } = await import("../../../lib/samagotchi/web/public/activity.js");
-  const { snapshotEvents } = await import("../../../lib/samagotchi/web/public/turn_events.js");
   // The server's ToolRowFields::ACTIVITY_KEYS and EVENT_KEYS, plus the
   // run's ToolIds id (tool_id, on both events).
   assert.deepEqual([ACTIVITY_FIELDS, EVENT_FIELDS], [["title", "called_as", "via"], ["view", "ref", "refs", "tool_id"]]);
@@ -246,26 +245,6 @@ test("the row field lists are copied by addStarted, addCompleted's synthesized r
   addCompleted(gap, { iteration: 1, call_index: 1, tool: "edit", output: "ok",
     activity: { status: "ok", params: "p", ...activityFields }, ...eventFields });
   assert.deepEqual(has(gap.rows[0]), fields);
-
-  // A snapshot's part: the events carry each field in its place, and the
-  // model built from them has them all.
-  const events = snapshotEvents({ current_turn: { prompt: "hi", parts: [
-    { kind: "tool", iteration: 1, call_index: 1, tool: "edit", params: "p", status: "ok", output: "ok", ...fields },
-  ] } });
-  const started = events.find((e) => e.type === "tool_call_started");
-  const completed = events.find((e) => e.type === "tool_call_completed");
-  assert.deepEqual(has(started), fields);
-  for (const f of ACTIVITY_FIELDS) {
-    assert.deepEqual(completed.activity[f], fields[f]);
-    assert.equal(completed[f], undefined);
-  }
-  for (const f of EVENT_FIELDS) {
-    assert.deepEqual(completed[f], fields[f]);
-    assert.equal(completed.activity[f], undefined);
-  }
-  const replayed = newActivity();
-  addCompleted(replayed, completed);
-  assert.deepEqual(has(replayed.rows[0]), fields);
 });
 
 test("a replayed running call with the snapshot's elapsed_ms starts that long before the page's clock", () => {

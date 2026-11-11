@@ -137,11 +137,11 @@ module Samagotchi
       end
 
       # The turn in progress (#current_turn's shape, symbol keys) as the live
-      # events that would have drawn it, in order, as turn_events.js
-      # snapshotEvents replays it for the web (spec/shared/turn_snapshot.json
-      # pins both): a generation_started per generation part (a join during
-      # a hold shows the step the model is on), a generation_chunk per
-      # thinking or text part (a
+      # events that would have drawn it, in order, for the TUI and, through
+      # .join_events, the web (spec/shared/turn_snapshot.json pins both): a
+      # generation_started per generation part (a join during a hold shows
+      # the step the model is on), a generation_chunk per thinking or text
+      # part (a
       # generation_completed closes text before the next step's), a tool's
       # tool_call_started and, once finished, its tool_call_completed (with
       # the live activity: action, tool, params, status), a merged_input
@@ -207,9 +207,8 @@ module Samagotchi
       end
 
       # The page's unfold of a session view (chi web's show sends it as
-      # `replay`; turn_events.js snapshotEvents was its JS twin): the turn in
-      # progress as #replay_events has it, its turn_started with what the
-      # page also reads (its wall time `at`, the run's `cut_after`, and every
+      # `replay`): the turn in progress as #replay_events has it, its
+      # turn_started with what the page also reads (its wall time `at`, the run's `cut_after`, and every
       # author key, a pair turn's participant_mode too), then a turn_enqueued
       # per prompt queued behind it and a command_queued per command waiting
       # for its end (spec/shared/turn_snapshot.json pins both sides). The TUI
