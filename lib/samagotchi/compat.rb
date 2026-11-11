@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rubygems/version"
+require "date"
 require_relative "version"
 
 module Samagotchi
@@ -11,23 +12,31 @@ module Samagotchi
     # decided (kept until then). spec/compat_spec.rb fails once VERSION
     # passes a shim's +remove_after+, naming it. Each Ruby file names its
     # shim's id in a comment ("compat shim <id>").
+    # A shim stays at least 14 days after the release that added it.
     # @!attribute files [Array<String>] where the shim lives (from the repository root)
-    Shim = Data.define(:id, :added_in, :remove_after, :files, :what)
+    Shim = Data.define(:id, :added_in, :added_on, :remove_after, :files, :what)
+    MIN_AGE_DAYS = 14
 
     SHIMS = [
-      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", remove_after: "0.170.0",
+      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", added_on: "2026-11-05", remove_after: "0.170.0",
                files: ["lib/samagotchi/bridge/card_store.rb"],
                what: "CardStore#seed_v1 reads a cards.json from before the turn log; its comment says a retention " \
-                     "period after the release that wrote version 2 (0.151.0, 2026-11-05)")
+                     "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
+      Shim.new(id: :approvals_bare_list, added_in: "0.169.0", added_on: "2026-11-12", remove_after: "0.172.0",
+               files: ["lib/samagotchi/guardrails/approvals.rb"],
+               what: "Approvals reads the bare list written by chi 0.166 and before, converting it on write")
     ].freeze
 
     module_function
 
     # The shims +version+ has passed the remove_after of.
     # @return [Array<Shim>]
-    def overdue_shims(version: VERSION, shims: SHIMS)
+    def overdue_shims(version: VERSION, shims: SHIMS, today: Date.today)
       current = Gem::Version.new(version)
-      shims.select { |shim| shim.remove_after && current > Gem::Version.new(shim.remove_after) }
+      shims.select do |shim|
+        shim.remove_after && current > Gem::Version.new(shim.remove_after) &&
+          Date.iso8601(shim.added_on) + MIN_AGE_DAYS <= today
+      end
     end
 
     def verdict(worker_version:, version: VERSION, worker_protocol: nil, protocol: nil)

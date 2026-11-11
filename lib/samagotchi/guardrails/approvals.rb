@@ -30,8 +30,8 @@ module Samagotchi
     #
     # The file is a versioned store, {"version", "approvals": [...]}
     # (FORMAT); a write keeps its version and the keys this chi doesn't
-    # know. A bare list of entries (what 0.166 and before wrote) is not
-    # a versioned store: it is set aside like an unreadable file.
+    # know. A bare list of entries (what 0.166 and before wrote) is read and
+    # becomes versioned on the next write.
     class Approvals
       FILE = "approvals.json"
       COLLECTION = "approvals"
@@ -192,6 +192,10 @@ module Samagotchi
       def parse(text)
         data = JSON.parse(text)
         case data
+        when Array
+          # compat shim approvals_bare_list
+          document = FORMAT.read({ COLLECTION => data }, collection: COLLECTION)
+          [document.entries.map(&:raw).select { |e| e.is_a?(Hash) }, document]
         when Hash
           raise JSON::ParserError, "#{COLLECTION} is not a list" unless data.fetch(COLLECTION, []).is_a?(Array)
 
@@ -199,7 +203,8 @@ module Samagotchi
           # An entry it can't read (no scope) is kept as it is: it matches
           # nothing, and a write keeps it for the chi that wrote it.
           [document.entries.map(&:raw).select { |e| e.is_a?(Hash) }, document]
-        else raise JSON::ParserError, "not a versioned store"
+        else
+          raise JSON::ParserError, "not a versioned store"
         end
       end
 

@@ -32,17 +32,22 @@ RSpec.describe Samagotchi::Compat do
     end
 
     it "names a shim once the version passes its remove_after, and never one the owner hasn't dated" do
-      shims = [described_class::Shim.new(id: :a, added_in: "0.1.0", remove_after: "0.2.0", files: [], what: ""),
-               described_class::Shim.new(id: :b, added_in: "0.1.0", remove_after: nil, files: [], what: "")]
+      shims = [described_class::Shim.new(id: :a, added_in: "0.1.0", added_on: "2026-11-01", remove_after: "0.2.0",
+                                         files: [], what: ""),
+               described_class::Shim.new(id: :b, added_in: "0.1.0", added_on: "2026-11-01", remove_after: nil,
+                                         files: [], what: "")]
 
-      expect(described_class.overdue_shims(version: "0.2.0", shims: shims)).to be_empty
-      expect(described_class.overdue_shims(version: "0.2.1", shims: shims).map(&:id)).to eq([:a])
+      expect(described_class.overdue_shims(version: "0.2.0", shims: shims, today: Date.new(2026, 11, 20))).to be_empty
+      expect(described_class.overdue_shims(version: "0.2.1", shims: shims, today: Date.new(2026, 11, 14))).to be_empty
+      expect(described_class.overdue_shims(version: "0.2.1", shims: shims, today: Date.new(2026, 11, 15)).map(&:id))
+        .to eq([:a])
     end
 
     it "keeps each shim's ids unique, its versions valid and its files there, each Ruby file naming it" do
       expect(described_class::SHIMS.map(&:id).uniq.size).to eq(described_class::SHIMS.size)
       described_class::SHIMS.each do |shim|
         expect([shim.added_in, shim.remove_after].compact).to all(satisfy { |version| Gem::Version.correct?(version) })
+        expect(Date.iso8601(shim.added_on).iso8601).to eq(shim.added_on)
         shim.files.each do |file|
           path = File.join(root, file)
           expect(File).to exist(path), "#{shim.id}: #{file}"

@@ -109,6 +109,9 @@ module Samagotchi
       HUMAN_IDS.include?(id) || HUMAN_PREFIXES.any? { |prefix| id.start_with?(prefix) }
     end
 
+    # Whether +client_id+ is the owner's input, not a participant's.
+    def owner?(client_id) = human?(client_id) && !review?(client_id)
+
     # The WakePolicy row a turn delivery from +client_id+ reads (deliver_turn's
     # two liveness checks): :send for a person (a web tab, a chi TUI, chi
     # send), :schedule, :plugin, :delegate or :participant for those

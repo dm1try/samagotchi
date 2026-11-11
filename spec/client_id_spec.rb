@@ -52,6 +52,14 @@ RSpec.describe Samagotchi::ClientId do
     end
   end
 
+  describe ".owner?" do
+    it "counts the owner's web, TUI and chi send inputs, but not participants or automatic senders" do
+      expect(%w[web:tab tui:4242 cli:send].map { |id| described_class.owner?(id) }).to all(be(true))
+      expect(["review:p_0123abcd", "delegate:1234abcd", "task:t1", "plugin"]
+               .map { |id| described_class.owner?(id) }).to all(be(false))
+    end
+  end
+
   describe ".delegate" do
     it "makes a delegating parent's id from its first 8 characters" do
       expect(described_class.delegate("0123abcd-ffff")).to eq("delegate:0123abcd")

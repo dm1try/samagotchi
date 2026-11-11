@@ -115,8 +115,8 @@ once, session and repo, while `git merge y && git push` offers once, as `git-mer
 Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
 [child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
 The file is a versioned store (`{"version": 1, "approvals": [...]}`, `Approvals::FORMAT`); a write keeps its version,
-the keys this chi doesn't know and an entry with no `scope`. A bare list of entries, as chi 0.166 and before wrote it, is no longer read: it is set aside as
-`approvals.json.corrupt-*` like an unreadable file, so those calls ask once more. Chi 0.165 and before set a versioned store aside, so restart their sessions
+the keys this chi doesn't know and an entry with no `scope`. A bare list of entries, as chi 0.166 and before wrote it,
+is read and converted to a versioned store on the next write. Chi 0.165 and before set a versioned store aside, so restart their sessions
 (`chi sessions restart`); a downgrade to 0.165 or before moves the store to a recoverable `approvals.json.corrupt-*`.
 A file that doesn't parse, or a versioned store whose `approvals` isn't a list, is moved aside to
 `approvals.json.corrupt-<UTC time>` with one warning, and chi starts with no stored approvals (more asks, nothing lost).

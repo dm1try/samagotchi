@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Guardrails: approvals saved by chi 0.166 and before as a list are read and retained after the next write.
+- Guardrails: approvals in an unversioned `approvals.json` object are read instead of set aside.
 - chi web: a card waiting in the stage (a question, an approval) no longer closes to its title line in an empty box
   when its title is clicked; its own ▾ is gone while it waits.
 
