@@ -111,7 +111,7 @@ module Samagotchi
           from = bundle&.version.to_s
 
           if bundle.nil?
-            dry_run ? result(:installed, to: to) : install_fresh(to)
+            dry_run ? planned_install(to) : install_fresh(to)
           elsif installed_newer?(from, to)
             # Running an older checkout/gem: never downgrade the user's system memories
             # (not even to restore a missing file). `chi self` shows installed vs shipped.
@@ -182,16 +182,22 @@ module Samagotchi
       end
 
       def install_fresh(to)
-        installer = Installer.new(
-          source: GEM_BUNDLE_DIR,
-          name: BUNDLE_NAME,
-          scope: SCOPE,
-          force: false,
-          strict: true,
-          shipped_dir: File.dirname(GEM_BUNDLE_DIR)
-        )
+        installer = fresh_installer
         installer.run
         result(:installed, to: to, warnings: installer.warnings)
+      end
+
+      # A dry run's answer for a fresh install: its checksum mismatches, as
+      # planned_update gives an upgrade's.
+      def planned_install(to)
+        installer = fresh_installer(dry_run: true)
+        installer.run
+        result(:installed, to: to, warnings: installer.warnings.grep(/\AChecksum mismatch/))
+      end
+
+      def fresh_installer(dry_run: false)
+        Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true,
+                      dry_run: dry_run, shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
 
       # Installer handles fast_forward/keep/noop; a conflict keeps the local
@@ -294,7 +300,7 @@ module Samagotchi
                       dry_run: dry_run, shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
       private_class_method :with_lock, :note_newer_installed, :install_fresh, :keep_manifest, :upgrade_existing, :verify_files_present, :restore_file, :remerge,
-                           :upgrade_installer, :result, :planned_update
+                           :upgrade_installer, :result, :planned_update, :planned_install, :fresh_installer
     end
   end
 end
