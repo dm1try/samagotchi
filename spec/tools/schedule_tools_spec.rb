@@ -197,8 +197,11 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
       expect(lines.first).to include(entry.id.to_s, "chain · #{anchor[0, 8]}", "every 1h")
 
       with_disabled = described_class.call(nil, include_disabled: true, peers: peers(dir)).split("\n")
+      # The lines are in next-due order, which the clock decides (on a Wednesday
+      # before 18:00 the weekly one is due first): find each by its id.
       expect(with_disabled.size).to eq(2)
-      expect(with_disabled.last).to include("disabled after 0 failures")
+      expect(with_disabled.find { |line| line.include?(other.id.to_s) }).to include("disabled after 0 failures")
+      expect(with_disabled.find { |line| line.include?(entry.id.to_s) }).not_to include("disabled")
     end
   end
 
