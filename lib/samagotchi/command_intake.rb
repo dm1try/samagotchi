@@ -35,14 +35,14 @@ module Samagotchi
 
     module_function
 
-    # Whether a message from +client_id+ may run as a session command: a
-    # human's input (ClientId.human?: a web tab, a chi TUI, chi send, no
-    # client) but a participant's (review:, refused on its own), and chi
-    # answer's. A delegate, a child's report, a context or task wake, a
-    # schedule, a reminder, a relay and a plugin may not (the bundles that
-    # send, coordinator and skills, send prose).
+    # Whether a message from +client_id+ may run as a session command: the
+    # owner's input (ClientId.owner?: a web tab, a chi TUI, chi send, no
+    # client) and chi answer's. A participant (review:) is refused on its own.
+    # A delegate, a child's report, a context or task wake, a schedule, a
+    # reminder, a relay and a plugin may not (the bundles that send,
+    # coordinator and skills, send prose).
     def allowed?(client_id)
-      ALLOWED_IDS.include?(client_id.to_s) || (ClientId.human?(client_id) && !ClientId.review?(client_id))
+      ALLOWED_IDS.include?(client_id.to_s) || ClientId.owner?(client_id)
     end
 
     # Whether +text+ would be a shell line (!<cmd>, !rollback) if a command:
