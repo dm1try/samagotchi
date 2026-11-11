@@ -568,6 +568,12 @@ A worker without `/tail` (an older chi; `404 not_found`) is read through `/snaps
 shape; any other failure (no worker, a 500, a timeout) reads the disk, trimmed to the newest
 turn's records.
 
+**Recorded per release.** `rake release:bump` records this Bridge's replies to `GET state`, `snapshot` (idle and
+mid-turn) and `tail` in the compat corpus (`spec/compat/X.Y.Z/wire/`, [testing.md](../testing.md#compatibility-corpus)),
+and the next release's clients read them (`spec/compat/wire_readers_spec.rb`). Change these replies additively: a key
+renamed or moved fails that spec against the previous release's worker, which a newer chi web or terminal still talks
+to until it is restarted.
+
 Every route goes through `Bridge#dispatch`: an id other than the bridge's own session is
 `404 unknown_session`, and a handler that raises answers `500 bridge_error` (logged as
 `handler_failed`) rather than dropping the connection.
