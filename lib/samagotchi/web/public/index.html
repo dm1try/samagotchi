@@ -1422,6 +1422,9 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   /* ⚙ and ⋯: bigger to the thumb than to the eye. 2 px of negative margin keep the row its height, and each one's ::before reaches the foot's edges for the tap. */
   #infoBar .meta .settings-chip{margin:-2px 0 -2px auto;min-width:32px;min-height:30px;justify-content:center}
   #infoBar .meta .settings-chip::before,#infoBar #infoMoreBtn::before{content:"";position:absolute;inset:-4px -3px -6px}
+  /* ⚙ is in .info, which clips (the fold): its clip box reaches past ⚙'s outset box and its tap reach, so ⚙'s border
+     and ::before are whole; the negative margin keeps the row its height. (⋯ is outside .info.) */
+  #infoBar .info{padding:6px 0;margin:-6px 0}
   #infoBar #infoMoreBtn{width:38px;height:30px;margin:-2px 0;padding:0;font-size:16px}
   #infoBar #infoMoreBtn .more-count{display:none}
   #infoBar #infoMoreBtn[data-attention]::after{top:4px;right:4px}
