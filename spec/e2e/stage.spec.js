@@ -207,6 +207,9 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await watchShifts(page);
   await watchStage(page);
   await send(page, "Read a file of my choice");
+  // The click's pointer stays where the start page's Send was: the reply that asks
+  // slides under it, and a hover adds the ref's hint to the title read below.
+  await page.mouse.move(0, 0);
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
@@ -259,8 +262,11 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // A phone's keyboard (the window 420 px tall): the cap drops, the held
   // stage clamps to it at once and the waiting card stays in sight; when
   // the keyboard goes the stage grows back only to what its content needs:
-  // here its cap (the card and the asking text are taller), which follows
-  // the dock (its info bar fills and may wrap after the reload).
+  // its cap (which follows the dock: its info bar fills and may wrap after
+  // the reload), or less only when its whole content fits. The card and the asking text are about the cap's height at 390
+  // (one px under it since the phone's panel runs edge to edge); the held
+  // height before the keyboard can be the cap (grow-only), so it isn't the
+  // measure.
   const inSight = async () => {
     const [c, v] = [await card.boundingBox(), await stageEl(page).locator(".ts-scroll").boundingBox()];
     return c.y + Math.min(c.height, 40) <= v.y + v.height && c.y + c.height > v.y;
@@ -278,8 +284,15 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // Read in a frame's animation callbacks (that frame's resize steps ran
   // fitCap: before them the clamped height still equals the old cap), once
   // the growth's ease is over.
-  const filled = () => stageEl(page).evaluate((el) => new Promise((done) => requestAnimationFrame(() =>
-    done(el.getAnimations().length === 0 && el.offsetHeight === parseFloat(el.style.getPropertyValue("--stage-max"))))));
+  const filled = () => stageEl(page).evaluate((el) => new Promise((done) => requestAnimationFrame(() => {
+    // What the content needs, as stage_frame.js contentHeight counts it: its last shown slot's end and the view's
+    // bottom padding (not the hold, the spacer a held height keeps).
+    const view = el.querySelector(".ts-scroll");
+    const shown = [...view.children].filter((c) => !c.matches(".ts-hold") && !c.hidden && c.getClientRects().length);
+    const end = shown.length ? Math.max(...shown.map((c) => c.offsetTop + c.offsetHeight)) : 0;
+    const needs = el.offsetHeight - view.clientHeight + end + parseFloat(getComputedStyle(view).paddingBottom);
+    done(el.getAnimations().length === 0 && el.offsetHeight === Math.min(needs, parseFloat(el.style.getPropertyValue("--stage-max"))));
+  })));
   await expect.poll(filled).toBe(true);
   await expect.poll(inSight).toBe(true);
   // From the answer until the next step nothing moves on its own: the
