@@ -326,6 +326,55 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(Dir.exist?(fresh)).to be(true)
     end
 
+    # The orphan check, then a start or a worker taking the folder before the
+    # removal (check-then-act): it removes through SessionManager.remove_files,
+    # which reads both again under the owner lock, so the folder stays.
+    describe "a start racing the orphan prune" do
+      let(:id) { "0000-racing" }
+      let!(:dir) { orphan(id, files: %w[owner.lock pid]) }
+      let(:lock) { [] }
+
+      after { lock.each(&:release) }
+
+      # Runs +start+ right after the prune's last look (starting?) at +id+.
+      def after_the_check(&)
+        allow(described_class).to receive(:starting?).and_wrap_original do |original, sid, sd|
+          original.call(sid, sd).tap { |answer| yield if sid == id && !answer }
+        end
+      end
+
+      it "keeps the folder of a session marked starting after the check" do
+        after_the_check { Samagotchi::StartingMarker.mark(id, state_dir: tmpdir) }
+
+        result = described_class.prune(state_dir: tmpdir)
+
+        expect(result[:deleted]).not_to include(id)
+        expect(Dir.exist?(dir)).to be(true)
+      end
+
+      it "keeps the folder of a session whose worker took its lock after the check" do
+        after_the_check { lock << Samagotchi::OwnerLock.acquire(dir, kind: "worker") }
+
+        result = described_class.prune(state_dir: tmpdir)
+
+        expect(result[:deleted]).not_to include(id)
+        expect(Dir.exist?(dir)).to be(true)
+      end
+
+      it "removes an orphan nobody took through remove_files, purging its runs once" do
+        allow(Samagotchi::SessionManager).to receive(:remove_files).and_call_original
+        allow(Samagotchi::SessionManager).to receive(:purge_removal_stores).and_call_original
+
+        result = described_class.prune(state_dir: tmpdir)
+
+        expect(result[:deleted]).to eq([id])
+        expect(Dir.exist?(dir)).to be(false)
+        expect(Samagotchi::SessionManager).to have_received(:remove_files)
+          .with(id, File.join(tmpdir, "#{id}.json"), dir, state_dir: tmpdir, purge_runs: false)
+        expect(Samagotchi::SessionManager).to have_received(:purge_removal_stores).with([id], state_dir: tmpdir)
+      end
+    end
+
     # A single broken file must not stop the whole sweep: an orphan dir whose
     # analytics.json (or cards.json) can't be read is kept like any other
     # not-empty folder, and prune goes on with the rest.

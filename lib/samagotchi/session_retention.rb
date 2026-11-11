@@ -10,8 +10,6 @@ require_relative "config"
 require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
-require_relative "plugin_session_state"
-require_relative "context_sources"
 require_relative "system_one/runs"
 
 module Samagotchi
@@ -78,27 +76,29 @@ module Samagotchi
 
     # Directories with no session file and nothing but the skeleton, nobody
     # owning them: a one-shot killed before its first save, or a worker woken
-    # just as its session was discarded.
+    # just as its session was discarded. Removed as a delete removes
+    # (SessionManager.remove_files: every SESSION_STATE_STORES store), which
+    # reads the owner lock and the starting marker again under that lock: a
+    # worker or a start that took the session since the check keeps it.
     # @return [Array<String>] their ids
     private_class_method def self.prune_orphan_dirs(state_dir, dry_run:)
       return [] unless Dir.exist?(state_dir)
 
-      Dir.children(state_dir).filter_map do |name|
+      removed = Dir.children(state_dir).filter_map do |name|
         dir = File.join(state_dir, name)
+        path = File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}")
         next unless Session.valid_id?(name) && File.directory?(dir)
-        next if File.exist?(File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}"))
+        next if File.exist?(path)
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
         next if owned?(name, state_dir) || starting?(name, state_dir)
 
-        unless dry_run
-          FileUtils.rm_rf(dir)
-          PluginSessionState.remove(name)
-          ContextSources.remove_session(name, state_dir: state_dir)
-        end
+        SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false) unless dry_run
         name
-      rescue SystemCallError
+      rescue SessionManager::DeleteRefused, SystemCallError
         nil
       end
+      SessionManager.purge_removal_stores(removed, state_dir: state_dir) unless dry_run
+      removed
     end
 
     # A worker is being started for it (every spawn marks it, a new
