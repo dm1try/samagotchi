@@ -278,8 +278,8 @@ the record settles is `unclear`, and a file changed since isn't seen. If that tu
 next step, and the file and view below can stay.
 
 **Independence.** The request (`ObjectivesCheck.request`) has its own system text and no tools. Its record is what people and
-notes said, what tools returned, and the agent's visible answers labelled `[agent's own words]` (`.record`, each entry cut at 1,500 characters, the
-newest 24,000 kept). Without those answers a claim about what the agent said or asked could only come back `unclear`. So the request says they settle
+notes said, what tools returned, and the agent's visible answers labelled `[agent's own words]` (`ObjectivesRecord.record`, each entry cut at 1,500 characters, the
+newest 24,000 kept; the record, its frame and the redaction are `objectives_record.rb`'s, which the tracker reads too). Without those answers a claim about what the agent said or asked could only come back `unclear`. So the request says they settle
 what was said or asked and are never proof of work, which needs a tool's output or a person's word. That rule is words to a model, not a mechanism: a
 probe on Qwen3.8 Flash Next held it 3 of 3 (only the agent's "all pass": `unclear`), and a verdict is information only either way.
 The record never holds the agent's thinking (`AnswerText.visible`, the rule the continue note's last answer and decision-card's `/short` share: a chat entry's `thinking` and `anthropic_content` aren't read; a native
@@ -296,7 +296,7 @@ the frame to hold; a model may still be swayed by text inside it, which is why a
 `Samagotchi::Redact.text`, chi's participant redaction: known key shapes and `token=`-style values become `[redacted]`, and
 the home folder `~`. That is by pattern, so a secret of another shape still goes.
 
-**State.** `objective_checks.jsonl` beside the session: a `running` line, then one with `verdict` (confirmed, refuted, unclear,
+**State.** `objective_checks.jsonl` beside the session (its lines written and read by `JsonlStore`, `jsonl_store.rb`): a `running` line, then one with `verdict` (confirmed, refuted, unclear,
 `no_answer`), `reason`, `text`, `model` and `mark`: a digest of the item's line as sent and the move itself (`Move#ref`, its run's
 id and its model entry's time, with its words). The start is under `Objectives.with_lock`, so a double tap or a second tab answers "already
 being checked" and asks nothing. A running line stops counting once its worker's pid is gone, so a kill, a shutdown or a restart frees
