@@ -917,6 +917,11 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage.asking-form{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:12px}
 .turn-stage.asking-form .ts-scroll{padding-top:6px}
 .turn-stage.asking-form .ts-extras>.bubble.question{border:0;border-radius:0;background:transparent;padding:0}
+/* The asking form folded (stage_view.js, its fold is that question's only): the status row says "waiting for you" and the
+   question (the mini tool's slot, in the UI font, right after the phase), then the step and the timing. On a phone those
+   two leave the row and the question takes a second line under it. */
+.ts-mini.ts-mini-question{order:1;font-family:inherit;font-size:12.5px;color:var(--text)}
+.turn-stage.asking-form.collapsed .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
@@ -1197,7 +1202,10 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
   /* The quiet signal's short text on a phone; in the status row it takes the step's and the mini tool's room. */
   .ts-stall .long{display:none}
   .ts-stall .short{display:inline}
-  .turn-stage.stalled:is(.collapsed,.plain) :is(.ts-step,.ts-mini){display:none}
+  .turn-stage.stalled:is(.collapsed,.plain) :is(.ts-step,.ts-mini:not(.ts-mini-question)){display:none}
+  .turn-stage.asking-form.collapsed .ts-status{flex-wrap:wrap;row-gap:4px}
+  .turn-stage.asking-form.collapsed :is(.ts-step,.ts-timing){display:none}
+  .ts-mini.ts-mini-question{order:3;flex-basis:100%}
   /* An approval's Submit in sight on a phone: its folder, reason and rows a little tighter. */
   .approval-where,.approval-why{line-height:1.35}
   .bubble.question.approval .question-option{padding:5px 8px}

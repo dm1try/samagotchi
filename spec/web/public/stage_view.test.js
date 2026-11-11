@@ -1299,3 +1299,153 @@ test("a waiting card's summary buttons still work (its reason link); a card in t
     view.reset();
   }
 });
+
+// A question card with its text (question_cards.js .question-text).
+function askingCard(text = "Which file first?", qid = "q1") {
+  const card = questionCard({ qid });
+  const q = document.createElement("div");
+  q.className = "question-text";
+  q.textContent = text;
+  card.insertBefore(q, card.querySelector(":scope > button"));
+  return card;
+}
+const COLLAPSE_KEY = "chi_stage_collapsed";
+const collapsed = (view) => view.root.classList.contains("collapsed");
+// A page whose stage was saved as collapsed (+saved+) or not.
+function savedPage(t, saved) {
+  localStorage.setItem(COLLAPSE_KEY, saved ? "1" : "0");
+  t.after(() => localStorage.removeItem(COLLAPSE_KEY));
+  return openedPage();
+}
+
+test("the asking form folds that question only: no storage write, the row says the question, a tap on it opens it", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    asks(view);
+    const card = askingCard("Which file first?\nREADME or CHANGELOG");
+    append(card);
+    assert.ok(!collapsed(view));
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "0", "no write");
+    await frame();
+    const mini = $(view, ".ts-mini");
+    assert.equal(mini.textContent, "Which file first?");
+    assert.equal(mini.title, "Which file first?\nREADME or CHANGELOG");
+    assert.ok(mini.classList.contains("ts-mini-question"));
+    $(view, ".ts-status").click();
+    assert.ok(!collapsed(view));
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "0");
+    await frame();
+    assert.equal(mini.textContent, "");
+    assert.ok(!mini.classList.contains("ts-mini-question"));
+    assert.equal(card.open, true, "still answerable");
+  } finally {
+    view.reset();
+  }
+});
+
+test("a question on a stage saved as collapsed arrives open in its own task; the answer gives the choice back", async (t) => {
+  const { view, append } = savedPage(t, true);
+  try {
+    assert.ok(collapsed(view));
+    asks(view);
+    const card = askingCard();
+    append(card);
+    assert.ok(!collapsed(view), "open in the card's task");
+    assert.equal($(view, ".ts-scroll").hidden, false);
+    await resolve(card);
+    assert.ok(collapsed(view), "as it was before the form");
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "1");
+  } finally {
+    view.reset();
+  }
+});
+
+test("the answer after a fold leaves the stage open as the choice says; the next question arrives open", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    asks(view);
+    const first = askingCard("First?");
+    append(first);
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    await resolve(first);
+    assert.ok(!collapsed(view));
+    asks(view, { it: 2, text: "Then this one." });
+    const second = askingCard("Second?", "q2");
+    append(second);
+    assert.ok(!collapsed(view));
+  } finally {
+    view.reset();
+  }
+});
+
+test("a reset drops the asking form's fold: the next turn's question arrives open", async (t) => {
+  const { view, append } = savedPage(t, false);
+  asks(view);
+  append(askingCard());
+  $(view, ".ts-fold").click();
+  assert.ok(collapsed(view));
+  view.reset();
+  try {
+    const prompt = row("bubble user");
+    view.turnStarted({ promptBubble: prompt });
+    assert.ok(!collapsed(view));
+    assert.ok(!$(view, ".ts-mini").classList.contains("ts-mini-question"));
+    asks(view);
+    append(askingCard("Again?", "q9"));
+    assert.ok(!collapsed(view));
+  } finally {
+    view.reset();
+  }
+});
+
+test("outside the asking form the fold is the user's choice, kept", async (t) => {
+  const { view } = savedPage(t, false);
+  try {
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "1");
+    $(view, ".ts-status").click();
+    assert.ok(!collapsed(view));
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "0");
+  } finally {
+    view.reset();
+  }
+});
+
+test("another card that comes to wait behind a folded question opens the stage on it; folded again, both stay folded", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    asks(view);
+    append(askingCard("Which file first?"));
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    await frame();
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    approval.dataset.relay = "1";
+    append(approval);
+    assert.ok(!collapsed(view), "open on the approval");
+    assert.equal($(view, ".ts-scroll").hidden, false);
+    assert.ok(approval.parentElement === $(view, ".ts-extras"));
+    await frame();
+    const mini = $(view, ".ts-mini");
+    assert.equal(mini.textContent, "", "no stale question in the row");
+    assert.ok(!mini.classList.contains("ts-mini-question"));
+    $(view, ".ts-fold").click();
+    await frame();
+    assert.ok(collapsed(view), "a fold with both waiting holds");
+    assert.equal(mini.textContent, "Which file first?");
+    // The approval answered, the fold holds; the next one that comes opens it.
+    await resolve(approval);
+    assert.ok(collapsed(view));
+    const next = questionCard({ qid: "a2", kind: "approval", cls: "bubble question approval" });
+    next.dataset.relay = "1";
+    append(next);
+    assert.ok(!collapsed(view), "open on the next approval");
+    assert.ok(next.parentElement === $(view, ".ts-extras"));
+  } finally {
+    view.reset();
+  }
+});
