@@ -2018,7 +2018,14 @@ test("objectives: Check this shows a verdict and leaves the conversation alone",
   // A turn under the list that runs a command and records no move says so.
   await send(page, "Just print");
   await turnEnded(page, 3);
-  await expect(page.locator("#history > .obj-nomove")).toHaveText("no move recorded");
+  await expect(page.locator("#history > .obj-nomove > span")).toHaveText("no move recorded");
+  // Its Where are we? (the worker names the tracker): one card, the reading in the list, nothing in the conversation.
+  const tracked = await messages();
+  await page.locator("#history > .obj-nomove .obj-track-ask").click();
+  await expect(page.locator(".plugin-card", { hasText: "O1: done — the run printed it" })).toHaveCount(1);
+  await page.locator("#objectivesStrip .obj-chip").click();
+  await expect(page.locator('#objectivesPanel [data-row="O1"] .obj-track')).toContainText("tracker: done — the run printed it");
+  expect(await messages()).toEqual(tracked);
 });
 
 test("objectives: a tap edits the list with no message, at once idle and after the turn mid-turn", async ({ page, script }) => {
