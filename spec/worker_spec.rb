@@ -3296,14 +3296,19 @@ RSpec.describe Samagotchi::Worker do
       thread = Thread.new { worker.run }
       thread.report_on_exception = false
 
-      # Wait until the sidecar appears (engine is building) — main bug was here
+      # Wait until the sidecar appears (engine is building) — main bug was
+      # here — or the worker's end: on a loaded runner it can reach its
+      # 0.6 s idle exit and remove the sidecar before a poll here sees it
+      # (as start_worker in "#run").
       sidecar = File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
-      wait_for("the worker's sidecar") { File.exist?(sidecar) }
+      wait_for("the worker's sidecar (or its end)") { File.exist?(sidecar) || !thread.alive? }
 
       # Mark stopped so the worker exits (no input would keep it waiting)
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
-      expect(join!(thread, "the worker").value).to eq(:stopped)
+      # The point is that it starts and ends without raising (#value re-raises
+      # what the thread raised): stopped, or idle-exited before the mark.
+      expect(join!(thread, "the worker").value).to eq(:stopped).or eq(:idle_exit)
     end
   end
 end
