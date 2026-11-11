@@ -65,10 +65,13 @@ test("theme: the light set defines no token the dark :root lacks", () => {
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(|(?<![-\w])(?:white|black|red|green|blue|gray|grey|silver|yellow|orange|purple)(?![-\w])/g;
 
 // What may carry a colour outside the token blocks: icon masks (data: SVGs
-// whose stroke only shapes the mask; the icon takes currentColor) and
-// comments.
+// whose stroke only shapes the mask; the icon takes currentColor), the
+// theme-color metas (a meta can't read a token: the next test pins them to
+// --bg) and comments.
+const THEME_COLOR = /<meta name="theme-color" content="([^"]*)" media="\(prefers-color-scheme: (dark|light)\)">/g;
 function outsideTokens(text) {
   return text
+    .replace(THEME_COLOR, "")
     .replace(darkBody, "")
     .replace(lightBody, "")
     .replace(/url\("data:image\/svg\+xml,[^"]*"\)/g, "url()")
@@ -84,6 +87,11 @@ test("theme: tokens.css and the pages have no raw colour outside the token block
     });
   }
   assert.deepEqual(hits, []);
+});
+
+test("theme: the owner page's theme-color metas are each theme's --bg (the phone's status bar and toolbar)", () => {
+  const metas = Object.fromEntries([...HTML.matchAll(THEME_COLOR)].map((m) => [m[2], m[1]]));
+  assert.deepEqual(metas, { dark: DARK["--bg"], light: LIGHT["--bg"] });
 });
 
 test("theme: both pages link tokens.css, then the shared stylesheets", () => {

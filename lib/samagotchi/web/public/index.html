@@ -8,7 +8,11 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-title" content="Chi">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- viewport-fit=cover: the page runs under the notch and the home indicator; what must stay clear of them pads by --safe-* (below). -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- The phone's status bar and Safari's toolbar take the page's own background (tokens.css --bg), per theme. -->
+<meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="/assets/tokens.css">
 <link rel="stylesheet" href="/assets/verify_card.css">
 <link rel="stylesheet" href="/assets/annotate_bar.css">
@@ -19,10 +23,13 @@
 <style>
 /* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor); the image icon is composer.css's. */
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
+/* The phone's safe areas (the notch, the status bar, the home indicator; 0 elsewhere): main's padding, the bottom
+   sheets, the update sheet, the toast and the lightbox keep clear of them. One name per side, so the e2e can set them. */
+:root{--safe-t:env(safe-area-inset-top,0px);--safe-r:env(safe-area-inset-right,0px);--safe-b:env(safe-area-inset-bottom,0px);--safe-l:env(safe-area-inset-left,0px)}
 *{box-sizing:border-box;margin:0;padding:0}
 /* No iOS text autosizing: it grows text in a box sized for the text as written (it clipped the session cards). */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
+body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 .turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 @media(hover:hover){#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}}
@@ -44,7 +51,9 @@ button{background:var(--primary);border:0;color:var(--on-solid);padding:8px 12px
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.ghost{background:var(--bg-raised);color:var(--text-2)}
 button:disabled{opacity:.5;cursor:not-allowed}
-main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:transparent;min-height:0}
+/* 16px, or the safe area where it is wider. At the bottom 16px less than it: the session's composer card floats 16px
+   above main's bottom (#dock bottom:16px), which puts it right on the home indicator's line. */
+main{flex:1;display:flex;flex-direction:column;gap:16px;padding:max(16px,var(--safe-t)) max(16px,var(--safe-r)) max(16px,calc(var(--safe-b) - 16px)) max(16px,var(--safe-l));overflow:auto;background:transparent;min-height:0}
 #topStrip{display:grid;grid-template-columns:repeat(var(--strip-cols,3),minmax(0,440px)) 150px;gap:12px;min-height:88px;align-content:start}
 #topStrip:empty{display:grid}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
@@ -706,9 +715,10 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 .thumb{max-height:120px;max-width:200px;border-radius:6px;border:1px solid var(--border-strong);cursor:zoom-in;object-fit:contain;background:var(--bg)}
 .activity-row .thumbs{flex-basis:100%;margin-left:var(--row-gutter)}
 @media(max-width:600px){.activity-row .thumbs{margin-left:0}}
-#lightbox{position:fixed;inset:0;z-index:50;background:var(--backdrop);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
+/* The image keeps clear of the notch and the home indicator (its padding: the safe areas; 0 on a desktop). */
+#lightbox{position:fixed;inset:0;z-index:50;background:var(--backdrop);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l)}
 #lightbox[hidden]{display:none}
-#lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
+#lightbox img{max-width:min(96vw,100%);max-height:min(94vh,100%);border-radius:6px}
 /* The model picker (the start page, and a fresh chain link: start_page.js syncModelPick): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
 /* The start page's row stays one row (Start never wraps): the model name gives way first, down to its min-width, then the override chips ellipsize (100000x their shrink weight: at 1000x their share of the shrink was still a fraction of a pixel, enough for an ellipsis). Scoped off the session composer and a fresh link's button. */
@@ -1394,7 +1404,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .us-detail{margin-top:4px;color:var(--text-muted);font-size:12px;overflow-wrap:anywhere}
 .us-kept{margin-top:6px;color:var(--warn-text);font-size:12px}
 .us-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:10px}
-@media(max-width:600px){#updateSheet{position:fixed;inset:auto 8px 8px;width:auto;max-width:none;max-height:min(80dvh,calc(100dvh - 16px));margin:0}}
+@media(max-width:600px){#updateSheet{position:fixed;inset:auto 8px calc(8px + var(--safe-b));width:auto;max-width:none;max-height:min(80dvh,calc(100dvh - 16px - var(--safe-t) - var(--safe-b)));margin:0}}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}
 .ctx-pop-close{margin-left:auto;padding:0 6px;border:none;background:transparent;color:var(--text-muted);font-size:16px;line-height:1}
 @media(hover:hover){.ctx-pop-close:hover{color:var(--text)}}
@@ -1750,8 +1760,9 @@ body.all-view #allHead{display:flex}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
 .card .archived-badge,.family-row .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
-/* bottom: above the session's composer card when one shows (--toast-bottom, dock_reserve.js placeToast). */
-#toast{position:fixed;left:50%;bottom:var(--toast-bottom,24px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px}
+/* bottom: above the session's composer card when one shows (--toast-bottom, dock_reserve.js placeToast); else 24px, or
+   12px over the home indicator. */
+#toast{position:fixed;left:50%;bottom:var(--toast-bottom,max(24px,calc(var(--safe-b) + 12px)));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px}
 #toast[hidden]{display:none}
 #toast .toast-item{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;width:max-content;max-width:100%;box-sizing:border-box;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px}
 #toast .toast-message{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
