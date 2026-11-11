@@ -11,9 +11,9 @@ module Samagotchi
     WEB_RESTART = "web:restart"
     # A web page's first prompt when creating a session.
     WEB_CREATE = "web:create"
-    # The owner's turn route (POST /api/sessions/:id/turn) given no client_id
-    # (a script, curl with the owner's token): named at that seam, a web tab's
-    # rights, never a silent nil.
+    # The owner's turn or command route (POST /api/sessions/:id/turn,
+    # /command) given no client_id (a script, curl with the owner's token):
+    # named at that seam, a web tab's rights, never a silent nil.
     WEB_UNNAMED = "web:unnamed"
     # An attached chi TUI: tui:<pid>.
     TUI_PREFIX = "tui:"
@@ -53,8 +53,8 @@ module Samagotchi
     # (spawn_session saves no first_turn_client_id for a person's), a Bridge
     # POST /turn naming none (the Bridge's secret holder: a local TUI or chi
     # web, which names its sender) and an input file from an older chi.
-    # SessionManager.deliver_turn refuses nil; chi web's turn route names it
-    # (WEB_UNNAMED). An allowlist: delegates, plugins, reminders, context
+    # SessionManager.deliver_turn refuses nil; chi web's turn and command routes
+    # name it (WEB_UNNAMED). An allowlist: delegates, plugins, reminders, context
     # changes and any id chi doesn't know are not.
     HUMAN_PREFIXES = [WEB_PREFIX, TUI_PREFIX, REVIEW_PREFIX].freeze
     HUMAN_IDS = [CLI_SEND].freeze
