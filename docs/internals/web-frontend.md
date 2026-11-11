@@ -10,10 +10,14 @@ only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
 by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec.
 
-**`app.js` has a size cap**: `npm run lint` fails past `max-lines` in `eslint.config.js` (counted as `wc -l` counts:
-2000, ratcheted down from 2250 when the versions, the owner's claim links and Verify, the composer's mode and the
-strip's hide went into modules of their own, which left room for a few features' wiring). A new feature goes into a module of its own, wired from `app.js` in a few lines; a
-refactor that shrinks `app.js` ratchets the cap down with it. Never raise it: extract instead.
+**Every module has a size cap, `app.js` its own**: `npm run lint` fails past `max-lines` in `eslint.config.js`
+(counted as `wc -l` counts, comments and blank lines too). Every `public/*.js` module: 1200 (`samagotchi/module-size`,
+about 10% over the largest, `turn_block.js`), so a module near it splits rather than becoming the next `app.js`.
+`app.js` (`samagotchi/app-size`): 1649, its size plus 50 once the session-open flow went into `session_sync.js` and
+`session_view.js`; ratcheted down from 2000, itself down from 2250 when the versions, the owner's claim links and
+Verify, the composer's mode and the strip's hide went into modules of their own. A new feature goes into a module of
+its own, wired from `app.js` in a few lines; a refactor that shrinks `app.js` ratchets its cap down with it. Never
+raise either: extract instead.
 
 **New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
 (app.rb `serve_static` sends `Cache-Control: no-cache` with a content ETag, and `sw.js` has no fetch handler), but an

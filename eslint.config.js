@@ -3,7 +3,7 @@
 // variable left unused. In the e2e specs, the unused one too, and the
 // timing rule: a fixed pause (page.waitForTimeout) instead of a wait for the
 // state, the twin of the Samagotchi/SpecSleep cop. And the session store's one write path (a
-// write into the open session's state in place), and app.js's size cap. `npm run lint`; see
+// write into the open session's state in place), and the modules' size caps (every module's, app.js's own). `npm run lint`; see
 // docs/testing.md. In the web unit specs, one rule: no assert.equal(domNode, null), which hangs when it fails.
 import globals from "globals";
 
@@ -76,13 +76,22 @@ export default [
     },
   },
   {
-    // app.js's size cap, counted as `wc -l` counts (blank lines and comments too). The cap is ratcheted down when a
-    // refactor shrinks app.js, and new features go into their own module: never raise it, extract instead
-    // (docs/internals/web-frontend.md).
+    // Every module's size cap, counted as `wc -l` counts (blank lines and comments too): about 10% over the largest
+    // (turn_block.js, 1078 lines), so no module becomes the next app.js. A module near it splits; never raise it
+    // (docs/internals/web-frontend.md). app.js's own cap below wins for its file.
+    name: "samagotchi/module-size",
+    files: ["lib/samagotchi/web/public/**/*.js"],
+    rules: {
+      "max-lines": ["error", { max: 1200, skipBlankLines: false, skipComments: false }],
+    },
+  },
+  {
+    // app.js's size cap, counted the same way. The cap is ratcheted down when a refactor shrinks app.js, and new
+    // features go into their own module: never raise it, extract instead (docs/internals/web-frontend.md).
     name: "samagotchi/app-size",
     files: ["lib/samagotchi/web/public/app.js"],
     rules: {
-      "max-lines": ["error", { max: 2000, skipBlankLines: false, skipComments: false }],
+      "max-lines": ["error", { max: 1649, skipBlankLines: false, skipComments: false }],
     },
   },
   {
