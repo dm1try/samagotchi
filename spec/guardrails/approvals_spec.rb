@@ -328,31 +328,13 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
       expect(warnings).to be_empty
     end
 
-    # compat shim approvals_array_read: the list 0.165 and before write.
-    it "rewrites a list as a versioned store on its first read" do
+    it "sets aside a bare list (0.166 and before) like an unreadable file, once" do
       write_store([entry])
-      expect(store.entries).to eq([entry])
-      expect(stored).to eq("version" => 1, "approvals" => [entry])
-      expect(store.match(ask)).to include("scope" => "session")
-      expect(warnings).to be_empty
-    end
-
-    it "versions a list through #add" do
-      write_store([entry])
-      store.add(ask(command: "git push origin other"), "session")
-      expect(stored).to include("version" => 1)
-      expect(stored["approvals"].map { |e| e["key"] }).to eq(["execute:git push origin main", "execute:git push origin other"])
-    end
-
-    it "still reads a list it can't rewrite" do
-      write_store([entry])
-      dir = File.dirname(store.path)
-      File.chmod(0o500, dir)
-      expect(store.entries).to eq([entry])
-      expect(stored).to eq([entry])
-      expect(warnings).to be_empty
-    ensure
-      File.chmod(0o700, dir) if dir
+      expect(store.entries).to eq([])
+      expect(store.match(ask)).to be_nil
+      expect(warnings.size).to eq(1)
+      expect(Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")].size).to eq(1)
+      expect(File.exist?(store.path)).to be(false)
     end
   end
 end
