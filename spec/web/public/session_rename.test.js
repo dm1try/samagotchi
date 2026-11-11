@@ -31,6 +31,13 @@ function harness({ titles = { s1: "Coordinator" }, shown = (id) => titles[id] ||
   return { rename, row, button, input, key, sent, page };
 }
 
+test("open: the field asks iOS for no contact AutoFill (autocomplete off, a name with no contact word)", () => {
+  const h = harness();
+  h.rename.open();
+  assert.equal(h.input().getAttribute("autocomplete"), "off");
+  assert.equal(h.input().name, "chi-session-label");
+});
+
 test("titleLine: the text as /title, whitespace collapsed; blank clears", () => {
   assert.equal(titleLine("  Release \n day "), "/title Release day");
   assert.equal(titleLine("   "), "/title --clear");

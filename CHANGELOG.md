@@ -17,6 +17,21 @@ and commands may change between minor versions. How releases are made:
 - Bundles: an install record from 0.157 with class-file hooks is no longer announced (at the first turn, in
   `chi bundle status` or in `chi update`); its hooks still don't load. Reinstall or upgrade the bundle to clear them.
 
+### Fixed
+
+- chi web on iPhone: the composer, the all view's search and the rename field ask Safari not to offer its AutoFill
+  Contact bar (as the cards' text fields already did).
+- chi web's top bar: the all-sessions header (search, count, archived, Select) moves to a line of its own with the bell
+  where it doesn't fit beside the sessions pill (about 601-760px wide) instead of covering the pill's end; on a phone the
+  project chip cuts its name with an ellipsis rather than pushing "all" under the pill (a 320px start page with the strip
+  hidden).
+- chi web: when the page can't reach chi web, the session bar's status chip says "retrying", then "offline" (the full
+  words in its tooltip) instead of "reconnecting…" / "can't reach chi web", so the bar no longer shifts; during a running
+  turn only the stage says "reconnecting…" and the chip keeps "running".
+- chi web on a phone: the status bar takes the top bar's tint (the theme-color under 600px wide is the colour the page's
+  top edge starts with, and the page's accent tint now runs down from that edge), so there is no seam between them in
+  the Home Screen app or a Safari tab, light or dark.
+
 ## [0.166.0] - 2026-11-11
 
 ### Added

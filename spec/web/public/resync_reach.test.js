@@ -12,14 +12,14 @@ const ID = "0123456789abcdef";
 
 // The page as app.js wires it: the store, the history with a drawn
 // conversation or select()'s "Loading…", and the bar drawn from the store.
-function page() {
+function page({ running = false } = {}) {
   const store = createSessionStore({ initial: { ...emptySessionState(), status: "idle", model: "qwen" } });
   store.update({ selected: ID });
   const historyEl = document.createElement("div");
   const reach = createResyncReach({ store, historyEl, errorHint: (m) => hintEl(`Error: ${m}`) });
   const bar = () => sessionBar({
     id: ID, state: store.current, sessions: [{ id: ID }], versions: { served: "1.0.0", installed: null },
-    cardTitle: () => "", continuing: new Set(), restarting: new Set(), streaming: false, running: false,
+    cardTitle: () => "", continuing: new Set(), restarting: new Set(), streaming: false, running,
   }).bar;
   const infoEl = document.createElement("div");
   const statusEl = () => {
@@ -47,7 +47,7 @@ test("readFailed: nothing drawn shows the hint; a drawn history stays and says w
   assert.deepEqual(readFailed({ drawn: true, retrying: false }), { hint: false, reach: "offline" });
 });
 
-test("a re-read that fails keeps the drawn history and the bar says reconnecting…", () => {
+test("a re-read that fails keeps the drawn history and the bar says retrying", () => {
   const p = page();
   p.loading();
   p.draw();
@@ -61,7 +61,7 @@ test("a re-read that fails keeps the drawn history and the bar says reconnecting
   assert.equal(status.getAttribute("title"), REACH.reconnecting.tip);
 });
 
-test("the tries running out still keep the history: the bar says it can't reach chi web", () => {
+test("the tries running out still keep the history: the bar says offline", () => {
   const p = page();
   p.loading();
   p.draw();
@@ -69,7 +69,7 @@ test("the tries running out still keep the history: the bar says it can't reach 
   p.reach.failed(ID, "Failed to fetch", { retrying: false });
   assert.equal(p.historyEl.textContent, "hello");
   assert.equal(p.store.current.reach, "offline");
-  assert.equal(p.statusEl().textContent, "can't reach chi web");
+  assert.equal(p.statusEl().textContent, "offline");
   assert.equal(p.reach.needsReread(), true, "the hub's next event re-reads it");
 });
 
@@ -106,4 +106,20 @@ test("another session's drawn history doesn't count: select()'s Loading… reset
 
 test("a new session starts with no reach (forgetSession's emptySessionState)", () => {
   assert.equal(emptySessionState().reach, null);
+});
+
+test("the chip's words are short (the room it keeps for running/stopped); the full words are in its tooltip", () => {
+  for (const r of Object.values(REACH)) {
+    assert.ok(r.text.length <= 8 && !/\s/.test(r.text), r.text);
+    assert.match(r.tip, /Can't reach chi web|can't reach chi web/);
+  }
+});
+
+test("while its turn runs the chip keeps the turn's word: the stage says reconnecting… then", () => {
+  const p = page({ running: true });
+  p.store.update({ current: { status: "running" } });
+  p.draw();
+  p.reach.failed(ID, "Failed to fetch", { retrying: true });
+  assert.equal(p.store.current.reach, "reconnecting");
+  assert.equal(p.statusEl().textContent, "running");
 });

@@ -16,7 +16,7 @@ module Samagotchi
     # them. ReplyWait.call's parameters say what each means.
     class Poll
       def initialize(id, state_dir:, cursor:, timeout:, poll_interval:, cancelled:, baseline:, owner_grace:, interject:,
-                     turn:, queued:, ended_before:, running_look: nil, message_waiting: -> { false })
+                     turn:, queued:, ended_before:, message_waiting: -> { false })
         @id = id
         @state_dir = state_dir
         @cursor = cursor
@@ -43,10 +43,10 @@ module Samagotchi
         @own_base = nil
         @seen_running = false
         # A turn seen running with its checkpoint mark (a wait with no
-        # turn:; RunningLook), by this call or an earlier one of the same
-        # wait, so its settle by a next worker (#settled_running) tells
-        # from a turn that ended or an input that runs next.
-        @running_look = running_look
+        # turn:; RunningLook), so its settle by a next worker
+        # (#settled_running) tells from a turn that ended or an input that
+        # runs next.
+        @running_look = nil
         @gone_since = nil
       end
 
@@ -335,7 +335,7 @@ module Samagotchi
       end
 
       def timed_out
-        @deadline && ReplyWait.monotonic > @deadline ? Result.new(status: :timeout, running_look: @running_look) : nil
+        @deadline && ReplyWait.monotonic > @deadline ? Result.new(status: :timeout) : nil
       end
 
       # Whether the session's last turn is the one that had ended at the
