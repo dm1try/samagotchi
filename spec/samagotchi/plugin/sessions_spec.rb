@@ -305,9 +305,13 @@ RSpec.describe Samagotchi::Plugin::Sessions do
     it "reads a live worker's snapshot, with its running turn so far" do
       client = instance_double(Samagotchi::BridgeClient)
       allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
+      # GET snapshot's reply: the turn snapshot beside the session state (Bridge#snapshot_frame).
       allow(client).to receive(:get_json).with("snapshot").and_return(
-        "messages" => [{ "role" => "system", "content" => "prompt" }, { "role" => "user", "content" => "hello" }],
-        "current_turn" => { "prompt" => "now", "parts" => [{ "kind" => "text", "iteration" => 1, "text" => "Wor" }] }
+        "snapshot" => {
+          "messages" => [{ "role" => "system", "content" => "prompt" }, { "role" => "user", "content" => "hello" }],
+          "current_turn" => { "prompt" => "now", "parts" => [{ "kind" => "text", "iteration" => 1, "text" => "Wor" }] }
+        },
+        "session_state_snapshot" => { "status" => "running" }
       )
 
       expect(sessions.read(parent.id)).to include(

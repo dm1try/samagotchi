@@ -238,8 +238,11 @@ module Samagotchi
                      "#{Tools::Delegate::MAX_CHILDREN_KEY}): #{running.map(&:short_id).join(", ")}"
       end
 
+      # The worker's turn snapshot (GET snapshot's "snapshot": messages,
+      # current_turn), nil with no worker or no reply.
       def live_snapshot(sid, state_dir)
-        WorkerLink.client(sid, session_dir: Session.session_dir(sid, state_dir: state_dir))&.get_json("snapshot")
+        live = WorkerLink.client(sid, session_dir: Session.session_dir(sid, state_dir: state_dir))&.get_json("snapshot")
+        live.is_a?(Hash) && live["snapshot"].is_a?(Hash) ? live["snapshot"] : nil
       rescue StandardError
         nil
       end

@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A plugin's `ctx.sessions.read` of a live session gets its messages and running turn again (it read an older reply
+  shape and saw no messages and never running).
 - chi web on a phone: the ⚙ chip marks changed settings with its blue dot alone, without the accent border that was cut off at the top and bottom.
 
 ## [0.165.0] - 2026-11-11
