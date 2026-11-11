@@ -100,7 +100,8 @@ module Samagotchi
       return usage_error("ls takes no arguments") unless args.empty?
 
       format = options[:format]
-      return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
+      refused = format_refusal(format)
+      return refused if refused
 
       entries = Remotes.all(path: @path)
       if format == "json"

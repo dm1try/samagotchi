@@ -144,9 +144,8 @@ module Samagotchi
 
     def list
       format, scope, cwd = @opts.values_at(:format, :scope, :cwd)
-      unless format.nil? || %w[text json tsv].include?(format)
-        return usage_error("unknown format #{format.inspect}: use --format text|json|tsv")
-      end
+      refused = format_refusal(format, %w[text json tsv])
+      return refused if refused
       return usage_error("unknown scope #{scope.inspect}: use --scope=project|all") unless scope.nil? || %w[project all].include?(scope)
 
       sort, order = @opts.values_at(:sort, :order)
@@ -218,9 +217,8 @@ module Samagotchi
       return usage_error("stats takes one session id") if ids.size > 1
 
       format = @opts[:format]
-      unless format.nil? || %w[text json].include?(format)
-        return usage_error("unknown format #{format.inspect}: use --format text|json")
-      end
+      refused = format_refusal(format)
+      return refused if refused
 
       id = begin
         Samagotchi::Session.resolve_id(ids.first)

@@ -35,6 +35,16 @@ module Samagotchi
         Exit::USAGE
       end
 
+      # The one refusal of a --format value the command doesn't print
+      # (nil, no --format, is the text). The caller returns what it gives.
+      # @param formats [Array<String>] the values the command takes
+      # @return [Integer, nil] the usage exit status, or nil for a format it takes
+      def format_refusal(format, formats = %w[text json])
+        return nil if format.nil? || formats.include?(format)
+
+        usage_error("unknown format #{format.inspect}: use --format #{formats.join("|")}")
+      end
+
       # +argv+ through +flags+ (a Flags), help and usage errors done.
       # @return [Flags::Result, Integer] the result, or the exit status
       #   after the help (0) or a usage error (2)

@@ -142,6 +142,9 @@ module Samagotchi
     end
 
     def list
+      refused = format_refusal(@opts[:format])
+      return refused if refused
+
       entries = @schedules.entries(include_disabled: @opts[:include_disabled] ? true : false)
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate(entries.map { |entry| entry_line_json(entry) }))
@@ -178,6 +181,9 @@ module Samagotchi
     end
 
     def tick
+      refused = format_refusal(@opts[:format])
+      return refused if refused
+
       result = @schedules.tick(dry_run: @opts[:dry_run] ? true : false)
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate({ "locked" => result.locked, "outcomes" => result.outcomes.map { |outcome| { "id" => outcome.id, "status" => outcome.status, "detail" => outcome.detail } } }))

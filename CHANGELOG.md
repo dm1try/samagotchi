@@ -54,6 +54,8 @@ and commands may change between minor versions. How releases are made:
   instead of rolling into the next month.
 - `chi sessions list`: an unknown `--sort` or `--order` value is refused (exit 2, naming the ones it takes) instead of
   listing in the default order under a footer that names the bogus value.
+- `chi schedule list` and `chi schedule tick`: a `--format` other than `text` or `json` is refused (exit 2), as the
+  other commands' `--format` is, instead of printing text; `tick` fires nothing then.
 
 ## [0.166.0] - 2026-11-11
 

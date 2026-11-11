@@ -249,7 +249,8 @@ module Samagotchi
 
     def run_ls(options, args)
       format = options[:format]
-      return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
+      refused = format_refusal(format)
+      return refused if refused
 
       targets = targets(options, args) or return CLI::Exit::FAILED
       rows = targets.flat_map { |target| @access.context_entries(target).map { |entry| row(target, entry) } }
