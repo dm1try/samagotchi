@@ -25,6 +25,9 @@ and commands may change between minor versions. How releases are made:
   where it doesn't fit beside the sessions pill (about 601-760px wide) instead of covering the pill's end; on a phone the
   project chip cuts its name with an ellipsis rather than pushing "all" under the pill (a 320px start page with the strip
   hidden).
+- chi web: when the page can't reach chi web, the session bar's status chip says "retrying", then "offline" (the full
+  words in its tooltip) instead of "reconnecting…" / "can't reach chi web", so the bar no longer shifts; during a running
+  turn only the stage says "reconnecting…" and the chip keeps "running".
 
 ## [0.166.0] - 2026-11-11
 
