@@ -2122,6 +2122,8 @@ The app opens on the project chi web starts in (`web.start_dir`; the header's pr
 notifications are every project's: opening it closes the ones whose question or card is no longer open and sets its
 badge for every project, whichever project the page shows.
 In a browser tab the bell stays the tab's own notifications (while the tab is in the background), as before.
+The app uses the whole screen, under the status bar and the home indicator, and keeps its controls clear of them (the
+notch too, held sideways); its status bar takes the page's background, dark or light with the system.
 
 **The devices** (the bell's sheet in the app; a bottom sheet on the phone): this device first, with its switch (off
 removes it from chi web and is the same as the bell turned off), then every other device chi web pushes to: its label,

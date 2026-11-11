@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 - chi web on a phone: the composer has no row above the text field. While a turn runs, where a message goes in and
   the `cut in` and `queue` chips show in the session bar, in place of the status, ctx and speed; the composer is
   shorter and still never changes height.
+- chi web on iPhone: the page uses the full screen and keeps the composer, sheets, toasts and the lightbox clear of the
+  notch and the home indicator (Home Screen app and Safari); in a Safari tab the composer no longer sits under the
+  toolbar (100dvh).
 
 ### Fixed
 

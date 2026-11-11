@@ -157,7 +157,7 @@ test("a sheet popover is a bottom sheet in a narrow window, a popover at its chi
   s.chip.click();
   assert.equal(s.ctl.pop.classList.contains("sheet"), true);
   assert.deepEqual([s.ctl.pop.style.left, s.ctl.pop.style.bottom, s.ctl.pop.style.width, s.ctl.pop.style.maxHeight, s.ctl.pop.style.top],
-    ["8px", "8px", "374px", "480px", ""]);
+    ["8px", "calc(8px + var(--safe-b, 0px))", "374px", "480px", ""]);
   s.ctl.close();
   win.innerWidth = 1000;
   s.chip.click();
@@ -245,7 +245,7 @@ test("an open one is placed again on a resize: a sheet follows the window (and a
   win.innerHeight = 420;
   viewport.height = 420;
   listeners.resize();
-  assert.deepEqual([s.ctl.pop.style.maxHeight, s.ctl.pop.style.bottom], ["252px", "8px"]);
+  assert.deepEqual([s.ctl.pop.style.maxHeight, s.ctl.pop.style.bottom], ["252px", "calc(8px + var(--safe-b, 0px))"]);
   win.innerHeight = 800; // a keyboard over the page: the layout viewport stays, the visual one shrinks
   viewport.height = 500;
   vvListeners.resize();

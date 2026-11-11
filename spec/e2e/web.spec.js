@@ -2600,3 +2600,59 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   expect(await gap.evaluate((el) => el.nextElementSibling?.matches(".bubble.user") && el.nextElementSibling.textContent.includes("QUEUED-B"))).toBe(true);
   await expect(page.locator("#history .bubble.user").first()).toHaveAttribute("title", /^\w{3} \d+ \w{3} \d{4} \d\d:\d\d:\d\d$/);
 });
+
+// An iPhone's safe areas (a desktop browser has none, so --safe-* are set by
+// hand, as index.html names them): a portrait phone's status bar and home
+// indicator, then a landscape one's notch sides. The composer card, a bottom
+// sheet and a toast keep clear of the indicator, the top bar of the status
+// bar and the notch; nothing scrolls sideways.
+test("on a phone the page keeps clear of the notch, the status bar and the home indicator", async ({ page, script, browser }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const safe = (vars) => `:root{${Object.entries(vars).map(([k, v]) => `--safe-${k}:${v}px !important`).join(";")}}`;
+  const phone = async (viewport, vars) => {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true });
+    await context.addInitScript((css) => {
+      document.addEventListener("DOMContentLoaded", () => document.head.append(Object.assign(document.createElement("style"), { textContent: css })));
+    }, safe(vars));
+    return context;
+  };
+  const portrait = await phone({ width: 390, height: 844 }, { t: 59, b: 34, l: 0, r: 0 });
+  try {
+    const small = await portrait.newPage();
+    await small.goto(page.url());
+    await expect(small.locator("#history .bubble.output").last()).toContainText("PONG");
+    const bottom = async (sel) => { const b = await small.locator(sel).boundingBox(); return b.y + b.height; };
+    expect(await bottom("#dock")).toBeLessThanOrEqual(844 - 34);
+    expect((await small.locator("#topBar").boundingBox()).y).toBeGreaterThanOrEqual(59);
+    await clickBarItem(small, "settings");
+    await expect(small.locator("#settingsPopover")).toBeVisible();
+    expect(await bottom("#settingsPopover")).toBeLessThanOrEqual(844 - 42);
+    await small.keyboard.press("Escape");
+    // Out of a session the toast has no card to sit above: it clears the indicator by 12 px.
+    await small.goto(page.url().replace(/#.*$/, ""));
+    await small.locator("#attachInput").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") });
+    await expect(small.locator("#toast")).toContainText("not an image");
+    expect(await bottom("#toast")).toBeLessThanOrEqual(844 - 46);
+    await expectNoHorizontalOverflow(small);
+  } finally {
+    await portrait.close();
+  }
+  const landscape = await phone({ width: 932, height: 430 }, { t: 0, b: 21, l: 59, r: 59 });
+  try {
+    const wide = await landscape.newPage();
+    await wide.goto(page.url());
+    await expect(wide.locator("#history .bubble.output").last()).toContainText("PONG");
+    for (const sel of ["#topBar", "#center"]) {
+      const box = await wide.locator(sel).boundingBox();
+      expect(box.x, sel).toBeGreaterThanOrEqual(59);
+      expect(box.x + box.width, sel).toBeLessThanOrEqual(932 - 59);
+    }
+    const dock = await wide.locator("#dock").boundingBox();
+    expect(dock.y + dock.height).toBeLessThanOrEqual(430 - 21);
+    await expectNoHorizontalOverflow(wide);
+  } finally {
+    await landscape.close();
+  }
+});
