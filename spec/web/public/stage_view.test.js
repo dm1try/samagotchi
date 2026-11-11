@@ -23,7 +23,7 @@ if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate 
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 
-function page({ taskStop = null, renderMarkdown, onCancel = null } = {}) {
+function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive } = {}) {
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
   const view = createStageView({
@@ -36,6 +36,8 @@ function page({ taskStop = null, renderMarkdown, onCancel = null } = {}) {
     taskStop,
     renderMarkdown,
     onCancel,
+    clock,
+    streamLive,
   });
   // app.js's appendToHistory: the stage first, else the history's end.
   const append = (el) => { if (!view.place(el)) historyEl.appendChild(el); };
@@ -232,7 +234,7 @@ function twoQueued(historyEl, view, append) {
 // ── the slots' markup and node identity (recorded before the split into
 // stage_frame.js, stage_watch.js and stage_slots.js; they guard it) ──────
 
-const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-asking" hidden=""></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button><button class="ts-room-pill" type="button" aria-label="Go to the question" hidden="">❓ Answer ↓</button></div><div class="ts-queued"></div></section>';
+const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-asking" hidden=""></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button><button class="ts-room-pill" type="button" aria-label="Go to the question" hidden="">❓ Answer ↓</button></div><div class="ts-queued"></div></section>';
 
 // A stopper as task_stop.js's: a running task_wait's task.
 const fakeTaskStop = {
@@ -274,7 +276,7 @@ test("resetting the stage clears the status row and the chip, not only the slots
   view.turnEnded({ kind: "completed" });
   await frame();
   view.reset();
-  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   assert.equal($(view, ".ts-chip-label").textContent, "");
 });
 
@@ -364,7 +366,7 @@ test("slots: a narration headline, a running tool, its tick and the chip label",
     assert.equal(slot(view, ".ts-headline"), '<div class="ts-headline fresh" tabindex="0" role="button" title="Show this step\'s reasoning">Reading the readme now.</div>');
     assert.equal(slot(view, ".ts-now"), '<div class="ts-now running"><span class="ts-spin"></span><span class="ts-tool exec">execute</span><span class="ts-title" title="ls -la &amp;&amp; pwd">ls -la</span></div>');
     assert.equal(slot(view, ".ts-foot"), '<div class="ts-foot"><button class="ts-chip" type="button" aria-expanded="false"><span class="ts-chip-label">1 step · 1 tool call</span><span class="ts-ticks"><span role="button" class="ts-tick exec running" data-step="0" title="step 1"></span></span></button><button class="ts-room-pill" type="button" aria-label="Go to the question" hidden="">❓ Answer ↓</button></div>');
-    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   } finally {
     view.reset();
   }
@@ -1085,4 +1087,113 @@ test("question room: a room decided after the arrival reveal reads from the repl
   } finally {
     view.reset();
   }
+});
+
+// The quiet signal (stage_stall.js) as the stage drives it: the page's clock
+// ticks (app.js's live timing), the turn's events are what count as alive.
+function quietPage({ live = () => true } = {}) {
+  let t = Date.now();
+  const p = page({ clock: () => t, streamLive: live });
+  return { ...p, at: (ms) => { t = ms; }, now: () => t };
+}
+
+test("quiet: a turn silent for 31 s says so in the now row; its next chunk clears it at once", () => {
+  const { view, at, now } = quietPage();
+  const start = now();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Looking at it." });
+  view.flush();
+  view.tick(start + 31000);
+  const stage = view.root;
+  assert.equal(stage.querySelector(".ts-now .ts-stall .long")?.textContent, "quiet 0:31 · no new events");
+  assert.equal(stage.querySelector(".ts-stall-head").textContent, "quiet 0:31");
+  assert.equal(stage.dataset.stall, "1");
+  at(start + 31500);
+  view.chunk({ iteration: 1, text: " More." });
+  assert.ok(stage.querySelector(".ts-stall") === null);
+  assert.equal(stage.dataset.stall, undefined);
+  view.tick(start + 32000);
+  assert.ok(stage.querySelector(".ts-stall") === null);
+  view.reset();
+});
+
+test("quiet: before the first token it waits 45 s and reads thinking quietly", () => {
+  const { view, now } = quietPage();
+  const start = now();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 }, start);
+  view.tick(start + 40000);
+  assert.ok(view.root.querySelector(".ts-stall") === null);
+  view.tick(start + 50000);
+  assert.equal(view.root.querySelector(".ts-stall .short")?.textContent, "thinking quietly 0:50");
+  view.reset();
+});
+
+test("quiet: a running tool shows its own clock, never the stall, however long it runs", () => {
+  const { view } = quietPage();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 });
+  // The call's start is the turn block's own Date.now().
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: 'command="sleep 200"', title: "sleep 200" });
+  const started = Date.now();
+  view.flush();
+  view.tick(started + 120000);
+  const stage = view.root;
+  assert.ok(stage.querySelector(".ts-stall") === null);
+  assert.ok(!stage.classList.contains("stalled"));
+  assert.match(stage.querySelector(".ts-now .ts-tool-clock")?.textContent || "", /^2:0\d$/);
+  view.reset();
+});
+
+test("quiet: a stream that is not live reads reconnecting (after a second), whatever the silence", () => {
+  let live = true;
+  const { view, now } = quietPage({ live: () => live });
+  const start = now();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 });
+  live = false;
+  view.tick(start + 2000);
+  assert.ok(view.root.querySelector(".ts-stall") === null);
+  view.tick(start + 3000);
+  assert.equal(view.root.querySelector(".ts-stall .short")?.textContent, "reconnecting…");
+  assert.equal(view.root.dataset.stall, "net");
+  view.reset();
+});
+
+test("quiet: a tick under the threshold writes nothing to the stage", () => {
+  const { view, now } = quietPage();
+  const start = now();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Looking at it." });
+  view.flush();
+  view.tick(start + 1000);
+  const observer = new MutationObserver(() => {});
+  observer.observe(view.root, { subtree: true, childList: true, attributes: true, characterData: true });
+  view.tick(start + 5000);
+  view.tick(start + 29000);
+  assert.equal(observer.takeRecords().length, 0);
+  observer.disconnect();
+  view.reset();
+});
+
+test("quiet: a new turn and the turn's end clear it", () => {
+  const { view, at, now } = quietPage();
+  const start = now();
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Looking at it." });
+  view.tick(start + 40000);
+  assert.ok(view.root.classList.contains("stalled"));
+  at(start + 40000);
+  view.turnStarted({ promptBubble: document.createElement("div") });
+  assert.ok(!view.root.classList.contains("stalled"));
+  view.tick(start + 60000);
+  assert.ok(!view.root.classList.contains("stalled"));
+  view.tick(start + 90000);
+  assert.ok(view.root.classList.contains("stalled"));
+  view.turnEnded({ kind: "canceled" });
+  assert.ok(!view.root.classList.contains("stalled"));
+  view.reset();
 });

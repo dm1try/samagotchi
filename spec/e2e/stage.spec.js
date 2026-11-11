@@ -472,13 +472,28 @@ test("a long reply that asks gets the question room: read from its start, a pill
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
 });
 
-test("the stage folds to its status row, and stays folded across a reload", async ({ page, script }) => {
+// The fake holds 60 s before its first token: on the page's clock
+// (Playwright's, moved by runFor) the stage says the turn is quiet, in the
+// now row and, folded, in the status row (stage_stall.js; its edges are
+// stage_stall.test.js's).
+test("the stage folds to its status row, and stays folded across a reload; a turn with no token for 45 s says so", async ({ page, script }) => {
+  await page.clock.install();
+  await page.reload();
   script("hold");
   await send(page, "Take your time");
   await expect(stageEl(page)).toBeVisible();
+  await page.clock.runFor(40000);
+  await expect(stageEl(page).locator(".ts-stall")).toHaveCount(0);
+  // A second at a time: the count starts at the step's generation_started,
+  // which lands a moment after the stage shows.
+  const stallText = () => page.evaluate(() => document.querySelector("#turnStage .ts-now .ts-stall .long")?.textContent || "");
+  await expect.poll(async () => { await page.clock.runFor(1000); return stallText(); }).toMatch(/^thinking quietly 0:4[5-9] · no tokens yet$/);
+  await expect(stageEl(page)).toHaveAttribute("data-stall", "1");
   await stageEl(page).locator(".ts-fold").click();
   await expect(stageEl(page)).toHaveClass(/collapsed/);
   await expect(stageEl(page).locator(".ts-scroll")).toBeHidden();
+  await expect(stageEl(page).locator(".ts-stall-head")).toBeVisible();
+  await expect(stageEl(page).locator(".ts-stall-head")).toHaveText(/^thinking quietly 0:\d\d$/);
   await page.reload();
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page)).toHaveClass(/collapsed/);

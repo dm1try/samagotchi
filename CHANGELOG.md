@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: a running turn that has sent nothing for 30 s says so in the stage ("quiet 0:40", "thinking quietly 0:50"
+  before the first token, "reconnecting…" when the stream dropped); it clears on the next event and stays off while a
+  tool runs or a card waits.
+
 ### Changed
 
 - Guardrails: approvals.json reads a versioned `{"version", "approvals"}` store as well as today's list, and keeps

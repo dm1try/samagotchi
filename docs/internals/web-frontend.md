@@ -24,7 +24,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it), `stage_stall.js` (the stage's quiet signal) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
 
 ## Two pages, two models
 
@@ -314,6 +314,24 @@ writes for itself: `generationCompleted` and a step's close write its text, a ca
 `reset`, `turnEnded` and `flush` itself cancel the timer. A frame already requested can't be cancelled that way, so it may
 run `flush` with nothing to write, which doesn't count as a flush for the interval.
 
+**Quiet (stall).** The dot blinks the same whether the model works or the line went dead: the Bridge's idle `: ping`
+never reaches EventSource's JS, and a running tool sends nothing between its start and end. So a running turn that
+has had no event for a while says so (`stage_stall.js`; the code says "stall" — `stallOf`, `.ts-stall`,
+`data-stall` — the user reads "quiet": `liveSlots().quiet` and `stage_model.js QUIET_MS` are other things). Alive is
+any `stage_view.js` call a turn event drives (`turnStarted`, the generation and tool events, a chunk, a notice, a
+steer, a card, a place, `questionRefs`; a replay's count too). Kind A (streamed, or between steps) reads "quiet 0:40 ·
+no new events" from 30 s, louder from 90 s; kind B (no token yet in the step; a joiner counts from the snapshot's
+generation age, `delivery_line.js genAge`) reads "thinking quietly 0:50 · no tokens yet" from 45 s, louder from 3 min.
+A phone shows the short text. Nothing is said while a tool runs (its own clock, `.ts-tool-clock`, from 10 s instead),
+a blocking card waits, the live timing line has a note (a retry, plugins' setup: `live_timing.js note`), the turn has
+ended, or for 5 s after the page shows again (`visibilitychange`). The open session's stream not live for a second
+(`streamControl` gone: `workerGone` until the resync streams again) reads "reconnecting… · events paused" and wins.
+It ticks on the live timing line's clock (app.js `createLiveTurn`'s `onTick` → `turnDom.tick`; 200 ms, then 1 s) and
+writes only when its text changes. Expanded, it is a right-aligned span in the now row, its tint by level
+(`.ts-now[data-stall]`); where the now row doesn't show (a collapsed stage, a plain turn's), its short text follows
+the timing line in the status row (`.ts-stall-head`). Hooks: `.turn-stage.stalled` and `data-stall` (1, 2, net) on
+the stage's root. The dot keeps blinking meanwhile.
+
 ## Stale answers
 
 The page switches sessions, reopens a popover or asks again while a fetch is out. An answer for the old ask must be
@@ -347,7 +365,7 @@ uses `latest.js`.
 |---|---|---|
 | The hub, `GET /api/events` (`data.js openEvents`) | app.js `openSessionEvents` (scoped by `?dir`) | `snapshot` then `session` / `session_gone` → `applySessionEvent` → `allSessions`; EventSource reconnects itself (a fresh snapshot); `onClosed` (a proxy sign-in on reconnect): probe, reopen after `EVENTS_REOPEN_MS` |
 | A second hub stream, unscoped | `notifications.js` (`allEvents`) on a project's page | the Home Screen app's device tidy-up across projects |
-| The open session, `GET /api/sessions/:id/stream?from_seq=` (`data.js openStream`) | app.js `startStream` from `store.current.streamSeq` | events → `stream_handlers.js`. It closes itself on an error; the page resyncs (`resync`: a fresh render and a new stream from its cursor), once at once when it had opened, else after `STREAM_RETRY_MS` |
+| The open session, `GET /api/sessions/:id/stream?from_seq=` (`data.js openStream`) | app.js `startStream` from `store.current.streamSeq` | events → `stream_handlers.js`. It closes itself on an error; the page resyncs (`resync`: a fresh render and a new stream from its cursor), once at once when it had opened, else after `STREAM_RETRY_MS`. Meanwhile a turn the stage holds reads "reconnecting…" (Quiet, under Frames): the page has no other disconnected state, and the Bridge's `: ping` is invisible to it |
 | The participant stream | `participant.js connect` | listens for `STREAM_EVENTS`, which is `Web::ParticipantView::EVENTS` (checked by `spec/web/participant_view_spec.rb`); reopened from fresh data when CLOSED |
 
 A new event type for the owner page is a handler in `stream_handlers.js` (the participant view spec makes it decide

@@ -107,6 +107,16 @@ test("setNote: shown after the line until cleared; the same note again is no red
   assert.equal(timing.el.textContent, "turn 1 running · 1.0s");
 });
 
+test("note: what the running turn waits on, read by the stage's quiet signal", () => {
+  const { timing } = setup();
+  timing.start(T0);
+  assert.equal(timing.note, "");
+  timing.setNote("retrying in 4s");
+  assert.equal(timing.note, "retrying in 4s");
+  timing.setNote("");
+  assert.equal(timing.note, "");
+});
+
 test("finish: the line stops with its elapsed time (canceled says so), the ticker and the active turn go", () => {
   const { timing, page } = setup();
   timing.start(T0, "T1");
