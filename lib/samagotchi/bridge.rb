@@ -63,6 +63,44 @@ module Samagotchi
   # * Optional at runtime: this module is never loaded unless explicitly
   #   engaged as a transport.
   class Bridge
+    ENGINE_CALLS = {
+      active_cancel_controller: "turn-state monitor",
+      annotate_question: "question-desk control",
+      announce: "event-log monitor",
+      answer_question: "question-desk control",
+      cancel_current_turn!: "turn cancellation",
+      cancel_question: "question-desk control",
+      command_registry: "startup-built registry",
+      cut_for_steer: "steer-cut coordination",
+      drop_enqueued_id: "turn-state monitor",
+      enqueued_id?: "turn-state monitor",
+      event_count: "observer-registry monitor",
+      forget_enqueued_id: "turn-state monitor",
+      generation_snapshot: "generation-phase snapshot",
+      guardrail_warning: "startup-set warning reader",
+      init_tasks: "plugin-task monitor",
+      input_epoch: "waiting-steer monitor",
+      last_answer_message: "message snapshot under event lock",
+      messages_checkpoint: "replace-only message copy",
+      pending_question: "question-desk monitor",
+      plugin_warning: "warning-state reader",
+      recap: "recap-job reference",
+      recap_override: "session-setting reader",
+      relay_desk: "relay-store reference; status is monitor-protected",
+      request_recap: "idle-recap monitor",
+      reserve_enqueued_id: "turn-state monitor",
+      "running_turn_messages=": "callback writer; Bridge lifecycle",
+      saved_recap: "recap mutex; replace-only session messages",
+      session: "session reference; messages are replace-only",
+      session_state_snapshot: "snapshot; event lock for consistency",
+      stats_snapshot: "stats snapshot; may probe model",
+      steer_cut_after: "per-read model setting",
+      subscribe: "observer-registry monitor",
+      synchronize_events: "event-log monitor",
+      turn_running?: "turn-state monitor",
+      unsubscribe: "observer-registry monitor"
+    }.freeze
+
     DEFAULT_BIND = "127.0.0.1"
     DEFAULT_RING_CAPACITY = 256
     DEFAULT_HEARTBEAT_INTERVAL = 15.0
