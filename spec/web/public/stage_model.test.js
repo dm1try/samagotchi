@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  chipLabelText, FLASH_MARKS, flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stageCollapsed, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
@@ -438,6 +438,13 @@ test("miniToolText: the running call only on a collapsed stage, its command as t
   assert.deepEqual(miniToolText({ collapsed: true, tool: { name: "read", title: "a.rb" } }), { text: "read a.rb", title: "" });
   assert.deepEqual(miniToolText({ collapsed: false, tool }), { text: "", title: "" });
   assert.deepEqual(miniToolText({ collapsed: true, tool: null }), { text: "", title: "" });
+});
+
+test("stageCollapsed: the user's choice, unless a ref's show-in-turn opened the stage", () => {
+  assert.equal(stageCollapsed({ choice: true, revealed: false }), true);
+  assert.equal(stageCollapsed({ choice: false, revealed: false }), false);
+  assert.equal(stageCollapsed({ choice: true, revealed: true }), false);
+  assert.equal(stageCollapsed({ choice: false, revealed: true }), false);
 });
 
 test("MARKS and FLASH_MARKS: an ended phase's mark, a flash's mark", () => {
