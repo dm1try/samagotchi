@@ -636,14 +636,11 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(File.read(plugin)).to end_with("# mine\n")
     end
 
-    it "says a record's class-file hooks no longer load, once, and leaves them" do
+    it "says nothing of a record's class-file hooks, and leaves them" do
       install_external("old-hooks")
       LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "watch.rb" => "class Watch; def call(_e) = nil; end\n" })
       _, rows = json_rows
-      expect(finding_rows(rows, "old-hooks").map { |r| [r["level"], r["status"]] }).to eq([[
-        "warn", "warn hooks-retired hooks/: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS} " \
-                "(fix: chi bundle upgrade old-hooks once its source hooks from plugin.rb, or chi bundle uninstall old-hooks)"
-      ]])
+      expect(finding_rows(rows, "old-hooks")).to be_empty
       expect(File.exist?(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "old-hooks", "hooks", "watch.rb"))).to be(true)
     end
 

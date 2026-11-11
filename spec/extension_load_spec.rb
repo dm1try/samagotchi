@@ -38,39 +38,17 @@ RSpec.describe Samagotchi::ExtensionLoad do
     expect(extension_load.loading?).to be false
   end
 
-  describe "a record that still has class-file hooks (a 0.157 install)" do
-    around do |example|
-      Dir.mktmpdir("ext-retired") { |tmp| with_config_home(File.join(tmp, "config")) { example.run } }
-    end
+  # A 0.157 install's record may still list class-file hooks: chi loads none.
+  it "loads none of a record's class-file hooks, and adds no failure for them" do
+    Dir.mktmpdir("ext-retired") do |tmp|
+      with_config_home(File.join(tmp, "config")) do
+        failures = Samagotchi::Guardrails::LoadFailures.new
+        LegacyHooksRecord.legacy_hooks_record("old", hooks: { "g.rb" => "class G; def call(e) = raise('ran'); end\n" })
+        registry = described_class.new(hook_failures: failures).hooks
 
-    let(:failures) { Samagotchi::Guardrails::LoadFailures.new }
-
-    it "loads none of them and adds one not-required failure per record, in the retired words" do
-      LegacyHooksRecord.legacy_hooks_record("old", hooks: { "g.rb" => "class G; def call(e) = raise('ran'); end\n",
-                                                            "h.rb" => "class H; end\n" })
-      registry = described_class.new(hook_failures: failures).hooks
-
-      expect(registry.bundle_hook_names(:after_turn)).to eq([])
-      expect(failures.list.map { |f| [f.what, f.reason, f.required] })
-        .to eq([["hooks (bundle old)", Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS, false]])
-      expect(failures.required).to eq([])
-    end
-
-    it "says nothing of an empty hooks map or an empty hooks/ dir" do
-      LegacyHooksRecord.legacy_hooks_record("empty", hooks: {})
-      FileUtils.mkdir_p(File.join(Samagotchi::MemoryPaths.bundles_dir, "empty", "hooks"))
-      described_class.new(hook_failures: failures).hooks
-
-      expect(failures.list).to eq([])
-    end
-
-    it "is silent for a hooks-only record whose manifest.json doesn't read (the plugin loader and the rules report theirs)" do
-      dir = File.join(Samagotchi::MemoryPaths.bundles_dir, "broken")
-      FileUtils.mkdir_p(File.join(dir, "hooks"))
-      File.write(File.join(dir, "manifest.json"), "{ not json")
-      described_class.new(hook_failures: failures).hooks
-
-      expect(failures.list).to eq([])
+        expect(registry.bundle_hook_names(:after_turn)).to eq([])
+        expect(failures.list).to eq([])
+      end
     end
   end
 

@@ -10,7 +10,7 @@ require "support/test_kernel"
 require "support/legacy_hooks_record"
 
 # An installed record that still has class-file hooks (a 0.157 install):
-# chi loads none of them and says so at the first turn.
+# chi loads none of them.
 RSpec.describe Samagotchi::Engine, "class-file bundle hooks" do
   let(:tmpdir) { Dir.mktmpdir("engine-bundle-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::Engine, "class-file bundle hooks" do
     events
   end
 
-  it "loads none of a record's hooks and says so at the first turn, tool calls still running" do
+  it "loads none of a record's hooks, tool calls still running" do
     LegacyHooksRecord.legacy_hooks_record(
       "old-guard", hooks: { "guard.rb" => { text: "class Guard; def call(e) = e[:guardrail].deny!('old guard'); end\n",
                                             meta: { "event" => "before_tool_call", "on_error" => "fail_closed" } } }
@@ -57,10 +57,7 @@ RSpec.describe Samagotchi::Engine, "class-file bundle hooks" do
     engine.guardrail_failures.check(verdict)
     expect(verdict).not_to be_deny
 
-    warnings = first_turn_events(engine).select { |event| event[:type] == :guardrail_warning }
-    expect(warnings).to eq([{ type: :guardrail_warning,
-                              message: "hooks (bundle old-guard) failed to load " \
-                                       "(#{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS})" }])
+    expect(first_turn_events(engine).map { |event| event[:type] }).not_to include(:guardrail_warning)
   end
 
   it "says nothing for a record whose hooks/ dir is empty, or with no bundles dir" do

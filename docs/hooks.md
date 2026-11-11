@@ -676,11 +676,9 @@ installs or loads them:
   `--dry-run` too; `chi bundle check` reports it as `hooks-retired`. An empty
   `hooks: {}` is fine.
 - A bundle an older chi installed with hooks keeps its memories, rules, plugin
-  and scripts. Its hooks don't load: the first turn says so (`hooks (bundle X)
-  failed to load (class-file bundle hooks are retired: …)`, not a required
-  failure, so tool calls still run), `chi bundle status X` lists them under
-  `Hooks (N): not loaded`, and `chi update` adds a `hooks-retired` row for a
-  bundle chi doesn't ship.
+  and scripts. Its hooks don't load, and nothing says so any more (chi 0.158 to
+  0.166 announced them at the first turn, in `chi bundle status` and in
+  `chi update`): reinstall or upgrade the bundle to clear them.
 - The next install or upgrade from a source without hooks removes the old
   `hooks/` (an edited hook, or a file the record doesn't know, is copied to
   the trash first; a dev link never): `Removed (chi no longer loads

@@ -17,8 +17,7 @@ module Samagotchi
       # A bundle as this chi reads it now (what chi bundle status prints):
       # its stored record, the scope it resolves to (scope_error when it
       # can't), the folder its files belong in, what each file looks like on
-      # disk, its installed plugin, the class-file hooks its record still
-      # has (retired_hooks: they don't load), and its needs
+      # disk, its installed plugin, and its needs
       # with what this process's PATH found. The +files+ entries and +plugin+
       # stay Hashes: their fields differ per case (an unchecked file has no
       # paths at all). An entry's behind is its FileStanding::Behind, nil for a
@@ -27,7 +26,7 @@ module Samagotchi
       # rules and scripts: each recorded one by name, "ok", "modified" or
       # "missing" (asset_states).
       Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
-                           :rules, :scripts, :retired_hooks, :needs)
+                           :rules, :scripts, :needs)
 
       # A scope this chi can't resolve (a newer chi's, a hand edit) isn't
       # guessed: scope_error says so, target_dir is nil and each file is
@@ -75,24 +74,13 @@ module Samagotchi
                    target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
                    rules: asset_states(provenance.guardrails_dir, :rule, bundle.guardrails),
                    scripts: asset_states(provenance.scripts_dir, :script, bundle.scripts),
-                   retired_hooks: retired_hooks(provenance, bundle), needs: needs_status(bundle))
+                   needs: needs_status(bundle))
       end
 
       # A FileState digest as the Report has it: nil for none, or one that
       # can't be read (unreadable says which).
       def self.digest_or_nil(digest) = digest == :unreadable ? nil : digest
       private_class_method :digest_or_nil
-
-      # The class-file hooks the record still has (a 0.157 install's; chi
-      # loads none, Manifest::HooksRetired), each "present" or "missing" in
-      # hooks/, by name; {} for none (compat shim retired_class_file_hooks:
-      # Compat::SHIMS).
-      # @return [Hash{String => String}]
-      def self.retired_hooks(provenance, bundle)
-        bundle.hooks.keys.sort.to_h do |file|
-          [file, File.exist?(File.join(provenance.hooks_dir, file)) ? "present" : "missing"]
-        end
-      end
 
       # Each recorded rule or script: "missing" (not there), "modified" (its
       # AssetState is edited: the next install replaces it, a copy kept in

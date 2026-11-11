@@ -114,10 +114,11 @@ answers it, since it is keyed on the whole command you saw: `git branch -D x && 
 once, session and repo, while `git merge y && git push` offers once, as `git-merge` offers only once and its rule.
 Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
 [child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
-The file is a list of entries, or a versioned store (`{"version": 1, "approvals": [...]}`,
-`Approvals::FORMAT`): chi reads both, and a write keeps the shape it read (a versioned store keeps its version, the
-keys this chi doesn't know and an entry with no `scope`). A missing file or a list is written as a list until 0.167,
-since chi 0.165 sets a versioned store aside; from 0.167 it is written versioned (restart sessions from before 0.166).
+The file is a versioned store (`{"version": 1, "approvals": [...]}`, `Approvals::FORMAT`); a write keeps its version,
+the keys this chi doesn't know and an entry with no `scope`. The list of entries chi 0.166 and before wrote is read
+too, and rewritten as the versioned store (under the store's lock) on that first read; a list chi can't write back
+(a read-only state dir) is read as it is. Chi 0.165 and before set a versioned store aside, so restart their sessions
+(`chi sessions restart`); a downgrade to 0.165 or before moves the store to a recoverable `approvals.json.corrupt-*`.
 A file that doesn't parse, or a versioned store whose `approvals` isn't a list, is moved aside to
 `approvals.json.corrupt-<UTC time>` with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
@@ -1487,7 +1488,7 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
   that fails to load (missing, syntax error, an unmet `requires_chi`, or for a
   plugin a sha256 that differs from the installed one) makes chi deny
   every tool call. (An older chi's class-file bundle hooks don't load at all,
-  `fail_closed` or not: a not-required failure, [hooks.md](hooks.md#class-file-hooks-are-retired).) A fail-closed hook that raises when called denies that call.
+  `fail_closed` or not, [hooks.md](hooks.md#class-file-hooks-are-retired).) A fail-closed hook that raises when called denies that call.
 - Other hooks stay fail-open; a load failure is a warning.
 - Every load failure is shown once, at the start of the first turn
   (`guardrails> …` in the terminal, a red line on the web).

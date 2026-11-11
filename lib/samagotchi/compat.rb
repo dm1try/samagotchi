@@ -19,18 +19,10 @@ module Samagotchi
                files: ["lib/samagotchi/bridge/card_store.rb"],
                what: "CardStore#seed_v1 reads a cards.json from before the turn log; its comment says a retention " \
                      "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
-      Shim.new(id: :retired_class_file_hooks, added_in: "0.158.0", remove_after: "0.166.0",
-               files: ["lib/samagotchi/extension_load.rb", "lib/samagotchi/memory_bundle/status.rb",
-                       "lib/samagotchi/bundle_command/installed_check.rb"],
-               what: "a 0.157 install record's class-file hooks: announced as not loading, shown and checked until " \
-                     "an upgrade or uninstall clears them (installed state, not protocol)"),
-      Shim.new(id: :approvals_array_read, added_in: "0.166.0", remove_after: nil,
+      Shim.new(id: :approvals_array_read, added_in: "0.166.0", remove_after: "0.167.0",
                files: ["lib/samagotchi/guardrails/approvals.rb"],
-               what: "Approvals#parse reads approvals.json as the list 0.165 and before write, beside the versioned store"),
-      Shim.new(id: :approvals_array_write, added_in: "0.166.0", remove_after: "0.166.0",
-               files: ["lib/samagotchi/guardrails/approvals.rb"],
-               what: "Approvals#update writes a list (or no file) back as a list, since a 0.165 reader sets a " \
-                     "versioned store aside; from 0.167 a write is versioned (and the corpus records that)")
+               what: "Approvals#parse reads approvals.json as the list 0.165 and before write, beside the versioned " \
+                     "store, and #version_list rewrites it versioned on that first read")
     ].freeze
 
     module_function

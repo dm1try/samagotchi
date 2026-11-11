@@ -220,30 +220,44 @@ RSpec.describe "the recorded compatibility corpus" do
     version = corpus_version
     expect(version).not_to be_nil, "record a compatibility corpus with release:bump"
 
-    expect_corpus_read(File.join(compat_root, version), version, since: live_files_after)
+    # A copy: a reader may rewrite what it reads (a list of approvals
+    # becomes the versioned store), and the corpus stays as recorded.
+    Dir.mktmpdir("chi-compat-read-") do |tmp|
+      FileUtils.cp_r(File.join(compat_root, version), tmp)
+      expect_corpus_read(File.join(tmp, version), version, since: live_files_after)
+    end
   end
 
-  # 0.165.0 wrote approvals.json as a list; a later chi writes it versioned.
-  describe "0.165.0's approvals" do
-    let(:recorded) { File.join(compat_root, "0.165.0", "guardrails", Samagotchi::Guardrails::Approvals::FILE) }
+  # 0.165.0 and 0.166.0 wrote approvals.json as a list; today's chi reads
+  # it and rewrites it versioned on that first read.
+  %w[0.165.0 0.166.0].each do |list_version|
+    describe "#{list_version}'s approvals" do
+      let(:recorded) { File.join(compat_root, list_version, "guardrails", Samagotchi::Guardrails::Approvals::FILE) }
+      let(:path) { File.join(dir, Samagotchi::Guardrails::Approvals::FILE) }
+      let(:dir) { Dir.mktmpdir("chi-compat-approvals-") }
 
-    def expect_approvals_read(dir)
-      warnings = []
-      approvals = Samagotchi::Guardrails::Approvals.new(dir: dir, warn: ->(msg) { warnings << msg })
-      expect(approvals.entries.map { |entry| entry["scope"] }).to eq(%w[session rule])
-      expect(approvals.match(compat_ask("git push  origin main", "git-push"))).to include("scope" => "session")
-      expect(approvals.match(compat_ask("rm -rf dist", "rm-recursive"))).to include("scope" => "rule")
-      expect(warnings).to be_empty
-    end
+      after { FileUtils.rm_rf(dir) }
 
-    it "reads as recorded" do
-      expect_approvals_read(File.dirname(recorded))
-    end
+      def expect_approvals_read(dir)
+        warnings = []
+        approvals = Samagotchi::Guardrails::Approvals.new(dir: dir, warn: ->(msg) { warnings << msg })
+        expect(approvals.entries.map { |entry| entry["scope"] }).to eq(%w[session rule])
+        expect(approvals.match(compat_ask("git push  origin main", "git-push"))).to include("scope" => "session")
+        expect(approvals.match(compat_ask("rm -rf dist", "rm-recursive"))).to include("scope" => "rule")
+        expect(warnings).to be_empty
+      end
 
-    it "reads with its entries in a versioned store" do
-      Dir.mktmpdir("chi-compat-approvals-") do |dir|
-        File.write(File.join(dir, Samagotchi::Guardrails::Approvals::FILE),
-                   JSON.generate("version" => 1, "approvals" => JSON.parse(File.read(recorded))))
+      it "reads as recorded, and is versioned after that read" do
+        FileUtils.cp(recorded, path)
+        expect_approvals_read(dir)
+        stored = JSON.parse(File.read(path))
+        expect(stored).to include("version" => 1)
+        expect(stored["approvals"]).to eq(JSON.parse(File.read(recorded)))
+        expect_approvals_read(dir)
+      end
+
+      it "reads with its entries in a versioned store" do
+        File.write(path, JSON.generate("version" => 1, "approvals" => JSON.parse(File.read(recorded))))
         expect_approvals_read(dir)
       end
     end

@@ -359,9 +359,8 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   chi no longer fires, a `ctx`/`chi` call the API lacks, a reference to chi's
   internals that this chi no longer has (`Samagotchi::OldInternal::Thing is gone from this chi, so this bundle may
   fail` — a name that still resolves gets no row, so a bundle reaching `Samagotchi::Log` isn't warned about on every
-  update), a name chi now ships, a rule or plugin edited since it was installed (it
-  doesn't load), or class-file hooks an older chi installed (`hooks-retired`: they no longer load; `chi bundle upgrade
-  NAME` once its source hooks from `plugin.rb`, or `chi bundle uninstall NAME`). What only an author can act on (shas, unlisted files, tests, a
+  update), a name chi now ships, or a rule or plugin edited since it was installed (it
+  doesn't load). What only an author can act on (shas, unlisted files, tests, a
   missing `requires_chi`, its floor, `trust_level`) is left out, and so are
   profiles. A clean bundle gets no row beyond its `skipped (not from chi)`.
   - **They fail nothing:** an error row too has `failed: false` and leaves the exit
