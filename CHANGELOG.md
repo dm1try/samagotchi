@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web: in a session the running turn's stage and the composer are as wide as the conversation's column (at most
+  960 px, centred), so a wide window no longer draws them wider than the messages above.
+
 ### Fixed
 
 - `chi bundle list`, `status` and `diff`: an extra argument is refused (exit 2) instead of ignored.
