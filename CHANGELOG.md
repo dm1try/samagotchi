@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.167.0] - 2026-11-11
+
 ### Added
 
 - Objectives: a move says where its objective stands, `progress` (the default), `blocked` or `done` (the `objectives`
@@ -21,7 +23,8 @@ and commands may change between minor versions. How releases are made:
   participant's).
 - Objectives: the tracker, `/objectives track`: one side request reads the session's record and says where each active
   objective stands (`done`, `progress`, `blocked` or `no sign`, with what in the record shows it), as a card and as
-  `track: …` under each objective, beside the agent's own moves. Information only, on `objectives.check_model`, at most
+  `track: …` under each objective, beside the agent's own moves; in chi web, "Where are we?" at the list's foot and on
+  the `no move recorded` line. Information only, on `objectives.check_model`, at most
   8 objectives per read. `objectives.tracker: on` (default `off`) also runs it by itself after a turn of yours that did
   work and recorded no move; your next turn cancels it. With a hosted `check_model` that sends the session's record off
   the machine after such a turn, without a tap.
@@ -42,10 +45,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: the Invite form's note on binding a link says "their account", as its field and `chi share --identity` do,
   not "their email".
-- chi web on iPhone: the composer, the all view's search and the rename field ask Safari not to offer its AutoFill
-  Contact bar (as the cards' text fields already did).
-- chi web on iPhone: the composer no longer gets Safari's "AutoFill Contact" bar after a picks note or the invite form
-  has been shown (every text field now says it isn't a contact field).
+- chi web on iPhone: no text field gets Safari's "AutoFill Contact" bar any more (the composer, the all view's search,
+  the rename field, and the composer after a picks note or the invite form has been shown).
 - chi web's top bar: the all-sessions header (search, count, archived, Select) moves to a line of its own with the bell
   where it doesn't fit beside the sessions pill (about 601-760px wide) instead of covering the pill's end; on a phone the
   project chip cuts its name with an ellipsis rather than pushing "all" under the pill (a 320px start page with the strip
@@ -65,6 +66,8 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle status`, `diff` and `list`: an unknown flag is refused (exit 2) as for `install`, instead of being dropped
   and its value read as the bundle's name (`chi bundle status --format json` looked for a bundle `json`); `--help`
   prints their usage.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.166.0] - 2026-11-11
 
@@ -6211,7 +6214,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.166.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.167.0...HEAD
+[0.167.0]: https://github.com/dm1try/samagotchi/compare/v0.166.0...v0.167.0
 [0.166.0]: https://github.com/dm1try/samagotchi/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/dm1try/samagotchi/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/dm1try/samagotchi/compare/v0.163.0...v0.164.0

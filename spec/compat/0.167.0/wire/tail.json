@@ -1,0 +1,177 @@
+{
+  "body": {
+    "answer": {
+      "content": "It says compat.",
+      "role": "model"
+    },
+    "cards": [
+      {
+        "calls": 1,
+        "current": false,
+        "hook": "compat",
+        "in_turn": true,
+        "iteration": 1,
+        "of_turn": "compat-turn",
+        "opening_id": "compat-turn",
+        "text": "compatibility corpus",
+        "turns_since": 0,
+        "type": "hook_notice"
+      }
+    ],
+    "event_id": "12-0c0ffee0",
+    "event_seq": 12,
+    "session_id": "compat-wire",
+    "session_state_snapshot": {
+      "context_status": null,
+      "event_id": "12-0c0ffee0",
+      "event_seq": 12,
+      "last_prompt": "compatibility corpus",
+      "llm_context": {
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_source": "config",
+        "budget_tokens": null,
+        "budget_where": "llm_context.budget_tokens",
+        "own": null,
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy"
+      },
+      "message_count": 5,
+      "metrics": {
+        "active_tools": [],
+        "active_turn": null,
+        "cancellations": 0,
+        "capped": 0,
+        "context": {
+          "at": null,
+          "source": null,
+          "used_tokens": null,
+          "window_source": null,
+          "window_tokens": null
+        },
+        "cuts": 0,
+        "gen_latency_ms": 1000,
+        "iterations_total": 0,
+        "last_activity_at": "2026-01-01T00:00:00Z",
+        "memory_index": {
+          "project": {
+            "lines": 1,
+            "tokens": 6
+          },
+          "system": {
+            "lines": 7,
+            "tokens": 131
+          }
+        },
+        "model_segments": [],
+        "profile": null,
+        "profile_source": null,
+        "retries": 0,
+        "served_model": null,
+        "served_model_for": null,
+        "session_duration_ms": 1000,
+        "session_id": "compat-wire",
+        "started_at": "2026-01-01T00:00:00Z",
+        "thinking_dropped": 0,
+        "tokens": {
+          "avg_decode_tps": null,
+          "cache_write_sum": 0,
+          "cached_sum": 0,
+          "completion_sum": 6,
+          "cost_estimate_sum": 0,
+          "cost_sum": 0,
+          "decode_ms_sum": 1000,
+          "decode_tokens_sum": 0,
+          "last_decode_tps": null,
+          "last_prefill_tps": null,
+          "prompt_sum": 0,
+          "reasoning_sum": 0,
+          "reprefill_sum": 0,
+          "source": "estimate",
+          "tps_source": null
+        },
+        "tool_calls_by_tool": {
+          "read": 1
+        },
+        "tool_calls_total": 1,
+        "tool_errors": 0,
+        "tool_records": [
+          {
+            "call_index": 1,
+            "completed_at": "2026-01-01T00:00:00Z",
+            "duration_ms": 1000,
+            "id": "compat-turn:1:1",
+            "iteration": 1,
+            "started_at": "2026-01-01T00:00:00Z",
+            "status": "ok",
+            "tool": "read",
+            "turn_id": "compat-turn"
+          }
+        ],
+        "turn_records": [
+          {
+            "cached_tokens_sum": 0,
+            "capped": 0,
+            "completed_at": "2026-01-01T00:00:00Z",
+            "completion_tokens": 6,
+            "context_used_tokens": null,
+            "continue": false,
+            "cuts": 0,
+            "decode_ms": 1000,
+            "decode_tokens": 0,
+            "decode_tps": null,
+            "duration_ms": 1000,
+            "gen_ms": 1000,
+            "generations": 2,
+            "id": "compat-turn",
+            "iterations": 0,
+            "model": null,
+            "model_ref": "compat:model",
+            "prefill_tps": null,
+            "prompt_tokens": null,
+            "prompt_tokens_max": null,
+            "prompt_tokens_sum": 0,
+            "reasoning_tokens": 0,
+            "resumed": false,
+            "retries": 0,
+            "started_at": "2026-01-01T00:00:00Z",
+            "status": "completed",
+            "token_source": "estimate",
+            "tool_calls": 1,
+            "tool_errors": 0,
+            "tps_source": null
+          }
+        ],
+        "turns": 1
+      },
+      "model_name": "compat:model",
+      "muted_memory_names": [],
+      "parent_id": null,
+      "participants": [],
+      "pending_question": null,
+      "preloaded_memory_names": [],
+      "prompt_notes": [],
+      "reasoning_history": null,
+      "recap_enabled": false,
+      "recap_inactivity_seconds": null,
+      "recap_min_user_turns": null,
+      "served_expected_by": null,
+      "served_model": null,
+      "served_model_for": null,
+      "status": "idle",
+      "thinking": {
+        "level": "default",
+        "own": null,
+        "source": null
+      },
+      "title": null,
+      "toolkit": null,
+      "used_memory_names": []
+    },
+    "working_directory": "/compat-fixture"
+  },
+  "route": "tail",
+  "status": 200
+}
