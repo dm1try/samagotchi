@@ -236,6 +236,18 @@ A second tap while one runs asks nothing. Its cost is in the session's side line
 local server it answers after the running request. A participant can't reach it. See
 [internals/objectives.md](internals/objectives.md#check-this).
 
+**The tracker** (`/objectives track`, or **Where are we?** in the web) is Check this for the whole list: one side request
+reads the same record and answers one line per active objective, `done`, `progress`, `blocked` or `no sign`, with what in
+the record shows it. It reads at most 8 active objectives (it says how many it left out), on the same model as Check
+this. The lines come as a card and as `track: …` under each objective, beside the agent's own moves: where they disagree
+(the agent claims done, the tracker sees no sign) is the thing to look at. A reading goes stale once the objective is
+reworded or the conversation moves on. With `objectives.tracker: on` it also runs by itself after a turn of yours (a
+prompt or a wake, not a participant's, not a `--non-interactive` run) that edited, wrote or ran a command and recorded no
+move, while an objective is active; your next turn cancels a read still out. **With a hosted `objectives.check_model`
+that sends up to 24,000 characters of the session's record off the machine after such a turn, without a tap.** It is
+information only, as Check this is, can't open a file or run anything, and is refused during a participant's turn. See
+[internals/objectives.md](internals/objectives.md#the-tracker).
+
 **In the web** a session with a list has a strip above the conversation: its objectives and how many are done (a phone
 shows one line, the one being worked on). A tap opens the list, where you add, mark done, drop, undo and tap a text to
 reword it, with no message and no turn. Mid-turn the strip has the change and says it applies after this turn. Each list

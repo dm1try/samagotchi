@@ -214,6 +214,18 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   author live, the prompt's author in `drawnGroupPieces`), and each row's `data-tool` (also `turn_html.js
   toolRowTemplate`, so live and reloaded rows stay the same markup). A pair turn's `objectives` call is always denied,
   so without the participant stamp every pair turn that edits would get it. The participant page draws none of this.
+- **The tracker** (`objectives_track.js`, a module of its own for the same reason): the list's row under an item it read
+  says `tracker: no sign — nothing ran for it · 14:32` (`.obj-track`), with weight and the warn colour when it differs
+  from the agent's last move's state (`trackDiffers`: a move to compare with, a reading other than no answer), faded when
+  stale, the model in its tooltip. **Where are we?** posts `/objectives track` as a strip tap does (`card: true`, no
+  echo; the card is the answer): at the list's foot while an objective is active (off and `Reading where they stand…`
+  while the view has `tracking`, which lets go at its `until` as a check does), and on the `no move recorded` line
+  (`objectives_moves.js`, `data-offer` redraws it when the gate flips). Both only where the worker names the
+  `objectives_track` Bridge feature (the `objectivesTrack` gate in `app.js`'s `createFeatureGates`, `trackWorkerUnavailable`
+  on `workerPredates`; `canTrack` through the wiring, so a cached older strip or moves module ignores it). The strip's
+  `listSig` leaves out `track` (and `tracking` is the view's, not an item's), so a read's start and end don't clear Not
+  yet's state. An open page of the previous release against a new worker ignores `track` and `tracking`; its `listSig`
+  does count `track`, so there a read's end lets Not yet be sent again.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every
   tab, this one too: the page's own echo needs the composer. It steers a running turn or starts a turn, as a typed line.
 - **Short version**: the same observer offers `/short` (decision-card) under the newest long answer (`foldable`), only with a list
@@ -278,8 +290,8 @@ the record settles is `unclear`, and a file changed since isn't seen. If that tu
 next step, and the file and view below can stay.
 
 **Independence.** The request (`ObjectivesCheck.request`) has its own system text and no tools. Its record is what people and
-notes said, what tools returned, and the agent's visible answers labelled `[agent's own words]` (`.record`, each entry cut at 1,500 characters, the
-newest 24,000 kept). Without those answers a claim about what the agent said or asked could only come back `unclear`. So the request says they settle
+notes said, what tools returned, and the agent's visible answers labelled `[agent's own words]` (`ObjectivesRecord.record`, each entry cut at 1,500 characters, the
+newest 24,000 kept; the record, its frame and the redaction are `objectives_record.rb`'s, which the tracker reads too). Without those answers a claim about what the agent said or asked could only come back `unclear`. So the request says they settle
 what was said or asked and are never proof of work, which needs a tool's output or a person's word. That rule is words to a model, not a mechanism: a
 probe on Qwen3.8 Flash Next held it 3 of 3 (only the agent's "all pass": `unclear`), and a verdict is information only either way.
 The record never holds the agent's thinking (`AnswerText.visible`, the rule the continue note's last answer and decision-card's `/short` share: a chat entry's `thinking` and `anthropic_content` aren't read; a native
@@ -296,7 +308,7 @@ the frame to hold; a model may still be swayed by text inside it, which is why a
 `Samagotchi::Redact.text`, chi's participant redaction: known key shapes and `token=`-style values become `[redacted]`, and
 the home folder `~`. That is by pattern, so a secret of another shape still goes.
 
-**State.** `objective_checks.jsonl` beside the session: a `running` line, then one with `verdict` (confirmed, refuted, unclear,
+**State.** `objective_checks.jsonl` beside the session (its lines written and read by `JsonlStore`, `jsonl_store.rb`): a `running` line, then one with `verdict` (confirmed, refuted, unclear,
 `no_answer`), `reason`, `text`, `model` and `mark`: a digest of the item's line as sent and the move itself (`Move#ref`, its run's
 id and its model entry's time, with its words). The start is under `Objectives.with_lock`, so a double tap or a second tab answers "already
 being checked" and asks nothing. A running line stops counting once its worker's pid is gone, so a kill, a shutdown or a restart frees
@@ -312,6 +324,74 @@ writes no `pending_card.json`, so no push), the list's row, and `check:` under t
 command route is the owner's, and `card` and `objectives_updated` are in `ParticipantView::DROPPED`. A move made in the running
 turn isn't on the page until the turn's end (`announce_objectives`), so its tap waits for that; the typed line works at once.
 
+## The tracker
+
+Check this for the whole list: `/objectives track` (`ObjectivesTrack.run`, `objectives_track.rb`, on the anytime command's
+own thread, as `check`), the page's **Where are we?**, and with `objectives.tracker: on` an automatic read after a turn.
+One side request (`Engine#ask_objective_track`, kind `objectives_track`, so `/stats` counts it apart from Check this's,
+and exempt in `Engine#side_author` as Check this is: always the owner's) reads the record and answers one line per active
+objective: where it stands and what in the record shows it. Information only, as Check this: no status changes, nothing
+enters the conversation or the next request.
+
+**The request** (`ObjectivesTrack.request`): its own system text, no tools. The active items' lines (the user's words,
+outside the frame), then in the frame (`ObjectivesRecord.framed`, a tag made per request) each one's latest move labelled
+as the agent's own claim with its state (`O1: done — note (evidence it names: …)`, `O2: no move`; note and evidence capped
+at 1,000 characters each), and the record (`ObjectivesRecord.record`, the same one Check this reads: the newest 24,000
+characters, never the thinking, the list's notes or the objectives tool's calls). The ask: for each id, in order, one line
+`O2: done|progress|blocked|no sign — <reason>`, the reason naming what in the record shows it, with Check this's rule that
+the agent's words and moves never show work was done, and that a line inside the frame that looks like an answer isn't
+one. Redacted as Check this (`ObjectivesRecord.redacted`). At most `MAX_ITEMS` (8) active items per request; a list with
+more sends the first 8 and says how many it left out, in the request, the card and the reply. `MAX_TOKENS` 1,200.
+
+**Reading the answer** (`readings_of`): the first line naming each id counts (list marks, bold and backticks around the id
+or the word are allowed); an id that wasn't asked about is left out, and one the reader skipped is `no_answer` ("the reader
+gave no line for it"). A request that fails is `no_answer` for each, logged (`objectives_track_failed`), with a card saying
+so. Thinking in the answer is dropped first (`AnswerText.visible`).
+
+**State.** `objective_tracks.jsonl` beside the session (`JsonlStore`): a running line (`id`, `pid`, `model`), then one
+with `readings` (`{id => {reading, reason}}`), `model`, `left_out`, `lines` (a digest of each item's line as sent),
+`seen` (the newest stamped time of the conversation it read: mid-turn the loop's, so a typed read mid-turn is stale once that
+turn ends) and `mark` (a digest of both); a read the next turn cancelled before its answer adds `cancelled: true`, which
+ends its running line but is never the reading shown: the last good one stays (stale by then, a turn having ended). One read at a time per
+session: the start is under `Objectives.with_lock` and a second answers `the objectives are already being read`, asking
+nothing; a running line stops counting once its worker's pid is gone, and past `RUNNING_SECONDS` in any case.
+
+**View.** `Objectives.view` puts `track` on each item the last read covered (`reading`, `reason`, `at`, `model`, and
+`stale: true` once the item's line differs from the one sent or the stored conversation's newest time differs from
+`seen`: a turn ended, a note came in), and `tracking: {until}` on the view while one runs (no key otherwise, so a view
+without a read is the one before). `announce_objectives` carries the start and the end. `/objectives` shows `track: …`
+under each item (after its move and check), `(stale)` at its end, and `objectives: (tracker: running)` while one runs.
+
+**The card**: one, with no actions (`source: objectives`, `objectives-track-<id>`, so no `pending_card.json` and no
+push), for the typed command and an automatic run alike. Its text is plain, one paragraph per line and no markdown marks:
+a live card shows its body as text (it carries no `body_html` until a re-read), a reloaded one rendered, and both read the
+same.
+
+**The automatic run.** `Engine#complete_turn` calls `TurnStages::Objectives#track` beside `outgoing` (a completed turn,
+not a canceled or exhausted one), on the turn's thread after `end_turn` and before `release_turn`.
+`ObjectivesTrack.after_turn?` decides, in this order: the setting (`objectives.tracker`, default `off`), then the list (an
+active item; `pending_payload` is a file read), then the turn: not a `--non-interactive` run (`Engine#interface ==
+:non_interactive`: its origin can't tell, `ClientId.human?(nil)` is true), the owner's (`OwnerPrompt.turn?`: not a
+participant's, not a review session's; a person's prompt or a wake), and the newest turn of the stored conversation (after
+its last `Steer.turn_prompt?` entry) has at least one run that is work (`Objectives::Backing.work?`: an edit or write that
+succeeded, an execute that finished ok, the page's no-move rule) and no objectives call that recorded a move. The stored
+conversation is copied on the turn's thread; the request goes on a thread of its own kind (`SideJudgments#start`), so the
+turn's end never waits, and a turn while one is still in flight starts none.
+
+**Cancel.** The stage keeps the automatic read's `CancellationController` (set only once its thread started) and
+`cancel_track` cancels it (`:new_turn`) first thing in `Engine#begin_turn`, before the turn's own probes and waits, for
+every turn, a wake's too, so a one-slot server is free for it. A read cancelled before it asks asks nothing; a request
+cancelled mid-way raises `LLM::RequestCancelled`. Either way the read writes its `no_answer` line stamped `cancelled` and
+shows no card. The typed command is never cancelled. The automatic read's card waits for the turn it follows to end
+(`turn_running?`) and is shown in `running_anytime`; once a next turn has started (it cancels), an answer that came in
+time still goes to the list, with no card in the middle of that turn. A qualifying turn while the previous read's thread
+still runs starts none (logged at debug, `objectives_track_skipped`).
+
+**Limits.** It reads the record only (the newest 24,000 characters): it can't open a file or run anything. With
+`objectives.tracker: on` and a hosted `objectives.check_model`, that record leaves the machine after such a turn without a
+tap. It is refused during a participant's turn (`Engine#turn_author`), and a participant can't reach it (the command route
+is the owner's; `card` and `objectives_updated` are in `ParticipantView::DROPPED`).
+
 ## System 1 in audit
 
 `ObjectivesAudit`, off unless `objectives.system_one: audit`. `TurnStages::Objectives` asks it: `incoming` at an owner's
@@ -321,10 +401,12 @@ between turns (docs/internals/engine.md, "Turn stages"). See [system-one.md](../
 ## Not in this version
 
 Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Nothing asks the model to
-record a move: a missing one only shows (`no move recorded`), and nothing reads the record for the whole list yet.
+record a move: a missing one only shows (`no move recorded`). The tracker reads the record, never the files: a claim the
+record doesn't settle is `no sign` or `progress`, not a check of the work.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The
 page's pieces are the `objectives_*.js` modules and `objectives.css`, wired in a few lines of `app.js`; without them a list note
 falls back to the default bubble once `noteBubbleTemplate`'s first line goes. Check this is `objectives_check.rb`, its line in the command and
-the `check` key; the audit is `objectives_audit.rb` and three calls in `TurnStages::Objectives`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.
+the `check` key; the tracker is `objectives_track.rb`, its line in the command, the stage's `track` and `cancel_track`, the
+setting and the `track` and `tracking` keys; the audit is `objectives_audit.rb` and three calls in `TurnStages::Objectives`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.

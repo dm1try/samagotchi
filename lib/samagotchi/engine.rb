@@ -974,6 +974,9 @@ module Samagotchi
     # cross-thread state is set here and cleared in #release_turn only.
     def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil, revises: nil,
                    input_waiting: nil)
+      # The tracker's automatic read still out: any turn's start frees its
+      # request first, before this turn's own probes and waits.
+      @objectives_stage.cancel_track
       origin = TurnOrigin.of(origin)
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.

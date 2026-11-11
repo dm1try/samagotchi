@@ -3,6 +3,7 @@
 require_relative "note_delivery"
 require_relative "objectives"
 require_relative "objectives_check"
+require_relative "objectives_track"
 
 module Samagotchi
   # /objectives: with no arguments the session's list (Objectives), each
@@ -14,7 +15,7 @@ module Samagotchi
   # unabsorbed first. Nothing here saves the session.
   class ObjectivesCommand
     NAME = "/objectives"
-    USAGE = "usage: #{NAME} [set A | B | add TEXT | edit ID TEXT | done ID… | drop ID… | undo ID… | check ID] " \
+    USAGE = "usage: #{NAME} [set A | B | add TEXT | edit ID TEXT | done ID… | drop ID… | undo ID… | check ID | track] " \
             "(a text may end \"(done when: …)\"; lines work as | does)".freeze
     NONE = "no objectives; #{NAME} set A | B sets them".freeze
     BETWEEN_TURNS = "(an edit goes into the conversation between turns)"
@@ -26,6 +27,7 @@ module Samagotchi
     FOLDS = { Objectives::APPLIED => "Proposal applied", Objectives::DISMISSED => "Proposal dismissed" }.freeze
     DISMISS = "dismiss"
     CHECK = /\Acheck(?:\s|\z)/i
+    TRACK = /\Atrack\z/i
 
     # @param engine [Engine] #session, #session_state_dir
     def initialize(engine:)
@@ -39,6 +41,7 @@ module Samagotchi
       return run_line(args) if args.empty?
       # Not under the lock: a model request. Takes it only to start.
       return ObjectivesCheck.run(@engine, args.split(/\s+/, 2).last) if args.match?(CHECK)
+      return ObjectivesTrack.run(@engine) if args.match?(TRACK)
 
       locked(@engine.session) do
         card, was = args.match(CARD)&.captures
@@ -114,17 +117,20 @@ module Samagotchi
 
       dir = Session.session_dir(session.id, state_dir: @engine.session_state_dir)
       checks = ObjectivesCheck.view_of(dir, list)
-      pending = Objectives.pending_payload(dir)
-      pending ? "#{lines_of(list, checks)}\n#{BETWEEN_TURNS}" : lines_of(list, checks)
+      tracks, tracking = ObjectivesTrack.view_of(dir, list, session.messages)
+      text = lines_of(list, checks, tracks, tracking: !tracking.nil?)
+      Objectives.pending_payload(dir) ? "#{text}\n#{BETWEEN_TURNS}" : text
     end
 
-    def lines_of(list, checks = {})
-      ["objectives:", *list.items.flat_map { |item| item_lines(item, list.moves[item.id], checks[item.id]) }].join("\n")
+    def lines_of(list, checks = {}, tracks = {}, tracking: false)
+      ["objectives:#{" (tracker: running)" if tracking}",
+       *list.items.flat_map { |item| item_lines(item, list.moves[item.id], checks[item.id], tracks[item.id]) }].join("\n")
     end
 
-    def item_lines(item, move, check)
+    def item_lines(item, move, check, track)
       flag = move&.backing&.flag_words
-      ["  #{item.line}", *("    last move: #{move.line}" if move), *("    #{flag}" if flag), *("    #{ObjectivesCheck.line_of(check)}" if check)]
+      ["  #{item.line}", *("    last move: #{move.line}" if move), *("    #{flag}" if flag),
+       *("    #{ObjectivesCheck.line_of(check)}" if check), *("    #{ObjectivesTrack.line_of(track)}" if track)]
     end
   end
 end

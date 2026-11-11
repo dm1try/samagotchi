@@ -208,13 +208,14 @@ RSpec.describe Samagotchi::ObjectivesCommand do
   end
 
   it "answers the usage for a line that isn't one" do
-    ["nonsense", "set", "set  | ", "add", "done", "drop", "undo"].each do |args|
+    ["nonsense", "set", "set  | ", "add", "done", "drop", "undo", "track O1"].each do |args|
       output, status = run(args)
 
       expect(status).to eq(:error)
       expect(output).to eq(described_class::USAGE)
     end
     expect(files).to be_empty
+    expect(described_class::USAGE).to include("check ID | track")
   end
 
   it "refuses an edit in a session a one-turn chi run owns, with the note's own reason; a show still answers" do

@@ -262,6 +262,9 @@ module Samagotchi
 
       # Check this (ObjectivesCheck): a cheap configured model for its one side request; nil is the session's.
       Entry.new(key: "objectives.check_model", yaml_path: %w[objectives check_model], type: :string, default: nil, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
+      # The tracker (ObjectivesTrack): on, it also reads the list by itself after an owner's turn that did work and
+      # recorded no move (on objectives.check_model); off, only /objectives track and Where are we? do.
+      Entry.new(key: "objectives.tracker", yaml_path: %w[objectives tracker], type: :enum, default: "off", expose: %i[config], enum_values: %w[off on], lifecycle: :next_matching_turn_display_poll_write),
       # System 1 on the objectives (ObjectivesAudit): audit saves a yes/no per active objective on what comes in and goes
       # out, acted on by nothing; off (no conversation text goes to a System 1 host for it). Host and model: system_one.*.
       Entry.new(key: "objectives.system_one", yaml_path: %w[objectives system_one], type: :enum, default: "off", expose: %i[config], enum_values: %w[off audit], lifecycle: :next_matching_turn_display_poll_write),

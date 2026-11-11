@@ -74,6 +74,14 @@ module Samagotchi
         runs[0...position].select { |run| run.index > start }
       end
 
+      # Work for the tracker's turn gate (ObjectivesTrack.worked_without_move?),
+      # as the page's no-move mark counts it: an edit or write that succeeded,
+      # an execute that finished ok (a failed, denied, stopped one isn't; one
+      # handed over as a task still runs, and isn't either).
+      def self.work?(run)
+        edit?(run) || (run.call[:name].to_s == Tools::Execute::NAME && command_status(run) == OK)
+      end
+
       def self.edit?(run)
         return false unless CHANGES.include?(run.call[:name].to_s) && !ToolResponse.interrupted_text?(run.text)
 

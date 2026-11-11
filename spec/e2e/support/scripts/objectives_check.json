@@ -1,6 +1,9 @@
 {
   "delay": 0.01,
   "branches": [
+    {"when_last": "For each of O1, in that order", "iterations": [
+      {"text": "O1: done — the run printed it"}
+    ]},
     {"when_last": "Just print", "iterations": [
       {"text": "Printing.", "tools": [{"name": "execute", "arguments": {"command": "true", "description": "Print it"}}]},
       {"text": "Printed."}

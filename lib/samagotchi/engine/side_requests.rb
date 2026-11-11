@@ -41,8 +41,9 @@ module Samagotchi
       # command's ask_model between turns).
       # @return [String, nil]
       def side_author(kind)
-        # Check this is only ever the owner's, whichever turn runs as it ends.
-        return nil if kind.to_s == ObjectivesCheck::SOURCE
+        # Check this and the tracker are only ever the owner's, whichever turn
+        # runs as they end.
+        return nil if [ObjectivesCheck::SOURCE, ObjectivesTrack::SOURCE].include?(kind.to_s)
 
         # One read each of the published contexts (TurnState): any thread.
         running = turn_context

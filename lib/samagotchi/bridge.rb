@@ -761,7 +761,7 @@ module Samagotchi
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
-                WorkerLink::ACTIVITY_FEATURE].freeze
+                WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

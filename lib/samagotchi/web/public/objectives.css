@@ -39,6 +39,11 @@ button.obj-chip{cursor:pointer;font:inherit;font-size:13px;line-height:1.4;text-
 .obj-row-acts{flex:none;display:flex;gap:4px}
 .obj-check.refuted{color:var(--warn-text)}
 .obj-check.confirmed{color:var(--text-2)}
+/* The tracker's reading (objectives_track.js): words first; one that differs from the agent's last move gets weight, never colour alone; a stale one fades. */
+.obj-track.differs{color:var(--warn-text);font-weight:600}
+.obj-track.stale{opacity:.7}
+.obj-track-at{font-weight:400;color:var(--text-muted)}
+.obj-track-row{display:flex;justify-content:flex-end}
 .obj-act{padding:3px 10px;font-size:12px;border-radius:6px}
 .obj-act.ghost{background:var(--bg-raised);color:var(--text-2)}
 form.obj-row{align-items:center}
@@ -79,7 +84,9 @@ form.obj-row{align-items:center}
 /* A done move its turn's runs don't back (Objectives::Backing): muted words. */
 .obj-unbacked{font-size:12px;color:var(--text-muted);font-style:italic}
 /* The newest turn did work and recorded no move (objectives_moves.js), muted where a moves line goes. */
-.obj-nomove{font-size:12px;color:var(--text-muted);margin-bottom:-4px}
+.obj-nomove{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-bottom:-4px}
+@media (pointer:coarse){.obj-track-ask{min-height:36px}}
+.obj-panel.sheet .obj-track-row .obj-act{min-width:0;padding:0 12px}
 .obj-concerns .obj-pill{margin-right:4px}
 .obj-notyet{flex:none}
 .obj-moves:not(.newest) .obj-notyet{display:none}

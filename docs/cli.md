@@ -999,6 +999,11 @@ runs don't back, `not backed: the last command failed` or `not backed: edited af
 - `/objectives undo O1 [O2…]`: back to active, after a mistaken `done` or `drop`.
 - `/objectives check O1`: an independent read of O1's latest move, one side request; the verdict comes as a card and as
   `check: …` under the move. Information only: it edits nothing, and it is refused for an objective with no move or a dropped one, and during a participant's turn. See [Objectives](sessions.md#objectives).
+- `/objectives track`: the tracker, one side request reading the record for every active objective (at most 8); its
+  lines come as a card and as `track: …` under each objective (`(stale)` once the objective changed or the conversation
+  moved on), and the listing's first line says `(tracker: running)` while one runs. Information only; refused with no
+  active objective and during a participant's turn. `objectives.tracker: on` runs it by itself too. See
+  [Objectives](sessions.md#objectives).
 
 All of them run mid-turn too. An edit answers with the new list at once and goes into the conversation between turns.
 Refused while a `--non-interactive` run has the session, as `chi note` is.
