@@ -45,7 +45,7 @@ module CompatWire
   RUNNING_ROUTES = { "snapshot_running.json" => "snapshot" }.freeze
   SESSION_FILE = File.join("sessions", "#{SESSION_ID}.json").freeze
   FILES = [*IDLE_ROUTES.keys, *RUNNING_ROUTES.keys, SESSION_FILE].freeze
-  # How long a condition the recording waits on may take (it raises then).
+  # How long the recording waits for the held turn to reach its step and to end (it raises then).
   WAIT_SECONDS = 15
   ENV_KEYS = %w[XDG_CONFIG_HOME XDG_STATE_HOME SAMAGOTCHI_RECAP_ENABLED SAMAGOTCHI_CACHE_WARMUP
                 SAMAGOTCHI_UPDATE_NOTIFY SAMAGOTCHI_KEYCHAIN].freeze
@@ -193,16 +193,16 @@ module CompatWire
       session.save(state_dir: state_dir)
       replies[SESSION_FILE] = JSON.parse(File.read(Samagotchi::Session.session_file(SESSION_ID, state_dir: state_dir)))
 
-      kernel.hold!
+      # Held at its second step: the Bridge's observers have folded every
+      # event before it (delivery is synchronous), so the snapshot has the
+      # read and the working set; the queued prompt is in it once POST
+      # turn answers (announced under the event lock before the reply).
+      reached = kernel.hold!
       turn = Thread.new { engine.run_turn(session, "#{PROMPT} again", origin: { client_id: CLIENT_ID }, id: RUNNING_TURN_ID) }
-      wait_for("the running turn's read and working set") do
-        snap = bridge.snapshot
-        snap[:working_set] && Array(snap.dig(:current_turn, :parts)).any? { |part| part[:kind].to_s == "tool" && part[:duration_ms] }
-      end
+      reached.pop(timeout: WAIT_SECONDS) or raise Error, "compat wire: the running turn never reached its second step"
       queued = link.post_turn(prompt: QUEUED_PROMPT, client_id: CLIENT_ID, enqueued_id: ENQUEUED_ID, delivery: "queue")
       raise Error, "the queued prompt was refused: #{queued.status} #{queued.body}" unless queued.status == 202
 
-      wait_for("the queued prompt in the snapshot") { bridge.snapshot[:queued].any? }
       RUNNING_ROUTES.each { |name, route| replies[name] = reply(link, route) }
       kernel.release!
       turn.join(WAIT_SECONDS) or raise Error, "the running turn didn't end"
@@ -218,15 +218,6 @@ module CompatWire
   def reply(link, route)
     response = link.get_response(route)
     { "route" => route, "status" => response.status, "body" => JSON.parse(response.body) }
-  end
-
-  def wait_for(what)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + WAIT_SECONDS
-    until yield
-      raise Error, "compat wire: timed out waiting for #{what}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-      Thread.pass
-    end
   end
 
   # The kernel's collaborators, defined once chi is loaded.
@@ -262,14 +253,22 @@ module CompatWire
         emit.call(type: :hook_notice, hook: "compat", text: "compatibility corpus")
         self.llm_context_turn = Samagotchi::LLMContextForget::Turn.new(conversation: conversation, context: nil, turn_id: context.id)
         emit.call(type: :generation_started, iteration: 2)
-        @gate&.pop
+        if (gate = @gate)
+          @reached.push(true)
+          gate.pop
+        end
         emit.call(type: :generation_chunk, iteration: 2, content: CompatWire::ANSWER)
         emit.call(type: :generation_completed, iteration: 2)
         Samagotchi::LLM::ModelResult.new(text: CompatWire::ANSWER,
                                          conversation: conversation + [{ role: "model", content: CompatWire::ANSWER }])
       end
 
-      def hold! = (@gate = Queue.new)
+      # The next turn waits at its second step for #release!.
+      # @return [Queue] pushed once it waits there
+      def hold!
+        @gate = Queue.new
+        @reached = Queue.new
+      end
 
       def release!
         @gate&.push(true)
