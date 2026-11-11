@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.168.0] - 2026-11-11
+
 ### Changed
 
 - Stored approvals from chi 0.166 and before (a list in `guardrails/approvals.json`) are no longer read: such a file is
@@ -28,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   two muted lines), as it does live.
 - chi web: the opt-in reload check (`web.reload_check`) no longer reports every turn with a question as different.
 - `chi bundle list`, `status` and `diff`: an extra argument is refused (exit 2) instead of ignored.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.167.0] - 2026-11-11
 
@@ -6235,7 +6239,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.167.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.168.0...HEAD
+[0.168.0]: https://github.com/dm1try/samagotchi/compare/v0.167.0...v0.168.0
 [0.167.0]: https://github.com/dm1try/samagotchi/compare/v0.166.0...v0.167.0
 [0.166.0]: https://github.com/dm1try/samagotchi/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/dm1try/samagotchi/compare/v0.164.0...v0.165.0
