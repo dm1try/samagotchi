@@ -1408,9 +1408,13 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   "gem_path": "/Users/me/.gem/ruby/4.0.0:/Users/me/.local/share/mise/installs/ruby/4.0.7/lib/ruby/gems/4.0.0",
   "mise": "/opt/homebrew/bin/mise",
   "set_at": "2026-10-29T21:00:00Z",
-  "set_by_version": "0.132.0"
+  "set_by_version": "0.132.0",
+  "version": 1
 }
 ```
+
+(`version` is the file's format, `ChiHome::STATE_FORMAT`: a home.json without one is an older chi's, and a newer chi's
+keeps its version and the keys this chi doesn't know when the same home is set again.)
 
 - **Setting it.** `chi home set` records the Ruby your `chi` runs on and its gem path (a chruby shell's
   `GEM_HOME`/`GEM_PATH` are part of it: that is where its chi lives); `chi home set --ruby PATH` records another

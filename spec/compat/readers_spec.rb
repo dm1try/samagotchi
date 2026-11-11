@@ -3,9 +3,15 @@
 require "spec_helper"
 require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
+require "samagotchi/chi_home"
+require "samagotchi/child_move"
+require "samagotchi/context_sources"
 require "samagotchi/continue_intent"
+require "samagotchi/grants"
+require "samagotchi/guardrails"
 require "samagotchi/memory_bundle/installed_bundle"
 require "samagotchi/memory_bundle/provenance"
+require "samagotchi/participants"
 require "samagotchi/schedules"
 require "samagotchi/session"
 require "samagotchi/session_inbox"
@@ -91,6 +97,71 @@ RSpec.describe "the recorded compatibility corpus" do
 
     expect_live_files_read(sessions_dir, session_dir, version, since)
     expect_install_journal_read(root, version, since)
+    expect_store_files_read(sessions_dir, session_dir, version, since)
+    expect_home_read(root, version, since)
+  end
+
+  # The chi home (home.json) every chi launch reads, whichever chi wrote it.
+  def expect_home_read(root, version, since)
+    path = File.join(root, Samagotchi::ChiHome::FILE)
+    return unless recorded?(path, version, since)
+
+    expect(Samagotchi::ChiHome.read(path: path))
+      .to eq(Samagotchi::ChiHome::Record.new(ruby: "/compat-fixture/ruby/bin/ruby", gem_home: "/compat-fixture/gems",
+                                             gem_path: "/compat-fixture/gems", mise: "/compat-fixture/bin/mise",
+                                             set_at: "2026-01-01T00:00:00Z", set_by_version: version))
+  end
+
+  # An ask for +command+ under +rule+ in the corpus session, as the gate
+  # makes it (Guardrails::Targets).
+  def compat_ask(command, rule)
+    call = { name: "execute", content: command }
+    context = Samagotchi::Guardrails::Context.new(cwd: "/compat-fixture", session_id: "compat-session")
+    verdict = Samagotchi::Guardrails::Verdict.new(call: call).ask!("compatibility corpus", rule: rule, source: "config")
+    verdict.context = context
+    verdict.targets = Samagotchi::Guardrails::Targets.for(call, context)
+    verdict
+  end
+
+  # The stores another chi version shares with this one: an interrupted
+  # continue's move.json, a continue's left.json, stored approvals, and a
+  # participant's grant with its sidecar.
+  def expect_store_files_read(sessions_dir, session_dir, version, since)
+    move_path = File.join(session_dir, Samagotchi::ChildMove::INTENT_FILE)
+    if recorded?(move_path, version, since)
+      expect(Samagotchi::ChildMove.read_intent("compat-session", state_dir: sessions_dir))
+        .to eq(Samagotchi::ChildMove::Intent.new(from: "compat-drawn", ids: ReleaseTools::COMPAT_CHILD_IDS,
+                                                 noted: ["compat-child"]))
+    end
+
+    context = Samagotchi::ContextSources.session_location("compat-session", state_dir: sessions_dir)
+    if recorded?(File.join(context.dir, Samagotchi::ContextSources::LEFT_FILE), version, since)
+      expect(context.left).to eq([Samagotchi::ContextSources::Left.new(name: "claude-inbox", hint: "compatibility corpus",
+                                                                       from: "compat-drawn")])
+    end
+
+    approvals_dir = Samagotchi::Guardrails::Approvals.dir_for(sessions_dir)
+    if recorded?(File.join(approvals_dir, Samagotchi::Guardrails::Approvals::FILE), version, since)
+      warnings = []
+      approvals = Samagotchi::Guardrails::Approvals.new(dir: approvals_dir, warn: ->(msg) { warnings << msg })
+      expect(approvals.entries.map { |entry| entry["scope"] }).to eq(%w[session rule])
+      expect(approvals.match(compat_ask("git push  origin main", "git-push"))).to include("scope" => "session")
+      expect(approvals.match(compat_ask("git push origin other", "git-push"))).to be_nil
+      expect(approvals.match(compat_ask("rm -rf dist", "rm-recursive"))).to include("scope" => "rule")
+      expect(warnings).to be_empty
+    end
+
+    grants_path = Samagotchi::Grants.path(state_dir: sessions_dir)
+    return unless recorded?(grants_path, version, since)
+
+    grant = Samagotchi::Grants.new(grants_path, clock: -> { Time.utc(2026, 1, 2) }).lookup(ReleaseTools::COMPAT_GRANT_TOKEN)
+    expect(grant).to have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, session_id: "compat-session", kind: "agent",
+                                     name: "Compat", identity: "compat@example.com", mode: "pair", spend_cap: 2.0,
+                                     expires_at: "2026-01-08T00:00:00Z", extra: {})
+    expect(grant.state(Time.utc(2026, 1, 2))).to eq(:active)
+    expect(Samagotchi::Participants.read("compat-session", state_dir: sessions_dir))
+      .to match([have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, name: "Compat", kind: "agent", mode: "pair", cap: 2.0,
+                                 expires_at: "2026-01-08T00:00:00Z", removed_at: nil)])
   end
 
   # An install journal (pending.json) beside the bundle record: what the

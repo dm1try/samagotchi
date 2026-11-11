@@ -349,6 +349,14 @@ RSpec.describe ReleaseTools do
       expect(File).to exist(File.join(live, "continue.json"))
       expect(File).to exist(File.join(live, "stopped"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/.bundles/compat/pending.json"))
+      expect(File).to exist(File.join(live, "move.json"))
+      expect(File).to exist(File.join(live, "participants.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/context/sessions/compat-session/left.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/guardrails/approvals.json"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/web-grants/grants.json"))
+      expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/guardrails/approvals.lock"))
+      expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/web-grants/grants.lock"))
+      expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/home.json"))
     end
 
     it "raises a marked bundle's requires_chi to the new version and drops the marker; leaves the others" do

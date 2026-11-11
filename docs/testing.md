@@ -151,9 +151,16 @@ current version (or the current corpus when it is the only one) through today's
 session, Bridge, CardStore, schedules and bundle-record readers, and the files
 other chi versions write into a live session's folder: a queued input file, a
 context note, a continue's intent (`continue.json`) and the stop marker (the
-starting marker isn't recorded: a recorded one is always stale), and a bundle's
-install journal (`.bundles/compat/pending.json`). A corpus from
+starting marker isn't recorded: a recorded one is always stale), a bundle's
+install journal (`.bundles/compat/pending.json`), and the stores another chi
+version shares: an interrupted continue's `move.json` (`ChildMove`), a
+continue's `context/sessions/<id>/left.json`, stored approvals
+(`guardrails/approvals.json`), and a participant's grant
+(`web-grants/grants.json`) with its `participants.json` sidecar, and the chi
+home (`home.json`). A corpus from
 0.164.0 or before has none of those and skips them; a later one must hold them.
+Bridge wire payloads (`/state`, `/snapshot`, SSE frames) aren't recorded: a
+sample needs a live Engine and Bridge at release time.
 A second example reads a corpus the writer records now, so a writer change that
 today's readers can't read goes red before the release. `rake
 release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers

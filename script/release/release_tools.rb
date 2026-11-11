@@ -28,6 +28,12 @@ module ReleaseTools
   # The queued input's ids, and the successor a continue intent names.
   COMPAT_ENQUEUED_ID = "00000000-0000-4000-8000-000000000001"
   COMPAT_SUCCESSOR_ID = "compat-successor"
+  # The children an interrupted continue's move.json names (the first
+  # already noted), and a participant's grant: its id and the token whose
+  # digest the store keeps.
+  COMPAT_CHILD_IDS = %w[compat-child compat-child-2].freeze
+  COMPAT_GRANT_ID = "p_c0ffee00"
+  COMPAT_GRANT_TOKEN = "chp_compatibility-corpus"
 
   class Error < StandardError; end
 
@@ -57,6 +63,12 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/memory_bundle/provenance"
     require_relative "../../lib/samagotchi/session_inbox"
     require_relative "../../lib/samagotchi/continue_intent"
+    require_relative "../../lib/samagotchi/child_move"
+    require_relative "../../lib/samagotchi/context_sources"
+    require_relative "../../lib/samagotchi/guardrails"
+    require_relative "../../lib/samagotchi/grants"
+    require_relative "../../lib/samagotchi/participants"
+    require_relative "../../lib/samagotchi/chi_home"
 
     Dir.mktmpdir("chi-compat-corpus-") do |tmp|
       staged = File.join(tmp, "corpus")
@@ -89,6 +101,7 @@ module ReleaseTools
 
         drawn_path = write_compat_drawn_session!(sessions_dir, version, at)
         live_paths = write_compat_live_files!(sessions_dir, session_dir, at)
+        store_paths = write_compat_store_files!(sessions_dir, at)
 
         schedules = Samagotchi::Schedules.new(state_dir: sessions_dir, clock: -> { at })
         schedules.add(target: COMPAT_SESSION_ID, prompt: "compatibility corpus", title: "Compatibility corpus",
@@ -115,6 +128,14 @@ module ReleaseTools
                                  files: { "compat.md" => "sha256:compat" })
         bundle_journal = File.join(File.dirname(bundle_record), "pending.json")
         FileUtils.cp(provenance.pending_path, bundle_journal)
+        # The chi home every chi launch reads, whichever chi wrote it.
+        home_path = File.join(staged, Samagotchi::ChiHome::FILE)
+        Samagotchi::ChiHome.write!(Samagotchi::ChiHome::Record.new(ruby: "/compat-fixture/ruby/bin/ruby",
+                                                                   gem_home: "/compat-fixture/gems",
+                                                                   gem_path: "/compat-fixture/gems",
+                                                                   mise: "/compat-fixture/bin/mise",
+                                                                   set_at: COMPAT_STAMP, set_by_version: version),
+                                   path: home_path)
 
         required = [
           session_path,
@@ -124,7 +145,9 @@ module ReleaseTools
           schedules.path,
           bundle_record,
           bundle_journal,
-          *live_paths
+          home_path,
+          *live_paths,
+          *store_paths
         ]
         missing = required.reject { |path| File.file?(path) }
         raise Error, "compatibility corpus writer omitted #{missing.join(", ")}" unless missing.empty?
@@ -163,6 +186,81 @@ module ReleaseTools
     [input, note, intent, File.join(session_dir, Samagotchi::Session::STOPPED_FILE)]
   end
   private_class_method :write_compat_live_files!
+
+  # The stores other chi versions share with this one, each by its one
+  # writer: an interrupted continue's move.json (ChildMove.write_intent, in
+  # the new link's folder: here COMPAT_SESSION_ID's), what a continue left
+  # with the previous link (ContextSources' left.json), stored approvals
+  # (Guardrails::Approvals#add: a session's and a rule's) and a
+  # participant's grant with its sidecar (Grants#issue, Participants'
+  # participants.json). Random ids and times are pinned afterwards.
+  # @return [Array<String>] the files
+  def write_compat_store_files!(sessions_dir, at)
+    move = Samagotchi::ChildMove::Intent.new(from: COMPAT_DRAWN_ID, ids: COMPAT_CHILD_IDS, noted: COMPAT_CHILD_IDS.first(1))
+    Samagotchi::ChildMove.write_intent(COMPAT_SESSION_ID, move, state_dir: sessions_dir)
+    move_path = File.join(Samagotchi::Session.session_dir(COMPAT_SESSION_ID, state_dir: sessions_dir),
+                          Samagotchi::ChildMove::INTENT_FILE)
+
+    context = Samagotchi::ContextSources.session_location(COMPAT_SESSION_ID, state_dir: sessions_dir)
+    context.write_left([Samagotchi::ContextSources::Left.new(name: "claude-inbox", hint: "compatibility corpus",
+                                                             from: COMPAT_DRAWN_ID)])
+
+    [move_path, File.join(context.dir, Samagotchi::ContextSources::LEFT_FILE), write_compat_approvals!(sessions_dir),
+     *write_compat_grant!(sessions_dir, at)]
+  end
+  private_class_method :write_compat_store_files!
+
+  # A session approval of a command and a rule's, in /compat-fixture.
+  # @return [String] approvals.json
+  def write_compat_approvals!(sessions_dir)
+    store = Samagotchi::Guardrails::Approvals.new(dir: Samagotchi::Guardrails::Approvals.dir_for(sessions_dir))
+    compat_approval_verdicts.each { |scope, verdict| store.add(verdict, scope) }
+    entries = JSON.parse(File.read(store.path)).each { |entry| entry["created_at"] = COMPAT_STAMP }
+    File.write(store.path, "#{JSON.pretty_generate(entries)}\n")
+    FileUtils.rm_f(File.join(File.dirname(store.path), "approvals.lock"))
+    store.path
+  end
+  private_class_method :write_compat_approvals!
+
+  # The asks the corpus's approvals answer, by scope.
+  # @return [Hash{String => Samagotchi::Guardrails::Verdict}]
+  def compat_approval_verdicts
+    context = Samagotchi::Guardrails::Context.new(cwd: "/compat-fixture", session_id: COMPAT_SESSION_ID)
+    asks = { "session" => ["git push origin main", "git-push"], "rule" => ["rm -rf build", "rm-recursive"] }
+    asks.transform_values do |command, rule|
+      call = { name: "execute", content: command }
+      verdict = Samagotchi::Guardrails::Verdict.new(call: call).ask!("compatibility corpus", rule: rule, source: "config")
+      verdict.context = context
+      verdict.targets = Samagotchi::Guardrails::Targets.for(call, context)
+      verdict
+    end
+  end
+  private_class_method :compat_approval_verdicts
+
+  # A pair participant's grant bound to an identity (the store's
+  # BOUND_VERSION) and its sidecar, both naming COMPAT_GRANT_ID, the store
+  # keeping COMPAT_GRANT_TOKEN's digest.
+  # @return [Array<String>] grants.json and participants.json
+  def write_compat_grant!(sessions_dir, at)
+    grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: sessions_dir), clock: -> { at })
+    grants.issue(session_id: COMPAT_SESSION_ID, name: "Compat", kind: "agent", ttl: Samagotchi::Grants::DEFAULT_TTL,
+                 cap: 2.0, identity: "compat@example.com", mode: Samagotchi::Grants::PAIR_MODE,
+                 on_write: Samagotchi::Participants.sidecar_writer(sessions_dir, [COMPAT_SESSION_ID]))
+    store = JSON.parse(File.read(grants.path))
+    store["grants"].each do |grant|
+      grant["id"] = COMPAT_GRANT_ID
+      grant["digest"] = Samagotchi::Grants.digest(COMPAT_GRANT_TOKEN)
+    end
+    File.write(grants.path, "#{JSON.pretty_generate(store)}\n")
+    FileUtils.rm_f(File.join(File.dirname(grants.path), Samagotchi::Grants::LOCK))
+    sidecar = File.join(Samagotchi::Session.session_dir(COMPAT_SESSION_ID, state_dir: sessions_dir),
+                        Samagotchi::Participants::FILE)
+    participants = JSON.parse(File.read(sidecar))
+    participants["participants"].each { |entry| entry["id"] = COMPAT_GRANT_ID }
+    File.write(sidecar, "#{JSON.pretty_generate(participants)}\n")
+    [grants.path, sidecar]
+  end
+  private_class_method :write_compat_grant!
 
   # COMPAT_DRAWN_ID: a prompt, a read and its answer, and the line a Bridge's
   # TurnDrawings writes for that turn (the accumulator's fold of its events).
