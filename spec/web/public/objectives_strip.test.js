@@ -180,6 +180,19 @@ test("Check this: only with a move; posts its line, and a running or finished ch
   assert.equal(row.querySelector('[data-obj-act="check"]').disabled, false);
 });
 
+test("the list's last move says claims done or blocked; progress adds no word", () => {
+  const { el, control, pop } = strip();
+  control.seed({ items: [{ id: "O1", text: "A", status: "active", move: { note: "green", evidence: "", state: "done" } },
+                         { id: "O2", text: "B", status: "active", move: { note: "stuck", evidence: "", state: "blocked" } },
+                         { id: "O3", text: "C", status: "active", move: { note: "went on", evidence: "", state: "progress" } }], pending: false });
+  el.querySelector(".obj-edit").click();
+  const sub = (id) => pop().querySelector(`[data-row="${id}"] .obj-row-sub`).textContent;
+  assert.equal(sub("O1"), "last move: claims done green");
+  assert.equal(sub("O2"), "last move: blocked stuck");
+  assert.equal(sub("O3"), "last move: went on");
+  assert.ok(pop().querySelector('[data-row="O1"] .obj-state.done'));
+});
+
 test("a check on a dropped objective isn't offered", () => {
   const { el, control, pop } = strip();
   control.seed({ items: [{ id: "O1", text: "A", status: "dropped", move: { note: "x", evidence: "" } }, { id: "O2", text: "B", status: "active" }], pending: false });

@@ -87,7 +87,7 @@ runs mid-turn too). So does `chi send -m "/objectives …"`. A participant's com
 ## Moves
 
 The `objectives` tool (`Tools::ObjectivesTool`, schema last in `TOOL_SCHEMAS`) has one action, `move`: `id`, `note`,
-optional `evidence`. A call with no `action` is a move too. It is information only: nothing is written, and the call in
+optional `evidence` and `state`. A call with no `action` is a move too. It is information only: nothing is written, and the call in
 history is the record. A handler can't append an entry mid-turn safely, and a system entry would split a call from its
 response, so there is no new entry kind. `Objectives.moves_in` reads the calls back with
 `LLMContextStale.paired_runs`, as `WorkingSet` does: both hosts' forms, a `call_tool` of it as it ran. A run whose output
@@ -98,6 +98,13 @@ Mid-turn, `session.messages` doesn't hold the running turn. `/objectives` adds t
 (`Engine#live_conversation`, a `dup` read on the command's thread), because `Engine#plugin_messages`' running part (the
 Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows once its result is in.
 
+- **State** (`ObjectivesTool::STATES`): where the objective stands in the agent's view, `progress` (the default),
+  `blocked` or `done`, stripped and downcased (`state_of`); another word is refused with an `Error:` naming the three,
+  nothing recorded. `done` is a claim, never a status change. `Move#state` is `progress` for a saved call with none or
+  an unreadable one, so an older session's moves read as before. `Move#line` (the `/objectives` listing) leads with
+  `claims done: ` or `blocked: `; the view's `move` carries `state`; Check this's request says "The agent claims this
+  objective is done" for a done move. `ObjectivesCheck.mark_of` leaves the state out: `Move#ref` already makes a new
+  call a new move, and a state in it would drop every saved verdict at the upgrade.
 - **The answer** says it recorded a move, that the list is unchanged and that the user edits it with `/objectives`; so
   does the schema's description. Other actions get an `Error:` with the same sentence. A small model told to edit the
   list has nothing to call, and this is the only place it is told so: no stable-prompt line.
@@ -110,8 +117,11 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 - **Guardrails**: no rule names it, so it passes with no ask, in `strict` too. `ReviewBoundary` denies it as anything
   outside its kit. `PairBoundary` denies it as owner-voiced: a move stays in the owner's history and reads as the
   session's own.
-- **The row**: `recording a move` in the TUI's line with `id=`, `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
-  (`ToolActivity#tool_title`). No UI of its own.
+- **The row**: `recording a move` in the TUI's line with `id=`, `state=` (blocked or done only, before `note=` so a cut
+  can't drop it: `ToolActivity#objectives_state_param`), `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
+  (`ToolActivity#tool_title`, unchanged, so an open page of the previous release still reads it). The page reads the
+  state from the row's params (`objectives_state.js stateOfParams`): a reload's row carries its saved params line
+  (`MessageParts#tool_part`). No UI of its own.
 
 `serves` on `ask_user_question` waits until moves read well. The model can't edit the list.
 
@@ -162,7 +172,9 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
   `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
 - **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
-  `data-move-id`. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
+  `data-move-id` (and `data-move-state` for blocked or done, drawn as "blocked" / "claims done" beside the id, a word
+  with a class, never colour alone; the words are `objectives_state.js`'s, a module of its own so that no existing
+  module imports a new export of another). The list's `last move:` says the same words. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
   a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's
   `Concerns O2` gets the chip there too.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every

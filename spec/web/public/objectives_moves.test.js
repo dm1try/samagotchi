@@ -14,6 +14,24 @@ test("a row is a move only when the call recorded one", () => {
   assert.equal(moveOfRow(row({ tool: "read" })), null);
 });
 
+test("a row's state rides in its params; its title, which an older page reads, stays as it was", () => {
+  const done = row({ params: 'id="O2" state="done" note="Filters carry size"' });
+  assert.deepEqual(moveOfRow(done), { id: "O2", note: "Filters carry size · merged f00ee32", state: "done" });
+  assert.deepEqual(moveOfRow(row({ params: 'id="O2" note="n"' })), { id: "O2", note: "Filters carry size · merged f00ee32" });
+});
+
+test("a move line says claims done or blocked beside the id, as words with a class", () => {
+  const historyEl = document.createElement("div");
+  document.body.appendChild(historyEl);
+  historyEl.innerHTML = '<div class="turn-work"><span data-move-id="O1" data-move-note="a" data-move-state="done"></span>'
+    + '<span data-move-id="O2" data-move-note="b" data-move-state="blocked"></span><span data-move-id="O3" data-move-note="c"></span></div>';
+  createObjectivesMoves({ historyEl });
+  const lines = [...historyEl.querySelectorAll(".obj-move-line")];
+  assert.deepEqual(lines.map((l) => l.querySelector(".obj-state")?.textContent ?? null), ["claims done", "blocked", null]);
+  assert.ok(lines[0].querySelector(".obj-state").classList.contains("done"));
+  assert.deepEqual(movesInBlock(historyEl.querySelector(".turn-work")).map((m) => m.state ?? null), ["done", "blocked", null]);
+});
+
 test("a block's moves are its marked rows, in order", () => {
   const block = document.createElement("div");
   block.innerHTML = '<span data-move-id="O1" data-move-note="a"></span><span class="x"></span><span data-move-id="O2" data-move-note="b"></span>';
