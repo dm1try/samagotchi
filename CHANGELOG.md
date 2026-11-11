@@ -8,9 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.165.0] - 2026-11-11
+
 ### Changed
 
-- Guardrails: `tool: shell` rules also match plugin tools whose `targets:` declare a command.
+- Guardrails: `tool: shell` rules and child boundaries also match plugin tools whose `targets:` declare a command,
+  so a plugin's read-only command in another checkout no longer asks.
 - web: the session bar is one row at every window width. What doesn't fit folds into `⋯` by priority, lowest first
   (the folder and 🧰 first, then the notes, set and participants, the model, the clock…); `⋯` is on the row everywhere,
   with a count of what it holds on a desktop and its dot when a folded item asks for a look. Archive and delete live in
@@ -19,9 +22,15 @@ and commands may change between minor versions. How releases are made:
   `sessions.send`, a `delegate` follow-up and a participant's turn start an idle session as before, but no longer
   un-stop or un-archive one (`the session is stopped; only its owner's message starts it again`). `chi send`, a web tab
   and a terminal still do.
+- chi web on a phone: a session's panel runs edge to edge, tap targets are about 40px, the brand in a session is a
+  round `+` (new session), and an answer's copy button floats so the first line wraps short of it. Inline code's side
+  padding is 3px at every width.
 
 ### Fixed
 
+- chi web on touch: Revise no longer looks disabled.
+- chi web: an answered card that ends exactly at its line's edge brings the line back.
+- chi web: a `/command` from a client that names no sender is recorded as `web:unnamed` instead of as you.
 - The retention sweep's skeleton-folder prune reads the folder again under the session's lock, so a session file
   or content written between its check and its removal is kept instead of deleted.
 - A worker's `GET /session/:id/state` reply is read under the event lock, so its `event_id` always matches its state.
@@ -46,6 +55,8 @@ and commands may change between minor versions. How releases are made:
   `archived`. With `--remote`, the other machine's chi web needs this release for the send half.
 - `chi send OLD NEW` no longer sends twice when a continue makes NEW out of OLD just as the send goes in, and a send
   with `--image` that resends that way no longer leaves its images copied into the old link (on this machine).
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.164.0] - 2026-11-10
 
@@ -6107,7 +6118,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.164.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.165.0...HEAD
+[0.165.0]: https://github.com/dm1try/samagotchi/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/dm1try/samagotchi/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/dm1try/samagotchi/compare/v0.162.0...v0.163.0
 [0.162.0]: https://github.com/dm1try/samagotchi/compare/v0.161.0...v0.162.0
