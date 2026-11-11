@@ -124,15 +124,13 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
   describe "missing remote context" do
     let(:target) { Struct.new(:session_id).new("s-1") }
 
-    it "matches the new code and the old chi web's no-source detail" do
-      [{ error: "context_missing", detail: "source missing" },
-       { error: "not_found", detail: "no source nope" }].each do |body|
-        access, = scripted([404, body])
-        expect(access.context_entry(target, "nope")).to be_nil
+    it "matches the context_missing code" do
+      body = { error: "context_missing", detail: "no source nope" }
+      access, = scripted([404, body])
+      expect(access.context_entry(target, "nope")).to be_nil
 
-        access, = scripted([404, body])
-        expect(access.context_remove(target, "nope")).to eq(:missing)
-      end
+      access, = scripted([404, body])
+      expect(access.context_remove(target, "nope")).to eq(:missing)
     end
 
     it "sends movable, and says it was dropped when an older chi web's 201 doesn't echo it" do
@@ -164,15 +162,12 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /answered 410 gone: other/)
     end
 
-    it "matches no_provider by code and retains the old chi web's detail fallback" do
+    it "matches no_provider by code" do
       url = "https://nope.example/1"
       expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
-      [{ error: "no_provider", detail: "provider unavailable" },
-       { error: "not_found", detail: "no installed bundle resolves #{url}" }].each do |body|
-        access, = scripted([422, body])
-        expect { access.context_add_url(target, url, why: nil, hint: nil, added_by: "web") }
-          .to raise_error(Samagotchi::ContextProviders::Invalid, expected)
-      end
+      access, = scripted([422, { error: "no_provider", detail: "no installed bundle resolves #{url}" }])
+      expect { access.context_add_url(target, url, why: nil, hint: nil, added_by: "web") }
+        .to raise_error(Samagotchi::ContextProviders::Invalid, expected)
     end
   end
 
@@ -275,9 +270,9 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect { remote.resolve("abcd") }.to raise_error(Samagotchi::Session::AmbiguousId) { |e| expect(e.ids).to eq([a.id, b.id]) }
     end
 
-    it "takes the previous chi web's \"Session not found: X\" as Session::NotFound, another 404 as its own words" do
-      old, = scripted([404, { error: "not_found", detail: "Session not found: abc1" }])
-      expect { old.show("abc1") }.to raise_error(Samagotchi::Session::NotFound, "no session abc1") { |e| expect(e.given).to eq("abc1") }
+    it "takes \"no session X\" as Session::NotFound, another 404 as its own words" do
+      missing, = scripted([404, { error: "not_found", detail: "no session abc1" }])
+      expect { missing.show("abc1") }.to raise_error(Samagotchi::Session::NotFound, "no session abc1") { |e| expect(e.given).to eq("abc1") }
 
       other, = scripted([404, { error: "not_found", detail: "no question q1" }])
       expect { other.show("abc1") }.to raise_error(ArgumentError, "no question q1") { |e| expect(e).not_to be_a(Samagotchi::Session::NotFound) }

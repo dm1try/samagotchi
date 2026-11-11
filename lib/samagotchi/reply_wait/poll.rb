@@ -126,22 +126,11 @@ module Samagotchi
 
       # Taken but never run as a turn of its own: a running turn's drain
       # merged it as a steer, so that turn's reply (or question) is its
-      # answer. With the drain's merge record (SessionInbox.mark_merged)
-      # the wait is that turn's from here on, as if it had been bound to it
-      # (#follow_into). Without one (a 0.156 worker, a turn with no id, a
-      # merge from before the update) the merge is inferred
-      # (ReplyWait.merged_elsewhere?) and waited for as the next reply past
-      # the cursor, as without turn:, never as a turn that will not come
-      # (compat shim merge_inference: Compat::SHIMS).
+      # answer. The drain's merge record (SessionInbox.mark_merged) says
+      # which turn: the wait is that turn's from here on, as if it had been
+      # bound to it (#follow_into).
       def follow_merge(session, merge)
-        return unless may_follow?
-
-        if merge
-          follow_into(session, merge)
-        elsif ReplyWait.merged_elsewhere?(session, @turn, @baseline, @session_dir)
-          @turn = nil
-          @seen_running = running?(session)
-        end
+        follow_into(session, merge) if merge && may_follow?
       end
 
       def may_follow? = @turn && @claimed && !@seen_own && !@own_turn_input

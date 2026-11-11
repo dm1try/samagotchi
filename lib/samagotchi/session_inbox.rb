@@ -521,7 +521,7 @@ module Samagotchi
     # (Worker#pending_input_drain): a wait for it (ReplyWait's turn:) then
     # waits for that turn (Poll#follow_merge). Nothing for an id that
     # can't name a file, nor for a turn with none; a failed write only
-    # logs (the wait infers the merge, as for a worker before this).
+    # logs (a wait for that input then never follows it to that turn).
     def self.mark_merged(session_dir, id, into:, now: Time.now)
       return unless ENQUEUED_ID_NAME.match?(id.to_s) && ENQUEUED_ID_NAME.match?(into.to_s)
 

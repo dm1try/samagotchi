@@ -259,29 +259,6 @@ module Samagotchi
       !baseline.ended_at?(session.last_turn&.ended_at)
     end
 
-    # A turn: wait's taken input ran in another turn (a steer its drain
-    # merged): that turn runs (its mark has another id, or none from a
-    # worker that writes ids), or, idle, a turn not its ended since the
-    # baseline. last_turn or a reply file being its own is never that, nor
-    # an input with a tombstone (a removal's, written before its claim),
-    # nor one whose claimed file is still there: a drain deletes the file
-    # it merges as it reads it, while a turn of its own keeps it until the
-    # turn ends (WorkerInbound#take_input), so a look between that claim
-    # and the turn's running save (idle, an earlier turn's end since the
-    # baseline) doesn't take the earlier turn's reply for it.
-    def merged_elsewhere?(session, turn, baseline, session_dir)
-      return false if session.last_turn&.enqueued_id == turn || SessionInbox.reply_for(session_dir, turn)
-      return false if SessionInbox.removed?(session_dir, turn) || SessionInbox.claimed_input?(session_dir, turn)
-
-      if session.status == Session::STATUS_RUNNING
-        running_id = session.interrupted_turn&.enqueued_id
-        return running_id != turn if running_id
-
-        return turn_ids?(session_dir)
-      end
-      turn_ended_since?(session, baseline)
-    end
-
     # A turn seen running (+own_base+: last_turn's ended_at then) is past:
     # last_turn isn't its, and another turn runs (a mark with another id)
     # or a turn ended since.

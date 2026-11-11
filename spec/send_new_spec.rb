@@ -592,10 +592,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
       # A turn starting at that moment merged it as a steer: the drain's
       # record (input/merged/m1) says which, and that turn's end is the
-      # answer. A 0.156 worker writes none: the merge is inferred.
+      # answer.
       describe "merged into a turn that started at that moment" do
-        def merge_into(host, record: true)
-          Samagotchi::SessionInbox.mark_merged(dir, "m1", into: host) if record
+        def merge_into(host)
+          Samagotchi::SessionInbox.mark_merged(dir, "m1", into: host)
           run_turn(host)
         end
 
@@ -632,24 +632,19 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "host answer", "turn_id" => "m1")
         end
 
-        it "prints that turn's reply, by its record or (a 0.156 worker) inferred" do
-          [true, false].each do |record|
-            out.truncate(0)
-            out.rewind
-            @on_deliver = lambda do
-              later do
-                merge_into("h-#{record}", record: record)
-                looked(2)
-                Samagotchi::SessionInbox.write_output(dir, "host answer #{record}", enqueued_id: "h-#{record}")
-                update(idle, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
-                                                                                 enqueued_id: "h-#{record}"))
-              end
+        it "prints that turn's reply, by its record" do
+          @on_deliver = lambda do
+            later do
+              merge_into("h1")
+              looked(2)
+              Samagotchi::SessionInbox.write_output(dir, "host answer", enqueued_id: "h1")
+              update(idle, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                                               enqueued_id: "h1"))
             end
-
-            expect(run("--wait", "--format", "json", "--timeout", "5", "-m", "go", idle.id)).to eq(0), err.string
-            expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "host answer #{record}")
-            FileUtils.rm_rf(File.join(dir, "input", "merged"))
           end
+
+          expect(run("--wait", "--format", "json", "--timeout", "5", "-m", "go", idle.id)).to eq(0), err.string
+          expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "host answer")
         end
       end
     end

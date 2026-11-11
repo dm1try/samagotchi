@@ -773,7 +773,9 @@ RSpec.describe Samagotchi::ReplyWait do
             # its own looks (a settle before a wait's first look is no
             # turn it saw: that one runs to its timeout).
             each_looked([mine, theirs], 2)
-            FileUtils.rm_f(claim("y1")) # the drain merges it
+            # The drain merges it: its record, then its file goes.
+            Samagotchi::SessionInbox.mark_merged(dir, "y1", into: "a1")
+            FileUtils.rm_f(claim("y1"))
             each_looked([mine, theirs], 2)
             die_and_settle
           end
@@ -922,53 +924,6 @@ RSpec.describe Samagotchi::ReplyWait do
 
       before { set(status: "idle") }
 
-      it "waits on the absorbing turn (another id): its question, then its reply, never a no_reply while it runs" do
-        own_by_worker
-        plain_input("y1")
-        base = baseline
-        later do
-          absorb("y1", by: "a1")
-          looked(2)
-          set(pending_question: { id: "theirs", kind: "ask", question: "Which?" })
-        end
-
-        result = wait(baseline: base, turn: "y1")
-        expect(result.to_h).to include(status: :waiting_for_answer)
-        expect(result.question).to have_attributes(id: "theirs")
-
-        later do
-          set(pending_question: nil)
-          write_turn_reply("a1 answer", "a1")
-          end_turn("a1")
-        end
-        expect(wait(baseline: described_class.baseline_of(result.session, question_id: "theirs"), turn: "y1").text)
-          .to eq("a1 answer")
-      end
-
-      it "waits on an absorbing turn with no id (a wake or reminder turn) from a worker that writes ids" do
-        Samagotchi::WorkerSidecar.new(port: 1, features: %w[turn_ids]).write(dir)
-        plain_input("y1")
-        base = baseline
-        later do
-          absorb("y1", by: nil)
-          looked(2)
-          write_reply("wake answer")
-          end_turn(nil)
-        end
-
-        expect(wait(baseline: base, turn: "y1").text).to eq("wake answer")
-      end
-
-      it "takes an absorbing turn that ran and ended between two looks (idle, a turn not its ended since)" do
-        plain_input("y1")
-        base = baseline
-        FileUtils.rm_f(claim("y1"))
-        write_reply("a1 answer")
-        end_turn("a1")
-
-        expect(wait(baseline: base, turn: "y1", timeout: 2).text).to eq("a1 answer")
-      end
-
       # Its own turn keeps the claimed file until it ends: a look between
       # the claim and the turn's running save sees idle with an earlier
       # turn's end since the baseline, which is not the input's merge.
@@ -991,10 +946,9 @@ RSpec.describe Samagotchi::ReplyWait do
         expect(wait(baseline: base, turn: "y1").text).to eq("y1 answer")
       end
 
-      # A worker from after 0.156 says which turn took it
-      # (SessionInbox.mark_merged, before the claimed file goes): the wait
-      # waits for that turn, not for the next reply. Without the record (a
-      # 0.156 worker) the examples above infer it.
+      # The worker says which turn took it (SessionInbox.mark_merged,
+      # before the claimed file goes): the wait waits for that turn, not
+      # for the next reply.
       describe "with its merge record (input/merged/<id>)" do
         def merge(id, into:)
           Samagotchi::SessionInbox.mark_merged(dir, id, into: into)
