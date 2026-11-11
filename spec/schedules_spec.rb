@@ -215,6 +215,15 @@ RSpec.describe Samagotchi::Schedules do
     expect { described_class.recurrence(date: "2026-13-01") }.to raise_error(described_class::Usage, /date must be/)
   end
 
+  it "refuses a day the month doesn't have instead of rolling into the next month" do
+    expect { described_class.recurrence(date: "2026-02-30") }
+      .to raise_error(described_class::Usage, "date must be a real date, got 2026-02-30")
+    expect { described_class.recurrence(date: "2026-04-31T09:00") }
+      .to raise_error(described_class::Usage, /date must be a real date/)
+    expect { described_class.recurrence(date: "2026-02-29") }.to raise_error(described_class::Usage, /real date/)
+    expect(Time.parse(described_class.recurrence(date: "2028-02-29T09:00")[:at]).getlocal.strftime("%m-%d")).to eq("02-29")
+  end
+
   it "refuses an empty or zero interval rather than firing at every tick" do
     expect { described_class.recurrence(every: "") }.to raise_error(described_class::Usage, /needs one of every, weekday or date/)
     expect { described_class.recurrence(every: "  ") }.to raise_error(described_class::Usage, /needs one of every, weekday or date/)

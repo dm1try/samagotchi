@@ -610,7 +610,7 @@ module Samagotchi
       day = match[3].to_i
       hour = match[4] ? match[4].to_i : 0
       minute = match[5] ? match[5].to_i : 0
-      unless (1..12).cover?(month) && (1..31).cover?(day) && (0..23).cover?(hour) && (0..59).cover?(minute)
+      unless Date.valid_date?(year, month, day) && (0..23).cover?(hour) && (0..59).cover?(minute)
         raise Usage, "date must be a real date, got #{text}"
       end
 

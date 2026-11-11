@@ -50,6 +50,8 @@ and commands may change between minor versions. How releases are made:
 - chi web on a phone: the status bar takes the top bar's tint (the theme-color under 600px wide is the colour the page's
   top edge starts with, and the page's accent tint now runs down from that edge), so there is no seam between them in
   the Home Screen app or a Safari tab, light or dark.
+- `chi schedule add --date`: a day the month doesn't have (2026-02-30, 2026-04-31) is refused as not a real date
+  instead of rolling into the next month.
 
 ## [0.166.0] - 2026-11-11
 
