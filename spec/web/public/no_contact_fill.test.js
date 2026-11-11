@@ -63,3 +63,44 @@ test("every text field in the page's markup says it isn't a contact field", () =
   });
   assert.deepEqual(wrong.map(({ f, tag }) => `${f}: ${tag}`), []);
 });
+
+// The input and textarea fields made in JS (document.createElement, or a
+// helper called with the tag: el(doc, "input", …)): each goes through
+// noContactFill, inline or within the few lines after it, unless its type
+// isn't text.
+function createdIn(source) {
+  const lines = source.split("\n");
+  const made = /(?:(?:const|let|var)\s+)?([\w.]+)\s*=\s*[\w.]+\((?:\w+,\s*)?["'](input|textarea)["']/;
+  const inline = /noContactFill\(\s*[\w.]+\((?:\w+,\s*)?["'](?:input|textarea)["']/;
+  const any = /\b(?:createElement|el|node)\((?:\w+,\s*)?["'](input|textarea)["']/;
+  const found = [];
+  lines.forEach((line, i) => {
+    if (!any.test(line)) return;
+    if (inline.test(line)) { found.push({ line: i + 1, text: line.trim(), ok: true }); return; }
+    const v = line.match(made)?.[1];
+    const after = lines.slice(i + 1, i + 9).join("\n");
+    const esc = v && v.replace(/[.]/g, "\\.");
+    const type = v && after.match(new RegExp(`\\b${esc}\\.type\\s*=\\s*(["']?)(\\w+)\\1`));
+    // A type from a variable: the quoted types its definition picks from.
+    const types = !type ? [] : type[1] ? [type[2]]
+      : [...(source.match(new RegExp(`(?:const|let)\\s+${type[2]}\\s*=([^;\\n]*)`))?.[1] ?? "").matchAll(/["'](\w+)["']/g)].map((m) => m[1]);
+    const ok = !!v && (new RegExp(`noContactFill\\(\\s*${esc}\\b`).test(after)
+      || (types.length > 0 && types.every((t) => NOT_TEXT.has(t))));
+    found.push({ line: i + 1, text: line.trim(), ok });
+  });
+  return found;
+}
+
+test("every text field made in JS says it isn't a contact field (noContactFill)", () => {
+  const probe = createdIn([
+    'const a = doc.createElement("input");', 'a.type = "text";', "",
+    'const b = el(doc, "textarea", "x");', 'noContactFill(b, "chi-b");', "",
+    'const kind = multi ? "checkbox" : "radio";', 'const c = doc.createElement("input");', "c.type = kind;", "",
+    'box.append(noContactFill(document.createElement("input"), "chi-d"));',
+  ].join("\n"));
+  assert.deepEqual(probe.map((m) => m.ok), [false, true, true, true]);
+  const files = readdirSync(PUBLIC).filter((f) => f.endsWith(".js") && f !== "no_contact_fill.js");
+  const fields = files.flatMap((f) => createdIn(readFileSync(join(PUBLIC, f), "utf8")).map((m) => ({ f, ...m })));
+  assert.ok(fields.length >= 5, `found ${fields.length}`);
+  assert.deepEqual(fields.filter((m) => !m.ok).map(({ f, line, text }) => `${f}:${line}: ${text}`), []);
+});
