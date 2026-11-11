@@ -42,7 +42,9 @@ RSpec.describe "chi sessions archive" do
   RemoteBackend.both(self) do
     it "archives each session by id or prefix, one line each, delegates with it" do
       parent = make("parent", id: "aaaa1111-0000")
-      make("child", parent: parent)
+      # A random id could start with aaaa too (1 in 65536): then the prefix
+      # names two sessions.
+      make("child", id: "eeee5555-0000", parent: parent)
       plain = make("plain", id: "bbbb2222-0000")
 
       expect(run("archive", "aaaa", plain.id)).to eq(0)
@@ -72,7 +74,7 @@ RSpec.describe "chi sessions archive" do
 
     it "tells a one-shot on a delegate from one on the session itself" do
       parent = make("parent", id: "aaaa1111-0000")
-      make("child", parent: parent, owner: "tui")
+      make("child", id: "eeee5555-0000", parent: parent, owner: "tui")
 
       expect(run("archive", "aaaa")).to eq(1)
       expect(out.string).to eq("aaaa1111  refused: a delegate of it is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first\n")

@@ -142,7 +142,8 @@ module Samagotchi
 
         @manager.resume_session(id, state_dir: @state_dir)
         # card: a card's action; its command events say so (no echo).
-        request = ->(client) { client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true) }
+        client_id = owner_sender(body)
+        request = ->(client) { client.post_command(line: line, client_id: client_id, card: body["card"] == true) }
         relay(id, live_bridge_client(id), request, what: "the command was not run", cant: "run commands") do |reply|
           case reply.status
           when 202
@@ -162,6 +163,15 @@ module Samagotchi
         owned_by_tui(e)
       end
 
+      # Who sent the owner's turn or command: the body's client_id (the page
+      # names its tab, chi --remote names chi send), or WEB_UNNAMED for an
+      # owner's script that names none: named here, never a nil sender
+      # (deliver_turn refuses it; CommandIntake would read it as a person's).
+      def owner_sender(body)
+        client_id = (body["client_id"] || body[:client_id]).to_s
+        client_id.empty? ? ClientId::WEB_UNNAMED : client_id
+      end
+
       # 501 not_supported for a builtin +name+ ("/title") the worker lacks.
       def older_worker_command(id, name)
         words = BridgeClient.stale_worker_message(id, cant: "run #{name}")
@@ -178,10 +188,7 @@ module Samagotchi
         return handle_participant_turn(req, id, body) unless principal(req).owner?
 
         prompt = body["prompt"] || body[:prompt]
-        # The page names its tab and chi --remote names chi send; an owner's
-        # script that names none is named here (deliver_turn needs a sender).
-        client_id = (body["client_id"] || body[:client_id]).to_s
-        client_id = ClientId::WEB_UNNAMED if client_id.empty?
+        client_id = owner_sender(body)
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end

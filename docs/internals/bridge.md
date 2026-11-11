@@ -54,8 +54,7 @@ Three other users: `replay_events(turn)` turns a `current_turn` back into the li
 `turn_started` also carries `at`, `cut_after` and every author key, then a `turn_enqueued` per queued prompt and a
 `command_queued` per waiting command), which chi web's `GET /api/sessions/:id` sends as `replay` from the worker's
 snapshot (`from_wire` symbolizes it), so any worker's snapshot gives the page the same events
-(`spec/shared/turn_snapshot.json` pins it against turn_events.js `snapshotEvents`, the page's own fallback for one
-release); `messages_of` gives a
+(`spec/shared/turn_snapshot.json` pins it); `messages_of` gives a
 plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_turn?` tells `POST /turn` that
 a participant's review turn runs, so the owner's input queues behind it.
 

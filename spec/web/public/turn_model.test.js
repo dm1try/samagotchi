@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { blockSummary, currentGen, generationRestarted, genLabel, genLabelParts, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
-import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 const feed = (events, turn = newTurn()) => {
   const log = [];
@@ -58,20 +57,21 @@ test("the tool rows of a gen arrive after its generation_completed and stay with
   assert.equal(currentGen(turn), turn.gens[1]);
 });
 
-test("the replay of a 3-iteration snapshot groups like the live stream", () => {
-  const snapshot = { current_turn: { prompt: "p", parts: [
-    { kind: "thinking", iteration: 1, text: "hmm" },
-    { kind: "text", iteration: 1, text: "Let me look." },
-    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=\"true\"", status: "ok", output: "exit: 0" },
-    { kind: "thinking", iteration: 2, text: "read it" },
-    { kind: "tool", iteration: 2, call_index: 1, tool: "read", params: "path=\"a\"", status: "running" },
-    { kind: "thinking", iteration: 3, text: "do" },
-  ] } };
-  const events = snapshotEvents(snapshot);
-  assert.deepEqual(events.slice(1, 3), [
+// chi web's join replay (TurnAccumulator.join_events) of a turn three
+// iterations in: the chunks carry their iteration.
+test("the join's replay of a 3-iteration turn groups like the live stream", () => {
+  const events = [
+    { type: "turn_started", prompt: "p" },
     { type: "generation_chunk", text: "", thinking: "hmm", iteration: 1 },
     { type: "generation_chunk", text: "Let me look.", thinking: "", iteration: 1 },
-  ]);
+    { type: "generation_completed" },
+    { type: "tool_call_started", iteration: 1, call_index: 1, tool: "execute", params: "command=\"true\"" },
+    { type: "tool_call_completed", iteration: 1, call_index: 1, tool: "execute", output: "exit: 0", output_truncated: false,
+      activity: { tool: "execute", status: "ok", params: "command=\"true\"" } },
+    { type: "generation_chunk", text: "", thinking: "read it", iteration: 2 },
+    { type: "tool_call_started", iteration: 2, call_index: 1, tool: "read", params: "path=\"a\"" },
+    { type: "generation_chunk", text: "", thinking: "do", iteration: 3 },
+  ];
   const { turn } = feed(events);
   assert.deepEqual(turn.gens.map(shape), [
     { iteration: 1, thinking: "hmm", text: "Let me look.", tools: ["execute:ok"], closed: true },

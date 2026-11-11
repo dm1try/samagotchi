@@ -4675,6 +4675,20 @@ RSpec.describe Samagotchi::Web::App do
       expect(received).to start_with("POST /session/s1/command HTTP/1.1").and include('{"line":"/model x","client_id":"web:1","deadline":')
     end
 
+    # An owner's script (curl with the owner's token) naming no client_id:
+    # named web:unnamed at this seam, as the turn route does, so the worker's
+    # CommandIntake never reads a nil sender.
+    it "names a command that gives no client_id web:unnamed, as the turn route does" do
+      server, thread, received = serve_bridge_once("202 Accepted", '{"status":"accepted","command_id":"c1","session_id":"s1"}')
+
+      status, = command(app_with_bridge(server.local_address.ip_port), '{"line":"/model x"}')
+      join!(thread, "the fake Bridge")
+      server.close
+
+      expect(status).to eq(202)
+      expect(received).to include(%("client_id":"#{Samagotchi::ClientId::WEB_UNNAMED}"))
+    end
+
     it "returns 400 without a line, and 503 with no live bridge" do
       expect(command(app_with_bridge(nil), "{}")).to match([400, hash_including("error" => "missing_fields")])
       expect(command(app_with_bridge(nil))).to match([503, hash_including("error" => "not_live")])

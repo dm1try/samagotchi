@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { newActivity, addStarted, addCompleted, toolName } from "../../../lib/samagotchi/web/public/activity.js";
 import { tallyText } from "../../../lib/samagotchi/web/public/tally.js";
 import { genLabel } from "../../../lib/samagotchi/web/public/turn_model.js";
-import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { drawnHistory } from "./drawn_history.js";
@@ -39,14 +38,6 @@ test("the step title and the tally use the label", () => {
   const rows = [MCP, MCP, { tool: "execute" }];
   assert.equal(genLabel({ iteration: 1, thinking: "", text: "", tools: rows }), "working with mcp, execute · 3 tool calls");
   assert.equal(tallyText(rows), "3 tool calls · mcp ×2 · execute ×1 · last: execute");
-});
-
-test("a joined-mid-turn snapshot carries the label to the replayed row events", () => {
-  const events = snapshotEvents({
-    current_turn: { prompt: "p", origin: {}, parts: [{ kind: "tool", iteration: 1, call_index: 1, ...MCP, params: "", status: "ok", output: "x" }] },
-  });
-  const tools = events.filter((e) => e.type.startsWith("tool_call"));
-  assert.deepEqual(tools.map((e) => e.label), ["mcp", "mcp"]);
 });
 
 test("a reloaded row and its step title show the label saved with the result", () => {
@@ -85,17 +76,6 @@ test("a step without narration is titled by its first call's title, else by its 
   assert.equal(genLabel({ iteration: 1, thinking: "", text: "", tools: [{ tool: "execute" }, rows[0]] }), "working with execute, edit · 2 tool calls");
   const long = genLabel({ iteration: 1, thinking: "", text: "", tools: [{ tool: "execute", title: "y".repeat(100) }] });
   assert.equal(long, `execute ${"y".repeat(72)}… · 1 tool call`);
-});
-
-test("a joined-mid-turn snapshot replays the title on both row events", () => {
-  const events = snapshotEvents({
-    current_turn: { prompt: "p", origin: {}, parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "p", title: "ls", status: "ok", output: "x" }] },
-  });
-  const tools = events.filter((e) => e.type.startsWith("tool_call"));
-  assert.equal(tools[0].title, "ls");
-  assert.equal(tools[1].activity.title, "ls");
-  const untitled = snapshotEvents({ current_turn: { prompt: "p", parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "x", params: "", status: "running" }] } });
-  assert.equal("title" in untitled.find((e) => e.type === "tool_call_started"), false);
 });
 
 test("a reloaded row shows the saved title in place of the params, its step is titled by it", () => {

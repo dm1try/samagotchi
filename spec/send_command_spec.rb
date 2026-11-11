@@ -654,6 +654,47 @@ RSpec.describe Samagotchi::SendCommand do
           expect(archived?(old)).to be(true)
         end
 
+        # The images went into the old link's images/ before its refusal:
+        # taken back from there, copied again into the new link.
+        it "leaves no --image copies in the old link it was refused at",
+           local_only: "chi web has no route to take an upload back (an orphan file, as a composer's removed upload)" do
+          allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION)
+          png = File.expand_path("fixtures/images/tiny.png", __dir__)
+          old = archived(make)
+          newer = nil
+          after_first_head do
+            newer = link_after(old, owner: "worker")
+            serve(newer)
+          end
+
+          expect(run("--image", png, "-m", "and this?", old.id)).to eq(0), err.string
+          expect(out.string).to eq("#{label(old, newer)}  sent with 1 image\n")
+          file = inputs_of(newer).first.fetch("images").first.fetch("file")
+          expect(File.file?(File.join(dir_of(newer), file))).to be(true)
+          expect(Dir.glob(File.join(dir_of(old), "images", "*"))).to be_empty
+        end
+
+        # chi send OLD NEW: both resolved up front, OLD before the continue
+        # took it, NEW after; OLD's refused send follows to NEW, and NEW's
+        # own turn is then the same link: sent once.
+        it "sends once when an old id followed to the new link named after it" do
+          old = archived(make)
+          successor = "7b2d41aa-0000-4000-8000-000000000001"
+          newer = nil
+          after_first_head do
+            newer = make(id: successor, owner: "worker").tap do |s|
+              s.continues = old.id
+              s.save(state_dir: tmpdir)
+            end
+            serve(newer)
+          end
+
+          expect(run("-m", "once", old.id, successor)).to eq(0), err.string
+          expect(inputs_of(newer).size).to eq(1)
+          expect(out.string).to eq("#{label(old, newer)}  sent\n")
+          expect(inputs_of(old)).to be_empty
+        end
+
         it "waits for a continue that started meanwhile, then sends to its new link" do
           old = archived(make)
           successor = "7b2d41aa-0000-4000-8000-000000000000"

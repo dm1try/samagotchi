@@ -11,8 +11,10 @@ require "support/fake_provider_server"
 # runs a real bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi scratch" do
   # chi *args in its own temp home, forked or with +spawn+ a real process:
-  # [stdout, stderr, status, the session files left].
-  def chi_scratch(*args, server: nil, spawn: false)
+  # [stdout, stderr, status, the session files left, the log]. +log_until+:
+  # the log is read once it matches (a detached worker's last lines can
+  # come after chi exits).
+  def chi_scratch(*args, server: nil, spawn: false, log_until: nil)
     Dir.mktmpdir do |dir|
       env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1",
                                   "SAMAGOTCHI_SERVER_PORT" => (server&.port || 9).to_s)
@@ -20,7 +22,9 @@ RSpec.describe "chi scratch" do
       sessions = File.join(dir, "state", "samagotchi", "sessions")
       left = Dir.exist?(sessions) ? Dir.children(sessions).reject { |name| name.start_with?(".") } : []
       log = File.join(dir, "state", "samagotchi", Samagotchi::LogPath::FILENAME)
-      [out, err, status, left, File.exist?(log) ? File.read(log) : ""]
+      read_log = -> { File.exist?(log) ? File.read(log) : "" }
+      wait_for("the log to match #{log_until.inspect}", seen: -> { read_log.call.lines.last(3).join }) { read_log.call.match?(log_until) } if log_until
+      [out, err, status, left, read_log.call]
     end
   end
 
@@ -49,15 +53,21 @@ RSpec.describe "chi scratch" do
 
     # stdin is empty: the attached TUI runs the -p turn, then leaves at the
     # input's end, as Ctrl-D does.
-    out, err, status, left, log = chi_scratch("scratch", "-p", "Reply with exactly: PONG", server: server, spawn: true)
+    # The worker's last lines: chi's own delete (stop: true) waits only for
+    # the worker's lock, which it frees before it logs its stop and
+    # deletes the session too, so chi may exit first, and whichever
+    # deletes it second finds it gone (scratch_kept, NotFound).
+    gone = /scratch_deleted|scratch_kept.*NotFound/
+    out, err, status, left, log = chi_scratch("scratch", "-p", "Reply with exactly: PONG", server: server, spawn: true,
+                                                                                           log_until: gone)
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to start_with("Scratch session: nothing is kept, it is deleted when you leave.\n")
     expect(out).to include("PONG")
     expect(out.lines.last).to eq("Scratch session deleted.\n")
     expect(left).to be_empty
-    # A worker ran the session, and was gone before chi exited.
-    expect(log).to match(/worker .* start cwd=/).and include("stop reason=", "scratch_deleted")
+    # A worker ran the session, stopped and went with it.
+    expect(log).to match(/worker .* start cwd=/).and include("stop reason=").and match(gone)
     # The worker's Engine is a scratch one: no delegate tool, memory_write refuses.
     prompt = server.requests.find { |r| r.path == "/completion" }.json["prompt"]
     expect(prompt).not_to match(/\bdelegate\b.*child session/i)

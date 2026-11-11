@@ -3,8 +3,8 @@
 module Samagotchi
   # The sets of event types more than one place reads (the Worker, the
   # Bridge's observers, the TUI, the web), kept here once. The web's own
-  # copies (app.js's stream handlers, turn_events.js's snapshotEvents) are
-  # checked against these by spec/events_drift_spec.rb.
+  # copies (app.js's stream handlers) are checked against these by
+  # spec/events_drift_spec.rb.
   module Events
     # A turn is over: it completed, was canceled, or failed.
     TURN_END = %i[turn_completed turn_canceled turn_failed].freeze
@@ -17,8 +17,8 @@ module Samagotchi
     # turn's drawing: a join takes its cards from CardStore).
     PART_KINDS = %w[generation thinking text tool input steer reminder notice card].freeze
     # Types no Engine emits that a UI handles: the Bridge's stream frames
-    # and the web's one synthetic replay event (a prompt merged into the
-    # turn, turn_events.js snapshotEvents).
+    # and the one synthetic replay event (a prompt merged into the turn,
+    # TurnAccumulator.replay_events).
     STREAM_FRAMES = %i[snapshot reset stream_closed].freeze
     SYNTHETIC = %i[merged_input].freeze
 

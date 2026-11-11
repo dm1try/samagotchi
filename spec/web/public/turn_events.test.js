@@ -1,8 +1,6 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { turnOutput, workerGoneText, streamDropEnd } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("turnOutput reads turn_summary.output", () => {
@@ -158,48 +156,6 @@ test("a wake turn's worker-minted id (wake-…) neither adds nor starts a bubble
   // report op, not an unmatched steer.
   const merged = { type: "input_merged", count: 2, origins: [{ client_id: "child:3f2a1c9e" }, { client_id: "child:77aa00bb" }] };
   assert.deepEqual(promptOps(merged, knownNone), [{ op: "report" }]);
-});
-
-import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
-
-// Shared contract: spec/shared/turn_snapshot.json, the running turn a join
-// gets and the live events it replays as. The TUI's TurnAccumulator.
-// replay_events reads the same file.
-const turnSnapshot = JSON.parse(
-  readFileSync(fileURLToPath(new URL("../../../spec/shared/turn_snapshot.json", import.meta.url)), "utf8"),
-);
-
-test("snapshotEvents replays the turn in progress as live events (a notice part as its own event), then the queued prompts", () => {
-  assert.deepEqual(snapshotEvents(turnSnapshot.snapshot), turnSnapshot.events);
-});
-
-test("snapshotEvents names a pair participant's turn: author, name and mode on turn_started", () => {
-  assert.deepEqual(snapshotEvents(turnSnapshot.pair.snapshot), turnSnapshot.pair.events);
-});
-
-test("snapshotEvents splits text by iteration and leaves the last one streaming", () => {
-  const turn = { prompt: "p", parts: [
-    { kind: "text", iteration: 1, text: "one" },
-    { kind: "text", iteration: 2, text: "two" },
-  ] };
-  assert.deepEqual(snapshotEvents({ current_turn: turn }).map((e) => e.type), [
-    "turn_started", "generation_chunk", "generation_completed", "generation_chunk",
-  ]);
-});
-
-test("snapshotEvents keeps a grep that found nothing muted: no_match in the completed event's activity, as Ruby's replay", () => {
-  const turn = { prompt: "p", parts: [
-    { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "command=\"rg x\"", status: "ok", output: "", no_match: true },
-    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=\"ls\"", status: "ok", output: "a" },
-  ] };
-  const completed = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_completed");
-  assert.equal(completed[0].activity.no_match, true);
-  assert.equal("no_match" in completed[1].activity, false);
-});
-
-test("snapshotEvents with no turn in progress is just the queue", () => {
-  assert.deepEqual(snapshotEvents({ current_turn: null, queued: [] }), []);
-  assert.deepEqual(snapshotEvents({}), []);
 });
 
 import { restoreAction } from "../../../lib/samagotchi/web/public/restore.js";
@@ -462,13 +418,6 @@ test("commandView: a command queued for after the turn waits in its bubble, then
   assert.deepEqual([dropped.failed, dropped.busy], [true, false]);
 });
 
-test("snapshotEvents replays the commands waiting for the turn's end as their command_queued, after the queued prompts", () => {
-  const events = snapshotEvents({ queued: [{ enqueued_id: "e1", client_id: "web:1", prompt: "next" }],
-                                  queued_commands: [{ command_id: "c1", client_id: "tui:1", line: "/model x" }] });
-  assert.deepEqual(events.map((e) => e.type), ["turn_enqueued", "command_queued"]);
-  assert.deepEqual(events[1], { type: "command_queued", command_id: "c1", client_id: "tui:1", line: "/model x", waits: "turn_end" });
-});
-
 test("historyHasCommandBubble: only the history's LAST command bubble counts, and only for its own line", () => {
   // Fake elements: { line } stands in for the bubble with that .command-line.
   const bubble = (line) => ({ querySelector: () => ({ textContent: line }) });
@@ -494,16 +443,6 @@ test("commandView: a card's action is hidden unless it says something back or fa
   assert.equal(commandView({ ...ran, output: "check-in: no turn running" }, ME).hidden, false);
   assert.equal(commandView({ ...ran, status: "error" }, ME).hidden, false);
   assert.equal(commandView({ ...ran, card: undefined }, ME).hidden, false);
-});
-
-test("snapshotEvents replays a reminder turn's reminders (its prompt is empty)", () => {
-  const turn = { prompt: null, continue: true, origin: { client_id: "system:reminder" },
-                 parts: [{ kind: "reminder", reminders: [{ name: "stretch" }] }, { kind: "text", iteration: 1, text: "Time to stretch" }] };
-
-  const events = snapshotEvents({ current_turn: turn });
-
-  assert.deepEqual(events.slice(0, 2).map((e) => e.type), ["turn_started", "reminder_injected"]);
-  assert.deepEqual(events[1].reminders, [{ name: "stretch" }]);
 });
 
 import { reminderText } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -597,17 +536,6 @@ test("hookNoticeLabel names chi's own notice (a bare word, e.g. thinking) by tha
   assert.equal(hookNoticeLabel("loop-guard"), "loop-guard");
 });
 
-test("snapshotEvents: a running turn's steer part replays as a steer-only merge", () => {
-  const events = snapshotEvents({ current_turn: { prompt: "p", origin: {}, parts: [
-    { kind: "text", iteration: 1, text: "hm" },
-    { kind: "steer", iteration: 2, source: "check-in", text: "status?" },
-  ] } });
-  assert.deepEqual(events.slice(-2), [
-    { type: "generation_completed" },
-    { type: "pending_input_merged", count: 0, content: null, steers: [{ source: "check-in", text: "status?" }] },
-  ]);
-});
-
 test("promptOps: a steer-only merge adds no prompt bubble, even after an unmatched input_merged", () => {
   const event = { type: "pending_input_merged", count: 0, content: null, steers: [{ source: "check-in", text: "x" }] };
   assert.deepEqual(promptOps(event, { myId: "web:a", known: () => false, unmatchedMerge: true }), []);
@@ -618,13 +546,6 @@ import { emptyRetryLine } from "../../../lib/samagotchi/web/public/turn_events.j
 test("emptyRetryLine says the loop asks again, with the attempt", () => {
   assert.equal(emptyRetryLine({ attempt: 1, of: 1 }), "↻ empty answer, asking again (1/1)");
   assert.equal(emptyRetryLine({ attempt: 1, of: 1, stopped_by: "loop-guard" }), "↻ cut by loop-guard, asking again (1/1)");
-});
-
-test("snapshotEvents passes an edit's diff on, so a mid-turn join shows it", () => {
-  const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1 };
-  const turn = { prompt: "p", parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "edit", params: "x", status: "ok", output: "Edited", diff }] };
-  const completed = snapshotEvents({ current_turn: turn, queued: [] }).find((e) => e.type === "tool_call_completed");
-  assert.deepEqual(completed.diff, diff);
 });
 
 import { initWaitLine, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -697,19 +618,6 @@ test("llmContextHover: each group's outputs, a forget's note once and its kept l
   assert.match(llmContextHover({ moment: "turn_end", groups: [] }), /^Sent from the next turn on\./);
 });
 
-test("snapshotEvents: a joined turn's ✂ row comes back as its live event", () => {
-  const part = { kind: "notice", event: { type: "llm_context_edited", text: "✂ x", groups: [] } };
-  const events = snapshotEvents({ current_turn: { prompt: "p", parts: [part] } });
-  assert.deepEqual(events.at(-1), { type: "llm_context_edited", text: "✂ x", groups: [] });
-});
-
-test("snapshotEvents passes the name the model called a tool by on, so a reload shows it", () => {
-  const turn = { prompt: "p", parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "x", title: "List", status: "ok", output: "", called_as: "bash" }] };
-  const events = snapshotEvents({ current_turn: turn, queued: [] });
-  assert.equal(events.find((e) => e.type === "tool_call_started").called_as, "bash");
-  assert.equal(events.find((e) => e.type === "tool_call_completed").activity.called_as, "bash");
-});
-
 import { steerChoiceRoute, STEER_CHOICE_USAGE } from "../../../lib/samagotchi/web/public/commands.js";
 
 test("steerChoiceRoute: /cut TEXT during a turn is a message sent as a cut", () => {
@@ -740,16 +648,6 @@ test("steerChoiceRoute: any other line is not a delivery", () => {
   }
 });
 
-test("snapshotEvents passes a running call's elapsed_ms on, so a join clocks it from its start", () => {
-  const turn = { prompt: "p", parts: [
-    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "ls", status: "running", elapsed_ms: 4200 },
-    { kind: "tool", iteration: 1, call_index: 2, tool: "read", params: "f", status: "ok", output: "x", elapsed_ms: 9 },
-  ] };
-  const starts = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_started");
-  assert.equal(starts[0].elapsed_ms, 4200);
-  assert.equal("elapsed_ms" in starts[1], false);
-});
-
 test("a turn_enqueued queued for after the running turn (delivery queue) carries it to its add and tag ops", () => {
   const theirs = { type: "turn_enqueued", enqueued_id: "q1", client_id: "tui:9", prompt: "later", delivery: "queue" };
   assert.deepEqual(promptOps(theirs, none), [
@@ -757,26 +655,4 @@ test("a turn_enqueued queued for after the running turn (delivery queue) carries
   ]);
   const mine = { ...theirs, client_id: ME };
   assert.deepEqual(promptOps(mine, none), [{ op: "tag", enqueuedId: "q1", prompt: "later", delivery: "queue" }]);
-});
-
-test("snapshotEvents: a queued entry's delivery and the turn's cut_after replay as the live events carry them", () => {
-  const events = snapshotEvents({
-    current_turn: { prompt: "p", parts: [], cut_after: 25 },
-    queued: [{ enqueued_id: "q1", client_id: "web:x", prompt: "later", delivery: "queue" }, { enqueued_id: "q2", client_id: "web:x", prompt: "now" }],
-  });
-  assert.equal(events[0].cut_after, 25);
-  assert.equal(events[1].delivery, "queue");
-  assert.equal("delivery" in events[2], false);
-  assert.equal("cut_after" in snapshotEvents({ current_turn: { prompt: "p", parts: [] } })[0], false);
-});
-
-test("snapshotEvents keeps System 1's auto-allow in the completed event's activity, as Ruby's replay", () => {
-  const guardrail = { rule: "git-push", decided_by: "system one", p: 0.97 };
-  const turn = { prompt: "p", parts: [
-    { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "command=\"git push\"", status: "ok", output: "", guardrail },
-    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=\"ls\"", status: "ok", output: "a" },
-  ] };
-  const completed = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_completed");
-  assert.deepEqual(completed[0].activity.guardrail, guardrail);
-  assert.equal("guardrail" in completed[1].activity, false);
 });

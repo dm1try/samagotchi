@@ -116,14 +116,16 @@ RSpec.describe "Events drift" do
     expect(synth::SYNTHESIZED - emitted - indirect).to eq([])
   end
 
-  it "replays the same turn part kinds in the web and the TUI as TurnAccumulator writes" do
+  # One replay for both UIs: the TUI's replay_events, which the web's
+  # join_events (chi web's `replay`) unfolds too.
+  it "replays every turn part kind TurnAccumulator writes" do
     accumulator = read.call("lib/samagotchi/bridge/turn_accumulator.rb")
     written = accumulator.scan(/kind: "([a-z]+)"/).flatten + accumulator.scan(/append_text\([^,]+, "([a-z]+)"/).flatten
-    replay = section(read.call("lib/samagotchi/web/public/turn_events.js"), "export function snapshotEvents", /^}$/)
-    web_kinds = replay.scan(/^        case "([a-z]+)":/).flatten
+    replay = section(accumulator, "def self.replay_events", /^      end$/)
+    replayed = replay.scan(/^ *when "([a-z]+)"/).flatten
 
     expected = Samagotchi::Events::PART_KINDS.sort
     expect(written.uniq.sort).to eq(expected)
-    expect(web_kinds.uniq.sort).to eq(expected)
+    expect(replayed.uniq.sort).to eq(expected)
   end
 end
