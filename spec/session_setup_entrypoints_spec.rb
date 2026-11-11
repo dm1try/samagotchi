@@ -111,7 +111,8 @@ module SessionSetupEntrypoints
     verify_fresh: { # a Verify fresh child (VerifyFresh.start)
       llm_context: :default, thinking: :default, reasoning_history: :default, appended_prompt_files: :default,
       preloaded_memory_names: [:fixed, "the delegate memory"], muted_memory_names: :default, toolkit: :default,
-      toolkit_origin: :default, settings: :default, parent_answers: :default, working_set_pins: :default
+      toolkit_origin: :default, settings: :default,
+      parent_answers: [:inherited, "the parent's, as a delegate child's"], working_set_pins: :default
     },
     bundle_test: { # Testing::Bundle#setup_with (chi bundle test's recorder)
       llm_context: :not_applicable, thinking: :not_applicable, reasoning_history: :not_applicable,
