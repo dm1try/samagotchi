@@ -111,9 +111,11 @@ The agent does each step and stops where the user has to say yes.
    (a new time, a random id, a measured number). Pin it in
    `CompatWire.normalise` (`*_ms`, `*_ms_sum` and `age` are pinned already, as is `last_turn.seconds`;
    an id the script chooses is better pinned at its source), check `spec/release/compat_wire_spec.rb`,
-   and run the bump again (nothing is written when it stops). The new VERSION may pass a
-   compat shim's `remove_after` (`Compat::SHIMS`): `spec/compat_spec.rb` then
-   names it, and the shim goes (or its date moves) before the release.
+   and run the bump again (nothing is written when it stops). The new
+   VERSION may pass a compat shim's `remove_after` (`Compat::SHIMS`): once the
+   shim is also at least 14 days old (`added_on`, `Compat::MIN_AGE_DAYS`),
+   `spec/compat_spec.rb` names it, and the shim goes (or its date moves)
+   before the release.
 5. **Check.** Add all release files, including the new compatibility corpus, then run it:
    `git add -A && git commit -m "Release X.Y.Z"` and `bundle exec rake release:check`.
    Fix anything it finds in new commits and run it again.
