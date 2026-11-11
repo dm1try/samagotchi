@@ -68,6 +68,14 @@ test("a card is no finding (a reload places it after the render); the queued lin
   assert.equal(posts[0][1].same, true);
 });
 
+test("an answered question card is no finding either (a reload places it after the render, cards_place.js)", async () => {
+  const card = '<details class="bubble question answered"><summary>Which file? → README.md</summary></details>';
+  const { check, posts } = setup();
+  await check.handedOff({ pieces: pieces(PROMPT + card + ANSWER) });
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
 test("a reload's rows that came without their turn's drawing (the plain fallback) are counted", async () => {
   const plain = PROMPT.replace('data-turn-id="T1"', 'data-turn-id="T1" data-undrawn="1"') + ANSWER.replace('class="bubble output"', 'class="bubble output" data-undrawn="1"');
   const { check, posts } = setup({ reloaded: plain });
