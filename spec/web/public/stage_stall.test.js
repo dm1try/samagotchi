@@ -6,6 +6,10 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
+// The no-op redraw test watches the stage; the shim leaves MutationObserver
+// out, so a run of this file alone needs happy-dom's here.
+globalThis.MutationObserver ??= window.MutationObserver;
+
 const { createStageStall, stallKind, stallOf, stallState, toolClockText } = await import("../../../lib/samagotchi/web/public/stage_stall.js");
 const { node } = await import("../../../lib/samagotchi/web/public/stage_slots.js");
 
