@@ -357,6 +357,9 @@ RSpec.describe ReleaseTools do
       expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/guardrails/approvals.lock"))
       expect(File).not_to exist(File.join(tmp, "spec/compat/0.2.0/web-grants/grants.lock"))
       expect(File).to exist(File.join(tmp, "spec/compat/0.2.0/home.json"))
+      wire = File.join(tmp, "spec/compat/0.2.0/wire")
+      expect(Dir.glob("**/*", base: wire).select { |rel| File.file?(File.join(wire, rel)) }).to match_array(CompatWire::FILES)
+      expect(JSON.parse(File.read(File.join(wire, "snapshot.json"))).dig("body", "snapshot", "chi_version")).to eq("0.2.0")
     end
 
     it "raises a marked bundle's requires_chi to the new version and drops the marker; leaves the others" do
