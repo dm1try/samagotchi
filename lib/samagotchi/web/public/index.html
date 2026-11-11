@@ -1318,9 +1318,9 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pp-invite-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .pp-invite-row label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text-3)}
 .participants-popover input,.participants-popover select{font:inherit;font-size:12.5px;color:var(--text);background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:6px;padding:3px 7px}
-.pp-invite input[name=name]{flex:1;min-width:120px}
+.pp-invite input[name=chi-invitee]{flex:1;min-width:120px}
 .pp-invite input[name=cap]{width:52px}
-.pp-invite input[name=identity]{flex:1;min-width:160px}
+.pp-invite input[name=chi-invitee-account]{flex:1;min-width:160px}
 .pp-bound{color:var(--text-2)}
 .pp-invite .pp-invite-btn{margin-left:auto;background:var(--primary);border-color:var(--primary);color:var(--on-solid);font-weight:600}
 .pp-invite-done{display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid var(--border)}
@@ -2004,7 +2004,7 @@ a{color:var(--accent)}
       <div id="composer" style="position:relative">
         <div id="commandList" role="listbox" aria-label="Commands" hidden></div>
         <div id="modelPanel" hidden>
-          <label class="model-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg><input id="modelSearch" type="text" placeholder="Search models" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search models" aria-autocomplete="list" aria-controls="modelList" aria-expanded="false"></label>
+          <label class="model-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg><input id="modelSearch" name="chi-model-search" type="text" placeholder="Search models" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search models" aria-autocomplete="list" aria-controls="modelList" aria-expanded="false"></label>
           <div id="modelList" role="listbox" aria-label="Models"></div>
         </div>
         <div id="deliveryLine" class="composer-line" aria-live="off" hidden></div>
