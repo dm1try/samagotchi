@@ -19,6 +19,12 @@ and commands may change between minor versions. How releases are made:
 - chi web: the newest turn that edited, wrote or ran a command and recorded no move on the objectives says `no move
   recorded` under its steps, while the list has an active objective (not for a canceled or failed turn, nor a
   participant's).
+- Objectives: the tracker, `/objectives track`: one side request reads the session's record and says where each active
+  objective stands (`done`, `progress`, `blocked` or `no sign`, with what in the record shows it), as a card and as
+  `track: …` under each objective, beside the agent's own moves. Information only, on `objectives.check_model`, at most
+  8 objectives per read. `objectives.tracker: on` (default `off`) also runs it by itself after a turn of yours that did
+  work and recorded no move; your next turn cancels it. With a hosted `check_model` that sends the session's record off
+  the machine after such a turn, without a tap.
 
 ### Changed
 

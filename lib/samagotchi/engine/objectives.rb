@@ -5,7 +5,7 @@ module Samagotchi
     # The session's objectives (TurnStages::Objectives, forwarded): the view
     # announced when it changed, the model's proposals kept as cards until
     # the turn is over, System 1's audit of them (ObjectivesAudit); and
-    # Check this's side request. Reads @objectives_stage, @side_judgments,
+    # Check this's and the tracker's side requests. Reads @objectives_stage, @side_judgments,
     # @host_registry, @session.
     module ObjectivesPart
       # The session's objectives as the page draws them, when that differs
@@ -36,6 +36,15 @@ module Samagotchi
                                 cancel_controller: nil, model: model, source: ObjectivesCheck::SOURCE)
       end
 
+      # The tracker (ObjectivesTrack)'s one side request, under its own kind so
+      # /stats counts it apart. +cancel_controller+: the automatic read's, which
+      # the owner's next turn cancels (raises LLM::RequestCancelled then).
+      # @return [String] the answer
+      def ask_objective_track(request, model:, cancel_controller: nil)
+        ask_side_model(request, timeout: ObjectivesTrack::TIMEOUT_SECONDS, max_tokens: ObjectivesTrack::MAX_TOKENS,
+                                cancel_controller: cancel_controller, model: model, source: ObjectivesTrack::SOURCE)
+      end
+
       # A change the model proposes (the objectives tool), kept until the turn
       # is over (TurnStages::Objectives#propose).
       # @return [Boolean] false past Objectives::PROPOSALS_PER_TURN
@@ -53,6 +62,16 @@ module Samagotchi
         @objectives_stage.finally(turn).each { |card| show_card(**card) }
       rescue StandardError => e
         Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
+      end
+
+      # After a completed turn (#complete_turn, beside the stage's outgoing):
+      # with objectives.tracker on, the tracker by itself, when the turn did
+      # work and recorded no move (TurnStages::Objectives#track). It only
+      # informs: a failure is logged.
+      def track_objectives_after(turn)
+        @objectives_stage.track(turn, engine: self)
+      rescue StandardError => e
+        Log.warn(:turn, "objectives_track_start_failed", error: e.class.name, msg: e.message)
       end
 
       # The stage over this Engine's side asks (built in #initialize, once

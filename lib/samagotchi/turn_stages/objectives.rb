@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require_relative "../cancellation_controller"
 require_relative "../log"
 require_relative "../objectives"
 require_relative "../objectives_audit"
+require_relative "../objectives_track"
 require_relative "../owner_prompt"
 require_relative "../system_one/client"
 
@@ -13,9 +15,11 @@ module Samagotchi
     # list itself; inside this class the bare name is this stage): System 1's
     # audit of what comes in at a turn's start and what goes out at its end
     # (ObjectivesAudit), the view announced when it changed, and the model's
-    # proposals kept as cards until the turn is over. Its state is those
-    # proposals under their mutex and the last view announced (under the
-    # event lock); the audit is built per call.
+    # proposals kept as cards until the turn is over, and the tracker's
+    # automatic read after a turn (ObjectivesTrack). Its state is those
+    # proposals under their mutex, the automatic read's cancel under its own,
+    # and the last view announced (under the event lock); the audit is built
+    # per call.
     class Objectives
       # @param side_judgments [SideJudgments] the Engine's side asks (the audit's kinds)
       # @param host_registry [HostRegistry] System 1's client resolves its host here
@@ -27,6 +31,9 @@ module Samagotchi
         # The model's proposals until the turn is over (#finally).
         @proposals = []
         @proposals_mutex = Mutex.new
+        # The automatic read's cancel (#track), until the next turn's start.
+        @track_cancel = nil
+        @track_mutex = Mutex.new
       end
 
       # System 1 on the objectives, in audit (ObjectivesAudit), at a turn's
@@ -47,6 +54,42 @@ module Samagotchi
         return unless OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
 
         audit(turn.context.state_dir, recorder).outgoing(turn.session, result.text)
+      end
+
+      # After a completed turn (Engine#track_objectives_after), on the turn's
+      # thread: the tracker by itself when ObjectivesTrack.after_turn? says so,
+      # on a thread of its own kind (SideJudgments#start), so the turn's end
+      # never waits. The stored conversation is read here, on this thread. The
+      # next turn's start cancels it (#cancel_track); a typed track isn't.
+      # @param engine [Engine] what ObjectivesTrack reads and shows through
+      # @return [Thread, nil] the read's thread, nil when none started
+      def track(turn, engine:)
+        return nil unless ObjectivesTrack.after_turn?(engine, turn)
+
+        # Its last read still runs (a turn as short as a request): that one
+        # stays the one to cancel.
+        if @side_judgments.in_flight?(ObjectivesTrack::SOURCE)
+          Log.debug(:turn, "objectives_track_skipped", reason: "previous_read_running")
+          return nil
+        end
+
+        session = turn.session
+        conversation = session.messages.dup
+        cancel = CancellationController.new
+        thread = @side_judgments.start(ObjectivesTrack::SOURCE, warn: lambda { |e|
+          Log.warn(:turn, "objectives_track_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+        }) { ObjectivesTrack.run_after_turn(engine, session, conversation, cancel) }
+        @track_mutex.synchronize { @track_cancel = cancel } if thread
+        thread
+      end
+
+      # The automatic read's request cancelled (CancellationController#cancel!
+      # :new_turn); nothing when none runs. At the very start of every turn
+      # (Engine#begin_turn, before its own probes and waits), a wake's too, so
+      # a one-slot server is free for it.
+      def cancel_track
+        cancel = @track_mutex.synchronize { @track_cancel.tap { @track_cancel = nil } }
+        cancel&.cancel!(:new_turn)
       end
 
       # A note added between turns (Engine#add_context_note): incoming too.

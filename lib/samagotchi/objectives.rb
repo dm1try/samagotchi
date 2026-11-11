@@ -12,6 +12,7 @@ require_relative "message_time"
 require_relative "objectives_backing"
 require_relative "objectives_check"
 require_relative "objectives_edit"
+require_relative "objectives_track"
 require_relative "session"
 require_relative "session_chain"
 require_relative "session_inbox"
@@ -205,11 +206,14 @@ module Samagotchi
       # What the note carries, in one key style: strings, as a save leaves them.
       def to_payload = { "next" => next_number, "items" => items.map(&:to_payload) }
 
-      # What the page draws: the items, each with its last move and last check,
-      # and whether the newest edit is still a file waiting to go in.
+      # What the page draws: the items, each with its last move, last check and
+      # last track, whether the newest edit is still a file waiting to go in,
+      # and +tracking+ only while a track runs.
       # @param checks [Hash{String => Hash}] ObjectivesCheck.view_of's
-      def to_view(pending:, checks: {})
-        { items: items.map { |item| item_view(item, checks[item.id]) }, pending: pending }
+      # @param tracks [Hash{String => Hash}] ObjectivesTrack.view_of's
+      def to_view(pending:, checks: {}, tracks: {}, tracking: nil)
+        view = { items: items.map { |item| item_view(item, checks[item.id], tracks[item.id]) }, pending: pending }
+        tracking ? view.merge(tracking: tracking) : view
       end
 
       private
@@ -219,11 +223,12 @@ module Samagotchi
         move.backing ? view.merge("backing" => move.backing.to_view) : view
       end
 
-      def item_view(item, check)
+      def item_view(item, check, track)
         move = moves[item.id]
         view = item.to_payload
         view = view.merge("move" => move_view(move)) if move
-        check ? view.merge("check" => check) : view
+        view = view.merge("check" => check) if check
+        track ? view.merge("track" => track) : view
       end
     end
 
@@ -345,7 +350,10 @@ module Samagotchi
       dir = Session.session_dir(session_id, state_dir: state_dir)
       pending = pending_payload(dir)
       list = build(conversation, pending: pending, running: running)
-      list.empty? ? nil : list.to_view(pending: !pending.nil?, checks: ObjectivesCheck.view_of(dir, list))
+      return nil if list.empty?
+
+      tracks, tracking = ObjectivesTrack.view_of(dir, list, conversation)
+      list.to_view(pending: !pending.nil?, checks: ObjectivesCheck.view_of(dir, list), tracks: tracks, tracking: tracking)
     end
 
     # One note's list for the page's entry: its items and, when there was a

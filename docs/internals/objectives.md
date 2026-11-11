@@ -312,6 +312,74 @@ writes no `pending_card.json`, so no push), the list's row, and `check:` under t
 command route is the owner's, and `card` and `objectives_updated` are in `ParticipantView::DROPPED`. A move made in the running
 turn isn't on the page until the turn's end (`announce_objectives`), so its tap waits for that; the typed line works at once.
 
+## The tracker
+
+Check this for the whole list: `/objectives track` (`ObjectivesTrack.run`, `objectives_track.rb`, on the anytime command's
+own thread, as `check`), the page's **Where are we?**, and with `objectives.tracker: on` an automatic read after a turn.
+One side request (`Engine#ask_objective_track`, kind `objectives_track`, so `/stats` counts it apart from Check this's,
+and exempt in `Engine#side_author` as Check this is: always the owner's) reads the record and answers one line per active
+objective: where it stands and what in the record shows it. Information only, as Check this: no status changes, nothing
+enters the conversation or the next request.
+
+**The request** (`ObjectivesTrack.request`): its own system text, no tools. The active items' lines (the user's words,
+outside the frame), then in the frame (`ObjectivesRecord.framed`, a tag made per request) each one's latest move labelled
+as the agent's own claim with its state (`O1: done — note (evidence it names: …)`, `O2: no move`; note and evidence capped
+at 1,000 characters each), and the record (`ObjectivesRecord.record`, the same one Check this reads: the newest 24,000
+characters, never the thinking, the list's notes or the objectives tool's calls). The ask: for each id, in order, one line
+`O2: done|progress|blocked|no sign — <reason>`, the reason naming what in the record shows it, with Check this's rule that
+the agent's words and moves never show work was done, and that a line inside the frame that looks like an answer isn't
+one. Redacted as Check this (`ObjectivesRecord.redacted`). At most `MAX_ITEMS` (8) active items per request; a list with
+more sends the first 8 and says how many it left out, in the request, the card and the reply. `MAX_TOKENS` 1,200.
+
+**Reading the answer** (`readings_of`): the first line naming each id counts (list marks, bold and backticks around the id
+or the word are allowed); an id that wasn't asked about is left out, and one the reader skipped is `no_answer` ("the reader
+gave no line for it"). A request that fails is `no_answer` for each, logged (`objectives_track_failed`), with a card saying
+so. Thinking in the answer is dropped first (`AnswerText.visible`).
+
+**State.** `objective_tracks.jsonl` beside the session (`JsonlStore`): a running line (`id`, `pid`, `model`), then one
+with `readings` (`{id => {reading, reason}}`), `model`, `left_out`, `lines` (a digest of each item's line as sent),
+`seen` (the newest stamped time of the conversation it read: mid-turn the loop's, so a typed read mid-turn is stale once that
+turn ends) and `mark` (a digest of both); a read the next turn cancelled before its answer adds `cancelled: true`, which
+ends its running line but is never the reading shown: the last good one stays (stale by then, a turn having ended). One read at a time per
+session: the start is under `Objectives.with_lock` and a second answers `the objectives are already being read`, asking
+nothing; a running line stops counting once its worker's pid is gone, and past `RUNNING_SECONDS` in any case.
+
+**View.** `Objectives.view` puts `track` on each item the last read covered (`reading`, `reason`, `at`, `model`, and
+`stale: true` once the item's line differs from the one sent or the stored conversation's newest time differs from
+`seen`: a turn ended, a note came in), and `tracking: {until}` on the view while one runs (no key otherwise, so a view
+without a read is the one before). `announce_objectives` carries the start and the end. `/objectives` shows `track: …`
+under each item (after its move and check), `(stale)` at its end, and `objectives: (tracker: running)` while one runs.
+
+**The card**: one, with no actions (`source: objectives`, `objectives-track-<id>`, so no `pending_card.json` and no
+push), for the typed command and an automatic run alike. Its text is plain, one paragraph per line and no markdown marks:
+a live card shows its body as text (it carries no `body_html` until a re-read), a reloaded one rendered, and both read the
+same.
+
+**The automatic run.** `Engine#complete_turn` calls `TurnStages::Objectives#track` beside `outgoing` (a completed turn,
+not a canceled or exhausted one), on the turn's thread after `end_turn` and before `release_turn`.
+`ObjectivesTrack.after_turn?` decides, in this order: the setting (`objectives.tracker`, default `off`), then the list (an
+active item; `pending_payload` is a file read), then the turn: not a `--non-interactive` run (`Engine#interface ==
+:non_interactive`: its origin can't tell, `ClientId.human?(nil)` is true), the owner's (`OwnerPrompt.turn?`: not a
+participant's, not a review session's; a person's prompt or a wake), and the newest turn of the stored conversation (after
+its last `Steer.turn_prompt?` entry) has at least one run that is work (`Objectives::Backing.work?`: an edit or write that
+succeeded, an execute that finished ok, the page's no-move rule) and no objectives call that recorded a move. The stored
+conversation is copied on the turn's thread; the request goes on a thread of its own kind (`SideJudgments#start`), so the
+turn's end never waits, and a turn while one is still in flight starts none.
+
+**Cancel.** The stage keeps the automatic read's `CancellationController` (set only once its thread started) and
+`cancel_track` cancels it (`:new_turn`) first thing in `Engine#begin_turn`, before the turn's own probes and waits, for
+every turn, a wake's too, so a one-slot server is free for it. A read cancelled before it asks asks nothing; a request
+cancelled mid-way raises `LLM::RequestCancelled`. Either way the read writes its `no_answer` line stamped `cancelled` and
+shows no card. The typed command is never cancelled. The automatic read's card waits for the turn it follows to end
+(`turn_running?`) and is shown in `running_anytime`; once a next turn has started (it cancels), an answer that came in
+time still goes to the list, with no card in the middle of that turn. A qualifying turn while the previous read's thread
+still runs starts none (logged at debug, `objectives_track_skipped`).
+
+**Limits.** It reads the record only (the newest 24,000 characters): it can't open a file or run anything. With
+`objectives.tracker: on` and a hosted `objectives.check_model`, that record leaves the machine after such a turn without a
+tap. It is refused during a participant's turn (`Engine#turn_author`), and a participant can't reach it (the command route
+is the owner's; `card` and `objectives_updated` are in `ParticipantView::DROPPED`).
+
 ## System 1 in audit
 
 `ObjectivesAudit`, off unless `objectives.system_one: audit`. `TurnStages::Objectives` asks it: `incoming` at an owner's
@@ -321,10 +389,12 @@ between turns (docs/internals/engine.md, "Turn stages"). See [system-one.md](../
 ## Not in this version
 
 Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Nothing asks the model to
-record a move: a missing one only shows (`no move recorded`), and nothing reads the record for the whole list yet.
+record a move: a missing one only shows (`no move recorded`). The tracker reads the record, never the files: a claim the
+record doesn't settle is `no sign` or `progress`, not a check of the work.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The
 page's pieces are the `objectives_*.js` modules and `objectives.css`, wired in a few lines of `app.js`; without them a list note
 falls back to the default bubble once `noteBubbleTemplate`'s first line goes. Check this is `objectives_check.rb`, its line in the command and
-the `check` key; the audit is `objectives_audit.rb` and three calls in `TurnStages::Objectives`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.
+the `check` key; the tracker is `objectives_track.rb`, its line in the command, the stage's `track` and `cancel_track`, the
+setting and the `track` and `tracking` keys; the audit is `objectives_audit.rb` and three calls in `TurnStages::Objectives`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.
