@@ -297,7 +297,8 @@ question gets no room and no pill: its reply is in the history.
 ## A turn opened in the history
 
 When the model's own question blocks the turn after a reply (`ASK_CARD`: `data-kind="question"`, not relayed, placed in
-the extras before the turn's end, `turn_model.js askingText` non-empty), the stage opens the turn in the history
+the extras before the turn's end, with a reply from `stage_view.js askingGen`: live, the step whose call runs; in a
+replay, below), the stage opens the turn in the history
 (`stage_view.js openTurn`, `stage_opened.js`). Approvals, relayed and hook questions, a question with no reply, plugin
 asking cards and the step limit keep the stage as it was (the asking slot, `drawAsking`).
 
@@ -322,7 +323,14 @@ line instead, and the history is marked `data-reading` until that scroll ends so
 (`dock_reserve.js`) doesn't take the end back. A reader scrolled up is never moved. **The end fold** (`finishFold`, after
 the pieces, in their task): the reasons go and each answered card's two-line clamp says it, as the turn reloads; the first
 row in view after a reason keeps its place when the history has room to scroll. The hand-off also waits while the pointer
-or a selection is in a reason (`stage_watch.js alsoWatched`). The reload check gets the whole turn from its prompt.
+or a selection is in a reason (`stage_watch.js alsoWatched`). The reload check gets the turn from its opening (`wholeTurn`).
+**A reload or a resync** draws the same picture: `renderSessionView` replays the running turn (`data.replay`), in which
+the asking call has completed when its `question_requested` comes (`TurnAccumulator.join_events`), so the asking step is
+the last one whose last call is `ask_user_question` and whose reply no question card of this page took yet
+(`stage_view.js askingGen`, `asked`: a later card of that step never reuses it; live, the step whose call runs). The
+replayed card opens the turn as live; a question answered earlier in the turn settles under its reason with the
+replayed `question_answered`, and `releaseHeldWait` reads a pending card, not the `waiting` class the replay's one task
+hasn't refreshed yet.
 
 ## Frames
 

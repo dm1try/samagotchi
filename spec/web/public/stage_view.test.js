@@ -1189,3 +1189,59 @@ test("opened: two questions in one turn: two reasons, each card under its own", 
     view.reset();
   }
 });
+
+test("opened, replayed (a reload, a resync): the asking call completed before its question comes, the turn opens all the same; its answer and the next step in one task let the held frame go", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Both files matter. Which first?" });
+    view.generationCompleted();
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+    view.toolCompleted({ iteration: 1, call_index: 1, status: "ok" });
+    assert.equal(view.askingText(), "Both files matter. Which first?", "the answered card keeps it");
+    const card = questionCard();
+    append(card);
+    assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble said"]);
+    assert.ok(view.root.classList.contains("held-wait"));
+    card.classList.add("answered");
+    card.querySelector(":scope > button").remove();
+    view.generationStarted({ iteration: 2 });
+    assert.ok(!view.root.classList.contains("held-wait"));
+    await tick();
+    assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble said", "bubble question"]);
+  } finally {
+    view.reset();
+  }
+});
+
+test("opened: a step whose last call isn't the question doesn't open the turn after it completed", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Reading first." });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "README.md" });
+    view.toolCompleted({ iteration: 1, call_index: 1, status: "ok" });
+    append(questionCard());
+    assert.deepEqual(kinds(historyEl), []);
+  } finally {
+    view.reset();
+  }
+});
+
+test("replayed: a later question card of the same step doesn't take the reply a card already took", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Both files matter. Which first?" });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
+    view.toolCompleted({ iteration: 1, call_index: 1, status: "ok" });
+    const one = questionCard({ qid: "q1" });
+    append(one);
+    await resolve(one);
+    assert.equal(view.askingText(), "", "taken");
+    append(questionCard({ qid: "q2" }));
+    assert.equal(historyEl.querySelectorAll(".bubble.said").length, 1);
+  } finally {
+    view.reset();
+  }
+});

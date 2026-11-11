@@ -488,6 +488,37 @@ test("a long reply that asks: its reason in the history, the card docked while t
   });
 });
 
+// A reload after the turn's question was answered, while the turn still
+// runs (the next step holds 6 s): the replay brings the question after its
+// call completed (TurnAccumulator.join_events), and the page draws what
+// live drew: the reason with the answered card under it in the history;
+// at the end the reason folds into the card's two lines.
+test("a reload after a question answered mid-turn draws the reason and its card as live did", async ({ page, script }) => {
+  script("question_hold");
+  await send(page, "Read a file of my choice");
+  await page.mouse.move(0, 0);
+  const card = stageEl(page).locator(".ts-extras .bubble.question");
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await expect(stageEl(page).locator(".ts-tick")).toHaveCount(2);
+  const drawn = () => page.evaluate(() => ({
+    history: [...document.querySelector("#history").children].map((el) => [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 3).join(" ")),
+    said: document.querySelector("#history .bubble.said .said-text")?.textContent || "",
+    extras: document.querySelector("#turnStage .ts-extras").children.length,
+  }));
+  const live = await drawn();
+  expect(live.history).toEqual(["bubble user", "turn-work", "bubble said", "bubble question answered"]);
+  expect(live.said).toContain("I can start from either file");
+  await page.reload();
+  await expect(page.locator("#history .bubble.said + .bubble.question.answered")).toHaveCount(1);
+  expect(await drawn()).toEqual(live);
+  await expect(stageEl(page)).not.toHaveClass(/held-wait/);
+  await page.mouse.move(0, 0);
+  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator("#history .bubble.said")).toHaveCount(0);
+  await expect(page.locator("#history .bubble.question .question-said")).toContainText("Two files");
+});
+
 // The fake holds 60 s before its first token: on the page's clock
 // (Playwright's, moved by runFor) the stage says the turn is quiet, in the
 // now row and, folded, in the status row (stage_stall.js; its edges are
