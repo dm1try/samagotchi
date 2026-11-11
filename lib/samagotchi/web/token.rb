@@ -10,10 +10,10 @@ require_relative "../redacted_inspect"
 
 module Samagotchi
   module Web
-    # The access token of `chi web` on the LAN (web.host: lan): anyone
+    # The one access token of `chi web` (LAN link, --tunnel, public_url/proxy): anyone
     # who has it can run commands as you, so it lives in one file only you
     # can read, $XDG_STATE_HOME/samagotchi/web-token (0600). It is made on
-    # the first LAN start and kept, so a phone's bookmark survives
+    # the first start that needs it and kept, so a phone's bookmark survives
     # restarts; `chi web --new-token` replaces it. A loopback-only chi web
     # never reads it. The owner's cookie for this machine's 127.0.0.1
     # holds #loopback_cookie, never the token: a server on any other local
