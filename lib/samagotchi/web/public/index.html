@@ -1175,6 +1175,8 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar[data-compact~="settings"] .meta .settings-chip .sc-own{display:none}
 #infoBar[data-compact~="settings"] .meta .settings-chip.own{padding-right:6px}
 #infoBar[data-compact~="settings"] .meta .settings-chip.own::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+/* Compact, the dot says the session set its own: no accent border too (it comes back while the panel is open). */
+#infoBar[data-compact~="settings"] .meta .settings-chip.own:not([aria-expanded="true"]){border-color:transparent}
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
 /* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and move the chips after it. The speed and the clock show from the session's start, a muted placeholder until there is a number. */

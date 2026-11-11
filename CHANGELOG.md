@@ -16,7 +16,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- chi web on a phone: the ⚙ button's border is no longer cut off at the top and bottom.
+- chi web on a phone: the ⚙ chip marks changed settings with its blue dot alone, without the accent border that was cut off at the top and bottom.
 
 ## [0.165.0] - 2026-11-11
 
