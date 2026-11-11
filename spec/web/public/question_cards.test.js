@@ -317,6 +317,16 @@ test("another question's resolve leaves this one; a hand-toggled card stays as l
   assert.equal(card.open, true);
 });
 
+test("a summary click whose toggle was refused (the stage's waiting card) doesn't mark it toggled: the resolve closes it", () => {
+  const { cards } = setup();
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  card.querySelector("summary").listeners.click.forEach((fn) => fn({ defaultPrevented: true }));
+  assert.equal(card.dataset.toggled, undefined);
+  cards.resolveQuestion("q1", { cancelled: true, reason: "turn ended" });
+  assert.equal(card.open, false);
+});
+
 test("an approval: its details, Deny, and a denied answer marks it", () => {
   const { cards } = setup();
   const pq = { id: "a1", kind: "approval", question: "Run it?", options: ["Allow", "Deny"], allow_freeform: true,

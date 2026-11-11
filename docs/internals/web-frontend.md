@@ -290,6 +290,20 @@ edge, with **two allowed shrinks, once per question and once per answer** (`forg
   the view (a reader who scrolled down a card taller than the stage), when it comes back to the view's top
   (`settleAnsweredCard`).
 
+**The stage's fold** (`stage_model.js stageCollapsed`, `stage_view.js`): collapsed to its status row the stage holds no
+frame (`frameTarget` returns null) and an unfold refits to what shows. Three things decide it, kept apart: the user's
+**choice** (the ▾ by hand, in memory, written to `chi_stage_collapsed`; never read back from storage to decide, so
+another tab's write doesn't apply live), **revealed** (a ref's "show in turn" opened it for this turn; the choice stays)
+and **the asking form's fold** (the waiting card the user folded). In the asking form only that fold counts: the ▾ and a
+tap on the folded row set or clear it and write nothing (another card that comes to wait meanwhile, an approval, a
+relayed or hook question, drops it, so the stage opens on that card), so a question always arrives open (in the card's task, before
+`question_cards.js focusWhenIdle` focuses it) and a new one never matches an old fold. When the form ends (an answer, a
+dismiss, a cancel; `emptySlots` for a reset, a session switch, the next turn) the stage is as the choice and revealed
+say. `refresh` applies it (`drawCollapsed`: only when it changed, no refresh of its own). Folded, the status row's
+`.ts-mini` says the card's `.question-text` (`foldedRowText`, `.ts-mini-question`: first line, the whole as its title,
+the UI font) instead of the running call; on a phone the step and the timing leave the row and the question wraps to a
+second line.
+
 One card raises the cap: a blocking approval too tall for the stage's view, a delegate's relayed one too
 (`raiseForApproval`, `stage_frame.js fitsCap`). It opens at its question and command (`revealTop`). A model's own
 question gets no room and no pill: its reply is in the history.
@@ -307,7 +321,7 @@ asking cards and the step limit keep the stage as it was (the asking slot, `draw
 | The prompt, the steps block (closed; its steps in order from now on, `turn_block.js inOrder`) and the rows the extras held | the history's end, in `handOffOrder`'s order (`history_end.js moveToHistoryEnd`) |
 | The reply that asked: `.bubble.said` (`data-question-id`, `data-said-turn`, never `data-turn-id`: that marks an opening) | the history's end, in the card's task; raw, then its markdown; `.pending` ("asking you", the amber edge) while its card waits |
 | Rows that arrive (`placeFor` `"opened"`: notes, steered prompts, commands, a card that stopped waiting) | the history's end, in arrival order |
-| A card that waits (`stage_cards.js waitsInStage`: `PENDING`, `ASKS`, a warning) | the stage, as before; a promoted one shows the asking form (`.asking-form`: the status row and the card; the prompt, the live slots with the working set and the chip hidden) and a "↑ its reason" link in its summary |
+| A card that waits (`stage_cards.js waitsInStage`: `PENDING`, `ASKS`, a warning) | the stage, as before; a promoted one shows the asking form (`.asking-form`: the status row and the card; the prompt, the live slots with the working set and the chip hidden) and a "↑ its reason" link in its summary. A `PENDING` card in the stage has no toggle of its own (a capture listener refuses the summary's click, tested at the click, so `question_cards.js` sets no `data-toggled`; the summary is out of the tab order, without its ▾): the stage's fold is the one (The stage's height) |
 | A promoted card answered or cancelled | right under its reason (`settle`), also after the turn's end; its own clamp is hidden while the reason is there (CSS) |
 | Live slots, the streaming answer, the end line, the queued slot | the stage, as before; the hand-off appends what it still holds |
 
@@ -431,7 +445,7 @@ reach another device or the server.
 | `chi_composer_collapsed` | `composer_fold.js` | the composer folded (a card's text field folds it for the time it has the focus on a narrow or touch screen, `composer_grip.js watchCardField`, on top of this and of the visit's state: neither is written) |
 | `chi_composer_floor` | `composer_grip.js`, `composer_mount.js` | the composer's dragged height |
 | `chi_strip_hidden` (`chi_zen`: the old name, read once) | `strip_hidden.js` | the session strip hidden |
-| `chi_stage_collapsed` | `stage_view.js` | the stage collapsed |
+| `chi_stage_collapsed` | `stage_view.js` | the stage collapsed by hand (not written from the asking form, whose fold is that question's only) |
 | `chi_working_set_collapsed` | `working_set_rail.js` | the working set rail collapsed |
 | `chi_markdown_tip_dismissed` | `markdown_tip.js` | the markdown tip dismissed |
 | `chi_update_available_shown` | `version_notices.js` | update notices already shown |

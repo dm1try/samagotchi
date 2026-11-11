@@ -353,6 +353,23 @@ test("a question card sits in the stage, its reason in the history (also after a
   })));
   await expect.poll(filled).toBe(true);
   await expect.poll(inSight).toBe(true);
+  // One fold for the waiting question: the status row's ▾ folds the box to
+  // its row, which says the question; the history gets the room (its bottom
+  // reserve follows the stage) and nothing is saved. A tap on the row brings
+  // the card back, still answerable.
+  const reserve = () => page.locator("#history").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  const openReserve = await reserve();
+  await stageEl(page).locator(".ts-fold").click();
+  await expect(stageEl(page)).toHaveClass(/collapsed/);
+  await expect(stageEl(page).locator(".ts-mini.ts-mini-question")).toHaveText("Which file should I read?");
+  await expect(card).toBeHidden();
+  await expect.poll(reserve).toBeLessThan(openReserve);
+  expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBeNull();
+  await stageEl(page).locator(".ts-mini").click();
+  await expect(stageEl(page)).not.toHaveClass(/collapsed/);
+  await expect(card.locator(".question-submit")).toBeVisible();
+  await expect.poll(filled).toBe(true);
+  await expect.poll(inSight).toBe(true);
   // From the answer until the next step nothing moves on its own: the
   // card's collapse and the slots' swap come with the click. The next step
   // lets the held height go, once. (The shifts' recorder came back with the
