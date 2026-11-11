@@ -1954,6 +1954,22 @@ RSpec.describe Samagotchi::Bridge do
       expect(state["event_id"]).to eq("#{state["event_seq"]}-#{@bridge.epoch}")
     end
 
+    it "reads GET /session/:id/state with the event log held, so event_id matches the state" do
+      start_bridge
+      held = []
+      allow(@engine).to receive(:session_state_snapshot).and_wrap_original do |original, *args|
+        # Another thread can't take the event log while this one holds it.
+        held << Thread.new { @engine.synchronize_events { true } }.join(0.2).nil?
+        original.call(*args)
+      end
+
+      status, resp = get_state
+
+      expect([status, held]).to eq([200, [true]])
+      state = resp["session_state_snapshot"]
+      expect(state["event_id"]).to eq("#{state["event_seq"]}-#{@bridge.epoch}")
+    end
+
     it "answers /stats with the Engine's stats snapshot" do
       start_bridge
       allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0, context_window_tokens: 4096 })

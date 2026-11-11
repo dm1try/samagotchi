@@ -22,6 +22,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A worker's `GET /session/:id/state` reply is read under the event lock, so its `event_id` always matches its state.
 - A Verify fresh child now keeps its session's own `parent_answers` (`--parent-answers`, `/parent-answers`), as a
   `delegate` child does, instead of falling back to config.yml's.
 - A schedule no longer restarts a session you stopped: it skips it (`the session is stopped; …`), in both modes, and a

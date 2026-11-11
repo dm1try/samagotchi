@@ -1437,10 +1437,14 @@ module Samagotchi
     end
 
     # Read-only snapshot surface. AC #4: too-old reconnects re-derive state
-    # from here.
+    # from here. Read under the event lock, as snapshot_frame and tail_frame:
+    # the state and its event_seq/event_id are one step of the event log.
     def handle_state(_session_id, _body = nil)
-      state = @engine.session_state_snapshot
-      [{}, 200, { session_id: @session_id, session_state_snapshot: state.merge(event_id: event_id(state[:event_seq])) }]
+      state = @engine.synchronize_events do
+        snap = @engine.session_state_snapshot
+        snap.merge(event_id: event_id(snap[:event_seq]))
+      end
+      [{}, 200, { session_id: @session_id, session_state_snapshot: state }]
     end
 
     # /stats for an attached client: the metrics, with the window and prompt
