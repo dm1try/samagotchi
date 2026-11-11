@@ -293,3 +293,40 @@ test("the thinking clock counts from the first thinking delta when the page saw 
 test("QUEUE_NEEDS_WORKER: what Alt+Enter says to a worker without the delivery feature", () => {
   assert.match(QUEUE_NEEDS_WORKER, /newer worker/);
 });
+
+// A phone shows the line over the session bar only when it matters
+// (index.html): the armed choice and the Apply hold are the row's own, so
+// it writes them for the CSS (data-armed, data-held: "1" or "").
+test("the control writes data-armed and data-held for the phone's CSS: armed, disarmed, sent, held, idle", () => {
+  const { ctl, el } = control();
+  ctl.show("running");
+  assert.equal(el.dataset.armed, "");
+  assert.equal(el.dataset.held, "");
+  el.querySelector(".delivery-link.queue").click();
+  assert.equal(el.dataset.armed, "1");
+  el.querySelector(".delivery-link.queue").click();
+  assert.equal(el.dataset.armed, "");
+  ctl.click("queue");
+  assert.equal(el.dataset.armed, "1");
+  assert.equal(ctl.take(), "queue");
+  assert.equal(el.dataset.armed, "");
+  ctl.click("cut");
+  assert.equal(ctl.disarm(), true);
+  assert.equal(el.dataset.armed, "");
+  ctl.hold();
+  assert.equal(el.dataset.held, "1");
+  ctl.release();
+  assert.equal(el.dataset.held, "");
+  ctl.click("queue");
+  ctl.hold();
+  ctl.show("idle");
+  assert.equal(el.dataset.armed, "");
+  assert.equal(el.dataset.held, "");
+});
+
+test("the control: a participant's turn draws queue pressed with nothing armed: data-armed stays empty", () => {
+  const { ctl, el } = control({ inputs: { participantTurn: true } });
+  ctl.show("running");
+  assert.equal(el.querySelector(".delivery-link.queue").getAttribute("aria-pressed"), "true");
+  assert.equal(el.dataset.armed, "");
+});
