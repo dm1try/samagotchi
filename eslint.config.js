@@ -54,6 +54,7 @@ export default [
       "lib/samagotchi/web/public/working_set_view.js",
       "lib/samagotchi/web/public/owner_verify.js",
       "lib/samagotchi/web/public/session_sync.js",
+      "lib/samagotchi/web/public/session_view.js",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...[
