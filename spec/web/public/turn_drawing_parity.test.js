@@ -64,7 +64,7 @@ function livePage() {
     historyEl, turnDom, findInTurnRoots, selected: () => "s1", clientId: "web:me", questionCards, bubbles,
     followWokenWorker() {}, api: { getSession: async () => ({ cards: [] }), sendCommand: async () => {} },
   });
-  // app.js's endTurnView, without the composer and the timing line.
+  // session_view.js's endTurnView, without the composer and the timing line.
   function endTurnView(kind, endText = null, { emptyAnswer = null, stopped = false } = {}) {
     liveTurn.running = false;
     const endNote = emptyAnswer ? elementOf(emptyAnswerTemplate(emptyAnswer)) : null;
