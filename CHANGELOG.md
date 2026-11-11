@@ -25,9 +25,6 @@ and commands may change between minor versions. How releases are made:
 - chi web: after a reload mid-turn, a question answered earlier in the running turn keeps the reply that asked it (its
   two muted lines), as it does live.
 - chi web: the opt-in reload check (`web.reload_check`) no longer reports every turn with a question as different.
-
-### Fixed
-
 - `chi bundle list`, `status` and `diff`: an extra argument is refused (exit 2) instead of ignored.
 
 ## [0.167.0] - 2026-11-11
