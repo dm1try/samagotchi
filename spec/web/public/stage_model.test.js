@@ -178,8 +178,17 @@ test("handOffOrder: prompt, block, extras in arrival order, answer, timing, end 
   assert.deepEqual(handOffOrder({ prompt: null, block: null, extras: [], answer: ["A"], timing: "T" }), ["A", "T"]);
 });
 
+test("placeFor: a turn opened in the history takes its rows there; a card that waits and a queued line stay with the stage", () => {
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "row", opened: true }), "opened");
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "waits", opened: true }), "stage");
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "queued", opened: true }), "queued");
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "recap", opened: true }), "history");
+  assert.equal(placeFor({ live: true, handingOff: true, kind: "row", opened: true }), "history");
+});
+
 test("placeFor: the stage's extras while a turn is live, else the history; the recap always the history", () => {
   assert.equal(placeFor({ live: true, handingOff: false, kind: "card" }), "stage");
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "row", opened: false }), "stage");
   assert.equal(placeFor({ live: true, handingOff: true, kind: "card" }), "history");
   assert.equal(placeFor({ live: false, handingOff: false, kind: "command" }), "history");
   assert.equal(placeFor({ live: true, handingOff: false, kind: "recap" }), "history");
