@@ -52,6 +52,8 @@ and commands may change between minor versions. How releases are made:
   the Home Screen app or a Safari tab, light or dark.
 - `chi schedule add --date`: a day the month doesn't have (2026-02-30, 2026-04-31) is refused as not a real date
   instead of rolling into the next month.
+- `chi sessions list`: an unknown `--sort` or `--order` value is refused (exit 2, naming the ones it takes) instead of
+  listing in the default order under a footer that names the bogus value.
 
 ## [0.166.0] - 2026-11-11
 

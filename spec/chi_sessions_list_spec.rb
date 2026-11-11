@@ -489,6 +489,18 @@ RSpec.describe "chi sessions list" do
       expect(status).to eq(2)
       expect(err).to include("--format text|json|tsv")
     end
+
+    it "refuses a sort key or order Session.list doesn't take, before listing" do
+      out, err, status = run_chi("--sort", "name")
+      expect([out, status]).to eq(["", 2])
+      expect(err).to include('unknown sort "name": use --sort created_at|updated_at')
+
+      out, err, status = run_chi("--order", "up")
+      expect([out, status]).to eq(["", 2])
+      expect(err).to include('unknown order "up": use --order asc|desc')
+
+      expect(run_chi("--sort", "created_at", "--order", "asc").last).to eq(0)
+    end
   end
 
   it "lists the flags in the help, through bin/chi" do

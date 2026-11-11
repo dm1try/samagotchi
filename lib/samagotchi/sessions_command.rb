@@ -149,6 +149,14 @@ module Samagotchi
       end
       return usage_error("unknown scope #{scope.inspect}: use --scope=project|all") unless scope.nil? || %w[project all].include?(scope)
 
+      sort, order = @opts.values_at(:sort, :order)
+      unless sort.nil? || Samagotchi::Session::SORT_KEYS.include?(sort)
+        return usage_error("unknown sort #{sort.inspect}: use --sort #{Samagotchi::Session::SORT_KEYS.join("|")}")
+      end
+      unless order.nil? || Samagotchi::Session::SORT_ORDERS.include?(order)
+        return usage_error("unknown order #{order.inspect}: use --order #{Samagotchi::Session::SORT_ORDERS.join("|")}")
+      end
+
       # The current git project's sessions (Samagotchi::ProjectScope), like
       # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
       # project's. Machine-local (this cwd's project): remotely every
