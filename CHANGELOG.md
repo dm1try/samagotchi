@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web: in a session the running turn's stage and the composer are as wide as the conversation's column (at most
+  960 px, centred), so a wide window no longer draws them wider than the messages above.
+
 ## [0.167.0] - 2026-11-11
 
 ### Added

@@ -1016,12 +1016,14 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   // folded has no box and is behind ⋯ (its count says how many).
   // The name went in behind the page's render (no update() saw it): only a
   // resize makes the fold measure it, and 1280 is the default viewport, so
-  // each width is reached from 1 px wider. (Linux's short /tmp project path
+  // each width is reached from one where the bar is wider, or narrower
+  // when the bar is at the history's 960 px column there (it doesn't
+  // resize between 1281 and 1280). (Linux's short /tmp project path
   // leaves dir on the row at 1280 until the long name; a stale fold then
   // pushes dir under continue →.)
   const viewport = page.viewportSize();
   for (const width of [1280, 900, 640]) {
-    await page.setViewportSize({ width: width + 1, height: viewport.height });
+    await page.setViewportSize({ width: width > 1000 ? 900 : width + 1, height: viewport.height });
     await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     await page.setViewportSize({ width, height: viewport.height });
     // The fold follows the bar's ResizeObserver: two frames on, it has run.

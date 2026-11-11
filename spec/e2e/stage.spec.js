@@ -443,10 +443,17 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await pill.click();
   await expect.poll(inSight).toBe(true);
   await expect(pill).toBeHidden();
+  // A wider window: the stage (on the history's 960 px column) grows under
+  // the raised cap and may bring the card into sight by itself; else the
+  // pill leads to it.
   await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(pill).toBeVisible();
-  await pill.click();
+  await settled(page, { stage: true });
+  if (await pill.isVisible()) await pill.click();
   await expect.poll(inSight).toBe(true);
+  // The whole card in view before the record starts: a click on an option
+  // of a card cut at its top focuses its radio, and the browser scrolls it
+  // into view (a move the record would count).
+  await card.scrollIntoViewIfNeeded();
   await settled(page, { stage: true });
   // From the answer until the next step nothing moves on its own.
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
