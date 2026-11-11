@@ -28,12 +28,11 @@ module Samagotchi
     # approvals.json.corrupt-<UTC time>[-N], with a warning, and the store
     # starts empty: it only means more asks, and nothing is overwritten.
     #
-    # The file is either a list of entries (0.165 and before) or a
-    # versioned store, {"version", "approvals": [...]} (FORMAT). Both are
-    # read; a write keeps the shape it read, and a store with no file is
-    # written as a list: a 0.165 reader sets an object aside, so the list
-    # stays the written shape until 0.167 (compat shims approvals_array_read
-    # and approvals_array_write).
+    # The file is a versioned store, {"version", "approvals": [...]}
+    # (FORMAT); a write keeps its version and the keys this chi doesn't
+    # know. A list of entries (what 0.165 and before write) is read too,
+    # and rewritten as the versioned store under the lock on that first
+    # read (compat shim approvals_array_read).
     class Approvals
       FILE = "approvals.json"
       COLLECTION = "approvals"
@@ -173,7 +172,8 @@ module Samagotchi
       def read(locked: false)
         return [[], nil] unless File.exist?(@path)
 
-        parse(File.read(@path))
+        list, document = parse(File.read(@path))
+        document ? [list, document] : version_list(locked: locked) || [list, nil]
       rescue JSON::ParserError, SystemCallError => e
         aside = begin
           locked ? set_aside : with_lock { set_aside }
@@ -207,6 +207,30 @@ module Samagotchi
         end
       end
 
+      # compat shim approvals_array_read: rewrite a list as the versioned
+      # store, under the lock, if it is still a list. One that can't be
+      # written (a read-only state dir) or changed meanwhile is read as it
+      # is this time.
+      # @return [Array(Array<Hash>, StateFormat::Document), nil] as #read's; nil when not rewritten
+      def version_list(locked:)
+        locked ? version_list! : with_lock { version_list! }
+      rescue JSON::ParserError, SystemCallError
+        nil
+      end
+
+      def version_list!
+        list, document = parse(File.read(@path))
+        return [list, document] if document
+
+        document = FORMAT.read({ COLLECTION => list }, collection: COLLECTION)
+        write(document)
+        [list, document]
+      end
+
+      def write(document)
+        AtomicFile.write(@path, JSON.pretty_generate(FORMAT.write(document, collection: COLLECTION, updated_at: nil)))
+      end
+
       # Under the lock: rename the file aside if it is still unreadable.
       # @return [String, :readable] where it went; :readable when another
       #   process replaced or removed it meanwhile
@@ -237,16 +261,15 @@ module Samagotchi
         end
       end
 
-      # Writes the shape it read: a versioned store keeps its version and
-      # the keys this chi doesn't know.
+      # Writes the versioned store: one read keeps its version and the
+      # keys this chi doesn't know; no file (or one that couldn't be
+      # rewritten on read) starts at FORMAT's version.
       def update
         with_lock do
           list, document = read(locked: true)
           yield list
-          # compat shim approvals_array_write: a list (or no file) is written
-          # as a list, since a 0.165 reader sets an object aside.
-          body = document ? FORMAT.write(document.with(entries: list), collection: COLLECTION, updated_at: nil) : list
-          AtomicFile.write(@path, JSON.pretty_generate(body))
+          document ||= FORMAT.read({}, collection: COLLECTION)
+          write(document.with(entries: list))
         end
       end
 

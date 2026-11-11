@@ -158,8 +158,9 @@ continue's `context/sessions/<id>/left.json`, stored approvals
 (`guardrails/approvals.json`), and a participant's grant
 (`web-grants/grants.json`) with its `participants.json` sidecar, and the chi
 home (`home.json`). A corpus from
-0.164.0 or before has none of those and skips them; a later one must hold them. 0.165.0's approvals (a list) are
-also read as recorded and wrapped in a versioned store, the shape a later chi writes.
+0.164.0 or before has none of those and skips them; a later one must hold them. 0.165.0's and 0.166.0's approvals (a list)
+are also read from a copy as recorded (the read rewrites it versioned) and wrapped in a versioned store, the shape a
+later chi writes; the corpus is always read from a copy, since a reader may rewrite what it reads.
 A corpus recorded after 0.165.0 also holds `wire/`: a worker's replies to `GET state`, `snapshot` (after a turn, and
 mid-turn with a prompt queued behind it) and `tail`, each `{route, status, body}`, and the session file it saved,
 recorded from a real Engine and Bridge (`script/release/compat_wire.rb`, `CompatWire`: a scripted kernel, read over the

@@ -321,16 +321,38 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
       expect(Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")].size).to eq(1)
     end
 
-    # A 0.165 reader sets an object aside, so the list stays the written
-    # shape until 0.167 (compat shim approvals_array_write).
-    it "writes a list when there was no store, and keeps a list a list" do
+    it "writes a versioned store when there was none" do
       store.add(ask, "session")
-      expect(stored).to be_a(Array)
-
-      store.add(ask(command: "git push origin other"), "session")
-      expect(stored).to be_a(Array)
-      expect(stored.size).to eq(2)
+      expect(stored).to include("version" => 1)
+      expect(stored["approvals"].map { |e| e["key"] }).to eq(["execute:git push origin main"])
       expect(warnings).to be_empty
+    end
+
+    # compat shim approvals_array_read: the list 0.165 and before write.
+    it "rewrites a list as a versioned store on its first read" do
+      write_store([entry])
+      expect(store.entries).to eq([entry])
+      expect(stored).to eq("version" => 1, "approvals" => [entry])
+      expect(store.match(ask)).to include("scope" => "session")
+      expect(warnings).to be_empty
+    end
+
+    it "versions a list through #add" do
+      write_store([entry])
+      store.add(ask(command: "git push origin other"), "session")
+      expect(stored).to include("version" => 1)
+      expect(stored["approvals"].map { |e| e["key"] }).to eq(["execute:git push origin main", "execute:git push origin other"])
+    end
+
+    it "still reads a list it can't rewrite" do
+      write_store([entry])
+      dir = File.dirname(store.path)
+      File.chmod(0o500, dir)
+      expect(store.entries).to eq([entry])
+      expect(stored).to eq([entry])
+      expect(warnings).to be_empty
+    ensure
+      File.chmod(0o700, dir) if dir
     end
   end
 end

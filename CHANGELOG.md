@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Guardrails: approvals.json is now written versioned (`{"version", "approvals"}`), and a list file from 0.166 or
+  before is rewritten versioned on its first read. Sessions still on 0.165 or older should be restarted
+  (`chi sessions restart`); a downgrade to 0.165 or older sets the store aside as a recoverable
+  `approvals.json.corrupt-*` file.
+
 ## [0.166.0] - 2026-11-11
 
 ### Added

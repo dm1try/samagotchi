@@ -234,15 +234,14 @@ module ReleaseTools
   private_class_method :write_compat_store_files!
 
   # A session approval of a command and a rule's, in /compat-fixture, in
-  # the shape Approvals#add writes now (a list until 0.167: compat shim
-  # approvals_array_write; this pinning then reads the versioned store's
-  # "approvals").
+  # the versioned store Approvals#add writes.
   # @return [String] approvals.json
   def write_compat_approvals!(sessions_dir)
     store = Samagotchi::Guardrails::Approvals.new(dir: Samagotchi::Guardrails::Approvals.dir_for(sessions_dir))
     compat_approval_verdicts.each { |scope, verdict| store.add(verdict, scope) }
-    entries = JSON.parse(File.read(store.path)).each { |entry| entry["created_at"] = COMPAT_STAMP }
-    File.write(store.path, "#{JSON.pretty_generate(entries)}\n")
+    data = JSON.parse(File.read(store.path))
+    data.fetch(Samagotchi::Guardrails::Approvals::COLLECTION).each { |entry| entry["created_at"] = COMPAT_STAMP }
+    File.write(store.path, "#{JSON.pretty_generate(data)}\n")
     FileUtils.rm_f(File.join(File.dirname(store.path), "approvals.lock"))
     store.path
   end
