@@ -112,8 +112,10 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:preview] = preview unless preview.empty?
-        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking, settings: settings, toolkit: toolkit,
-                                 parent_answers: parent_answers)
+        # A create takes no memories, mutes or prompt files (paths of this
+        # machine's terminal), nor reasoning_history.
+        setup = SessionSetup.from_request(llm_context: llm_context, thinking: thinking, settings: settings, toolkit: toolkit,
+                                          parent_answers: parent_answers)
         folder[:setup] = setup unless setup.empty?
         begin
           session = if review

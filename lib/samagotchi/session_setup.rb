@@ -33,7 +33,8 @@ module Samagotchi
   # It doesn't save itself: the session keeps each setting in its own field
   # and file key, and resolves it on its own. A delegate child starts
   # without one (but the toolkit its delegate call named, and its parent's
-  # parent_answers); a continue and a fork copy their session's (.of).
+  # parent_answers); a continue and a fork copy their session's (.of); a
+  # person's new-session request builds one with .from_request.
   SessionSetup = Data.define(:llm_context, :thinking, :reasoning_history, :appended_prompt_files,
                              :preloaded_memory_names, :muted_memory_names, :toolkit, :toolkit_origin, :settings,
                              :parent_answers, :working_set_pins) do
@@ -51,6 +52,35 @@ module Samagotchi
 
     # Every member at its default: none of the session's own settings.
     def empty? = self == self.class.new
+
+    # A new session's setup from what a person's request gave: chi's run
+    # flags (attached and the one-shot), chi send --new and chi web's
+    # create (a remote's chi send --new and attach reach it there). Every
+    # such site calls this, so a member a request can carry is one keyword
+    # here and no site picks its own subset: an input a site doesn't take
+    # is left out (nil or [] = not given). The members no request carries
+    # start at their defaults: reasoning_history (/reasoning-history, after
+    # creation), working_set_pins (pinned in the session) and
+    # toolkit_origin ("chosen" with a toolkit; without one spawn_session
+    # stores config's default, "default").
+    # spec/session_setup_entrypoints_spec.rb holds every entrypoint's cell
+    # for every member.
+    # @param memories [Array<String>, nil] --memory's names
+    # @param muted [Array<String>, nil] --mute's names
+    # @param llm_context [LLMContextOverride, nil] --llm-context*'s values
+    # @param thinking [Symbol, String, nil] a level or a level word
+    #   (Thinking.session_level: default is none)
+    # @param appended_prompt_files [Array<String>, nil] --append-system-prompt's
+    # @param toolkit [Toolkit, nil] --toolkit/--tool/--no-tool's
+    # @param settings [SessionConfig::Settings, nil] --set's
+    # @param parent_answers [String, Symbol, nil] --parent-answers' level
+    # @return [SessionSetup]
+    def self.from_request(memories: nil, muted: nil, llm_context: nil, thinking: nil, appended_prompt_files: nil,
+                          toolkit: nil, settings: nil, parent_answers: nil)
+      new(preloaded_memory_names: memories, muted_memory_names: muted, llm_context: llm_context,
+          thinking: Thinking.session_level(thinking), appended_prompt_files: appended_prompt_files,
+          toolkit: toolkit, settings: settings, parent_answers: parent_answers)
+    end
 
     # A session's own setup, for a session that starts from it: each
     # member is the session's field of the same name (Session.new_session

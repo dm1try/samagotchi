@@ -553,9 +553,11 @@ module Samagotchi
         return SessionAccess::NewSession.new(**start, continues: options[:continues], model_name: options[:model])
       end
 
-      setup = options[:setup_words] || SessionSetup.new(llm_context: options[:llm_context], thinking: options[:thinking],
-                                                        toolkit: options[:toolkit_value], settings: options[:settings],
-                                                        parent_answers: options[:parent_answers])
+      # chi send takes no --memory, --mute or --append-system-prompt (a
+      # sender's flags, not a terminal's).
+      setup = options[:setup_words] || SessionSetup.from_request(llm_context: options[:llm_context], thinking: options[:thinking],
+                                                                 toolkit: options[:toolkit_value], settings: options[:settings],
+                                                                 parent_answers: options[:parent_answers])
       SessionAccess::NewSession.new(**start, working_directory: options[:dir], model_name: options[:model], setup: setup)
     end
 

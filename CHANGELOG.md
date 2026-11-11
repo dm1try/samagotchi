@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A Verify fresh child now keeps its session's own `parent_answers` (`--parent-answers`, `/parent-answers`), as a
+  `delegate` child does, instead of falling back to config.yml's.
 - A schedule no longer restarts a session you stopped: it skips it (`the session is stopped; …`), in both modes, and a
   stop that lands just before a firing counts as a skip, not a failure.
 - Project marker ids no longer reuse another project's memory folder; `chi project init --new-id` gives it a safe id.

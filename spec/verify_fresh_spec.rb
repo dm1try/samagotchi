@@ -62,6 +62,14 @@ RSpec.describe Samagotchi::VerifyFresh do
         .to eq([{ child_id: child.id, of: check_turn, author: "p:alex" }])
     end
 
+    it "starts the child with its parent's own parent_answers, as a delegate child does" do
+      parent.parent_answers = "hard"
+      parent.save(state_dir: state_dir)
+
+      start
+      expect(spawned.first[:setup].parent_answers).to eq("hard")
+    end
+
     it "saves no mode for the owner's child (its turns stay the owner's)" do
       start(author: nil, mode: nil)
       expect(spawned.first[:verify_fresh].to_file).to eq("of" => check_turn,

@@ -263,13 +263,12 @@ module Samagotchi
                   else
                     SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
                                                  client_id: nil,
-                                                 setup: SessionSetup.new(preloaded_memory_names: memories,
-                                                                         muted_memory_names: muted_memories,
-                                                                         llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
-                                                                         thinking: Thinking.session_level(thinking),
-                                                                         appended_prompt_files: appended_prompt_files,
-                                                                         toolkit: toolkit, settings: settings,
-                                                                         parent_answers: parent_answers),
+                                                 setup: SessionSetup.from_request(
+                                                   memories: memories, muted: muted_memories,
+                                                   llm_context: (LLMContextOverride.update(nil, llm_context) unless llm_context.empty?),
+                                                   thinking: thinking, appended_prompt_files: appended_prompt_files,
+                                                   toolkit: toolkit, settings: settings, parent_answers: parent_answers
+                                                 ),
                                                  scratch: scratch)
                   end
         link = WorkerLink.await(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
