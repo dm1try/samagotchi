@@ -78,8 +78,9 @@ module Samagotchi
     # owning them: a one-shot killed before its first save, or a worker woken
     # just as its session was discarded. Removed as a delete removes
     # (SessionManager.remove_files: every SESSION_STATE_STORES store), which
-    # reads the owner lock and the starting marker again under that lock: a
-    # worker or a start that took the session since the check keeps it.
+    # reads the owner lock, the starting marker and #orphan_dir? again under
+    # that lock: a worker or a start that took the session since the check,
+    # or a session file or content written meanwhile, keeps it.
     # @return [Array<String>] their ids
     private_class_method def self.prune_orphan_dirs(state_dir, dry_run:)
       return [] unless Dir.exist?(state_dir)
@@ -88,17 +89,26 @@ module Samagotchi
         dir = File.join(state_dir, name)
         path = File.join(state_dir, "#{name}#{SessionPaths::FILE_EXT}")
         next unless Session.valid_id?(name) && File.directory?(dir)
-        next if File.exist?(path)
-        next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
+        next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && orphan_dir?(path, dir)
         next if owned?(name, state_dir) || starting?(name, state_dir)
 
-        SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false) unless dry_run
+        unless dry_run
+          SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false,
+                                                       still: -> { orphan_dir?(path, dir) })
+        end
         name
       rescue SessionManager::DeleteRefused, SystemCallError
         nil
       end
       SessionManager.purge_removal_stores(removed, state_dir: state_dir) unless dry_run
       removed
+    end
+
+    # No session file, and a folder holding only the skeleton. Not its age:
+    # read again under the owner lock, whose file the lock may have just
+    # made.
+    private_class_method def self.orphan_dir?(path, dir)
+      !File.exist?(path) && SessionManager.empty_session_dir?(dir)
     end
 
     # A worker is being started for it (every spawn marks it, a new
