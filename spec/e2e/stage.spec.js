@@ -234,6 +234,16 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(askRef).toHaveText("JIRA-7");
   await expect(askRef).toHaveAttribute("title", "JIRA-7 Login fails");
   await expectNoHorizontalOverflow(page);
+  // A phone's delivery line has no row of its own: running, it lies over the
+  // session bar's first row, in the status chip's place, left of ⚙ (the
+  // composer's height stays at the turn's end, below).
+  const line = page.locator("#deliveryLine");
+  await expect(line.locator(".delivery-where .short")).toHaveText("↳ after the card's answer");
+  await expect(page.locator("#infoBar .meta .status")).toHaveCSS("visibility", "hidden");
+  const [lineBox, barBox, gearBox] = await Promise.all([line.boundingBox(), page.locator("#infoBar").boundingBox(),
+    page.locator("#infoBar .meta .settings-chip").boundingBox()]);
+  expect(Math.round(lineBox.y)).toBe(Math.round(barBox.y));
+  expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(gearBox.x);
   // Every visible text field is 16px or more on a phone: under 16px iOS Safari
   // zooms the page on focus (and a Home Screen app never zooms back).
   const small = await page.evaluate(() => {
@@ -305,6 +315,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
   const heldHeight = await stageEl(page).evaluate((el) => el.offsetHeight);
+  const runningDock = await page.locator("#dock").evaluate((el) => el.offsetHeight);
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
@@ -332,6 +343,11 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // under the sliding stage and the history follows the turn's arrival.
   await expect(stageEl(page)).toBeHidden();
   await settled(page);
+  // Idle, the phone's line is gone and the bar's status is back; the composer
+  // kept its height.
+  await expect(line).toBeHidden();
+  await expect(page.locator("#infoBar .meta .status")).toHaveCSS("visibility", "visible");
+  expect(await page.locator("#dock").evaluate((el) => el.offsetHeight)).toBe(runningDock);
   expect(await shiftSum(page, { from: leaveAt })).toBeLessThan(0.01);
   expect(await snaps(page, { from: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
