@@ -361,6 +361,37 @@ RSpec.describe Samagotchi::SessionRetention do
         expect(Dir.exist?(dir)).to be(true)
       end
 
+      # Nothing took the lock or marked a start, yet the session was written
+      # meanwhile (its file saved, or a turn's content in its folder): read
+      # again under the lock, it is no orphan any more.
+      it "keeps a session whose file was saved after the check" do
+        path = File.join(tmpdir, "#{id}.json")
+        after_the_check { File.write(path, "{}") }
+
+        result = described_class.prune(state_dir: tmpdir)
+
+        expect(result[:deleted]).not_to include(id)
+        expect(File.exist?(path)).to be(true)
+        expect(Dir.exist?(dir)).to be(true)
+      end
+
+      it "keeps a folder that got content after the check" do
+        after_the_check { File.write(File.join(dir, "work.txt"), "kept") }
+
+        result = described_class.prune(state_dir: tmpdir)
+
+        expect(result[:deleted]).not_to include(id)
+        expect(File.read(File.join(dir, "work.txt"))).to eq("kept")
+      end
+
+      it "removes an orphan with no owner.lock yet (the lock's own file is no content)" do
+        FileUtils.rm_f(File.join(dir, "owner.lock"))
+        File.utime(hour_ago, hour_ago, dir)
+
+        expect(described_class.prune(state_dir: tmpdir)[:deleted]).to eq([id])
+        expect(Dir.exist?(dir)).to be(false)
+      end
+
       it "removes an orphan nobody took through remove_files, purging its runs once" do
         allow(Samagotchi::SessionManager).to receive(:remove_files).and_call_original
         allow(Samagotchi::SessionManager).to receive(:purge_removal_stores).and_call_original
@@ -370,7 +401,7 @@ RSpec.describe Samagotchi::SessionRetention do
         expect(result[:deleted]).to eq([id])
         expect(Dir.exist?(dir)).to be(false)
         expect(Samagotchi::SessionManager).to have_received(:remove_files)
-          .with(id, File.join(tmpdir, "#{id}.json"), dir, state_dir: tmpdir, purge_runs: false)
+          .with(id, File.join(tmpdir, "#{id}.json"), dir, state_dir: tmpdir, purge_runs: false, still: Proc)
         expect(Samagotchi::SessionManager).to have_received(:purge_removal_stores).with([id], state_dir: tmpdir)
       end
     end

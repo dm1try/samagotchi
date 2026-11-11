@@ -3,8 +3,9 @@
 module Samagotchi
   class SessionManager
     # A delete that would pull the session from under its live worker.
-    # reason: :worker_running (not asked to stop it) or :still_stopping
-    # (stopped, but the worker outlived the wait).
+    # reason: :worker_running (not asked to stop it), :still_stopping
+    # (stopped, but the worker outlived the wait) or :changed (the caller's
+    # +still:+ check, read again under the owner lock, no longer holds).
     class DeleteRefused < StandardError
       attr_reader :session_id, :reason, :schedule_id
 
@@ -14,6 +15,7 @@ module Samagotchi
         @schedule_id = schedule_id
         message ||= case reason
                     when :still_stopping then "session #{session_id}'s worker is still shutting down"
+                    when :changed then "session #{session_id} changed since it was checked"
                     when :scheduled
                       "this session is the target of an enabled schedule" \
                         "#{"; cancel it with chi schedule cancel #{schedule_id}" if schedule_id}"
@@ -199,14 +201,17 @@ module Samagotchi
 
       # Remove every store with state scoped to +id+. The file and sidecar
       # directory keep the deleting owner lock; the other stores have their
-      # own locking where they need it.
+      # own locking where they need it. +still+, when given, is the caller's
+      # own check, read again under that lock (the session files go first, so
+      # a refusal leaves every store as it was).
       # @return [Array<String>] the session file, sidecar and context paths removed
-      def remove_files(id, path, dir, state_dir:, purge_runs: true)
+      # @raise [DeleteRefused] see #remove_session_files
+      def remove_files(id, path, dir, state_dir:, purge_runs: true, still: nil)
         removed = []
         SESSION_STATE_STORES.each do |store|
           case store
           when :session_files
-            removed.concat(remove_session_files(id, path, dir, state_dir: state_dir))
+            removed.concat(remove_session_files(id, path, dir, state_dir: state_dir, still: still))
           when :plugin_session_state
             PluginSessionState.remove(id)
           when :context_sources
@@ -245,11 +250,12 @@ module Samagotchi
       # the retention sweep and failed-continue cleanup use #remove_files.
       # @return [Array<String>] the paths removed
       # @raise [DeleteRefused] a worker took the lock, or a start was
-      #   claimed, after the caller's check
-      def remove_session_files(id, path, dir, state_dir:)
+      #   claimed, after the caller's check, or +still+ no longer holds
+      def remove_session_files(id, path, dir, state_dir:, still: nil)
         lock = Dir.exist?(dir) ? OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: 0) : nil
         raise DeleteRefused.new(id, :worker_running) if Dir.exist?(dir) && lock.nil?
         raise DeleteRefused.new(id, :worker_running) if StartingMarker.fresh?(id, state_dir: state_dir)
+        raise DeleteRefused.new(id, :changed) if still && !still.call
 
         removed = []
         if File.exist?(path)

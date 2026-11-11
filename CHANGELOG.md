@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The retention sweep's skeleton-folder prune reads the folder again under the session's lock, so a session file
+  or content written between its check and its removal is kept instead of deleted.
 - A worker's `GET /session/:id/state` reply is read under the event lock, so its `event_id` always matches its state.
 - A Verify fresh child now keeps its session's own `parent_answers` (`--parent-answers`, `/parent-answers`), as a
   `delegate` child does, instead of falling back to config.yml's.
