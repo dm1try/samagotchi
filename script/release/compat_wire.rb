@@ -35,6 +35,9 @@ module CompatWire
   # generation's age), pinned.
   FIXED_NUMBER = 1000
   TIMING_KEY = /(?:_ms|_ms_sum)\z|\Aage\z/
+  # The last turn's measured duration (last_turn.seconds, rounded to 0.1).
+  # Only under last_turn: another `seconds` key is not a measurement.
+  TIMING_PATH = { "last_turn" => "seconds" }.freeze
   # The system prompt's text (the tools' descriptions, the date: it changes
   # with every release and every day), as a recording keeps it.
   SYSTEM_PROMPT = "<system prompt>"
@@ -71,26 +74,30 @@ module CompatWire
   end
 
   # +value+ made deterministic: an ISO time is STAMP, an event id's epoch
-  # EPOCH, a timing key's number FIXED_NUMBER, the recording's temp folder
+  # EPOCH, a timing key's number (and last_turn.seconds) FIXED_NUMBER, the recording's temp folder
   # (+roots+) CWD, chi's version +version+ (chi_version, written_by), a
   # message list's system prompt SYSTEM_PROMPT; hashes' keys sorted (as
   # strings). Idempotent.
-  def normalise(value, version:, roots: [], key: nil)
+  def normalise(value, version:, roots: [], key: nil, parent: nil)
     case value
     when Hash
       value.keys.map(&:to_s).sort.to_h do |name|
         raw = value.key?(name) ? value[name] : value[name.to_sym]
-        [name, normalise(raw, version: version, roots: roots, key: name)]
+        [name, normalise(raw, version: version, roots: roots, key: name, parent: key)]
       end
     when Array
       if key == "messages" && system_head?(value.first)
         value = [value.first.transform_keys(&:to_s).merge("content" => SYSTEM_PROMPT), *value.drop(1)]
       end
-      value.map { |item| normalise(item, version: version, roots: roots, key: key) }
+      value.map { |item| normalise(item, version: version, roots: roots, key: key, parent: parent) }
     when String then normalise_string(value, version: version, roots: roots, key: key)
-    when Numeric then TIMING_KEY.match?(key.to_s) ? FIXED_NUMBER : value
+    when Numeric then timing?(key, parent) ? FIXED_NUMBER : value
     else value
     end
+  end
+
+  def timing?(key, parent)
+    TIMING_KEY.match?(key.to_s) || TIMING_PATH[parent] == key
   end
 
   # A message list's system prompt (its first message: a system one of no kind).

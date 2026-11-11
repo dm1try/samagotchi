@@ -30,9 +30,8 @@ module Samagotchi
     #
     # The file is a versioned store, {"version", "approvals": [...]}
     # (FORMAT); a write keeps its version and the keys this chi doesn't
-    # know. A list of entries (what 0.165 and before write) is read too,
-    # and rewritten as the versioned store under the lock on that first
-    # read (compat shim approvals_array_read).
+    # know. A bare list of entries (what 0.166 and before wrote) is not
+    # a versioned store: it is set aside like an unreadable file.
     class Approvals
       FILE = "approvals.json"
       COLLECTION = "approvals"
@@ -168,12 +167,11 @@ module Samagotchi
 
       # @param locked [Boolean] the caller holds the store's lock
       # @return [Array(Array<Hash>, StateFormat::Document)] the entries and,
-      #   for a versioned store, its document (nil for a list or no file)
+      #   its document (nil when there is no file)
       def read(locked: false)
         return [[], nil] unless File.exist?(@path)
 
-        list, document = parse(File.read(@path))
-        document ? [list, document] : version_list(locked: locked) || [list, nil]
+        parse(File.read(@path))
       rescue JSON::ParserError, SystemCallError => e
         aside = begin
           locked ? set_aside : with_lock { set_aside }
@@ -201,30 +199,8 @@ module Samagotchi
           # An entry it can't read (no scope) is kept as it is: it matches
           # nothing, and a write keeps it for the chi that wrote it.
           [document.entries.map(&:raw).select { |e| e.is_a?(Hash) }, document]
-        # compat shim approvals_array_read: the list 0.165 and before write.
-        when Array then [data.select { |e| e.is_a?(Hash) }, nil]
-        else raise JSON::ParserError, "not a list or a versioned store"
+        else raise JSON::ParserError, "not a versioned store"
         end
-      end
-
-      # compat shim approvals_array_read: rewrite a list as the versioned
-      # store, under the lock, if it is still a list. One that can't be
-      # written (a read-only state dir) or changed meanwhile is read as it
-      # is this time.
-      # @return [Array(Array<Hash>, StateFormat::Document), nil] as #read's; nil when not rewritten
-      def version_list(locked:)
-        locked ? version_list! : with_lock { version_list! }
-      rescue JSON::ParserError, SystemCallError
-        nil
-      end
-
-      def version_list!
-        list, document = parse(File.read(@path))
-        return [list, document] if document
-
-        document = FORMAT.read({ COLLECTION => list }, collection: COLLECTION)
-        write(document)
-        [list, document]
       end
 
       def write(document)

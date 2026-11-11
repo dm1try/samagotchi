@@ -18,11 +18,7 @@ module Samagotchi
       Shim.new(id: :cards_v1_seed, added_in: "0.151.0", remove_after: "0.170.0",
                files: ["lib/samagotchi/bridge/card_store.rb"],
                what: "CardStore#seed_v1 reads a cards.json from before the turn log; its comment says a retention " \
-                     "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
-      Shim.new(id: :approvals_array_read, added_in: "0.166.0", remove_after: "0.167.0",
-               files: ["lib/samagotchi/guardrails/approvals.rb"],
-               what: "Approvals#parse reads approvals.json as the list 0.165 and before write, beside the versioned " \
-                     "store, and #version_list rewrites it versioned on that first read")
+                     "period after the release that wrote version 2 (0.151.0, 2026-11-05)")
     ].freeze
 
     module_function

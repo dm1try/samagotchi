@@ -34,6 +34,15 @@ RSpec.describe CompatWire do
       expect(shown.keys).to eq(shown.keys.sort)
     end
 
+    it "pins last_turn.seconds only, not another seconds key" do
+      raw = { "body" => { "last_turn" => { "seconds" => 0.1, "steps" => 2 }, "seconds" => 7, "recap" => { "seconds" => 5 } } }
+
+      shown = described_class.normalise(raw, version: "1.2.3")
+
+      expect(shown["body"]["last_turn"]).to eq("seconds" => 1000, "steps" => 2)
+      expect(shown["body"]).to include("seconds" => 7, "recap" => { "seconds" => 5 })
+    end
+
     it "is idempotent on a recording" do
       described_class.record!(tmp, version: "1.2.3")
 

@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Stored approvals from chi 0.166 and before (a list in `guardrails/approvals.json`) are no longer read: such a file is
+  set aside as `approvals.json.corrupt-*` and those calls ask again once.
 - chi web: when the model asks its own question after a reply, the reply is a bubble in the conversation (`chi · step N
   · asking you`) and the stage keeps only the question's card above the composer, so you can scroll back through the
   conversation while it waits; the turn's prompt and steps move into the conversation with it, and the card's
