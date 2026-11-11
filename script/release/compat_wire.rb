@@ -211,6 +211,7 @@ module CompatWire
     ensure
       kernel.release!
       bridge.stop
+      engine.shutdown
       lock.release
     end
   end
