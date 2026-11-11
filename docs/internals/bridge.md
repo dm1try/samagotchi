@@ -401,6 +401,10 @@ The Bridge exposes:
   the question still open. `chi answer` makes the same check first, from the session file.
 - `POST /session/:id/question/dismiss` — leave the question unanswered (an approval: denied);
   `200`, or `409` when it is no longer pending.
+- `POST /session/:id/guardrails/wrong` — `{id}`: label this session's System 1 auto-allow as
+  one it should have asked about; `200`, `404` for an unknown judgment, `409` if already labelled.
+- `POST /session/:id/holds/stop` — stop those holds without the worker leaving; `200 {status: "stopped",
+  session_id, stopped}` or `501 holds_unavailable`.
 - `POST /session/:id/tasks/stop` — `{task_id}`: stop a background task as the user
   (`TaskRuntime.stop_task by: "user"`, the web's stop-task button on a running `task_wait`;
   web route `POST /api/sessions/:id/tasks/:task_id/stop`). Only a task this conversation's
@@ -452,9 +456,12 @@ The Bridge exposes:
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON), read under the event lock so its `event_seq`/`event_id` match the state.
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
 - `GET  /session/:id/activity` — `Worker#activity_snapshot`: `{session_id, turn_running, input_pending, awaiting_continue, open_streams, reminders, tasks_holding}` — what a `chi schedule tick` asks a live worker before it fires (the tick runs out of process and cannot read a worker's memory). Read-only and small (under 300 bytes). `501 activity_unavailable` when this Bridge was built without an `on_activity:` step; the worker advertises it in `Bridge::FEATURES` (`activity`). See [scheduling.md](../scheduling.md).
+- `GET  /session/:id/holds` — the reminders, watched tasks and delegate children the user can stop;
+  `200 {session_id, holds}` or `501 holds_unavailable`.
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
   the messages itself, then streams from its `event_seq`). Read by the web's full show
-  (`GET /api/sessions/:id`) and the plugin's `list_sessions`; every message is copied.
+  (`GET /api/sessions/:id`) and `ctx.sessions.read` (`Plugin::Sessions#read`), which unwraps
+  `snapshot`; the Bridge reply is `{snapshot:, session_state_snapshot:}`.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
   `working_directory` (the session's folder, which the web checks the answer's file refs against),
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),

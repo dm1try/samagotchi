@@ -109,8 +109,8 @@ The agent does each step and stops where the user has to say yes.
    recorded twice and must be equal: a bump that stops with "two recordings
    of wire/<file> differ at <JSON path>" found a field that changes per run
    (a new time, a random id, a measured number). Pin it in
-   `CompatWire.normalise` (a `*_ms` key is pinned already; an id the script
-   chooses is better pinned at its source), check `spec/release/compat_wire_spec.rb`,
+   `CompatWire.normalise` (`*_ms`, `*_ms_sum` and `age` are pinned already, as is `last_turn.seconds`;
+   an id the script chooses is better pinned at its source), check `spec/release/compat_wire_spec.rb`,
    and run the bump again (nothing is written when it stops). The new VERSION may pass a
    compat shim's `remove_after` (`Compat::SHIMS`): `spec/compat_spec.rb` then
    names it, and the shim goes (or its date moves) before the release.
