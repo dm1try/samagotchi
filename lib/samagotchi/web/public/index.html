@@ -1548,6 +1548,14 @@ body.has-session #newBtn .brand-new{display:inline}
 #scope .scope-all{color:var(--text-muted);text-decoration:none}
 #scope .scope-all:hover{color:var(--accent);text-decoration:underline}
 #scope .scope-where{display:inline-flex;gap:5px;min-width:0;white-space:nowrap;font-size:11px}
+/* A project view (and the error state): the project pill and "all" are one segmented control, at every width. The left
+   segment opens the picker, the right one goes to all projects. No border on the left segment here: on touch its border is
+   its ::before (the touch rules below), and the error state's is the warn one. */
+#scope:has(> .scope-name + .scope-all:not(.scope-back)){gap:0}
+#scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-name{border-radius:999px 0 0 999px;background:var(--bg-raised)}
+#scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-all{display:inline-flex;align-items:center;height:28px;padding:0 8px;font-size:12px;border:1px solid var(--border-strong);border-left:0;border-radius:0 999px 999px 0;color:var(--text-muted)}
+#scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-all:hover{color:var(--text-2);text-decoration:none}
+#scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-all:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* The path cuts on the left, so its last folders stay in view. */
 #scope .scope-where .path{overflow:hidden;text-overflow:ellipsis;direction:rtl;min-width:0;font-family:ui-monospace,monospace}
 #projectPicker{width:min(380px,calc(100vw - 32px))}
@@ -1767,6 +1775,8 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allHead{display:none;align-self:center;margin-left:auto;gap:8px;align-items:center;min-width:0;flex-wrap:nowrap;justify-content:flex-end}
 body.all-view #allHead{display:flex}
 @media(min-width:601px){body.all-view #notifyBtn{margin-left:0}}
+/* Nor does the header squeeze the scope chip there: its "all" segment would run under the sessions pill (800px). */
+@media(min-width:601px){body.all-view #scope{flex-shrink:0}}
 /* The search field is glass too (no shadow: it is a field, not a card); the focus ring below replaces the highlight. */
 #allHead input{flex:0 1 240px;width:240px;min-width:90px;box-sizing:border-box;height:24px;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight);color:var(--text);padding:2px 11px;border-radius:999px;font-size:12px}
 #allHead input::placeholder{color:var(--text-faint)}
@@ -1908,6 +1918,11 @@ a{color:var(--accent)}
   #scope .scope-name,#scope .scope-name.error{position:relative;min-height:40px;margin:-12px 0 0;padding:12px 10px 0;border-width:0;border-radius:11px}
   #scope .scope-name::before{content:"";position:absolute;left:0;right:0;top:12px;bottom:0;border:1px solid var(--border-strong);border-radius:999px;pointer-events:none}
   #scope .scope-name.error::before{border-color:var(--warn-border)}
+  /* The segmented control (project view): the left segment's fill on its drawn pill (::before, under the text), its box's
+     left corners no rounder than the drawn pill's; "all"'s tap box 40px, as the left segment's, up from the row's bottom. */
+  #scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-name{isolation:isolate;background:transparent;border-radius:11px 0 0 11px}
+  #scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-name::before{z-index:-1;background:var(--bg-raised);border-radius:999px 0 0 999px}
+  #scope:has(> .scope-name + .scope-all:not(.scope-back)) .scope-all::after{inset:-13px -4px -1px 0}
   /* The active strip card's ✎: inside the strip (overflow-x:auto clips), so its own box grows, into the card's padding. */
   #topStrip .card-rename{padding:9px 13px;margin:-9px -8px}
   /* 🖼 and Send at 36px; the one-line field's line centred on Send (the field is 27px: it sits 4.5px up). */

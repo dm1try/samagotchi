@@ -26,6 +26,8 @@ and commands may change between minor versions. How releases are made:
 - chi web on iPhone: the page uses the full screen and keeps the composer, sheets, toasts and the lightbox clear of the
   notch and the home indicator (Home Screen app and Safari); in a Safari tab the composer no longer sits under the
   toolbar (100dvh).
+- chi web: the top bar is one line at every width: its words share one text line, the plus is drawn, both pills are
+  as tall as the bell, and the project pill and `all` are one control. A phone's bar keeps its tap targets and its row.
 
 ### Fixed
 
