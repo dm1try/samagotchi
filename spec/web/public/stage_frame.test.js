@@ -111,7 +111,7 @@ function sized(t, { center, dock = 100, inner = 1000 }) {
   Object.defineProperty(window, "innerHeight", { configurable: true, get: () => inner });
   t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
   const cap = () => stage.style.getPropertyValue("--stage-max");
-  return { frame, state, cap };
+  return { frame, state, cap, dockEl };
 }
 
 test("fitCap: ~60% of the page, ~80% with the cloud open, 0.85 with the question room's cap; never above the panel", (t) => {
@@ -136,6 +136,17 @@ test("fitCap: the question room's cap stays under the session panel (room = cent
   state.roomCap = true;
   frame.fitCap();
   assert.equal(cap(), "758px");
+});
+
+test("fitCap: a phone's card floats higher (its bottom on the home indicator's line): the room is that much less", (t) => {
+  // room = 900 - (100 + 10) - 16 - 34 = 740.
+  const { frame, state, cap, dockEl } = sized(t, { center: 900 });
+  dockEl.style.bottom = "34px";
+  document.body.append(dockEl); // computed only once connected
+  t.after(() => dockEl.remove());
+  state.roomCap = true;
+  frame.fitCap();
+  assert.equal(cap(), "740px");
 });
 
 // A waiting card under a long asking text (happy-dom has no layout: the
