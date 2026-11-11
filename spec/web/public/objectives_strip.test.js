@@ -242,3 +242,78 @@ test("a check's start or end doesn't bring Not yet back: only a change to the li
   assert.equal(await control.notYet("O1"), true);
   control.reset();
 });
+
+test("the tracker's reading shows in its row with its time, marked when it differs from the agent's move, faded when stale", () => {
+  const { el, control, pop } = strip();
+  const at = new Date().toISOString();
+  control.seed({ items: [
+    { id: "O1", text: "A", status: "active", move: { note: "green", evidence: "", state: "done" }, track: { reading: "no sign", reason: "nothing ran for it", at, model: "main:x" } },
+    { id: "O2", text: "B", status: "active", move: { note: "n", evidence: "", state: "progress" }, track: { reading: "progress", reason: "an edit", at, stale: true } },
+    { id: "O3", text: "C", status: "active" },
+  ], pending: false });
+  el.querySelector(".obj-edit").click();
+  const track = (id) => pop().querySelector(`[data-row="${id}"] .obj-track`);
+  assert.match(track("O1").textContent, /^tracker: no sign — nothing ran for it · \d\d:\d\d$/);
+  assert.ok(track("O1").classList.contains("differs"));
+  assert.match(track("O1").title, /main:x.*Differs/);
+  assert.ok(!track("O2").classList.contains("differs"));
+  assert.ok(track("O2").classList.contains("stale"));
+  assert.ok(track("O3") === null);
+});
+
+test("Where are we? shows only where the worker has the tracker and an objective is active; it posts the track line and waits while one runs", async () => {
+  document.getElementById("objectivesPanel")?.remove();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const lines = [];
+  let can = false;
+  const control = createObjectivesStrip({ el, session: () => "s1", canTrack: () => can, sendLine: async (line) => lines.push(line) });
+  const items = [{ id: "O1", text: "A", status: "active" }];
+  control.seed({ items, pending: false });
+  el.querySelector(".obj-edit").click();
+  const pop = () => document.getElementById("objectivesPanel");
+  const button = () => pop().querySelector('[data-obj-act="track"]');
+  assert.ok(button() === null);
+
+  can = true;
+  control.redraw();
+  button().click();
+  await settle();
+  assert.deepEqual(lines, ["/objectives track"]);
+
+  control.update({ items, pending: false, tracking: { until: new Date(Date.now() + 9000).toISOString() } });
+  assert.equal(button().disabled, true);
+  assert.equal(button().textContent, "Reading where they stand…");
+  control.update({ items: [{ ...items[0], status: "done" }], pending: false });
+  assert.ok(button() === null);
+  control.reset();
+});
+
+test("a running read lets go when it expires, with no event", async () => {
+  document.getElementById("objectivesPanel")?.remove();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const control = createObjectivesStrip({ el, session: () => "s1", canTrack: () => true });
+  control.seed({ items: [{ id: "O1", text: "A", status: "active" }], pending: false, tracking: { until: new Date(Date.now() + 30).toISOString() } });
+  el.querySelector(".obj-edit").click();
+  const button = () => document.getElementById("objectivesPanel").querySelector('[data-obj-act="track"]');
+  assert.equal(button().disabled, true);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(button().disabled, false);
+  control.reset();
+});
+
+test("a read's start or end doesn't bring Not yet back: only a change to the list does", async () => {
+  const sent = [];
+  document.body.innerHTML = "";
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const control = createObjectivesStrip({ el: host, session: () => "s1", sendMessage: async (text) => sent.push(text) });
+  const item = { id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" } };
+  control.seed({ items: [item], pending: false });
+  await control.notYet("O1");
+  control.update({ items: [item], pending: false, tracking: { until: new Date(Date.now() + 9000).toISOString() } });
+  control.update({ items: [{ ...item, track: { reading: "done", reason: "r", at: new Date().toISOString() } }], pending: false });
+  assert.equal(await control.notYet("O1"), false);
+  assert.equal(sent.length, 1);
+});

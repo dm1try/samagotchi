@@ -160,9 +160,10 @@ A page action the open session's worker must support (its sidecar features and a
 when a field it reads changes (`workerFeatures`, `bridgeUp`), and a gate's `redraw` only when its answer flipped: a
 restart's hub event that brings the feature enables it, the worker going (`workerGone`'s `bridgeUp = false`) says
 it's unavailable. `forgetSession` and `renderSessionView` draw the history with the answer already, so they `prime()`
-the gates in the batch of their write, and nothing fires. Today two gates: `verify` (Verify fresh on a verdict's
-card, `redrawFresh`) and `revise` (the answers' Revise buttons and the composer's Revising chip, `redrawRevise`).
-Both refuse only a live worker without the feature — `workerPredates(features, up, feature)` in
+the gates in the batch of their write, and nothing fires. Today three gates: `verify` (Verify fresh on a verdict's
+card, `redrawFresh`), `revise` (the answers' Revise buttons and the composer's Revising chip, `redrawRevise`) and
+`objectivesTrack` (the objectives' Where are we?, in the list and on the no-move line, `objectives.redraw`).
+All refuse only a live worker without the feature — `workerPredates(features, up, feature)` in
 `worker_features.js`, the rule both gates share: a worker that isn't up is woken by the send as a new one, which
 has it. A new action that needs a worker feature is one more entry.
 

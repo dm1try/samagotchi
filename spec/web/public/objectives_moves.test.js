@@ -184,3 +184,34 @@ test("the mark goes when a move appears in that turn, when a newer turn comes, o
   third.control.decorate();
   assert.equal(third.lines().length, 1);
 });
+
+test("the no-move line offers Where are we? only where the worker has the tracker; a tap posts once, a failure gives it back", async () => {
+  const historyEl = document.createElement("div");
+  document.body.appendChild(historyEl);
+  historyEl.innerHTML = LIST + block();
+  let can = false;
+  let answer = false;
+  let taps = 0;
+  const control = createObjectivesMoves({ historyEl, canMarkNoMove: () => true, canTrack: () => can, track: async () => { taps += 1; return answer; } });
+  const line = () => historyEl.querySelector(".obj-nomove");
+  assert.equal(line().textContent, "no move recorded");
+  assert.ok(line().querySelector("button") === null);
+
+  can = true;
+  control.decorate();
+  const button = line().querySelector(".obj-track-ask");
+  assert.equal(button.textContent, "Where are we?");
+  assert.equal(historyEl.querySelectorAll(".obj-nomove").length, 1);
+  button.click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(button.disabled, false);
+  answer = true;
+  button.click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(button.disabled, true);
+  assert.equal(taps, 2);
+
+  can = false;
+  control.decorate();
+  assert.ok(line().querySelector("button") === null);
+});

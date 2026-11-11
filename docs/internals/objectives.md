@@ -214,6 +214,18 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   author live, the prompt's author in `drawnGroupPieces`), and each row's `data-tool` (also `turn_html.js
   toolRowTemplate`, so live and reloaded rows stay the same markup). A pair turn's `objectives` call is always denied,
   so without the participant stamp every pair turn that edits would get it. The participant page draws none of this.
+- **The tracker** (`objectives_track.js`, a module of its own for the same reason): the list's row under an item it read
+  says `tracker: no sign — nothing ran for it · 14:32` (`.obj-track`), with weight and the warn colour when it differs
+  from the agent's last move's state (`trackDiffers`: a move to compare with, a reading other than no answer), faded when
+  stale, the model in its tooltip. **Where are we?** posts `/objectives track` as a strip tap does (`card: true`, no
+  echo; the card is the answer): at the list's foot while an objective is active (off and `Reading where they stand…`
+  while the view has `tracking`, which lets go at its `until` as a check does), and on the `no move recorded` line
+  (`objectives_moves.js`, `data-offer` redraws it when the gate flips). Both only where the worker names the
+  `objectives_track` Bridge feature (the `objectivesTrack` gate in `app.js`'s `createFeatureGates`, `trackWorkerUnavailable`
+  on `workerPredates`; `canTrack` through the wiring, so a cached older strip or moves module ignores it). The strip's
+  `listSig` leaves out `track` (and `tracking` is the view's, not an item's), so a read's start and end don't clear Not
+  yet's state. An open page of the previous release against a new worker ignores `track` and `tracking`; its `listSig`
+  does count `track`, so there a read's end lets Not yet be sent again.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every
   tab, this one too: the page's own echo needs the composer. It steers a running turn or starts a turn, as a typed line.
 - **Short version**: the same observer offers `/short` (decision-card) under the newest long answer (`foldable`), only with a list
