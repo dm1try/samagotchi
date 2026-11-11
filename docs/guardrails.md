@@ -1488,7 +1488,7 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
   that fails to load (missing, syntax error, an unmet `requires_chi`, or for a
   plugin a sha256 that differs from the installed one) makes chi deny
   every tool call. (An older chi's class-file bundle hooks don't load at all,
-  `fail_closed` or not: a not-required failure, [hooks.md](hooks.md#class-file-hooks-are-retired).) A fail-closed hook that raises when called denies that call.
+  `fail_closed` or not, [hooks.md](hooks.md#class-file-hooks-are-retired).) A fail-closed hook that raises when called denies that call.
 - Other hooks stay fail-open; a load failure is a warning.
 - Every load failure is shown once, at the start of the first turn
   (`guardrails> …` in the terminal, a red line on the web).

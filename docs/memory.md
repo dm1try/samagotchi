@@ -631,8 +631,7 @@ memory still marked as behind an earlier upgrade keeps its mark either way.
 - **`chi bundle status`** says per file what is `modified` (the uninstall's
   rule above: edited, or with nothing recorded to tell), `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
-  behind, missing or unreadable (and a plugin that won't load, or class-file hooks an older chi installed, which no
-  longer load: `Hooks (N): not loaded`), not edits. `chi bundle status NAME`
+  behind, missing or unreadable (and a plugin that won't load), not edits. `chi bundle status NAME`
   lists the bundle's guardrail rules and scripts too (`Rules (N):`, `Scripts (N):`),
   each `[ok]`, `[missing]` or `[modified]`: edited, so the next install or upgrade
   replaces it, its copy kept in the trash. An edited or missing rule doesn't load

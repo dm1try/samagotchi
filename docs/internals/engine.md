@@ -648,9 +648,8 @@ re-validates them ([architecture.md](../architecture.md), the `display_refs` par
 - **A hook that raises is logged; it never breaks the turn.** A plugin's `chi.on` handler also tells the user once
   per label (`Hooks.wrap(on_failure:)` → `HookRoutes#plugin_hook_failed`: a `:guardrail_warning` labelled
   `plugins`, through `Plugin::Registries#hook_failed`). A config hook has none, nor the test kit's sandbox.
-- `ExtensionLoad#hooks` loads config.yml's hooks only; an installed record that still has class-file bundle hooks
-  (an older chi's install) adds a not-required load failure instead, announced at the first turn
-  ([hooks.md](../hooks.md#class-file-hooks-are-retired)).
+- `ExtensionLoad#hooks` loads config.yml's hooks only; an installed record's class-file bundle hooks (an older
+  chi's install) never load ([hooks.md](../hooks.md#class-file-hooks-are-retired)).
 - A notice goes to the running turn's sink and the observers; outside a turn it is announced with
   `between_turns: true`; while the plugins load it is held. `EventRoutes#route` decides it, the same routes as a card's
   (`Engine#show_card`); a guardrails line after load takes only the turn / between-turns routes (`#route_by_turn`).

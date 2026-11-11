@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   before is rewritten versioned on its first read. Sessions still on 0.165 or older should be restarted
   (`chi sessions restart`); a downgrade to 0.165 or older sets the store aside as a recoverable
   `approvals.json.corrupt-*` file.
+- Bundles: an install record from 0.157 with class-file hooks is no longer announced (at the first turn, in
+  `chi bundle status` or in `chi update`); its hooks still don't load. Reinstall or upgrade the bundle to clear them.
 
 ## [0.166.0] - 2026-11-11
 

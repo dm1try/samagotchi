@@ -418,20 +418,6 @@ RSpec.describe "chi bundle (CLI)" do
       expect(out).to include("Installed: a.md", "Checksum mismatch for a.md")
     end
 
-    it "labels retired hook files present or missing" do
-      hooks = { "present.rb" => "class Present; end\n", "missing.rb" => "class Missing; end\n" }
-      old_hooks!("legacy-hooks", hooks)
-      FileUtils.rm_f(File.join(memories, ".bundles", "legacy-hooks", "hooks", "missing.rb"))
-
-      out, err, code = chi("status", "legacy-hooks")
-
-      expect([err, code]).to eq(["", 0])
-      expect(out).to include(
-        "  Hooks (2): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}\n    " \
-        "missing.rb [missing]\n    present.rb [present]\n"
-      )
-    end
-
     # A plain install over an installed bundle rewrites its rules, plugin,
     # scripts and record (it is not a skip), and leaves a memory the
     # user wrote; the summary says both.
@@ -803,11 +789,10 @@ Removed: hooks/guardrails.rb\n\z})
 
     it "status goes on past a bundle whose manifest.json doesn't parse" do
       chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
-      old_hooks!("sample-memory-bundle")
       FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))
       File.write(File.join(memories, ".bundles", "broken", "manifest.json"), "{bad")
 
-      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-memory-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n", "", 0])
+      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n", "", 0])
     end
 
     it "names the file a profile's --force copied to the trash" do
@@ -1309,12 +1294,12 @@ Removed: hooks/guardrails.rb\n\z})
 
     it "status lists both" do
       expect(chi("status")).to eq([
-        "  sample-memory-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n  " \
+        "  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n  " \
         "sample-plugin v1.0.0 scope=system files=0 plugin=plugin.rb issues=0\n", "", 0
       ])
     end
 
-    it "status NAME shows files, trust and hooks" do
+    it "status NAME shows files and trust, not the record's hooks" do
       out, err, code = chi("status", "sample-memory-bundle")
 
       expect([err, code]).to eq(["", 0])
@@ -1324,8 +1309,6 @@ Removed: hooks/guardrails.rb\n\z})
           identity.md: ok
           Manifest: [kept]
           trust_level: reviewed
-          Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}
-            guardrails.rb [present]
       TEXT
     end
 

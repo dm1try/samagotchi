@@ -59,9 +59,8 @@ module Samagotchi
 
       # What the child sends: an edited file, which the copy's own shas can't
       # tell, a manifest key that doesn't parse (the copy holds the mirror's
-      # value or none: InstalledManifest#key_problems), the class-file hooks
-      # the record still has (they don't load), and Check's warnings and
-      # errors, naming the installed bundle's folder rather than the copy's.
+      # value or none: InstalledManifest#key_problems), and Check's warnings
+      # and errors, naming the installed bundle's folder rather than the copy's.
       def answer_of(bundle)
         edited = MemoryBundle::ShippedUpdate.edited_executables(bundle.name, bundle).map do |file|
           Check::Finding.new(level: :warn, code: :edited, file: file, line: nil, fix: "chi bundle upgrade #{bundle.name}, or reinstall it",
@@ -70,7 +69,6 @@ module Samagotchi
         edited += bundle.manifest.key_problems.values.map do |message|
           Check::Finding.new(level: :error, code: :manifest, file: "manifest.yml", line: nil, message: message, fix: nil)
         end
-        edited << retired_hooks(bundle) unless bundle.hooks.empty?
         edited = edited.map { |finding| { level: finding.level, text: finding.to_s } }
         installed_dir = MemoryBundle::Provenance.new(name: bundle.name).bundle_dir
         edited + MemoryBundle::InstalledCopy.with(bundle) do |dir|
@@ -81,16 +79,6 @@ module Samagotchi
         end
       end
       private_class_method :answer_of
-
-      # A 0.157 record's class-file hooks: they no longer load, and only an
-      # upgrade from a source that has moved them (or an uninstall) clears it
-      # (compat shim retired_class_file_hooks: Compat::SHIMS).
-      def retired_hooks(bundle)
-        Check::Finding.new(level: :warn, code: :"hooks-retired", file: "hooks/", line: nil,
-                           message: MemoryBundle::Manifest::HooksRetired::WORDS,
-                           fix: "chi bundle upgrade #{bundle.name} once its source hooks from plugin.rb, or chi bundle uninstall #{bundle.name}")
-      end
-      private_class_method :retired_hooks
 
       def died(why, prefix: true) = Found.new(level: "error", text: check_line(prefix ? "the check died: #{why}" : why))
       private_class_method :died

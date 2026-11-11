@@ -573,10 +573,6 @@ module Samagotchi
         commit = st.provenance.source_commit
         @stdout.puts "  trust_level: #{trust}"
         @stdout.puts "  source_commit: #{commit}" if commit
-        unless st.retired_hooks.empty?
-          @stdout.puts "  Hooks (#{st.retired_hooks.size}): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
-          st.retired_hooks.each { |file, state| @stdout.puts "    #{file} [#{state}]" }
-        end
         print_assets("Rules", st.rules, " (edited after install: not loaded; reinstall the bundle)")
         print_assets("Scripts", st.scripts, " (edited after install: the next install replaces it, a copy kept in the trash)")
         if (plugin = st.plugin)
@@ -598,17 +594,15 @@ module Samagotchi
 
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           mods = st.files.values.count { |v| v[:behind] || v[:missing] || v[:unreadable] }
-          hook_info = st.retired_hooks.empty? ? "" : " hooks=#{st.retired_hooks.size}"
           plugin = st.plugin
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
-          mods += 1 unless st.retired_hooks.empty?
           # A rule that is missing or edited doesn't load; a script runs edited.
           mods += st.rules.values.count { |state| state != "ok" } + st.scripts.values.count("missing")
           mods += 1 if st.scope_error
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st.provenance.includes
           includes_info = includes ? " includes=#{includes.join(",")}" : ""
-          @stdout.puts "  #{bname} v#{st.provenance.version}#{dev_label(st.provenance)} scope=#{status_scope(st)} files=#{st.files.size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
+          @stdout.puts "  #{bname} v#{st.provenance.version}#{dev_label(st.provenance)} scope=#{status_scope(st)} files=#{st.files.size}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
       0

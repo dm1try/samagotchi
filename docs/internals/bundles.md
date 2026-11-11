@@ -106,10 +106,8 @@ bundle, or a SyntaxError's own line), which `Install` maps from the installed co
 back to the source dir.
 
 Class-file hooks (retired). A record an older chi installed may still have a `hooks` map and `hooks/*.rb`
-(`InstalledBundle#hooks`). Nothing loads them: `ExtensionLoad#hooks` adds one not-required failure per such record
-(`hooks (bundle X)`, `Manifest::HooksRetired::WORDS`), which the Engine announces at the first turn; `Status`'s
-`retired_hooks` gives `chi bundle status` its `Hooks (N): not loaded` lines (and the list an issue), and
-`BundleCommand::InstalledCheck` a `hooks-retired` row for `chi update` (an `InstalledCopy` has no hooks). A source with
+(`InstalledBundle#hooks`). Nothing loads them, and nothing announces them any more (the first turn, `chi bundle
+status` and `chi update` did from 0.158 to 0.166). A source with
 hooks is refused before its manifest is read (`Installer#refuse_hooks`, then `Manifest.read`), strict or not, a dry
 run too; `ShippedUpdate`'s plan skips one the same way. Over such a record, `AssetInstaller#retire_hooks` (after the
 plugin and scripts, so a refused install leaves them) copies every edited or unknown file under `hooks/` to the trash

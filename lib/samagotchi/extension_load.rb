@@ -33,15 +33,9 @@ module Samagotchi
     end
 
     # The hooks: config.yml's (Hooks::Loader; an empty Registry without a
-    # hooks config). An installed record that still has class-file hooks (a
-    # 0.157 install) adds a not-required failure each, which the Engine
-    # announces at the first turn: they don't load (#tell_retired_hooks;
-    # compat shim retired_class_file_hooks: Compat::SHIMS).
+    # hooks config).
     # @return [Hooks::Registry]
-    def hooks
-      tell_retired_hooks
-      hooks_from_config
-    end
+    def hooks = hooks_from_config
 
     # Load the installed bundles' plugins into +registries+; one that fails
     # goes to +failures+, a required one (a guardrail plugin) to the hook
@@ -70,24 +64,6 @@ module Samagotchi
       return Hooks::Loader.load(data, failures: @hook_failures) if data.is_a?(Hash)
 
       Hooks::Registry.new
-    end
-
-    # One failure per record whose hooks: map isn't empty; an empty
-    # hooks/ dir is not one, nor a manifest.json that doesn't read (the
-    # plugin loader and the rules report that: a record holding only hooks/
-    # with an unreadable manifest.json is silent at start, as its hooks
-    # wouldn't load anyway; `chi bundle status` lists it unreadable).
-    def tell_retired_hooks
-      require_relative "memory_bundle/provenance"
-      MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, bundle|
-        next if bundle.error?
-
-        Log.warn(:hooks, "bundle_hooks_retired", bundle: bundle_name, hooks: bundle.hooks.size)
-        @hook_failures.add("hooks (bundle #{bundle_name})", MemoryBundle::Manifest::HooksRetired::WORDS, required: false)
-      end
-    rescue StandardError => e
-      Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to read the installed bundles: #{e.class}: #{e.message}",
-                                               error: e.class.name)
     end
   end
 end
