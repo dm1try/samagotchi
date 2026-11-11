@@ -456,6 +456,9 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.said+.bubble.question :is(.question-said,.question-said-full){display:none}
 /* Its asking step in the steps block doesn't repeat the reason either (stage_opened.js data-said, until the hand-off). */
 .turn-work>details.gen[data-said]>.gen-text{display:none}
+/* A card that waits in the stage has no toggle of its own (stage_view.js): the stage's fold is the one. */
+.turn-stage .bubble.question:not(.answered):not(.cancelled)>summary{cursor:default}
+.turn-stage .bubble.question:not(.answered):not(.cancelled)>summary::before{content:none}
 .question-reason-link{float:right;margin-left:12px;padding:0;border:0;background:none;color:var(--accent);font-size:12.5px;font-weight:500;line-height:inherit}
 @media(hover:hover){.question-reason-link:hover:not(:disabled){filter:none;text-decoration:underline}}
 /* The reply that asked the model's own question, a conversation bubble while its turn runs (live only): a label line ("chi ·

@@ -895,6 +895,8 @@ function questionCard({ qid = "q1", kind = "question", relay = false, cls = "bub
   card.open = true;
   const summary = document.createElement("summary");
   summary.textContent = "Question";
+  // question_cards.js's hand-toggle mark.
+  summary.addEventListener("click", (e) => { if (!e.defaultPrevented) card.dataset.toggled = "1"; });
   card.append(summary, document.createElement("button"));
   return card;
 }
@@ -1241,6 +1243,58 @@ test("replayed: a later question card of the same step doesn't take the reply a 
     assert.equal(view.askingText(), "", "taken");
     append(questionCard({ qid: "q2" }));
     assert.equal(historyEl.querySelectorAll(".bubble.said").length, 1);
+  } finally {
+    view.reset();
+  }
+});
+
+// ── one fold for the waiting question ────────────────────────────────────
+
+const summaryOf = (card) => card.querySelector(":scope > summary");
+
+test("a card that waits in the stage has no toggle of its own, a question and an approval; once answered it toggles again", async () => {
+  for (const [card, text] of [[questionCard(), "Both files matter. Which first?"], [questionCard({ kind: "approval", cls: "bubble question approval" }), "Running it."]]) {
+    const { view, append, historyEl } = openedPage();
+    try {
+      asks(view, { text });
+      append(card);
+      summaryOf(card).click();
+      assert.equal(card.open, true, card.dataset.kind);
+      assert.equal(card.dataset.toggled, undefined);
+      assert.equal(summaryOf(card).getAttribute("tabindex"), "-1");
+      // "Waits" is read at the click: an answered card still in the stage toggles.
+      card.classList.add("answered");
+      await tick();
+      // The answered question settles under its reason in the history; the
+      // approval (not promoted) stays in the stage: each toggles where it is.
+      const where = card.dataset.kind === "approval" ? $(view, ".ts-extras") : historyEl;
+      assert.ok(card.parentElement === where, card.dataset.kind);
+      summaryOf(card).click();
+      assert.equal(card.open, false, card.dataset.kind);
+      assert.equal(card.dataset.toggled, "1");
+      assert.equal(summaryOf(card).getAttribute("tabindex"), null);
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("a waiting card's summary buttons still work (its reason link); a card in the history toggles", async () => {
+  const { view, append, historyEl } = openedPage();
+  try {
+    asks(view);
+    const card = questionCard();
+    append(card);
+    let clicked = 0;
+    const link = card.querySelector(".question-reason-link");
+    link.addEventListener("click", () => { clicked += 1; });
+    link.click();
+    assert.equal(clicked, 1);
+    const old = questionCard({ qid: "q0" });
+    historyEl.prepend(old);
+    summaryOf(old).click();
+    assert.equal(old.open, false);
+    assert.equal(old.dataset.toggled, "1");
   } finally {
     view.reset();
   }
