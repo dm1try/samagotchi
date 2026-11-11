@@ -2,6 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRename, inputBox, outsideClip, titleLine } from "../../../lib/samagotchi/web/public/session_rename.js";
+import { CONTACT_WORDS } from "../../../lib/samagotchi/web/public/no_contact_fill.js";
 
 const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
 
@@ -36,6 +37,10 @@ test("open: the field asks iOS for no contact AutoFill (autocomplete off, a name
   h.rename.open();
   assert.equal(h.input().getAttribute("autocomplete"), "off");
   assert.equal(h.input().name, "chi-session-label");
+  assert.doesNotMatch(h.input().getAttribute("aria-label"), CONTACT_WORDS);
+  const bare = harness({ titles: {}, shown: () => "" });
+  bare.rename.open();
+  assert.doesNotMatch(bare.input().placeholder, CONTACT_WORDS);
 });
 
 test("titleLine: the text as /title, whitespace collapsed; blank clears", () => {
@@ -93,7 +98,7 @@ test("the placeholder is the title as shown (an untitled chain link's is its cha
   h.key("Escape");
   const bare = harness({ titles: {}, shown: () => "" });
   bare.rename.open();
-  assert.equal(bare.input().placeholder, "Session title");
+  assert.equal(bare.input().placeholder, "Session label");
 });
 
 test("empty clears; the same title, Esc, or another session opened meanwhile sends nothing", () => {

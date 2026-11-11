@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 
 - chi web on iPhone: the composer, the all view's search and the rename field ask Safari not to offer its AutoFill
   Contact bar (as the cards' text fields already did).
+- chi web on iPhone: the composer no longer gets Safari's "AutoFill Contact" bar after a picks note or the invite form
+  has been shown (every text field now says it isn't a contact field).
 - chi web's top bar: the all-sessions header (search, count, archived, Select) moves to a line of its own with the bell
   where it doesn't fit beside the sessions pill (about 601-760px wide) instead of covering the pill's end; on a phone the
   project chip cuts its name with an ellipsis rather than pushing "all" under the pill (a 320px start page with the strip

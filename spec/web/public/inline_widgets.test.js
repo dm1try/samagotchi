@@ -7,6 +7,7 @@ import { figureOf, setSourceShown } from "../../../lib/samagotchi/web/public/blo
 import { viewOf } from "../../../lib/samagotchi/web/public/revise_switch.js";
 import { createWalker, drawWalk, swimlaneCells, trailText, USUAL, walkRoutes } from "../../../lib/samagotchi/web/public/widget_walk.js";
 import { drawPicks, initialPicks, replyText, withDraft } from "../../../lib/samagotchi/web/public/widget_picks.js";
+import { CONTACT_WORDS } from "../../../lib/samagotchi/web/public/no_contact_fill.js";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const SHEET = new window.CSSStyleSheet();
@@ -331,6 +332,9 @@ test("the drawn picks: the recommended preselected, a chip click toggles, a note
   assert.deepEqual(pressed(), ["fix now", "yes"]);
   box.querySelector(".wp-addnote").click();
   const note = box.querySelector(".wp-note");
+  assert.equal(note.getAttribute("autocomplete"), "off", "no contact AutoFill on iOS");
+  assert.equal(note.name, "chi-pick-note");
+  assert.doesNotMatch(note.getAttribute("aria-label"), CONTACT_WORDS);
   note.value = "today";
   note.dispatchEvent(new window.Event("input"));
   box.querySelector(".wp-fill").click();

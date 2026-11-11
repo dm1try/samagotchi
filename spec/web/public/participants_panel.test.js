@@ -2,10 +2,11 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, lateInviteText, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, INVITE_FIELDS, lateInviteText, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, nameUnnamedBadges, participantName, setParticipantNames, UNNAMED } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+import { CONTACT_WORDS } from "../../../lib/samagotchi/web/public/no_contact_fill.js";
 
 const NOW = Date.parse("2026-10-23T12:00:00Z");
 const iso = (ms) => new Date(ms).toISOString();
@@ -75,9 +76,9 @@ test("participants: Invite's email binds the link (lower case), names them by it
 
 test("participants: the email field only behind a proxy that names the user; a bound row and link say so", () => {
   const plain = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
-  assert.doesNotMatch(plain, /name="identity"/);
+  assert.doesNotMatch(plain, /name="chi-invitee-account"/);
   const proxied = markupOf(panelTemplate([], { now: NOW, sessionId: "s", identityHeader: "X-Forwarded-Email" }));
-  assert.match(proxied, /name="identity"[^>]*type="email"/);
+  assert.match(proxied, /name="chi-invitee-account"[^>]*type="text"[^>]*inputmode="email"/);
   assert.match(proxied, /anyone the proxy lets in who gets the link can open it/);
   const bound = markupOf(panelTemplate([grant({ identity: "alex@corp.example" })], { now: NOW, sessionId: "s" }));
   assert.match(bound, /bound to alex@corp\.example/);
@@ -85,6 +86,22 @@ test("participants: the email field only behind a proxy that names the user; a b
   const shown = markupOf(panelTemplate([], { now: NOW, sessionId: "s",
     invite: { name: "Alex", link: "https://x/#code=chc_c", lan: true, identity: "alex@corp.example" } }));
   assert.match(shown, /It opens this session only, for alex@corp\.example only\./);
+});
+
+test("participants: the Invite form's text fields ask iOS for no contact AutoFill", () => {
+  const doc = document.createElement("div");
+  render(panelTemplate([], { now: NOW, sessionId: "s", identityHeader: "X-Forwarded-Email" }), doc);
+  const fields = [...doc.querySelectorAll("form.pp-invite input")];
+  assert.deepEqual(fields.map((f) => f.name), ["chi-invitee", "chi-invitee-account", "cap"]);
+  for (const f of fields) {
+    assert.equal(f.getAttribute("autocomplete"), "off", f.name);
+    assert.equal(f.type, "text", f.name);
+    for (const wording of [f.name, f.placeholder, f.getAttribute("aria-label")]) {
+      assert.doesNotMatch(wording, CONTACT_WORDS, wording);
+    }
+  }
+  assert.equal(doc.querySelector('[name="chi-invitee-account"]').getAttribute("inputmode"), "email");
+  assert.deepEqual(Object.values(INVITE_FIELDS).filter((n) => !doc.querySelector(`[name="${n}"]`)), []);
 });
 
 test("participants panel: the list's identity_header shows the email field, and the invite sends it", async () => {
@@ -95,8 +112,8 @@ test("participants panel: the list's identity_header shows the email field, and 
   c.chip.click();
   await tick();
   const form = c.pop.querySelector("form.pp-invite");
-  assert.ok(form.elements.identity, "the email field");
-  form.elements.identity.value = "Kim@Corp.Example";
+  assert.ok(form.elements["chi-invitee-account"], "the email field");
+  form.elements["chi-invitee-account"].value = "Kim@Corp.Example";
   c.submit(form);
   await tick();
   await tick();
@@ -273,7 +290,7 @@ test("participants panel: an invite answered after the panel closed doesn't show
   c.chip.click();
   await tick();
   assert.ok(c.ctl.isOpen());
-  c.pop.querySelector("form.pp-invite").elements.name.value = "Kim";
+  c.pop.querySelector("form.pp-invite").elements["chi-invitee"].value = "Kim";
   c.submit(c.pop.querySelector("form.pp-invite"));
   c.ctl.close();
   c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
@@ -301,7 +318,7 @@ test("participants panel: a late invite's Copy link that fails shows the link it
   await c.ctl.load();
   c.chip.click();
   await tick();
-  c.pop.querySelector("form.pp-invite").elements.name.value = "Kim";
+  c.pop.querySelector("form.pp-invite").elements["chi-invitee"].value = "Kim";
   c.submit(c.pop.querySelector("form.pp-invite"));
   c.ctl.close();
   c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
