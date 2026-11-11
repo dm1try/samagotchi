@@ -15,20 +15,20 @@ module Samagotchi
     Shim = Data.define(:id, :added_in, :remove_after, :files, :what)
 
     SHIMS = [
-      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", remove_after: nil,
+      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", remove_after: "0.170.0",
                files: ["lib/samagotchi/bridge/card_store.rb"],
                what: "CardStore#seed_v1 reads a cards.json from before the turn log; its comment says a retention " \
                      "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
-      Shim.new(id: :merge_inference, added_in: "0.157.0", remove_after: nil,
+      Shim.new(id: :merge_inference, added_in: "0.157.0", remove_after: "0.165.0",
                files: ["lib/samagotchi/reply_wait/poll.rb", "lib/samagotchi/tools/delegate.rb"],
                what: "a wait infers a merged steer when the worker wrote no merge record (a 0.156 worker)"),
-      Shim.new(id: :session_not_found_words, added_in: "0.156.0", remove_after: nil,
+      Shim.new(id: :session_not_found_words, added_in: "0.156.0", remove_after: "0.165.0",
                files: ["lib/samagotchi/session_access/remote.rb"],
                what: "SESSION_NOT_FOUND also reads chi web 0.155.0's \"Session not found: X\" (its comment: compat N-1)"),
-      Shim.new(id: :remote_refusal_details, added_in: "0.122.0", remove_after: nil,
+      Shim.new(id: :remote_refusal_details, added_in: "0.122.0", remove_after: "0.165.0",
                files: ["lib/samagotchi/session_access/remote.rb"],
                what: "context_missing? and no_provider? read an older chi web's 404 detail words, before their error codes"),
-      Shim.new(id: :retired_class_file_hooks, added_in: "0.158.0", remove_after: nil,
+      Shim.new(id: :retired_class_file_hooks, added_in: "0.158.0", remove_after: "0.166.0",
                files: ["lib/samagotchi/extension_load.rb", "lib/samagotchi/memory_bundle/status.rb",
                        "lib/samagotchi/bundle_command/installed_check.rb"],
                what: "a 0.157 install record's class-file hooks: announced as not loading, shown and checked until " \
