@@ -1529,10 +1529,14 @@ body:not(.has-session) #dock{width:min(720px,calc(100% - 32px));margin:0 auto}
 body:not(.has-session) #infoBar{display:none}
 #notice{width:min(720px,calc(100% - 32px));margin:0 auto 12px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:8px;color:var(--text-muted);font-size:13px;text-align:center}
 body.has-session #notice{display:none}
-#topBar{display:flex;align-items:center;gap:12px;margin-bottom:-6px}
-#newBtn.brand{background:transparent;border:0;padding:2px 4px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
+/* The top bar's words on one text line: "chi", "new session", the pills, "all" and the title share a baseline at every
+   width; the bell and the all view's header (no text line of their own) are centred on the row. */
+#topBar{display:flex;align-items:baseline;gap:12px;margin-bottom:-6px}
+#newBtn.brand{background:transparent;border:0;padding:1px 4px 2px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
 #newBtn .brand-name{font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--accent)}
-#newBtn .brand-new{font-size:12px;color:var(--text-muted);display:none}
+#newBtn .brand-new{font-size:12px;color:var(--text-muted);display:none;white-space:nowrap}
+/* The plus is drawn, as the bell is: 10px beside "new session", 13px alone in a phone's round button. */
+#newBtn .brand-plus{width:10px;height:10px;vertical-align:-1px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
 body.has-session #newBtn .brand-new{display:inline}
 #newBtn:hover .brand-new{color:var(--text-2)}
 /* The scope chip: "<project> · all", or "all projects" and where a new session starts (start page only). */
@@ -1584,15 +1588,14 @@ body.all-view #scope .scope-where{display:none}
   #topBar{gap:8px}
   #scope{gap:6px}
   #newBtn .brand-new-word{display:none}
-  #newBtn .brand-new,#scope .scope-back{white-space:nowrap}
-  #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #stripStatus{padding:3px 8px}
-  #newBtn .brand-new{font-size:16px}
-  /* In a session the brand gives its room to the bar: a bare "+", a 32px round button (the start page keeps "chi"); its extra 4px
-     taken back so the bar keeps its height. */
+  /* In a session the brand gives its room to the bar: a bare drawn plus, a 32px round button centred on the row (the start
+     page keeps "chi"); its extra 4px taken back so the bar keeps its height. The plus is centred by flex, not by its line. */
   body.has-session #newBtn .brand-name{display:none}
-  body.has-session #newBtn.brand{width:32px;height:32px;margin:-2px 0;padding:0;justify-content:center;align-items:center;border-radius:999px;border:1px solid var(--border-strong)}
-  body.has-session #newBtn .brand-new{font-size:20px;line-height:1;color:var(--text-2)}
+  body.has-session #newBtn.brand{align-self:center;width:32px;height:32px;margin:-2px 0;padding:0;justify-content:center;align-items:center;border-radius:999px;border:1px solid var(--border-strong)}
+  body.has-session #newBtn .brand-new{display:flex;color:var(--text-2)}
+  body.has-session #newBtn .brand-plus{width:13px;height:13px;margin:0}
 }
 /* The bell (notifications): quiet at the top bar's right end; filled in the accent when on, struck through when the browser blocks it. */
 /* The open session's title, when no strip card in sight shows it (session_title.js): the bar's middle, cut with an ellipsis; the whole first message in its tooltip.
@@ -1628,7 +1631,7 @@ body.all-view #scope .scope-where{display:none}
   body:not(.has-session) #scope .scope-where{flex:1 1 auto;min-width:0}
   #stripStatus:has(.live,.waiting) .pill-count{display:none}
 }
-#notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
+#notifyBtn{margin-left:auto;align-self:center;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
 #notifyBtn[hidden]{display:none}
 @media(hover:hover){#notifyBtn:hover{color:var(--text-2);border-color:var(--border)}}
 #notifyBtn svg{fill:none;stroke:currentColor;stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
@@ -1712,7 +1715,7 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .scope-error{grid-column:1/-1;font-size:13px;color:var(--warn-text)}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
 .strip-toggle:hover{color:var(--text-2);border-color:var(--border-strong)}
-#stripStatus{display:none;white-space:nowrap;flex-shrink:0}
+#stripStatus{display:none;align-self:center;white-space:nowrap;flex-shrink:0}
 #stripStatus .live{color:var(--ok-text);white-space:nowrap}
 #stripStatus .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
 #stripStatus .waiting{color:var(--warn-text);white-space:nowrap}
@@ -1761,7 +1764,7 @@ body.all-view #center, body.all-view #topStrip{display:none}
 /* All sessions' header sits in the top bar (before the bell, at its right end), shown in the all view alone: the search as a
    pill at chip height, the count, the archived toggle, Select. Its own auto margin pushes it right; the bell drops its own
    there (two auto margins would split the space). */
-#allHead{display:none;margin-left:auto;gap:8px;align-items:center;min-width:0;flex-wrap:nowrap;justify-content:flex-end}
+#allHead{display:none;align-self:center;margin-left:auto;gap:8px;align-items:center;min-width:0;flex-wrap:nowrap;justify-content:flex-end}
 body.all-view #allHead{display:flex}
 @media(min-width:601px){body.all-view #notifyBtn{margin-left:0}}
 /* The search field is glass too (no shadow: it is a field, not a card); the focus ring below replaces the highlight. */
@@ -1919,7 +1922,7 @@ a{color:var(--accent)}
 <body>
 <main>
   <div id="topBar">
-    <button type="button" id="newBtn" class="brand" title="New session"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new session</span></span></button>
+    <button type="button" id="newBtn" class="brand" title="New session" aria-label="New session"><span class="brand-name">chi</span><span class="brand-new"><svg class="brand-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg><span class="brand-new-word">new session</span></span></button>
     <div id="scope" hidden></div>
     <button type="button" class="strip-toggle" id="stripStatus" title="All sessions, with search"><span class="pill-count">sessions</span></button>
     <span id="sessionTitleRow" hidden><span id="sessionTitle"></span><button type="button" id="titleRenameBtn" class="title-rename" title="Rename this session" aria-label="Rename this session" hidden>✎</button></span>
