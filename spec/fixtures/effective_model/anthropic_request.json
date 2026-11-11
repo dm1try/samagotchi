@@ -60,7 +60,7 @@
       "ask_user_question",
       "objectives"
     ],
-    "digest": "sha256:963c64838e10b474579c7e741c8149fa8ff6d438714a6493adb3d9fcae39cbf6"
+    "digest": "sha256:cc157eab0e98831af65cc429fc6fad2bdd43c91cfb19df28728606924d0337c5"
   },
   "tool_choice": {
     "type": "auto"

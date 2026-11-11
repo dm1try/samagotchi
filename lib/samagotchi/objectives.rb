@@ -9,6 +9,7 @@ require_relative "context_note"
 require_relative "llm_context_stale"
 require_relative "log"
 require_relative "message_time"
+require_relative "objectives_backing"
 require_relative "objectives_check"
 require_relative "objectives_edit"
 require_relative "session"
@@ -72,11 +73,22 @@ module Samagotchi
     # +ref+ names the call itself, words apart: its run's id and its model
     # entry's time, so a later move in the same words is another move, and so is
     # one after a rollback hands the same id out again.
-    Move = Data.define(:id, :note, :evidence, :ref) do
-      def initialize(id:, note:, evidence:, ref: nil) = super
+    # +state+ where the objective stands in the agent's view
+    # (Tools::ObjectivesTool::STATES): PROGRESS for a saved call with none or
+    # an unreadable one; DONE is its claim, never the item's status.
+    # +backing+ what its turn ran before it (Backing), nil when not read.
+    Move = Data.define(:id, :note, :evidence, :ref, :state, :backing) do
+      def initialize(id:, note:, evidence:, ref: nil, state: Tools::ObjectivesTool::PROGRESS, backing: nil) = super
 
-      def line = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
+      # The words a state adds to a move: none for PROGRESS.
+      def state_words = STATE_WORDS[state]
+
+      def line
+        text = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
+        state_words ? "#{state_words}: #{text}" : text
+      end
     end
+    STATE_WORDS = { Tools::ObjectivesTool::BLOCKED => "blocked", Tools::ObjectivesTool::DONE => "claims done" }.freeze
 
     # What the user did to one objective between two lists, for the entry's
     # line: +kind+ added, done, dropped, reopened or reworded; +was+ a
@@ -202,10 +214,15 @@ module Samagotchi
 
       private
 
+      def move_view(move)
+        view = { "note" => move.note, "evidence" => move.evidence, "state" => move.state }
+        move.backing ? view.merge("backing" => move.backing.to_view) : view
+      end
+
       def item_view(item, check)
         move = moves[item.id]
         view = item.to_payload
-        view = view.merge("move" => { "note" => move.note, "evidence" => move.evidence }) if move
+        view = view.merge("move" => move_view(move)) if move
         check ? view.merge("check" => check) : view
       end
     end
@@ -286,16 +303,20 @@ module Samagotchi
     # recorded one (LLMContextStale.paired_runs, as the working set reads its
     # runs: a call_tool's too, both hosts' forms). Tools::ObjectivesTool
     # .recorded? is the check: a call with no list, a refused, a denied or an
-    # interrupted one recorded nothing.
+    # interrupted one recorded nothing. Each with its Backing: the runs of its
+    # own turn before it.
     # @return [Hash{String => Move}]
     def moves_in(conversation)
-      LLMContextStale.paired_runs(conversation).each_with_object({}) do |run, moves|
+      runs = LLMContextStale.paired_runs(conversation)
+      runs.each_with_index.with_object({}) do |(run, position), moves|
         next unless run.call[:name] == Tools::ObjectivesTool::NAME
 
         id = move_id(run.call)
         next unless Tools::ObjectivesTool.recorded?(run.text, id)
 
-        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]), ref: move_ref(conversation, run))
+        state = Tools::ObjectivesTool.state_of(run.call) || Tools::ObjectivesTool::PROGRESS
+        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]), ref: move_ref(conversation, run),
+                             state: state, backing: Backing.of(Backing.turn_runs(conversation, runs, position), state))
       end
     end
 

@@ -14,6 +14,7 @@ require_relative "log"
 require_relative "redact"
 require_relative "session"
 require_relative "steer"
+require_relative "tools/objectives_tool"
 require_relative "verdict"
 
 module Samagotchi
@@ -170,7 +171,8 @@ module Samagotchi
     # @return [Array<Hash>]
     def request(item, move, conversation)
       tag = "record-#{SecureRandom.hex(8)}"
-      user = "Objective: #{item.line.scrub}\n\n<#{tag}>\nThe agent's claim: #{cut(move.note, CLAIM_CHARS)}\n" \
+      claim = move.state == Tools::ObjectivesTool::DONE ? "The agent claims this objective is done" : "The agent's claim"
+      user = "Objective: #{item.line.scrub}\n\n<#{tag}>\n#{claim}: #{cut(move.note, CLAIM_CHARS)}\n" \
              "#{"Evidence it names: #{cut(move.evidence, CLAIM_CHARS)}\n" unless move.evidence.empty?}\n" \
              "#{record(conversation)}\n</#{tag}>\n\n#{format(ASK, tag: tag)}"
       [{ role: "system", content: SYSTEM }, { role: "user", content: redacted(user) }]

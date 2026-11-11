@@ -168,6 +168,33 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
     expect(move(id: "O1", note: "  ")).to start_with("Error: a move needs a note")
   end
 
+  describe "a move's state" do
+    it "takes progress, blocked or done in any case, and records it as a move" do
+      ["progress", " Blocked ", "DONE", nil, ""].each do |state|
+        expect(move(id: "O1", note: "x", state: state)).to start_with("Recorded a move on O1.")
+      end
+    end
+
+    it "reads a missing one as progress, an unknown one as none" do
+      expect(described_class.state_of({})).to eq("progress")
+      expect(described_class.state_of({ state: " Done " })).to eq("done")
+      expect(described_class.state_of({ state: "finished" })).to be_nil
+    end
+
+    it "refuses an unknown one, naming the three, and records nothing" do
+      answer = move(id: "O1", note: "x", state: "finished")
+
+      expect(answer).to eq("Error: a move's state must be progress, blocked or done. Nothing was recorded.")
+      expect(described_class.recorded?("[objectives]\n#{answer}", "O1")).to be(false)
+    end
+
+    it "maps through BuiltinCalls" do
+      call = Samagotchi::Tools::BuiltinCalls.build("objectives", { "id" => "O1", "note" => "n", "state" => "done" })
+
+      expect(call).to include(state: "done")
+    end
+  end
+
   it "refuses any other action and says the user edits the list" do
     answer = move(action: "done", id: "O1", note: "x")
 
@@ -232,6 +259,21 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
       expect(Samagotchi::ToolActivity.tool_activity_event("objectives", call, "Recorded"))
         .to eq(action: "recording a move", tool: "objectives", status: "ok", title: "O2 Checkout stays closed · spec green",
                params: 'id="O2" note="Checkout stays closed" evidence="spec green"')
+    end
+
+    it "carries a blocked or done state in its params, before the note, and keeps the title" do
+      call = { name: "objectives", id: "O2", note: "Checkout stays closed", state: " Done " }
+      event = Samagotchi::ToolActivity.tool_activity_event("objectives", call, "Recorded")
+
+      expect(event[:params]).to eq('id="O2" state="done" note="Checkout stays closed"')
+      expect(event[:title]).to eq("O2 Checkout stays closed")
+    end
+
+    it "says nothing of progress, an unknown state or a proposal's" do
+      [{ state: "progress" }, { state: "finished" }, { action: "propose", change: "done", state: "done" }].each do |extra|
+        params = Samagotchi::ToolActivity.tool_activity_params("objectives", { id: "O2", note: "n", **extra })
+        expect(params).not_to include("state=")
+      end
     end
   end
 end

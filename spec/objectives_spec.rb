@@ -99,7 +99,7 @@ RSpec.describe Samagotchi::Objectives do
       expect(moved.to_view(pending: false)).to eq(
         items: [{ "id" => "O1", "text" => "Two coffees, open the cart", "status" => "active" },
                 { "id" => "O2", "text" => "Stops before checkout", "status" => "active", "done_when" => "no order is placed",
-                  "move" => { "note" => "held", "evidence" => "" } }],
+                  "move" => { "note" => "held", "evidence" => "", "state" => "progress" } }],
         pending: false
       )
     end
@@ -190,6 +190,20 @@ RSpec.describe Samagotchi::Objectives do
 
       expect(built_list.text).to eq(list.text)
       expect(built_list.to_payload).to eq(list.to_payload)
+    end
+
+    it "reads a move's state, progress for a saved call with none or an unreadable one" do
+      built_list = built(chat_model(chat_call("a", { id: "O1", note: "green", state: "Done" })), chat_result("a", "t1"),
+                         chat_model(chat_call("b", { id: "O2", note: "stuck", state: "blocked" })), chat_result("b", "t2", recorded("O2")))
+      expect(built_list.moves.transform_values(&:state)).to eq("O1" => "done", "O2" => "blocked")
+      expect(built_list.moves.fetch("O1").line).to eq("claims done: green")
+      expect(built_list.moves.fetch("O2").line).to eq("blocked: stuck")
+      expect(built_list.to_view(pending: false)[:items].first["move"]).to include("state" => "done")
+
+      old = built(chat_model(chat_call("a", { id: "O1", note: "plain" })), chat_result("a", "t1"),
+                  chat_model(chat_call("b", { id: "O2", note: "odd", state: 7 })), chat_result("b", "t2", recorded("O2")))
+      expect(old.moves.transform_values(&:state)).to eq("O1" => "progress", "O2" => "progress")
+      expect(old.moves.fetch("O1").line).to eq("plain")
     end
 
     it "folds one line of a many-line note" do

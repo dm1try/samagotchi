@@ -113,7 +113,7 @@ test("statusParts: a row's status as a class, a label and the word only exceptio
 test("toolRowTemplate: a running row is its mark, tool and title, the command block, no output yet", () => {
   const row = { key: "1:1", tool: "execute", status: "running", params: 'command="ls"', title: "List", view: { command: "ls" }, output: "[execute]\nold" };
   const html = toolRowHtml(row);
-  assert.match(html, /^<div class="activity-row" data-key="1:1"><span class="activity-status running" role="img" aria-label="running" title="running"><\/span><span class="activity-tool">execute<\/span><span class="activity-params" title="ls">List<\/span><div class="activity-command code-wrap">/);
+  assert.match(html, /^<div class="activity-row" data-key="1:1" data-tool="execute"><span class="activity-status running" role="img" aria-label="running" title="running"><\/span><span class="activity-tool">execute<\/span><span class="activity-params" title="ls">List<\/span><div class="activity-command code-wrap">/);
   assert.doesNotMatch(html, /activity-output|activity-duration|activity-state/);
 });
 
@@ -139,7 +139,7 @@ test("toolRowTemplate: a done row has its duration, its output without the tool 
   const out = `[read] ${"y".repeat(310)}`;
   const html = toolRowHtml({ key: "2:1", tool: "read", status: "ok", params: 'path="a"', output: out, duration_ms: 1200 });
   assert.equal(html,
-    '<div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span>' +
+    '<div class="activity-row" data-key="2:1" data-tool="read"><span class="activity-status ok" role="img" aria-label="done" title="done"></span>' +
     '<span class="activity-tool">read</span><span class="activity-params">path="a"</span><span class="activity-duration">1.2s</span>' +
     `<div class="activity-output" title="${"y".repeat(310)}">${"y".repeat(300)}…</div></div>`);
 });

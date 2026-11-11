@@ -22,6 +22,12 @@ module Samagotchi
       RECORDED = "Recorded a move on %s."
       EDITED_BY_USER = "The user edits the list with /objectives."
       NONE = "There are no objectives here, so nothing was recorded. #{EDITED_BY_USER}".freeze
+      # A move's state: where the objective stands in the agent's view. DONE is
+      # its claim, never a status change (the user marks done).
+      PROGRESS = "progress"
+      BLOCKED = "blocked"
+      DONE = "done"
+      STATES = [PROGRESS, BLOCKED, DONE].freeze
 
       def self.name = NAME
 
@@ -32,8 +38,17 @@ module Samagotchi
         output.to_s.sub(ToolResponse::LEAD, "").start_with?(RECORDED % id)
       end
 
+      # A call's state as a move takes it: stripped and downcased, PROGRESS
+      # when it names none; nil for one that isn't a state.
+      def self.state_of(call)
+        state = call[:state].to_s.strip.downcase
+        return PROGRESS if state.empty?
+
+        STATES.include?(state) ? state : nil
+      end
+
       # @param call [Hash] the internal call (BuiltinCalls: action:, id:,
-      #   note:, evidence:)
+      #   note:, evidence:, state:)
       # @param peers [#objectives, nil] the session's list
       # @return [String] the tool result
       def self.call(call, peers:)
@@ -67,7 +82,9 @@ module Samagotchi
         return "Error: #{Objectives.unknown(id, list)}. Nothing was recorded." unless item
         return "Error: #{Objectives.dropped(id)}. Nothing was recorded." if item.status == Objectives::DROPPED
 
-        "Error: a move needs a note: what moved, in a line." if Objectives.clean(call[:note]).empty?
+        return "Error: a move needs a note: what moved, in a line." if Objectives.clean(call[:note]).empty?
+
+        "Error: a move's state must be #{STATES[0..-2].join(", ")} or #{STATES.last}. Nothing was recorded." unless state_of(call)
       end
       private_class_method :refusal
     end

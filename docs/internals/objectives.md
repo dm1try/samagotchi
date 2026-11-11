@@ -87,7 +87,7 @@ runs mid-turn too). So does `chi send -m "/objectives …"`. A participant's com
 ## Moves
 
 The `objectives` tool (`Tools::ObjectivesTool`, schema last in `TOOL_SCHEMAS`) has one action, `move`: `id`, `note`,
-optional `evidence`. A call with no `action` is a move too. It is information only: nothing is written, and the call in
+optional `evidence` and `state`. A call with no `action` is a move too. It is information only: nothing is written, and the call in
 history is the record. A handler can't append an entry mid-turn safely, and a system entry would split a call from its
 response, so there is no new entry kind. `Objectives.moves_in` reads the calls back with
 `LLMContextStale.paired_runs`, as `WorkingSet` does: both hosts' forms, a `call_tool` of it as it ran. A run whose output
@@ -98,6 +98,32 @@ Mid-turn, `session.messages` doesn't hold the running turn. `/objectives` adds t
 (`Engine#live_conversation`, a `dup` read on the command's thread), because `Engine#plugin_messages`' running part (the
 Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows once its result is in.
 
+- **State** (`ObjectivesTool::STATES`): where the objective stands in the agent's view, `progress` (the default),
+  `blocked` or `done`, stripped and downcased (`state_of`); another word is refused with an `Error:` naming the three,
+  nothing recorded. `done` is a claim, never a status change. `Move#state` is `progress` for a saved call with none or
+  an unreadable one, so an older session's moves read as before. `Move#line` (the `/objectives` listing) leads with
+  `claims done: ` or `blocked: `; the view's `move` carries `state`; Check this's request says "The agent claims this
+  objective is done" for a done move. `ObjectivesCheck.mark_of` leaves the state out: `Move#ref` already makes a new
+  call a new move, and a state in it would drop every saved verdict at the upgrade.
+- **Backing** (`Objectives::Backing`, `objectives_backing.rb`): what the move's own turn ran before it, derived by the
+  harness, since the model sees run ids only with the forget layer on and can't cite a run in general; its `evidence`
+  stays free text. `moves_in` builds it from the same `paired_runs`: the runs after the nearest turn opening before the
+  move's entry (`Steer.turn_prompt?`, what bounds a turn's slice), up to the move, those before it in its own batch
+  too. `edits` counts the edit and write runs that succeeded (not a failed, denied or interrupted one); `command` is the
+  last finished `execute` or `task_wait` run's `ok` or `failed`, read on the text after `ToolActivity.saved_result_text`
+  (with `tool_activity_status`, so a grep that found nothing is `ok`). No command: one the guardrails denied, stopped or
+  interrupted, an execute handed over as a task (it still runs), a `task_wait` whose task hadn't finished (a timeout, a
+  waiting message: its header's `status:` isn't `completed` or `failed`) or that waited on nothing.
+  `edited_after_command`: an edit or write succeeded after the last command that ran after the turn's first successful
+  edit (a command before any edit, `rg foo` → edit → done, checked none of the turn's edits, so an edit after it isn't
+  stale). The one flag, `unbacked`, is only for a `done` move after a command ran: the last command failed, or an edit
+  came after the last command that checked one (edit → rspec → edit → done). A `progress` or `blocked` move never flags,
+  and neither does a turn with edits and no command (a docs change would flag every time) or one with neither: those
+  are Check this's business. A result `paired_runs` can't pair is left out without a word, so there is no "unknown"
+  value. A rollback that drops the turn drops its runs with its move. The forget layer changes what is sent, not the
+  stored entries, so a forgotten run's status still reads. The view's `move` carries `backing` (`edits`, `command`,
+  `edited_after_command`, `unbacked`); `/objectives` says `not backed: edited after the last command ran` or `not backed:
+  the last command failed` under a flagged move, and nothing for any other.
 - **The answer** says it recorded a move, that the list is unchanged and that the user edits it with `/objectives`; so
   does the schema's description. Other actions get an `Error:` with the same sentence. A small model told to edit the
   list has nothing to call, and this is the only place it is told so: no stable-prompt line.
@@ -110,8 +136,11 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 - **Guardrails**: no rule names it, so it passes with no ask, in `strict` too. `ReviewBoundary` denies it as anything
   outside its kit. `PairBoundary` denies it as owner-voiced: a move stays in the owner's history and reads as the
   session's own.
-- **The row**: `recording a move` in the TUI's line with `id=`, `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
-  (`ToolActivity#tool_title`). No UI of its own.
+- **The row**: `recording a move` in the TUI's line with `id=`, `state=` (blocked or done only, before `note=` so a cut
+  can't drop it: `ToolActivity#objectives_state_param`), `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
+  (`ToolActivity#tool_title`, unchanged, so an open page of the previous release still reads it). The page reads the
+  state from the row's params (`objectives_state.js stateOfParams`): a reload's row carries its saved params line
+  (`MessageParts#tool_part`). No UI of its own.
 
 `serves` on `ask_user_question` waits until moves read well. The model can't edit the list.
 
@@ -164,7 +193,27 @@ command), which absorbs the file. It no longer waits for the fallback tick.
 - **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
   `data-move-id`. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
   a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's
-  `Concerns O2` gets the chip there too.
+  `Concerns O2` gets the chip there too. A blocked or done move's row also carries `data-move-state`, drawn as
+  "blocked" / "claims done" beside the id, a word with a class, never colour alone; the words are
+  `objectives_state.js`'s, a module of its own so that no existing module imports a new export of another. The list's
+  `last move:` says the same words. A flagged backing is a muted `not backed: …` under the list's move and on that
+  objective's last move in the history (the view's move is the latest one), drawn only while no turn runs and none is
+  held in the stage (`objectives_wiring.js`, through `strip.moveOf?.()`, so a cached older strip draws nothing). An
+  unflagged move adds nothing on screen.
+- **No move recorded**: the same observer marks the history's **newest** `.turn-work` only (an older turn's list of its
+  time isn't known) with a muted `no move recorded` line where its moves line would be, when the block holds no
+  `[data-move-id]`, holds at least one `edit`, `write` or `execute` row that went through (its status mark `ok`: not a
+  failed, denied or stopped one; an `objectives` call, a proposal too, is no work), ended `completed`, isn't a
+  participant's, comes after the list's first note in the history (`.objectives-entry`: a turn that ran before there
+  was a list had nothing to move on), no newer turn's prompt follows it (`bubbles.js TURN_PROMPT`: a plain turn has no
+  block), and the strip's list has an active item (`objectives_state.js hasActive`, through `strip.hasActive?.()`).
+  Otherwise the line goes: a move in that turn, a newer turn, a list with nothing active. Gated on no turn running and
+  none held in the stage (as Short version is): while a finished turn is held, the history's newest block is the turn
+  before it. `turn_block.js` stamps what it reads, live and in a reload's drawing alike: the block's `data-end`
+  (completed, canceled, failed, in `turnEnded`), `data-participant` for a participant's turn (from `turn_started`'s
+  author live, the prompt's author in `drawnGroupPieces`), and each row's `data-tool` (also `turn_html.js
+  toolRowTemplate`, so live and reloaded rows stay the same markup). A pair turn's `objectives` call is always denied,
+  so without the participant stamp every pair turn that edits would get it. The participant page draws none of this.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every
   tab, this one too: the page's own echo needs the composer. It steers a running turn or starts a turn, as a typed line.
 - **Short version**: the same observer offers `/short` (decision-card) under the newest long answer (`foldable`), only with a list
@@ -271,7 +320,8 @@ between turns (docs/internals/engine.md, "Turn stages"). See [system-one.md](../
 
 ## Not in this version
 
-Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`.
+Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Nothing asks the model to
+record a move: a missing one only shows (`no move recorded`), and nothing reads the record for the whole list yet.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The

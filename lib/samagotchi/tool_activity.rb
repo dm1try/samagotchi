@@ -89,6 +89,16 @@ module Samagotchi
 
     def objectives_proposal?(call) = call[:action].to_s.strip.downcase == Tools::ObjectivesTool::PROPOSE
 
+    # A move's state=, before note= so a cut can't drop it: the page reads it from
+    # the params (the title stays as an older page reads it). None for a
+    # proposal, progress or a state the tool refuses.
+    def objectives_state_param(call)
+      return [] if objectives_proposal?(call)
+
+      state = Tools::ObjectivesTool.state_of(call)
+      [Tools::ObjectivesTool::BLOCKED, Tools::ObjectivesTool::DONE].include?(state) ? ["state=#{preview_tool_param(state)}"] : []
+    end
+
     # An objectives row's words: "O2 note · evidence", or "propose done O2 note".
     def objectives_title(call)
       return "#{Tools::ObjectivesTool::PROPOSE} #{call[:change]} #{call[:id]} #{call[:text]} · #{call[:note]}".squeeze(" ") if objectives_proposal?(call)
@@ -447,7 +457,7 @@ module Samagotchi
         parts << "note=#{preview_tool_param(request.note)}" unless request.note.empty?
         parts.empty? ? nil : parts.join(" ")
       when Tools::ObjectivesTool::NAME
-        parts = ["id=#{preview_tool_param(call[:id])}", "note=#{preview_tool_param(call[:note])}"]
+        parts = ["id=#{preview_tool_param(call[:id])}", *objectives_state_param(call), "note=#{preview_tool_param(call[:note])}"]
         parts.unshift("change=#{preview_tool_param(call[:change])}") if objectives_proposal?(call)
         parts << "evidence=#{preview_tool_param(call[:evidence])}" unless call[:evidence].to_s.strip.empty?
         parts.join(" ")

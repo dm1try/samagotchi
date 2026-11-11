@@ -73,6 +73,13 @@ form.obj-row{align-items:center}
 .obj-moves{display:flex;flex-direction:column;gap:2px;margin-bottom:-4px;font-size:13px}
 .obj-move-line{display:flex;align-items:baseline;gap:8px;color:var(--text-2);flex-wrap:wrap}
 .obj-move-note{min-width:0;flex:1 1 200px;overflow-wrap:anywhere}
+/* A move's state beside its id: words, never colour alone (objectives_state.js). */
+.obj-state{font-size:12px;color:var(--text-2);white-space:nowrap}
+.obj-state.done{font-weight:600}
+/* A done move its turn's runs don't back (Objectives::Backing): muted words. */
+.obj-unbacked{font-size:12px;color:var(--text-muted);font-style:italic}
+/* The newest turn did work and recorded no move (objectives_moves.js), muted where a moves line goes. */
+.obj-nomove{font-size:12px;color:var(--text-muted);margin-bottom:-4px}
 .obj-concerns .obj-pill{margin-right:4px}
 .obj-notyet{flex:none}
 .obj-moves:not(.newest) .obj-notyet{display:none}
