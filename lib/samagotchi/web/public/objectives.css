@@ -78,6 +78,8 @@ form.obj-row{align-items:center}
 .obj-state.done{font-weight:600}
 /* A done move its turn's runs don't back (Objectives::Backing): muted words. */
 .obj-unbacked{font-size:12px;color:var(--text-muted);font-style:italic}
+/* The newest turn did work and recorded no move (objectives_moves.js), muted where a moves line goes. */
+.obj-nomove{font-size:12px;color:var(--text-muted);margin-bottom:-4px}
 .obj-concerns .obj-pill{margin-right:4px}
 .obj-notyet{flex:none}
 .obj-moves:not(.newest) .obj-notyet{display:none}

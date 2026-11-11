@@ -242,7 +242,9 @@ reword it, with no message and no turn. Mid-turn the strip has the change and sa
 in the conversation shows as pills, or as one line of what you changed. A turn's moves show as chips above its answer;
 Not yet on one (or in the list, for an objective with a move) sends `Not yet on O2 (…).` as a normal message. With the
 [decision-card](bundles.md#the-decision-card-bundle) bundle, the newest long answer offers its Short version in a card,
-which enters no history. A session with no list shows none of this. A participant doesn't see the list.
+which enters no history. The newest turn that edited, wrote or ran a command and recorded no move says `no move
+recorded` under its steps while an objective is active (information only; nothing asks the model for one). A session
+with no list shows none of this. A participant doesn't see the list.
 
 ## Notes a turn leaves for the model
 

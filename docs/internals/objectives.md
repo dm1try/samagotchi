@@ -114,8 +114,10 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
   (with `tool_activity_status`, so a grep that found nothing is `ok`). No command: one the guardrails denied, stopped or
   interrupted, an execute handed over as a task (it still runs), a `task_wait` whose task hadn't finished (a timeout, a
   waiting message: its header's `status:` isn't `completed` or `failed`) or that waited on nothing.
-  `edited_after_command`: an edit or write succeeded after that command. The one flag, `unbacked`, is only for a `done`
-  move after a command ran: that command failed, or an edit came after it. A `progress` or `blocked` move never flags,
+  `edited_after_command`: an edit or write succeeded after the last command that ran after the turn's first successful
+  edit (a command before any edit, `rg foo` → edit → done, checked none of the turn's edits, so an edit after it isn't
+  stale). The one flag, `unbacked`, is only for a `done` move after a command ran: the last command failed, or an edit
+  came after the last command that checked one (edit → rspec → edit → done). A `progress` or `blocked` move never flags,
   and neither does a turn with edits and no command (a docs change would flag every time) or one with neither: those
   are Check this's business. A result `paired_runs` can't pair is left out without a word, so there is no "unknown"
   value. A rollback that drops the turn drops its runs with its move. The forget layer changes what is sent, not the
@@ -189,14 +191,29 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
   `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
 - **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
-  `data-move-id` (and `data-move-state` for blocked or done, drawn as "blocked" / "claims done" beside the id, a word
-  with a class, never colour alone; the words are `objectives_state.js`'s, a module of its own so that no existing
-  module imports a new export of another). The list's `last move:` says the same words. A flagged backing is a muted
-  `not backed: …` under the list's move and on the newest move line that names that objective (the view's move is the
-  latest one), drawn only while no turn runs and none is held in the stage (`objectives_wiring.js`, through
-  `strip.moveOf?.()`, so a cached older strip draws nothing). An unflagged move adds nothing on screen. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
+  `data-move-id`. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
   a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's
-  `Concerns O2` gets the chip there too.
+  `Concerns O2` gets the chip there too. A blocked or done move's row also carries `data-move-state`, drawn as
+  "blocked" / "claims done" beside the id, a word with a class, never colour alone; the words are
+  `objectives_state.js`'s, a module of its own so that no existing module imports a new export of another. The list's
+  `last move:` says the same words. A flagged backing is a muted `not backed: …` under the list's move and on that
+  objective's last move in the history (the view's move is the latest one), drawn only while no turn runs and none is
+  held in the stage (`objectives_wiring.js`, through `strip.moveOf?.()`, so a cached older strip draws nothing). An
+  unflagged move adds nothing on screen.
+- **No move recorded**: the same observer marks the history's **newest** `.turn-work` only (an older turn's list of its
+  time isn't known) with a muted `no move recorded` line where its moves line would be, when the block holds no
+  `[data-move-id]`, holds at least one `edit`, `write` or `execute` row that went through (its status mark `ok`: not a
+  failed, denied or stopped one; an `objectives` call, a proposal too, is no work), ended `completed`, isn't a
+  participant's, comes after the list's first note in the history (`.objectives-entry`: a turn that ran before there
+  was a list had nothing to move on), no newer turn's prompt follows it (`bubbles.js TURN_PROMPT`: a plain turn has no
+  block), and the strip's list has an active item (`objectives_state.js hasActive`, through `strip.hasActive?.()`).
+  Otherwise the line goes: a move in that turn, a newer turn, a list with nothing active. Gated on no turn running and
+  none held in the stage (as Short version is): while a finished turn is held, the history's newest block is the turn
+  before it. `turn_block.js` stamps what it reads, live and in a reload's drawing alike: the block's `data-end`
+  (completed, canceled, failed, in `turnEnded`), `data-participant` for a participant's turn (from `turn_started`'s
+  author live, the prompt's author in `drawnGroupPieces`), and each row's `data-tool` (also `turn_html.js
+  toolRowTemplate`, so live and reloaded rows stay the same markup). A pair turn's `objectives` call is always denied,
+  so without the participant stamp every pair turn that edits would get it. The participant page draws none of this.
 - **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every
   tab, this one too: the page's own echo needs the composer. It steers a running turn or starts a turn, as a typed line.
 - **Short version**: the same observer offers `/short` (decision-card) under the newest long answer (`foldable`), only with a list
@@ -303,7 +320,8 @@ between turns (docs/internals/engine.md, "Turn stages"). See [system-one.md](../
 
 ## Not in this version
 
-Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`.
+Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Nothing asks the model to
+record a move: a missing one only shows (`no move recorded`), and nothing reads the record for the whole list yet.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The

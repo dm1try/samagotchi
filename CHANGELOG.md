@@ -13,15 +13,18 @@ and commands may change between minor versions. How releases are made:
 - Objectives: a move says where its objective stands, `progress` (the default), `blocked` or `done` (the `objectives`
   tool's new `state`). `/objectives` and the web's move line and list say "claims done" or "blocked" beside the move;
   a done move is the agent's claim, and you still mark the objective done yourself.
-- Objectives: a done move whose own turn's last command failed, or that edited files after its last command ran, is
-  marked `not backed: …` under it (muted, in `/objectives` and the web), read from the turn's runs by chi, not the model.
+- Objectives: a done move whose own turn's last command failed, or that edited files again after a command checked its
+  edits, is marked `not backed: …` under it (muted, in `/objectives` and the web), read from the turn's runs by chi,
+  not the model.
+- chi web: the newest turn that edited, wrote or ran a command and recorded no move on the objectives says `no move
+  recorded` under its steps, while the list has an active objective (not for a canceled or failed turn, nor a
+  participant's).
 
 ### Changed
 
 - The `objectives` tool's schema has a new optional `state` (on `full`, the coordinator kit, and among the deferred
-  tools on Anthropic's wire): a one-time change of the request's tools block, so the first request after the upgrade doesn't reuse the prompt cache's tool prefix. A
-  session with no objectives list sees no other change.
-
+  tools on Anthropic's wire): a one-time change of the request's tools block, so the first request after the upgrade
+  doesn't reuse the prompt cache's tool prefix. A session with no objectives list sees no other change.
 - Guardrails: approvals.json is now written versioned (`{"version", "approvals"}`), and a list file from 0.166 or
   before is rewritten versioned on its first read. Sessions still on 0.165 or older should be restarted
   (`chi sessions restart`); a downgrade to 0.165 or older sets the store aside as a recoverable

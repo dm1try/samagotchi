@@ -1988,8 +1988,14 @@ test("objectives: Check this shows a verdict and leaves the conversation alone",
   await page.locator("#actionBtn").click();
   await expect(page.locator("#objectivesStrip .obj-chip")).toHaveCount(1);
   await expect(page.locator(`${H} .objectives-entry .obj-pill`)).toHaveCount(1);
+  // The first turn ran a command before there was a list: it had nothing to move on, so no mark.
+  await expect(page.locator(`${H} > .obj-nomove`)).toHaveCount(0);
   await send(page, "Go");
   await turnEnded(page, 2);
+  // This one recorded a done move after its command passed: claims done, backed, and the mark has gone.
+  await expect(page.locator(`${H} > .obj-moves .obj-state.done`)).toHaveText("claims done");
+  await expect(page.locator(`${H} > .obj-moves .obj-unbacked`)).toHaveCount(0);
+  await expect(page.locator(`${H} > .obj-nomove`)).toHaveCount(0);
   const id = page.url().split("/s/")[1];
   const messages = async () => (await (await page.request.get(`${chi.baseURL}/api/sessions/${id}`)).json()).messages;
   const before = await messages();
@@ -2005,6 +2011,14 @@ test("objectives: Check this shows a verdict and leaves the conversation alone",
   // No status moved, nothing went in.
   await expect(page.locator("#objectivesStrip .obj-count")).toHaveText("0/1");
   expect(await messages()).toEqual(before);
+  // A reload draws the move's state from the row's saved params.
+  await page.reload();
+  await turnEnded(page, 2);
+  await expect(page.locator("#history > .obj-moves .obj-state.done")).toHaveText("claims done");
+  // A turn under the list that runs a command and records no move says so.
+  await send(page, "Just print");
+  await turnEnded(page, 3);
+  await expect(page.locator("#history > .obj-nomove")).toHaveText("no move recorded");
 });
 
 test("objectives: a tap edits the list with no message, at once idle and after the turn mid-turn", async ({ page, script }) => {
