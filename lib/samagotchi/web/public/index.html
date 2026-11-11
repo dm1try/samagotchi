@@ -1543,6 +1543,8 @@ body.has-session #newBtn .brand-new{display:inline}
 #scope{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted)}
 #scope[hidden]{display:none}
 #scope .scope-name{display:inline-flex;align-items:center;flex-shrink:0;min-height:28px;padding:0 9px;border:1px solid var(--border-strong);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;line-height:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw;cursor:pointer;transition:none}
+/* The chip's words in a span of their own: a flex container's bare text gets no ellipsis, a flex item's does. */
+#scope .scope-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #scope .scope-name:hover:not(:disabled){filter:none}
 #scope .scope-name.error{color:var(--warn-text);border-color:var(--warn-border)}
 #scope .scope-all{color:var(--text-muted);text-decoration:none}
@@ -1633,9 +1635,11 @@ body.all-view #scope .scope-where{display:none}
   /* clip, not hidden: the ellipsis as before, and the touch tap box (its ::after) reaches out above and below. */
   #stripStatus{flex-grow:1000;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis}
   /* A session page: the chip gives way to the pill. The start page has the "new session in …" path beside the chip:
-     there the chip keeps its words and the path is what cuts. */
-  body.has-session #scope .scope-name{flex-shrink:1;min-width:0}
-  body:not(.has-session) #scope .scope-name,body:not(.has-session) #scope .scope-back{flex-shrink:0}
+     there the chip keeps its words and the path is what cuts. Where the path is hidden (the strip hidden, the all view)
+     the chip cuts with an ellipsis as on a session page, or "all" would run under the pill (320px). */
+  #scope .scope-name{flex-shrink:1;min-width:0}
+  body:not(.has-session):not(.strip-hidden):not(.all-view) #scope .scope-name,
+  body:not(.has-session):not(.strip-hidden):not(.all-view) #scope .scope-back{flex-shrink:0}
   body:not(.has-session) #scope .scope-where{flex:1 1 auto;min-width:0}
   #stripStatus:has(.live,.waiting) .pill-count{display:none}
 }
@@ -1777,6 +1781,18 @@ body.all-view #allHead{display:flex}
 @media(min-width:601px){body.all-view #notifyBtn{margin-left:0}}
 /* Nor does the header squeeze the scope chip there: its "all" segment would run under the sessions pill (800px). */
 @media(min-width:601px){body.all-view #scope{flex-shrink:0}}
+/* Where the header doesn't fit beside the chips at its smallest (the search at its min-width), it and the bell after it
+   wrap to a line of their own, right-aligned, rather than run over the sessions pill (~601-760px). The header's basis is
+   that smallest width; it grows into the free space, so where it fits the line looks as before. With the bell shown, the
+   header's box also holds the bell's place (40px: its 28px and the 12px gap) as padding, and the bell's negative margin
+   pulls it into that padding (taking no room of its own): a line breaks before the header and the bell together,
+   never between them. */
+@media(min-width:601px){
+  body.all-view #topBar{flex-wrap:wrap;row-gap:8px}
+  body.all-view #allHead{flex:1 1 260px}
+  body.all-view:has(#notifyBtn:not([hidden])) #allHead{flex-basis:300px;padding-right:40px}
+  body.all-view #notifyBtn{margin-left:-40px}
+}
 /* The search field is glass too (no shadow: it is a field, not a card); the focus ring below replaces the highlight. */
 #allHead input{flex:0 1 240px;width:240px;min-width:90px;box-sizing:border-box;height:24px;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight);color:var(--text);padding:2px 11px;border-radius:999px;font-size:12px}
 #allHead input::placeholder{color:var(--text-faint)}
