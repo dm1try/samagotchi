@@ -486,7 +486,7 @@ module Samagotchi
       },
       {
         name: "objectives",
-        description: "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it, so the user can follow. One when an objective really moved, not per step. Or propose a change to the list (action propose): the user sees a card and applies it or not. This tool doesn't edit the list, change a status or mark anything done, and it approves nothing; the user edits the list with /objectives. Asked to change it, propose it or say so, instead of saying you changed it.",
+        description: "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it and where it stands (state), so the user can follow. One when an objective really moved, not per step. Or propose a change to the list (action propose): the user sees a card and applies it or not. This tool doesn't edit the list, change a status or mark anything done, and it approves nothing; the user edits the list with /objectives. Asked to change it, propose it or say so, instead of saying you changed it.",
         parameters: {
           type: "object",
           properties: {
@@ -505,6 +505,10 @@ module Samagotchi
             evidence: {
               type: "string",
               description: "Optional, a move's: what shows it (a commit, a test count, a file)"
+            },
+            state: {
+              type: "string",
+              description: "A move's: progress (default), blocked or done. done is your claim, not a status change"
             },
             change: {
               type: "string",

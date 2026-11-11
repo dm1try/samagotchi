@@ -225,6 +225,16 @@ RSpec.describe Samagotchi::ObjectivesCheck do
       expect(user[:content]).to include("Verdict: confirmed|refuted|unclear")
     end
 
+    it "says a done move claims the objective is done, and keeps a plain claim otherwise" do
+      done = claim.with(state: "done")
+      expect(described_class.request(item, done, []).last[:content]).to include("The agent claims this objective is done: ran the suite")
+      expect(described_class.request(item, claim, []).last[:content]).to include("The agent's claim: ran the suite")
+    end
+
+    it "keeps a saved verdict's mark over a move's state: the state isn't in it" do
+      expect(described_class.mark_of(item, claim.with(state: "done"))).to eq(described_class.mark_of(item, claim))
+    end
+
     it "tells the reader the agent's words settle what it said, never that work was done" do
       system, user = described_class.request(item, claim, [])
 

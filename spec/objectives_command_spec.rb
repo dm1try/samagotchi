@@ -259,6 +259,13 @@ RSpec.describe Samagotchi::ObjectivesCommand do
       expect(run("")).to eq(["objectives:\n  O1 Two coffees\n  O2 Stops before checkout\n    last move: Closed (evidence: spec)", :ok])
     end
 
+    it "says a move claims done or is blocked, and nothing for progress" do
+      session.messages[1][:tool_calls].first[:arguments][:state] = "done"
+      expect(run("").first).to include("O2 Stops before checkout\n    last move: claims done: Closed (evidence: spec)")
+      session.messages[1][:tool_calls].first[:arguments][:state] = "blocked"
+      expect(run("").first).to include("last move: blocked: Closed")
+    end
+
     it "shows a move of the running turn, which session.messages doesn't hold yet" do
       engine.live_conversation = [
         { role: "model", content: "", tool_calls: [{ id: "b", name: "objectives", arguments: { id: "O1", note: "Mid-turn" } }] },

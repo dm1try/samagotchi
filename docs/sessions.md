@@ -213,7 +213,9 @@ refuses a note. See [cli.md](cli.md#session-objectives) for the commands and
 [internals/objectives.md](internals/objectives.md) for the mechanism.
 
 The model can record a **move** with the `objectives` tool: a line on what it did or found for an objective, with
-optional evidence. A move shows as the tool's row in the turn, and `/objectives` shows each objective's latest one under
+optional evidence and a state: `progress` (the default), `blocked` or `done`. `done` is the agent's claim, not a status:
+the page and `/objectives` say "claims done" (or "blocked") beside the move, and you still mark it done yourself. A move
+shows as the tool's row in the turn, and `/objectives` shows each objective's latest one under
 it. It is information only: only you change the list or a status, and it never approves anything. A move costs one
 generation when it's the step's only call. On a kit that doesn't declare the tool, `/toolkit add objectives` declares it
 (the model can also reach it with `call_tool`). A participant's turn is denied it.

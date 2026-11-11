@@ -8,7 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Objectives: a move says where its objective stands, `progress` (the default), `blocked` or `done` (the `objectives`
+  tool's new `state`). `/objectives` and the web's move line and list say "claims done" or "blocked" beside the move;
+  a done move is the agent's claim, and you still mark the objective done yourself.
+
 ### Changed
+
+- The `objectives` tool's schema has a new optional `state` (on `full`, the coordinator kit, and among the deferred
+  tools on Anthropic's wire): a one-time change of the request's tools block, so the first request after the upgrade doesn't reuse the prompt cache's tool prefix. A
+  session with no objectives list sees no other change.
 
 - Guardrails: approvals.json is now written versioned (`{"version", "approvals"}`), and a list file from 0.166 or
   before is rewritten versioned on its first read. Sessions still on 0.165 or older should be restarted

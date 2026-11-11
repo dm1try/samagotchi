@@ -1,7 +1,7 @@
 {
   "temperature": 0.6,
   "top_k": 20,
-  "prompt": "sha256:83388ea85d0895ef804ea86ff4b738f61603a8eda3501a60fc93fe696cce2408",
+  "prompt": "sha256:151bdf3206d342540d65b65e720fa208e8829d050b305276169b73f367a92d07",
   "stop": [
     "<|im_end|>"
   ],

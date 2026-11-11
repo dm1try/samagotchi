@@ -72,11 +72,21 @@ module Samagotchi
     # +ref+ names the call itself, words apart: its run's id and its model
     # entry's time, so a later move in the same words is another move, and so is
     # one after a rollback hands the same id out again.
-    Move = Data.define(:id, :note, :evidence, :ref) do
-      def initialize(id:, note:, evidence:, ref: nil) = super
+    # +state+ where the objective stands in the agent's view
+    # (Tools::ObjectivesTool::STATES): PROGRESS for a saved call with none or
+    # an unreadable one; DONE is its claim, never the item's status.
+    Move = Data.define(:id, :note, :evidence, :ref, :state) do
+      def initialize(id:, note:, evidence:, ref: nil, state: Tools::ObjectivesTool::PROGRESS) = super
 
-      def line = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
+      # The words a state adds to a move: none for PROGRESS.
+      def state_words = STATE_WORDS[state]
+
+      def line
+        text = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
+        state_words ? "#{state_words}: #{text}" : text
+      end
     end
+    STATE_WORDS = { Tools::ObjectivesTool::BLOCKED => "blocked", Tools::ObjectivesTool::DONE => "claims done" }.freeze
 
     # What the user did to one objective between two lists, for the entry's
     # line: +kind+ added, done, dropped, reopened or reworded; +was+ a
@@ -205,7 +215,7 @@ module Samagotchi
       def item_view(item, check)
         move = moves[item.id]
         view = item.to_payload
-        view = view.merge("move" => { "note" => move.note, "evidence" => move.evidence }) if move
+        view = view.merge("move" => { "note" => move.note, "evidence" => move.evidence, "state" => move.state }) if move
         check ? view.merge("check" => check) : view
       end
     end
@@ -295,7 +305,8 @@ module Samagotchi
         id = move_id(run.call)
         next unless Tools::ObjectivesTool.recorded?(run.text, id)
 
-        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]), ref: move_ref(conversation, run))
+        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]), ref: move_ref(conversation, run),
+                             state: Tools::ObjectivesTool.state_of(run.call) || Tools::ObjectivesTool::PROGRESS)
       end
     end
 
