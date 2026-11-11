@@ -426,7 +426,7 @@ module Samagotchi
         grant = principal(req).grant
         return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
 
-        options = options.merge(queued: true, cursor: nil, running_look: nil)
+        options = options.merge(queued: true, cursor: nil)
         session = session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
                                                cancelled: -> { !@server_running.call || !@grants.active?(grant.id) })
