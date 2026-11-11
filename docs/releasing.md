@@ -76,7 +76,7 @@ as the GitHub release body.
 | `rake lint` / `rake lint:fix` | RuboCop over the repo (must report no offenses; CI runs it) / its safe autocorrect (`rubocop -a`). |
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
-| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, a compatibility corpus at `spec/compat/X.Y.Z/` written through the current state writers, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit; commit the corpus with the release. |
+| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, a compatibility corpus at `spec/compat/X.Y.Z/` written through the current state writers (with `wire/`: a real Engine and Bridge's replies, recorded twice and refused if the two differ), and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit; commit the corpus with the release. |
 | `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, no `# Unreleased` comment left in `Plugin::Api::SINCE` or `Manifest::SINCE`, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
@@ -101,8 +101,17 @@ The agent does each step and stops where the user has to say yes.
    the release's session, bridge, cards, schedules and bundle state, and a
    session's input file, note, continue intent and stop marker and a bundle's
    install journal, under
-   `spec/compat/X.Y.Z/`; commit those samples with the release so the next
-   release's reader spec checks them as N-1 data. The new VERSION may pass a
+   `spec/compat/X.Y.Z/`, and in its `wire/` what a worker answers its clients
+   (`GET state`, `snapshot` idle and mid-turn, `tail`, and the session file:
+   `script/release/compat_wire.rb` runs a real Engine and Bridge with a
+   scripted kernel, in process); commit those samples with the release so the
+   next release's reader specs check them as N-1 data. The wire replies are
+   recorded twice and must be equal: a bump that stops with "two recordings
+   of wire/<file> differ at <JSON path>" found a field that changes per run
+   (a new time, a random id, a measured number). Pin it in
+   `CompatWire.normalise` (a `*_ms` key is pinned already; an id the script
+   chooses is better pinned at its source), check `spec/release/compat_wire_spec.rb`,
+   and run the bump again (nothing is written when it stops). The new VERSION may pass a
    compat shim's `remove_after` (`Compat::SHIMS`): `spec/compat_spec.rb` then
    names it, and the shim goes (or its date moves) before the release.
 5. **Check.** Add all release files, including the new compatibility corpus, then run it:

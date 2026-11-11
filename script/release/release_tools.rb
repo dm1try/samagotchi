@@ -7,6 +7,7 @@ require "fileutils"
 require "tmpdir"
 require "yaml"
 require_relative "../../lib/samagotchi/memory_bundle/shas"
+require_relative "compat_wire"
 
 # The logic behind the Rakefile's `bundles:` and `release:` tasks, kept out of
 # lib/ (it isn't shipped) and free of Rake so the specs can call it. Every
@@ -102,6 +103,7 @@ module ReleaseTools
         drawn_path = write_compat_drawn_session!(sessions_dir, version, at)
         live_paths = write_compat_live_files!(sessions_dir, session_dir, at)
         store_paths = write_compat_store_files!(sessions_dir, at)
+        wire_paths = write_compat_wire!(staged, version)
 
         schedules = Samagotchi::Schedules.new(state_dir: sessions_dir, clock: -> { at })
         schedules.add(target: COMPAT_SESSION_ID, prompt: "compatibility corpus", title: "Compatibility corpus",
@@ -147,7 +149,8 @@ module ReleaseTools
           bundle_journal,
           home_path,
           *live_paths,
-          *store_paths
+          *store_paths,
+          *wire_paths
         ]
         missing = required.reject { |path| File.file?(path) }
         raise Error, "compatibility corpus writer omitted #{missing.join(", ")}" unless missing.empty?
@@ -161,6 +164,26 @@ module ReleaseTools
     corpus_dir
   end
   private_class_method :write_compat_corpus!
+
+  # What a worker answers its clients (CompatWire: /state, /snapshot idle
+  # and mid-turn, /tail, and the session file it saved) in +staged+/wire/,
+  # recorded twice: the two must be equal, so a field CompatWire.normalise
+  # doesn't pin (a time, a random id) fails here, named by its JSON path.
+  # @return [Array<String>] the files
+  def write_compat_wire!(staged, version)
+    Dir.mktmpdir("chi-compat-wire-check-") do |tmp|
+      recordings = %w[first second].map do |name|
+        File.join(tmp, name).tap { |dir| CompatWire.record!(dir, version: version) }
+      end
+      CompatWire::FILES.each do |name|
+        path = CompatWire.first_difference(*recordings.map { |dir| JSON.parse(File.read(File.join(dir, name))) })
+        raise Error, "compat wire: two recordings of wire/#{name} differ at #{path}: pin it in CompatWire.normalise" if path
+      end
+      FileUtils.cp_r(recordings.first, File.join(staged, "wire"))
+    end
+    CompatWire::FILES.map { |name| File.join(staged, "wire", name) }
+  end
+  private_class_method :write_compat_wire!
 
   # The files other chi versions write into a live session's folder, each by
   # its one writer: a queued input file (SessionInbox.write_input), a context
