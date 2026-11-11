@@ -450,6 +450,28 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
    selectable. */
 .bubble.question>summary .question-said{max-width:72ch;margin:2px 0 1px 1.05em;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .bubble.question[open]>summary .question-said{display:none}
+/* A turn opened in the history (stage_opened.js): while the turn runs, a card answered under its reason doesn't repeat it;
+   the reason goes at the hand-off and the card's clamp says it then. The card's way back to its reason sits at the right of its
+   title line while it waits. */
+.bubble.said+.bubble.question :is(.question-said,.question-said-full){display:none}
+/* Its asking step in the steps block doesn't repeat the reason either (stage_opened.js data-said, until the hand-off). */
+.turn-work>details.gen[data-said]>.gen-text{display:none}
+.question-reason-link{float:right;margin-left:12px;padding:0;border:0;background:none;color:var(--accent);font-size:12.5px;font-weight:500;line-height:inherit}
+@media(hover:hover){.question-reason-link:hover:not(:disabled){filter:none;text-decoration:underline}}
+/* The reply that asked the model's own question, a conversation bubble while its turn runs (live only): a label line ("chi ·
+   step N", "asking you" while its card waits), the text at the answer's size; the edge amber while it waits, neutral after. */
+.bubble.said{border-left:3px solid var(--border-strong);font-size:15px;line-height:1.55;color:var(--text)}
+.bubble.said.pending{border-left-color:var(--warn)}
+.said-label{display:flex;gap:8px;margin-bottom:4px;font-size:12px;line-height:1.4;color:var(--text-faint);white-space:normal}
+.said-asking{color:var(--warn-text);font-weight:600}
+.bubble.said:not(.pending) .said-asking{display:none}
+.said-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.said-text.md-compact{
+  --md-heading-size:16px;--md-heading-color:var(--text-bright);
+  --md-subheading-size:15px;--md-subheading-color:var(--text-2);
+  --md-strong-color:var(--text-bright);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
+  --md-pre-size:13px;--md-cell-size:13.5px
+}
 .question-said-full{margin:4px 0 6px;font-size:13px;line-height:1.55;color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere}
 .question-said-full.md-compact{
   --md-heading-size:13.5px;--md-heading-color:var(--text-2);
@@ -469,7 +491,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
   --md-strong-color:var(--text);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
   --md-pre-size:12.5px;--md-cell-size:13px
 }
-.md-compact:is(.ts-asking,.question-said-full,.gen-text){white-space:normal}
+.md-compact:is(.ts-asking,.question-said-full,.gen-text,.said-text){white-space:normal}
 .md-compact :is(h1,h2,h3,h4,h5,h6){font-size:var(--md-heading-size);font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--md-heading-color)}
 .md-compact :is(h4,h5,h6){font-size:var(--md-subheading-size);color:var(--md-subheading-color)}
 .md-compact :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
@@ -882,10 +904,16 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
    its room, read from the top. */
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
-/* The question room (stage_view.js drawRoom): a model's own question whose asking text overflows that cap. The slot loses its
-   cap and its own scroll, and the stage's one scroll covers the whole reply (the stage's cap rises until the next step, stage_frame.js).
-   --stage-max also scales the extras, the cloud and the queued slot: a ceiling only, content that fit stays as it is. */
-.turn-stage.question-room .ts-asking{max-height:none;overflow:visible}
+/* The asking form (stage_view.js, a turn opened in the history while the model's own question waits): its reply is a
+   bubble in the conversation (.bubble.said), the stage shows the status row and the card alone; the prompt, the live
+   slots (the working set's rail with them) and the steps chip come back with the working form after the answer. */
+.turn-stage.asking-form :is(.ts-prompt,.ts-live,.ts-foot){display:none}
+/* It is one box (the mock-up's option A): the stage's frame takes the card's look (the card's tint, no glass; its amber edge
+   is the waiting phase's), the status row is the box's first line, and the card inside drops its own box, so there is no
+   box in a box and no second amber edge. */
+.turn-stage.asking-form{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:12px}
+.turn-stage.asking-form .ts-scroll{padding-top:6px}
+.turn-stage.asking-form .ts-extras>.bubble.question{border:0;border-radius:0;background:transparent;padding:0}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
@@ -955,11 +983,6 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 /* The cloud: one chip (steps, calls, a tick per call), the turn block behind it. */
 /* The footer: the chip at the stage's bottom edge (the cloud's steps open above it, the scroller's last slot). */
 .ts-foot{position:relative;flex:none;padding:0 14px 10px}
-/* The question room's jump pill (stage_view.js drawPill): at the scroller's bottom edge, above the chip, while the waiting
-   card is out of the stage's view; absolute, so the frame never counts it. */
-.ts-room-pill{position:absolute;bottom:100%;right:14px;margin-bottom:6px;padding:4px 11px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-size:12.5px;font-weight:600;line-height:1.4;white-space:nowrap;box-shadow:0 2px 8px var(--shadow-strong);animation:ts-fade .2s ease}
-@media(hover:hover){.ts-room-pill:hover:not(:disabled){filter:none;color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}}
-.ts-room-pill[hidden]{display:none}
 /* Below the turn's card: the lines queued for after it (each a turn of its own), apart from the turn by a dashed rule. */
 .ts-queued{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 10px;border-top:1px dashed var(--border-strong);max-height:calc(var(--stage-max,60vh) * .3);overflow:auto;scrollbar-width:thin}
 .ts-queued:empty{display:none}

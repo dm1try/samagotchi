@@ -291,8 +291,8 @@ test("drawAsking without refs: the ref pass gets none; reset forgets them", asyn
   assert.deepEqual(calls, [[TICKET], null]);
 });
 
-// The stage's question room decides on the asking text's final form only:
-// the raw text is taller than its markdown (blank lines, a link's URL).
+// The asking text's final form (its markdown swapped in once, or the raw
+// text when a render answers null).
 test("askingSettled: false while the markdown is in flight; true once it is swapped in, or once a null render leaves the raw text", async () => {
   const r = renderer();
   const { slots, changes } = slotsOf({ renderMarkdown: r.render });

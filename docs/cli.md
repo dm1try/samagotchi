@@ -1262,20 +1262,24 @@ the step's reasoning), the running tool with what it does, and the last
 three calls. A plugin's or hook's notice and a plugin's nudge ("check-in
 nudged the model") show ahead of those calls for about 4 s, as their rows
 wait in the closed block. A card that needs you (a question, an approval, check-in)
-sits in the stage too. While a question or approval waits, the stage shows
-the whole text of the reply that asked it (in place of its newest
-sentence) above the card, until you answer. A long reply that asks the
-model's own question (one that doesn't fit that slot) gets more room: the
-stage grows to about 85% of the page for the rest of the turn (never above
-the session panel), the reply reads from its start in the stage's one
-scroll, and while the card is out of view a `❓ Answer ↓` pill at the
-stage's bottom edge takes you to it. Once answered, the model's
+sits in the stage too. When the model asks its own question after a reply,
+the turn moves into the conversation: your prompt, its steps (closed; they
+open in place) and the reply that asked, as a bubble labelled `chi · step N
+· asking you`, read from its first line; the stage keeps only the card, and
+the conversation scrolls freely behind it (the card's `↑ its reason` leads
+back to the reply). Answered, the card sits under that reply and the stage
+goes back to the running turn. While an approval, a delegate's relayed
+question or a hook's question waits, the stage shows the whole text of the
+reply that asked it (in place of its newest sentence) above the card, until
+you answer. Once answered, the model's
 question or its own approval keeps that reply (a delegate's relayed
 approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,
-live and after a reload. The chip at the stage's bottom edge, `N steps · M tool
+live and after a reload (the reply's bubble folds into those two lines when
+the turn moves into the history). The chip at the stage's bottom edge, `N steps · M tool
 calls` with one tick per call, opens the turn block right above it (newest step first
-while it runs; a tick opens its step). Below the chip, past a dashed rule, wait the
+while it runs; a tick opens its step); once a question moved the turn into the
+conversation, the chip and its ticks open the steps there instead, in order. Below the chip, past a dashed rule, wait the
 messages queued for after the turn and the commands queued for its end; they go into
 the history after the turn's answer. `▾` folds the stage to its status
 row, remembered in this browser. The stage keeps its height while a turn

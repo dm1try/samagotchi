@@ -114,7 +114,7 @@ function sized(t, { center, dock = 100, inner = 1000 }) {
   return { frame, state, cap, dockEl };
 }
 
-test("fitCap: ~60% of the page, ~80% with the cloud open, 0.85 with the question room's cap; never above the panel", (t) => {
+test("fitCap: ~60% of the page, ~80% with the cloud open, 0.85 with a raised cap (a tall approval); never above the panel", (t) => {
   // room = 2000 - (100 + 10) - 32 = 1858: the page's share is the ceiling.
   const { frame, state, cap } = sized(t, { center: 2000 });
   frame.fitCap();
@@ -130,7 +130,7 @@ test("fitCap: ~60% of the page, ~80% with the cloud open, 0.85 with the question
   assert.equal(cap(), "850px", "the room's cap wins over the cloud's either way");
 });
 
-test("fitCap: the question room's cap stays under the session panel (room = center - dock - gap - 32)", (t) => {
+test("fitCap: a raised cap stays under the session panel (room = center - dock - gap - 32)", (t) => {
   // room = 900 - (100 + 10) - 32 = 758 < 850.
   const { frame, state, cap } = sized(t, { center: 900 });
   state.roomCap = true;
@@ -163,13 +163,10 @@ function tallAsk() {
   return f;
 }
 
-test("reveal: the card's end in sight; fromStart (the question room's arrival) reads from the asking text's top", () => {
+test("reveal: the card's end in sight when the asking text and the card don't fit together", () => {
   const { frame, scroller, extras } = tallAsk();
   frame.reveal(extras, { now: true });
   assert.equal(scroller.scrollTop, 400, "the card-end rule: 800 - 400");
-  scroller.scrollTop = 0;
-  frame.reveal(extras, { now: true, fromStart: true });
-  assert.equal(scroller.scrollTop, 100);
 });
 
 test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-end rule", async (t) => {

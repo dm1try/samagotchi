@@ -1,3 +1,4 @@
+import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -208,6 +209,26 @@ test("placeKind: a queued prompt (delivery queue) and a queued command are queue
   assert.equal(placeKind(el([".bubble.recap"])), "recap");
   assert.equal(placeKind(el([])), "row");
   assert.equal(placeKind({}), "row");
+});
+
+test("placeKind: a card that waits (pending question, continue offer, asking card, warning) waits; an answered one is a row; an opened turn keeps the waiting ones in the stage", () => {
+  document.body.innerHTML = `
+    <details class="bubble question" id="q"></details>
+    <details class="bubble question answered" id="qa"></details>
+    <details class="bubble question cancelled" id="qc"></details>
+    <div class="bubble continue" id="c"></div>
+    <div class="plugin-card" data-in-turn="1" id="ask"><button class="card-action">Nudge</button></div>
+    <div class="plugin-card" data-in-turn="1" id="asked"></div>
+    <div class="plugin-card warn" id="warn"></div>
+    <div class="bubble note" id="note"></div>`;
+  const kind = (id) => placeKind(document.getElementById(id));
+  assert.deepEqual(["q", "c", "ask", "warn"].map(kind), ["waits", "waits", "waits", "waits"]);
+  assert.deepEqual(["qa", "qc", "asked", "note"].map(kind), ["row", "row", "row", "row"]);
+  const where = (id) => placeFor({ live: true, handingOff: false, kind: kind(id), opened: true });
+  assert.equal(where("q"), "stage");
+  assert.equal(where("warn"), "stage");
+  assert.equal(where("qa"), "opened");
+  assert.equal(where("note"), "opened");
 });
 
 test("handOffOrder: the lines queued for after the turn come last, after its end", () => {

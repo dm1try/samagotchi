@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- chi web: when the model asks its own question after a reply, the reply is a bubble in the conversation (`chi · step N
+  · asking you`) and the stage keeps only the question's card above the composer, so you can scroll back through the
+  conversation while it waits; the turn's prompt and steps move into the conversation with it, and the card's
+  `↑ its reason` leads back to the reply. Answered, the card sits under the reply; when the turn ends the reply folds
+  into the card's two lines as before. The question's own room and its `❓ Answer ↓` pill are gone. Approvals, relayed
+  and hook questions are unchanged.
+
 - chi web: in a session the running turn's stage and the composer are as wide as the conversation's column (at most
   960 px, centred), so a wide window no longer draws them wider than the messages above.
 

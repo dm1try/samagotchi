@@ -600,7 +600,7 @@ test("a relayed hook question on the parent links its delegate's session and sho
   assert.equal(card.querySelector(".question-text").textContent, "Spent $5.");
 });
 
-// The stage's question room (stage_view.js) reads what asks off the card.
+// The stage (stage_view.js: which card opens the turn in the history) reads what asks off the card.
 test("a card carries its kind (a plain question is a question) and a relayed one its relay mark", () => {
   const kindOf = (pq) => {
     const { cards } = setup();
