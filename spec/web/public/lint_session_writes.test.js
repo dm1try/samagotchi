@@ -52,6 +52,6 @@ test("the store's writes, reads and other objects' fields are left alone", () =>
 
 test("the rule is scoped to the session's writers, not every module", () => {
   assert.ok(block.files.includes("lib/samagotchi/web/public/app.js"));
-  assert.equal(block.files.length, 7);
+  assert.equal(block.files.length, 8);
   assert.ok(!block.files.some((f) => f.endsWith("turn_model.js")), "genFor's local `current` is a gen");
 });
