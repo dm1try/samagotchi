@@ -683,7 +683,7 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
   body.has-session #objectivesStrip{padding-left:8px;padding-right:8px}
   body.has-session #dock{left:8px;right:8px}
 }
-/* The delivery line (delivery_line.js): above a phone's width, a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised. A phone has no such row (its composer is shorter, and as steady): while a turn runs the line, its short text and chips, lies over the session bar's left, where status, ctx and speed are (hidden till the turn ends), up to ⚙. */
+/* The delivery line (delivery_line.js): above a phone's width, a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised. A phone has no such row (its composer is shorter, and as steady): while a turn runs the line, its short text and chips, lies over the session bar's left, where status, ctx and speed are (hidden while it shows), up to ⚙, only while you type or have a choice armed (below). */
 #deliveryLine{display:flex;align-items:center;gap:10px}
 #deliveryLine[hidden]{display:none}
 #deliveryLine .delivery-where{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -704,10 +704,16 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
   #deliveryLine .delivery-link.armed{border-color:var(--accent-strong);background:var(--accent-strong)}
   /* No row of its own: idle it is gone; running it is placed over the bar's first row (#composer is its box, the bar
      right under it): the bar's phone padding (10px sides, 6px top, 8px bottom) and height, its right end clear of ⚙
-     (32px) and ⋯ (38px) with their gaps. The chips the line covers are hidden, unless the composer is folded away. */
-  body.has-session #deliveryLine:not(.running){display:none}
-  body.has-session #deliveryLine.running:not([hidden]){position:absolute;left:10px;right:96px;top:100%;height:41px;padding:6px 0 8px;box-sizing:border-box;z-index:1}
-  body.has-session:not(.composer-folded) #dock:has(#deliveryLine.running:not([hidden])) #infoBar .meta :is(.status,.ctx,.speed){visibility:hidden}
+     (32px) and ⋯ (38px) with their gaps. The chips the line covers are hidden, unless the composer is folded away.
+     Running, it shows only while it matters, the bar's status, ctx and speed otherwise (a card waiting, a sent steer, a
+     message queued after the turn): the text field focused (the keyboard up) or holding text or images, or a choice
+     armed or an Apply turn held (delivery_line.js data-armed, data-held; not the queue chip's pressed look, which a
+     participant's turn draws with nothing armed). The two rules below share that list: change both. A chip's
+     mousedown keeps the focus in the text field, so tapping one doesn't hide the line under the finger. On a bare
+     stage an after-turn queued message isn't drawn and the line is hidden too: accepted. */
+  body.has-session #deliveryLine{display:none}
+  body.has-session #composer:has(:is(#prompt:focus,#prompt:not(:placeholder-shown),#chips:not([hidden]),#deliveryLine[data-armed="1"],#deliveryLine[data-held="1"])) #deliveryLine.running:not([hidden]){display:flex;position:absolute;left:10px;right:96px;top:100%;height:41px;padding:6px 0 8px;box-sizing:border-box;z-index:1}
+  body.has-session:not(.composer-folded) #dock:has(#deliveryLine.running:not([hidden])):has(:is(#prompt:focus,#prompt:not(:placeholder-shown),#chips:not([hidden]),#deliveryLine[data-armed="1"],#deliveryLine[data-held="1"])) #infoBar .meta :is(.status,.ctx,.speed){visibility:hidden}
 }
 /* A line queued for after the running turn: a dashed bubble, a turn of its own to come. */
 .bubble.user.queued[data-delivery="queue"]{border:1px dashed var(--accent-border);border-left:3px dashed var(--accent);background:transparent}

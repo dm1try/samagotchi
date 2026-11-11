@@ -234,16 +234,6 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(askRef).toHaveText("JIRA-7");
   await expect(askRef).toHaveAttribute("title", "JIRA-7 Login fails");
   await expectNoHorizontalOverflow(page);
-  // A phone's delivery line has no row of its own: running, it lies over the
-  // session bar's first row, in the status chip's place, left of ⚙ (the
-  // composer's height stays at the turn's end, below).
-  const line = page.locator("#deliveryLine");
-  await expect(line.locator(".delivery-where .short")).toHaveText("↳ after the card's answer");
-  await expect(page.locator("#infoBar .meta .status")).toHaveCSS("visibility", "hidden");
-  const [lineBox, barBox, gearBox] = await Promise.all([line.boundingBox(), page.locator("#infoBar").boundingBox(),
-    page.locator("#infoBar .meta .settings-chip").boundingBox()]);
-  expect(Math.round(lineBox.y)).toBe(Math.round(barBox.y));
-  expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(gearBox.x);
   // Every visible text field is 16px or more on a phone: under 16px iOS Safari
   // zooms the page on focus (and a Home Screen app never zooms back).
   const small = await page.evaluate(() => {
@@ -261,6 +251,53 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls), shownAt);
   expect(await shiftSum(page, { from: waitingAt, to: waitingAt + 600, withInput: true })).toBeLessThan(0.25);
   expect((await shiftSources(page, { from: shownAt + 400 })).filter((n) => TOP_BAR.test(n))).toEqual([]);
+  // A phone's delivery line has no row of its own: running, it lies over the
+  // session bar's first row, in the status chip's place, left of ⚙, only
+  // while it matters (the text field focused or holding text, a choice
+  // armed); else the bar's status and ctx show. The composer's height never
+  // changes (and stays at the turn's end, below).
+  const line = page.locator("#deliveryLine");
+  const prompt = page.locator("#prompt");
+  const status = page.locator("#infoBar .meta .status");
+  const ctx = page.locator("#infoBar .meta .ctx");
+  const dockHeight = () => page.locator("#dock").evaluate((el) => el.offsetHeight);
+  const dockAt = await dockHeight();
+  const lineShown = async (shown) => {
+    if (shown) await expect(line).toBeVisible();
+    else await expect(line).toBeHidden();
+    await expect(status).toHaveCSS("visibility", shown ? "hidden" : "visible");
+    if (await ctx.count()) await expect(ctx).toHaveCSS("visibility", shown ? "hidden" : "visible");
+    expect(await dockHeight()).toBe(dockAt);
+  };
+  // The card waits, the text field blurred and empty: the bar's own.
+  await prompt.evaluate((el) => el.blur());
+  await lineShown(false);
+  // Focused (the keyboard up): the line, in its place.
+  await prompt.focus();
+  await lineShown(true);
+  await expect(line.locator(".delivery-where .short")).toHaveText("↳ after the card's answer");
+  const [lineBox, barBox, gearBox] = await Promise.all([line.boundingBox(), page.locator("#infoBar").boundingBox(),
+    page.locator("#infoBar .meta .settings-chip").boundingBox()]);
+  expect(Math.round(lineBox.y)).toBe(Math.round(barBox.y));
+  expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(gearBox.x);
+  // A draft keeps it after the keyboard goes; emptied, it goes.
+  await prompt.pressSequentially("x");
+  await prompt.evaluate((el) => el.blur());
+  await lineShown(true);
+  await prompt.fill("");
+  await prompt.evaluate((el) => el.blur());
+  await lineShown(false);
+  // A choice armed (a tap on queue with nothing typed) keeps it too; a
+  // second tap disarms it, and the line goes.
+  await prompt.focus();
+  const queue = line.locator(".delivery-link.queue");
+  await queue.click();
+  await expect(queue).toHaveAttribute("aria-pressed", "true");
+  await prompt.evaluate((el) => el.blur());
+  await lineShown(true);
+  await queue.click();
+  await expect(queue).toHaveAttribute("aria-pressed", "false");
+  await lineShown(false);
   // A reload mid-turn draws the stage again with its card.
   await page.reload();
   await expect(card).toBeVisible();

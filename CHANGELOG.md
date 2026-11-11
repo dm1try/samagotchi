@@ -13,9 +13,10 @@ and commands may change between minor versions. How releases are made:
 - Guardrails: approvals.json reads a versioned `{"version", "approvals"}` store as well as today's list, and keeps
   writing the list for one more release so a 0.165 session sharing the store doesn't set it aside. From 0.167 the
   store is written versioned.
-- chi web on a phone: the composer has no row above the text field. While a turn runs, where a message goes in and
-  the `cut in` and `queue` chips show in the session bar, in place of the status, ctx and speed; the composer is
-  shorter and still never changes height.
+- chi web on a phone: the composer has no row above the text field. While a turn runs and you type (the text field
+  focused or holding text or images) or have `cut in` or `queue` armed, where a message goes in and those chips show
+  in the session bar, in place of the status, ctx and speed; otherwise the bar keeps them. The composer is shorter and
+  still never changes height.
 - chi web on iPhone: the page uses the full screen and keeps the composer, sheets, toasts and the lightbox clear of the
   notch and the home indicator (Home Screen app and Safari); in a Safari tab the composer no longer sits under the
   toolbar (100dvh).

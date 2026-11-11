@@ -1059,7 +1059,9 @@ The prompt stays open while a turn runs in an attached terminal:
   there, so the composer never changes height): the keys while idle, and while
   the turn runs the delivery line (a phone has no such row: while the turn runs
   the line, short, and its `cut in` and `queue` chips take the session bar's
-  left, where status, ctx and speed are until the turn ends), where a message sent now goes in (`↳ goes in after this
+  left, where status, ctx and speed are, while you type or have a choice armed:
+  the text field focused or holding text or images, a chip armed or an Apply
+  turn held; otherwise the bar keeps them), where a message sent now goes in (`↳ goes in after this
   thinking step · 0:42 · 3k chars`, `… after this tool call (execute · 0:12)`,
   `… after this answer; the turn may go on`, `… once the card above is
   answered`), then two links. **Enter** (or Send) is the next step;
