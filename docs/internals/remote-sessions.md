@@ -130,7 +130,7 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `{error, detail, message, …fields}`: `detail` is the page's wording, `message` is the exception's own text, and the
   fields are those the class is built from (`session_id`, `reason`, `ids`, `busy_id`, `version`).
   `Remote#raise_refusal` rebuilds the class that Local's callee raises: `Session::NotFound` for a `404 not_found`
-  whose detail is `no session X` (or, from chi web 0.155.0 and older, `Session not found: X`), a plain
+  whose detail is `no session X`, a plain
   `ArgumentError` for another `not_found`, `Session::AmbiguousId`,
   `SessionManager::OwnedByTUI` / `DeleteRefused` / `ArchiveRefused` / `RestartRefused`, `SessionContinue::Refused`,
   and `ModelProfile::MissingModel` for `invalid_model` (no model there, or `--model`'s host unknown there: "could not

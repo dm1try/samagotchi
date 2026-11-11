@@ -349,24 +349,23 @@ RSpec.describe "delegate reports" do
     end
 
     # The follow-up y1 was merged as a steer into a turn starting as it
-    # went in (its own turn never comes): that turn's reply is its report,
-    # once, whether the absorbing turn has an id or none.
-    [["with an id", "a1"], ["with no id (a wake or reminder turn)", nil]].each do |shape, absorbing|
-      it "reports a follow-up merged into another turn #{shape} once, with that turn's reply" do
-        dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
-        Samagotchi::WorkerSidecar.new(port: 1, features: %w[turn_ids]).write(dir)
-        Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "y1", state_dir: tmpdir)
-        Samagotchi::SessionInbox.write_output(dir, "absorbing answer", enqueued_id: absorbing)
-        end_turn(child)
-        ring
+    # went in (its own turn never comes; the drain's merge record names
+    # that turn): that turn's reply is its report, once.
+    it "reports a follow-up merged into another turn once, with that turn's reply" do
+      dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
+      Samagotchi::WorkerSidecar.new(port: 1, features: %w[turn_ids]).write(dir)
+      Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "y1", state_dir: tmpdir)
+      Samagotchi::SessionInbox.mark_merged(dir, "y1", into: "a1")
+      Samagotchi::SessionInbox.write_output(dir, "absorbing answer", enqueued_id: "a1")
+      end_turn(child)
+      ring
 
-        box = reports
-        expect(box.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nabsorbing answer"])
-        box.commit
-        expect(cursor.turn).to be_nil
-        ring
-        expect(reports.take).to eq([])
-      end
+      box = reports
+      expect(box.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nabsorbing answer"])
+      box.commit
+      expect(cursor.turn).to be_nil
+      ring
+      expect(reports.take).to eq([])
     end
 
     it "has nothing to report after delegate_result (or wait: true) gave the reply; the ring goes" do

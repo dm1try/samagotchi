@@ -730,28 +730,13 @@ module Samagotchi
         reply.status == 404 && reply.error == "not_found" && reply.json["detail"].to_s.start_with?("not found: /")
       end
 
-      def context_missing?(reply)
-        return false unless reply.status == 404
-        return true if reply.error == "context_missing"
+      def context_missing?(reply) = reply.status == 404 && reply.error == "context_missing"
 
-        # Older chi web used not_found for a missing context source
-        # (compat shim remote_refusal_details: Compat::SHIMS).
-        reply.error == "not_found" && reply.json["detail"].to_s.start_with?("no source")
-      end
-
-      def no_provider?(reply)
-        return true if reply.error == "no_provider"
-
-        # Older chi web didn't give this refusal its own error code
-        # (compat shim remote_refusal_details).
-        reply.json["detail"].to_s.start_with?("no installed bundle resolves")
-      end
+      def no_provider?(reply) = reply.error == "no_provider"
 
       # chi web's 404 not_found detail for a session it doesn't have:
-      # "no session X" (Session::NotFound), or "Session not found: X" from
-      # chi web 0.155.0 and older (compat N-1: the same line either way;
-      # compat shim session_not_found_words: Compat::SHIMS).
-      SESSION_NOT_FOUND = /\A(?:no session |Session not found: )(.+)\z/m
+      # "no session X" (Session::NotFound).
+      SESSION_NOT_FOUND = /\Ano session (.+)\z/m
 
       # Session::NotFound for a missing session's 404, else an
       # ArgumentError with chi web's words (another route's 404). chi web
