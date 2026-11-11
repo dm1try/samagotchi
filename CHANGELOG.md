@@ -17,6 +17,11 @@ and commands may change between minor versions. How releases are made:
 - Bundles: an install record from 0.157 with class-file hooks is no longer announced (at the first turn, in
   `chi bundle status` or in `chi update`); its hooks still don't load. Reinstall or upgrade the bundle to clear them.
 
+### Fixed
+
+- chi web on iPhone: the composer, the all view's search and the rename field ask Safari not to offer its AutoFill
+  Contact bar (as the cards' text fields already did).
+
 ## [0.166.0] - 2026-11-11
 
 ### Added

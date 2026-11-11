@@ -990,6 +990,16 @@ test("a card's text fields ask for no contact AutoFill and keep autocorrect", ()
   assert.equal(old.history.children[0].querySelector(".continue-reason").getAttribute("autocomplete"), "off");
 });
 
+test("the composer and the all view's search ask for no contact AutoFill, with a name that has no contact word", () => {
+  const html = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
+  const tag = (id) => html.match(new RegExp(`<(?:textarea|input) id="${id}"[^>]*>`))[0];
+  for (const [id, name] of [["prompt", "chi-composer"], ["filter", "chi-filter"]]) {
+    assert.match(tag(id), /autocomplete="off"/);
+    assert.match(tag(id), new RegExp(`name="${name}"`));
+    assert.doesNotMatch(tag(id), /autocorrect|spellcheck/);
+  }
+});
+
 test("the card's prose wraps at words, the command box still breaks anywhere", () => {
   const html = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
   const rule = (sel) => html.split("\n").find((line) => line.startsWith(`${sel}{`));
