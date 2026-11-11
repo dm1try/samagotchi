@@ -6,6 +6,7 @@ require "fileutils"
 require "time"
 require_relative "../atomic_file"
 require_relative "../log"
+require_relative "../state_format"
 require_relative "approval"
 
 module Samagotchi
@@ -26,8 +27,17 @@ module Samagotchi
     # "once" is never stored. A file that doesn't parse is moved aside to
     # approvals.json.corrupt-<UTC time>[-N], with a warning, and the store
     # starts empty: it only means more asks, and nothing is overwritten.
+    #
+    # The file is either a list of entries (0.165 and before) or a
+    # versioned store, {"version", "approvals": [...]} (FORMAT). Both are
+    # read; a write keeps the shape it read, and a store with no file is
+    # written as a list: a 0.165 reader sets an object aside, so the list
+    # stays the written shape until 0.167 (compat shims approvals_array_read
+    # and approvals_array_write).
     class Approvals
       FILE = "approvals.json"
+      COLLECTION = "approvals"
+      FORMAT = StateFormat.new(version: 1, members: [StateFormat.required(:scope), StateFormat.extra(:extra, in_version: 1)])
       STORED_SCOPES = %w[session repo rule].freeze
       # Rules a stored answer allows only for its session: their asks offer
       # once/session, and a repo entry for the same call (from another
@@ -50,13 +60,13 @@ module Samagotchi
 
       # @return [Array<Hash>] the entries (string keys), oldest first
       def entries
-        read
+        read.first
       end
 
       # @param verdict [Verdict] an ask with its targets and context
       # @return [Hash, nil] the first entry that allows it
       def match(verdict)
-        self.class.find_in(read, verdict)
+        self.class.find_in(read.first, verdict)
       end
 
       # Store the verdict's allowed scope (not "once").
@@ -158,8 +168,10 @@ module Samagotchi
       private
 
       # @param locked [Boolean] the caller holds the store's lock
+      # @return [Array(Array<Hash>, StateFormat::Document)] the entries and,
+      #   for a versioned store, its document (nil for a list or no file)
       def read(locked: false)
-        return [] unless File.exist?(@path)
+        return [[], nil] unless File.exist?(@path)
 
         parse(File.read(@path))
       rescue JSON::ParserError, SystemCallError => e
@@ -175,14 +187,24 @@ module Samagotchi
           where = aside ? "moved it to #{aside}" : "left it in place"
           @warn.call("[samagotchi:guardrails] #{@path} is unreadable (#{e.message}); #{where}, no stored approvals apply")
         end
-        []
+        [[], nil]
       end
 
+      # @return [Array(Array<Hash>, StateFormat::Document)] as #read's
       def parse(text)
         data = JSON.parse(text)
-        raise JSON::ParserError, "not a list" unless data.is_a?(Array)
+        case data
+        when Hash
+          raise JSON::ParserError, "#{COLLECTION} is not a list" unless data.fetch(COLLECTION, []).is_a?(Array)
 
-        data.select { |e| e.is_a?(Hash) }
+          document = FORMAT.read(data, collection: COLLECTION)
+          # An entry it can't read (no scope) is kept as it is: it matches
+          # nothing, and a write keeps it for the chi that wrote it.
+          [document.entries.map(&:raw).select { |e| e.is_a?(Hash) }, document]
+        # compat shim approvals_array_read: the list 0.165 and before write.
+        when Array then [data.select { |e| e.is_a?(Hash) }, nil]
+        else raise JSON::ParserError, "not a list or a versioned store"
+        end
       end
 
       # Under the lock: rename the file aside if it is still unreadable.
@@ -215,11 +237,16 @@ module Samagotchi
         end
       end
 
+      # Writes the shape it read: a versioned store keeps its version and
+      # the keys this chi doesn't know.
       def update
         with_lock do
-          list = read(locked: true)
+          list, document = read(locked: true)
           yield list
-          AtomicFile.write(@path, JSON.pretty_generate(list))
+          # compat shim approvals_array_write: a list (or no file) is written
+          # as a list, since a 0.165 reader sets an object aside.
+          body = document ? FORMAT.write(document.with(entries: list), collection: COLLECTION, updated_at: nil) : list
+          AtomicFile.write(@path, JSON.pretty_generate(body))
         end
       end
 

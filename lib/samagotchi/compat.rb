@@ -32,7 +32,14 @@ module Samagotchi
                files: ["lib/samagotchi/extension_load.rb", "lib/samagotchi/memory_bundle/status.rb",
                        "lib/samagotchi/bundle_command/installed_check.rb"],
                what: "a 0.157 install record's class-file hooks: announced as not loading, shown and checked until " \
-                     "an upgrade or uninstall clears them (installed state, not protocol)")
+                     "an upgrade or uninstall clears them (installed state, not protocol)"),
+      Shim.new(id: :approvals_array_read, added_in: "0.166.0", remove_after: nil,
+               files: ["lib/samagotchi/guardrails/approvals.rb"],
+               what: "Approvals#parse reads approvals.json as the list 0.165 and before write, beside the versioned store"),
+      Shim.new(id: :approvals_array_write, added_in: "0.166.0", remove_after: "0.166.0",
+               files: ["lib/samagotchi/guardrails/approvals.rb"],
+               what: "Approvals#update writes a list (or no file) back as a list, since a 0.165 reader sets a " \
+                     "versioned store aside; from 0.167 a write is versioned (and the corpus records that)")
     ].freeze
 
     module_function

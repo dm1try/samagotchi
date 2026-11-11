@@ -223,6 +223,32 @@ RSpec.describe "the recorded compatibility corpus" do
     expect_corpus_read(File.join(compat_root, version), version, since: live_files_after)
   end
 
+  # 0.165.0 wrote approvals.json as a list; a later chi writes it versioned.
+  describe "0.165.0's approvals" do
+    let(:recorded) { File.join(compat_root, "0.165.0", "guardrails", Samagotchi::Guardrails::Approvals::FILE) }
+
+    def expect_approvals_read(dir)
+      warnings = []
+      approvals = Samagotchi::Guardrails::Approvals.new(dir: dir, warn: ->(msg) { warnings << msg })
+      expect(approvals.entries.map { |entry| entry["scope"] }).to eq(%w[session rule])
+      expect(approvals.match(compat_ask("git push  origin main", "git-push"))).to include("scope" => "session")
+      expect(approvals.match(compat_ask("rm -rf dist", "rm-recursive"))).to include("scope" => "rule")
+      expect(warnings).to be_empty
+    end
+
+    it "reads as recorded" do
+      expect_approvals_read(File.dirname(recorded))
+    end
+
+    it "reads with its entries in a versioned store" do
+      Dir.mktmpdir("chi-compat-approvals-") do |dir|
+        File.write(File.join(dir, Samagotchi::Guardrails::Approvals::FILE),
+                   JSON.generate("version" => 1, "approvals" => JSON.parse(File.read(recorded))))
+        expect_approvals_read(dir)
+      end
+    end
+  end
+
   it "reads every file the corpus writer records now (the next release's corpus)" do
     Dir.mktmpdir("chi-compat-now-") do |tmp|
       # Private: only release:bump records a corpus in the repository.

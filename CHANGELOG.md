@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Guardrails: approvals.json reads a versioned `{"version", "approvals"}` store as well as today's list, and keeps
+  writing the list for one more release so a 0.165 session sharing the store doesn't set it aside. From 0.167 the
+  store is written versioned.
+
 ## [0.165.0] - 2026-11-11
 
 ### Changed

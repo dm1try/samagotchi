@@ -114,8 +114,12 @@ answers it, since it is keyed on the whole command you saw: `git branch -D x && 
 once, session and repo, while `git merge y && git push` offers once, as `git-merge` offers only once and its rule.
 Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
 [child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
-A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
-with one warning, and chi starts with no stored approvals (more asks, nothing lost).
+The file is a list of entries, or a versioned store (`{"version": 1, "approvals": [...]}`,
+`Approvals::FORMAT`): chi reads both, and a write keeps the shape it read (a versioned store keeps its version, the
+keys this chi doesn't know and an entry with no `scope`). A missing file or a list is written as a list until 0.167,
+since chi 0.165 sets a versioned store aside; from 0.167 it is written versioned (restart sessions from before 0.166).
+A file that doesn't parse, or a versioned store whose `approvals` isn't a list, is moved aside to
+`approvals.json.corrupt-<UTC time>` with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
 approval N. When System 1 is enabled or has judgments, it also shows this
 session's recent auto-allows and each rule's record summary, and its heading says

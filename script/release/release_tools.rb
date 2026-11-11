@@ -210,7 +210,10 @@ module ReleaseTools
   end
   private_class_method :write_compat_store_files!
 
-  # A session approval of a command and a rule's, in /compat-fixture.
+  # A session approval of a command and a rule's, in /compat-fixture, in
+  # the shape Approvals#add writes now (a list until 0.167: compat shim
+  # approvals_array_write; this pinning then reads the versioned store's
+  # "approvals").
   # @return [String] approvals.json
   def write_compat_approvals!(sessions_dir)
     store = Samagotchi::Guardrails::Approvals.new(dir: Samagotchi::Guardrails::Approvals.dir_for(sessions_dir))

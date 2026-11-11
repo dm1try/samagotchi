@@ -158,7 +158,8 @@ continue's `context/sessions/<id>/left.json`, stored approvals
 (`guardrails/approvals.json`), and a participant's grant
 (`web-grants/grants.json`) with its `participants.json` sidecar, and the chi
 home (`home.json`). A corpus from
-0.164.0 or before has none of those and skips them; a later one must hold them.
+0.164.0 or before has none of those and skips them; a later one must hold them. 0.165.0's approvals (a list) are
+also read as recorded and wrapped in a versioned store, the shape a later chi writes.
 Bridge wire payloads (`/state`, `/snapshot`, SSE frames) aren't recorded: a
 sample needs a live Engine and Bridge at release time.
 A second example reads a corpus the writer records now, so a writer change that
