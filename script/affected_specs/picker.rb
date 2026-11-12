@@ -25,6 +25,10 @@ module AffectedSpecs
       specs: %w[spec/docs_configuration_spec.rb], why: "reads docs/configuration.md against Config::ENTRIES" },
     { match: %w[docs/hooks.md lib/samagotchi/tools/builtin_calls.rb],
       specs: %w[spec/docs_hooks_call_fields_spec.rb], why: "reads docs/hooks.md against Tools::BuiltinCalls" },
+    { match: %w[script/release/compat_wire.rb lib/samagotchi/bridge.rb lib/samagotchi/event_fanout.rb
+                lib/samagotchi/web/public/stream_handlers.js],
+      node_tests: %w[spec/web/public/compat_wire_parity.test.js],
+      why: "compares recorded worker SSE events and snapshots through today's page handlers" },
     { match: %w[lib/samagotchi/terminal_ui/attached_loop/** lib/samagotchi/terminal_ui/join_replay.rb
                 lib/samagotchi/terminal_ui/own_turns.rb
                 lib/samagotchi/terminal_ui/exit_lines.rb],
@@ -262,9 +266,14 @@ module AffectedSpecs
       RULES.each do |rule|
         next unless rule[:match].any? { |glob| File.fnmatch?(glob, path, File::FNM_PATHNAME) }
 
-        rule[:specs].each do |pattern|
+        Array(rule[:specs]).each do |pattern|
           spec_files.each do |spec|
             add(spec, "rule: #{rule[:why]} (#{path})", path) if File.fnmatch?(pattern, spec, File::FNM_PATHNAME)
+          end
+        end
+        Array(rule[:node_tests]).each do |pattern|
+          node_tests.each do |test|
+            add(test, "rule: #{rule[:why]} (#{path})", path) if File.fnmatch?(pattern, test, File::FNM_PATHNAME)
           end
         end
       end

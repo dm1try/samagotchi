@@ -55,6 +55,14 @@ RSpec.describe "the recorded wire samples" do
     candidates.max_by { |version| Gem::Version.new(version) }
   end
 
+  def event_corpus_version
+    current = Gem::Version.new(Samagotchi::VERSION)
+    Dir.children(compat_root)
+      .select { |name| File.directory?(File.join(compat_root, name)) && Gem::Version.correct?(name) }
+      .select { |version| Gem::Version.new(version) < current && File.file?(File.join(compat_root, version, "wire", "events.json")) }
+      .max_by { |version| Gem::Version.new(version) }
+  end
+
   def app_on(dir)
     Samagotchi::Web::App.new(state_dir: File.join(dir, "sessions"), session_class: Samagotchi::Session, bridge_wait_timeout: 0)
   end
@@ -69,6 +77,17 @@ RSpec.describe "the recorded wire samples" do
   def recorded(dir, name) = JSON.parse(File.read(File.join(dir, name)))
 
   def texts(items) = items.map { |item| item["content"] || item["text"] }
+
+  def parity_fixture(dir, version)
+    body = show(app_on(dir), WireCorpusClient.new(dir, idle_routes))
+    {
+      "version" => version,
+      "events" => recorded(dir, CompatWire::EVENTS_FILE),
+      "show" => body.slice("messages", "turn_drawings")
+    }
+  end
+
+  def parity_fixture_path(name) = File.expand_path("../shared/compat_wire/#{name}", __dir__)
 
   # Every reader of the samples in +dir+ (a copy: chi web may write beside
   # the session file), as +version+ recorded them.
@@ -187,5 +206,34 @@ RSpec.describe "the recorded wire samples" do
       CompatWire.record!(dir, version: Samagotchi::VERSION)
       expect_wire_read(dir, Samagotchi::VERSION)
     end
+  end
+
+  it "writes or checks the current and newest previous SSE-to-show fixtures" do
+    fixtures = {}
+    Dir.mktmpdir("chi-compat-wire-current-") do |dir|
+      CompatWire.record!(dir, version: Samagotchi::VERSION)
+      fixtures["recording.json"] = parity_fixture(dir, Samagotchi::VERSION)
+    end
+
+    if (version = event_corpus_version)
+      previous_dir = copy(File.join(compat_root, version, "wire"))
+      begin
+        fixtures["previous.json"] = parity_fixture(previous_dir, version)
+      ensure
+        FileUtils.rm_rf(previous_dir)
+      end
+    end
+
+    fixtures.each do |name, fixture|
+      path = parity_fixture_path(name)
+      if ENV["UPDATE_COMPAT_WIRE"]
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "#{JSON.pretty_generate(fixture)}\n")
+      else
+        expect(File).to exist(path), "run with UPDATE_COMPAT_WIRE=1 to write #{path}"
+        expect(JSON.parse(File.read(path))).to eq(fixture), "run with UPDATE_COMPAT_WIRE=1 to update #{path}"
+      end
+    end
+    expect(File).not_to exist(parity_fixture_path("previous.json")) unless version
   end
 end
