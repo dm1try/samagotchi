@@ -48,6 +48,8 @@ The turn is cleared on its terminal event (`Events::TURN_END`), the same event t
 session, so a snapshot shows a turn in exactly one of the two places. Beside the turn it keeps what a snapshot also
 needs and the messages lag: `queued` turns (`:turn_enqueued` until started, merged or dequeued), `queued_commands`,
 the idle `recap` (until a turn starts), a pending `continue_offer`, and the running turn's `working_set`.
+Between turns it also carries `idle_working_set`, built as the worker's next-turn announcement would be (including
+pending `adds`); it is absent while a turn runs or if the build fails.
 
 Three other users: `replay_events(turn)` turns a `current_turn` back into the live events that would have drawn it
 (the attached TUI's join); `join_events` is the page's unfold of the same turn plus the queue behind it (its
@@ -466,7 +468,8 @@ The Bridge exposes:
   (`GET /api/sessions/:id`) and `ctx.sessions.read` (`Plugin::Sessions#read`), which unwraps
   `snapshot`; the Bridge reply is `{snapshot:, session_state_snapshot:}`. `snapshot.objectives` is the worker's
   objectives view, including the running conversation; it is present as `nil` when the worker has no list and omitted
-  if reading the view fails so chi web can use its file view.
+  if reading the view fails so chi web can use its file view. `snapshot.idle_working_set` is the worker's next-turn
+  working set between turns (including pending adds), omitted while a turn runs or if building it fails.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
   `working_directory` (the session's folder, which the web checks the answer's file refs against),
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),

@@ -90,6 +90,7 @@ module Samagotchi
       relay_desk: "relay-store reference; status is monitor-protected",
       request_recap: "idle-recap monitor",
       reserve_enqueued_id: "turn-state monitor",
+      working_set_snapshot: "idle working-set snapshot under event lock",
       "running_turn_messages=": "callback writer; Bridge lifecycle",
       saved_recap: "recap mutex; replace-only session messages",
       session: "session reference; messages are replace-only",
@@ -367,6 +368,9 @@ module Samagotchi
     # working_set: the running turn's last :working_set_updated ({items:,
     # at:}, TurnAccumulator#working_set), which the messages lag; nil
     # between turns and before the turn emitted one.
+    # idle_working_set: what the worker would announce between turns
+    # ({items:, at:}, with adds: when present), built under the next turn's
+    # strategy; absent while a turn runs or if the build fails.
     # last_turn_drawing: the last prompt's turn as live drew it ({drawing:,
     # end:}, the file's line for that turn id, not unfolded: an attaching
     # TUI unfolds it, TurnAccumulator.replay_events), only while it holds
@@ -377,12 +381,20 @@ module Samagotchi
     # conversation too; nil when there is no list, absent if reading it fails.
     # @return [Hash] {messages:, current_turn:, working_set:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
     #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:,
-    #   objectives:}
+    #   objectives:, idle_working_set:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
         messages = @engine.messages_checkpoint
         drawing = last_turn_drawing(messages)
+        idle_working_set_unavailable = Object.new
+        idle_working_set = if @engine.turn_running?
+                             idle_working_set_unavailable
+                           else
+                             Degrade.call(:bridge, "working_set_snapshot_failed", fallback: idle_working_set_unavailable) do
+                               @engine.working_set_snapshot&.to_h || idle_working_set_unavailable
+                             end
+                           end
         objectives_unavailable = Object.new
         objectives = Degrade.call(:bridge, "objectives_snapshot_failed", fallback: objectives_unavailable) do
           @engine.objectives_view(@session_id, messages, state_dir: @state_dir)
@@ -407,6 +419,7 @@ module Samagotchi
           event_id: event_id(seq)
         }.merge(drawing ? { last_turn_drawing: drawing } : {})
         snapshot[:objectives] = objectives unless objectives.equal?(objectives_unavailable)
+        snapshot[:idle_working_set] = idle_working_set unless idle_working_set.equal?(idle_working_set_unavailable)
         snapshot
       end
     end

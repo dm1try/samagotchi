@@ -3,7 +3,6 @@
 require_relative "hooks"
 require_relative "log"
 require_relative "steer_cut"
-require_relative "working_set"
 
 module Samagotchi
   # How one of an Engine's events reaches the turn's sink and the persistent
@@ -33,12 +32,12 @@ module Samagotchi
     # @param live_conversation [#call] → Array<Hash>, the running turn's conversation
     # @param used_memory_names [#call] → Array<String>
     # @param served_expected_by [#call] (served) → the host expecting the served model
-    # @param working_set_strategy [#call] → the strategy the working set is built under
+    # @param working_set_snapshot [#call] (session, conversation) → WorkingSet::Snapshot
     # @param turn_running      [#call] → Boolean
     # @param announce_or_hold  [#call] (event) → announces the event, or holds it
     def initialize(observer:, used_memories:, muted:, steer_cut:, thinking_notices:, metrics:, hooks:, turn_context:,
                    last_turn_context:, model_settings:, session:, live_conversation:, used_memory_names:, served_expected_by:,
-                   working_set_strategy:, turn_running:, announce_or_hold:)
+                   working_set_snapshot:, turn_running:, announce_or_hold:)
       @observer = observer
       @used_memories = used_memories
       @muted = muted
@@ -53,7 +52,7 @@ module Samagotchi
       @live_conversation = live_conversation
       @used_memory_names = used_memory_names
       @served_expected_by = served_expected_by
-      @working_set_strategy = working_set_strategy
+      @working_set_snapshot = working_set_snapshot
       @turn_running = turn_running
       @announce_or_hold = announce_or_hold
       @working_set_emitted = nil
@@ -132,8 +131,7 @@ module Samagotchi
     def emit_working_set(on_event, session, conversation)
       return unless session && conversation
 
-      snapshot = WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy,
-                                  pins: session.working_set_pins)
+      snapshot = @working_set_snapshot.call(session, conversation)
 
       shown = snapshot.to_h.except(:at)
       last = @working_set_emitted
@@ -234,7 +232,6 @@ module Samagotchi
     def live_conversation = @live_conversation.call
     def used_memory_names = @used_memory_names.call
     def served_expected_by(served) = @served_expected_by.call(served)
-    def working_set_strategy = @working_set_strategy.call
     def turn_running? = @turn_running.call
     def announce_or_hold(event) = @announce_or_hold.call(event)
   end

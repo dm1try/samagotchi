@@ -73,6 +73,15 @@ module Samagotchi
         synchronize_events { emit_working_set(nil, session, session.messages) }
       end
 
+      # The working set the session would announce for +conversation+ under
+      # the next turn's strategy.
+      def working_set_snapshot(session = @session, conversation = session&.messages)
+        return unless session && conversation
+
+        WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy,
+                         pins: session.working_set_pins)
+      end
+
       # ── Load events ───────────────────────────────────────────────────────
 
       # Announce what failed to load and what plugins showed while loading,
