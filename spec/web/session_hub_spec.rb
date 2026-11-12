@@ -132,6 +132,23 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.map { |e| e.data[:session][:pending_question] }).to eq([{ id: "q1", kind: "question" }, nil])
     end
 
+    it "clears an answered question in the projection without waiting for a scan" do
+      manager = double("manager", session_owner: Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1),
+                                  retention_sweep_if_due: nil)
+      hub = described_class.new(state_dir: state_dir, manager: manager)
+      hub.subscribe(->(event) { events << event })
+      a = save_session
+      a.pending_question = { id: "q1", question: "Which?" }
+      a.save(state_dir: state_dir)
+      hub.scan
+      events.clear
+
+      hub.resolve_question(a.id, question_id: "q1")
+
+      expect(events.map { |event| event.data[:session][:pending_question] }).to eq([nil])
+      expect(hub.snapshot.first[:pending_question]).to be_nil
+    end
+
     it "updates worker compatibility when a newer chi is installed" do
       a = save_session
       lock = Samagotchi::OwnerLock.acquire(session_dir(a), kind: "worker", wait: 0)

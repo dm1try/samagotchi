@@ -434,7 +434,7 @@ test("a question card: the answer lets the turn go on", async ({ page, script })
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(card.locator(".question-result")).toContainText("README.md");
-  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
+  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0, { timeout: 1000 });
   await expect(answer(page)).toHaveText("Read the file you picked. Done.");
   await turnEnded(page, 1);
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
