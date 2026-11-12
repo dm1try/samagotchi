@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/bridge/card_store"
+require "samagotchi/bridge/pending_card"
 require "samagotchi/bridge/turn_drawings"
 require "samagotchi/chi_home"
 require "samagotchi/child_move"
@@ -11,10 +12,20 @@ require "samagotchi/grants"
 require "samagotchi/guardrails"
 require "samagotchi/memory_bundle/installed_bundle"
 require "samagotchi/memory_bundle/provenance"
+require "samagotchi/objectives_check"
+require "samagotchi/objectives_track"
 require "samagotchi/participants"
+require "samagotchi/recap_store"
+require "samagotchi/reminder_carry"
+require "samagotchi/reminder_store"
+require "samagotchi/session_continue"
+require "samagotchi/session_stores"
 require "samagotchi/schedules"
 require "samagotchi/session"
 require "samagotchi/session_inbox"
+require "samagotchi/thinking_tails"
+require "samagotchi/tools/delegate_cursor"
+require "samagotchi/archive_store"
 require "samagotchi/web/message_display"
 require "samagotchi/worker_sidecar"
 require_relative "../../script/release/release_tools"
@@ -25,6 +36,7 @@ RSpec.describe "the recorded compatibility corpus" do
   # continue intent, stop marker) and no install journal: a later one must
   # hold them.
   let(:live_files_after) { Gem::Version.new("0.164.0") }
+  let(:session_stores_after) { Gem::Version.new("0.168.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -103,6 +115,7 @@ RSpec.describe "the recorded compatibility corpus" do
     expect_live_files_read(sessions_dir, session_dir, version, since)
     expect_install_journal_read(root, version, since)
     expect_store_files_read(sessions_dir, session_dir, version, since)
+    expect_session_stores_read(root, sessions_dir, session_dir, version)
     expect_home_read(root, version, since)
   end
 
@@ -169,6 +182,53 @@ RSpec.describe "the recorded compatibility corpus" do
     expect(Samagotchi::Participants.read("compat-session", state_dir: sessions_dir))
       .to match([have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, name: "Compat", kind: "agent", mode: "pair", cap: 2.0,
                                  expires_at: "2026-01-08T00:00:00Z", removed_at: nil)])
+  end
+
+  def expect_session_stores_read(root, sessions_dir, session_dir, version)
+    Samagotchi::SessionStores.corpus_stores.each do |store|
+      next if store.corpus_exception?
+
+      path = File.join(root, store.corpus_dir, store.file)
+      next unless recorded?(path, version, session_stores_after)
+
+      case store.file
+      when "archived"
+        expect(Samagotchi::ArchiveStore.read(session_dir)).to include("archived_at" => "2026-01-01T00:00:00Z")
+      when "pending_card.json"
+        expect(Samagotchi::Bridge::PendingCard.read(session_dir)).to eq(id: "compat-card", bundle: "check-in")
+      when "objectives_cards.json"
+        expect(Samagotchi::Objectives.card_state(session_dir, "compat-proposal")).to eq("applied")
+      when "objective_checks.jsonl"
+        expect(Samagotchi::ObjectivesCheck.latest(session_dir, now: Time.utc(2026, 1, 1, 0, 1))["O1"])
+          .to include("verdict" => "confirmed", "reason" => "recorded")
+      when "objective_tracks.jsonl"
+        settled, running = Samagotchi::ObjectivesTrack.latest(session_dir)
+        expect(settled).to include("id" => "compat-track", "readings" => { "O1" => { "reading" => "progress",
+                                                                                     "reason" => "compatibility corpus" } })
+        expect(running).to be_nil
+      when "reminders.json"
+        entries = Samagotchi::ReminderCarry.take(session_dir, session_id: "compat-session",
+                                                                        wall: Time.utc(2026, 1, 1, 0, 1))
+        store = Samagotchi::ReminderStore.new
+        expect(store.restore(entries, wall: Time.utc(2026, 1, 1, 0, 1))).to eq(["compatibility"])
+        expect(store.reminders.values.first).to include(id: "compat-reminder", description: "compatibility corpus")
+      when "recap.json"
+        expect(Samagotchi::RecapStore.read(session_dir)).to include(text: "The user was testing compatibility.",
+                                                                    title: "Compatibility")
+      when "parent.json"
+        expect(Samagotchi::Session.parent_override("compat-session", state_dir: sessions_dir)).to eq("compat-parent")
+      when "thinking_tails.jsonl"
+        expect(Samagotchi::ThinkingTails.read(session_dir)).to include(a_hash_including("turn_id" => "compat-tail-turn",
+                                                                                        "tail" => "compatibility thinking"))
+      when "delegates.json"
+        cursor = Samagotchi::Tools::DelegateCursors.get("compat-session", "compat-child", state_dir: sessions_dir)
+        expect(cursor).to have_attributes(reply_file: "output/compat-child.json", question_id: "compat-question")
+      else
+        # bridge, cards, drawings, move, continue, participants and stopped
+        # have their existing dedicated readers above.
+        expect(File.file?(path)).to be(true), "no compatibility reader for #{store.owner} (#{store.file})"
+      end
+    end
   end
 
   # An install journal (pending.json) beside the bundle record: what the

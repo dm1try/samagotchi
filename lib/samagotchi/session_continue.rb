@@ -21,6 +21,7 @@ require_relative "worker_link"
 require_relative "model_profile"
 require_relative "log"
 require_relative "session_manager"
+require_relative "session_stores"
 
 module Samagotchi
   # The next link of a session chain: chi send --new --continues and web
@@ -76,7 +77,7 @@ module Samagotchi
     # (taking an UndoContext) that gives it back when the continue fails;
     # empty when there is nothing to undo (CARRY's comment says why).
     # +store+ is the SessionManager::SESSION_STATE_STORES store it carries.
-    CarryStep = Data.define(:name, :store, :carry, :undo)
+    CarryStep = Data.define(:name, :store, :carry, :undo, :files)
     # What a carry step works on: the previous link (a Session), the new
     # link's id, the delegates moving (ChildMove::Plan#move).
     CarryContext = Data.define(:previous, :to, :state_dir, :move)
@@ -100,15 +101,16 @@ module Samagotchi
       # Its open delegates (ChildMove): given back to the previous link
       # first, then the rings one rang the link with just before the undo.
       CarryStep.new(name: :children, store: :session_files, carry: :carry_children,
-                    undo: { moved_back: :undo_move, link_stopped: :return_rings }),
+                    undo: { moved_back: :undo_move, link_stopped: :return_rings },
+                    files: %w[delegates.json parent.json]),
       # Its movable context too, with a note saying what moved and stayed.
       # No undo: ContextSources.move copies (the previous link keeps its
       # sources), and the link's copies go with its delete (remove_files).
-      CarryStep.new(name: :context, store: :context_sources, carry: :carry_context, undo: {}),
+      CarryStep.new(name: :context, store: :context_sources, carry: :carry_context, undo: {}, files: ["left.json"]),
       # Its objectives: the list reads as the latest word. No undo: a note
       # written into the link only (NoteMove::CONTINUE_SOURCES: never given
       # back), which goes with its delete.
-      CarryStep.new(name: :objectives, store: :session_files, carry: :carry_objectives, undo: {}),
+      CarryStep.new(name: :objectives, store: :session_files, carry: :carry_objectives, undo: {}, files: []),
       # Its waiting notes last: the carry above read a pending /objectives
       # edit from them first. They keep their names, so they still sort
       # ahead of the link's own notes. A note sent to the previous link
@@ -117,17 +119,12 @@ module Samagotchi
       # once the link is out of the chain, and again for a note an older chi
       # wrote after its folder went.
       CarryStep.new(name: :notes, store: :session_files, carry: :carry_notes,
-                    undo: { link_unlinked: :give_back_notes, link_deleted: :give_back_strays })
+                    undo: { link_unlinked: :give_back_notes, link_deleted: :give_back_strays }, files: [])
     ].freeze
 
     # The SessionManager::SESSION_STATE_STORES a continue deliberately
     # leaves with the previous link, and why: every store is in CARRY or here.
-    NOT_CARRIED = {
-      plugin_session_state: "a bundle's per-session state (ctx.session_dir) stays with the archived link",
-      participants: "the archive ends the previous link's review (D8); a continue copies no grants",
-      system_one_runs: "System 1's saved runs record the previous link's own turns",
-      context_candidates_log: "the candidates log records the previous link's own turns"
-    }.freeze
+    NOT_CARRIED = SessionStores::STORES.reject(&:carried?).to_h { |store| [store.file, store.continue] }.freeze
 
     # The model a new link runs on (#model_for): the name to spawn it with,
     # and why it isn't the previous link's (nil when it is, or was given).

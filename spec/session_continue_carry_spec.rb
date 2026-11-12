@@ -33,11 +33,14 @@ RSpec.describe Samagotchi::SessionContinue, "CARRY" do
   # A new store in SessionManager::SESSION_STATE_STORES is either carried
   # (a CARRY step) or named in NOT_CARRIED with the reason.
   it "accounts for every session state store: carried or deliberately left with the previous link" do
-    carried = described_class::CARRY.map(&:store).uniq
+    carried = described_class::CARRY.flat_map(&:files)
     left = described_class::NOT_CARRIED.keys
 
     expect(carried & left).to be_empty
-    expect(carried + left).to match_array(Samagotchi::SessionManager::SESSION_STATE_STORES)
-    expect(left).to contain_exactly(:plugin_session_state, :participants, :system_one_runs, :context_candidates_log)
+    expect(carried + left).to match_array(Samagotchi::SessionStores::STORES.map(&:file))
+    described_class::CARRY.each do |step|
+      expect(step.files).to all(satisfy { |file| Samagotchi::SessionStores::STORES.find { |store| store.file == file }&.continue == step.name })
+    end
+    expect(described_class::NOT_CARRIED.values).to all(satisfy { |reason| reason.is_a?(String) && !reason.empty? })
   end
 end

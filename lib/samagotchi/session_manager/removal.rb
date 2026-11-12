@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../session_stores"
+
 module Samagotchi
   class SessionManager
     # A delete that would pull the session from under its live worker.
@@ -61,9 +63,7 @@ module Samagotchi
 
     # Every store with session-scoped state. Deletion, retention and failed
     # continuation cleanup all pass through this registry.
-    SESSION_STATE_STORES = %i[
-      session_files plugin_session_state context_sources participants system_one_runs context_candidates_log
-    ].freeze
+    SESSION_STATE_STORES = SessionStores.removal_stores
 
     # Removal: archive, unarchive and delete a session (an archive takes its
     # delegates too), and the retention sweep's entry. Calls LifecyclePart's
