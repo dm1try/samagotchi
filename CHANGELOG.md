@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 - Bridge: a broken objectives store no longer breaks snapshots, SSE resets or attached clients; the web falls back to
   its file view.
 - Guardrails: approvals saved by chi 0.166 and before as a list are read and retained after the next write.
+- chi web: after a reload, the objectives strip matches the running session's view; it no longer flips on update.
 - Guardrails: approvals in an unversioned `approvals.json` object are read instead of set aside.
 - chi web: a card waiting in the stage (a question, an approval) no longer closes to its title line in an empty box
   when its title is clicked; its own ▾ is gone while it waits.

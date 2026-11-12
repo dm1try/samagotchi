@@ -110,16 +110,18 @@ module Samagotchi
           # instead of taking the seq as its own. Only the snapshot has it.
           last_event_id: turn_snapshot && turn_snapshot["event_id"],
           timing: timing,
-          **objectives_field(id, raw_messages)
+          **objectives_field(id, raw_messages, turn_snapshot)
         })
       end
 
       # The session's list (the page's strip), and no key with no list: a
       # session without one reads as it always did. A snapshot's entries have
       # string keys (paired_runs reads symbols).
-      def objectives_field(id, messages)
-        symbols = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
-        view = Samagotchi::Objectives.view(id, symbols, state_dir: default_state_dir)
+      def objectives_field(id, messages, live)
+        view = live_key_or_saved(live, "objectives") do
+          symbols = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
+          Samagotchi::Objectives.view(id, symbols, state_dir: default_state_dir)
+        end
         view ? { objectives: view } : {}
       end
 
@@ -178,6 +180,14 @@ module Samagotchi
       # :or).
       def live_or_saved(live, key)
         live ? live[key] : yield
+      end
+
+      # Use the worker's value when its snapshot has the key (nil included);
+      # a key missing from an older worker falls back to the saved session.
+      def live_key_or_saved(live, key)
+        return live[key] if live&.key?(key)
+
+        yield
       end
 
       # The file's question only while a worker owns the session: one a
