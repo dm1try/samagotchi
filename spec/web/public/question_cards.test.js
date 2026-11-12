@@ -85,7 +85,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false, onPending = () => {} } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false, onPending = () => {}, onSettled = () => {} } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -108,6 +108,7 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
     linkRefs,
     pairRefs,
     onPending,
+    onSettled,
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
     doc: {
       createElement: (tag) => new FakeEl(tag),
@@ -235,6 +236,26 @@ test("answered (here or elsewhere): marked, disabled, collapsed to the result; a
   assert.equal(cards.pendingQuestion(), null);
   cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
   assert.equal(card.querySelectorAll(".question-result").length, 1);
+});
+
+// The stage's waiting cards as data (stage_waiting.js): every card that
+// stops waiting says so by its key.
+test("a card that stops waiting calls onSettled with its key: answered, cancelled, replaced, removed; the continue card", () => {
+  const seen = [];
+  const { cards } = setup({ onSettled: (key) => seen.push(key) });
+  cards.renderQuestion(PQ);
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.deepEqual(seen, ["q:q1"], "once");
+  cards.renderQuestion({ id: "q2", question: "Then?" });
+  cards.resolveQuestion("q2", { cancelled: true });
+  cards.renderQuestion({ id: "q3", question: "And?" });
+  cards.renderQuestion({ id: "q4", question: "Or?" });
+  cards.removeQuestion();
+  assert.deepEqual(seen, ["q:q1", "q:q2", "q:q3", "q:q4"]);
+  cards.renderContinue({});
+  cards.resolveContinue({ decision: "resume" });
+  assert.deepEqual(seen.slice(-1), ["continue"]);
 });
 
 // The session bar's status chip reads pendingQuestion() (app.js sessionWaits),
