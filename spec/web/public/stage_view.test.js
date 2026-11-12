@@ -1676,8 +1676,9 @@ test("check-in still open at the turn's end: the streamed text and the answer sw
   }
 });
 
-test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of 2 › pages; answering it shows the other", async () => {
+test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of 2 › pages; answering it shows the other", async (t) => {
   const { view, historyEl, append } = openedPage();
+  sizePage(t);
   try {
     view.generationStarted({ iteration: 1 });
     view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
@@ -1697,6 +1698,10 @@ test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of
     assert.equal(pager.hidden, false);
     assert.equal($(view, ".ts-page-label").textContent, "1 of 2");
     assert.ok(view.root.classList.contains("waiting"), "the approval blocks: the dot stops");
+    const content = frameLaidOut(view, { natural: 500 });
+    await refit(view);
+    const held = heightOf(view);
+    assert.ok(held >= 500, `held ${held}`);
     // › shows check-in, still answerable; ‹ goes back.
     const [prev, next] = pager.querySelectorAll(".ts-page");
     assert.equal(prev.disabled, true);
@@ -1710,6 +1715,9 @@ test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of
     // The approval answered while behind (the pager on check-in): under its
     // lead-in, behind nothing there; the box keeps check-in, its row back.
     next.click();
+    await refit(view);
+    assert.equal(heightOf(view), held, "paging doesn't change the held height");
+    content.value = 100;
     assert.ok(approval.classList.contains("ts-behind"));
     await resolve(approval);
     assert.ok(!approval.classList.contains("ts-behind"));
@@ -1719,6 +1727,7 @@ test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of
     assert.ok(!checkIn.classList.contains("ts-behind"));
     assert.equal(pager.hidden, true);
     assert.ok(view.root.classList.contains("asks-live"));
+    assert.ok(heightOf(view) < held, "answering the front card fits the remaining check-in");
   } finally {
     view.reset();
   }
