@@ -452,6 +452,9 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
    selectable. */
 .bubble.question>summary .question-said{max-width:72ch;margin:2px 0 1px 1.05em;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .bubble.question[open]>summary .question-said{display:none}
+.bubble.question.approval>summary.approval-said{display:grid;grid-template-columns:1.05em minmax(0,1fr)}
+.bubble.question.approval>summary.approval-said .question-said{grid-column:2;grid-row:1;max-width:none;margin:0}
+.bubble.question.approval>summary.approval-said .question-summary-text{grid-column:2;grid-row:2}
 /* A turn opened in the history (stage_opened.js): while the turn runs, a card answered under its reason doesn't repeat it;
    the reason goes at the hand-off and the card's clamp says it then. The card's way back to its reason sits at the right of its
    title line while it waits. */

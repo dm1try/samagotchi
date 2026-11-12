@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
 - chi web: when two cards wait, answering the front card fits the box to the card left (no gap under check-in).
 - chi web: the session cards' "question" / "approval" / "out of steps" badge goes as soon as it is answered.
 
+### Changed
+
+- chi web: an answered approval shows chi's line first, then the command and the answer.
+
 ## [0.169.0] - 2026-11-12
 
 ### Changed

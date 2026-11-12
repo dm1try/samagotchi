@@ -522,6 +522,19 @@ test("a resolved approval card puts the verdict before the command", () => {
   assert.equal(result.textContent, "Allowed: Allow once");
 });
 
+test("an answered approval's folded summary puts chi's line before its command and answer", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, id: "a6" }, { said: "Running the command that needs approval." });
+  cards.resolveQuestion("a6", { answer: { selected: ["Allow once"] } });
+
+  const summary = cards.questionCard().querySelector("summary");
+  assert.ok(summary.classList.contains("approval-said"));
+  assert.equal(summary.children[0].className, "question-said");
+  assert.equal(summary.children[1].className, "question-summary-text");
+  assert.equal(summary.children[0].textContent, "Running the command that needs approval.");
+  assert.equal(summary.children[1].textContent, "execute: git push → Allowed: Allow once");
+});
+
 const RELAYED_TO = { parent_id: "pppp1111-0000", parent_short: "pppp1111", relay_id: "r1" };
 const APPROVAL = {
   id: "a1", kind: "approval", question: "execute: git push", options: ["Allow once", "Deny"], allow_freeform: true,

@@ -589,6 +589,31 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
+  const assertLeadInFirst = async () => {
+    const layout = await page.locator("#history > .bubble.question.approval summary").evaluate((el) => {
+      const said = el.querySelector(".question-said");
+      const answer = el.querySelector(".question-summary-text");
+      return {
+        display: getComputedStyle(el).display,
+        marker: getComputedStyle(el, "::before").content,
+        children: [...el.children].map((child) => `.${child.className}`),
+        saidRow: getComputedStyle(said).gridRow,
+        answerRow: getComputedStyle(answer).gridRow,
+        saidTop: said.getBoundingClientRect().top,
+        answerTop: answer.getBoundingClientRect().top,
+      };
+    });
+    expect(layout.display).toBe("grid");
+    expect(layout.marker).toContain("▸");
+    expect(layout.children).toEqual([".question-said", ".question-summary-text"]);
+    expect(layout.saidRow).toBe("1");
+    expect(layout.answerRow).toBe("2");
+    expect(layout.answerTop).toBeGreaterThan(layout.saidTop);
+  };
+  await assertLeadInFirst();
+  await page.reload();
+  await expect(page.locator("#history > .bubble.question.approval.answered")).toHaveCount(1);
+  await assertLeadInFirst();
 });
 
 // The approval relay: a delegate's approval opens on the parent's page as
