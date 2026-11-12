@@ -1622,6 +1622,7 @@ test("check-in docked: the status row says the running call, the dot keeps blink
     assert.equal(view.root.dataset.phase, "waiting for you");
     assert.equal($(view, ".ts-phase").textContent, "waiting for you");
     assert.equal($(view, ".ts-mini").textContent, "read tmp/ci.log · 0:00");
+    assert.equal($(view, ".ts-mini-clock").textContent, " · 0:00");
     assert.ok(!$(view, ".ts-mini").classList.contains("ts-mini-question"));
     // The delivery line's phase: only a card that blocks holds the composer.
     assert.equal(view.phase(), "running a tool");
