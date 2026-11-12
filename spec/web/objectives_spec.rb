@@ -51,6 +51,43 @@ RSpec.describe Samagotchi::Web::App, "objectives" do
     expect(body["objectives"]["items"].first).to include("id" => "O1", "status" => "done")
   end
 
+  it "uses a live worker's objectives view without recomputing it from messages" do
+    session.messages = [note("n1", list)]
+    session.save(state_dir: state_dir)
+    live_view = { "items" => [{ "id" => "O1", "text" => "worker view" }] }
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "objectives" => live_view },
+      "session_state_snapshot" => {}
+    )
+    expect(Samagotchi::Objectives).not_to receive(:view)
+
+    expect(show["objectives"]).to eq(live_view)
+  end
+
+  it "falls back to the saved objectives view when a live snapshot has no objectives key" do
+    session.messages = [note("n1", list)]
+    session.save(state_dir: state_dir)
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)) },
+      "session_state_snapshot" => {}
+    )
+
+    view = show["objectives"]
+    expect(view).to include("pending" => false)
+    expect(view["items"].first).to include("id" => "O1")
+  end
+
+  it "shows no objectives when a live worker explicitly reports nil" do
+    session.messages = [note("n1", list)]
+    session.save(state_dir: state_dir)
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "objectives" => nil },
+      "session_state_snapshot" => {}
+    )
+
+    expect(show).not_to have_key("objectives")
+  end
+
   it "gives each list note its entry: the first the list, a later one what changed" do
     session.messages = [note("n1", list), note("n2", list.mark("O2", "dropped"))]
     session.save(state_dir: state_dir)

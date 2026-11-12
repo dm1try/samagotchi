@@ -82,6 +82,7 @@ module Samagotchi
       input_epoch: "waiting-steer monitor",
       last_answer_message: "message snapshot under event lock",
       messages_checkpoint: "replace-only message copy",
+      objectives_view: "objectives snapshot under event lock",
       pending_question: "question-desk monitor",
       plugin_warning: "warning-state reader",
       recap: "recap-job reference",
@@ -372,14 +373,21 @@ module Samagotchi
     # against these messages; a reminder's, a Continue's or a note after it
     # hides it no more. Absent otherwise (no prompt with a turn id, a
     # rollback, an older worker's file).
+    # objectives: the view this worker announces, computed with the running
+    # conversation too; nil when there is no list, absent if reading it fails.
     # @return [Hash] {messages:, current_turn:, working_set:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
-    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:}
+    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:,
+    #   objectives:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
         messages = @engine.messages_checkpoint
         drawing = last_turn_drawing(messages)
-        {
+        objectives_unavailable = Object.new
+        objectives = Degrade.call(:bridge, "objectives_snapshot_failed", fallback: objectives_unavailable) do
+          @engine.objectives_view(@session_id, messages, state_dir: @state_dir)
+        end
+        snapshot = {
           messages: messages,
           current_turn: current_turn_with_generation,
           working_set: @accumulator.working_set,
@@ -398,6 +406,8 @@ module Samagotchi
           event_seq: seq,
           event_id: event_id(seq)
         }.merge(drawing ? { last_turn_drawing: drawing } : {})
+        snapshot[:objectives] = objectives unless objectives.equal?(objectives_unavailable)
+        snapshot
       end
     end
 

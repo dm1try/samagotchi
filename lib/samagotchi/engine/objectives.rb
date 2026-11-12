@@ -19,11 +19,20 @@ module Samagotchi
         return unless session
 
         synchronize_events do
-          event = @objectives_stage.announce(session, state_dir: session_state_dir, running: live_conversation)
+          event = @objectives_stage.announce(session, view: objectives_view(session.id, session.messages))
           announce(event) if event
         end
       rescue StandardError => e
         Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
+      end
+
+      # The view the worker announces and includes in its snapshots.
+      # @param session_id [String] the session whose objectives to read
+      # @param messages [Array<Hash>] the messages held by the caller's snapshot
+      # @param state_dir [String] the sessions dir
+      # @return [Hash, nil]
+      def objectives_view(session_id, messages, state_dir: session_state_dir)
+        Objectives.view(session_id, messages, state_dir: state_dir, running: live_conversation&.dup)
       end
 
       # Check this (ObjectivesCheck)'s one side request. Its usage is in the

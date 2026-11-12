@@ -132,7 +132,10 @@ no line for (an older worker's, one from before drawings, a dropped one) gets on
   `#saved_tool_records` through chi web for `--remote`) and the snapshot's cards, through the same renderer. Nothing
   rebuilds rows from the messages any more. `chi --remote` attaches through chi web's stream proxy,
   which relays an owner's frames byte for byte, the field included. A participant never gets it: its stream's snapshot
-  is bare (`ParticipantView`). An older TUI ignores the field; an older worker sends none.
+  is bare (`ParticipantView`). The snapshot also carries `objectives`, this worker's `Engine#objectives_view` computed
+  with the same messages as its `:objectives_updated` event; the key is present (`nil` when there is no list), but is
+  omitted if reading the view fails so chi web can use its file view. An older worker sends no key. An older TUI
+  ignores the drawing field; an older worker sends none.
 - **The show.** chi web's full read (`GET /api/sessions/:id`, whatever its query: a tab from before 0.157 still sends
   `?parts=1`) draws every finished turn from a line: `SessionShow#drawn_lines` is `TurnDrawings.cover` over the file,
   the show's timing records and its cards (CardStore's list, live or saved), the running turn (`current_turn`'s id)
@@ -461,7 +464,9 @@ The Bridge exposes:
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
   the messages itself, then streams from its `event_seq`). Read by the web's full show
   (`GET /api/sessions/:id`) and `ctx.sessions.read` (`Plugin::Sessions#read`), which unwraps
-  `snapshot`; the Bridge reply is `{snapshot:, session_state_snapshot:}`.
+  `snapshot`; the Bridge reply is `{snapshot:, session_state_snapshot:}`. `snapshot.objectives` is the worker's
+  objectives view, including the running conversation; it is present as `nil` when the worker has no list and omitted
+  if reading the view fails so chi web can use its file view.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
   `working_directory` (the session's folder, which the web checks the answer's file refs against),
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),

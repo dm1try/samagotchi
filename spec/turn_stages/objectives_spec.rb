@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "tmpdir"
 require "samagotchi/side_judgments"
 require "samagotchi/turn_stages/objectives"
 
@@ -48,11 +47,10 @@ RSpec.describe Samagotchi::TurnStages::Objectives do
   it "gives the view's event only when it changed, and keeps the last one" do
     session = Struct.new(:id, :messages).new("s1", [])
     view = { items: [{ id: "O1" }] }
-    allow(Samagotchi::Objectives).to receive(:view).and_return(view, view, { items: [] })
+    changed_view = { items: [] }
 
-    expect(stage.announce(session, state_dir: Dir.tmpdir, running: nil)).to eq(type: :objectives_updated, session_id: "s1", **view)
-    expect(stage.announce(session, state_dir: Dir.tmpdir, running: nil)).to be_nil
-    expect(stage.announce(session, state_dir: Dir.tmpdir, running: [{ role: "user" }])).to include(items: [])
-    expect(Samagotchi::Objectives).to have_received(:view).with("s1", [], state_dir: Dir.tmpdir, running: [{ role: "user" }])
+    expect(stage.announce(session, view: view)).to eq(type: :objectives_updated, session_id: "s1", **view)
+    expect(stage.announce(session, view: view)).to be_nil
+    expect(stage.announce(session, view: changed_view)).to include(items: [])
   end
 end
