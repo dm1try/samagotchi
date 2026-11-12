@@ -166,14 +166,16 @@ pending cards, reminders and parent overrides. The starting marker is the
 documented stale-file exception.
 A corpus recorded after 0.165.0 also holds `wire/`: a worker's replies to `GET state`, `snapshot` (after a turn, and
 mid-turn with a prompt queued behind it) and `tail`, each `{route, status, body}`, and the session file it saved,
-recorded from a real Engine and Bridge (`script/release/compat_wire.rb`, `CompatWire`: a scripted kernel, read over the
-Bridge's HTTP with its secret). `spec/compat/wire_readers_spec.rb` serves them as recorded through a `BridgeClient`
+plus `events.json`, the page's parsed `{type, data}` SSE replay from sequence 0, recorded from a real Engine and Bridge
+(`script/release/compat_wire.rb`, `CompatWire`: a scripted kernel, read over the Bridge's HTTP with its secret).
+`spec/compat/wire_readers_spec.rb` serves the replies as recorded through a `BridgeClient`
 (an unrecorded route is an older worker's 404) to today's clients: chi web's show and its `?tail=1`, `?cards=1`,
 `?timing=1` reads, the working set read, `BridgeClient#event_seq`, the attached terminal's `/stats` fallback and
 `ctx.sessions.read`; like `readers_spec`, one example reads the newest previous release's (skipped while that has no
-`wire/`), one a recording made now. SSE frames aren't recorded (the stream's own specs pin them); the JS page's reads of
-these replies are a follow-up. `spec/release/compat_wire_spec.rb` checks the recorder (what `normalise` pins, and the
-two-recordings guard).
+`wire/`), one a recording made now. `spec/web/public/compat_wire_parity.test.js` runs the recorded SSE events through
+today's page handlers and compares the resulting history with a reload drawn from the recorded snapshot; its current
+recording fixture is written by `spec/release/compat_wire_spec.rb` (`UPDATE_COMPAT_WIRE=1`). That spec also checks the
+recorder (what `normalise` pins, and the two-recordings guard).
 A second example reads a corpus the writer records now, so a writer change that
 today's readers can't read goes red before the release. `rake
 release:bump[X.Y.Z]` writes `spec/compat/X.Y.Z/` using the current writers

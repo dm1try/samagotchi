@@ -47,7 +47,8 @@ module CompatWire
   IDLE_ROUTES = { "state.json" => "state", "snapshot.json" => "snapshot", "tail.json" => "tail" }.freeze
   RUNNING_ROUTES = { "snapshot_running.json" => "snapshot" }.freeze
   SESSION_FILE = File.join("sessions", "#{SESSION_ID}.json").freeze
-  FILES = [*IDLE_ROUTES.keys, *RUNNING_ROUTES.keys, SESSION_FILE].freeze
+  EVENTS_FILE = "events.json"
+  FILES = [*IDLE_ROUTES.keys, *RUNNING_ROUTES.keys, EVENTS_FILE, SESSION_FILE].freeze
   # How long the recording waits for the held turn to reach its step and to end (it raises then).
   WAIT_SECONDS = 15
   ENV_KEYS = %w[XDG_CONFIG_HOME XDG_STATE_HOME SAMAGOTCHI_RECAP_ENABLED SAMAGOTCHI_CACHE_WARMUP
@@ -176,7 +177,7 @@ module CompatWire
 
   # The replies, by file name: the idle routes after one turn, then the
   # snapshot of a second turn held mid-turn with a prompt queued behind it,
-  # then the session file the worker saved.
+  # the first turn's SSE replay from sequence 0, then the session file.
   def record_replies(tmp)
     state_dir = File.join(tmp, "sessions")
     FileUtils.mkdir_p(state_dir)
@@ -196,6 +197,7 @@ module CompatWire
       replies = {}
       engine.run_turn(session, PROMPT, origin: { client_id: CLIENT_ID }, id: TURN_ID)
       IDLE_ROUTES.each { |name, route| replies[name] = reply(link, route) }
+      replies[EVENTS_FILE] = record_events(link, engine.event_count)
       # Saved as its worker saves it after a turn.
       session.save(state_dir: state_dir)
       replies[SESSION_FILE] = JSON.parse(File.read(Samagotchi::Session.session_file(SESSION_ID, state_dir: state_dir)))
@@ -228,6 +230,36 @@ module CompatWire
     { "route" => route, "status" => response.status, "body" => JSON.parse(response.body) }
   end
 
+  # The parsed events the page's openStream handlers receive from a replay
+  # starting at seq 0. Stop at the event count captured after the turn.
+  def record_events(link, count)
+    opened = link.open_stream(last_event_id: "0")
+    unless opened.is_a?(Samagotchi::BridgeClient::StreamOpen::Opened)
+      raise Error, "compat wire: the event stream could not be opened"
+    end
+
+    events = []
+    buffer = +""
+    link.read_stream(opened, running: -> { events.size < count }) do |chunk|
+      buffer << chunk
+      while (separator = /\r?\n\r?\n/.match(buffer))
+        frame = buffer.slice!(0, separator.begin(0))
+        buffer.slice!(0, separator[0].length)
+        lines = frame.split(/\r?\n/)
+        type = lines.find { |line| line.start_with?("event: ") }&.delete_prefix("event: ")
+        data = lines.filter_map { |line| line.delete_prefix("data: ") if line.start_with?("data: ") }.join("\n")
+        next unless type && !data.empty?
+
+        events << { "type" => type, "data" => JSON.parse(data) }
+        break if events.size == count
+      end
+      break if events.size == count
+    end
+    raise Error, "compat wire: expected #{count} SSE events, received #{events.size}" unless events.size == count
+
+    events
+  end
+
   # The kernel's collaborators, defined once chi is loaded.
   def define_fakes
     return if const_defined?(:ScriptedKernel, false)
@@ -250,7 +282,7 @@ module CompatWire
                                    { role: "tool_response", content: "[read]\ncompat", tool_call_id: "c1", tool_ids: ["compat-t1"] }]
         self.llm_context_turn = Samagotchi::LLMContextForget::Turn.new(conversation: messages, context: nil, turn_id: context.id)
         emit.call(type: :generation_started, iteration: 1)
-        emit.call(type: :generation_chunk, iteration: 1, content: "Reading.")
+        emit.call(type: :generation_chunk, iteration: 1, content: "Reading.", text: "Reading.", thinking: "")
         emit.call(type: :generation_completed, iteration: 1)
         params = 'path="README.md"'
         emit.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", params: params, tool_id: "compat-t1",
@@ -265,7 +297,7 @@ module CompatWire
           @reached.push(true)
           gate.pop
         end
-        emit.call(type: :generation_chunk, iteration: 2, content: CompatWire::ANSWER)
+        emit.call(type: :generation_chunk, iteration: 2, content: CompatWire::ANSWER, text: CompatWire::ANSWER, thinking: "")
         emit.call(type: :generation_completed, iteration: 2)
         Samagotchi::LLM::ModelResult.new(text: CompatWire::ANSWER,
                                          conversation: conversation + [{ role: "model", content: CompatWire::ANSWER }])

@@ -10,6 +10,7 @@ require_relative "../../script/release/release_tools"
 # the determinism guard release:bump runs (ReleaseTools.write_compat_wire!).
 # What the samples say is read by spec/compat/wire_readers_spec.rb.
 RSpec.describe CompatWire do
+  JS_FIXTURE = File.expand_path("../shared/compat_wire/recording.json", __dir__)
   let(:tmp) { Dir.mktmpdir("compat-wire-") }
 
   after { FileUtils.rm_rf(tmp) }
@@ -71,6 +72,30 @@ RSpec.describe CompatWire do
 
       expect(paths).to eq(described_class::FILES.map { |name| File.join(tmp, "wire", name) })
       expect(read(File.join(tmp, "wire"), "state.json")).to include("route" => "state", "status" => 200)
+      events = read(File.join(tmp, "wire"), described_class::EVENTS_FILE)
+      expect(events.first).to include("type" => "turn_started")
+      expect(events.map { |event| event.fetch("type") }).to include("tool_call_started", "tool_call_completed", "hook_notice", "turn_completed")
+      expect(events.find { |event| event["type"] == "generation_chunk" }.fetch("data")).to include("text" => "Reading.")
+      expect(events).to all(satisfy { |event| event.dig("data", "type") == event.fetch("type") })
+    end
+
+    it "writes the current stream and snapshot fixture used by the web parity test" do
+      Dir.mktmpdir("chi-compat-wire-fixture-") do |dir|
+        described_class.record!(dir, version: Samagotchi::VERSION)
+        snapshot = read(dir, "snapshot.json").dig("body", "snapshot")
+        fixture = {
+          "events" => read(dir, described_class::EVENTS_FILE),
+          "snapshot" => snapshot.slice("messages", "last_turn_drawing")
+        }
+
+        if ENV["UPDATE_COMPAT_WIRE"]
+          FileUtils.mkdir_p(File.dirname(JS_FIXTURE))
+          described_class.write_json(JS_FIXTURE, fixture)
+        else
+          expect(read(File.dirname(JS_FIXTURE), File.basename(JS_FIXTURE))).to eq(fixture),
+                                                                               "run with UPDATE_COMPAT_WIRE=1 to write #{JS_FIXTURE}"
+        end
+      end
     end
 
     it "refuses a field the normaliser leaves unpinned, naming its file and path" do
