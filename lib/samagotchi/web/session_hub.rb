@@ -177,6 +177,22 @@ module Samagotchi
         end
       end
 
+      # An accepted answer ends the wait before the worker has saved its
+      # resumed session. Clear that question from the projection now.
+      def resolve_question(id, question_id:)
+        return nil unless Session.valid_id?(id)
+
+        @monitor.synchronize do
+          entry = @sessions[id]
+          pending = entry&.summary&.dig(:pending_question)
+          next unless pending && pending[:id].to_s == question_id.to_s
+
+          entry.summary = entry.summary.merge(pending_question: nil)
+          emit("session", session: entry.summary)
+        end
+        nil
+      end
+
       # The complete chi version state used by event snapshots and info routes.
       def chi_state
         @monitor.synchronize do

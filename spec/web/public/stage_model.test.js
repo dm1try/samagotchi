@@ -475,6 +475,14 @@ test("foldedRowText: with check-in docked (running) the row says the running cal
   assert.deepEqual(foldedRowText({ collapsed: false, question: "", tool: null, running: true }), { text: "", title: "", question: false });
 });
 
+test("foldedRowText: check-in's running call gets its live clock in the row", () => {
+  const tool = { name: "execute", title: "sleep 40", startedAt: 0 };
+  assert.deepEqual(foldedRowText({ collapsed: false, tool, running: true, now: 12_000 }),
+    { text: "execute sleep 40", title: "", question: false, clock: "0:12" });
+  assert.deepEqual(foldedRowText({ collapsed: false, tool: { name: "execute", title: "sleep 40" }, running: true }),
+    { text: "execute sleep 40", title: "", question: false });
+});
+
 test("phaseLabel: writing while check-in is docked and the step's text streams; else the phase's own word", () => {
   assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing" }), "writing");
   assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing the answer" }), "writing");

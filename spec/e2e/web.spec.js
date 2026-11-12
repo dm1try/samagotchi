@@ -434,7 +434,7 @@ test("a question card: the answer lets the turn go on", async ({ page, script })
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(card.locator(".question-result")).toContainText("README.md");
-  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
+  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0, { timeout: 1000 });
   await expect(answer(page)).toHaveText("Read the file you picked. Done.");
   await turnEnded(page, 1);
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
@@ -589,6 +589,31 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
+  const assertLeadInFirst = async () => {
+    const layout = await page.locator("#history > .bubble.question.approval summary").evaluate((el) => {
+      const said = el.querySelector(".question-said");
+      const answer = el.querySelector(".question-summary-text");
+      return {
+        display: getComputedStyle(el).display,
+        marker: getComputedStyle(el, "::before").content,
+        children: [...el.children].map((child) => `.${child.className}`),
+        saidRow: getComputedStyle(said).gridRow,
+        answerRow: getComputedStyle(answer).gridRow,
+        saidTop: said.getBoundingClientRect().top,
+        answerTop: answer.getBoundingClientRect().top,
+      };
+    });
+    expect(layout.display).toBe("grid");
+    expect(layout.marker).toContain("▸");
+    expect(layout.children).toEqual([".question-said", ".question-summary-text"]);
+    expect(layout.saidRow).toBe("1");
+    expect(layout.answerRow).toBe("2");
+    expect(layout.answerTop).toBeGreaterThan(layout.saidTop);
+  };
+  await assertLeadInFirst();
+  await page.reload();
+  await expect(page.locator("#history > .bubble.question.approval.answered")).toHaveCount(1);
+  await assertLeadInFirst();
 });
 
 // The approval relay: a delegate's approval opens on the parent's page as

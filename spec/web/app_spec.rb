@@ -4479,7 +4479,8 @@ RSpec.describe Samagotchi::Web::App do
       end
       accept_thread.report_on_exception = false
 
-      app = build_app(state_dir: Dir.mktmpdir)
+      hub = double("session hub", resolve_question: nil)
+      app = build_app(state_dir: Dir.mktmpdir, hub: hub)
       allow(app).to receive(:worker_link).and_return(link_at(port))
       status, _headers, body = app.call(
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-9","selected":["Cats"],"freeform":"meow"}')
@@ -4489,6 +4490,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(200)
       expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-9")
+      expect(hub).to have_received(:resolve_question).with("s1", question_id: "q-9")
       expect(received).to include("POST /session/s1/answer HTTP/1.1")
       expect(received).to include('"id":"q-9"')
       expect(received).to include('"selected":["Cats"]')

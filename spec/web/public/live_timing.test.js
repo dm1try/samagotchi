@@ -17,11 +17,12 @@ function fakeLine() {
 
 // A live timing on a fake page: a clock, an interval list, the placed lines.
 function setup({ inStage = false, records = [] } = {}) {
-  const page = { now: at(0), timers: new Map(), nextTimer: 1, placed: [], ticks: 0,
+  const page = { now: at(0), timers: new Map(), nextTimer: 1, placed: [], ticks: 0, callRunning: false,
     timing: { turnRecords: records, activeTurn: null } };
   const timing = createLiveTiming({
     timing: () => page.timing,
     place: (el) => { page.placed.push(el); return inStage; },
+    stageToolRunning: () => page.callRunning,
     makeLine: fakeLine,
     onTick: () => { page.ticks += 1; },
     now: () => page.now,
@@ -85,6 +86,17 @@ test("start in the stage: the line drops its own 'running'", () => {
   timing.start(T0);
   assert.equal(timing.el.textContent, "turn 1 · 0.0s");
   assert.equal(timing.turnId, null);
+});
+
+test("the stage leaves call time to its check-in row while a tool runs, then shows the turn time again", () => {
+  const { timing, page } = setup({ inStage: true });
+  timing.start(T0);
+  page.callRunning = true;
+  page.advance(12_000);
+  assert.equal(timing.el.textContent, "turn 1");
+  page.callRunning = false;
+  page.advance(1_000);
+  assert.equal(timing.el.textContent, "turn 1 · 13s");
 });
 
 test("liveTickMs: 200 ms during the first ten seconds, then one a second", () => {

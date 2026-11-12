@@ -65,7 +65,9 @@ module Samagotchi
         end
         relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
           case reply.status
-          when 200 then json_response(200, { status: "answered", session_id: id, id: qid })
+          when 200
+            @hub&.resolve_question(id, question_id: qid)
+            json_response(200, { status: "answered", session_id: id, id: qid })
           # Another client answered first (or the question was cancelled).
           when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
           when 400 then error_response(400, "invalid_answer", reply_detail(reply, "answer rejected"))
