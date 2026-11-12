@@ -551,8 +551,8 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   read's re-render) and pairs them with the bubble's links and text before the `path:line` scan. A question's
   refs (`pending_question.refs`, `:question_asked`) pair the same way (`markdown_place.js` `linkRefsIn`/`pairRefsIn`):
   `question_requested` (or a snapshot's pending question) keeps them on the asking step's gen
-  (`turn_model.js` `questionRefs`) before the card draws, so the stage's asking slot (`stage_slots.js`
-  `drawAsking(text, refs)`) pairs them on its raw draw and again after its markdown swap; the card pairs its
+  (`turn_model.js` `questionRefs`) before the card draws, so the lead-in bubble (`stage_opened.js`, its refs from
+  `turn_model.js askingRefs`) pairs them on its raw draw and again after its markdown swap; the card pairs its
   question text and its kept reply (`question_cards.js`); the step's closed `.gen-text` takes them
   (`turn_block.js`; on a reload its `data-answer-at`, the message's `display_refs`) and `linkTextRefs` pairs it at
   the turn's end and after a reload. A closed step's text is markdown too with `web.markdown` on: a reload's

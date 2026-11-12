@@ -32,29 +32,37 @@ const settle = async () => {
 };
 
 // What the stage shows, read off the DOM: the cards in its slots (key,
-// kind, slot), the docked one (the asking form's card), the lead-in
-// bubbles in the history (their question id, still asking or not), the
-// card in front, the fold, the asking slot's text, where the turn's prompt
-// and block are.
+// kind, slot), the docked ones (the asking form's cards: what waits for
+// the user in the extras, not a warning), the lead-in bubbles in the
+// history (their question id, still asking or not), the card in front, the
+// docked card that shows (one at a time) and the pager's words, the fold,
+// check-in's row (asks-live, the phase word, the mini row) and the text
+// streamed under it, where the turn's prompt and block are.
 export function stageShape(stageEl, historyEl, waiting) {
   const cards = [];
   for (const slot of ["ts-extras", "ts-tail"]) {
     for (const el of stageEl.querySelector(`.${slot}`)?.children || []) {
       const kind = waitingKind(el);
-      if (kind) cards.push({ key: waitingKey(el), kind, slot });
+      if (kind) cards.push({ key: waitingKey(el), kind, slot, behind: el.classList.contains("ts-behind") });
     }
   }
   const askingForm = stageEl.classList.contains("asking-form");
-  const asking = stageEl.querySelector(".ts-asking");
   return {
     shown: !stageEl.hidden,
     cards,
-    docked: askingForm ? cards.filter((c) => stageEl.querySelector(`.ts-extras > [data-qid="${c.key.slice(2)}"] .question-reason-link`)).map((c) => c.key) : [],
+    docked: askingForm ? cards.filter((c) => c.slot === "ts-extras" && c.kind !== "warn").map((c) => c.key) : [],
     leadIns: [...historyEl.querySelectorAll(":scope > .bubble.said")].map((el) => ({ question: el.dataset.questionId ?? null, asking: el.classList.contains("pending") })),
     front: waiting.front(),
+    showing: askingForm ? cards.filter((c) => c.slot === "ts-extras" && c.kind !== "warn" && !c.behind).map((c) => c.key) : [],
+    pager: stageEl.querySelector(".ts-pager:not([hidden]) .ts-page-label")?.textContent || "",
     folded: stageEl.classList.contains("collapsed"),
+    // check-in docked: the row's word, its running call or the folded card's
+    // text (.ts-mini), the text streamed under the card.
+    asksLive: stageEl.classList.contains("asks-live"),
+    phaseWord: stageEl.querySelector(".ts-phase")?.textContent || "",
+    miniRow: stageEl.querySelector(".ts-mini")?.textContent || "",
+    asksText: (() => { const el = stageEl.querySelector(".ts-asks-text"); return el && !el.hidden ? el.textContent : ""; })(),
     waits: stageEl.classList.contains("waiting"),
-    askingSlot: asking && !asking.hidden ? asking.textContent.replace(/\s+/g, " ").trim() : "",
     prompt: stageEl.querySelector(".ts-prompt .bubble.user") ? "stage" : historyEl.querySelector(":scope > .bubble.user") ? "history" : null,
     block: stageEl.dataset.block || (stageEl.querySelector(".ts-cloud-body .turn-work, .ts-answer .turn-work") ? "stage" : null),
   };
@@ -64,6 +72,7 @@ export function stageShape(stageEl, historyEl, waiting) {
 function crossCheck(page, label) {
   const shape = stageShape(page.turnDom.root, page.historyEl, page.turnDom.waiting);
   const fromDom = shape.cards.filter((c) => c.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
+  assert.ok(shape.showing.length <= 1, `${label}: one docked card shows at a time`);
   const fromData = page.turnDom.waiting.list().filter((e) => e.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.deepEqual(fromData, fromDom, `${label}: the waiting cards as data agree with the slots`);
   assert.deepEqual(page.turnDom.waiting.docked(), shape.docked, `${label}: docked as data agrees with the asking form`);
@@ -80,6 +89,8 @@ async function livedTo(events) {
   }
   page.turnDom.flush();
   await settle();
+  // A turn handed off meanwhile has landed (its fold's end).
+  page.turnDom.settleFold();
   return page;
 }
 
@@ -108,19 +119,10 @@ async function reloadedTo(show) {
   return page;
 }
 
-// Today's live-vs-reload differences at a cut, "<scenario>/<cut>": the
-// stageShape fields (and "history") that differ.
-// - The step limit: live, its card waits in the stage's tail with the ended
-//   turn; after a reload the turn and the card are in the history and the
-//   stage is gone (the interaction-in-conversation plan's F4 flips it).
-// - check-in's card and an approval waiting together: live, check-in's card
-//   first (it came first); a reload replays the approval with the turn and
-//   places the running turn's cards after the replay, so the approval comes
-//   first. The card in front is the approval on both.
-const EXPECTED = {
-  "step_limit/waiting": ["cards", "front", "shown", "prompt", "block", "waits", "history"],
-  "checkin_approval/both": ["cards"],
-};
+// The live-vs-reload differences still known at a cut, "<scenario>/<cut>":
+// the stageShape fields (and "history") that differ. None today: a build
+// that brings one back lists it here with its reason.
+const EXPECTED = {};
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));
 

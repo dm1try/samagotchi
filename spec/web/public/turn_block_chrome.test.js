@@ -11,10 +11,12 @@ import { drawnHistory } from "./drawn_history.js";
 // with text is a row with a summary, or its text can't be reached: the rule
 // also hides that step's summary, and a closed <details> hides its text.
 // happy-dom's :not(:has(…)) isn't reliable, so this runs the rules' own list as
-// a query over the markup the live page and a reload really draw. The real
+// a query over the markup the live page and a reload really draw (a running
+// turn's block opened in the history, data-opened-turn, keeps its chrome:
+// stage_view.test.js). The real
 // browser's boxes, at both widths, are web.spec.js's steered-line journey.
 const CSS = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
-const LISTS = [...CSS.matchAll(/\.turn-work:not\(:has\(([^{}]*?)\)\)(?=[\s>{,])/g)].map((m) => m[1]);
+const LISTS = [...CSS.matchAll(/\.turn-work(?::not\(\[data-opened-turn\]\))?:not\(:has\(([^{}]*?)\)\)(?=[\s>{,])/g)].map((m) => m[1]);
 const stacks = (block) => !!block.querySelector(LISTS[0]);
 
 test("the block's chrome rules all read one list", () => {

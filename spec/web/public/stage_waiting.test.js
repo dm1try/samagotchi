@@ -55,15 +55,14 @@ test("each kind: arrive, count, front, settle; blocking over asks; a warn waits 
   assert.equal(w.front(), null);
 });
 
-test("docked and the lead-in: as arrive says; a second arrival keeps its place in the order", () => {
+test("docked: as arrive says; a second arrival keeps its place in the order", () => {
   const w = createStageWaiting();
   w.arrive("c:1", { kind: "asks" });
-  w.arrive("q:7", { kind: "question", docked: true, leadIn: 7 });
+  w.arrive("q:7", { kind: "question", docked: true });
   assert.deepEqual(w.docked(), ["q:7"]);
-  assert.equal(w.get("q:7").leadIn, "7");
-  assert.equal(w.get("c:1").leadIn, null);
   w.arrive("c:1", { kind: "asks" });
-  assert.deepEqual(w.list().map((e) => e.key), ["c:1", "q:7"]);
+  // The stage's order: the blocking card first.
+  assert.deepEqual(w.list().map((e) => e.key), ["q:7", "c:1"]);
   w.settle("q:7");
   assert.deepEqual(w.docked(), []);
 });
@@ -140,22 +139,31 @@ function questionCard(qid, kind = "question") {
   return el(`<details class="bubble question" data-qid="${qid}" data-kind="${kind}" open><summary>Q</summary><button></button></details>`);
 }
 
-test("place feeds it: a promoted question docks with its lead-in, another kind arrives undocked; a reset empties it", () => {
+test("place feeds it: a question docks with its lead-in, an approval with its own, a hook's question with none; a reset empties it", () => {
   const { view, append } = holdingPage();
   try {
     asks(view, "Both matter. Which first?");
     append(questionCard("q1"));
-    assert.deepEqual(view.waiting.list().map(({ key, kind, docked, leadIn }) => ({ key, kind, docked, leadIn })),
-      [{ key: "q:q1", kind: "question", docked: true, leadIn: "q1" }]);
+    assert.deepEqual(view.waiting.list().map(({ key, kind, docked }) => ({ key, kind, docked })),
+      [{ key: "q:q1", kind: "question", docked: true }]);
+    assert.equal(document.querySelector("#history .bubble.said").dataset.questionId, "q1", "its lead-in");
     assert.ok(view.root.classList.contains("asking-form"));
     view.reset();
     assert.deepEqual(view.waiting.list(), []);
     const again = holdingPage();
     asks(again.view, "Running it.");
     again.append(questionCard("a1", "approval"));
-    assert.deepEqual(again.view.waiting.list().map(({ kind, docked }) => ({ kind, docked })), [{ kind: "approval", docked: false }]);
+    assert.deepEqual(again.view.waiting.list().map(({ kind, docked, approval }) => ({ kind, docked, approval })),
+      [{ kind: "approval", docked: true, approval: true }]);
+    assert.equal(document.querySelector("#history .bubble.said").dataset.questionId, "a1", "its lead-in");
     assert.equal(again.view.waiting.front(), "q:a1");
     again.view.reset();
+    const hook = holdingPage();
+    asks(hook.view, "Running it.");
+    hook.append(questionCard("h1", "hook"));
+    assert.deepEqual(hook.view.waiting.list().map(({ kind, docked }) => ({ kind, docked })), [{ kind: "hook", docked: true }]);
+    assert.ok(document.querySelector("#history .bubble.said") === null, "no lead-in");
+    hook.view.reset();
   } finally {
     view.reset();
   }
@@ -206,4 +214,35 @@ test("cards_place: a plugin card redrawn without its actions settles its asking 
   assert.deepEqual(settled, [], "still asking");
   cards.upsertCard({ id: "ci", in_turn: true, title: "check-in", body: "ended", level: "notice" });
   assert.deepEqual(settled, [["c:ci", { only: "asks" }]]);
+});
+
+test("the stage's order: blocking cards before the asking ones, arrival within each; one shown, the pager moves it, a new card resets it", () => {
+  const w = createStageWaiting();
+  w.arrive("c:check-in", { kind: "asks", docked: true });
+  w.arrive("c:warn", { kind: "warn" });
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  w.arrive("q:h1", { kind: "hook", docked: true });
+  assert.deepEqual(w.list().map((e) => e.key), ["q:a1", "q:h1", "c:check-in", "c:warn"]);
+  assert.deepEqual(w.docked(), ["q:a1", "q:h1", "c:check-in"]);
+  assert.deepEqual(w.blocking(), ["q:a1", "q:h1"]);
+  assert.equal(w.shown(), "q:a1");
+  assert.equal(w.page(1), "q:h1");
+  assert.equal(w.page(5), "c:check-in", "clamped");
+  assert.equal(w.shown(), "c:check-in");
+  assert.equal(w.page(-1), "q:h1");
+  // The shown card answered: the first one shows.
+  w.settle("q:h1");
+  assert.equal(w.shown(), "q:a1");
+  w.page(1);
+  assert.equal(w.shown(), "c:check-in");
+  // A new card goes in front of what the pager was on.
+  w.arrive("q:q2", { kind: "question", docked: true });
+  assert.equal(w.shown(), "q:a1");
+  // Arriving again keeps the paging.
+  w.page(1);
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  assert.equal(w.shown(), "q:q2");
+  w.reset();
+  assert.equal(w.shown(), null);
+  assert.equal(w.page(1), null);
 });

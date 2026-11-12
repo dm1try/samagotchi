@@ -475,8 +475,18 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   script("step_limit");
   turnLimit(3);
   await send(page, "Do a long task");
-  const card = page.locator(`${HC} .bubble.question.step-limit`);
+  // Live as after a reload: the ended turn in the conversation at once, the
+  // card right under it, no box; in view for a reader at the end.
+  const card = page.locator("#history > .bubble.question.step-limit");
   await expect(card.locator(".question-text")).toContainText("The turn ran out of iterations (3 steps) before it answered. Continue it?");
+  await expect(page.locator("#turnStage")).toBeHidden();
+  await expect(card.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/turn-timing/);
+  await expect(page.locator("#history > .bubble.user")).toHaveCount(1);
+  await page.waitForFunction(() => !document.querySelector("#history[data-following]"));
+  const view = await page.locator("#history").boundingBox();
+  const box = await card.locator(".question-text").boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(view.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height);
   await expect(card.locator(".question-choice")).toHaveText(["Continue", "Stop"]);
   await expect(card.locator(".question-dismiss")).toHaveCount(0);
   // The old continue card isn't drawn beside it.
@@ -497,7 +507,7 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   // below it and above the next turn, live and after a reload (its stamp is
   // the reason line's opening_id).
   await send(page, "Do another long task");
-  const again = page.locator(`${HC} .bubble.question.step-limit:not(.answered)`);
+  const again = page.locator("#history > .bubble.question.step-limit:not(.answered)");
   await again.locator(".continue-reason").fill("too slow");
   await again.locator(".continue-no").click();
   const reason = page.locator("#history > .bubble.user", { hasText: "I chose not to continue the turn that ran out of steps because: too slow" });
@@ -535,8 +545,11 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   const card = page.locator(`${H} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
-  // The stage shows the reply that asked for it above the card.
-  await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
+  // The reply that asked for it is the lead-in bubble in the conversation;
+  // the card docks alone in the stage and links back to it.
+  await expect(page.locator("#history > .bubble.said.pending .said-text")).toHaveText("Running the command that needs approval.");
+  await expect(page.locator("#turnStage .ts-extras > .bubble.question.approval .question-reason-link")).toHaveText("↑ its reason");
+  await expect(page.locator("#history > .bubble.user")).toHaveCount(1);
   await expectCardTopInView(page, card);
   // The plain flip: the first words stream as the answer, then the tool
   // starts; the stage holds its height and nothing in it moves. (The
@@ -564,18 +577,14 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await first.press("Enter");
   await expect(card.locator(".question-result")).toContainText("Allow");
   await expect(answer(page)).toHaveText("The approved command ran.");
-  // The answer: until the next step the stage keeps its height and nothing in
-  // it shifts; that step lets the height go, once. This card is taller than
-  // its room (its top in sight, the rest a scroll away): its line stays in the
-  // stage's view.
+  // The answer: the card goes under its lead-in in the conversation; until
+  // the next step the stage keeps its height and nothing in it shifts; that
+  // step lets the height go, once.
+  await expect(page.locator("#history > .bubble.said:not(.pending) + .bubble.question.approval.answered")).toHaveCount(1);
   const marks2 = await stageMarks(page);
   const nextStepAt = momentAt(marks2, (m) => !/\bheld-wait\b/.test(m.cls), answerAt);
   expect(await shiftSum(page, { from: answerAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
   expect(await snaps(page, { from: answerAt, to: nextStepAt - 1, keys: ["status", "chip", "composer"] })).toEqual([]);
-  const line = await card.locator("summary").boundingBox();
-  const view = await page.locator("#turnStage .ts-scroll").boundingBox();
-  expect(line.y).toBeGreaterThanOrEqual(view.y);
-  expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");
@@ -599,14 +608,14 @@ test("a delegate's approval is answered on the parent's page", async ({ page, sc
   await page.reload();
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expectCardTopInView(page, card);
-  // Reaching for the options scrolls down the card; the answer brings its line back.
+  // The parent's line isn't its reason: the card docks alone, no lead-in.
+  await expect(page.locator("#history > .bubble.said")).toHaveCount(0);
+  await expect(page.locator("#history > .bubble.user")).toHaveCount(1);
+  // Answered, it is a row at the conversation's end.
   await card.locator(".question-option").first().click();
   await card.locator(".question-submit").click();
   await expect(card.locator(".question-result")).toContainText("Allowed: Allow once");
-  const view = await page.locator("#turnStage .ts-scroll").boundingBox();
-  const line = await card.locator("summary").boundingBox();
-  expect(line.y).toBeGreaterThanOrEqual(view.y);
-  expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
+  await expect(page.locator("#history > .bubble.question.approval.answered")).toHaveCount(1);
   await expect(answer(page)).toHaveText("The delegate is done.");
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "delegate" });
@@ -2126,16 +2135,14 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(badge).toHaveText("needs you");
   expect((await badge.boundingBox()).height).toBeLessThan(24);
   await card.locator(".card-action", { hasText: "Nudge" }).click();
-  // The step that answers it shows it (open, live), before the answer (in
-  // the stage: in its cloud, which the chip opens; the nudge flashes in the
-  // trail meanwhile, so it is seen with the cloud closed).
-  const row = page.locator(`${H} .steer-row`);
+  // The step that answers it has it, before the answer: in the turn's
+  // block, in the history since the card docked; the nudge flashes in the
+  // stage's trail meanwhile, so it is seen with the block closed.
+  const row = page.locator("#history > .turn-work .steer-row");
   await expect(row.locator("summary")).toHaveText("check-in nudged the model");
   const flashed = page.locator("#turnStage .ts-trail-item.steer");
   await expect(flashed).toHaveText("↪ check-in nudged the model");
   await expect(flashed).toBeVisible();
-  await page.locator("#turnStage .ts-chip-label").click();
-  await expect(row).toBeVisible();
   await turnEnded(page, 1);
   await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);

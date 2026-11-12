@@ -108,11 +108,11 @@ test("draws in a closed step's text, and not in a live step's", async () => {
   assert.ok(!figureOf(live));
 });
 
-test("leaves a pre[data-lang] in a card, a question reply, the asking slot or a delegate report untouched", async () => {
+test("leaves a pre[data-lang] in a card, a question reply, a lead-in bubble or a delegate report untouched", async () => {
   const { root, calls } = setup([
     `<div class="bubble plugin-card">${block()}</div>`,
     `<div class="bubble question">${block()}</div>`,
-    `<div class="ts-asking markdown">${block()}</div>`,
+    `<div class="bubble said"><div class="said-text markdown">${block()}</div></div>`,
     `<div class="bubble user" data-source="delegate_report"><div class="user-message markdown">${block()}</div></div>`,
   ].join(""));
   await settle();

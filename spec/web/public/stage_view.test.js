@@ -14,12 +14,12 @@ if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate 
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 
-function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null } = {}) {
+function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null, isNearBottom = () => false } = {}) {
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
   const view = createStageView({
     historyEl,
-    isNearBottom: () => false,
+    isNearBottom,
     sawText: () => false,
     sessionId: () => "s1",
     dockEl: document.getElementById("dock"),
@@ -226,7 +226,7 @@ function twoQueued(historyEl, view, append) {
 // ── the slots' markup and node identity (recorded before the split into
 // stage_frame.js, stage_watch.js and stage_slots.js; they guard it) ──────
 
-const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-asking" hidden=""></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
+const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-asks-text" hidden=""></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
 
 // A stopper as task_stop.js's: a running task_wait's task.
 const fakeTaskStop = {
@@ -268,7 +268,7 @@ test("resetting the stage clears the status row and the chip, not only the slots
   view.turnEnded({ kind: "completed" });
   await frame();
   view.reset();
-  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   assert.equal($(view, ".ts-chip-label").textContent, "");
 });
 
@@ -358,7 +358,7 @@ test("slots: a narration headline, a running tool, its tick and the chip label",
     assert.equal(slot(view, ".ts-headline"), '<div class="ts-headline fresh" tabindex="0" role="button" title="Show this step\'s reasoning">Reading the readme now.</div>');
     assert.equal(slot(view, ".ts-now"), '<div class="ts-now running"><span class="ts-spin"></span><span class="ts-tool exec">execute</span><span class="ts-title" title="ls -la &amp;&amp; pwd">ls -la</span></div>');
     assert.equal(slot(view, ".ts-foot"), '<div class="ts-foot"><button class="ts-chip" type="button" aria-expanded="false"><span class="ts-chip-label">1 step · 1 tool call</span><span class="ts-ticks"><span role="button" class="ts-tick exec running" data-step="0" title="step 1"></span></span></button></div>');
-    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   } finally {
     view.reset();
   }
@@ -444,30 +444,6 @@ test("identity: the headline element is kept; fresh is added again only when its
   }
 });
 
-test("identity: the asking text reads from its top again only when it changes", async () => {
-  const { view } = slotsPage();
-  try {
-    view.chunk({ iteration: 1, text: "Shall I go on?" });
-    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask", params: "q" });
-    const card = document.createElement("div");
-    card.className = "bubble question";
-    view.place(card);
-    const asking = $(view, ".ts-asking");
-    assert.equal(asking.hidden, false);
-    assert.equal(asking.textContent, "Shall I go on?");
-    asking.scrollTop = 30;
-    view.toolStarted({ iteration: 1, call_index: 1, tool: "ask", params: "q" });
-    await frame();
-    assert.equal(asking.scrollTop, 30, "same text: the scroll stays");
-    view.chunk({ iteration: 1, text: " Say yes." });
-    await frame();
-    assert.equal(asking.textContent, "Shall I go on? Say yes.");
-    assert.equal(asking.scrollTop, 0);
-  } finally {
-    view.reset();
-  }
-});
-
 test("a foreign node in the timing slot (app.js's live timing line) survives the refreshes", async () => {
   const { view } = slotsPage();
   try {
@@ -531,22 +507,19 @@ function sizePage(t) {
   t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
 }
 
-// A turn whose reply asks: the asking text drawn, overflowing its cap
-// (+overflow+) or not, then +cards+ placed in the extras (each a
-// [className, dataset]).
-async function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]], cardHeight = null } = {}) {
+// A turn whose reply asks, then +cards+ placed in the extras (each a
+// [className, dataset]; a question id of its own unless the dataset has one).
+async function askPage(t, { cards = [["bubble question", { kind: "question" }]], cardHeight = null } = {}) {
   const { view } = page({ taskStop: fakeTaskStop });
   sizePage(t);
   view.turnStarted({});
   view.generationStarted({ iteration: 1 });
   view.chunk({ iteration: 1, text: "Here is the plan. ".repeat(40) });
   view.toolStarted({ iteration: 1, call_index: 1, tool: "ask_user_question", params: "q" });
-  const asking = $(view, ".ts-asking");
-  Object.defineProperty(asking, "scrollHeight", { configurable: true, get: () => (overflow ? 900 : 100) });
-  Object.defineProperty(asking, "clientHeight", { configurable: true, get: () => 100 });
-  const els = cards.map(([cls, data]) => {
+  const els = cards.map(([cls, data], i) => {
     const card = document.createElement("details");
     card.className = cls;
+    card.dataset.qid = `a${i + 1}`;
     Object.assign(card.dataset, data);
     // The card's buttons: an answer removes them (a childList change, as
     // question_cards.js's resolve does).
@@ -555,11 +528,9 @@ async function askPage(t, { overflow = true, cards = [["bubble question", { kind
     view.place(card);
     return card;
   });
-  // The asking text's final form (here a null render: the raw text), then
-  // the redraw that measures it.
   await tick();
   await frame();
-  return { view, asking, card: els[els.length - 1] };
+  return { view, card: els[els.length - 1] };
 }
 
 // fitFrame runs on the cap's change: a resize that moves the cap there and
@@ -583,8 +554,19 @@ async function answer(card) {
   await tick();
 }
 
-test("a tall card answered: its line comes back for a reader who had scrolled down it, as little as shows it; its slot shows its end", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+// A card that stays in the stage once it stops waiting: one cancelled by
+// the turn's end (Stop turn while it waits) stays in the extras until the
+// hand-off (a card answered while the turn runs goes into the history; one
+// with a lead-in goes under it, also then: a hook's question has none).
+async function cancelAtEnd(view, card) {
+  view.turnEnded({ kind: "canceled" });
+  card.classList.add("cancelled");
+  card.querySelector("button")?.remove();
+  await tick();
+}
+
+test("a tall card cancelled at the end: its line comes back for a reader who had scrolled down it, as little as shows it; its slot shows its end", async (t) => {
+  const { view, card } = await askPage(t, { cards: [["bubble question", { kind: "hook" }]] });
   try {
     const scroller = $(view, ".ts-scroll");
     const extras = $(view, ".ts-extras");
@@ -594,7 +576,7 @@ test("a tall card answered: its line comes back for a reader who had scrolled do
     Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
     scroller.scrollTop = 500;
-    await answer(card);
+    await cancelAtEnd(view, card);
     assert.equal(view.root.classList.contains("waiting"), false);
     assert.equal(scroller.scrollTop, 192, "the line at the view's top, not the blank the card left");
     assert.equal(extras.scrollTop, 60);
@@ -603,8 +585,8 @@ test("a tall card answered: its line comes back for a reader who had scrolled do
   }
 });
 
-test("a card answered at the view's top stays exactly there, with its line's blank below it", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+test("a card cancelled at the end at the view's top stays exactly there, with its line's blank below it", async (t) => {
+  const { view, card } = await askPage(t, { cards: [["bubble question", { kind: "hook" }]] });
   try {
     const scroller = $(view, ".ts-scroll");
     const extras = $(view, ".ts-extras");
@@ -613,15 +595,15 @@ test("a card answered at the view's top stays exactly there, with its line's bla
     Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 200 });
     scroller.scrollTop = 192;
-    await answer(card);
+    await cancelAtEnd(view, card);
     assert.equal(scroller.scrollTop, 192);
   } finally {
     view.reset();
   }
 });
 
-test("a card answered with the view's top exactly at its line's edge: the line comes back (the edge is rounded)", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+test("a card cancelled at the end with the view's top exactly at its line's edge: the line comes back (the edge is rounded)", async (t) => {
+  const { view, card } = await askPage(t, { cards: [["bubble question", { kind: "hook" }]] });
   try {
     const scroller = $(view, ".ts-scroll");
     const extras = $(view, ".ts-extras");
@@ -630,15 +612,15 @@ test("a card answered with the view's top exactly at its line's edge: the line c
     Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
     scroller.scrollTop = 220;
-    await answer(card);
+    await cancelAtEnd(view, card);
     assert.equal(scroller.scrollTop, 192);
   } finally {
     view.reset();
   }
 });
 
-test("a card answered leaves alone a reader who still sees where it was", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+test("a card cancelled at the end leaves alone a reader who still sees where it was", async (t) => {
+  const { view, card } = await askPage(t, { cards: [["bubble question", { kind: "hook" }]] });
   try {
     const scroller = $(view, ".ts-scroll");
     const extras = $(view, ".ts-extras");
@@ -646,7 +628,7 @@ test("a card answered leaves alone a reader who still sees where it was", async 
     Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
     scroller.scrollTop = 190;
-    await answer(card);
+    await cancelAtEnd(view, card);
     assert.equal(scroller.scrollTop, 190);
   } finally {
     view.reset();
@@ -658,13 +640,13 @@ test("a card answered leaves alone a reader who still sees where it was", async 
 const APPROVAL_CARD = ["bubble question approval", { kind: "approval" }];
 
 test("an approval too tall for the stage raises the cap; one that fits doesn't", async (t) => {
-  const tall = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 700 });
+  const tall = await askPage(t, { cards: [APPROVAL_CARD], cardHeight: 700 });
   try {
     assert.equal(capOf(tall.view), "850px");
   } finally {
     tall.view.reset();
   }
-  const short = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 300 });
+  const short = await askPage(t, { cards: [APPROVAL_CARD], cardHeight: 300 });
   try {
     assert.equal(capOf(short.view), "600px");
   } finally {
@@ -673,13 +655,13 @@ test("an approval too tall for the stage raises the cap; one that fits doesn't",
 });
 
 test("a delegate's relayed approval too tall for the stage raises the cap too; a relayed hook question doesn't", async (t) => {
-  const relayed = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval", relay: "1" }]], cardHeight: 700 });
+  const relayed = await askPage(t, { cards: [["bubble question approval", { kind: "approval", relay: "1" }]], cardHeight: 700 });
   try {
     assert.equal(capOf(relayed.view), "850px");
   } finally {
     relayed.view.reset();
   }
-  const hook = await askPage(t, { overflow: false, cards: [["bubble question", { kind: "hook", relay: "1" }]], cardHeight: 700 });
+  const hook = await askPage(t, { cards: [["bubble question", { kind: "hook", relay: "1" }]], cardHeight: 700 });
   try {
     assert.equal(capOf(hook.view), "600px");
   } finally {
@@ -688,7 +670,7 @@ test("a delegate's relayed approval too tall for the stage raises the cap too; a
 });
 
 test("an approval's raised cap holds at the tap and comes down once at the next step", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 700 });
+  const { view, card } = await askPage(t, { cards: [APPROVAL_CARD], cardHeight: 700 });
   try {
     await answer(card);
     assert.equal(capOf(view), "850px");
@@ -716,8 +698,13 @@ function frameLaidOut(view, { natural }) {
 const heightOf = (view) => parseFloat(view.root.style.height);
 
 test("the next step after an answered card shrinks the frame; the tap doesn't, and a later step doesn't", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD] });
+  const { view, card } = await askPage(t, { cards: [APPROVAL_CARD] });
   try {
+    // A plugin's warning stays in the extras once the answered card has
+    // gone into the history: the slot the stubbed height is read from.
+    const warn = document.createElement("div");
+    warn.className = "plugin-card warn";
+    view.place(warn);
     const content = frameLaidOut(view, { natural: 500 });
     await refit(view);
     const tall = heightOf(view);
@@ -765,7 +752,7 @@ test("a next step with no answered card before it keeps the frame", async (t) =>
 });
 
 test("a card still waiting at a generation keeps the held state", async (t) => {
-  const { view } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD] });
+  const { view } = await askPage(t, { cards: [APPROVAL_CARD] });
   try {
     view.generationStarted({ iteration: 2 });
     assert.equal(view.root.classList.contains("held-wait"), true);
@@ -954,20 +941,80 @@ test("opened: the model's question after a reply opens the turn in the history; 
   }
 });
 
-test("opened: an approval, a hook's or a relayed question, a question with no reply before it keep today's stage", async () => {
-  for (const [card, text] of [
-    [questionCard({ kind: "approval", cls: "bubble question approval" }), "Running it."],
-    [questionCard({ kind: "hook" }), "Hm."],
-    [questionCard({ relay: true }), "Hm."],
-    [questionCard(), ""],
+test("opened: every kind docks; only chi's own question or approval after a reply gets a lead-in bubble", async () => {
+  const asksCard = () => {
+    const card = row("plugin-card");
+    card.dataset.cardId = "check-in";
+    card.dataset.inTurn = "1";
+    card.appendChild(row("card-action"));
+    return card;
+  };
+  for (const [card, text, leadIn] of [
+    [questionCard(), "Both files matter. Which first?", true],
+    [questionCard({ kind: "approval", cls: "bubble question approval" }), "Running it.", true],
+    [questionCard({ kind: "approval", cls: "bubble question approval" }), "", false],
+    [questionCard({ kind: "hook" }), "Hm.", false],
+    [questionCard({ relay: true }), "Hm.", false],
+    [questionCard({ kind: "approval", cls: "bubble question approval", relay: true }), "Hm.", false],
+    [questionCard(), "", false],
+    [asksCard(), "Reading on.", false],
   ]) {
     const { view, historyEl, append } = openedPage();
+    const label = `${card.dataset.kind || "asks"}${card.dataset.relay ? " relayed" : ""} "${text}"`;
     try {
       asks(view, { text });
       append(card);
-      assert.deepEqual(kinds(historyEl), [], `${card.dataset.kind} ${text}`);
-      assert.ok(!view.root.classList.contains("asking-form"));
-      assert.equal(view.root.dataset.block, undefined);
+      assert.deepEqual(kinds(historyEl), leadIn ? ["bubble user", "turn-work", "bubble said"] : ["bubble user", "turn-work"], label);
+      assert.ok(view.root.classList.contains("asking-form"), label);
+      assert.equal(view.root.dataset.block, "history", label);
+      assert.ok(card.parentElement === $(view, ".ts-extras"), label);
+      assert.equal(!!card.querySelector(".question-reason-link"), leadIn, label);
+      assert.equal(view.waiting.docked().length, 1, label);
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("opened: a card answered and a row placed in one task (a replay) keep their order in the history", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    asks(view, { text: "" });
+    const card = questionCard();
+    append(card);
+    card.classList.add("answered");
+    card.querySelector(":scope > button").remove();
+    append(row("bubble user steered", "mind the typos"));
+    assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble question", "bubble user"]);
+    await tick();
+    assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble question", "bubble user"]);
+  } finally {
+    view.reset();
+  }
+});
+
+test("opened: the step limit never docks: no lead-in, the turn stays in the stage", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    asks(view, { text: "Step three." });
+    append(questionCard({ kind: "continue", cls: "bubble question step-limit" }));
+    assert.deepEqual(kinds(historyEl), []);
+    assert.ok(!view.root.classList.contains("asking-form"));
+  } finally {
+    view.reset();
+  }
+});
+
+test("opened: a card with no lead-in follows the history's end for a reader who was there, and leaves a reader scrolled up alone", async () => {
+  for (const atEnd of [true, false]) {
+    const { view, historyEl, append } = page({ taskStop: fakeTaskStop, isNearBottom: () => atEnd });
+    try {
+      view.turnStarted({ promptBubble: row("bubble user") });
+      asks(view, { text: "" });
+      append(questionCard());
+      assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work"]);
+      assert.equal("following" in historyEl.dataset, atEnd, `at the end: ${atEnd}`);
+      assert.equal("reading" in historyEl.dataset, false, "no lead-in to read");
     } finally {
       view.reset();
     }
@@ -1017,7 +1064,7 @@ test("opened: the turn's steps stay in order in the history from the opening on"
     await frame();
     assert.ok(historyEl.querySelector(".turn-work").parentElement === historyEl);
     assert.equal($(view, ".ts-cloud-body").children.length, 0);
-    assert.equal($(view, ".ts-foot").hidden, false, "the chip shows the block in the history");
+    assert.equal($(view, ".ts-foot").hidden, true, "no chip: the steps line in the history says the count");
   } finally {
     view.reset();
   }
@@ -1216,7 +1263,7 @@ test("opened, replayed (a reload, a resync): the asking call completed before it
   }
 });
 
-test("opened: a step whose last call isn't the question doesn't open the turn after it completed", async () => {
+test("opened: a step whose last call isn't the question gives no lead-in after it completed; the card docks alone", async () => {
   const { view, historyEl, append } = openedPage();
   try {
     view.generationStarted({ iteration: 1 });
@@ -1224,7 +1271,8 @@ test("opened: a step whose last call isn't the question doesn't open the turn af
     view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "README.md" });
     view.toolCompleted({ iteration: 1, call_index: 1, status: "ok" });
     append(questionCard());
-    assert.deepEqual(kinds(historyEl), []);
+    assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work"]);
+    assert.ok(view.root.classList.contains("asking-form"));
   } finally {
     view.reset();
   }
@@ -1265,10 +1313,9 @@ test("a card that waits in the stage has no toggle of its own, a question and an
       // "Waits" is read at the click: an answered card still in the stage toggles.
       card.classList.add("answered");
       await tick();
-      // The answered question settles under its reason in the history; the
-      // approval (not promoted) stays in the stage: each toggles where it is.
-      const where = card.dataset.kind === "approval" ? $(view, ".ts-extras") : historyEl;
-      assert.ok(card.parentElement === where, card.dataset.kind);
+      // The answered card settles under its lead-in in the history, and
+      // toggles there.
+      assert.ok(card.parentElement === historyEl, card.dataset.kind);
       summaryOf(card).click();
       assert.equal(card.open, false, card.dataset.kind);
       assert.equal(card.dataset.toggled, "1");
@@ -1445,6 +1492,406 @@ test("another card that comes to wait behind a folded question opens the stage o
     append(next);
     assert.ok(!collapsed(view), "open on the next approval");
     assert.ok(next.parentElement === $(view, ".ts-extras"));
+  } finally {
+    view.reset();
+  }
+});
+
+test("the folded row says what each docked card asks: a question its text, an approval its summary and command, a plugin card its title", async (t) => {
+  const approval = () => {
+    const card = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    card.querySelector(":scope > summary").textContent = "Approve execute?";
+    const what = document.createElement("pre");
+    what.className = "approval-what command";
+    what.textContent = "npm run e2e -- stage.spec.js\n  --headed";
+    card.insertBefore(what, card.querySelector(":scope > button"));
+    return card;
+  };
+  const checkIn = () => {
+    const card = row("bubble plugin-card");
+    card.dataset.cardId = "check-in";
+    card.dataset.inTurn = "1";
+    const title = row("card-title", "50 tool calls, no answer yet");
+    card.append(title, row("card-action"));
+    return card;
+  };
+  const hook = () => {
+    const card = askingCard("Lint found 2 offenses. Commit anyway?", "h1");
+    card.dataset.kind = "hook";
+    return card;
+  };
+  for (const [make, text, said] of [
+    [approval, "Approve execute? npm run e2e -- stage.spec.js", "Running the stage e2e."],
+    [approval, "Approve execute? npm run e2e -- stage.spec.js", ""],
+    [checkIn, "50 tool calls, no answer yet", "Reading on."],
+    [hook, "Lint found 2 offenses. Commit anyway?", "Hm."],
+  ]) {
+    const { view, append } = savedPage(t, false);
+    try {
+      asks(view, { text: said });
+      append(make());
+      $(view, ".ts-fold").click();
+      assert.ok(collapsed(view), text);
+      await frame();
+      assert.equal($(view, ".ts-mini").textContent, text, `${text} (said "${said}")`);
+      assert.ok($(view, ".ts-mini").classList.contains("ts-mini-question"));
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("the fold reads the waiting cards checked against the slots: a card answered in this task no longer holds a click", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    asks(view);
+    const card = askingCard();
+    append(card);
+    // Answered by its classes alone (no hook), and the ▾ clicked before any
+    // refresh: the click is the user's own fold now, kept.
+    card.classList.add("answered");
+    card.querySelector(":scope > button").remove();
+    $(view, ".ts-fold").click();
+    assert.equal(localStorage.getItem(COLLAPSE_KEY), "1");
+    assert.ok(collapsed(view));
+  } finally {
+    view.reset();
+  }
+});
+
+test("a card drawn again with its question id in one turn keeps its fold and its one lead-in", async (t) => {
+  const { view, historyEl, append } = savedPage(t, false);
+  try {
+    asks(view);
+    const card = askingCard("Which file first?");
+    append(card);
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    // The same question, a new element (in one task: the old one goes).
+    const again = askingCard("Which file first?");
+    card.remove();
+    append(again);
+    await frame();
+    assert.ok(collapsed(view), "the fold is the question's, by its id");
+    assert.equal(historyEl.querySelectorAll(".bubble.said").length, 1);
+    assert.ok(historyEl.querySelector(".bubble.said").classList.contains("pending"));
+    assert.equal(again.querySelectorAll(".question-reason-link").length, 1);
+    assert.deepEqual(view.waiting.docked(), ["q:q1"]);
+    assert.equal(historyEl.querySelector(".bubble.said").dataset.questionId, "q1");
+  } finally {
+    view.reset();
+  }
+});
+
+// check-in's card docked (an asking card: the turn goes on).
+function checkInCard(id = "check-in") {
+  const card = row("bubble plugin-card");
+  card.dataset.cardId = id;
+  card.dataset.inTurn = "1";
+  card.append(row("card-title", "50 tool calls, no answer yet"), row("card-action"));
+  return card;
+}
+
+test("check-in docked: the status row says the running call, the dot keeps blinking, the composer stays free", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: 'path="tmp/ci.log"', title: "tmp/ci.log" });
+    append(checkInCard());
+    await frame();
+    assert.ok(view.root.classList.contains("asking-form"));
+    assert.ok(view.root.classList.contains("asks-live"));
+    assert.ok(!view.root.classList.contains("waiting"), "not blocked: the dot blinks");
+    assert.equal(view.root.dataset.phase, "waiting for you");
+    assert.equal($(view, ".ts-phase").textContent, "waiting for you");
+    assert.equal($(view, ".ts-mini").textContent, "read tmp/ci.log");
+    assert.ok(!$(view, ".ts-mini").classList.contains("ts-mini-question"));
+    // The delivery line's phase: only a card that blocks holds the composer.
+    assert.equal(view.phase(), "running a tool");
+    // Between calls the row has no call to say.
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    await frame();
+    assert.equal($(view, ".ts-mini").textContent, "");
+  } finally {
+    view.reset();
+  }
+});
+
+test("check-in docked while chi writes: the text streams under the card, the row says writing; an approval in front takes the row back", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    append(checkInCard());
+    view.generationStarted({ iteration: 2 });
+    view.chunk({ iteration: 2, text: "Found it: the spec read the machine's time zone." });
+    view.flush();
+    await frame();
+    assert.equal($(view, ".ts-phase").textContent, "writing");
+    assert.equal(view.root.dataset.phase, "waiting for you", "the phase itself still waits");
+    const text = $(view, ".ts-asks-text");
+    assert.equal(text.hidden, false);
+    assert.equal(text.textContent, "Found it: the spec read the machine's time zone.");
+    // An approval comes: it blocks, it is in front; the row is the card's.
+    view.toolStarted({ iteration: 2, call_index: 1, tool: "execute", params: "x", title: "npm test" });
+    append(questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" }));
+    await frame();
+    assert.ok(!view.root.classList.contains("asks-live"));
+    assert.equal($(view, ".ts-phase").textContent, "waiting for you");
+    assert.equal($(view, ".ts-mini").textContent, "");
+    assert.equal(text.hidden, true);
+  } finally {
+    view.reset();
+  }
+});
+
+test("check-in still open at the turn's end: the streamed text and the answer swap in one task, no double text", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    const card = checkInCard();
+    append(card);
+    view.generationStarted({ iteration: 2 });
+    view.chunk({ iteration: 2, text: "All 20 pass now." });
+    view.generationCompleted();
+    view.flush();
+    await frame();
+    const text = $(view, ".ts-asks-text");
+    assert.equal(text.textContent, "All 20 pass now.");
+    view.turnEnded({ kind: "completed" });
+    assert.equal(text.hidden, true, "in the end's own task");
+    assert.equal(text.textContent, "");
+    assert.match($(view, ".ts-answer").textContent, /All 20 pass now\./);
+    // The bundle turns its card into a notice row: still one copy.
+    card.querySelector(".card-action").remove();
+    await frame();
+    // (The live slots' headline, hidden in the asking form, aside.)
+    const shown = [".ts-extras", ".ts-asks-text", ".ts-answer", ".ts-tail"].map((sel) => $(view, sel).textContent).join("|");
+    assert.equal(shown.split("All 20 pass now.").length - 1, 1);
+  } finally {
+    view.reset();
+  }
+});
+
+test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of 2 › pages; answering it shows the other", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    const checkIn = checkInCard();
+    append(checkIn);
+    asks(view, { it: 2, text: "Running the stage e2e to confirm the fix." });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    await frame();
+    const extras = $(view, ".ts-extras");
+    assert.deepEqual([...extras.children], [approval, checkIn], "the stage's order: blocking first");
+    assert.deepEqual(view.waiting.docked(), ["q:a1", "c:check-in"]);
+    assert.ok(!approval.classList.contains("ts-behind"));
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    const pager = $(view, ".ts-pager");
+    assert.equal(pager.hidden, false);
+    assert.equal($(view, ".ts-page-label").textContent, "1 of 2");
+    assert.ok(view.root.classList.contains("waiting"), "the approval blocks: the dot stops");
+    // › shows check-in, still answerable; ‹ goes back.
+    const [prev, next] = pager.querySelectorAll(".ts-page");
+    assert.equal(prev.disabled, true);
+    next.click();
+    assert.ok(approval.classList.contains("ts-behind"));
+    assert.ok(!checkIn.classList.contains("ts-behind"));
+    assert.equal($(view, ".ts-page-label").textContent, "2 of 2");
+    assert.equal(next.disabled, true);
+    prev.click();
+    assert.ok(!approval.classList.contains("ts-behind"));
+    // The approval answered while behind (the pager on check-in): under its
+    // lead-in, behind nothing there; the box keeps check-in, its row back.
+    next.click();
+    assert.ok(approval.classList.contains("ts-behind"));
+    await resolve(approval);
+    assert.ok(!approval.classList.contains("ts-behind"));
+    await frame();
+    assert.ok(approval.parentElement === historyEl);
+    assert.ok(historyEl.querySelector(".bubble.said + .bubble.question") === approval);
+    assert.ok(!checkIn.classList.contains("ts-behind"));
+    assert.equal(pager.hidden, true);
+    assert.ok(view.root.classList.contains("asks-live"));
+  } finally {
+    view.reset();
+  }
+});
+
+test("two cards: check-in folded, then an approval comes: the box opens on the approval", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    view.generationStarted({ iteration: 1 });
+    const checkIn = checkInCard();
+    append(checkIn);
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    asks(view, { it: 2, text: "" });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    await frame();
+    assert.ok(!collapsed(view), "nothing waits unseen behind a folded row");
+    assert.ok(!approval.classList.contains("ts-behind"));
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    assert.equal($(view, ".ts-page-label").textContent, "1 of 2");
+  } finally {
+    view.reset();
+  }
+});
+
+test("the step limit: its card hands the ended turn off at once, the card under it, as a reload draws it; the end read and the pointer don't hold it", async () => {
+  const handed = [];
+  const { view, historyEl, append } = page({ onHandedOff: (x) => handed.push(x) });
+  try {
+    const prompt = row("bubble user");
+    view.turnStarted({ promptBubble: prompt });
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Step one." });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: "true", title: "true" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "execute", status: "ok", output: "x" });
+    // Ended, its end read still pending (no answerReady), the pointer over the stage.
+    view.turnEnded({ kind: "completed" });
+    view.root.dispatchEvent(new window.Event("pointerenter"));
+    const end = row("turn-timing", "1 step · 9s");
+    append(end);
+    assert.ok(end.parentElement === $(view, ".ts-tail"));
+    const card = questionCard({ qid: "c1", kind: "continue", cls: "bubble question step-limit" });
+    append(card);
+    assert.ok(view.root.classList.contains("leaving"), "the fold slides at once");
+    view.settleFold();
+    assert.ok(view.root.hidden);
+    assert.ok(historyEl.firstElementChild === prompt);
+    assert.ok(historyEl.lastElementChild === card, "the card right under its turn");
+    assert.ok(card.previousElementSibling === end);
+    assert.equal(handed.length, 1);
+    assert.ok(handed[0].pieces.includes(card));
+    assert.equal(handed[0].immediate, false);
+    // What comes next is the history's.
+    const note = row("bubble note");
+    append(note);
+    assert.ok(historyEl.lastElementChild === note);
+  } finally {
+    view.reset();
+  }
+});
+
+test("the step limit's old continue card hands off too; replaced by the step-limit question while it slides, it stays gone", async () => {
+  const { view, historyEl, append } = page();
+  try {
+    endedTurn(view);
+    const old = row("bubble continue");
+    append(old);
+    assert.ok(view.root.classList.contains("leaving"));
+    old.remove();
+    const card = questionCard({ qid: "c1", kind: "continue", cls: "bubble question step-limit" });
+    append(card);
+    assert.equal(historyEl.querySelectorAll(".bubble.continue").length, 0);
+    assert.ok(historyEl.lastElementChild === card);
+  } finally {
+    view.reset();
+  }
+});
+
+test("a hook's question on a lone step with text: the block in the history keeps its chrome and holds the step's text; the hand-off draws it as a reload", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Running a command." });
+    view.generationCompleted();
+    // The hook asks before its call's row: one gen, text, no tool rows.
+    const card = questionCard({ qid: "h1", kind: "hook" });
+    append(card);
+    const block = historyEl.querySelector(":scope > .turn-work");
+    assert.ok(block, "the block is the history's");
+    assert.equal(block.open, false);
+    assert.ok("openedTurn" in block.dataset, "its chrome stays: the summary leads to the step's text");
+    assert.equal(block.querySelector(".gen .gen-text")?.textContent.trim(), "Running a command.");
+    assert.ok(historyEl.querySelector(".bubble.said") === null, "a hook's card has no lead-in");
+    await resolve(card);
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: "true", title: "true" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "execute", status: "ok", output: "x" });
+    view.turnEnded({ kind: "canceled" });
+    view.handOff({ immediate: true });
+    assert.ok(!("openedTurn" in block.dataset));
+  } finally {
+    view.reset();
+  }
+});
+
+test("one step, two cards: the second approval (or a question after it) gets no second lead-in, live as on a replay", async () => {
+  for (const second of [
+    () => questionCard({ qid: "a2", kind: "approval", cls: "bubble question approval" }),
+    () => questionCard({ qid: "q2" }),
+  ]) {
+    const { view, historyEl, append } = openedPage();
+    try {
+      view.generationStarted({ iteration: 1 });
+      view.chunk({ iteration: 1, text: "Running both commands." });
+      view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: "a", title: "a" });
+      const first = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+      first.dataset.tool = "execute";
+      append(first);
+      await resolve(first);
+      view.toolCompleted({ iteration: 1, call_index: 1, tool: "execute", status: "ok", output: "x" });
+      view.toolStarted({ iteration: 1, call_index: 2, tool: second().dataset.kind === "approval" ? "execute" : "ask_user_question", params: "b", title: "b" });
+      const card = second();
+      append(card);
+      assert.equal(historyEl.querySelectorAll(".bubble.said").length, 1, card.dataset.kind);
+      assert.ok(!card.querySelector(".question-reason-link"));
+      assert.ok(view.root.classList.contains("asking-form"));
+    } finally {
+      view.reset();
+    }
+  }
+});
+
+test("replayed: an approval whose call completed finds its step by its tool, also with a parallel call after it", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Running it, and a read." });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: "a", title: "a" });
+    view.toolStarted({ iteration: 1, call_index: 2, tool: "read", params: "b", title: "b" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "execute", status: "ok", output: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 2, tool: "read", status: "ok", output: "x" });
+    const card = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    card.dataset.tool = "execute";
+    append(card);
+    assert.equal(historyEl.querySelector(".bubble.said .said-text")?.textContent, "Running it, and a read.");
+  } finally {
+    view.reset();
+  }
+});
+
+test("the pager's focus: a button it disables hands the focus to the other; a card that goes behind a new one hands it to the front card", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    const checkIn = checkInCard();
+    append(checkIn);
+    const nudge = checkIn.querySelector(".card-action");
+    nudge.tabIndex = 0;
+    nudge.focus();
+    assert.ok(document.activeElement === nudge);
+    asks(view, { it: 2, text: "" });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    assert.ok(approval.contains(document.activeElement), "the focus is in the front card");
+    const [prev, next] = $(view, ".ts-pager").querySelectorAll(".ts-page");
+    next.focus();
+    next.click();
+    assert.equal(next.disabled, true);
+    assert.ok(document.activeElement === prev, "the other button");
+    prev.click();
+    assert.equal(prev.disabled, true);
+    assert.ok(document.activeElement === next);
   } finally {
     view.reset();
   }

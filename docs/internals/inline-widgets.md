@@ -138,7 +138,7 @@ strings reach the page through `textContent` and attributes only, never `innerHT
 
 **What doesn't draw.** The participant page (`participant.js` wires no block host), `web.markdown` off (no
 `data-lang`), a live answer while it streams (its YAML shows until the turn's end re-renders it as markdown), and
-anything outside `TEXTS`: cards, question replies, the asking slot, delegate reports. The terminal shows the YAML.
+anything outside `TEXTS`: cards, question replies, a lead-in bubble, delegate reports. The terminal shows the YAML.
 
 ## The fixtures
 

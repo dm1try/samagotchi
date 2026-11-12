@@ -60,6 +60,10 @@ export async function startSampling(page) {
         // add below them.
         slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-foot"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
         extras: s.querySelector(".ts-extras").offsetHeight,
+        // check-in's card docked: the text streamed under it, the row's word.
+        asksText: s.querySelector(".ts-asks-text")?.textContent.length || 0,
+        label: s.querySelector(".ts-phase").textContent,
+        phase: s.dataset.phase,
         top: document.querySelector("#history").scrollTop,
         t: performance.now(),
       });
@@ -68,8 +72,8 @@ export async function startSampling(page) {
 }
 export const stopSampling = (page) => page.evaluate(() => { clearInterval(window.sampler); return window.samples; });
 
-// Every frame: whether a question card waits in the stage, whether the
-// asking text shows, whether the stage is in its waiting state and how many
+// Every frame: whether a question card waits in the stage, whether its
+// lead-in waits in the history, whether the stage is in its waiting state and how many
 // infinite animations run in it (window.frames2); frames() reads them.
 export const watchFrames = (page) => page.evaluate(() => {
   window.frames2 = [];
@@ -80,7 +84,7 @@ export const watchFrames = (page) => page.evaluate(() => {
     const infinite = s.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity).length;
     // said: a reason bubble whose card waits (a turn opened in the history, stage_opened.js).
     const said = !!document.querySelector("#history .bubble.said.pending");
-    window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, said, phase: s.dataset.phase, t: performance.now(), blocked: s.classList.contains("waiting"), infinite });
+    window.frames2.push({ waits, said, phase: s.dataset.phase, t: performance.now(), blocked: s.classList.contains("waiting"), infinite });
     window.framesRaf = requestAnimationFrame(tick);
   };
   tick();

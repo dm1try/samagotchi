@@ -27,10 +27,13 @@ module StageCutScenarios
   def gen(iteration) = { type: :generation_started, iteration: iteration }
   def text(iteration, words) = { type: :generation_chunk, iteration: iteration, text: words, thinking: "" }
   def done(iteration) = { type: :generation_completed, iteration: iteration }
-  def call_started(iteration, name, params, tool_id) = { type: :tool_call_started, iteration: iteration, call_index: 1, tool: name, params: params, tool_id: tool_id }
 
-  def call_done(iteration, name, params, tool_id, output)
-    { type: :tool_call_completed, iteration: iteration, call_index: 1, tool: name, tool_id: tool_id, output: output, output_truncated: false,
+  def call_started(iteration, name, params, tool_id, index = 1)
+    { type: :tool_call_started, iteration: iteration, call_index: index, tool: name, params: params, tool_id: tool_id }
+  end
+
+  def call_done(iteration, name, params, tool_id, output, index = 1)
+    { type: :tool_call_completed, iteration: iteration, call_index: index, tool: name, tool_id: tool_id, output: output, output_truncated: false,
       duration_ms: 120, activity: { tool: name, status: "ok", params: params, action: "running command" } }
   end
 
@@ -106,13 +109,38 @@ module StageCutScenarios
       { description: "check-in's card still open, then an approval: two cards wait.", prompt: "do it", turn_id: id, events: events,
         cuts: [{ at: 5, label: "checkin" }, { at: 10, label: "both" }, { at: 14, label: "approval answered" }] }
     },
+    two_approvals: lambda {
+      id = "turn-2a"
+      events = [started(id, "do it"), gen(1), text(1, "Running both commands."),
+                call_started(1, "execute", 'command="echo ok"', "t1"), asked(approval("a1")), answered("a1", "Allow once"),
+                call_done(1, "execute", 'command="echo ok"', "t1", "[execute]\nok"),
+                call_started(1, "execute", 'command="echo ok"', "t2", 2), asked(approval("a2")), answered("a2", "Allow once"),
+                call_done(1, "execute", 'command="echo ok"', "t2", "[execute]\nok", 2), done(1),
+                gen(2), text(2, "Done."), done(2), completed(id, "Done.")]
+      { description: "Two approvals from one step: one lead-in, for the first.", prompt: "do it", turn_id: id, events: events,
+        cuts: [{ at: 5, label: "first waiting" }, { at: 9, label: "second waiting" }, { at: 12, label: "second answered" }] }
+    },
+    question_after_approval: lambda {
+      id = "turn-qa"
+      question = { id: "q1", kind: "question", question: "Which one?", options: [{ label: "A" }, { label: "B" }] }
+      events = [started(id, "do it"), gen(1), text(1, "Checking first."),
+                call_started(1, "execute", 'command="echo ok"', "t1"), asked(approval("a1")), answered("a1", "Allow once"),
+                call_done(1, "execute", 'command="echo ok"', "t1", "[execute]\nok"),
+                call_started(1, "ask_user_question", 'question="Which one?"', "t2", 2), asked(question), answered("q1", "A"),
+                call_done(1, "ask_user_question", 'question="Which one?"', "t2", "A", 2), done(1),
+                gen(2), text(2, "Done."), done(2), completed(id, "Done.")]
+      { description: "A question after an approval in the same step: one lead-in, for the approval.", prompt: "do it", turn_id: id,
+        events: events, cuts: [{ at: 5, label: "approval waiting" }, { at: 9, label: "question waiting" }, { at: 12, label: "question answered" }] }
+    },
     step_limit: lambda {
       id = "turn-sl"
       pending = { id: "c1", kind: "continue", header: "Step limit", options: %w[Continue Stop], limit: 1,
                   question: "The turn ran out of iterations (1 steps) before it answered. Continue it?", allow_freeform: true,
                   context: { original_prompt: "do it" } }
       events = [started(id, "do it"), gen(1), text(1, "Step one."), call_started(1, "execute", 'command="true"', "t1"),
-                call_done(1, "execute", 'command="true"', "t1", "[execute]\n"), done(1), completed(id, "Step one."),
+                call_done(1, "execute", 'command="true"', "t1", "[execute]\n"), done(1),
+                # The turn's messages are the session's 1...4 (after its system message).
+                completed(id, "Step one.").merge(kept_from: 1, kept_to: 4),
                 { type: :continue_offered, context: { original_prompt: "do it" } }, asked(pending)]
       { description: "A turn that ran out of steps: the step-limit question after its end.", prompt: "do it", turn_id: id, events: events,
         messages: [user("do it", id), { role: "model", content: "Step one.", tool_calls: [{ id: "c1", name: "execute", arguments: '{"command":"true"}' }] },

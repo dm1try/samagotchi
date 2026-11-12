@@ -1432,7 +1432,7 @@ block_renderers:
   fence has no language in the page and nothing draws, though a hint in the bundle's prompt section still reaches
   the model: say so in the bundle's README.
 - **Where it draws:** the owner's page only, in answers and closed steps. Participants' pages, cards, question
-  replies, the asking slot, delegate reports and the doc viewer show the source, and so does the terminal.
+  replies, a lead-in bubble, delegate reports and the doc viewer show the source, and so does the terminal.
 - **The script's side:** the last file calls `chi.defineRenderer({ init, render })`. `init()` (optional, may be async)
   runs once; `render(source, theme)` returns the SVG as a string, or a promise of one. Throw to keep the block as
   source. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in

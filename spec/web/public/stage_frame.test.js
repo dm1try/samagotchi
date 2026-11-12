@@ -19,7 +19,7 @@ function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap
   };
   const el = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };
   const stage = el("turn-stage");
-  const parts = { scroller: el("ts-scroll"), status: el("ts-status"), cloud: el("ts-foot"), queuedSlot: el("ts-queued"), holdEl: el("ts-hold"), asking: el("ts-asking"), extras: el("ts-extras") };
+  const parts = { scroller: el("ts-scroll"), status: el("ts-status"), cloud: el("ts-foot"), queuedSlot: el("ts-queued"), holdEl: el("ts-hold"), extras: el("ts-extras") };
   stage.append(parts.status, parts.scroller, parts.cloud, parts.queuedSlot);
   parts.scroller.append(parts.extras, parts.holdEl);
   const dockEl = el("dock");
@@ -149,28 +149,26 @@ test("fitCap: a phone's card floats higher (its bottom on the home indicator's l
   assert.equal(cap(), "740px");
 });
 
-// A waiting card under a long asking text (happy-dom has no layout: the
-// offsets are stubbed): the asking text at 100, the card from 600 to 800,
-// a 400 px tall scroller. They don't fit together.
-function tallAsk() {
+// A waiting card low in the scroller (happy-dom has no layout: the offsets
+// are stubbed): the card from 600 to 800, a 400 px tall scroller.
+function lowCard() {
   const f = frameOf();
   const set = (el, props) => {
     for (const [k, v] of Object.entries(props)) Object.defineProperty(el, k, { configurable: true, get: () => v });
   };
-  set(f.asking, { offsetTop: 100, offsetHeight: 450 });
   set(f.extras, { offsetTop: 600, offsetHeight: 200 });
   set(f.scroller, { clientHeight: 400 });
   return f;
 }
 
-test("reveal: the card's end in sight when the asking text and the card don't fit together", () => {
-  const { frame, scroller, extras } = tallAsk();
+test("reveal: the card's end in sight", () => {
+  const { frame, scroller, extras } = lowCard();
   frame.reveal(extras, { now: true });
   assert.equal(scroller.scrollTop, 400, "the card-end rule: 800 - 400");
 });
 
 test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-end rule", async (t) => {
-  const { frame, stage, scroller, centerEl, extras } = tallAsk();
+  const { frame, stage, scroller, centerEl, extras } = lowCard();
   stage.classList.add("waiting");
   let center = 2000;
   Object.defineProperty(centerEl, "clientHeight", { configurable: true, get: () => center });
@@ -184,8 +182,8 @@ test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-e
   assert.equal(scroller.scrollTop, extras.offsetTop + extras.offsetHeight - scroller.clientHeight);
 });
 
-// A waiting card taller than the view: the asking text at 100, the card
-// from 200 to 1000 in the extras, a 400 px scroller.
+// A waiting card taller than the view: the card from 200 to 1000 in the
+// extras, a 400 px scroller.
 function tallCard() {
   let card = null;
   const f = frameOf({ waitingCard: () => card });
@@ -194,7 +192,6 @@ function tallCard() {
   };
   card = document.createElement("details");
   f.extras.appendChild(card);
-  set(f.asking, { offsetTop: 100, offsetHeight: 60 });
   set(f.extras, { offsetTop: 200, offsetHeight: 800 });
   set(card, { offsetTop: 200, offsetHeight: 800 });
   set(f.scroller, { clientHeight: 400 });
@@ -227,17 +224,11 @@ test("reveal: a waiting card taller than the view reads from its top, not from i
 });
 
 test("reveal: a waiting card that fits keeps the card-end rule", () => {
-  const { frame, scroller, extras, asking, card, set } = tallCard();
+  const { frame, scroller, extras, card, set } = tallCard();
   set(extras, { offsetTop: 600, offsetHeight: 200 });
   set(card, { offsetTop: 600, offsetHeight: 200 });
-  set(asking, { offsetTop: 100, offsetHeight: 450 });
   frame.reveal(extras, { now: true });
-  assert.equal(scroller.scrollTop, 400, "they don't fit together: the card's end");
-  // Both fit: the asking text's top.
-  set(asking, { offsetTop: 450, offsetHeight: 100 });
-  scroller.scrollTop = 0;
-  frame.reveal(extras, { now: true });
-  assert.equal(scroller.scrollTop, 400);
+  assert.equal(scroller.scrollTop, 400, "the card's end");
 });
 
 test("reveal: a slot without the waiting card (the cloud opening) keeps its own rule", () => {
@@ -294,7 +285,7 @@ test("a smaller cap keeps the field someone types in, not the card's top", async
 });
 
 test("reveal now (the keyboard's smaller cap) stops a running ease, which would take the scroll back to its old target", async () => {
-  const { frame, scroller, extras } = tallAsk();
+  const { frame, scroller, extras } = lowCard();
   frame.reveal(extras); // eases toward 400 (800 - a 400 px scroller)
   let height = 400;
   Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => height });

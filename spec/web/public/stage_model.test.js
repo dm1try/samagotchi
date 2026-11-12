@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipLabelText, FLASH_MARKS, flashOf, foldedRowText, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stageCollapsed, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  chipLabelText, FLASH_MARKS, flashOf, foldedRowText, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, phaseLabel, placeFor, stageCollapsed, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
@@ -328,37 +328,34 @@ const askingTurn = () => turnOf(
   started(1, 1, "ask_user_question", "Which one?"),
 );
 
-test("liveSlots: a blocking card shows the asking reply's whole text (newlines kept, trimmed); the phase waits", () => {
-  const slots = liveSlots(askingTurn(), { narration: "They disagree.", pending: true, blocked: true });
-  assert.equal(slots.asking, ASKED);
+// The reply that asked is the lead-in bubble's text now (stage_asking.js,
+// turn_model.js askingText/askingRefs); the live slots have no asking text.
+test("askingText: a blocking card's asking reply, whole (newlines kept, trimmed); the live slots just wait", () => {
+  assert.equal(model.askingText(askingTurn()), ASKED);
+  const slots = liveSlots(askingTurn(), { narration: "They disagree.", pending: true });
   assert.equal(slots.phase, "waiting for you");
-});
-
-test("liveSlots: no asking text for an action card (pending, not blocked), unblocked, or once the turn has ended", () => {
-  assert.equal(liveSlots(askingTurn(), { pending: true }).asking, "");
-  assert.equal(liveSlots(askingTurn()).asking, "");
+  assert.equal("asking" in slots, false);
   const ended = askingTurn();
   applyEvent(ended, { type: "turn_completed" });
-  assert.equal(liveSlots(ended, { pending: true, blocked: true, ended: "completed" }).asking, "");
+  assert.equal(model.askingText(ended), "", "none once the turn has ended");
 });
 
-test("liveSlots: a question's refs on the asking step come with the asking text, and only while it shows", () => {
+test("askingRefs: a question's refs on the asking step, only while its text asks", () => {
   const refs = [{ match: "dev.yml", kind: "issue", target: { id: "dev.yml" } }];
   const turn = askingTurn();
-  assert.equal(liveSlots(turn, { pending: true, blocked: true }).askingRefs, null);
+  assert.equal(model.askingRefs(turn), null);
   assert.ok(model.questionRefs(turn, refs));
-  assert.deepEqual(liveSlots(turn, { pending: true, blocked: true }).askingRefs, refs);
-  assert.equal(liveSlots(turn, { pending: true }).askingRefs, null);
+  assert.deepEqual(model.askingRefs(turn), refs);
   // An empty or a non-array list keeps what the step has.
   model.questionRefs(turn, []);
   model.questionRefs(turn, "x");
-  assert.deepEqual(liveSlots(turn, { pending: true, blocked: true }).askingRefs, refs);
+  assert.deepEqual(model.askingRefs(turn), refs);
   applyEvent(turn, { type: "turn_completed" });
-  assert.equal(liveSlots(turn, { pending: true, blocked: true, ended: "completed" }).askingRefs, null);
+  assert.equal(model.askingRefs(turn), null);
   assert.equal(model.questionRefs(turn, refs), null);
 });
 
-test("liveSlots: a thinking-only asking step shows no earlier step's text; the headline stays its thinking sentence", () => {
+test("askingText: a thinking-only asking step has no earlier step's text; the headline stays its thinking sentence", () => {
   const turn = turnOf(
     { type: "generation_chunk", iteration: 1, text: "Earlier narration." },
     { type: "generation_completed" },
@@ -368,22 +365,21 @@ test("liveSlots: a thinking-only asking step shows no earlier step's text; the h
     { type: "generation_completed" },
     started(2, 1, "ask_user_question"),
   );
-  const slots = liveSlots(turn, { thinking: "Ask them.", pending: true, blocked: true });
-  assert.equal(slots.asking, "");
+  assert.equal(model.askingText(turn), "");
+  const slots = liveSlots(turn, { thinking: "Ask them.", pending: true });
   assert.deepEqual(slots.headline, { text: "Ask them.", thinking: true });
   assert.equal(slots.phase, "waiting for you");
 });
 
-test("liveSlots: a hook's question with no running row in the last gen (asked before its call, or between steps) shows no text", () => {
+test("askingText: a hook's question with no running row in the last gen (asked before its call, or between steps) has none", () => {
   const before = turnOf({ type: "generation_chunk", iteration: 1, text: "Let me edit it." }, { type: "generation_completed" });
-  assert.equal(liveSlots(before, { pending: true, blocked: true }).asking, "");
+  assert.equal(model.askingText(before), "");
   const after = turnOf(
     { type: "generation_chunk", iteration: 1, text: "Reading." }, { type: "generation_completed" },
     started(1, 1, "read"), done(1, 1, "read"),
   );
-  const slots = liveSlots(after, { pending: true, blocked: true });
-  assert.equal(slots.asking, "");
-  assert.equal(slots.phase, "waiting for you");
+  assert.equal(model.askingText(after), "");
+  assert.equal(liveSlots(after, { pending: true }).phase, "waiting for you");
 });
 
 test("frameTarget: grow-only while holding a turn", () => {
@@ -470,4 +466,19 @@ test("MARKS and FLASH_MARKS: an ended phase's mark, a flash's mark", () => {
   assert.equal(MARKS["running a tool"], undefined);
   assert.equal(trailFlashText({ text: "careful" }, FLASH_MARKS.warn).text, "⚠ careful");
   assert.equal(FLASH_MARKS.steer, "↪");
+});
+
+test("foldedRowText: with check-in docked (running) the row says the running call unfolded too; folded, its title", () => {
+  const tool = { name: "read", title: "tmp/ci.log" };
+  assert.deepEqual(foldedRowText({ collapsed: false, question: "50 tool calls", tool, running: true }), { text: "read tmp/ci.log", title: "", question: false });
+  assert.deepEqual(foldedRowText({ collapsed: true, question: "50 tool calls", tool, running: true }), { text: "50 tool calls", title: "50 tool calls", question: true });
+  assert.deepEqual(foldedRowText({ collapsed: false, question: "", tool: null, running: true }), { text: "", title: "", question: false });
+});
+
+test("phaseLabel: writing while check-in is docked and the step's text streams; else the phase's own word", () => {
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing" }), "writing");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing the answer" }), "writing");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "running a tool" }), "waiting for you");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: false, streaming: "writing" }), "waiting for you");
+  assert.equal(phaseLabel({ phase: "thinking" }), "thinking");
 });

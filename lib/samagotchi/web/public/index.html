@@ -49,10 +49,10 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 /* A session that waits on the user (a question, an approval, a card with actions): the warning colour of its question card, also when active or hovered. */
 #topStrip .card.waiting,#allList .card.waiting{border-color:color-mix(in srgb,var(--warn) 75%,transparent)}
 @media(hover:hover){#topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
-@media (prefers-reduced-transparency:reduce){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:var(--bg-panel)}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
+@media (prefers-reduced-transparency:reduce){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
 body.no-glass .turn-stage,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
-body.no-glass .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
+body.no-glass .bubble.question{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 body.no-glass .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 button,input,textarea,select{font:inherit}
 button{background:var(--primary);border:0;color:var(--on-solid);padding:8px 12px;border-radius:8px;cursor:pointer;transition:filter .12s ease,background .12s ease}
@@ -426,24 +426,26 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
 .gen-text:empty{display:none}
 .gen .activity-body{margin-top:6px}
-/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. A step that closed with text (a line steered in after it, its answer gone from the block) is a row: its summary is the way to its text. */
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)){border:0;padding:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen>summary{display:none}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen{margin:0;padding:0;border:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
+/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. A step that closed with text (a line steered in after it, its answer gone from the block) is a row: its summary is the way to its text. So is a running turn's block opened in the
+   history (data-opened-turn, stage_asking.js openTurn): the step's text is in it while a card without a lead-in waits. */
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)){border:0;padding:0;background:transparent}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text))>summary,.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen>summary{display:none}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen{margin:0;padding:0;border:0;background:transparent}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
 @media(max-width:600px){.gen{--step-indent:8px}}
-/* A question card asks for input like the composer card, so it wears the same glass (the recipe above); only its warm tint is its own. */
-.bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg));padding:10px 12px}
+/* A question card asks for input like the composer card, so it wears the same glass (the recipe above), no amber: what
+   waits says so in the stage's status row ("waiting for you", its dot) and on a waiting lead-in bubble. */
+.bubble.question{border-left:3px solid var(--border-strong);padding:10px 12px}
 /* Collapsed (resolved) question: one line, like the thinking and activity blocks.
-   The left bar keeps --warn here; the existing answered/cancelled/denied classes
+   The left bar is neutral here; the existing answered/cancelled/denied classes
    (which apply whether open or not) recolour it once resolved. */
 .bubble.question:not([open]){padding:3px 10px;background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;align-self:flex-start;border-radius:6px;transition:background .12s ease}
-.bubble.question:not([open]){border-left-color:var(--warn)}
+.bubble.question:not([open]){border-left-color:var(--border-strong)}
 @media(hover:hover){.bubble.question:not([open]):hover{background:var(--bg-panel)}}
 .bubble.question:not([open])>summary{font-size:12px;font-weight:500}
 .bubble.question>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
 .bubble.question>summary::-webkit-details-marker{display:none}
-.bubble.question>summary::before{content:"▸ ";color:var(--warn)}
+.bubble.question>summary::before{content:"▸ ";color:var(--text-faint)}
 .bubble.question[open]>summary::before{content:"▾ "}
 /* An answered card keeps the reply that asked it (question_cards.js): muted under its "Q → A" line, two lines while
    closed (newlines as spaces); open, the summary's copy goes and the body's starts the card, whole, as written and
@@ -482,19 +484,13 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
   --md-strong-color:currentColor;--md-blockquote-color:currentColor;--md-code-color:currentColor;
   --md-pre-size:12px;--md-cell-size:12.5px
 }
-.ts-asking.md-compact{
-  --md-heading-size:14.5px;--md-heading-color:var(--text-bright);
-  --md-subheading-size:14px;--md-subheading-color:var(--text-2);
-  --md-strong-color:var(--text-bright);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
-  --md-pre-size:12.5px;--md-cell-size:13px
-}
 .gen-text.md-compact{
   --md-heading-size:14.5px;--md-heading-color:var(--text);
   --md-subheading-size:14px;--md-subheading-color:var(--text-2);
   --md-strong-color:var(--text);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
   --md-pre-size:12.5px;--md-cell-size:13px
 }
-.md-compact:is(.ts-asking,.question-said-full,.gen-text,.said-text){white-space:normal}
+.md-compact:is(.question-said-full,.gen-text,.said-text){white-space:normal}
 .md-compact :is(h1,h2,h3,h4,h5,h6){font-size:var(--md-heading-size);font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--md-heading-color)}
 .md-compact :is(h4,h5,h6){font-size:var(--md-subheading-size);color:var(--md-subheading-color)}
 .md-compact :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
@@ -544,7 +540,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .question-option{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-2);padding:6px 8px;border:1px solid var(--border);border-radius:8px;cursor:pointer}
 @media(hover:hover){.question-option:hover{background:var(--bg-hover)}}
 .question-option.selected{border-color:var(--ok);color:var(--text)}
-.question-option input{margin:0;accent-color:var(--warn)}
+.question-option input{margin:0;accent-color:var(--accent)}
 /* The model's recommended option (a label ending in "(Recommended)"): an accent row and a small tag. */
 .question-option.recommended{border-color:var(--accent-border);background:var(--accent-bg);color:var(--text)}
 .question-option.recommended.selected{border-color:var(--ok)}
@@ -561,7 +557,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.question.cancelled .question-result{color:var(--text-muted)}
 .question-submit{align-self:flex-end;font-size:13px}
 .question-dismiss{font-size:13px;margin-left:8px}
-.bubble.question.approval{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg))}
+.bubble.question.approval{border-left-color:var(--border-strong)}
 .bubble.question.approval.answered:not(.denied){border-left-color:var(--ok)}
 .bubble.question.approval:not([open]){background:transparent}
 @media(hover:hover){.bubble.question.approval:not([open]):hover{background:var(--bg-panel)}}
@@ -578,9 +574,9 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .question-relayed.hidden{display:none}
 .question-relayed a{color:var(--text);font-weight:600}
 .approval-tool{font-weight:700;color:var(--text);margin-bottom:4px}
-.approval-what{margin:0 0 6px;padding:8px 10px;background:var(--bg-inset);border:1px solid var(--warn-border);border-radius:6px;white-space:pre-wrap;word-break:break-all;color:var(--warn-bright);font-size:12.5px}
+/* What it approves, neutral like the card (no amber on question cards): the command in the code's own box. */
+.approval-what{margin:0 0 6px;padding:8px 10px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;word-break:break-all;color:var(--text-2);font-size:12.5px}
 .approval-where,.approval-why{font-size:12px;color:var(--text-muted);overflow-wrap:anywhere}
-.approval-why{color:var(--warn-text)}
 .approval-label{color:var(--text-faint)}
 /* A diff (diff_view.js): the approval card's dry run and a tool row's change. */
 .approval-diff{margin:0 0 6px}
@@ -844,7 +840,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage[hidden]{display:none}
 .turn-stage.ended{border-left-color:var(--border-strong)}
 .turn-stage[data-phase="answered"]{border-left-color:var(--ok)}
-.turn-stage[data-phase="canceled"],.turn-stage[data-phase="waiting for you"]{border-left-color:var(--warn)}
+.turn-stage[data-phase="canceled"]{border-left-color:var(--warn)}
+/* A card waits: the box has no amber edge (the status row's word and dot say it). */
+.turn-stage[data-phase="waiting for you"]{border-left-color:var(--border-strong)}
 .turn-stage[data-phase="failed"]{border-left-color:var(--danger)}
 .turn-stage[data-phase="no answer"]{border-left-color:var(--warn)}
 .turn-stage.enter{animation:ts-rise .35s cubic-bezier(.3,.7,.2,1)}
@@ -903,26 +901,36 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
 .ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
 .ts-headline.fresh{animation:ts-fade .3s ease}
-/* While a question or approval waits: the whole reply that asked it, in the headline's place; raw as a closed step's
-   text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
-   its room, read from the top. */
-.ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
-/* The asking form (stage_view.js, a turn opened in the history while the model's own question waits): its reply is a
-   bubble in the conversation (.bubble.said), the stage shows the status row and the card alone; the prompt, the live
+/* The asking form (stage_view.js, a card docked: its turn opened in the history, a reply before chi's own question or
+   approval a bubble there, .bubble.said): the stage shows the status row and the card alone; the prompt, the live
    slots (the working set's rail with them) and the steps chip come back with the working form after the answer. */
 .turn-stage.asking-form :is(.ts-prompt,.ts-live,.ts-foot){display:none}
-/* It is one box (the mock-up's option A): the stage's frame takes the card's look (the card's tint, no glass; its amber edge
-   is the waiting phase's), the status row is the box's first line, and the card inside drops its own box, so there is no
-   box in a box and no second amber edge. */
-.turn-stage.asking-form{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:12px}
+/* It is one box (the mock-up's option A): the stage's frame takes the card's look (opaque, no glass, no amber: the status
+   row's "waiting for you" and its dot say it waits), the status row is the box's first line, and the card inside drops
+   its own box, so there is no box in a box. */
+.turn-stage.asking-form{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:12px}
 .turn-stage.asking-form .ts-scroll{padding-top:6px}
-.turn-stage.asking-form .ts-extras>.bubble.question{border:0;border-radius:0;background:transparent;padding:0}
+.turn-stage.asking-form .ts-extras>:is(.bubble.question,.bubble.plugin-card:not(.warn)){border:0;border-radius:0;background:transparent;padding:0}
 /* The asking form folded (stage_view.js, its fold is that question's only): the status row says "waiting for you" and the
    question (the mini tool's slot, in the UI font, right after the phase), then the step and the timing. On a phone those
    two leave the row and the question takes a second line under it. */
 .ts-mini.ts-mini-question{order:1;font-family:inherit;font-size:12.5px;color:var(--text)}
+/* Two cards docked (stage_view.js drawDocked): one at a time, the one that stops chi in front; the pager after the phase
+   says where it is ("‹ 1 of 2 ›"), the other waits behind it. */
+.turn-stage .ts-extras>.ts-behind{display:none}
+.ts-pager{flex:none;display:inline-flex;align-items:center;gap:2px;color:var(--text-2)}
+.ts-pager[hidden]{display:none}
+.ts-page{flex:none;min-width:22px;height:22px;padding:0 4px;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px;line-height:1}
+.ts-page:disabled{opacity:.35}
+@media(hover:hover){.ts-page:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}}
+.ts-page-label{font-variant-numeric:tabular-nums}
+/* check-in docked while nothing blocks (stage_view.js .asks-live): the row says the running call right after the phase,
+   then the turn's time; the step count is the history's steps line. The live step's text streams under the card. */
+.turn-stage.asks-live .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
+.turn-stage.asks-live .ts-mini{order:1}
+.turn-stage.asks-live .ts-step{display:none}
+.ts-asks-text{padding-top:8px;border-top:1px dashed var(--border-strong);white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--text)}
 .turn-stage.asking-form.collapsed .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
-.turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
 .ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s steps(16) infinite}
@@ -982,7 +990,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 :is(.ts-extras>.bubble.user,.ts-prompt:not(.full)>.bubble.user)>.user-message.markdown :is(hr,img,.copy-btn){display:none}
 /* Inside the dock's own blur a second backdrop-filter sees nothing: the cards are opaque here (as #commandList is). */
 .turn-stage .bubble.question,.turn-stage .bubble.plugin-card{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
-.turn-stage .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}
+.turn-stage .bubble.question{background:var(--bg-panel)}
 .turn-stage .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}
 .turn-stage .bubble.plugin-card.warn{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}
 .ts-answer{display:flex;flex-direction:column;gap:8px}
