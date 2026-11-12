@@ -55,13 +55,11 @@ test("each kind: arrive, count, front, settle; blocking over asks; a warn waits 
   assert.equal(w.front(), null);
 });
 
-test("docked and the lead-in: as arrive says; a second arrival keeps its place in the order", () => {
+test("docked: as arrive says; a second arrival keeps its place in the order", () => {
   const w = createStageWaiting();
   w.arrive("c:1", { kind: "asks" });
-  w.arrive("q:7", { kind: "question", docked: true, leadIn: 7 });
+  w.arrive("q:7", { kind: "question", docked: true });
   assert.deepEqual(w.docked(), ["q:7"]);
-  assert.equal(w.get("q:7").leadIn, "7");
-  assert.equal(w.get("c:1").leadIn, null);
   w.arrive("c:1", { kind: "asks" });
   // The stage's order: the blocking card first.
   assert.deepEqual(w.list().map((e) => e.key), ["q:7", "c:1"]);
@@ -146,22 +144,25 @@ test("place feeds it: a question docks with its lead-in, an approval with its ow
   try {
     asks(view, "Both matter. Which first?");
     append(questionCard("q1"));
-    assert.deepEqual(view.waiting.list().map(({ key, kind, docked, leadIn }) => ({ key, kind, docked, leadIn })),
-      [{ key: "q:q1", kind: "question", docked: true, leadIn: "q1" }]);
+    assert.deepEqual(view.waiting.list().map(({ key, kind, docked }) => ({ key, kind, docked })),
+      [{ key: "q:q1", kind: "question", docked: true }]);
+    assert.equal(document.querySelector("#history .bubble.said").dataset.questionId, "q1", "its lead-in");
     assert.ok(view.root.classList.contains("asking-form"));
     view.reset();
     assert.deepEqual(view.waiting.list(), []);
     const again = holdingPage();
     asks(again.view, "Running it.");
     again.append(questionCard("a1", "approval"));
-    assert.deepEqual(again.view.waiting.list().map(({ kind, docked, leadIn, approval }) => ({ kind, docked, leadIn, approval })),
-      [{ kind: "approval", docked: true, leadIn: "a1", approval: true }]);
+    assert.deepEqual(again.view.waiting.list().map(({ kind, docked, approval }) => ({ kind, docked, approval })),
+      [{ kind: "approval", docked: true, approval: true }]);
+    assert.equal(document.querySelector("#history .bubble.said").dataset.questionId, "a1", "its lead-in");
     assert.equal(again.view.waiting.front(), "q:a1");
     again.view.reset();
     const hook = holdingPage();
     asks(hook.view, "Running it.");
     hook.append(questionCard("h1", "hook"));
-    assert.deepEqual(hook.view.waiting.list().map(({ kind, docked, leadIn }) => ({ kind, docked, leadIn })), [{ kind: "hook", docked: true, leadIn: null }]);
+    assert.deepEqual(hook.view.waiting.list().map(({ kind, docked }) => ({ kind, docked })), [{ kind: "hook", docked: true }]);
+    assert.ok(document.querySelector("#history .bubble.said") === null, "no lead-in");
     hook.view.reset();
   } finally {
     view.reset();

@@ -1577,7 +1577,7 @@ test("a card drawn again with its question id in one turn keeps its fold and its
     assert.ok(historyEl.querySelector(".bubble.said").classList.contains("pending"));
     assert.equal(again.querySelectorAll(".question-reason-link").length, 1);
     assert.deepEqual(view.waiting.docked(), ["q:q1"]);
-    assert.equal(view.waiting.list()[0].leadIn, "q1");
+    assert.equal(historyEl.querySelector(".bubble.said").dataset.questionId, "q1");
   } finally {
     view.reset();
   }
