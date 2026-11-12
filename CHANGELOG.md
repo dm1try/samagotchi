@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.169.0] - 2026-11-12
+
 ### Changed
 
 - chi web: every card that waits for you docks alone above the composer, and the turn so far (your message, the steps
@@ -39,6 +41,8 @@ and commands may change between minor versions. How releases are made:
 - Guardrails: approvals in an unversioned `approvals.json` object are read instead of set aside.
 - chi web: a card waiting in the stage (a question, an approval) no longer closes to its title line in an empty box
   when its title is clicked; its own ▾ is gone while it waits.
+
+Update with `chi update`, then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.168.0] - 2026-11-11
 
@@ -6271,7 +6275,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.168.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.169.0...HEAD
+[0.169.0]: https://github.com/dm1try/samagotchi/compare/v0.168.0...v0.169.0
 [0.168.0]: https://github.com/dm1try/samagotchi/compare/v0.167.0...v0.168.0
 [0.167.0]: https://github.com/dm1try/samagotchi/compare/v0.166.0...v0.167.0
 [0.166.0]: https://github.com/dm1try/samagotchi/compare/v0.165.0...v0.166.0

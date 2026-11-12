@@ -1,0 +1,545 @@
+{
+  "body": {
+    "session_state_snapshot": {
+      "context_status": null,
+      "event_id": "12-0c0ffee0",
+      "event_seq": 12,
+      "last_prompt": "compatibility corpus",
+      "llm_context": {
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_source": "config",
+        "budget_tokens": null,
+        "budget_where": "llm_context.budget_tokens",
+        "own": null,
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy"
+      },
+      "message_count": 5,
+      "metrics": {
+        "active_tools": [],
+        "active_turn": null,
+        "cancellations": 0,
+        "capped": 0,
+        "context": {
+          "at": null,
+          "source": null,
+          "used_tokens": null,
+          "window_source": null,
+          "window_tokens": null
+        },
+        "cuts": 0,
+        "gen_latency_ms": 1000,
+        "iterations_total": 0,
+        "last_activity_at": "2026-01-01T00:00:00Z",
+        "memory_index": {
+          "project": {
+            "lines": 1,
+            "tokens": 6
+          },
+          "system": {
+            "lines": 7,
+            "tokens": 131
+          }
+        },
+        "model_segments": [],
+        "profile": null,
+        "profile_source": null,
+        "retries": 0,
+        "served_model": null,
+        "served_model_for": null,
+        "session_duration_ms": 1000,
+        "session_id": "compat-wire",
+        "started_at": "2026-01-01T00:00:00Z",
+        "thinking_dropped": 0,
+        "tokens": {
+          "avg_decode_tps": null,
+          "cache_write_sum": 0,
+          "cached_sum": 0,
+          "completion_sum": 6,
+          "cost_estimate_sum": 0,
+          "cost_sum": 0,
+          "decode_ms_sum": 1000,
+          "decode_tokens_sum": 0,
+          "last_decode_tps": null,
+          "last_prefill_tps": null,
+          "prompt_sum": 0,
+          "reasoning_sum": 0,
+          "reprefill_sum": 0,
+          "source": "estimate",
+          "tps_source": null
+        },
+        "tool_calls_by_tool": {
+          "read": 1
+        },
+        "tool_calls_total": 1,
+        "tool_errors": 0,
+        "tool_records": [
+          {
+            "call_index": 1,
+            "completed_at": "2026-01-01T00:00:00Z",
+            "duration_ms": 1000,
+            "id": "compat-turn:1:1",
+            "iteration": 1,
+            "started_at": "2026-01-01T00:00:00Z",
+            "status": "ok",
+            "tool": "read",
+            "turn_id": "compat-turn"
+          }
+        ],
+        "turn_records": [
+          {
+            "cached_tokens_sum": 0,
+            "capped": 0,
+            "completed_at": "2026-01-01T00:00:00Z",
+            "completion_tokens": 6,
+            "context_used_tokens": null,
+            "continue": false,
+            "cuts": 0,
+            "decode_ms": 1000,
+            "decode_tokens": 0,
+            "decode_tps": null,
+            "duration_ms": 1000,
+            "gen_ms": 1000,
+            "generations": 2,
+            "id": "compat-turn",
+            "iterations": 0,
+            "model": null,
+            "model_ref": "compat:model",
+            "prefill_tps": null,
+            "prompt_tokens": null,
+            "prompt_tokens_max": null,
+            "prompt_tokens_sum": 0,
+            "reasoning_tokens": 0,
+            "resumed": false,
+            "retries": 0,
+            "started_at": "2026-01-01T00:00:00Z",
+            "status": "completed",
+            "token_source": "estimate",
+            "tool_calls": 1,
+            "tool_errors": 0,
+            "tps_source": null
+          }
+        ],
+        "turns": 1
+      },
+      "model_name": "compat:model",
+      "muted_memory_names": [],
+      "parent_id": null,
+      "participants": [],
+      "pending_question": null,
+      "preloaded_memory_names": [],
+      "prompt_notes": [],
+      "reasoning_history": null,
+      "recap_enabled": false,
+      "recap_inactivity_seconds": null,
+      "recap_min_user_turns": null,
+      "served_expected_by": null,
+      "served_model": null,
+      "served_model_for": null,
+      "status": "idle",
+      "thinking": {
+        "level": "default",
+        "own": null,
+        "source": null
+      },
+      "title": null,
+      "toolkit": null,
+      "used_memory_names": []
+    },
+    "snapshot": {
+      "cards": [
+        {
+          "calls": 1,
+          "current": false,
+          "hook": "compat",
+          "in_turn": true,
+          "iteration": 1,
+          "of_turn": "compat-turn",
+          "opening_id": "compat-turn",
+          "text": "compatibility corpus",
+          "turns_since": 0,
+          "type": "hook_notice"
+        }
+      ],
+      "chi_version": "0.169.0",
+      "commands": [
+        {
+          "anytime": false,
+          "description": "discard the interrupted turn and restore the pre-turn state",
+          "local": false,
+          "mid_turn": "refuse",
+          "name": "!rollback",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "run a shell command; its output goes into the conversation",
+          "local": false,
+          "mid_turn": "queue",
+          "name": "!",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "answer the continue offer (yes, no or no, <reason>)",
+          "local": false,
+          "mid_turn": "refuse",
+          "name": "/continue",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "list the hosts' models (/models <text> filters)",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/models",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "list guardrails, revoke an approval or flag a System 1 auto-allow",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/guardrails",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "list the attached context and its candidates (chi context); attach NAME, decline NAME: a candidate",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/context",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or switch the model",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/model",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or set this session's LLM context strategy, apply rule and budget",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/llm-context",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or set this session's thinking level (off|low|medium|high|default)",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/thinking",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or set which of its reasoning this session's model gets back (drop|turn|all|default)",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/reasoning-history",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or change the tools this session declares (NAME, add TOOL, remove TOOL)",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/toolkit",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "list the working set; drop, undrop, pin or unpin an item (drop KEY…)",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/working-set",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show or set what a parent agent may answer here (hard|standard|soft|default; never looser than config.yml's)",
+          "local": false,
+          "mid_turn": "depends",
+          "name": "/parent-answers",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "show or set this session's title (--clear: back to its first message)",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/title",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "show or edit what this session is to achieve (set A | B, add TEXT, edit ID TEXT, done ID…, drop ID…, undo ID…, check ID, track)",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/objectives",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "list the commands, the bundles' too",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/help",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show the session's stats",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/stats",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": true,
+          "description": "show the session's recap (in a terminal); on|off|default sets this session's own",
+          "local": false,
+          "mid_turn": "anytime",
+          "name": "/recap",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "show the session's recap",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/recap",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "leave (--delete also deletes the session)",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/exit",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "leave, like /exit",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/quit",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "leave and archive the session: hidden from the lists, kept for good",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/archive",
+          "source": "core",
+          "uis": null
+        },
+        {
+          "anytime": false,
+          "description": "leave and keep the worker running",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/detach",
+          "source": "core",
+          "uis": [
+            "attached"
+          ]
+        },
+        {
+          "anytime": false,
+          "description": "cut the running generation and go in now (/cut TEXT)",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/cut",
+          "source": "core",
+          "uis": [
+            "attached",
+            "web"
+          ]
+        },
+        {
+          "anytime": false,
+          "description": "run as the next turn after this one (/queue TEXT)",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/queue",
+          "source": "core",
+          "uis": [
+            "attached"
+          ]
+        },
+        {
+          "anytime": false,
+          "description": "remove your newest queued message before it runs",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/unqueue",
+          "source": "core",
+          "uis": [
+            "attached"
+          ]
+        },
+        {
+          "anytime": false,
+          "description": "invite someone to review this session (/share NAME [--agent] [--expires 3d] [--cap 2])",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/share",
+          "source": "core",
+          "uis": [
+            "attached"
+          ]
+        },
+        {
+          "anytime": false,
+          "description": "list this session's participants (revoke [P], cap P DOLLARS)",
+          "local": true,
+          "mid_turn": "refuse",
+          "name": "/participants",
+          "source": "core",
+          "uis": [
+            "attached"
+          ]
+        }
+      ],
+      "continue_offer": null,
+      "current_turn": null,
+      "event_id": "12-0c0ffee0",
+      "event_seq": 12,
+      "guardrail_warning": null,
+      "init_tasks": [],
+      "last_turn_drawing": {
+        "drawing": {
+          "at": "2026-01-01T00:00:00Z",
+          "continue": false,
+          "origin": {
+            "client_id": "web:compat"
+          },
+          "parts": [
+            {
+              "iteration": 1,
+              "kind": "generation"
+            },
+            {
+              "iteration": 1,
+              "kind": "text",
+              "text": "Reading."
+            },
+            {
+              "action": "reading file",
+              "call_index": 1,
+              "duration_ms": 1000,
+              "iteration": 1,
+              "kind": "tool",
+              "output": "[read]\ncompat",
+              "output_truncated": false,
+              "params": "path=\"README.md\"",
+              "status": "ok",
+              "title": "README.md",
+              "tool": "read",
+              "tool_id": "compat-t1"
+            },
+            {
+              "event": {
+                "hook": "compat",
+                "text": "compatibility corpus",
+                "type": "hook_notice"
+              },
+              "kind": "notice"
+            },
+            {
+              "iteration": 2,
+              "kind": "generation"
+            },
+            {
+              "iteration": 2,
+              "kind": "text",
+              "text": "It says compat."
+            }
+          ],
+          "prompt": "compatibility corpus",
+          "turn_id": "compat-turn"
+        },
+        "end": {
+          "turn_id": "compat-turn",
+          "type": "turn_completed"
+        }
+      },
+      "messages": [
+        {
+          "content": "<system prompt>",
+          "role": "system"
+        },
+        {
+          "at": "2026-01-01T00:00:00Z",
+          "content": "compatibility corpus",
+          "role": "user",
+          "turn_id": "compat-turn"
+        },
+        {
+          "content": "Reading.",
+          "role": "model",
+          "tool_calls": [
+            {
+              "arguments": "{\"path\":\"README.md\"}",
+              "id": "c1",
+              "name": "read"
+            }
+          ]
+        },
+        {
+          "content": "[read]\ncompat",
+          "role": "tool_response",
+          "tool_call_id": "c1",
+          "tool_ids": [
+            "compat-t1"
+          ]
+        },
+        {
+          "content": "It says compat.",
+          "role": "model"
+        }
+      ],
+      "objectives": null,
+      "pending_question": null,
+      "plugin_warning": null,
+      "queued": [],
+      "queued_commands": [],
+      "recap": null,
+      "saved_recap": null,
+      "working_set": null
+    }
+  },
+  "route": "snapshot",
+  "status": 200
+}

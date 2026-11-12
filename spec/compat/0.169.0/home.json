@@ -1,0 +1,9 @@
+{
+  "ruby": "/compat-fixture/ruby/bin/ruby",
+  "gem_home": "/compat-fixture/gems",
+  "gem_path": "/compat-fixture/gems",
+  "mise": "/compat-fixture/bin/mise",
+  "set_at": "2026-01-01T00:00:00Z",
+  "set_by_version": "0.169.0",
+  "version": 1
+}
