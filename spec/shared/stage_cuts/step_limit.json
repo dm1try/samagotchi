@@ -56,7 +56,9 @@
       "duration_ms": 2400,
       "turn_summary": {
         "output": "Step one."
-      }
+      },
+      "kept_from": 1,
+      "kept_to": 4
     },
     {
       "type": "continue_offered",
@@ -109,7 +111,9 @@
               {
                 "type": "turn_started",
                 "prompt": "do it",
-                "origin": null,
+                "origin": {
+                  "client_id": "web:me"
+                },
                 "continue": false,
                 "turn_id": "turn-sl"
               },
@@ -132,16 +136,7 @@
                 "call_index": 1,
                 "tool": "execute",
                 "tool_id": "t1",
-                "params": "command=\"true\"",
-                "title": "true",
-                "view": {
-                  "command": "true",
-                  "steps": [
-                    {
-                      "text": "true"
-                    }
-                  ]
-                }
+                "params": "command=\"true\""
               },
               {
                 "type": "tool_call_completed",
@@ -155,22 +150,15 @@
                   "tool": "execute",
                   "status": "ok",
                   "params": "command=\"true\"",
-                  "title": "true",
                   "action": "running command"
                 },
-                "view": {
-                  "command": "true",
-                  "steps": [
-                    {
-                      "text": "true"
-                    }
-                  ]
-                }
+                "duration_ms": 120
               }
             ],
             "end": {
               "type": "turn_completed",
-              "turn_id": "turn-sl"
+              "turn_id": "turn-sl",
+              "duration_ms": 2400
             }
           }
         },

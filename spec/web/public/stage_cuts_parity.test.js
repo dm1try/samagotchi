@@ -89,6 +89,8 @@ async function livedTo(events) {
   }
   page.turnDom.flush();
   await settle();
+  // A turn handed off meanwhile has landed (its fold's end).
+  page.turnDom.settleFold();
   return page;
 }
 
@@ -117,15 +119,10 @@ async function reloadedTo(show) {
   return page;
 }
 
-// Today's live-vs-reload differences at a cut, "<scenario>/<cut>": the
-// stageShape fields (and "history") that differ.
-// - The step limit: live, its card waits in the stage's tail with the ended
-//   turn; after a reload the turn and the card are in the history and the
-//   stage is gone, and the status row's word with it (the
-//   interaction-in-conversation plan's F4 flips it).
-const EXPECTED = {
-  "step_limit/waiting": ["cards", "front", "shown", "prompt", "block", "waits", "phaseWord", "history"],
-};
+// The live-vs-reload differences still known at a cut, "<scenario>/<cut>":
+// the stageShape fields (and "history") that differ. None today: a build
+// that brings one back lists it here with its reason.
+const EXPECTED = {};
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));
 

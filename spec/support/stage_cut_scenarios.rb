@@ -138,7 +138,9 @@ module StageCutScenarios
                   question: "The turn ran out of iterations (1 steps) before it answered. Continue it?", allow_freeform: true,
                   context: { original_prompt: "do it" } }
       events = [started(id, "do it"), gen(1), text(1, "Step one."), call_started(1, "execute", 'command="true"', "t1"),
-                call_done(1, "execute", 'command="true"', "t1", "[execute]\n"), done(1), completed(id, "Step one."),
+                call_done(1, "execute", 'command="true"', "t1", "[execute]\n"), done(1),
+                # The turn's messages are the session's 1...4 (after its system message).
+                completed(id, "Step one.").merge(kept_from: 1, kept_to: 4),
                 { type: :continue_offered, context: { original_prompt: "do it" } }, asked(pending)]
       { description: "A turn that ran out of steps: the step-limit question after its end.", prompt: "do it", turn_id: id, events: events,
         messages: [user("do it", id), { role: "model", content: "Step one.", tool_calls: [{ id: "c1", name: "execute", arguments: '{"command":"true"}' }] },

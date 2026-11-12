@@ -475,8 +475,18 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   script("step_limit");
   turnLimit(3);
   await send(page, "Do a long task");
-  const card = page.locator(`${HC} .bubble.question.step-limit`);
+  // Live as after a reload: the ended turn in the conversation at once, the
+  // card right under it, no box; in view for a reader at the end.
+  const card = page.locator("#history > .bubble.question.step-limit");
   await expect(card.locator(".question-text")).toContainText("The turn ran out of iterations (3 steps) before it answered. Continue it?");
+  await expect(page.locator("#turnStage")).toBeHidden();
+  await expect(card.locator("xpath=preceding-sibling::*[1]")).toHaveClass(/turn-timing/);
+  await expect(page.locator("#history > .bubble.user")).toHaveCount(1);
+  await page.waitForFunction(() => !document.querySelector("#history[data-following]"));
+  const view = await page.locator("#history").boundingBox();
+  const box = await card.locator(".question-text").boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(view.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height);
   await expect(card.locator(".question-choice")).toHaveText(["Continue", "Stop"]);
   await expect(card.locator(".question-dismiss")).toHaveCount(0);
   // The old continue card isn't drawn beside it.
@@ -497,7 +507,7 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   // below it and above the next turn, live and after a reload (its stamp is
   // the reason line's opening_id).
   await send(page, "Do another long task");
-  const again = page.locator(`${HC} .bubble.question.step-limit:not(.answered)`);
+  const again = page.locator("#history > .bubble.question.step-limit:not(.answered)");
   await again.locator(".continue-reason").fill("too slow");
   await again.locator(".continue-no").click();
   const reason = page.locator("#history > .bubble.user", { hasText: "I chose not to continue the turn that ran out of steps because: too slow" });

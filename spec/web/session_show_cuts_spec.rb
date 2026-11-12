@@ -46,10 +46,14 @@ RSpec.describe Samagotchi::Web::App, "the show at a turn's cuts (stage cuts)" do
   def wire(value) = JSON.parse(JSON.generate(value))
 
   # The worker's snapshot after +events+ (Bridge#snapshot's keys the show
-  # reads): the turn in progress, the cards, a question between turns.
+  # reads): the turn in progress, the cards, a question between turns. A
+  # turn that ended is drawn as the Bridge draws it live (TurnDrawings, in
+  # the session's dir), as a worker's finished turn reloads.
   def snapshot(events, messages)
+    drawings = Samagotchi::Bridge::TurnDrawings.new(path: File.join(state_dir, "s1", Samagotchi::Bridge::TurnDrawings::FILE),
+                                                    messages: -> { messages })
     # A fixed clock: a running call's elapsed_ms is 0 on any machine.
-    accumulator = Samagotchi::Bridge::TurnAccumulator.new(clock: -> { 0.0 })
+    accumulator = Samagotchi::Bridge::TurnAccumulator.new(clock: -> { 0.0 }, on_turn_end: drawings.method(:append))
     cards = Samagotchi::Bridge::CardStore.new
     open = nil
     events.each do |event|

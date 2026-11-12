@@ -1745,6 +1745,59 @@ test("two cards: check-in folded, then an approval comes: the box opens on the a
   }
 });
 
+test("the step limit: its card hands the ended turn off at once, the card under it, as a reload draws it; the end read and the pointer don't hold it", async () => {
+  const handed = [];
+  const { view, historyEl, append } = page({ onHandedOff: (x) => handed.push(x) });
+  try {
+    const prompt = row("bubble user");
+    view.turnStarted({ promptBubble: prompt });
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Step one." });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: "true", title: "true" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "execute", status: "ok", output: "x" });
+    // Ended, its end read still pending (no answerReady), the pointer over the stage.
+    view.turnEnded({ kind: "completed" });
+    view.root.dispatchEvent(new window.Event("pointerenter"));
+    const end = row("turn-timing", "1 step · 9s");
+    append(end);
+    assert.ok(end.parentElement === $(view, ".ts-tail"));
+    const card = questionCard({ qid: "c1", kind: "continue", cls: "bubble question step-limit" });
+    append(card);
+    assert.ok(view.root.classList.contains("leaving"), "the fold slides at once");
+    view.settleFold();
+    assert.ok(view.root.hidden);
+    assert.ok(historyEl.firstElementChild === prompt);
+    assert.ok(historyEl.lastElementChild === card, "the card right under its turn");
+    assert.ok(card.previousElementSibling === end);
+    assert.equal(handed.length, 1);
+    assert.ok(handed[0].pieces.includes(card));
+    assert.equal(handed[0].immediate, false);
+    // What comes next is the history's.
+    const note = row("bubble note");
+    append(note);
+    assert.ok(historyEl.lastElementChild === note);
+  } finally {
+    view.reset();
+  }
+});
+
+test("the step limit's old continue card hands off too; replaced by the step-limit question while it slides, it stays gone", async () => {
+  const { view, historyEl, append } = page();
+  try {
+    endedTurn(view);
+    const old = row("bubble continue");
+    append(old);
+    assert.ok(view.root.classList.contains("leaving"));
+    old.remove();
+    const card = questionCard({ qid: "c1", kind: "continue", cls: "bubble question step-limit" });
+    append(card);
+    assert.equal(historyEl.querySelectorAll(".bubble.continue").length, 0);
+    assert.ok(historyEl.lastElementChild === card);
+  } finally {
+    view.reset();
+  }
+});
+
 test("a hook's question on a lone step with text: the block in the history keeps its chrome and holds the step's text; the hand-off draws it as a reload", async () => {
   const { view, historyEl, append } = openedPage();
   try {
