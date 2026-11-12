@@ -50,7 +50,7 @@ export function livePage({ questions = false } = {}) {
   const questionCards = questions
     ? createQuestionCards({
       sessionId: () => "s1", clientId: "web:me", place: (card) => appendToHistory(card), isNearBottom: () => false,
-      scrollToEnd() {}, removeHintIfEmpty() {}, askingText: () => turnDom.askingText(),
+      scrollToEnd() {}, removeHintIfEmpty() {}, askingText: (pq) => turnDom.askingText(pq),
       api: { sendAnswer: async () => ({}), dismissQuestion: async () => ({}), sendCommand: async () => ({}) },
       onSettled: (key) => turnDom.settleWaiting?.(key),
     })

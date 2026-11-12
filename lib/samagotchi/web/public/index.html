@@ -426,11 +426,12 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
 .gen-text:empty{display:none}
 .gen .activity-body{margin-top:6px}
-/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. A step that closed with text (a line steered in after it, its answer gone from the block) is a row: its summary is the way to its text. */
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)){border:0;padding:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen>summary{display:none}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen{margin:0;padding:0;border:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
+/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. A step that closed with text (a line steered in after it, its answer gone from the block) is a row: its summary is the way to its text. So is a running turn's block opened in the
+   history (data-opened-turn, stage_asking.js openTurn): the step's text is in it while a card without a lead-in waits. */
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)){border:0;padding:0;background:transparent}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text))>summary,.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen>summary{display:none}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen{margin:0;padding:0;border:0;background:transparent}
+.turn-work:not([data-opened-turn]):not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
 @media(max-width:600px){.gen{--step-indent:8px}}
 /* A question card asks for input like the composer card, so it wears the same glass (the recipe above); only its warm tint is its own. */
 .bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg));padding:10px 12px}
@@ -482,19 +483,13 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
   --md-strong-color:currentColor;--md-blockquote-color:currentColor;--md-code-color:currentColor;
   --md-pre-size:12px;--md-cell-size:12.5px
 }
-.ts-asking.md-compact{
-  --md-heading-size:14.5px;--md-heading-color:var(--text-bright);
-  --md-subheading-size:14px;--md-subheading-color:var(--text-2);
-  --md-strong-color:var(--text-bright);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
-  --md-pre-size:12.5px;--md-cell-size:13px
-}
 .gen-text.md-compact{
   --md-heading-size:14.5px;--md-heading-color:var(--text);
   --md-subheading-size:14px;--md-subheading-color:var(--text-2);
   --md-strong-color:var(--text);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
   --md-pre-size:12.5px;--md-cell-size:13px
 }
-.md-compact:is(.ts-asking,.question-said-full,.gen-text,.said-text){white-space:normal}
+.md-compact:is(.question-said-full,.gen-text,.said-text){white-space:normal}
 .md-compact :is(h1,h2,h3,h4,h5,h6){font-size:var(--md-heading-size);font-weight:600;line-height:1.4;margin:8px 0 2px;color:var(--md-heading-color)}
 .md-compact :is(h4,h5,h6){font-size:var(--md-subheading-size);color:var(--md-subheading-color)}
 .md-compact :is(p,ul,ol,blockquote,table,pre){margin:0 0 6px}
@@ -903,12 +898,8 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
 .ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
 .ts-headline.fresh{animation:ts-fade .3s ease}
-/* While a question or approval waits: the whole reply that asked it, in the headline's place; raw as a closed step's
-   text, then its markdown when web.markdown is on (.markdown, stage_slots.js drawAsking); capped so the card keeps
-   its room, read from the top. */
-.ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
-/* The asking form (stage_view.js, a turn opened in the history while the model's own question waits): its reply is a
-   bubble in the conversation (.bubble.said), the stage shows the status row and the card alone; the prompt, the live
+/* The asking form (stage_view.js, a card docked: its turn opened in the history, a reply before chi's own question or
+   approval a bubble there, .bubble.said): the stage shows the status row and the card alone; the prompt, the live
    slots (the working set's rail with them) and the steps chip come back with the working form after the answer. */
 .turn-stage.asking-form :is(.ts-prompt,.ts-live,.ts-foot){display:none}
 /* It is one box (the mock-up's option A): the stage's frame takes the card's look (the card's tint, no glass; its amber edge
@@ -916,13 +907,12 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    box in a box and no second amber edge. */
 .turn-stage.asking-form{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:12px}
 .turn-stage.asking-form .ts-scroll{padding-top:6px}
-.turn-stage.asking-form .ts-extras>.bubble.question{border:0;border-radius:0;background:transparent;padding:0}
+.turn-stage.asking-form .ts-extras>:is(.bubble.question,.bubble.plugin-card:not(.warn)){border:0;border-radius:0;background:transparent;padding:0}
 /* The asking form folded (stage_view.js, its fold is that question's only): the status row says "waiting for you" and the
    question (the mini tool's slot, in the UI font, right after the phase), then the step and the timing. On a phone those
    two leave the row and the question takes a second line under it. */
 .ts-mini.ts-mini-question{order:1;font-family:inherit;font-size:12.5px;color:var(--text)}
 .turn-stage.asking-form.collapsed .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
-.turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
 .ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s steps(16) infinite}

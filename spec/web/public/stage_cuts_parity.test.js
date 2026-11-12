@@ -32,10 +32,10 @@ const settle = async () => {
 };
 
 // What the stage shows, read off the DOM: the cards in its slots (key,
-// kind, slot), the docked one (the asking form's card), the lead-in
-// bubbles in the history (their question id, still asking or not), the
-// card in front, the fold, the asking slot's text, where the turn's prompt
-// and block are.
+// kind, slot), the docked ones (the asking form's cards: what waits for
+// the user in the extras, not a warning), the lead-in bubbles in the
+// history (their question id, still asking or not), the card in front, the
+// fold, where the turn's prompt and block are.
 export function stageShape(stageEl, historyEl, waiting) {
   const cards = [];
   for (const slot of ["ts-extras", "ts-tail"]) {
@@ -45,16 +45,14 @@ export function stageShape(stageEl, historyEl, waiting) {
     }
   }
   const askingForm = stageEl.classList.contains("asking-form");
-  const asking = stageEl.querySelector(".ts-asking");
   return {
     shown: !stageEl.hidden,
     cards,
-    docked: askingForm ? cards.filter((c) => stageEl.querySelector(`.ts-extras > [data-qid="${c.key.slice(2)}"] .question-reason-link`)).map((c) => c.key) : [],
+    docked: askingForm ? cards.filter((c) => c.slot === "ts-extras" && c.kind !== "warn").map((c) => c.key) : [],
     leadIns: [...historyEl.querySelectorAll(":scope > .bubble.said")].map((el) => ({ question: el.dataset.questionId ?? null, asking: el.classList.contains("pending") })),
     front: waiting.front(),
     folded: stageEl.classList.contains("collapsed"),
     waits: stageEl.classList.contains("waiting"),
-    askingSlot: asking && !asking.hidden ? asking.textContent.replace(/\s+/g, " ").trim() : "",
     prompt: stageEl.querySelector(".ts-prompt .bubble.user") ? "stage" : historyEl.querySelector(":scope > .bubble.user") ? "history" : null,
     block: stageEl.dataset.block || (stageEl.querySelector(".ts-cloud-body .turn-work, .ts-answer .turn-work") ? "stage" : null),
   };
@@ -116,10 +114,11 @@ async function reloadedTo(show) {
 // - check-in's card and an approval waiting together: live, check-in's card
 //   first (it came first); a reload replays the approval with the turn and
 //   places the running turn's cards after the replay, so the approval comes
-//   first. The card in front is the approval on both.
+//   first (both docked, in that order). The card in front is the approval on
+//   both.
 const EXPECTED = {
   "step_limit/waiting": ["cards", "front", "shown", "prompt", "block", "waits", "history"],
-  "checkin_approval/both": ["cards"],
+  "checkin_approval/both": ["cards", "docked"],
 };
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));

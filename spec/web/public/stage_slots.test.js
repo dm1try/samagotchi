@@ -7,16 +7,15 @@ import assert from "node:assert/strict";
 
 const { createStageSlots, node } = await import("../../../lib/samagotchi/web/public/stage_slots.js");
 
-function slotsOf({ taskStop = null, gens = () => [], renderMarkdown, linkRefs } = {}) {
+function slotsOf({ taskStop = null, gens = () => [] } = {}) {
   const els = {
     headline: node("div", "ts-headline"),
-    asking: node("div", "ts-asking"),
     now: node("div", "ts-now"),
     trail: node("div", "ts-trail"),
     ticks: node("span", "ts-ticks"),
   };
   let changes = 0;
-  const slots = createStageSlots({ ...els, taskStop, gens, renderMarkdown, linkRefs, onChange: () => { changes += 1; } });
+  const slots = createStageSlots({ ...els, taskStop, gens, onChange: () => { changes += 1; } });
   return { ...els, slots, changes: () => changes };
 }
 
@@ -97,216 +96,20 @@ test("drawTicks: one per call, the nodes kept by index as the list grows and shr
   assert.ok(ticks.firstChild === first);
 });
 
-test("drawAsking: hidden without a text; the scroll goes to the top only at a new text", () => {
-  const { asking, slots } = slotsOf();
-  slots.drawAsking("");
-  assert.equal(asking.hidden, true);
-  slots.drawAsking("Go on?");
-  assert.equal(asking.hidden, false);
-  asking.scrollTop = 20;
-  slots.drawAsking("Go on?");
-  assert.equal(asking.scrollTop, 20);
-  slots.drawAsking("Go on? Yes.");
-  assert.equal(asking.scrollTop, 0);
-});
-
-test("reset: the slots empty, asking hidden, and the same values draw again", () => {
-  const { headline, asking, now, trail, ticks, slots } = slotsOf();
+test("reset: the slots empty, and the same values draw again", () => {
+  const { headline, now, trail, ticks, slots } = slotsOf();
   const draw = () => {
     slots.drawHeadline({ text: "Hi.", thinking: false });
-    slots.drawAsking("Go on?");
     slots.drawNow(null, "thinking…");
     slots.drawTrail([], null);
     slots.drawTicks([{ kind: "read", status: "ok", step: 0 }]);
   };
   draw();
   slots.reset();
-  for (const el of [headline, asking, now, trail, ticks]) assert.equal(el.childNodes.length, 0);
-  assert.equal(asking.hidden, true);
+  for (const el of [headline, now, trail, ticks]) assert.equal(el.childNodes.length, 0);
   draw();
   assert.equal(headline.textContent, "Hi.");
-  assert.equal(asking.textContent, "Go on?");
   assert.equal(now.textContent, "thinking…");
   assert.equal(trail.textContent, "no tool calls yet");
   assert.equal(ticks.children.length, 1);
-});
-
-// A renderMarkdown whose answers the test settles: +calls+ the texts asked,
-// +settle(i, html)+ resolves the i-th.
-function renderer() {
-  const calls = [];
-  const settles = [];
-  const render = (text) => {
-    calls.push(text);
-    return new Promise((resolve) => { settles.push(resolve); });
-  };
-  return { render, calls, settle: async (i, html) => { settles[i](html); await new Promise((r) => setTimeout(r, 0)); } };
-}
-
-test("drawAsking with markdown: the raw text at once, then the HTML swapped in with the class, refs linked on both", async () => {
-  const r = renderer();
-  const linked = [];
-  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs: (el) => linked.push(el.innerHTML) });
-  slots.drawAsking("## Pick\n\n- a");
-  assert.equal(changes(), 0);
-  assert.equal(asking.textContent, "## Pick\n\n- a");
-  assert.ok(!asking.classList.contains("markdown"));
-  assert.ok(!asking.classList.contains("md-compact"));
-  assert.deepEqual(r.calls, ["## Pick\n\n- a"]);
-  assert.deepEqual(linked, ["## Pick\n\n- a"]);
-  asking.scrollTop = 30;
-  await r.settle(0, "<h2>Pick</h2><ul><li>a</li></ul>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><h2>Pick</h2><ul><li>a</li></ul></div>');
-  assert.equal(asking.scrollTop, 0);
-  assert.deepEqual(linked, ["## Pick\n\n- a", "<h2>Pick</h2><ul><li>a</li></ul>"]);
-  // The swap redraws (the stage measures the asking text's overflow again).
-  assert.equal(changes(), 1);
-});
-
-test("drawAsking with markdown: a render for a text no longer shown is dropped", async () => {
-  const r = renderer();
-  const { asking, slots } = slotsOf({ renderMarkdown: r.render });
-  slots.drawAsking("first");
-  slots.drawAsking("second");
-  await r.settle(0, "<p>first</p>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking">second</div>');
-  await r.settle(1, "<p>second</p>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>second</p></div>');
-});
-
-test("drawAsking with markdown: a null render (markdown off, a failed read) leaves the raw text, and isn't kept", async () => {
-  const r = renderer();
-  const { asking, slots } = slotsOf({ renderMarkdown: r.render });
-  slots.drawAsking("**raw**");
-  await r.settle(0, null);
-  assert.equal(htmlOf(asking), '<div class="ts-asking">**raw**</div>');
-  // Not kept: the same question drawn again asks again (the page's
-  // capabilities may have come in since).
-  slots.reset();
-  slots.drawAsking("**raw**");
-  assert.equal(r.calls.length, 2);
-});
-
-test("drawAsking with markdown: the same text again asks once, in flight or done; a selection's nodes survive a redraw", async () => {
-  const r = renderer();
-  const { asking, slots } = slotsOf({ renderMarkdown: r.render });
-  slots.drawAsking("Go on?");
-  slots.drawAsking("");
-  slots.drawAsking("Go on?");
-  assert.equal(r.calls.length, 1);
-  await r.settle(0, "<p>Go on?</p>");
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>Go on?</p></div>');
-  const p = asking.firstChild;
-  slots.drawAsking("Go on?");
-  assert.ok(asking.firstChild === p);
-  slots.reset();
-  slots.drawAsking("Go on?");
-  await new Promise((done) => setTimeout(done, 0));
-  assert.equal(r.calls.length, 1);
-  assert.equal(htmlOf(asking), '<div class="ts-asking markdown md-compact"><p>Go on?</p></div>');
-});
-
-test("drawAsking with markdown: a new text, the empty one included, drops the class; reset drops it too", async () => {
-  const r = renderer();
-  const { asking, slots } = slotsOf({ renderMarkdown: r.render });
-  slots.drawAsking("one");
-  await r.settle(0, "<p>one</p>");
-  assert.ok(asking.classList.contains("markdown"));
-  assert.ok(asking.classList.contains("md-compact"));
-  slots.drawAsking("");
-  assert.ok(!asking.classList.contains("markdown"));
-  assert.ok(!asking.classList.contains("md-compact"));
-  assert.equal(asking.hidden, true);
-  slots.drawAsking("two");
-  await r.settle(1, "<p>two</p>");
-  slots.reset();
-  assert.ok(!asking.classList.contains("md-compact"));
-  assert.equal(htmlOf(asking), '<div class="ts-asking" hidden=""></div>');
-});
-
-// The page's pass as markdown_place.js linkRefsIn runs it: a plugin's refs
-// set and paired (answer_refs.js), +calls+ each call's refs.
-async function realPairing() {
-  const { pairAnswerRefs, setAnswerRefs } = await import("../../../lib/samagotchi/web/public/answer_refs.js");
-  const calls = [];
-  const linkRefs = (el, refs) => {
-    calls.push(refs);
-    if (!refs) return;
-    setAnswerRefs(el, refs);
-    pairAnswerRefs(el);
-  };
-  return { linkRefs, calls };
-}
-
-const TICKET = {
-  match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, label: "DEMO DEMO-123",
-  actions: [{ id: "open", label: "Open in DEMO", url: "https://example.com/browse/DEMO-123" }],
-};
-const OTHER = { ...TICKET, match: "DEMO-456", target: { id: "DEMO-456" }, label: "DEMO DEMO-456",
-  actions: [{ id: "open", label: "Open in DEMO", url: "https://example.com/browse/DEMO-456" }] };
-
-test("drawAsking with refs: the raw text pairs them, and the markdown swap pairs them again", async () => {
-  const r = renderer();
-  const { linkRefs } = await realPairing();
-  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs });
-  slots.drawAsking("Should I proceed with DEMO-123?", [TICKET]);
-  const raw = asking.querySelector('[data-ref-kind="issue"]');
-  assert.equal(raw?.textContent, "DEMO-123");
-  assert.equal(raw.getAttribute("title"), "DEMO DEMO-123");
-  await r.settle(0, "<p>Should I proceed with <strong>DEMO-123</strong>?</p>");
-  assert.ok(asking.classList.contains("markdown"));
-  const swapped = asking.querySelector('strong > [data-ref-kind="issue"]');
-  assert.equal(swapped?.textContent, "DEMO-123");
-  assert.equal(changes(), 1);
-});
-
-test("drawAsking with refs: new refs on the same text pair in place, no redraw; the same refs again are a no-op", async () => {
-  const r = renderer();
-  const { linkRefs, calls } = await realPairing();
-  const { asking, slots, changes } = slotsOf({ renderMarkdown: r.render, linkRefs });
-  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET]);
-  await r.settle(0, "<p>DEMO-123 and DEMO-456: go on?</p>");
-  const p = asking.firstChild;
-  assert.equal(asking.querySelectorAll("[data-ref-kind]").length, 1);
-  // A second question in the step: its pending question has the whole list.
-  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET, OTHER]);
-  assert.ok(asking.firstChild === p);
-  assert.deepEqual([...asking.querySelectorAll("[data-ref-kind]")].map((el) => el.textContent), ["DEMO-123", "DEMO-456"]);
-  assert.equal(r.calls.length, 1);
-  assert.equal(changes(), 1);
-  const before = calls.length;
-  slots.drawAsking("DEMO-123 and DEMO-456: go on?", [TICKET, OTHER]);
-  assert.equal(calls.length, before);
-});
-
-test("drawAsking without refs: the ref pass gets none; reset forgets them", async () => {
-  const { linkRefs, calls } = await realPairing();
-  const { asking, slots } = slotsOf({ linkRefs });
-  slots.drawAsking("DEMO-123?", [TICKET]);
-  slots.reset();
-  slots.drawAsking("DEMO-123?");
-  assert.deepEqual(calls, [[TICKET], null]);
-  assert.ok(asking.querySelector("[data-ref-kind]") === null);
-  slots.drawAsking("DEMO-123?", []);
-  assert.deepEqual(calls, [[TICKET], null]);
-});
-
-// The asking text's final form (its markdown swapped in once, or the raw
-// text when a render answers null).
-test("askingSettled: false while the markdown is in flight; true once it is swapped in, or once a null render leaves the raw text", async () => {
-  const r = renderer();
-  const { slots, changes } = slotsOf({ renderMarkdown: r.render });
-  assert.equal(slots.askingSettled(), false);
-  slots.drawAsking("## Pick\n\n- a");
-  assert.equal(slots.askingSettled(), false);
-  await r.settle(0, "<h2>Pick</h2>");
-  assert.equal(slots.askingSettled(), true);
-  slots.drawAsking("**raw**");
-  assert.equal(slots.askingSettled(), false);
-  const before = changes();
-  await r.settle(1, null);
-  assert.equal(slots.askingSettled(), true);
-  assert.equal(changes(), before + 1, "the raw text's settling redraws too");
-  slots.reset();
-  assert.equal(slots.askingSettled(), false);
 });

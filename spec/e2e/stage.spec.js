@@ -52,19 +52,19 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   const samples = await stopSampling(page);
   const running = samples.filter((s) => !s.hidden && !s.ended);
   expect(running.length).toBeGreaterThan(10);
-  expect([...new Set(running.map((s) => s.slots))]).toHaveLength(1);
-  // One height before check-in's card, one after its growth (the stage
-  // never shrinks while the turn runs).
+  // One height before check-in's card. The card docks: the turn goes into
+  // the history and the stage shows the status row and the card alone (the
+  // asking form's one allowed shrink), then holds its height (grow-only).
   const cardIndex = running.findIndex((s) => s.extras > 0);
   const noCard = running.slice(0, cardIndex);
   expect(noCard.length).toBeGreaterThan(5);
+  expect([...new Set(noCard.map((s) => s.slots))]).toHaveLength(1);
   expect([...new Set(noCard.map((s) => s.h))]).toHaveLength(1);
-  // (The ease can take a few samples under load: from its end on.)
-  const grown = running.at(-1).h;
-  const withCard = running.slice(running.findIndex((s, i) => i >= cardIndex && s.h === grown));
-  expect(withCard.length).toBeGreaterThan(3);
-  expect([...new Set(withCard.map((s) => s.h))]).toHaveLength(1);
-  expect(running.slice(cardIndex).every((s, i, all) => i === 0 || s.h >= all[i - 1].h)).toBe(true);
+  const docked = running.slice(cardIndex);
+  expect(docked.length).toBeGreaterThan(3);
+  expect([...new Set(docked.map((s) => s.slots))]).toHaveLength(1);
+  // (The card's own growth can take a few samples under load.)
+  expect(docked.slice(1).every((s, i) => s.h >= docked[i].h)).toBe(true);
   expect([...new Set(samples.filter((s) => s.t >= scrollTopSet).map((s) => s.top))]).toEqual([120]);
   // The moments, by the stage's own marks (page clock).
   const marks = await stageMarks(page);
@@ -80,11 +80,13 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   const endAt = momentAt(marks, (m) => /\bended\b/.test(m.cls), shownAt);
   const leaveAt = momentAt(marks, (m) => /\bleaving\b/.test(m.cls), endAt);
   expect((await shiftSources(page, { from: endAt - 50, to: leaveAt })).filter((n) => /ts-(cloud|foot|chip)/.test(n))).toEqual([]);
-  // Growth is deliberate: check-in's card and the long answer each grow the
-  // stage once, with a short ease (bounded, and no snap).
+  // Change is deliberate: check-in's card docks once (bounded, no snap) and
+  // the long answer grows the stage once, with a short ease.
   const checkInAt = momentAt(marks, (m) => m.extras > 0, shownAt);
   expect(await shiftSum(page, { from: checkInAt, to: checkInAt + 600, withInput: true })).toBeLessThan(0.15);
-  expect(await snaps(page, { from: checkInAt, to: checkInAt + 600 })).toEqual([]);
+  // (The docking shrink lowers the stage's top edge once, its status row
+  // with it: the turn's pieces went into the history.)
+  expect(await snaps(page, { from: checkInAt, to: checkInAt + 600, keys: ["card", "chip", "composer", "last"] })).toEqual([]);
   expect(await shiftSum(page, { from: endAt, to: leaveAt, withInput: true })).toBeLessThan(0.15);
   expect(await snaps(page, { from: endAt, to: leaveAt })).toEqual([]);
   // The hand-off: the stage slides away under the composer, then the turn
@@ -191,12 +193,17 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
 const stillWhileWaiting = (page) => stageEl(page).evaluate((el) => {
   const infinite = () => el.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity);
   const still = infinite().length;
-  // The asking form hides the chip (its ticks): shown for the probe too.
+  // The asking form hides the chip (its ticks; an opened turn has none):
+  // shown for the probe too.
   const form = el.classList.contains("asking-form");
+  const foot = el.querySelector(".ts-foot");
+  const footHidden = foot.hidden;
   el.classList.remove("waiting", "asking-form");
+  foot.hidden = false;
   const moving = infinite().map((a) => a.effect.target).map((t) => (t.matches(".ts-tick.running") ? "tick" : t.className));
   el.classList.add("waiting");
   if (form) el.classList.add("asking-form");
+  foot.hidden = footHidden;
   return { still, tick: moving.includes("tick"), dot: moving.includes("ts-mark") };
 });
 
@@ -228,7 +235,7 @@ test("a question card sits in the stage, its reason in the history (also after a
   await expect(page.locator("#history > .turn-work")).toHaveCount(1);
   await expect(stageEl(page)).toHaveClass(/asking-form/);
   await expect(stageEl(page).locator(".ts-live")).toBeHidden();
-  await expect(stageEl(page).locator(".ts-asking")).toBeHidden();
+  await expect(stageEl(page).locator(".ts-foot")).toBeHidden();
   expect((await frames(page)).filter((f) => f.waits !== f.said)).toEqual([]);
   // Movement means chi is working: the dot blinks until the card waits, and
   // from then on the stage is still (every frame). The ask's own tick lands in
@@ -596,27 +603,22 @@ test("a running turn the reload gets no current_turn for keeps Stop turn in the 
   await expect(page.locator("#actionBtn")).toHaveText("Send");
 });
 
-test("check-in's card waits for the user in the stage; after Nudge the turn stays in the stage until it ends, then hands off", async ({ page, script }) => {
+test("check-in's card docks alone above the composer, its turn in the history from the card's arrival; after Nudge the turn runs on, then hands off", async ({ page, script }) => {
   script("check_in");
   await send(page, "Look through the README");
   const card = stageEl(page).locator(".ts-extras .plugin-card");
   await expect(card.locator(".card-title")).toHaveText("3 tool calls, no answer yet");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
+  await expect(stageEl(page)).toHaveClass(/asking-form/);
   // An asking card's turn goes on: its dot keeps blinking, the waiting colour.
   await expect(stageEl(page)).not.toHaveClass(/\bwaiting\b/);
   await expect.poll(() => stageEl(page).locator(".ts-mark").evaluate((el) => el.getAnimations().filter((a) => a.effect.getComputedTiming().iterations === Infinity).length)).toBe(1);
-  // The steps opened and closed by hand: the stage grows for them, then
-  // shrinks back (no empty room left under the card).
-  await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
-  const stageHeight = () => stageEl(page).evaluate((el) => el.offsetHeight);
-  const closed = await stageHeight();
-  const chip = stageEl(page).locator(".ts-chip");
-  await chip.click();
-  await expect(stageEl(page)).toHaveClass(/cloud-open/);
-  await expect.poll(stageHeight).toBeGreaterThan(closed);
-  await chip.click();
-  await expect(stageEl(page)).not.toHaveClass(/cloud-open/);
-  await expect.poll(stageHeight).toBeLessThanOrEqual(closed);
+  // The turn so far is the conversation's: the prompt and the steps block;
+  // the box has no prompt line and no steps chip.
+  await expect(page.locator("#history > .bubble.user")).toHaveCount(1);
+  await expect(page.locator("#history > .turn-work")).toHaveCount(1);
+  await expect(stageEl(page).locator(".ts-prompt .bubble.user")).toHaveCount(0);
+  await expect(stageEl(page).locator(".ts-foot")).toBeHidden();
   await page.evaluate(() => {
     window.held = [];
     window.holdSampler = setInterval(() => {
@@ -627,15 +629,16 @@ test("check-in's card waits for the user in the stage; after Nudge the turn stay
   });
   await card.locator(".card-action", { hasText: "Nudge" }).click();
   await page.mouse.move(0, 0);
-  await expect(card).toContainText("Nudged the model at 3 tool calls.");
+  // Answered, the card is a row at the conversation's end; the box goes back to the live step.
+  await expect(page.locator("#history > .plugin-card")).toContainText("Nudged the model at 3 tool calls.");
   await expect(stageEl(page)).not.toHaveAttribute("data-phase", "waiting for you");
+  await expect(stageEl(page)).not.toHaveClass(/asking-form/);
   await handedOff(page, 1);
   const samples = await page.evaluate(() => { clearInterval(window.holdSampler); return window.held; });
   const running = samples.filter((s) => s.phase !== "answered");
   expect(running.length).toBeGreaterThan(20);
-  expect(running.every((s) => s.inStage && s.inHistory === 0)).toBe(true);
-  expect(samples.some((s) => s.phase === "answered" && s.inStage)).toBe(true);
-  // The nudge is a row of the step that answered it, handed off with the block.
+  expect(running.every((s) => !s.inStage && s.inHistory === 1)).toBe(true);
+  // The nudge is a row of the step that answered it, in the block.
   await expect(page.locator("#history .steer-row summary")).toHaveText("check-in nudged the model");
   await expect(stageEl(page)).toBeHidden();
 });

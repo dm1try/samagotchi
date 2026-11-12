@@ -140,7 +140,7 @@ function questionCard(qid, kind = "question") {
   return el(`<details class="bubble question" data-qid="${qid}" data-kind="${kind}" open><summary>Q</summary><button></button></details>`);
 }
 
-test("place feeds it: a promoted question docks with its lead-in, another kind arrives undocked; a reset empties it", () => {
+test("place feeds it: a question docks with its lead-in, an approval with its own, a hook's question with none; a reset empties it", () => {
   const { view, append } = holdingPage();
   try {
     asks(view, "Both matter. Which first?");
@@ -153,9 +153,15 @@ test("place feeds it: a promoted question docks with its lead-in, another kind a
     const again = holdingPage();
     asks(again.view, "Running it.");
     again.append(questionCard("a1", "approval"));
-    assert.deepEqual(again.view.waiting.list().map(({ kind, docked }) => ({ kind, docked })), [{ kind: "approval", docked: false }]);
+    assert.deepEqual(again.view.waiting.list().map(({ kind, docked, leadIn, approval }) => ({ kind, docked, leadIn, approval })),
+      [{ kind: "approval", docked: true, leadIn: "a1", approval: true }]);
     assert.equal(again.view.waiting.front(), "q:a1");
     again.view.reset();
+    const hook = holdingPage();
+    asks(hook.view, "Running it.");
+    hook.append(questionCard("h1", "hook"));
+    assert.deepEqual(hook.view.waiting.list().map(({ kind, docked, leadIn }) => ({ kind, docked, leadIn })), [{ kind: "hook", docked: true, leadIn: null }]);
+    hook.view.reset();
   } finally {
     view.reset();
   }
