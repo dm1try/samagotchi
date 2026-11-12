@@ -220,9 +220,9 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   (written from `spec/support/stage_cut_scenarios.rb` by `spec/web/session_show_cuts_spec.rb`, which folds the events
   to each cut into a worker's snapshot and sends it through `Web::SessionShow`; `UPDATE_STAGE_CUTS=1` rewrites them)
   are drawn live to the cut (question cards included) and reloaded from the cut's show, and the stage (`stageShape`:
-  its cards, the docked one, the lead-in bubbles, the card in front, the fold, the asking slot) and the history
-  compared; today's differences are its `EXPECTED`, by scenario, cut and field (one gone fails too), and on both
-  pages `stage_waiting.js`'s cards agree with the slots. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
+  its cards, the docked ones, the lead-in bubbles, the card in front, the one that shows and the pager, the fold) and
+  the history compared; a known difference is listed in its `EXPECTED`, by scenario, cut and field (one gone fails
+  too; none today), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
   harnesses build their page with `spec/web/public/live_page.js`.
   `spec/shared/turn_ranges.json` (`UPDATE_TURN_RANGES=1 bundle exec rspec spec/bridge/turn_ranges_spec.rb`) pins
   `Bridge::TurnRanges`' turns, their record pairing, the items as the show stamps them and each turn's drawing end;

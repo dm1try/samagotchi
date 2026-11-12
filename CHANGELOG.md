@@ -10,6 +10,21 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- chi web: every card that waits for you docks alone above the composer, and the turn so far (your message, the steps
+  line) goes into the conversation: chi's question with or without a message before it, an approval, a delegate's
+  relayed card, a hook's question and check-in's card. chi's line before its own question or approval becomes a bubble
+  in the conversation (`chi · step N · asking you`, `↑ its reason` on the card); a relayed card, a hook's question or a
+  card with no line before it shows alone. The box has no steps chip once the turn is in the conversation. Folded, its
+  row says what the card asks (an approval: its summary and the command's start; check-in: its title).
+- chi web: while check-in's card waits, the box's top row says the call chi runs now and the dot keeps blinking; when
+  chi writes with the card still open, the text streams in the box under the card and the row says "writing". The
+  composer no longer says a message waits for the card: check-in doesn't stop the turn.
+- chi web: with two cards waiting at once (check-in still open, then a question or an approval) the box shows one at a
+  time, the one that stops chi in front, with `‹ 1 of 2 ›` in its top row to page between them.
+- chi web: at the step limit the turn goes into the conversation at once with its card right under it, as a reload
+  draws it; no box waits with it.
+- chi web: no amber on question and approval cards or on the box a card waits in (edge, tint, ▸, the option's radio);
+  amber stays on a waiting message's edge and "asking you", and on the box's "waiting for you".
 - chi web: the question waiting above the composer has one fold, the stage's ▾. Folded, its row says "waiting for you"
   and the question (on a phone, on a second line), so the conversation gets the room; a tap on the row brings the card
   back. The fold is for that question only and isn't saved: a question always arrives open, also when you keep the

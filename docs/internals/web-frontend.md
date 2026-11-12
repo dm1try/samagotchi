@@ -28,7 +28,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it), `stage_stall.js` (the stage's quiet signal), `history_end.js` (the stage's one move of pieces to the history's end), `stage_opened.js` (a running turn opened in the history while the model's own question waits: the reason bubble, the moves, the end fold), `stage_asking.js` (the stage's asking form and its fold: the promotion rule, the opening, a waiting card's own toggle, the fold's choice, reveal and asking fold; `stage_view.js` wires it), `stage_waiting.js` (the stage's waiting cards as data, keyed by `data-qid` / `data-card-id`: kind, docked, lead-in, arrival order, the asking fold; `front`, `count`), `stage_cards.js` (the cards that wait in the stage: `PENDING`, `ASKS`, `waitsInStage`, read by `stage_model.js placeKind`), `resync_reach.js` (a re-read that can't reach chi web keeps the drawn history; the status chip says retrying / offline, outside a turn), `session_sync.js` (the open session's sync: `select`, `resync` and its retries, the stream's life; the stream handle and the re-read bookkeeping are its own), `session_view.js` (the open session's view: `renderSessionView` draws a read, `forgetSession` resets the page for another session, `readTurnEnd`, `endTurnView`; app.js makes both right after the cards, each reaching the other and the later views through getters), `no_contact_fill.js` (a text field that isn't a contact form: autocomplete off and a name with no contact word, against iOS Safari's AutoFill Contact bar; a template's fields carry the same attributes, and its spec checks the page's markup for them) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it), `stage_stall.js` (the stage's quiet signal), `history_end.js` (the stage's one move of pieces to the history's end), `stage_opened.js` (a running turn opened in the history while a card waits: the lead-in bubble, the moves, the end fold), `stage_asking.js` (the stage's docked card and its fold: the docking and lead-in rules, the opening, a waiting card's own toggle, the folded row's text per kind, the fold's choice, reveal and the docked card's fold; `stage_view.js` wires it), `stage_waiting.js` (the stage's waiting cards as data, keyed by `data-qid` / `data-card-id`: kind, docked, approval, the stage's order, the shown card and its pager, the docked card's fold; `front`, `count`, `shown`, `blocking`), `stage_cards.js` (the cards that wait in the stage: `PENDING`, `ASKS`, `waitsInStage`, read by `stage_model.js placeKind`), `resync_reach.js` (a re-read that can't reach chi web keeps the drawn history; the status chip says retrying / offline, outside a turn), `session_sync.js` (the open session's sync: `select`, `resync` and its retries, the stream's life; the stream handle and the re-read bookkeeping are its own), `session_view.js` (the open session's view: `renderSessionView` draws a read, `forgetSession` resets the page for another session, `readTurnEnd`, `endTurnView`; app.js makes both right after the cards, each reaching the other and the later views through getters), `no_contact_fill.js` (a text field that isn't a contact form: autocomplete off and a name with no contact word, against iOS Safari's AutoFill Contact bar; a template's fields carry the same attributes, and its spec checks the page's markup for them) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
 
 ## Two pages, two models
 
@@ -282,8 +282,8 @@ In a session, the dock (composer card) shares the history's centered column, at 
 cap, and never above the session panel (less the card, its offset from the panel's bottom as computed: index.html
 `--dock-bottom`, and 16px). The frame is grow-only while a turn runs, so a change inside the stage never moves its top
 edge, with **two allowed shrinks, once per question and once per answer** (`forgetContent`):
-- **the asking form**: each model's own question that opens (or, the second one on, finds opened) the turn in the history
-  (below): the stage shows that card alone (`stage_view.js place`, in the card's task);
+- **the asking form**: each card that docks (it opens, or finds opened, the turn in the history, below): the stage shows
+  that card alone (`stage_view.js place`, in the card's task);
 - **the next step after a blocking card's answer** (`stage_view.js releaseHeldWait`, from `generationStarted`). The
   `held-wait` class says it is due: set with `waiting`, cleared there, so a later step, which calls it again, does
   nothing. What goes together: the live slots' waiting height, a raised cap, the tallest content seen. At the tap nothing
@@ -295,36 +295,45 @@ edge, with **two allowed shrinks, once per question and once per answer** (`forg
 frame (`frameTarget` returns null) and an unfold refits to what shows. Three things decide it, kept apart: the user's
 **choice** (the ▾ by hand, in memory, written to `chi_stage_collapsed`; never read back from storage to decide, so
 another tab's write doesn't apply live), **revealed** (a ref's "show in turn" opened it for this turn; the choice stays)
-and **the asking form's fold** (the waiting card the user folded). In the asking form only that fold counts: the ▾ and a
-tap on the folded row set or clear it and write nothing (another card that comes to wait meanwhile, an approval, a
-relayed or hook question, drops it, so the stage opens on that card), so a question always arrives open (in the card's task, before
-`question_cards.js focusWhenIdle` focuses it) and a new one never matches an old fold. When the form ends (an answer, a
-dismiss, a cancel; `emptySlots` for a reset, a session switch, the next turn) the stage is as the choice and revealed
-say. `refresh` applies it (`drawCollapsed`: only when it changed, no refresh of its own). Folded, the status row's
-`.ts-mini` says the card's `.question-text` (`foldedRowText`, `.ts-mini-question`: first line, the whole as its title,
-the UI font) instead of the running call; on a phone the step and the timing leave the row and the question wraps to a
-second line.
+and **the docked card's fold** (the waiting card the user folded, by its key). In the asking form only that fold counts:
+the ▾ and a tap on the folded row set or clear it and write nothing (another blocking card that comes to wait meanwhile
+drops it, so the stage opens on the front card), so a card always arrives open (in the card's task, before
+`question_cards.js focusWhenIdle` focuses it) and a new one never matches an old fold; the same card drawn again with its
+id keeps it. The fold reads the registry checked against the slots first (`reconcileWaiting`), so a card answered in
+the same task no longer holds a click. When the form ends (an answer, a dismiss, a cancel; `emptySlots` for a reset, a
+session switch, the next turn) the stage is as the choice and revealed say. `refresh` applies it (`drawCollapsed`: only
+when it changed, no refresh of its own). Folded, the status row's `.ts-mini` says what the shown card asks
+(`stage_asking.js foldedText`: a question's `.question-text`, an approval's summary and its command's first line, a
+plugin card's `.card-title`; `foldedRowText`, `.ts-mini-question`: first line, the whole as its title, the UI font)
+instead of the running call; on a phone the step and the timing leave the row and the text wraps to a second line.
 
-One card raises the cap: a blocking approval too tall for the stage's view, a delegate's relayed one too
-(`raiseForApproval`, `stage_frame.js fitsCap`). It opens at its question and command (`revealTop`). A model's own
-question gets no room and no pill: its reply is in the history.
+There is no asking slot: the reply that asked is the lead-in bubble in the history, or nothing. One card raises the cap:
+a blocking approval too tall for the stage's view, a delegate's relayed one too (`raiseForApproval`, the registry's
+`approval` flag, `stage_frame.js fitsCap`). It opens at its question and command (`revealTop`).
 
 ## A turn opened in the history
 
-When the model's own question blocks the turn after a reply (`ASK_CARD`: `data-kind="question"`, not relayed, placed in
-the extras before the turn's end, with a reply from `stage_asking.js askingGen`: live, the step whose call runs; in a
-replay, below), the stage opens the turn in the history
-(`stage_asking.js openTurn`, `stage_opened.js`). Approvals, relayed and hook questions, a question with no reply, plugin
-asking cards and the step limit keep the stage as it was (the asking slot, `drawAsking`).
+Every card that waits for the user docks (`stage_asking.js docks`: a `PENDING` card but the step limit, or an `ASKS`
+card, placed before the turn's end): the stage opens the turn in the history (`stage_asking.js openTurn`,
+`stage_opened.js`) and shows the card alone. **The lead-in:** chi's own question or approval
+(`.bubble.question[data-kind="question"]:not([data-relay]), .bubble.question[data-kind="approval"]:not([data-relay])`)
+whose step wrote text gets that text as a bubble in the history (`stage_asking.js leadInText`, the reply from
+`askingGen`: live, the step whose call runs; in a replay, below); a relayed card, a hook's question and a card without
+a lead-in message get none, and then a reader who was at the history's end follows the turn's move (`atEnd`, read
+before it). **The step limit** never docks: its card arrives after the turn's end and hands the turn off at once
+(`place` calls `handOff`, not the in-use watch; the end read doesn't hold it either), so the card sits right under its
+turn in the history, as a reload draws it; a piece removed while the turn slides (the old continue card the step-limit
+question replaces) stays gone.
 
 | Piece | Where, from the opening to the turn's end |
 |---|---|
-| The prompt, the steps block (closed; its steps in order from now on, `turn_block.js inOrder`) and the rows the extras held | the history's end, in `handOffOrder`'s order (`history_end.js moveToHistoryEnd`) |
+| The prompt, the steps block (closed; its steps in order from now on, `turn_block.js inOrder`) and the rows the extras held | the history's end, in `handOffOrder`'s order (`history_end.js moveToHistoryEnd`). A lone step's block keeps its chrome there (`data-opened-turn`, until the hand-off), so its summary leads to the step's text when no lead-in shows it (a hook's question asked before its call's row) |
 | The reply that asked: `.bubble.said` (`data-question-id`, `data-said-turn`, never `data-turn-id`: that marks an opening) | the history's end, in the card's task; raw, then its markdown; `.pending` ("asking you", the amber edge) while its card waits |
 | Rows that arrive (`placeFor` `"opened"`: notes, steered prompts, commands, a card that stopped waiting) | the history's end, in arrival order |
-| A card that waits (`stage_cards.js waitsInStage`: `PENDING`, `ASKS`, a warning) | the stage, as before; a promoted one shows the asking form (`.asking-form`: the status row and the card; the prompt, the live slots with the working set and the chip hidden) and a "↑ its reason" link in its summary. A `PENDING` card in the stage has no toggle of its own (a capture listener refuses the summary's click, tested at the click, so `question_cards.js` sets no `data-toggled`; the summary is out of the tab order, without its ▾): the stage's fold is the one (The stage's height) |
-| A promoted card answered or cancelled | right under its reason (`settle`), also after the turn's end; its own clamp is hidden while the reason is there (CSS) |
-| Live slots, the streaming answer, the end line, the queued slot | the stage, as before; the hand-off appends what it still holds |
+| A card that waits (`stage_cards.js waitsInStage`: `PENDING`, `ASKS`, a warning) | the stage; a docked one shows the asking form (`.asking-form`: the status row and the card; the prompt, the live slots with the working set and the chip hidden), one with a lead-in a "↑ its reason" link in its summary. Two docked at once (check-in still open, then a question or approval): one at a time (`stage_waiting.js shown`; the others `.ts-behind`), the front one first, `‹ 1 of 2 ›` in the status row (`.ts-pager`). A warning stays beside the card. A `PENDING` card in the stage has no toggle of its own (a capture listener refuses the summary's click, tested at the click, so `question_cards.js` sets no `data-toggled`; the summary is out of the tab order, without its ▾): the stage's fold is the one (The stage's height) |
+| A docked card answered or cancelled | right under its lead-in (`settle`), also after the turn's end; one without a lead-in at the history's end while the turn runs (after the turn's end it stays in the stage for the hand-off). Its own clamp is hidden while the lead-in is there (CSS). A card that stopped waiting goes there before a row placed after it in the same task (a replay) |
+| check-in docked, nothing blocking (`.asks-live`) | the status row says the running call (`liveSlots().tool`, `foldedRowText` with `running`) after "waiting for you", then the turn's time; the dot keeps blinking; the live step's text streams under the card (`.ts-asks-text`), the row's word "writing" meanwhile (`stage_model.js phaseLabel`; `data-phase` stays "waiting for you"); at the turn's end `placeAnswer` empties it in the task that fills `.ts-answer`. The composer's delivery line reads blocking cards only (`stage_view.js phase`) |
+| Live slots, the streaming answer, the end line, the queued slot | the stage, as before (no steps chip once opened: the steps line in the history says the count; a tick or a ref still reveals a step there); the hand-off appends what it still holds |
 
 A turn released without its end (a lost `turn_completed`, the next turn's start) drops its reasons (`stage_opened.js
 drop`) and leaves the rest; a late recap goes above an opened turn (`place`). The reload check's turn starts at its
@@ -333,14 +342,17 @@ included (`wholeTurn`).
 
 **Where the waiting-card state lives:** `stage_waiting.js`, one registry per stage keyed by a card's id (`q:<qid>`,
 `c:<card id>`, `continue` for the old continue card), never by its node (`card.js drawCard` may swap a plugin card's
-DIV for a DETAILS; a resync draws a question card anew). `place` adds (`arrive`: the kind, docked for a promoted card,
-its lead-in); `question_cards.js` settles through its `onSettled` hook (answered, cancelled, replaced, removed, the
+DIV for a DETAILS; a resync draws a question card anew). `place` adds (`arrive`: the kind, docked, approval);
+`question_cards.js` settles through its `onSettled` hook (answered, cancelled, replaced, removed, the
 continue card resolved or dropped), `cards_place.js upsertCard` settles a plugin card redrawn without its actions,
 `turnEnded` the warn cards that leave, and `emptySlots` resets it. A second feed only settles: at each refresh
 `stage_asking.js reconcileWaiting` drops an entry whose card is gone from the slots or waits no more (a card answered
-outside `question_cards.js`, as the stage's unit tests do). The asking form's card is the docked entry, the fold is
-the folded key (`stageCollapsed` compares keys); `opener`'s reason Map is keyed the same way. `pendingCard` and
-`asksCard` still read the slots.
+outside `question_cards.js`, as the stage's unit tests do), and again before the fold, `pendingCard` and an opened row.
+The registry's order is the stage's: blocking cards before the asking ones, arrival order within each, and `place`
+puts a blocking card before check-in's in the slot, so a live page and a reload agree whatever the replay's order. The
+asking form's card is the shown docked entry, the fold is the folded key (`stageCollapsed` compares keys); `opener`'s
+lead-in Map is keyed the same way (a card drawn again with its key keeps its bubble: `relink`). `pendingCard`,
+`asksCard`, the approval's cap, the summaries' tab order and the frame's waiting card read the registry.
 
 The stage says where the block is (`blockPlace`: cloud, answer, history; `data-block="history"` on the stage for
 `refs.js turnBlockOf`); the chip and a tick reveal the block or a step in the history. **Follow:** every row that reaches
@@ -351,10 +363,12 @@ the pieces, in their task): the reasons go and each answered card's two-line cla
 row in view after a reason keeps its place when the history has room to scroll. The hand-off also waits while the pointer
 or a selection is in a reason (`stage_watch.js alsoWatched`). The reload check gets the turn from its opening (`wholeTurn`).
 **A reload or a resync** draws the same picture: `renderSessionView` replays the running turn (`data.replay`), in which
-the asking call has completed when its `question_requested` comes (`TurnAccumulator.join_events`), so the asking step is
-the last one whose last call is `ask_user_question` and whose reply no question card of this page took yet
-(`stage_asking.js askingGen`, `asked`: a later card of that step never reuses it; live, the step whose call runs). The
-replayed card opens the turn as live; a question answered earlier in the turn settles under its reason with the
+the asking call may have completed when its `question_requested` comes (`TurnAccumulator.join_events`: a question's
+always, an approval's once it is answered), so the asking step is the last one whose last call is the one that asks
+(any of its calls: `ask_user_question`; for an approval the tool it approves, the card's `data-tool`) and whose reply no
+question card of this page took yet (`stage_asking.js askingGen`, `asked`; live, the step whose call runs). Live or
+replayed, a step's reply is one card's lead-in: a second approval, or a question after an approval, of the same step has
+none. The replayed card opens the turn as live; a question answered earlier in the turn settles under its reason with the
 replayed `question_answered`, and `releaseHeldWait` reads a pending card, not the `waiting` class the replay's one task
 hasn't refreshed yet.
 
@@ -373,8 +387,8 @@ counts. So:
   `init-spin .8s steps(16)`, 20 updates/s.
 - A blocking card (`.turn-stage.waiting`: a question, an approval, a delegate's relayed one, whose parent's turn blocks on
   it) stops them all, so movement means chi is working; `stage.spec.js`'s question scenario checks it, also after a
-  reload. An asking card (check-in) has no `.waiting`, as its turn goes on: its dot keeps blinking. `.init-spin` is
-  outside the stage (plugin setup only).
+  reload. An asking card (check-in) has no `.waiting`, as its turn goes on: docked, its dot keeps blinking and the status
+  row says the running call (A turn opened in the history). `.init-spin` is outside the stage (plugin setup only).
 - A one-shot fade on something that arrives many times a second is a recurring cost too. A live answer's new line
   appears at once: its fade alone was about a quarter of the streaming answer's total on the Studio (24-25% of a core to
   17-19%). The headline's `ts-fade` stays: turning it off saved nothing measurable.

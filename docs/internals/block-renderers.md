@@ -26,7 +26,7 @@ model. The TUI is untouched: it shows a fence as source.
    helpers live there too: `failBlock` and its `.block-note` (a click copies it), `holdingView`, `rejoin`, the
    toggle's listener; frames, the cache, hang marks, size checks, the zoom and the theme redraw stay in
    `block_host.js`. One `MutationObserver` per turn root,
-   filtered to `TEXTS` (`text_roots.js`), so cards, the asking slot, question replies and delegate reports never draw, and
+   filtered to `TEXTS` (`text_roots.js`), so cards, a lead-in bubble, question replies and delegate reports never draw, and
    every path that adds a block to a root is seen the same way. One `IntersectionObserver` per scroller, with an explicit `root`
    (with `root: null`, `rootMargin` doesn't pass an `overflow: auto` in between). Closed `<details>` fire on open. **A
    move isn't over when it is seen:** a block waiting to come near is watched by its scroller's observer, so one that moves
