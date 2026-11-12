@@ -104,6 +104,24 @@ RSpec.describe AffectedSpecs::Picker do
     end
   end
 
+  it "picks the SSE compatibility parity test for its recorder, Bridge, event fanout and handlers" do
+    test = "spec/web/public/compat_wire_parity.test.js"
+    files[test] = ""
+    changed = %w[
+      script/release/compat_wire.rb
+      lib/samagotchi/bridge.rb
+      lib/samagotchi/event_fanout.rb
+      lib/samagotchi/web/public/stream_handlers.js
+    ]
+
+    changed.each do |path|
+      result = pick(path)
+
+      expect(paths(result.node)).to eq([test])
+      expect(result.node.first.reason).to eq("rule: compares recorded worker SSE events and snapshots through today's page handlers (#{path})")
+    end
+  end
+
   it "picks top-level specs named after extracted loop subfolders first" do
     files.merge!("lib/samagotchi/terminal_ui/attached_loop/queueing.rb" => "",
                  "lib/samagotchi/terminal_ui/attached_loop/exit_commands.rb" => "",

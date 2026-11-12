@@ -1,0 +1,304 @@
+{
+  "version": "0.169.0",
+  "events": [
+    {
+      "data": {
+        "at": "2026-01-01T00:00:00Z",
+        "cut_after": 20,
+        "event_seq": 1,
+        "origin": {
+          "client_id": "web:compat"
+        },
+        "prompt": "compatibility corpus",
+        "session_id": "compat-wire",
+        "turn_id": "compat-turn",
+        "type": "turn_started"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "event_seq": 2,
+        "iteration": 1,
+        "model_ref": "compat:model",
+        "type": "generation_started"
+      },
+      "type": "generation_started"
+    },
+    {
+      "data": {
+        "event_seq": 3,
+        "iteration": 1,
+        "text": "Reading.",
+        "thinking": "",
+        "type": "generation_chunk"
+      },
+      "type": "generation_chunk"
+    },
+    {
+      "data": {
+        "event_seq": 4,
+        "iteration": 1,
+        "model_segments": [],
+        "served_expected_by": null,
+        "speed": null,
+        "tokens": {
+          "avg_decode_tps": null,
+          "cache_write_sum": 0,
+          "cached_sum": 0,
+          "completion_sum": 2,
+          "cost_estimate_sum": 0,
+          "cost_sum": 0,
+          "decode_ms_sum": 1000,
+          "decode_tokens_sum": 0,
+          "last_decode_tps": null,
+          "last_prefill_tps": null,
+          "prompt_sum": 0,
+          "reasoning_sum": 0,
+          "reprefill_sum": 0,
+          "source": "estimate",
+          "tps_source": null
+        },
+        "type": "generation_completed"
+      },
+      "type": "generation_completed"
+    },
+    {
+      "data": {
+        "call_index": 1,
+        "event_seq": 5,
+        "iteration": 1,
+        "params": "path=\"README.md\"",
+        "title": "README.md",
+        "tool": "read",
+        "tool_id": "compat-t1",
+        "type": "tool_call_started"
+      },
+      "type": "tool_call_started"
+    },
+    {
+      "data": {
+        "activity": {
+          "action": "reading file",
+          "params": "path=\"README.md\"",
+          "status": "ok",
+          "title": "README.md",
+          "tool": "read"
+        },
+        "call_index": 1,
+        "duration_ms": 1000,
+        "event_seq": 6,
+        "iteration": 1,
+        "output": "[read]\ncompat",
+        "output_truncated": false,
+        "tool": "read",
+        "tool_id": "compat-t1",
+        "type": "tool_call_completed"
+      },
+      "type": "tool_call_completed"
+    },
+    {
+      "data": {
+        "event_seq": 7,
+        "hook": "compat",
+        "text": "compatibility corpus",
+        "type": "hook_notice"
+      },
+      "type": "hook_notice"
+    },
+    {
+      "data": {
+        "event_seq": 8,
+        "iteration": 2,
+        "model_ref": "compat:model",
+        "type": "generation_started"
+      },
+      "type": "generation_started"
+    },
+    {
+      "data": {
+        "at": 4,
+        "event_seq": 9,
+        "items": [
+          {
+            "count": 1,
+            "first_id": "compat-t1",
+            "has_drop": false,
+            "key": "/compat-fixture/README.md",
+            "kind": "file",
+            "ops": [
+              "read"
+            ],
+            "pinned": false,
+            "state": "live",
+            "tokens": 4
+          }
+        ],
+        "type": "working_set_updated"
+      },
+      "type": "working_set_updated"
+    },
+    {
+      "data": {
+        "event_seq": 10,
+        "iteration": 2,
+        "text": "It says compat.",
+        "thinking": "",
+        "type": "generation_chunk"
+      },
+      "type": "generation_chunk"
+    },
+    {
+      "data": {
+        "event_seq": 11,
+        "iteration": 2,
+        "model_segments": [],
+        "served_expected_by": null,
+        "speed": null,
+        "tokens": {
+          "avg_decode_tps": null,
+          "cache_write_sum": 0,
+          "cached_sum": 0,
+          "completion_sum": 6,
+          "cost_estimate_sum": 0,
+          "cost_sum": 0,
+          "decode_ms_sum": 1000,
+          "decode_tokens_sum": 0,
+          "last_decode_tps": null,
+          "last_prefill_tps": null,
+          "prompt_sum": 0,
+          "reasoning_sum": 0,
+          "reprefill_sum": 0,
+          "source": "estimate",
+          "tps_source": null
+        },
+        "type": "generation_completed"
+      },
+      "type": "generation_completed"
+    },
+    {
+      "data": {
+        "display_pending": false,
+        "event_seq": 12,
+        "kept_from": 1,
+        "kept_to": 5,
+        "origin": {
+          "client_id": "web:compat"
+        },
+        "turn_id": "compat-turn",
+        "turn_summary": {
+          "context_status": null,
+          "exhausted": false,
+          "output": "It says compat.",
+          "pending_tool_calls": false,
+          "resumable": false,
+          "tool_activity": []
+        },
+        "type": "turn_completed"
+      },
+      "type": "turn_completed"
+    }
+  ],
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "compatibility corpus",
+        "at": "2026-01-01T00:00:00Z",
+        "turn_id": "compat-turn",
+        "drawn": "compat-turn"
+      },
+      {
+        "role": "assistant",
+        "content": "Reading.",
+        "drawn": "compat-turn"
+      },
+      {
+        "role": "assistant",
+        "content": "It says compat.",
+        "drawn": "compat-turn"
+      }
+    ],
+    "turn_drawings": {
+      "compat-turn": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "compatibility corpus",
+            "origin": null,
+            "continue": false,
+            "turn_id": "compat-turn"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Reading.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "compat-t1",
+            "params": "path=\"README.md\"",
+            "title": "README.md",
+            "ref": {
+              "kind": "file",
+              "path": "/compat-fixture/README.md"
+            }
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "compat-t1",
+            "output": "[read]\ncompat",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"README.md\"",
+              "title": "README.md",
+              "action": "reading file"
+            },
+            "duration_ms": 1000,
+            "ref": {
+              "kind": "file",
+              "path": "/compat-fixture/README.md"
+            }
+          },
+          {
+            "type": "hook_notice",
+            "hook": "compat",
+            "text": "compatibility corpus"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "It says compat.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "compat-turn",
+          "duration_ms": 1000,
+          "record_id": "compat-turn"
+        }
+      }
+    }
+  }
+}

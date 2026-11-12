@@ -71,6 +71,11 @@ RSpec.describe CompatWire do
 
       expect(paths).to eq(described_class::FILES.map { |name| File.join(tmp, "wire", name) })
       expect(read(File.join(tmp, "wire"), "state.json")).to include("route" => "state", "status" => 200)
+      events = read(File.join(tmp, "wire"), described_class::EVENTS_FILE)
+      expect(events.first).to include("type" => "turn_started")
+      expect(events.map { |event| event.fetch("type") }).to include("tool_call_started", "tool_call_completed", "hook_notice", "turn_completed")
+      expect(events.find { |event| event["type"] == "generation_chunk" }.fetch("data")).to include("text" => "Reading.")
+      expect(events).to all(satisfy { |event| event.dig("data", "type") == event.fetch("type") })
     end
 
     it "refuses a field the normaliser leaves unpinned, naming its file and path" do
