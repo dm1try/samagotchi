@@ -89,6 +89,8 @@ test("the hand-off: an outlined completed turn lands closed, a canceled or faile
   assert.equal(landed("failed"), true);
 });
 
+
+
 test("a row placed while the finished turn slides away lands after the turn, not above it", () => {
   const { historyEl, view, append } = page();
   const prompt = endedTurn(view);
@@ -1604,7 +1606,7 @@ test("check-in docked: the status row says the running call, the dot keeps blink
     assert.ok(!view.root.classList.contains("waiting"), "not blocked: the dot blinks");
     assert.equal(view.root.dataset.phase, "waiting for you");
     assert.equal($(view, ".ts-phase").textContent, "waiting for you");
-    assert.equal($(view, ".ts-mini").textContent, "read tmp/ci.log");
+    assert.equal($(view, ".ts-mini").textContent, "read tmp/ci.log · 0:00");
     assert.ok(!$(view, ".ts-mini").classList.contains("ts-mini-question"));
     // The delivery line's phase: only a card that blocks holds the composer.
     assert.equal(view.phase(), "running a tool");

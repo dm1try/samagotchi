@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - chi web: an answered approval shows chi's line first, then the command and the answer.
+- chi web: while check-in waits during a tool call, the box's top row shows that call's time.
 
 ## [0.169.0] - 2026-11-12
 
