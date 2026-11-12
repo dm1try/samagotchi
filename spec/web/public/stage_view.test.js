@@ -226,7 +226,7 @@ function twoQueued(historyEl, view, append) {
 // ── the slots' markup and node identity (recorded before the split into
 // stage_frame.js, stage_watch.js and stage_slots.js; they guard it) ──────
 
-const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-asks-text" hidden=""></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
+const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-asks-text" hidden=""></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
 
 // A stopper as task_stop.js's: a running task_wait's task.
 const fakeTaskStop = {
@@ -268,7 +268,7 @@ test("resetting the stage clears the status row and the chip, not only the slots
   view.turnEnded({ kind: "completed" });
   await frame();
   view.reset();
-  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+  assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   assert.equal($(view, ".ts-chip-label").textContent, "");
 });
 
@@ -358,7 +358,7 @@ test("slots: a narration headline, a running tool, its tick and the chip label",
     assert.equal(slot(view, ".ts-headline"), '<div class="ts-headline fresh" tabindex="0" role="button" title="Show this step\'s reasoning">Reading the readme now.</div>');
     assert.equal(slot(view, ".ts-now"), '<div class="ts-now running"><span class="ts-spin"></span><span class="ts-tool exec">execute</span><span class="ts-title" title="ls -la &amp;&amp; pwd">ls -la</span></div>');
     assert.equal(slot(view, ".ts-foot"), '<div class="ts-foot"><button class="ts-chip" type="button" aria-expanded="false"><span class="ts-chip-label">1 step · 1 tool call</span><span class="ts-ticks"><span role="button" class="ts-tick exec running" data-step="0" title="step 1"></span></span></button></div>');
-    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
+    assert.equal(slot(view, ".ts-status"), '<div class="ts-status"><span class="ts-mark"></span><span class="ts-phase">running a tool</span><span class="ts-pager" hidden=""><button class="ts-page" type="button" aria-label="The card before">‹</button><span class="ts-page-label"></span><button class="ts-page" type="button" aria-label="The next card">›</button></span><span class="ts-step">step 1</span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini" title=""></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button" aria-label="Collapse the running turn to its status" aria-expanded="true">▾</button></div>');
   } finally {
     view.reset();
   }
@@ -1676,6 +1676,75 @@ test("check-in still open at the turn's end: the streamed text and the answer sw
   }
 });
 
+test("two cards docked: one at a time, the one that stops chi in front, ‹ 1 of 2 › pages; answering it shows the other", async () => {
+  const { view, historyEl, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    const checkIn = checkInCard();
+    append(checkIn);
+    asks(view, { it: 2, text: "Running the stage e2e to confirm the fix." });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    await frame();
+    const extras = $(view, ".ts-extras");
+    assert.deepEqual([...extras.children], [approval, checkIn], "the stage's order: blocking first");
+    assert.deepEqual(view.waiting.docked(), ["q:a1", "c:check-in"]);
+    assert.ok(!approval.classList.contains("ts-behind"));
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    const pager = $(view, ".ts-pager");
+    assert.equal(pager.hidden, false);
+    assert.equal($(view, ".ts-page-label").textContent, "1 of 2");
+    assert.ok(view.root.classList.contains("waiting"), "the approval blocks: the dot stops");
+    // › shows check-in, still answerable; ‹ goes back.
+    const [prev, next] = pager.querySelectorAll(".ts-page");
+    assert.equal(prev.disabled, true);
+    next.click();
+    assert.ok(approval.classList.contains("ts-behind"));
+    assert.ok(!checkIn.classList.contains("ts-behind"));
+    assert.equal($(view, ".ts-page-label").textContent, "2 of 2");
+    assert.equal(next.disabled, true);
+    prev.click();
+    assert.ok(!approval.classList.contains("ts-behind"));
+    // The approval answered while behind (the pager on check-in): under its
+    // lead-in, behind nothing there; the box keeps check-in, its row back.
+    next.click();
+    assert.ok(approval.classList.contains("ts-behind"));
+    await resolve(approval);
+    assert.ok(!approval.classList.contains("ts-behind"));
+    await frame();
+    assert.ok(approval.parentElement === historyEl);
+    assert.ok(historyEl.querySelector(".bubble.said + .bubble.question") === approval);
+    assert.ok(!checkIn.classList.contains("ts-behind"));
+    assert.equal(pager.hidden, true);
+    assert.ok(view.root.classList.contains("asks-live"));
+  } finally {
+    view.reset();
+  }
+});
+
+test("two cards: check-in folded, then an approval comes: the box opens on the approval", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    view.generationStarted({ iteration: 1 });
+    const checkIn = checkInCard();
+    append(checkIn);
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view));
+    asks(view, { it: 2, text: "" });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    await frame();
+    assert.ok(!collapsed(view), "nothing waits unseen behind a folded row");
+    assert.ok(!approval.classList.contains("ts-behind"));
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    assert.equal($(view, ".ts-page-label").textContent, "1 of 2");
+  } finally {
+    view.reset();
+  }
+});
+
 test("a hook's question on a lone step with text: the block in the history keeps its chrome and holds the step's text; the hand-off draws it as a reload", async () => {
   const { view, historyEl, append } = openedPage();
   try {
@@ -1742,6 +1811,34 @@ test("replayed: an approval whose call completed finds its step by its tool, als
     card.dataset.tool = "execute";
     append(card);
     assert.equal(historyEl.querySelector(".bubble.said .said-text")?.textContent, "Running it, and a read.");
+  } finally {
+    view.reset();
+  }
+});
+
+test("the pager's focus: a button it disables hands the focus to the other; a card that goes behind a new one hands it to the front card", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    const checkIn = checkInCard();
+    append(checkIn);
+    const nudge = checkIn.querySelector(".card-action");
+    nudge.tabIndex = 0;
+    nudge.focus();
+    assert.ok(document.activeElement === nudge);
+    asks(view, { it: 2, text: "" });
+    const approval = questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" });
+    append(approval);
+    assert.ok(checkIn.classList.contains("ts-behind"));
+    assert.ok(approval.contains(document.activeElement), "the focus is in the front card");
+    const [prev, next] = $(view, ".ts-pager").querySelectorAll(".ts-page");
+    next.focus();
+    next.click();
+    assert.equal(next.disabled, true);
+    assert.ok(document.activeElement === prev, "the other button");
+    prev.click();
+    assert.equal(prev.disabled, true);
+    assert.ok(document.activeElement === next);
   } finally {
     view.reset();
   }

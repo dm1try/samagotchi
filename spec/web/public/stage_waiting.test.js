@@ -63,7 +63,8 @@ test("docked and the lead-in: as arrive says; a second arrival keeps its place i
   assert.equal(w.get("q:7").leadIn, "7");
   assert.equal(w.get("c:1").leadIn, null);
   w.arrive("c:1", { kind: "asks" });
-  assert.deepEqual(w.list().map((e) => e.key), ["c:1", "q:7"]);
+  // The stage's order: the blocking card first.
+  assert.deepEqual(w.list().map((e) => e.key), ["q:7", "c:1"]);
   w.settle("q:7");
   assert.deepEqual(w.docked(), []);
 });
@@ -212,4 +213,35 @@ test("cards_place: a plugin card redrawn without its actions settles its asking 
   assert.deepEqual(settled, [], "still asking");
   cards.upsertCard({ id: "ci", in_turn: true, title: "check-in", body: "ended", level: "notice" });
   assert.deepEqual(settled, [["c:ci", { only: "asks" }]]);
+});
+
+test("the stage's order: blocking cards before the asking ones, arrival within each; one shown, the pager moves it, a new card resets it", () => {
+  const w = createStageWaiting();
+  w.arrive("c:check-in", { kind: "asks", docked: true });
+  w.arrive("c:warn", { kind: "warn" });
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  w.arrive("q:h1", { kind: "hook", docked: true });
+  assert.deepEqual(w.list().map((e) => e.key), ["q:a1", "q:h1", "c:check-in", "c:warn"]);
+  assert.deepEqual(w.docked(), ["q:a1", "q:h1", "c:check-in"]);
+  assert.deepEqual(w.blocking(), ["q:a1", "q:h1"]);
+  assert.equal(w.shown(), "q:a1");
+  assert.equal(w.page(1), "q:h1");
+  assert.equal(w.page(5), "c:check-in", "clamped");
+  assert.equal(w.shown(), "c:check-in");
+  assert.equal(w.page(-1), "q:h1");
+  // The shown card answered: the first one shows.
+  w.settle("q:h1");
+  assert.equal(w.shown(), "q:a1");
+  w.page(1);
+  assert.equal(w.shown(), "c:check-in");
+  // A new card goes in front of what the pager was on.
+  w.arrive("q:q2", { kind: "question", docked: true });
+  assert.equal(w.shown(), "q:a1");
+  // Arriving again keeps the paging.
+  w.page(1);
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  assert.equal(w.shown(), "q:q2");
+  w.reset();
+  assert.equal(w.shown(), null);
+  assert.equal(w.page(1), null);
 });

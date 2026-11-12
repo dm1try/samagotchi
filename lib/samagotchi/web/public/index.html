@@ -912,6 +912,15 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    question (the mini tool's slot, in the UI font, right after the phase), then the step and the timing. On a phone those
    two leave the row and the question takes a second line under it. */
 .ts-mini.ts-mini-question{order:1;font-family:inherit;font-size:12.5px;color:var(--text)}
+/* Two cards docked (stage_view.js drawDocked): one at a time, the one that stops chi in front; the pager after the phase
+   says where it is ("‹ 1 of 2 ›"), the other waits behind it. */
+.turn-stage .ts-extras>.ts-behind{display:none}
+.ts-pager{flex:none;display:inline-flex;align-items:center;gap:2px;color:var(--text-2)}
+.ts-pager[hidden]{display:none}
+.ts-page{flex:none;min-width:22px;height:22px;padding:0 4px;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px;line-height:1}
+.ts-page:disabled{opacity:.35}
+@media(hover:hover){.ts-page:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}}
+.ts-page-label{font-variant-numeric:tabular-nums}
 /* check-in docked while nothing blocks (stage_view.js .asks-live): the row says the running call right after the phase,
    then the turn's time; the step count is the history's steps line. The live step's text streams under the card. */
 .turn-stage.asks-live .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}

@@ -35,14 +35,15 @@ const settle = async () => {
 // kind, slot), the docked ones (the asking form's cards: what waits for
 // the user in the extras, not a warning), the lead-in bubbles in the
 // history (their question id, still asking or not), the card in front, the
-// fold, check-in's row (asks-live, the phase word, the mini row) and the
-// text streamed under it, where the turn's prompt and block are.
+// docked card that shows (one at a time) and the pager's words, the fold,
+// check-in's row (asks-live, the phase word, the mini row) and the text
+// streamed under it, where the turn's prompt and block are.
 export function stageShape(stageEl, historyEl, waiting) {
   const cards = [];
   for (const slot of ["ts-extras", "ts-tail"]) {
     for (const el of stageEl.querySelector(`.${slot}`)?.children || []) {
       const kind = waitingKind(el);
-      if (kind) cards.push({ key: waitingKey(el), kind, slot });
+      if (kind) cards.push({ key: waitingKey(el), kind, slot, behind: el.classList.contains("ts-behind") });
     }
   }
   const askingForm = stageEl.classList.contains("asking-form");
@@ -52,6 +53,8 @@ export function stageShape(stageEl, historyEl, waiting) {
     docked: askingForm ? cards.filter((c) => c.slot === "ts-extras" && c.kind !== "warn").map((c) => c.key) : [],
     leadIns: [...historyEl.querySelectorAll(":scope > .bubble.said")].map((el) => ({ question: el.dataset.questionId ?? null, asking: el.classList.contains("pending") })),
     front: waiting.front(),
+    showing: askingForm ? cards.filter((c) => c.slot === "ts-extras" && c.kind !== "warn" && !c.behind).map((c) => c.key) : [],
+    pager: stageEl.querySelector(".ts-pager:not([hidden]) .ts-page-label")?.textContent || "",
     folded: stageEl.classList.contains("collapsed"),
     // check-in docked: the row's word, its running call or the folded card's
     // text (.ts-mini), the text streamed under the card.
@@ -69,6 +72,7 @@ export function stageShape(stageEl, historyEl, waiting) {
 function crossCheck(page, label) {
   const shape = stageShape(page.turnDom.root, page.historyEl, page.turnDom.waiting);
   const fromDom = shape.cards.filter((c) => c.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
+  assert.ok(shape.showing.length <= 1, `${label}: one docked card shows at a time`);
   const fromData = page.turnDom.waiting.list().filter((e) => e.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.deepEqual(fromData, fromDom, `${label}: the waiting cards as data agree with the slots`);
   assert.deepEqual(page.turnDom.waiting.docked(), shape.docked, `${label}: docked as data agrees with the asking form`);
@@ -119,14 +123,8 @@ async function reloadedTo(show) {
 //   turn; after a reload the turn and the card are in the history and the
 //   stage is gone, and the status row's word with it (the
 //   interaction-in-conversation plan's F4 flips it).
-// - check-in's card and an approval waiting together: live, check-in's card
-//   first (it came first); a reload replays the approval with the turn and
-//   places the running turn's cards after the replay, so the approval comes
-//   first (both docked, in that order). The card in front is the approval on
-//   both.
 const EXPECTED = {
   "step_limit/waiting": ["cards", "front", "shown", "prompt", "block", "waits", "phaseWord", "history"],
-  "checkin_approval/both": ["cards", "docked"],
 };
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));
