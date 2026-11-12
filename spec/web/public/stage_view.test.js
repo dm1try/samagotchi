@@ -226,7 +226,7 @@ function twoQueued(historyEl, view, append) {
 // ── the slots' markup and node identity (recorded before the split into
 // stage_frame.js, stage_watch.js and stage_slots.js; they guard it) ──────
 
-const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
+const SKELETON = '<section class="turn-stage" id="turnStage" hidden="" aria-label="Running turn"><div class="ts-status"><span class="ts-mark"></span><span class="ts-phase"></span><span class="ts-step"></span><span class="ts-timing"></span><span class="ts-stall-head"></span><span class="ts-mini"></span><span class="ts-defer">moves up when you leave</span><button class="ts-cancel" type="button" title="Cancel the running turn, whoever sent it" hidden="">Stop turn</button><button class="ts-fold" type="button"></button></div><div class="ts-scroll"><div class="ts-prompt" title="Show the whole prompt"></div><div class="ts-live"><div class="ts-headline" tabindex="0" role="button" title="Show this step\'s reasoning"></div><div class="ts-now"></div><div class="ts-trail"></div></div><div class="ts-extras"></div><div class="ts-asks-text" hidden=""></div><div class="ts-answer"></div><div class="ts-tail"></div><div class="ts-cloud-body" hidden=""></div><div class="ts-hold" aria-hidden="true"></div></div><div class="ts-foot"><button class="ts-chip" type="button"><span class="ts-chip-label"></span><span class="ts-ticks"></span></button></div><div class="ts-queued"></div></section>';
 
 // A stopper as task_stop.js's: a running task_wait's task.
 const fakeTaskStop = {
@@ -1578,6 +1578,99 @@ test("a card drawn again with its question id in one turn keeps its fold and its
     assert.equal(again.querySelectorAll(".question-reason-link").length, 1);
     assert.deepEqual(view.waiting.docked(), ["q:q1"]);
     assert.equal(view.waiting.list()[0].leadIn, "q1");
+  } finally {
+    view.reset();
+  }
+});
+
+// check-in's card docked (an asking card: the turn goes on).
+function checkInCard(id = "check-in") {
+  const card = row("bubble plugin-card");
+  card.dataset.cardId = id;
+  card.dataset.inTurn = "1";
+  card.append(row("card-title", "50 tool calls, no answer yet"), row("card-action"));
+  return card;
+}
+
+test("check-in docked: the status row says the running call, the dot keeps blinking, the composer stays free", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: 'path="tmp/ci.log"', title: "tmp/ci.log" });
+    append(checkInCard());
+    await frame();
+    assert.ok(view.root.classList.contains("asking-form"));
+    assert.ok(view.root.classList.contains("asks-live"));
+    assert.ok(!view.root.classList.contains("waiting"), "not blocked: the dot blinks");
+    assert.equal(view.root.dataset.phase, "waiting for you");
+    assert.equal($(view, ".ts-phase").textContent, "waiting for you");
+    assert.equal($(view, ".ts-mini").textContent, "read tmp/ci.log");
+    assert.ok(!$(view, ".ts-mini").classList.contains("ts-mini-question"));
+    // The delivery line's phase: only a card that blocks holds the composer.
+    assert.equal(view.phase(), "running a tool");
+    // Between calls the row has no call to say.
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    await frame();
+    assert.equal($(view, ".ts-mini").textContent, "");
+  } finally {
+    view.reset();
+  }
+});
+
+test("check-in docked while chi writes: the text streams under the card, the row says writing; an approval in front takes the row back", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    append(checkInCard());
+    view.generationStarted({ iteration: 2 });
+    view.chunk({ iteration: 2, text: "Found it: the spec read the machine's time zone." });
+    view.flush();
+    await frame();
+    assert.equal($(view, ".ts-phase").textContent, "writing");
+    assert.equal(view.root.dataset.phase, "waiting for you", "the phase itself still waits");
+    const text = $(view, ".ts-asks-text");
+    assert.equal(text.hidden, false);
+    assert.equal(text.textContent, "Found it: the spec read the machine's time zone.");
+    // An approval comes: it blocks, it is in front; the row is the card's.
+    view.toolStarted({ iteration: 2, call_index: 1, tool: "execute", params: "x", title: "npm test" });
+    append(questionCard({ qid: "a1", kind: "approval", cls: "bubble question approval" }));
+    await frame();
+    assert.ok(!view.root.classList.contains("asks-live"));
+    assert.equal($(view, ".ts-phase").textContent, "waiting for you");
+    assert.equal($(view, ".ts-mini").textContent, "");
+    assert.equal(text.hidden, true);
+  } finally {
+    view.reset();
+  }
+});
+
+test("check-in still open at the turn's end: the streamed text and the answer swap in one task, no double text", async () => {
+  const { view, append } = openedPage();
+  try {
+    view.generationStarted({ iteration: 1 });
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: "x", title: "x" });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "x" });
+    const card = checkInCard();
+    append(card);
+    view.generationStarted({ iteration: 2 });
+    view.chunk({ iteration: 2, text: "All 20 pass now." });
+    view.generationCompleted();
+    view.flush();
+    await frame();
+    const text = $(view, ".ts-asks-text");
+    assert.equal(text.textContent, "All 20 pass now.");
+    view.turnEnded({ kind: "completed" });
+    assert.equal(text.hidden, true, "in the end's own task");
+    assert.equal(text.textContent, "");
+    assert.match($(view, ".ts-answer").textContent, /All 20 pass now\./);
+    // The bundle turns its card into a notice row: still one copy.
+    card.querySelector(".card-action").remove();
+    await frame();
+    // (The live slots' headline, hidden in the asking form, aside.)
+    const shown = [".ts-extras", ".ts-asks-text", ".ts-answer", ".ts-tail"].map((sel) => $(view, sel).textContent).join("|");
+    assert.equal(shown.split("All 20 pass now.").length - 1, 1);
   } finally {
     view.reset();
   }

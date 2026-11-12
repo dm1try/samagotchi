@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipLabelText, FLASH_MARKS, flashOf, foldedRowText, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, placeFor, stageCollapsed, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  chipLabelText, FLASH_MARKS, flashOf, foldedRowText, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, MARKS, miniToolText, phaseLabel, placeFor, stageCollapsed, stepSlotText, stepsText, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
@@ -466,4 +466,19 @@ test("MARKS and FLASH_MARKS: an ended phase's mark, a flash's mark", () => {
   assert.equal(MARKS["running a tool"], undefined);
   assert.equal(trailFlashText({ text: "careful" }, FLASH_MARKS.warn).text, "⚠ careful");
   assert.equal(FLASH_MARKS.steer, "↪");
+});
+
+test("foldedRowText: with check-in docked (running) the row says the running call unfolded too; folded, its title", () => {
+  const tool = { name: "read", title: "tmp/ci.log" };
+  assert.deepEqual(foldedRowText({ collapsed: false, question: "50 tool calls", tool, running: true }), { text: "read tmp/ci.log", title: "", question: false });
+  assert.deepEqual(foldedRowText({ collapsed: true, question: "50 tool calls", tool, running: true }), { text: "50 tool calls", title: "50 tool calls", question: true });
+  assert.deepEqual(foldedRowText({ collapsed: false, question: "", tool: null, running: true }), { text: "", title: "", question: false });
+});
+
+test("phaseLabel: writing while check-in is docked and the step's text streams; else the phase's own word", () => {
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing" }), "writing");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "writing the answer" }), "writing");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: true, streaming: "running a tool" }), "waiting for you");
+  assert.equal(phaseLabel({ phase: "waiting for you", asksFront: false, streaming: "writing" }), "waiting for you");
+  assert.equal(phaseLabel({ phase: "thinking" }), "thinking");
 });

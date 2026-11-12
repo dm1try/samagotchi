@@ -912,6 +912,12 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    question (the mini tool's slot, in the UI font, right after the phase), then the step and the timing. On a phone those
    two leave the row and the question takes a second line under it. */
 .ts-mini.ts-mini-question{order:1;font-family:inherit;font-size:12.5px;color:var(--text)}
+/* check-in docked while nothing blocks (stage_view.js .asks-live): the row says the running call right after the phase,
+   then the turn's time; the step count is the history's steps line. The live step's text streams under the card. */
+.turn-stage.asks-live .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
+.turn-stage.asks-live .ts-mini{order:1}
+.turn-stage.asks-live .ts-step{display:none}
+.ts-asks-text{padding-top:8px;border-top:1px dashed var(--border-strong);white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--text)}
 .turn-stage.asking-form.collapsed .ts-status>:not(.ts-mark,.ts-phase,.ts-mini){order:2}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}

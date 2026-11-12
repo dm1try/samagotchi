@@ -60,6 +60,10 @@ export async function startSampling(page) {
         // add below them.
         slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-foot"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
         extras: s.querySelector(".ts-extras").offsetHeight,
+        // check-in's card docked: the text streamed under it, the row's word.
+        asksText: s.querySelector(".ts-asks-text")?.textContent.length || 0,
+        label: s.querySelector(".ts-phase").textContent,
+        phase: s.dataset.phase,
         top: document.querySelector("#history").scrollTop,
         t: performance.now(),
       });

@@ -65,6 +65,9 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect([...new Set(docked.map((s) => s.slots))]).toHaveLength(1);
   // (The card's own growth can take a few samples under load.)
   expect(docked.slice(1).every((s, i) => s.h >= docked[i].h)).toBe(true);
+  // The long answer streams with the card still open: in the box under the
+  // card, the row saying "writing" (the dot blinks on: the turn isn't blocked).
+  expect(docked.some((s) => s.asksText > 0 && s.label === "writing" && s.phase === "waiting for you")).toBe(true);
   expect([...new Set(samples.filter((s) => s.t >= scrollTopSet).map((s) => s.top))]).toEqual([120]);
   // The moments, by the stage's own marks (page clock).
   const marks = await stageMarks(page);
