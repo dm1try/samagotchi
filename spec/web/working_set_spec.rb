@@ -64,6 +64,25 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     expect(call("/api/sessions/#{session.id}/working_set").last["items"]).to match([include("key" => path, "pinned" => true)])
   end
 
+  it "uses a live worker's idle working set without rebuilding it" do
+    session = saved_session([])
+    idle_set = {
+      "items" => [{ "kind" => "memory", "key" => "notes", "state" => "live", "tokens" => 9, "ops" => ["read"],
+                    "count" => 1, "first_id" => "t2", "pinned" => false, "has_drop" => false }],
+      "at" => 7,
+      "adds" => [{ "kind" => "file", "key" => File.join(repo, "future.rb"), "label" => "future.rb" }]
+    }
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+      "snapshot" => { "current_turn" => nil, "idle_working_set" => idle_set }
+    )
+    expect(Samagotchi::WorkingSet).not_to receive(:build)
+
+    status, body = call("/api/sessions/#{session.id}/working_set")
+
+    expect(status).to eq(200)
+    expect(body).to eq(idle_set.merge("running" => false))
+  end
+
   it "carries the adds the next turn's note asks the model to read, through the session file" do
     target = Samagotchi::WorkingSetSteer.target("lib/tax.rb", cwd: repo)
     messages = Samagotchi::WorkingSetSteer.record!(read_messages, Samagotchi::WorkingSetSteer.add(read_messages, target, strategy: :none, cwd: repo))

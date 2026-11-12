@@ -1404,11 +1404,15 @@ module Samagotchi
       def handle_working_set(_req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
-        running = !live&.dig("snapshot", "current_turn").nil?
+        worker_snapshot = live && live["snapshot"]
+        running = !worker_snapshot&.dig("current_turn").nil?
         turn_set = running && running_working_set(live["snapshot"]["working_set"])
         return json_response(200, turn_set.merge(running: true)) if turn_set
 
-        messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
+        idle_set = idle_working_set(worker_snapshot && worker_snapshot["idle_working_set"]) unless running
+        return json_response(200, idle_set.merge(running: false)) if idle_set
+
+        messages = live_or_saved(worker_snapshot, "messages") { session.messages }
         # A snapshot's entries have string keys (paired_runs reads symbols).
         messages = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
         llm_context = SessionSetting::LLM_CONTEXT.snapshot_value(live && live["session_state_snapshot"]) do
@@ -1425,6 +1429,17 @@ module Samagotchi
         return nil unless set.is_a?(Hash) && set["items"].is_a?(Array) && set["at"].is_a?(Integer)
 
         { items: set["items"], at: set["at"] }
+      end
+
+      # The worker's between-turns working set ({"items", "at", optional
+      # "adds"}); nil for an older or malformed snapshot.
+      def idle_working_set(set)
+        return nil unless set.is_a?(Hash) && set["items"].is_a?(Array) && set["at"].is_a?(Integer)
+        return nil if set.key?("adds") && !set["adds"].is_a?(Array)
+
+        { items: set["items"], at: set["at"] }.tap do |snapshot|
+          snapshot[:adds] = set["adds"] if set.key?("adds")
+        end
       end
 
       # The strategy an llm_context summary names ("none", "stale,forget"), as

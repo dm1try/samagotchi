@@ -1351,7 +1351,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(held).to eq([true])
       end
 
-      it "carries the running turn's last working set, which its messages lag, and none between turns" do
+      it "carries the running turn's last working set, which its messages lag" do
         start_bridge
         set = { type: :working_set_updated, items: [{ kind: "file", key: "/w/a.rb", state: "live" }], at: 3 }
         release = hold_turn_after({ type: :generation_started, iteration: 1 }, set,
@@ -1359,6 +1359,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.snapshot[:working_set]).to be_nil
         turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
         wait_for("the working set in the snapshot") { @bridge.snapshot[:working_set] }
+        expect(@bridge.snapshot).not_to have_key(:idle_working_set)
 
         body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("snapshot")
         release << true
@@ -1368,6 +1369,29 @@ RSpec.describe Samagotchi::Bridge do
           .to eq("items" => [{ "kind" => "file", "key" => "/w/a.rb", "state" => "live" }], "at" => 3)
         expect(body["snapshot"]["messages"]).to eq([])
         expect(@bridge.snapshot).to include(working_set: nil, current_turn: nil)
+      end
+
+      it "includes the idle working set that the engine announces" do
+        start_bridge
+        @engine.session = @session
+        @session.messages << {
+          role: "system", kind: "working_set",
+          working_set_ops: [{ "op" => "add", "kind" => "file", "key" => "/w/a.rb", "label" => "a.rb" }]
+        }
+        announced = []
+        @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :working_set_updated })
+
+        @engine.announce_working_set
+        event = announced.fetch(0)
+
+        expect(@bridge.snapshot[:idle_working_set]).to eq(event.slice(:items, :at, :adds))
+      end
+
+      it "omits the idle working set when it cannot be built" do
+        start_bridge
+        allow(@engine).to receive(:working_set_snapshot).and_raise(RuntimeError, "broken working set")
+
+        expect(@bridge.snapshot).not_to have_key(:idle_working_set)
       end
 
       it "includes the live objectives view from the running conversation" do

@@ -526,7 +526,7 @@ module Samagotchi
         live_conversation: -> { live_conversation },
         used_memory_names: -> { used_memory_names },
         served_expected_by: ->(served) { served_expected_by(served) },
-        working_set_strategy: -> { working_set_strategy },
+        working_set_snapshot: ->(session, conversation) { working_set_snapshot(session, conversation) },
         turn_running: -> { turn_running? },
         announce_or_hold: ->(event) { announce_or_hold(event) }
       )

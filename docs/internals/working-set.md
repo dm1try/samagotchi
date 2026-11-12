@@ -126,7 +126,8 @@ the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI 
 and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` (`Web::SessionShow`) reads them, keys
 symbolized) and the worker's `llm_context` summary. Without one it builds from the session file and its saved chip
 (`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
-snapshot has a turn in progress (`current_turn`).
+snapshot has a turn in progress (`current_turn`). Between turns, a newer worker's `idle_working_set` is used directly;
+an older worker without that key still gets the file-build fallback.
 
 **The GET while a turn runs.** A worker's snapshot messages are the session's, not the running turn's, so they lag
 its events. The snapshot also carries `working_set`: the running turn's last `:working_set_updated` (`{items, at}`),
