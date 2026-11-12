@@ -160,6 +160,10 @@ continue's `context/sessions/<id>/left.json`, stored approvals
 home (`home.json`). A corpus from
 0.164.0 or before has none of those and skips them; a later one must hold them. 0.165.0's and 0.166.0's approvals are a list, which chi no longer reads: the main read skips them and a spec there
 checks that the file is set aside. The corpus is always read from a copy, since a reader may rewrite or move what it reads.
+A corpus after 0.168.0 also records every registered cross-version session store
+(`SessionStores`): objective checks, tracks and proposal cards, delegates,
+pending cards, reminders and parent overrides. The starting marker is the
+documented stale-file exception.
 A corpus recorded after 0.165.0 also holds `wire/`: a worker's replies to `GET state`, `snapshot` (after a turn, and
 mid-turn with a prompt queued behind it) and `tail`, each `{route, status, body}`, and the session file it saved,
 recorded from a real Engine and Bridge (`script/release/compat_wire.rb`, `CompatWire`: a scripted kernel, read over the

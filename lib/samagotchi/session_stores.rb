@@ -3,11 +3,16 @@
 module Samagotchi
   # The files that hold state for a session, including stores outside its
   # sidecar directory. `corpus_dir` is relative to the compatibility corpus.
+  # A Symbol in `continue` names the carry step; a String explains why it stays.
   module SessionStores
-    Store = Data.define(:file, :owner, :removal, :cross_version, :continue, :corpus_dir) do
+    Store = Data.define(:file, :owner, :removal, :cross_version, :continue, :corpus_dir, :corpus_exception) do
+      def initialize(file:, owner:, removal:, cross_version:, continue:, corpus_dir:, corpus_exception: nil)
+        super
+      end
+
       def carried? = continue.is_a?(Symbol)
 
-      def corpus_exception? = cross_version && corpus_dir.nil?
+      def corpus_exception? = !corpus_exception.nil?
     end
 
     SIDE_CAR = "sessions/compat-session"
@@ -33,7 +38,7 @@ module Samagotchi
       Store.new(file: "pending_card.json", owner: "Bridge::PendingCard", removal: :session_files, cross_version: true,
                 continue: "an open card belongs to its running turn", corpus_dir: SIDE_CAR),
       Store.new(file: "turn_drawings.jsonl", owner: "Bridge::TurnDrawings", removal: :session_files, cross_version: true,
-                continue: "drawings describe turns in the previous link", corpus_dir: SIDE_CAR),
+                continue: "drawings describe turns in the previous link", corpus_dir: "sessions/compat-drawn"),
       Store.new(file: "move.json", owner: "ChildMove", removal: :session_files, cross_version: true,
                 continue: "an interrupted move belongs to the previous continue", corpus_dir: SIDE_CAR),
       Store.new(file: "continue.json", owner: "ContinueIntent", removal: :session_files, cross_version: true,
@@ -57,7 +62,8 @@ module Samagotchi
       Store.new(file: "parent.json", owner: "Session", removal: :session_files, cross_version: true,
                 continue: :children, corpus_dir: SIDE_CAR),
       Store.new(file: "starting", owner: "StartingMarker", removal: :session_files, cross_version: true,
-                continue: "a start marker belongs to its spawn", corpus_dir: nil),
+                continue: "a start marker belongs to its spawn", corpus_dir: nil,
+                corpus_exception: "the corpus marker would always be stale, so it cannot pin the live-start handshake"),
       Store.new(file: "thinking_tails.jsonl", owner: "ThinkingTails", removal: :session_files, cross_version: true,
                 continue: "generation tails remain with the previous link", corpus_dir: SIDE_CAR),
       Store.new(file: "delegates.json", owner: "Tools::DelegateCursors", removal: :session_files, cross_version: true,

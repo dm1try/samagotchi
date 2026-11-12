@@ -70,6 +70,16 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/grants"
     require_relative "../../lib/samagotchi/participants"
     require_relative "../../lib/samagotchi/chi_home"
+    require_relative "../../lib/samagotchi/session_stores"
+    require_relative "../../lib/samagotchi/bridge/pending_card"
+    require_relative "../../lib/samagotchi/objectives_check"
+    require_relative "../../lib/samagotchi/objectives_track"
+    require_relative "../../lib/samagotchi/reminder_carry"
+    require_relative "../../lib/samagotchi/reminder_store"
+    require_relative "../../lib/samagotchi/recap_store"
+    require_relative "../../lib/samagotchi/thinking_tails"
+    require_relative "../../lib/samagotchi/tools/delegate_cursor"
+    require_relative "../../lib/samagotchi/archive_store"
 
     Dir.mktmpdir("chi-compat-corpus-") do |tmp|
       staged = File.join(tmp, "corpus")
@@ -150,6 +160,9 @@ module ReleaseTools
           home_path,
           *live_paths,
           *store_paths,
+          *Samagotchi::SessionStores.corpus_stores.reject(&:corpus_exception?).map do |store|
+            File.join(staged, store.corpus_dir, store.file)
+          end,
           *wire_paths
         ]
         missing = required.reject { |path| File.file?(path) }
@@ -228,10 +241,90 @@ module ReleaseTools
     context.write_left([Samagotchi::ContextSources::Left.new(name: "claude-inbox", hint: "compatibility corpus",
                                                              from: COMPAT_DRAWN_ID)])
 
-    [move_path, File.join(context.dir, Samagotchi::ContextSources::LEFT_FILE), write_compat_approvals!(sessions_dir),
-     *write_compat_grant!(sessions_dir, at)]
+    session_dir = Samagotchi::Session.session_dir(COMPAT_SESSION_ID, state_dir: sessions_dir)
+    [
+      move_path,
+      File.join(context.dir, Samagotchi::ContextSources::LEFT_FILE),
+      write_compat_approvals!(sessions_dir),
+      *write_compat_grant!(sessions_dir, at),
+      write_compat_session_stores!(sessions_dir, session_dir, at)
+    ].flatten
   end
   private_class_method :write_compat_store_files!
+
+  # The remaining cross-version per-session stores use their real writers.
+  # Nondeterministic timestamps and ids are pinned after writing, as above.
+  # @return [Array<String>] the stores' paths
+  def write_compat_session_stores!(sessions_dir, session_dir, at)
+    session_id = COMPAT_SESSION_ID
+
+    Samagotchi::ArchiveStore.archive(session_id, state_dir: sessions_dir)
+    archive_path = File.join(session_dir, Samagotchi::ArchiveStore::FILE)
+    normalize_json_store!(archive_path) { |data| data["archived_at"] = COMPAT_STAMP }
+
+    Samagotchi::Bridge::PendingCard.new(session_dir).call(
+      { type: :card, id: "compat-card", source: "check-in", actions: [{ label: "Nudge" }], in_turn: true }
+    )
+    pending_path = File.join(session_dir, Samagotchi::Bridge::PendingCard::FILE)
+
+    Samagotchi::Objectives.with_lock(session_dir) do
+      Samagotchi::Objectives.record_card(session_dir, "compat-proposal", Samagotchi::Objectives::APPLIED)
+    end
+    Samagotchi::ObjectivesCheck::STORE.write(session_dir, now: at, objective: "O1", id: "compat-check", mark: "compat-mark",
+                                                         model: "compat:model", verdict: "confirmed", reason: "recorded",
+                                                         text: "compatibility corpus")
+    Samagotchi::ObjectivesTrack::STORE.write(
+      session_dir, now: at, id: "compat-track", model: "compat:model", seen: "compat-seen", left_out: 0,
+                   readings: { "O1" => { "reading" => "progress", "reason" => "compatibility corpus" } },
+                   lines: { "O1" => "compat-line" }, mark: "compat-mark"
+    )
+
+    reminders = Samagotchi::ReminderStore.new
+    reminders.register(name: "compatibility", description: "compatibility corpus", interval_minutes: 20)
+    Samagotchi::ReminderCarry.write(session_dir, session_id: session_id, store: reminders, wall: at)
+    reminders_path = File.join(session_dir, Samagotchi::ReminderCarry::FILE)
+    normalize_json_store!(reminders_path) do |data|
+      data["written_at"] = COMPAT_STAMP
+      data["reminders"].each do |entry|
+        entry["id"] = "compat-reminder"
+        entry["next_fire_at"] = COMPAT_STAMP
+      end
+    end
+
+    recap = Samagotchi::RecapStore.new(session_id_lookup: -> { session_id }, state_dir_lookup: -> { sessions_dir })
+    recap.save(text: "The user was testing compatibility.", title: "Compatibility", created_at: COMPAT_STAMP)
+    recap_path = File.join(session_dir, Samagotchi::RecapStore::FILE)
+
+    Samagotchi::Session.reparent(session_id, to: "compat-parent", from: "compat-source", state_dir: sessions_dir)
+    parent_path = File.join(session_dir, Samagotchi::Session::PARENT_FILE)
+    normalize_json_store!(parent_path) { |data| data["at"] = COMPAT_STAMP }
+
+    Samagotchi::Tools::DelegateCursors.update(session_id, "compat-child", state_dir: sessions_dir) do |cursor|
+      cursor.with(reply_file: "output/compat-child.json", question_id: "compat-question")
+    end
+    delegates_path = File.join(session_dir, Samagotchi::Tools::DelegateCursors::FILE)
+
+    tails = Samagotchi::ThinkingTails.new(session_dir: -> { session_dir }, clock: -> { at })
+    [
+      { type: :turn_started, turn_id: "compat-tail-turn" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_chunk, iteration: 1, thinking: "compatibility thinking" },
+      { type: :generation_completed, iteration: 1, finish_reason: "length" }
+    ].each { |event| tails.call(event) }
+    tails_path = File.join(session_dir, Samagotchi::ThinkingTails::FILE)
+
+    [archive_path, pending_path, File.join(session_dir, Samagotchi::Objectives::CARDS_FILE),
+     File.join(session_dir, Samagotchi::ObjectivesCheck::FILE), File.join(session_dir, Samagotchi::ObjectivesTrack::FILE),
+     reminders_path, recap_path, parent_path, delegates_path, tails_path]
+  end
+  private_class_method :write_compat_session_stores!
+
+  def normalize_json_store!(path)
+    data = JSON.parse(File.read(path))
+    yield data
+    File.write(path, "#{JSON.pretty_generate(data)}\n")
+  end
+  private_class_method :normalize_json_store!
 
   # A session approval of a command and a rule's, in /compat-fixture, in
   # the versioned store Approvals#add writes.

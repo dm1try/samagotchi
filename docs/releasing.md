@@ -101,7 +101,9 @@ The agent does each step and stops where the user has to say yes.
    the release's session, bridge, cards, schedules and bundle state, and a
    session's input file, note, continue intent and stop marker and a bundle's
    install journal, under
-   `spec/compat/X.Y.Z/`, and in its `wire/` what a worker answers its clients
+   `spec/compat/X.Y.Z/`. `SessionStores` supplies the cross-version
+   session-sidecar files; the stale `starting` marker is its documented
+   exception. The corpus also records in `wire/` what a worker answers its clients
    (`GET state`, `snapshot` idle and mid-turn, `tail`, and the session file:
    `script/release/compat_wire.rb` runs a real Engine and Bridge with a
    scripted kernel, in process); commit those samples with the release so the
