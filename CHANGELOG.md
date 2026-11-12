@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: the working set between turns now matches the running session's next-turn view, including pending adds.
+
 ## [0.169.0] - 2026-11-12
 
 ### Changed
