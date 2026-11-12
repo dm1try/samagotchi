@@ -89,6 +89,21 @@ test("the hand-off: an outlined completed turn lands closed, a canceled or faile
   assert.equal(landed("failed"), true);
 });
 
+test("replacing a question clears the old lead-in's asking label immediately", () => {
+  const { historyEl, view, append } = openedPage();
+  asks(view, { text: "I need to know which one." });
+  const first = questionCard();
+  append(first);
+  const leadIn = historyEl.querySelector(".bubble.said");
+  assert.ok(leadIn?.classList.contains("pending"));
+
+  first.remove();
+  view.settleWaiting("q:q1");
+  append(questionCard({ qid: "q2" }));
+
+  assert.equal(leadIn.classList.contains("pending"), false);
+});
+
 
 
 test("a row placed while the finished turn slides away lands after the turn, not above it", () => {
