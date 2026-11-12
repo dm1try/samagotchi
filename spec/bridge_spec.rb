@@ -1370,6 +1370,35 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.snapshot).to include(working_set: nil, current_turn: nil)
       end
 
+      it "includes the live objectives view from the running conversation" do
+        start_bridge
+        running = [{ role: "model", content: "in progress" }]
+        view = { items: [{ id: "O1", text: "live", status: "active" }] }
+        allow(@engine).to receive(:live_conversation).and_return(running)
+        expect(Samagotchi::Objectives).to receive(:view).with(
+          @session.id, @session.messages, state_dir: state_dir, running: running
+        ).and_return(view)
+
+        expect(@bridge.snapshot).to include(objectives: view)
+      end
+
+      it "omits objectives when the view cannot be read" do
+        start_bridge
+        allow(Samagotchi::Objectives).to receive(:view).and_raise(RuntimeError, "broken objectives")
+
+        snapshot = @bridge.snapshot
+
+        expect(snapshot).to include(:messages, :event_seq)
+        expect(snapshot).not_to have_key(:objectives)
+      end
+
+      it "includes nil objectives when the worker has no list" do
+        start_bridge
+        allow(Samagotchi::Objectives).to receive(:view).and_return(nil)
+
+        expect(@bridge.snapshot).to include(objectives: nil)
+      end
+
       it "serves the same snapshot over GET /session/:id/snapshot, with the session state at its seq" do
         start_bridge
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },

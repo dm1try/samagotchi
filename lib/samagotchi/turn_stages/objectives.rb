@@ -97,18 +97,16 @@ module Samagotchi
       # @param state_dir [String] the sessions dir
       def note(session, note, recorder:, state_dir:) = audit(state_dir, recorder).note(session, note)
 
-      # The session's objectives as the page draws them (Objectives.view), when
-      # that differs from the last announced: after an edit (its file written,
-      # pending), once a list note is in, at a turn's end (its moves) and after
-      # a rollback. A session with no list announces nothing. The caller
+      # The session's objectives as the page draws them (Engine#objectives_view),
+      # when that differs from the last announced: after an edit (its file
+      # written, pending), once a list note is in, at a turn's end (its moves)
+      # and after a rollback. A session with no list announces nothing. The caller
       # (Engine#announce_objectives) holds the event lock, the one guard of
       # the last view, announces the event and logs a failure: it only
       # informs, never fails a turn.
-      # @param state_dir [String] the sessions dir
-      # @param running [Array<Hash>, nil] the running turn's conversation (Engine#live_conversation), nil between turns
+      # @param view [Hash, nil] the view from Engine#objectives_view
       # @return [Hash, nil] the :objectives_updated event to announce, nil when the view is the same
-      def announce(session, state_dir:, running:)
-        view = Samagotchi::Objectives.view(session.id, session.messages, state_dir: state_dir, running: running&.dup)
+      def announce(session, view:)
         return if view.nil? || view == @announced
 
         @announced = view
