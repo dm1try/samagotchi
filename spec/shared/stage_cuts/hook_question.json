@@ -1,0 +1,438 @@
+{
+  "description": "A hook's question before a call runs.",
+  "prompt": "do it",
+  "turn_id": "turn-hq",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "do it",
+      "turn_id": "turn-hq",
+      "at": "2026-11-12T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 1,
+      "text": "Running a command.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"true\"",
+      "tool_id": "t1"
+    },
+    {
+      "type": "question_requested",
+      "pending_question": {
+        "id": "h1",
+        "kind": "hook",
+        "hook": "r0",
+        "question": "Run true?",
+        "options": [
+          "Yes",
+          "No"
+        ],
+        "status": "pending"
+      }
+    },
+    {
+      "type": "question_answered",
+      "id": "h1",
+      "answer": {
+        "selected": [
+          "Yes"
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t1",
+      "output": "[execute]\nok",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"true\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 2,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-hq",
+      "duration_ms": 2400,
+      "turn_summary": {
+        "output": "Done."
+      }
+    }
+  ],
+  "cuts": [
+    {
+      "at": 5,
+      "label": "waiting",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "text",
+              "iteration": 1,
+              "text": "Running a command."
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "execute",
+              "params": "command=\"true\"",
+              "status": "running",
+              "tool_id": "t1",
+              "elapsed_ms": 0
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "h1",
+                  "kind": "hook",
+                  "hook": "r0",
+                  "question": "Run true?",
+                  "options": [
+                    "Yes",
+                    "No"
+                  ],
+                  "status": "pending"
+                }
+              }
+            }
+          ],
+          "pending_question": {
+            "id": "h1",
+            "kind": "hook",
+            "hook": "r0",
+            "question": "Run true?",
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "status": "pending"
+          },
+          "turn_id": "turn-hq",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-hq",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running a command.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"true\"",
+            "elapsed_ms": 0
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "h1",
+              "kind": "hook",
+              "hook": "r0",
+              "question": "Run true?",
+              "options": [
+                "Yes",
+                "No"
+              ],
+              "status": "pending"
+            }
+          }
+        ],
+        "cards": [
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "h1",
+              "kind": "hook",
+              "hook": "r0",
+              "question": "Run true?",
+              "options": [
+                "Yes",
+                "No"
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-hq"
+          }
+        ],
+        "pending_question": {
+          "id": "h1",
+          "kind": "hook",
+          "hook": "r0",
+          "question": "Run true?",
+          "options": [
+            "Yes",
+            "No"
+          ],
+          "status": "pending"
+        },
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 10,
+      "label": "answered",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "text",
+              "iteration": 1,
+              "text": "Running a command."
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "execute",
+              "params": "command=\"true\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[execute]\nok",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "h1",
+                  "kind": "hook",
+                  "hook": "r0",
+                  "question": "Run true?",
+                  "options": [
+                    "Yes",
+                    "No"
+                  ],
+                  "status": "pending"
+                }
+              }
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_answered",
+                "id": "h1",
+                "answer": {
+                  "selected": [
+                    "Yes"
+                  ]
+                }
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "text",
+              "iteration": 2,
+              "text": "Done."
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-hq",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-hq",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running a command.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"true\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"true\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "h1",
+              "kind": "hook",
+              "hook": "r0",
+              "question": "Run true?",
+              "options": [
+                "Yes",
+                "No"
+              ],
+              "status": "pending"
+            }
+          },
+          {
+            "type": "question_answered",
+            "id": "h1",
+            "answer": {
+              "selected": [
+                "Yes"
+              ]
+            }
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Done.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "cards": [
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "h1",
+              "kind": "hook",
+              "hook": "r0",
+              "question": "Run true?",
+              "options": [
+                "Yes",
+                "No"
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "Yes"
+              ]
+            },
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-hq"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    }
+  ]
+}
