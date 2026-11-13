@@ -191,6 +191,9 @@ RSpec.configure do |config|
   config.after { WebMock.disable_net_connect! }
   config.after { remove_git_repo }
   config.after { remove_hosts_config_homes }
+  # SessionManager's starter registry is process-wide, including for specs
+  # outside the session manager context.
+  config.after { Samagotchi::SessionManager.forget_spawns if defined?(Samagotchi::SessionManager) }
   # A spawned-mode WorkerBoot.run_session_loop installs the process-wide project env
   # (ProjectEnv.install!); later examples must start from NONE.
   config.after { Samagotchi::ProjectEnv.reset! if defined?(Samagotchi::ProjectEnv) }
