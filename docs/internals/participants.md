@@ -284,8 +284,10 @@ turn by its `turn_id`: chi web reads the live snapshot's running turn, requires 
 author the grant's), and asks the worker to cancel that turn id (`BridgeClient#cancel(turn_id:)`), which
 `TurnState#cancel!` compares under its lock (409 `turn_mismatch`): a turn that ended and gave way to another
 person's between the read and the cancel is never stopped. Without a `turn_id` (the Bridge would cancel whatever
-runs), or for a turn not theirs, it is 403 `not_permitted`, audited. The reason is the server's (`user`), never the
-body's.
+runs), or for a turn not theirs, it is 403 `not_permitted`, audited. It is relayed only to a worker that names
+`cancel_turn_id` (`Delivery::CANCEL_TURN_ID_FEATURE`): an older one ignores the id and would stop whatever runs, the
+owner's next turn too, so it is 409 `cancel_unavailable` (`ParticipantMessages::CANCEL_UNAVAILABLE`), audited, until
+the owner restarts it. The reason is the server's (`user`), never the body's.
 
 **The owner's input during a participant's turn queues.** While a participant's turn runs, the owner's input never merges
 into it, from any client (the web, an attached TUI, `chi send` without `--queue`): the Bridge's `POST /turn` makes it

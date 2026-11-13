@@ -9,6 +9,7 @@ require "samagotchi/web/app"
 require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/bridge_client"
+require "samagotchi/bridge"
 
 # POST /api/sessions/:id/cancel from a participant
 # (ParticipantAccess#participant_cancel): their own running turn only, by
@@ -33,10 +34,13 @@ RSpec.describe Samagotchi::Web::App, "a participant stopping a turn" do
   let(:client) { instance_double(Samagotchi::BridgeClient) }
   let(:running) { { "turn_id" => "t-alex", "author" => issued.grant.author, "origin" => { "client_id" => "review:x" } } }
   let(:not_permitted) { [403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }] }
+  # A worker whose cancel compares the turn_id it is named (TurnState#cancel!).
+  let(:features) { ["delivery", Samagotchi::Delivery::CANCEL_TURN_ID_FEATURE] }
 
   before do
     allow(app).to receive(:bridge_get_json).with(session.id, "snapshot") { { "snapshot" => { "current_turn" => running } } }
     allow(app).to receive(:bridge_client).with(session.id).and_return(client)
+    allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(features)
   end
 
   after { FileUtils.remove_entry(root) }
@@ -98,6 +102,19 @@ RSpec.describe Samagotchi::Web::App, "a participant stopping a turn" do
                                      .and_return(reply(409, { "error" => "turn_mismatch" }))
     expect(cancel({ turn_id: "t-alex" })).to eq([409, { "error" => "turn_mismatch", "detail" => "the running turn is not the one named",
                                                         "session_id" => session.id }])
+  end
+
+  # An older worker's Bridge ignores turn_id: their turn ending and the
+  # owner's queued one starting before the cancel lands would stop the
+  # owner's. Refused, audited, nothing relayed; the owner's cancel goes on.
+  it "refuses (409 cancel_unavailable, audited) on a worker that can't cancel by turn_id: nothing is relayed" do
+    features.delete(Samagotchi::Delivery::CANCEL_TURN_ID_FEATURE)
+    allow(client).to receive(:cancel)
+    expect(cancel({ turn_id: "t-alex" })).to eq([409, { "error" => "cancel_unavailable",
+                                                        "detail" => Samagotchi::ParticipantMessages::CANCEL_UNAVAILABLE }])
+    expect(client).not_to have_received(:cancel)
+    expect(refusals.map { |line| line["reason"] }).to include("cancel_unavailable")
+    expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::CANCEL_TURN_ID_FEATURE)
   end
 
   it "leaves the owner's cancel as it was: any turn, the body's reason, a turn_id when given" do

@@ -28,5 +28,8 @@ module Samagotchi
     # Their turn failed (a wait's error, a failed turn's no_reply): never
     # the exception's words or the failure summary, which may name a path.
     TURN_FAILED = "this turn failed: the session's owner can see why"
+    # A participant's Stop on a worker that can't stop only the turn named
+    # (Delivery::CANCEL_TURN_ID_FEATURE): it might stop the owner's next turn.
+    CANCEL_UNAVAILABLE = "this session's worker is too old to stop only your turn: ask the session's owner to restart it"
   end
 end

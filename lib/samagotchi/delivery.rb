@@ -71,6 +71,12 @@ module Samagotchi
     # which is safe: the feature only says what will really happen (chi
     # web's ack, the page's delivery line).
     OWN_TURN_STEER_FEATURE = "participant_steer"
+    # The worker sidecar feature (Bridge::FEATURES) of a worker whose cancel
+    # compares the turn_id it names under its lock (TurnState#cancel!, 409
+    # turn_mismatch). One without it may ignore the id and cancel whatever
+    # runs, so chi web relays a participant's cancel only to a worker with it
+    # (ParticipantAccess#participant_cancel).
+    CANCEL_TURN_ID_FEATURE = "cancel_turn_id"
 
     # Whether it is the one every sender defaulting to a step boundary uses.
     def self.next_step?(value) = parse(value) == NEXT_STEP

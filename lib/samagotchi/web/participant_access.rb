@@ -11,6 +11,7 @@ require_relative "../session_inbox"
 require_relative "../session_metrics"
 require_relative "../parent_report"
 require_relative "../participant_messages"
+require_relative "../participant_mode"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../turn_checkpoint"
@@ -275,8 +276,23 @@ module Samagotchi
         turn = live.dig("snapshot", "current_turn")
         return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) unless turn.is_a?(Hash)
         return not_permitted_for(req, principal(req)) unless own_running_turn?(principal(req).grant, turn, turn_id)
+        return cancel_unavailable(req) unless cancels_by_turn_id?(id)
 
         relay_cancel(id, ->(client) { client.cancel(reason: PARTICIPANT_CANCEL_REASON, turn_id: turn_id) })
+      end
+
+      # Whether the session's live worker cancels only the turn_id it is
+      # named (Delivery::CANCEL_TURN_ID_FEATURE): an older one ignores it and
+      # would stop whatever runs, the owner's next turn too.
+      def cancels_by_turn_id?(id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        Array(ParticipantMode.live_features(session, default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
+      end
+
+      # 409 cancel_unavailable, audited; nothing is relayed.
+      def cancel_unavailable(req)
+        audit_refused(req, principal(req).grant, reason: "cancel_unavailable")
+        error_response(409, "cancel_unavailable", ParticipantMessages::CANCEL_UNAVAILABLE)
       end
 
       # Bridge::CANCEL_REASONS' "user": the person who sent it stopped it.

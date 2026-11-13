@@ -783,12 +783,16 @@ module Samagotchi
     # runs goes in at its next step (a worker without it queues it); only
     # what the page's delivery line and chi web's ack say depends on it
     # (Delivery::OWN_TURN_STEER_FEATURE).
+    # cancel_turn_id: POST cancel with a turn_id cancels that turn only
+    # (Delivery::CANCEL_TURN_ID_FEATURE), what chi web needs to relay a
+    # participant's cancel.
     # activity: GET /activity answers with Worker#activity_snapshot, so
     # `chi schedule tick` can ask a live worker what it is busy with.
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
-                WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE].freeze
+                WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
+                Delivery::CANCEL_TURN_ID_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
