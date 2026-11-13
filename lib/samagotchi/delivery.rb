@@ -64,6 +64,13 @@ module Samagotchi
     # share treat the session as :review (ParticipantMode.live) until it
     # restarts.
     PAIR_FEATURE = "pair_turns"
+    # The worker sidecar feature (Bridge::FEATURES) of a worker whose
+    # participant's message sent while their own turn runs goes in at its
+    # next step (Bridge#same_author_steer?, SessionInbox.turn_end_data?'s
+    # running author). One without it queues every participant message,
+    # which is safe: the feature only says what will really happen (chi
+    # web's ack, the page's delivery line).
+    OWN_TURN_STEER_FEATURE = "participant_steer"
 
     # Whether it is the one every sender defaulting to a step boundary uses.
     def self.next_step?(value) = parse(value) == NEXT_STEP

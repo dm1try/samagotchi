@@ -75,7 +75,24 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
     expect(merged_origins).to be_empty
   end
 
-  it "gives a participant's turn a probe that never sees a waiting line: its drain merges none" do
+  it "gives a participant's turn a probe that sees only their own waiting line" do
+    probes = Queue.new
+    allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+      if prompt == "first"
+        Samagotchi::SessionInbox.write_input(session_dir, prompt: "theirs", client_id: "review:p_1", author: "p:p_1",
+                                                          enqueued_id: "e9")
+      end
+      probes << [prompt, kwargs[:input_waiting].call]
+      kwargs[:pending_input].call if prompt == "first"
+      result
+    end
+    start_worker
+    Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "web:t", enqueued_id: "e1", author: "p:p_1")
+
+    expect(pop!(probes, "the participant's turn")).to eq(["first", true])
+  end
+
+  it "gives a participant's turn a probe that never sees anyone else's waiting line" do
     probes = Queue.new
     allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
       Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner line", client_id: "web:o") if prompt == "first"

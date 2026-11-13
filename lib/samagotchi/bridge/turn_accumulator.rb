@@ -83,10 +83,14 @@ module Samagotchi
         end
       end
 
-      # Whether the turn in progress is a participant's review turn (its
-      # author): the owner's input queues behind it then (Bridge's POST /turn).
-      def participant_turn?
-        @mutex.synchronize { !@turn.nil? && Steer.participant_author?(@turn[:author] || TurnOrigin.from(@turn[:origin])&.author) }
+      # Whether the turn in progress is a participant's turn (its author):
+      # anyone else's input queues behind it then (Bridge's POST /turn).
+      def participant_turn? = !participant_author.nil?
+
+      # The turn in progress's participant author ("p:<id>"), nil for the
+      # owner's or none.
+      def participant_author
+        @mutex.synchronize { @turn && Steer.sender_author(@turn[:author] || TurnOrigin.from(@turn[:origin])&.author) }
       end
 
       # The turn in progress as conversation messages, for a plugin's

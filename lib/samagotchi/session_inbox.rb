@@ -313,15 +313,18 @@ module Samagotchi
     # Whether a mid-turn drain leaves this unclaimed input file for a turn
     # of its own instead of merging it at a step boundary: a queued message
     # (`delivery: queue`), an image message (steering merges text only), or
-    # a participant's, whatever its delivery says: theirs always runs as its
-    # own turn, never inside another author's (D6; chi web queues it, and
-    # this is the worker's own layer).
+    # one whose author isn't the running turn's: a participant's goes into
+    # their own running turn only, never another author's, and nobody's
+    # goes into a participant's but theirs (D6; the Bridge queues it, and
+    # this is the worker's own layer). +running_author+: the running turn's
+    # participant author (TurnOrigin#participant_author), nil for the
+    # owner's.
     # The drain skips such a file without stopping at it, so a later text
     # line still merges; the drain's file filter reads this one predicate,
     # so what a boundary leaves changes in one place.
-    def self.waits_for_turn_end?(input_file)
+    def self.waits_for_turn_end?(input_file, running_author: nil)
       data = JSON.parse(File.read(input_file))
-      data.is_a?(Hash) && turn_end_data?(data)
+      data.is_a?(Hash) && turn_end_data?(data, running_author: running_author)
     rescue JSON::ParserError, SystemCallError
       false
     end
@@ -339,10 +342,13 @@ module Samagotchi
 
     # A parsed input file's #waits_for_turn_end?. A Verify or a Revise turn
     # waits too: merged into a running turn as a steer, its anchor would be
-    # lost.
-    def self.turn_end_data?(data)
-      Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"]) ||
-        TurnAnchors.named_in?(data)
+    # lost. Without +running_author+ (the owner's turn, or none named) a
+    # participant's file waits, as before.
+    def self.turn_end_data?(data, running_author: nil)
+      return true if Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || TurnAnchors.named_in?(data)
+
+      author = Steer.sender_author(data["author"])
+      running_author ? author != running_author : Steer.participant_author?(data["author"])
     end
 
     # Whether a message waits that a running turn's next boundary merges and
@@ -352,11 +358,13 @@ module Samagotchi
     # ends on it (Worker#input_waiting?). It only peeks: nothing is claimed;
     # a file the drain or a dequeue claims meanwhile (ENOENT) or one that
     # doesn't parse is skipped.
-    def self.steer_waiting?(session_dir)
+    # In a participant's turn (+running_author+) only their own message
+    # counts.
+    def self.steer_waiting?(session_dir, running_author: nil)
       find_new_input_files(session_dir).any? do |file|
         data = JSON.parse(File.read(file))
-        data.is_a?(Hash) && !turn_end_data?(data) && !data["prompt"].to_s.strip.empty? &&
-          Steer.cuts?(Steer.source_for_client(data["client_id"]))
+        data.is_a?(Hash) && !turn_end_data?(data, running_author: running_author) && !data["prompt"].to_s.strip.empty? &&
+          (running_author || Steer.cuts?(Steer.source_for_client(data["client_id"])))
       rescue JSON::ParserError, SystemCallError
         false
       end

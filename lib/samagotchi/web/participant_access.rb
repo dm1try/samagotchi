@@ -290,12 +290,16 @@ module Samagotchi
 
       # ── A participant's turn ──────────────────────────────────────────
 
-      # POST /api/sessions/:id/turn from a participant: a review turn (D6,
-      # D10). Of the body only the prompt counts: the author and client id
-      # are the grant's (review:<id>), the delivery is always queue, no
-      # images, no no_interrupt; the owner's prompt history never sees it.
-      # Refused: a line starting ! or / (403 not_permitted: shell lines
-      # and commands are the owner's), images (403), their turn limit (429
+      # POST /api/sessions/:id/turn from a participant: their turn (D6,
+      # D10). Of the body only the prompt and the delivery count: the author
+      # and client id are the grant's (review:<id>), no images, no
+      # no_interrupt; the owner's prompt history never sees it. The delivery
+      # is queue or next step (none: next step): the worker puts a next-step
+      # message into a running turn only when that turn is theirs, else it
+      # runs as their own turn after it (Bridge#same_author_steer?; an older
+      # worker queues it). Refused: a line starting ! or / (403
+      # not_permitted: shell lines and commands are the owner's), images
+      # (403), a cut (403: theirs never cuts), their turn limit (429
       # too_many_turns, the Bridge counts) and their cap (429 cap_reached).
       # Every answer is audited (turn: accepted or refused, why).
       def handle_participant_turn(req, id, body)
@@ -307,8 +311,9 @@ module Samagotchi
         return participant_turn_refused(grant, prompt, *reason) if reason
 
         # A Verify turn's claim; never a Revise (the owner's stacks).
+        delivery = Delivery.queue?(body["delivery"]) ? Delivery::QUEUE : Delivery::NEXT_STEP
         result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
-                                                 delivery: Delivery::QUEUE, author: grant.author,
+                                                 delivery: delivery, author: grant.author,
                                                  anchors: TurnAnchors.from(body).without_revises,
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
@@ -322,6 +327,7 @@ module Samagotchi
       def participant_turn_refusal(grant, prompt, body)
         return [403, "not_permitted", NOT_PERMITTED] if prompt.lstrip.start_with?("!", "/")
         return [403, "not_permitted", NOT_PERMITTED] unless body["images"].nil? || body["images"] == []
+        return [403, "not_permitted", NOT_PERMITTED] if Delivery.cut?(body["delivery"])
 
         participant_cap_refusal(grant)
       end
@@ -356,7 +362,10 @@ module Samagotchi
           enqueued_id = result.ack["enqueued_id"]
           remember_participant_turn(enqueued_id, grant.id)
           audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id)
-          json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => Delivery::QUEUE))
+          # What the worker says will happen (a turn of its own, or into
+          # their running turn at its next step); a file (no worker yet)
+          # runs as the next turn, which reads as a queue.
+          json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => result.ack["delivery"] || Delivery::QUEUE))
         when :refused
           audit_turn(grant, prompt, status: "refused", reason: result.ack["error"])
           json_response(result.code, result.ack)
@@ -450,17 +459,18 @@ module Samagotchi
       # answer trimmed to what their turn's reply is (status, text, turn
       # id, a cancel's reason): no file path, no question (an approval or a
       # question their turn raised is the owner's to answer: the status
-      # says waiting_for_owner), no origin, no parent strategy. It waits as
-      # for a queued turn (theirs always is: never merged), so it never
-      # falls back to the next reply past a cursor, which would be anyone's;
-      # the body's cursor doesn't count. A revoke or the expiry ends a wait
+      # says waiting_for_owner), no origin, no parent strategy. It waits on
+      # their turn's id, so it never falls back to the next reply past a
+      # cursor, which would be anyone's (the body's cursor doesn't count);
+      # a message merged into their own running turn is followed into it by
+      # its merge record (ReplyWait::Poll#follow_merge), a turn of theirs. A revoke or the expiry ends a wait
       # already running (the gate checked the grant when it began): 401
       # token_revoked / token_expired, as their next request would get.
       def participant_wait(req, id, options)
         grant = principal(req).grant
         return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
 
-        options = options.merge(queued: true, cursor: nil)
+        options = options.merge(queued: false, cursor: nil)
         session = session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
                                                cancelled: -> { !@server_running.call || !@grants.active?(grant.id) })

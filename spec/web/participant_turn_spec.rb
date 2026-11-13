@@ -13,9 +13,10 @@ require "samagotchi/session_manager"
 require "samagotchi/analytics_file"
 
 # POST /api/sessions/:id/turn and …/turn/:eid/dequeue from a participant:
-# a review turn whose author and client id are the grant's, always queued,
-# with no shell line, command or image, nothing in the owner's prompt
-# history, and every answer audited.
+# a turn whose author and client id are the grant's, queued or at the next
+# step of their own running turn (the worker decides), never a cut, with
+# no shell line, command or image, nothing in the owner's prompt history,
+# and every answer audited.
 RSpec.describe Samagotchi::Web::App, "a participant's turn" do
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
@@ -65,11 +66,12 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
   def audit = File.readlines(File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), "participants.jsonl"))
                   .map { |line| JSON.parse(line) }.select { |line| line["event"] == "turn" }
 
-  it "stamps the author and client id from the grant and queues it, whatever the body says" do
-    status, body = turn({ prompt: "Is step 3 safe?", client_id: "cli:answer", author: "owner", delivery: "cut",
+  it "stamps the author and client id from the grant, whatever the body says; the delivery the body's queue or next step" do
+    status, body = turn({ prompt: "Is step 3 safe?", client_id: "cli:answer", author: "owner", delivery: "queue",
                           no_interrupt: true })
 
     expect(status).to eq(202)
+    # A file (no delivery in the worker's ack) reads as a queue.
     expect(body).to include("status" => "accepted", "delivery" => "queue")
     expect(delivered.first).to include(prompt: "Is step 3 safe?", client_id: "review:#{grant.id}", author: grant.author,
                                        delivery: "queue", pending_limit: 4)
@@ -146,6 +148,21 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(turn({ prompt: "one more" })).to eq([429, { "error" => "too_many_turns",
                                                        "detail" => Samagotchi::ParticipantMessages::TOO_MANY_TURNS }])
     expect(audit.last.values_at("status", "reason")).to eq(%w[refused too_many_turns])
+  end
+
+  it "sends a message without a delivery at the next step, the ack saying what the worker says will happen" do
+    accepted.ack["delivery"] = "next_step"
+    expect(turn({ prompt: "only step 3" })).to match([202, include("delivery" => "next_step")])
+    expect(delivered.last).to include(delivery: "next_step", author: grant.author)
+    accepted.ack["delivery"] = "queue"
+    expect(turn({ prompt: "and then", delivery: "next_step" })).to match([202, include("delivery" => "queue")])
+  end
+
+  it "refuses a cut (403 not_permitted), audited: a participant's message never cuts a turn" do
+    expect(turn({ prompt: "stop thinking", delivery: "cut" }))
+      .to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])
+    expect(delivered).to eq([])
+    expect(audit.map { |line| line.slice("status", "reason") }).to eq([{ "status" => "refused", "reason" => "not_permitted" }])
   end
 
   it "sends the owner's turn as before: the body's client id, its delivery, the history" do
@@ -300,7 +317,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
 
       expect(call("/api/sessions/#{session.id}/wait", body: { turn: "e-1", cursor: "c1" }))
         .to eq([200, { "status" => "done", "text" => "Yes.", "turn_id" => "t9" }])
-      expect(access).to have_received(:wait_reply).with(session.id, hash_including(turn: "e-1", queued: true, cursor: nil))
+      expect(access).to have_received(:wait_reply).with(session.id, hash_including(turn: "e-1", queued: false, cursor: nil))
     end
 
     # L-P9: what their wait needs (the last turn's end, whether their turn

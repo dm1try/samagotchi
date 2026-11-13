@@ -1412,8 +1412,9 @@ module Samagotchi
       @turn_enqueued_id = origin.enqueued_id
       verdicts_before = @session.verdicts.size
       @reporting_turn = reports_to_parent?(origin)
-      # A participant's review turn merges no input (#pending_input_drain).
-      @participant_turn = origin.participant?
+      # Who wrote the running turn (a participant's author, nil for the
+      # owner's): its drain merges only their own lines (#pending_input_drain).
+      @turn_author = origin.participant_author
       restores = @turn_flow.restores
       begin
         @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin))
@@ -1603,15 +1604,12 @@ module Samagotchi
         # one (steering merges text only): skipped here, not a barrier, so a
         # line sent after it still goes in at this boundary. Only the files
         # claimed below reach @merged_this_turn and the checkpoint.
-        # A participant's review turn takes none: the owner's lines (the
-        # Bridge queues them, this covers a file it didn't see) run as the
-        # owner's own turns after it, never inside its review boundary.
-        files = if @participant_turn
-                  []
-                else
-                  SessionInbox.find_new_input_files(@session_dir).sort
-                              .reject { |input_file| SessionInbox.waits_for_turn_end?(input_file) }
-                end
+        # A participant's turn takes only their own lines: the owner's and
+        # anyone else's (the Bridge queues them, this covers a file it didn't
+        # see) run as their own turns after it, never inside its boundary;
+        # and the owner's turn takes no participant's (SessionInbox.turn_end_data?).
+        files = SessionInbox.find_new_input_files(@session_dir).sort
+                            .reject { |input_file| SessionInbox.waits_for_turn_end?(input_file, running_author: @turn_author) }
         merged = files.filter_map do |input_file|
           claimed_file = SessionInbox.claim_input_file(input_file)
           next unless claimed_file
@@ -1624,6 +1622,13 @@ module Samagotchi
               next
             end
             begin
+              # A participant's line gets the checks their queued turn gets at
+              # its start (#participant_refusal: the link, the cap): refused,
+              # it is taken off as that turn would be, and never merged.
+              if (author = input.origin.participant_author) && (reason = participant_refusal(author))
+                refuse_participant_turn(input.origin, reason)
+                next
+              end
               prompt = input.prompt.to_s.strip
               # Which turn took it, on disk before its file goes (a wait for
               # it reads this, not an inference: ReplyWait::Poll#follow_merge).
@@ -1660,10 +1665,10 @@ module Samagotchi
     end
 
     # Whether a person's message waits that the next boundary merges
-    # (SessionInbox.steer_waiting?): a running task_wait ends on it. Never
-    # in a participant's turn, whose drain merges none.
+    # (SessionInbox.steer_waiting?): a running task_wait ends on it. In a
+    # participant's turn only their own.
     def input_waiting?
-      !@participant_turn && SessionInbox.steer_waiting?(@session_dir)
+      SessionInbox.steer_waiting?(@session_dir, running_author: @turn_author)
     end
 
     # A participant's author fields (Engine#author_fields), {} for the owner.

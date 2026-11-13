@@ -779,12 +779,16 @@ module Samagotchi
     # pair_turns: a participant's turn in a working session runs as a pair
     # turn (Guardrails::PairBoundary); a worker without it runs it as a
     # review turn, and chi web says so (Delivery::PAIR_FEATURE).
+    # participant_steer: a participant's message sent while their own turn
+    # runs goes in at its next step (a worker without it queues it); only
+    # what the page's delivery line and chi web's ack say depends on it
+    # (Delivery::OWN_TURN_STEER_FEATURE).
     # activity: GET /activity answers with Worker#activity_snapshot, so
     # `chi schedule tick` can ask a live worker what it is busy with.
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
-                WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE].freeze
+                WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -1275,12 +1279,14 @@ module Samagotchi
       # (chi web's, from their grant: its queue limit plus the running one).
       pending_limit = nil
       if Steer.participant_author?(author)
-        # A participant's message is a turn of its own, whatever the body
-        # asks (D6), and never a command or a shell line: chi web refuses
-        # those first, and this is the worker's own layer.
+        # A participant's message never cuts, nor is a command or a shell
+        # line: chi web refuses those first, and this is the worker's own
+        # layer. It goes into a running turn only when that turn is theirs
+        # (#enqueue_post_turn, under the event log), else it is a turn of
+        # its own (D6).
         return participant_refused(sid, author, "command") if command_registry.command?(prompt.to_s)
 
-        delivery = Delivery::QUEUE
+        delivery = Delivery::NEXT_STEP if Delivery.cut?(delivery)
         pending_limit = fetched(parsed, "pending_limit")
         pending_limit = nil unless pending_limit.is_a?(Integer) && pending_limit.positive?
       end
@@ -1336,10 +1342,11 @@ module Samagotchi
           next :too_many if pending_limit && pending_turns(author) >= pending_limit
           next :duplicate unless @engine.reserve_enqueued_id(enqueued_id)
 
-          # The owner's input never goes into a participant's read-only
-          # review turn (a steer, a cut): it queues behind it as the owner's
-          # own turn, and the ack and :turn_enqueued say so.
-          delivery = Delivery::QUEUE if @accumulator.participant_turn?
+          # Input goes into a running turn only of its own author: the
+          # owner's never into a participant's turn (a steer, a cut), a
+          # participant's only into their own; else it queues behind it as
+          # a turn of its own, and the ack and :turn_enqueued say so.
+          delivery = Delivery::QUEUE unless same_author_steer?(author)
           queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
           unless enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                               no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, anchors: anchors)
@@ -1428,6 +1435,19 @@ module Samagotchi
         end
       end
       dequeue_reply(taken, id, input)
+    end
+
+    # Whether input from +author+ may go into the running turn: the owner's
+    # into the owner's (or none running), a participant's into their own
+    # only (none running: theirs runs as the next turn, a queue). Read with
+    # the event log held.
+    def same_author_steer?(author)
+      sender = Steer.sender_author(author)
+      running = @accumulator.participant_author
+      return running.nil? if sender.nil?
+      return false if @accumulator.current_turn.nil?
+
+      running == sender
     end
 
     # +author+'s turns running or waiting: the running turn when it is

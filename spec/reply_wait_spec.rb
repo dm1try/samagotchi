@@ -927,6 +927,23 @@ RSpec.describe Samagotchi::ReplyWait do
           s.save(state_dir: tmpdir)
         end
 
+        # A participant's next-step line goes into their own running turn
+        # (SessionInbox.turn_end_data?'s running author): waited on as
+        # chi web waits for a participant (queued: false), it is followed in.
+        it "follows a participant's line merged into their own turn: that turn's reply" do
+          Samagotchi::SessionInbox.write_input(dir, prompt: "only step 3", enqueued_id: "y1", author: "p:p_1",
+                                                    client_id: "review:p_1")
+          base = baseline
+          later do
+            merge("y1", into: "a1")
+            looked(2)
+            write_turn_reply("a1 answer", "a1")
+            end_turn("a1")
+          end
+
+          expect(wait(baseline: base, turn: "y1").text).to eq("a1 answer")
+        end
+
         it "ends on that turn's end, not on a next turn's reply" do
           plain_input("y1")
           base = baseline
