@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: in the iPhone Home Screen app, the top bar no longer sits in iOS's blurred band under the clock.
+
 ## [0.170.0] - 2026-11-13
 
 ### Fixed

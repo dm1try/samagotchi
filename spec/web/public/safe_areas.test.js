@@ -26,6 +26,10 @@ test("safe areas: the body is 100vh, then 100dvh where it is known", () => {
   assert.match(HTML, /\nbody\{[^}]*height:100vh;height:100dvh;/);
 });
 
+test("safe areas: the standalone phone app keeps content below iOS's blurred top band", () => {
+  assert.match(HTML, /@media \(display-mode:standalone\) and \(max-width:600px\)\{body\{padding-top:12px\}\}/);
+});
+
 test("safe areas: main pads by them, and the update sheet, the toast and the lightbox keep clear of them", () => {
   const main = HTML.match(/\nmain\{([^}]*)\}/)[1];
   for (const side of ["t", "r", "b", "l"]) assert.ok(main.includes(`var(--safe-${side})`), `main --safe-${side}`);
