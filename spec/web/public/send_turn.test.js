@@ -18,7 +18,7 @@ function failure(code, message = "boom", body = null) {
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
                    verify = null, revise = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
-                   createIdleSession = async () => ({ id: "new1" }) } = {}) {
+                   createIdleSession = async () => ({ id: "new1" }), commands = true } = {}) {
   // world.state reads the page's session store; setting it is a session
   // switch (forgetSession's replaceCurrent).
   const store = createSessionStore({ initial: { owner: "worker", commands: [], firstPreview: "first", ...state } });
@@ -97,7 +97,8 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     followWokenWorker: () => log.push("follow"),
     refreshHistory: () => log.push("refreshHistory"),
     leaveGoneSession: (id, why) => log.push(`gone ${id} ${why}`),
-    runCommand: (command) => log.push(["command", command]),
+    // +commands+ false: a viewer without session commands (viewer.js), as app.js passes it.
+    runCommand: commands ? (command) => log.push(["command", command]) : null,
     toast: (text, action, options) => toasts.push({ text, options }),
     alert: (text) => log.push(["alert", text]),
   });
@@ -392,4 +393,13 @@ test("into a running turn the echo says its delivery; a line with images waits f
   const img = harness({ running: true, chips: [{ name: "a", file: {} }] });
   await img.send();
   assert.equal(img.bubbles[0].opts.delivery, "queue");
+});
+
+test("a viewer without session commands: a /command or ! line goes as a turn, the worker decides", async () => {
+  for (const text of ["/model qwen", "!ls"]) {
+    const h = harness({ text, state: { commands: [{ name: "/model" }] }, commands: false });
+    await h.send();
+    assert.deepEqual(h.calls, [["turn", "s1", text, { clientId: "web:t1", images: [], history: true, delivery: null }]], text);
+    assert.equal(h.log.some((entry) => entry[0] === "command"), false, text);
+  }
 });

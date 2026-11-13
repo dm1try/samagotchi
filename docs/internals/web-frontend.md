@@ -8,7 +8,8 @@ the working set's overlay is [working-set.md](working-set.md), participants are 
 No build step: `index.html` and `participant.html` load ES modules as they are, with lit-html (`vendor/`) as the
 only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`, `turn_range.js`, …) touch no DOM
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
-by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec.
+by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec of its own; `viewer_boot.test.js` boots the whole page
+(`page_boot.js`, happy-dom, in a process of its own) for what each viewer gets (The viewer, below).
 
 **Every module has a size cap, `app.js` its own**: `npm run lint` fails past `max-lines` in `eslint.config.js`
 (counted as `wc -l` counts, comments and blank lines too). Every `public/*.js` module: 1200 (`samagotchi/module-size`,
@@ -202,6 +203,61 @@ the running turn's DOM) is cleared there, and the feature gates are primed for t
 `owner_verify.js`'s holder (`anchor()`, `set(a)`, `clear(a?)`: `clear(a)` lets go only of `a`). The armed Revise
 (`pendingReviseAnchor`) is set only through `setReviseAnchor`, which redraws its chip and the Revise buttons (a
 redraw only it feeds, not a store field).
+
+## The viewer
+
+Who looks at the main page and what they may do there is the **viewer** (`viewer.js`), chi web's `Web::Viewer`
+(`lib/samagotchi/web/viewer.rb`: `Viewer.for(principal)` is the one place that decides it; the owner gets every
+capability). chi web stamps it on `<body>` (`data-viewer-kind`, `data-viewer-can`: the names, space-separated;
+`App#index_data_attributes`), and the owner's session show carries it as `viewer` next to `capabilities`. app.js
+makes one `viewer` from the body at boot; `setCapabilities` passes a show's `viewer` to `viewer.update` (it narrows
+the stamp, never widens it: the boot's controls were made from the stamp) and `forgetSession`'s
+`setCapabilities(null, null)` resets it to the stamp. A page with no stamp may do nothing. It is not the show's
+`capabilities` (what the page renders: markdown display, the editor) nor `refEditor()` (where a ref opens: the
+editor and its URL, refs.js's actions): those two are per request.
+
+**The null-control rule.** An owner-only control or call goes through `viewer.can(name)` where it is made, never at
+each use: a control the viewer may not use is not created and not wired (`const x = viewer.can("…") ? createX(…) :
+null`, then `x?.…` where it is read; a module's hook passed as `null`, as `stage_view.js onCancel`,
+`working_set_view.js sendLine`, `composer_mount.js loadHistory`), and its static element in `index.html` stays hidden
+(`viewer.control(el, name)` / `controls(els, name)`: the element when allowed, else hidden, marked `data-withheld`
+and `null`; index.html's `[data-withheld]{display:none!important}` beats an element's own `display` rule, which a
+bare `hidden` does not). A module the
+page reads everywhere takes a flag instead (`question_cards.js answers`, `block_host.js renderers`,
+`turn_block.js turnHistoryNodes`'s `apply`). No scattered `if (owner)`, and no 403 tolerated as a way of gating. The
+gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answers later, not the controls made.
+
+| Capability | Controls | Calls |
+|---|---|---|
+| `sessions` | `#newBtn`, `#scope` (and `project_picker.js`), `#topStrip`, `#stripStatus`, `#stripGrip` (`strip_hidden.js`) | `refresh` (`GET /api/sessions`), `openSessionEvents` (`GET /api/events`), `/api/projects` |
+| `models` | `#modelPick` (never shown without the list) | `startPage.loadModels` (`GET /api/models`) |
+| `prompt_history` | ↑/↓ over the prompt history | `GET /api/history` (`loadHistory`) |
+| `push` | `#notifyBtn` (`notifications.js` not made; the tab title is set directly) | `/api/push*`, presence, the second `/api/events` stream |
+| `context` | the context chips (`context_chips.js`) | `…/context*` |
+| `working_set` | the stage's working set (`working_set_view.js`) | `GET …/working_set` |
+| `participants_admin` | the participants chip and panel, Copy link's participant target (`claimTarget`) | `…/participants*` |
+| `rename` | `#titleRenameBtn` | (`/title` goes as a session command) |
+| `images` | `#attachBtn`, `#attachInput`; paste and drop toast `IMAGES_NOT_HERE` | `POST …/images` |
+| `session_controls` | `#infoContinueBtn`, `#infoArchiveBtn`, `#infoStopBtn`, `#infoDeleteBtn`, `#infoMoreBtn` (the ⋯ sheet), the ⚙ chip and panel, the `/` list, the stage's task stop, the working set's drop/undrop | `POST …/command` (`composer.js`: without it a `/` or `!` line goes as a turn, and the worker decides), `…/stop`, `…/holds*`, `…/tasks/:id/stop`, `…/reload_check`, continue → (`POST /api/sessions`) |
+| `revise` | the answers' Revise (`revise_stack.js`) | (a Revise goes with `POST …/turn`) |
+| `apply` | the Apply row (`turn_block.js`, `placeApply`, its click) | `GET …/apply` |
+| `answer_cards` | question, approval and continue cards (`question_cards.js`), System 1's "wrong" | `…/answer`, `…/question/dismiss`, `…/guardrails/wrong` |
+| `render` | | `POST /api/render` (`markdown_place.js`: step texts, a question's kept reply) |
+| `block_renderers` | a bundle's drawn blocks (the core `chi-ui` drawer stays) | `/api/block_renderers*` |
+| `stop_any_turn` | the stage's Stop turn (`onCancel`) | `POST …/cancel` |
+| `steer_any_turn` | none yet: the server queues a non-owner's input; the delivery line reads it in a later phase | |
+
+The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls without one of the above:
+`/api/update*` and `…/restart` (`version_notices.js`: its versions come only from the hub stream, `sessions`);
+`…/archive`, `…/unarchive`, `DELETE …/:id` (the bar's buttons, `session_controls`; the strip and the all view,
+`sessions`); `POST /api/sessions` from the start page (a participant's page opens the grant's session and never the start
+page, from the participant main page's Phase C on) and the
+participants panel's review start (`participants_admin`); `GET …/images/:file` (a message's image refs; a
+participant's messages carry a count); the objectives strip's posts and the plugin cards' actions (`…/command`:
+drawn only from the show's `objectives` / `cards` and their stream events, which `ParticipantView` drops). Not called
+by the page at all: `/api/sessions/summaries`, `…/output`, `…/notes`, `…/wake`, `…/worker`, `…/exit`, `…/recap`,
+`…/stats`, `…/children/counts`, `…/turns/:id/records`, `/api/participants`. `viewer_boot.test.js` pins the table:
+with every capability today's calls and controls, with none no owner call and no owner control, and each one alone.
 
 ## Render idioms
 

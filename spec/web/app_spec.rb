@@ -3395,8 +3395,8 @@ RSpec.describe Samagotchi::Web::App do
       app = build_app
       page = ->(path) { app.call(env_for(path))[2].first }
 
-      expect(page.call("/")).not_to include("data-view")
-      expect(page.call("/?view=turn")).not_to include("data-view")
+      expect(page.call("/")).not_to include("data-view=")
+      expect(page.call("/?view=turn")).not_to include("data-view=")
       expect(page.call("/?view=turn")).to eq(page.call("/"))
     end
 

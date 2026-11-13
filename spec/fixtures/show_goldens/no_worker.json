@@ -1,0 +1,545 @@
+{
+  "session": {
+    "id": "<ID>",
+    "status": "idle",
+    "mode": "assist",
+    "model_name": "TestModel",
+    "working_directory": "/work/proj",
+    "created_at": "2026-11-13T12:00:00.000Z",
+    "updated_at": "2026-11-13T12:00:00.000Z",
+    "last_prompt": "",
+    "short_id": "<SHORT_ID>",
+    "test_run": true,
+    "used_memory_names": [],
+    "preloaded_memory_names": [],
+    "muted_memory_names": [],
+    "prompt_notes": [],
+    "parent_id": null,
+    "delegate": false,
+    "continues": null,
+    "review": null,
+    "first_preview": "look at a.txt",
+    "title": null,
+    "owner": null,
+    "recap": null,
+    "auto_title": null,
+    "ctx_pct": null,
+    "tokens": null,
+    "memory_index": null,
+    "side": null,
+    "archived": false,
+    "project_root": null,
+    "bridge_up": false,
+    "worker_version": null,
+    "worker_features": [],
+    "worker_compat": null,
+    "pending_question": null,
+    "pending_card": null,
+    "last_turn": null,
+    "verdicts": [],
+    "verify_fresh": [],
+    "last_verdict": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "reasoning_history": null,
+    "toolkit": null,
+    "toolkit_default": "full"
+  },
+  "history": [],
+  "messages": [
+    {
+      "role": "user",
+      "content": "look at a.txt",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-tools",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me look.",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "assistant",
+      "content": "It says alpha, beta.",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "user",
+      "content": "hi",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-plain",
+      "drawn": "turn-plain"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello there.",
+      "drawn": "turn-plain"
+    },
+    {
+      "role": "user",
+      "content": "can you check",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-pair",
+      "author": "p:abc",
+      "author_name": "Ana",
+      "participant_mode": "pair",
+      "drawn": "turn-pair"
+    },
+    {
+      "role": "assistant",
+      "content": "Checked.",
+      "drawn": "turn-pair"
+    }
+  ],
+  "turn_drawings": {
+    "turn-tools": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "look at a.txt",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-tools"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "",
+          "thinking": "look first",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Let me look.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "params": "path=\"a.txt\"",
+          "title": "a.txt",
+          "ref": {
+            "kind": "file",
+            "path": "/work/proj/a.txt"
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "output": "[read]\nalpha\nbeta",
+          "output_truncated": false,
+          "activity": {
+            "tool": "read",
+            "status": "ok",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt",
+            "action": "reading file"
+          },
+          "ref": {
+            "kind": "file",
+            "path": "/work/proj/a.txt"
+          }
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "It says alpha, beta.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-tools"
+      }
+    },
+    "turn-plain": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "hi",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-plain"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Hello there.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-plain"
+      }
+    },
+    "turn-pair": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "can you check",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-pair",
+          "author": "p:abc",
+          "author_name": "Ana"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Checked.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-pair"
+      }
+    }
+  },
+  "failed_turn": null,
+  "current_turn": null,
+  "replay": [],
+  "queued": [],
+  "queued_commands": [],
+  "recap": null,
+  "saved_recap": null,
+  "continue_offer": null,
+  "guardrail_warning": null,
+  "plugin_warning": null,
+  "init_tasks": [],
+  "cards": [],
+  "commands": [
+    {
+      "name": "!rollback",
+      "description": "discard the interrupted turn and restore the pre-turn state",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "!",
+      "description": "run a shell command; its output goes into the conversation",
+      "anytime": false,
+      "mid_turn": "queue",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/continue",
+      "description": "answer the continue offer (yes, no or no, <reason>)",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/models",
+      "description": "list the hosts' models (/models <text> filters)",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/guardrails",
+      "description": "list guardrails, revoke an approval or flag a System 1 auto-allow",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/context",
+      "description": "list the attached context and its candidates (chi context); attach NAME, decline NAME: a candidate",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/model",
+      "description": "show or switch the model",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/llm-context",
+      "description": "show or set this session's LLM context strategy, apply rule and budget",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/thinking",
+      "description": "show or set this session's thinking level (off|low|medium|high|default)",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/reasoning-history",
+      "description": "show or set which of its reasoning this session's model gets back (drop|turn|all|default)",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/toolkit",
+      "description": "show or change the tools this session declares (NAME, add TOOL, remove TOOL)",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/working-set",
+      "description": "list the working set; drop, undrop, pin or unpin an item (drop KEY…)",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/parent-answers",
+      "description": "show or set what a parent agent may answer here (hard|standard|soft|default; never looser than config.yml's)",
+      "anytime": false,
+      "mid_turn": "depends",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/title",
+      "description": "show or set this session's title (--clear: back to its first message)",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/objectives",
+      "description": "show or edit what this session is to achieve (set A | B, add TEXT, edit ID TEXT, done ID…, drop ID…, undo ID…, check ID, track)",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/help",
+      "description": "list the commands, the bundles' too",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/stats",
+      "description": "show the session's stats",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/recap",
+      "description": "show the session's recap (in a terminal); on|off|default sets this session's own",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/recap",
+      "description": "show the session's recap",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/exit",
+      "description": "leave (--delete also deletes the session)",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/quit",
+      "description": "leave, like /exit",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/archive",
+      "description": "leave and archive the session: hidden from the lists, kept for good",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": null,
+      "source": "core"
+    },
+    {
+      "name": "/detach",
+      "description": "leave and keep the worker running",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached"
+      ],
+      "source": "core"
+    },
+    {
+      "name": "/cut",
+      "description": "cut the running generation and go in now (/cut TEXT)",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached",
+        "web"
+      ],
+      "source": "core"
+    },
+    {
+      "name": "/queue",
+      "description": "run as the next turn after this one (/queue TEXT)",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached"
+      ],
+      "source": "core"
+    },
+    {
+      "name": "/unqueue",
+      "description": "remove your newest queued message before it runs",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached"
+      ],
+      "source": "core"
+    },
+    {
+      "name": "/share",
+      "description": "invite someone to review this session (/share NAME [--agent] [--expires 3d] [--cap 2])",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached"
+      ],
+      "source": "core"
+    },
+    {
+      "name": "/participants",
+      "description": "list this session's participants (revoke [P], cap P DOLLARS)",
+      "anytime": false,
+      "mid_turn": "refuse",
+      "local": true,
+      "uis": [
+        "attached"
+      ],
+      "source": "core"
+    }
+  ],
+  "markdown_warning": null,
+  "markdown_tip": "Markdown answers: restart chi web with --web-markdown (or web.markdown: true in config.yml).",
+  "capabilities": {
+    "display": false,
+    "editor": true
+  },
+  "editor_url": "vscode://file{path}:{line}",
+  "pending_question": null,
+  "last_event_seq": null,
+  "last_event_id": null,
+  "timing": {
+    "started_at": null,
+    "last_activity_at": null,
+    "session_duration_ms": null,
+    "turn_records": [],
+    "tool_records": [],
+    "turn_count": 0,
+    "active_turn": null,
+    "active_tools": [],
+    "context": null,
+    "tokens": null,
+    "model_segments": [],
+    "memory_index": null,
+    "side": null
+  }
+}
