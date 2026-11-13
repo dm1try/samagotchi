@@ -1,0 +1,331 @@
+{
+  "session": {
+    "id": "<ID>",
+    "status": "running",
+    "mode": "assist",
+    "model_name": "LiveModel",
+    "working_directory": "/work/proj",
+    "created_at": "2026-11-13T12:00:00.000Z",
+    "updated_at": "2026-11-13T12:00:00.000Z",
+    "last_prompt": "",
+    "short_id": "<SHORT_ID>",
+    "test_run": true,
+    "used_memory_names": [],
+    "preloaded_memory_names": [],
+    "muted_memory_names": [],
+    "prompt_notes": [],
+    "parent_id": null,
+    "delegate": false,
+    "continues": null,
+    "review": null,
+    "first_preview": "look at a.txt",
+    "title": null,
+    "owner": null,
+    "recap": null,
+    "auto_title": null,
+    "ctx_pct": null,
+    "tokens": null,
+    "memory_index": null,
+    "side": null,
+    "archived": false,
+    "project_root": null,
+    "bridge_up": false,
+    "worker_version": null,
+    "worker_features": [],
+    "worker_compat": null,
+    "pending_question": null,
+    "pending_card": null,
+    "last_turn": null,
+    "verdicts": [],
+    "verify_fresh": [],
+    "last_verdict": null,
+    "served_model": "live-served",
+    "served_model_for": null,
+    "served_expected_by": null,
+    "llm_context": {
+      "strategy": "none",
+      "strategy_source": "config",
+      "strategy_where": "llm_context.strategy",
+      "apply": "payoff",
+      "apply_source": "config",
+      "apply_where": "llm_context.apply",
+      "budget_tokens": null,
+      "budget_source": "config",
+      "budget_where": "llm_context.budget_tokens",
+      "own": null
+    },
+    "thinking": {
+      "level": "default",
+      "source": null,
+      "own": null
+    },
+    "reasoning_history": null,
+    "toolkit": null,
+    "toolkit_default": "full"
+  },
+  "history": [],
+  "messages": [
+    {
+      "role": "user",
+      "content": "look at a.txt",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-tools",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me look.",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "assistant",
+      "content": "It says alpha, beta.",
+      "drawn": "turn-tools"
+    },
+    {
+      "role": "user",
+      "content": "hi",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-plain",
+      "drawn": "turn-plain"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello there.",
+      "drawn": "turn-plain"
+    },
+    {
+      "role": "user",
+      "content": "can you check",
+      "at": "2026-11-08T10:00:00.000+01:00",
+      "turn_id": "turn-pair",
+      "author": "p:abc",
+      "author_name": "Ana",
+      "participant_mode": "pair",
+      "drawn": "turn-pair"
+    },
+    {
+      "role": "assistant",
+      "content": "Checked.",
+      "drawn": "turn-pair"
+    }
+  ],
+  "turn_drawings": {
+    "turn-tools": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "look at a.txt",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-tools"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "",
+          "thinking": "look first",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Let me look.",
+          "thinking": "",
+          "iteration": 1
+        },
+        {
+          "type": "generation_completed"
+        },
+        {
+          "type": "tool_call_started",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "params": "path=\"a.txt\"",
+          "title": "a.txt",
+          "ref": {
+            "kind": "file",
+            "path": "/work/proj/a.txt"
+          }
+        },
+        {
+          "type": "tool_call_completed",
+          "iteration": 1,
+          "call_index": 1,
+          "tool": "read",
+          "tool_id": "t1",
+          "output": "[read]\nalpha\nbeta",
+          "output_truncated": false,
+          "activity": {
+            "tool": "read",
+            "status": "ok",
+            "params": "path=\"a.txt\"",
+            "title": "a.txt",
+            "action": "reading file"
+          },
+          "ref": {
+            "kind": "file",
+            "path": "/work/proj/a.txt"
+          }
+        },
+        {
+          "type": "generation_started",
+          "iteration": 2
+        },
+        {
+          "type": "generation_chunk",
+          "text": "It says alpha, beta.",
+          "thinking": "",
+          "iteration": 2
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-tools"
+      }
+    },
+    "turn-plain": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "hi",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-plain"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Hello there.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-plain"
+      }
+    },
+    "turn-pair": {
+      "events": [
+        {
+          "type": "turn_started",
+          "prompt": "can you check",
+          "origin": null,
+          "continue": false,
+          "turn_id": "turn-pair",
+          "author": "p:abc",
+          "author_name": "Ana"
+        },
+        {
+          "type": "generation_started",
+          "iteration": 1
+        },
+        {
+          "type": "generation_chunk",
+          "text": "Checked.",
+          "thinking": "",
+          "iteration": 1
+        }
+      ],
+      "end": {
+        "type": "turn_completed",
+        "turn_id": "turn-pair"
+      }
+    }
+  },
+  "failed_turn": null,
+  "current_turn": {
+    "turn_id": "t2",
+    "prompt": "Now the install section",
+    "client_id": "tab-1",
+    "status": "running",
+    "steps": [],
+    "pending_question": null
+  },
+  "replay": [
+    {
+      "type": "turn_started",
+      "prompt": "Now the install section",
+      "origin": null,
+      "continue": false,
+      "turn_id": "t2"
+    },
+    {
+      "type": "turn_enqueued",
+      "enqueued_id": "q1",
+      "client_id": "tab-1",
+      "prompt": "and the changelog",
+      "delivery": "queue"
+    }
+  ],
+  "queued": [
+    {
+      "enqueued_id": "q1",
+      "prompt": "and the changelog",
+      "client_id": "tab-1",
+      "delivery": "queue"
+    }
+  ],
+  "queued_commands": [],
+  "recap": null,
+  "saved_recap": null,
+  "continue_offer": null,
+  "guardrail_warning": null,
+  "plugin_warning": null,
+  "init_tasks": [],
+  "cards": [
+    {
+      "id": "k1",
+      "kind": "note",
+      "title": "A card",
+      "body": "Card body",
+      "turn_id": "t1"
+    }
+  ],
+  "commands": [
+    {
+      "name": "/help",
+      "description": "Help"
+    }
+  ],
+  "markdown_warning": null,
+  "markdown_tip": "Markdown answers: restart chi web with --web-markdown (or web.markdown: true in config.yml).",
+  "capabilities": {
+    "display": false,
+    "editor": true
+  },
+  "editor_url": "vscode://file{path}:{line}",
+  "pending_question": null,
+  "last_event_seq": 42,
+  "last_event_id": "42-7",
+  "timing": {
+    "started_at": null,
+    "last_activity_at": null,
+    "session_duration_ms": null,
+    "turn_records": [
+      {
+        "id": "t1",
+        "duration_ms": 4000
+      }
+    ],
+    "tool_records": [],
+    "turn_count": 1,
+    "active_turn": {
+      "id": "t2"
+    },
+    "active_tools": [],
+    "context": null,
+    "tokens": null,
+    "model_segments": [],
+    "memory_index": null,
+    "side": null
+  }
+}
