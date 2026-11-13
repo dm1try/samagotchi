@@ -1411,7 +1411,9 @@ module Samagotchi
         set = working_set_payload(id, session)
         return json_response(200, set) if principal(req).owner?
 
-        shown = ParticipantView.working_set(set, participant_viewer(req, session))
+        viewer = participant_viewer(req, session)
+        # Redacted as the stream's event is (ParticipantView.event): a file name may hold a secret's shape.
+        shown = Redact.deep(ParticipantView.working_set(set, viewer), viewer)
         json_response(200, shown.merge("running" => set[:running] == true))
       end
 

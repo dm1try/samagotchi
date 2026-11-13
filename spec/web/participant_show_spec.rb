@@ -213,6 +213,22 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(attrs).not_to include(root, Dir.home, "secret-project")
   end
 
+  it "redacts the working set's file names as the stream does (GET …/working_set)" do
+    leaky = "notes-sk-ant-abcdefghijklmnopqrstuvwx.md"
+    snapshot["snapshot"]["working_set"] = {
+      "items" => [{ "kind" => "file", "key" => File.join(root, leaky), "state" => "live", "ops" => ["read"], "count" => 1 }], "at" => 2
+    }
+    env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/working_set")
+    env["HTTP_HOST"] = "#{lan_ip}:4567"
+    env["REMOTE_ADDR"] = "192.168.1.20"
+    env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+    status, _headers, chunks = app.call(env)
+    body = chunks.join
+    expect(status).to eq(200)
+    expect(body).not_to include("sk-ant-abcdefghijklmnop")
+    expect(JSON.parse(body).dig("items", 0, "key")).to include(Samagotchi::Redact::MARK)
+  end
+
   it "leaves the owner's show as it was: no client id on the owner's viewer" do
     expect(read(owner_token).last["viewer"]).to eq("kind" => "owner", "id" => nil, "name" => nil,
                                                    "can" => Samagotchi::Web::Viewer::CAPABILITIES)
