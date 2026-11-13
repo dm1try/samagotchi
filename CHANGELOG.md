@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.170.0] - 2026-11-13
+
 ### Fixed
 
 - chi web: the working set between turns now matches the running session's next-turn view, including pending adds.
@@ -6287,7 +6289,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.169.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.170.0...HEAD
+[0.170.0]: https://github.com/dm1try/samagotchi/compare/v0.169.0...v0.170.0
 [0.169.0]: https://github.com/dm1try/samagotchi/compare/v0.168.0...v0.169.0
 [0.168.0]: https://github.com/dm1try/samagotchi/compare/v0.167.0...v0.168.0
 [0.167.0]: https://github.com/dm1try/samagotchi/compare/v0.166.0...v0.167.0

@@ -1,0 +1,11 @@
+{
+  "pending_format": 1,
+  "version": "0.170.0",
+  "scope": "system",
+  "target_dir": "/compat-fixture/memories",
+  "files": {
+    "compat.md": [
+      "sha256:compat"
+    ]
+  }
+}
