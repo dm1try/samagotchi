@@ -20,9 +20,11 @@ require_relative "support/remote_backend"
 
 # A participant's author survives every way their input reaches a
 # session (a queued turn's announcement, its own turn's saved prompt), and
-# the worker's own layer keeps it a turn of its own: never merged into a
-# running turn whatever its delivery, never a command (a /word input file
-# or POST /turn). The owner's events and commands carry no author key.
+# the worker's own layer keeps it out of anyone else's turn: merged only
+# into their own running turn (a next-step line, past the checks their
+# queued turn gets), never into another author's whatever its delivery,
+# never a command (a /word input file or POST /turn). The owner's events
+# and commands carry no author key.
 RSpec.describe "a participant's author on delivery" do
   let(:tmpdir) { Dir.mktmpdir("delivery-author") }
 
@@ -128,6 +130,94 @@ RSpec.describe "a participant's author on delivery" do
       expect(pop!(prompts, "the participant's turn")).to eq(["is step 3 safe?", author])
       expect(pop!(prompts, "the owner's first queued turn")).to eq(["owner steer", nil])
       expect(pop!(prompts, "the owner's second queued turn")).to eq(["owner next", nil])
+    end
+
+    it "merges a participant's next-step line into their own running turn; their queued one and anyone else's wait" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      prompts = Queue.new
+      merged = Queue.new
+      engine.subscribe(observer: ->(event) { merged << event if event[:type] == :input_merged })
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        prompts << [prompt, kwargs[:origin]&.author]
+        if prompt == "is step 3 safe?"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "only step 3", client_id: "review:p", author: author,
+                                                            enqueued_id: "p2")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "later", client_id: "review:p", author: author,
+                                                            enqueued_id: "p3", delivery: "queue")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "Sam's", client_id: "review:q", author: "p:p_other")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p", author: author,
+                                                        enqueued_id: "p1")
+
+      lines = pop!(drained, "the participant turn's drain")
+      expect(lines.map { |l| [l.text, l.author] }).to eq([["only step 3", author]])
+      expect(pop!(merged, "the merge")[:origins]).to eq([{ client_id: "review:p", enqueued_id: "p2", author: author }])
+      expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")&.into).to eq("p1")
+      expect(pop!(prompts, "the participant's turn")).to eq(["is step 3 safe?", author])
+      later = Array.new(2) { pop!(prompts, "a turn after it") }
+      # Sam's line waited for a turn of its own too (refused there: no grant).
+      expect(later).to contain_exactly(["owner steer", nil], ["later", author])
+    end
+
+    it "takes no line of a participant whose link ended into their running turn: refused, dropped, never merged" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        if prompt == "first"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
+          Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+                                                            enqueued_id: "p2")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+
+      expect(pop!(drained, "the drain")).to eq([])
+      expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "p2")).not_to be_nil
+      expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")).to be_nil
+    end
+
+    it "takes no line of a participant past their cap into their running turn: refused, dropped, never merged" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      spend = 1.0
+      allow(engine.metrics).to receive(:spend).with(author) { spend }
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        if prompt == "first"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          spend = 2.5
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+                                                            enqueued_id: "p2")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+
+      expect(pop!(drained, "the drain")).to eq([])
+      expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "p2")).not_to be_nil
+      expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")).to be_nil
+      refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                    .select { |line| line["event"] == "turn" && line["enqueued_id"] == "p2" }
+      expect(refused.map { |line| line["reason"] }).to eq(["cap_reached"])
     end
 
     it "doesn't start a participant's queued turn past their cap: dropped from the queue, audited, the owner told once" do
@@ -444,6 +534,34 @@ RSpec.describe "a participant's author on delivery" do
       expect(theirs).to include("verify" => verify.transform_keys(&:to_s))
       expect(theirs).not_to have_key("revises")
       expect(mine).to include("revises" => revises.transform_keys(&:to_s))
+    end
+
+    it "puts a participant's message into their own running turn at its next step, never a cut; anyone else's turn queues it" do
+      accumulator = @bridge.instance_variable_get(:@accumulator)
+      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "review:p_1", author: "p:p_1" },
+                         author: "p:p_1" })
+      %w[next_step cut].each do |delivery|
+        reply = @client.post_turn(prompt: "mine #{delivery}", client_id: "review:p_1", author: "p:p_1", delivery: delivery)
+        expect(reply.status).to eq(202)
+        expect(reply.json).to include("delivery" => "next_step")
+        expect(reply.json).not_to have_key("cut")
+      end
+      queued = @client.post_turn(prompt: "for later", client_id: "review:p_1", author: "p:p_1", delivery: "queue")
+      expect(queued.json).to include("delivery" => "queue")
+      other = @client.post_turn(prompt: "Sam's", client_id: "review:p_2", author: "p:p_2")
+      expect(other.json).to include("delivery" => "queue")
+      files = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*.json")].map { |file| read_file(file) }
+      expect(files.to_h { |data| [data["prompt"], data["delivery"]] })
+        .to eq("mine next_step" => nil, "mine cut" => nil, "for later" => "queue", "Sam's" => "queue")
+
+      accumulator.call({ type: :turn_completed })
+      accumulator.call({ type: :turn_started, prompt: "owner's", origin: { client_id: "web:o" } })
+      expect(@client.post_turn(prompt: "during the owner's", client_id: "review:p_1", author: "p:p_1").json)
+        .to include("delivery" => "queue")
+    end
+
+    it "names the feature a page's delivery line reads (Delivery::OWN_TURN_STEER_FEATURE)" do
+      expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::OWN_TURN_STEER_FEATURE)
     end
 
     it "queues a participant's message as its own turn whatever its delivery asks, and never cuts" do

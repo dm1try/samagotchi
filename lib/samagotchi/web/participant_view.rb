@@ -7,6 +7,7 @@ require_relative "../participant_mode"
 require_relative "../revise_anchor"
 require_relative "../verify_anchor"
 require_relative "../redact"
+require_relative "../file_ref"
 
 module Samagotchi
   module Web
@@ -16,7 +17,10 @@ module Samagotchi
     # waiting states. Verdict cards expose only their anchor, verdict,
     # reason and author. Never: tool output or arguments, thinking, context
     # notes, plugin steers, automatic input, other cards, commands,
-    # questions' internals, memories, the working set, cost or timing, host paths.
+    # questions' internals, memories, the working set's memories and URLs,
+    # cost, tokens per model, host paths. Numbers they read: the context's
+    # fill, the speed, the turn times (#context_status, #generation_completed,
+    # #timing).
     #
     # Every read a participant reaches goes through here: the stream's
     # events (#event, ParticipantStreamFilter), the review route's
@@ -42,20 +46,28 @@ module Samagotchi
         # fields only (#verdict_record).
         "verdict_recorded" => :verdict_recorded,
         "generation_chunk" => :generation_chunk,
+        # A generation's end: its decode speed only (the composer's tok/s).
+        "generation_completed" => :generation_completed,
+        # The context's fill (the composer's ctx %): its numbers only.
+        "context_status" => :context_status,
+        # The files chi works with (the stage's working set): the project's
+        # files only (#working_set).
+        "working_set_updated" => :working_set_updated,
         "generation_retrying" => :generation_retrying,
         "tool_call_started" => :tool_call_started,
         "tool_call_completed" => :tool_call_completed,
-        # Queue changes: the page re-reads its review data, which has the
-        # queue as the participant may see it.
-        "turn_enqueued" => :bare,
-        "turn_dequeued" => :bare,
-        "input_merged" => :bare,
+        # Queue changes: the viewer's own in the owner's shape (the main
+        # page matches its bubbles by them), anyone else's bare (the
+        # participant page re-reads its review data on each).
+        "turn_enqueued" => :turn_enqueued,
+        "turn_dequeued" => :turn_dequeued,
+        "input_merged" => :input_merged,
         # The owner's question, approval or Continue offer: "waiting for the
-        # owner", nothing of it.
-        "question_requested" => :bare,
+        # owner" and for what kind of thing (#waiting_kind), nothing of it.
+        "question_requested" => :question_requested,
         "question_answered" => :bare,
         "question_cancelled" => :bare,
-        "continue_offered" => :bare,
+        "continue_offered" => :continue_offered,
         "continue_resolved" => :bare,
         # The cursor can't be replayed (or a join): the page re-reads.
         "snapshot" => :bare,
@@ -68,12 +80,12 @@ module Samagotchi
       # named is dropped all the same.
       DROPPED = %w[
         after_generation after_tool_call after_turn answer_display before_generation before_tool_call before_turn
-        card command_output command_queued command_ran context_added context_status empty_answer_retry
-        generation_cancelled generation_completed generation_progress generation_started guardrail_warning hook_notice
+        card command_output command_queued command_ran context_added empty_answer_retry
+        generation_cancelled generation_progress generation_started guardrail_warning hook_notice
         llm_context_edited merged_input objectives_updated participants_changed pending_input_merged plugin_init_finished
         plugin_init_started plugin_init_wait prompt_restored question question_relay reasoning_history_refused
         recap_ready reminder_injected sampling_refused session_end session_start side_usage steer_cut thinking_dropped
-        thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated working_set_updated
+        thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated
       ].freeze
 
       # A merged input line's saved sources a participant sees: a person's
@@ -88,14 +100,51 @@ module Samagotchi
 
       # @param event [Hash] a client event (ClientEvent's shape; string keys
       #   from the stream's JSON)
+      # @param own_enqueued [#include?] the enqueued ids of the viewer's own
+      #   turns (a :turn_dequeued names no author; ParticipantStreamFilter's)
       # @return [Hash, nil] what a participant gets, string keys; nil: nothing
-      def event(event, viewer)
+      def event(event, viewer, own_enqueued: [])
         return nil unless event.is_a?(Hash)
 
         type = field(event, :type).to_s
         method = EVENTS[type] or return nil
-        out = send(method, event, viewer)
+        out = method == :turn_dequeued ? turn_dequeued(event, viewer, own_enqueued) : send(method, event, viewer)
         out && Redact.deep(out, viewer)
+      end
+
+      # A turn queued: the viewer's own with its enqueued id, client id,
+      # prompt, delivery and author (never its images); anyone else's bare.
+      def turn_enqueued(event, viewer)
+        entry = queued_entry(event, viewer) or return bare(event, viewer)
+
+        { "type" => "turn_enqueued", **seq(event), **entry }
+      end
+
+      # A queued turn taken back or refused: the viewer's own with its
+      # enqueued id (never the client that took it back); anyone else's bare.
+      def turn_dequeued(event, viewer, own_enqueued)
+        enqueued_id = field(event, :enqueued_id)
+        return bare(event, viewer) unless enqueued_id.is_a?(String) && !enqueued_id.empty? && own_enqueued.include?(enqueued_id)
+
+        { "type" => "turn_dequeued", **seq(event), "enqueued_id" => enqueued_id }
+      end
+
+      # Input merged into the running turn: the viewer's own lines (their
+      # origins' enqueued ids) and how many, bare when none is theirs. The
+      # others' (a delegate's report, another person's line) are not named
+      # nor counted. No text: it comes with the turn's messages.
+      def input_merged(event, viewer)
+        own = Array(field(event, :origins)).filter_map do |origin|
+          next unless origin.is_a?(Hash) && viewer.own?(field(origin, :author))
+
+          enqueued_id = field(origin, :enqueued_id)
+          next unless enqueued_id.is_a?(String) && !enqueued_id.empty?
+
+          { "enqueued_id" => enqueued_id, "client_id" => field(origin, :client_id).to_s, "author" => field(origin, :author).to_s }
+        end
+        return bare(event, viewer) if own.empty?
+
+        { "type" => "input_merged", **seq(event), "count" => own.size, "origins" => own }
       end
 
       # A turn's start: who wrote it, and its prompt when a person sent it
@@ -117,6 +166,20 @@ module Samagotchi
           out["automatic"] = true
         end
         out
+      end
+
+      # A drawing's filtered turn_started (#event's) with +prompt+, the
+      # filtered messages' prompt of its turn; nil: an automatic turn's
+      # start, no prompt (a Continue's has none either way). Any other event
+      # as it is.
+      def drawing_start(event, prompt)
+        return event unless event["type"] == "turn_started"
+
+        out = event.except("prompt", "automatic")
+        return out if out["continue"]
+        return out.merge("prompt" => prompt) if prompt
+
+        out.except("continue").merge("automatic" => true)
       end
 
       def turn_ended(event, viewer)
@@ -172,6 +235,82 @@ module Samagotchi
         { "type" => "generation_chunk", "text" => text, **iteration(event) }
       end
 
+      # A generation's end: its decode speed ({decode_tps, source}, the
+      # composer's tok/s). Never the session's tokens, cost or models
+      # (+tokens+, +model_segments+), nor the served model.
+      def generation_completed(event, _viewer)
+        out = { "type" => "generation_completed", **iteration(event) }
+        speed = field(event, :speed)
+        tps = speed.is_a?(Hash) ? field(speed, :decode_tps) : nil
+        if tps.is_a?(Numeric) && tps.to_f.finite?
+          source = field(speed, :source).to_s
+          out["speed"] = { "decode_tps" => tps, **(SPEED_SOURCES.include?(source) ? { "source" => source } : {}) }
+        end
+        out
+      end
+
+      SPEED_SOURCES = %w[server estimate].freeze
+
+      # The usage numbers of a context_status a participant reads: its fill
+      # and the token counts.
+      CONTEXT_USAGE_KEYS = %w[estimated_pct estimated_used_tokens estimated_remaining_tokens window_tokens].freeze
+
+      # The context's fill (ContextStatus#observe, Engine's switched
+      # context): usage's percentage and token counts (usage null: unknown
+      # after a model switch), the bucket, and the window after a switch.
+      # Never +status+ (the model-facing line, with its guidance), the
+      # counts' source or the window's.
+      def context_status(event, _viewer)
+        out = { "type" => "context_status", **iteration(event) }
+        if event.key?("usage") || event.key?(:usage)
+          usage = field(event, :usage)
+          out["usage"] = usage.is_a?(Hash) ? pick(usage, CONTEXT_USAGE_KEYS) : nil
+        end
+        bucket = field(event, :bucket)
+        out["bucket"] = bucket if bucket.is_a?(String) && bucket.match?(/\A(?:under|\d+plus)\d*\z/)
+        if event.key?("context_window_tokens") || event.key?(:context_window_tokens)
+          window = field(event, :context_window_tokens)
+          out["context_window_tokens"] = window.is_a?(Integer) ? window : nil
+        end
+        out
+      end
+
+      def working_set_updated(event, viewer)
+        { "type" => "working_set_updated", **seq(event), **working_set(event, viewer) }
+      end
+
+      # The working set's states and ops a participant's item may carry
+      # (WorkingSet::Item).
+      WORKING_SET_STATES = %w[live stale forgotten dropped].freeze
+      WORKING_SET_OPS = %w[read edit].freeze
+
+      # A working set (WorkingSet::Snapshot#to_h: the event's and GET
+      # …/working_set's) as a participant may read it: the file items inside
+      # the project, each key made project-relative, with its state, tokens,
+      # ops, count and pinned; +at+ (the page keeps the newer). Never a
+      # memory or URL item, a path outside the project, +first_id+,
+      # +has_drop+ or the pending +adds+.
+      def working_set(set, viewer)
+        items = Array(field(set, :items)).filter_map { |item| working_set_item(item, viewer) }
+        at = field(set, :at)
+        { "items" => items, **(at.is_a?(Integer) ? { "at" => at } : {}) }
+      end
+
+      def working_set_item(item, viewer)
+        return nil unless item.is_a?(Hash) && field(item, :kind).to_s == FileRef::KIND
+
+        key = project_path(field(item, :key), viewer.cwd, home: viewer.home) or return nil
+        state = field(item, :state).to_s
+        out = { "kind" => FileRef::KIND, "key" => key, "state" => WORKING_SET_STATES.include?(state) ? state : "live",
+                "ops" => Array(field(item, :ops)).map(&:to_s).select { |op| WORKING_SET_OPS.include?(op) }.uniq,
+                "pinned" => field(item, :pinned) == true }
+        %i[tokens count].each do |name|
+          value = field(item, name)
+          out[name.to_s] = value if value.is_a?(Integer) && value >= 0
+        end
+        out
+      end
+
       # A dropped stream asked again: its text so far is void when restarted.
       def generation_retrying(event, _viewer)
         out = { "type" => "generation_retrying", **iteration(event) }
@@ -183,12 +322,41 @@ module Samagotchi
         { "type" => "tool_call_started", **tool_row(field(event, :tool), field(event, :ref), viewer), **call_ids(event) }
       end
 
+      # Its status word, flat for the participant page and as the owner's
+      # +activity+ ({status} only: never its action or params) for the
+      # main page's row (activity.js).
       def tool_call_completed(event, _viewer)
         out = { "type" => "tool_call_completed", **call_ids(event) }
         activity = field(event, :activity)
         status = activity.is_a?(Hash) ? field(activity, :status).to_s : ""
-        out["status"] = status if STATUSES.include?(status)
+        out.merge!("status" => status, "activity" => { "status" => status }) if STATUSES.include?(status)
         out
+      end
+
+      # A question for the owner: its kind (#waiting_kind) only.
+      def question_requested(event, _viewer)
+        { "type" => "question_requested", **seq(event), "kind" => waiting_kind(field(event, :pending_question)) }
+      end
+
+      # The owner's Continue offer: its kind only.
+      def continue_offered(event, _viewer)
+        { "type" => "continue_offered", **seq(event), "kind" => WAITING_CONTINUE }
+      end
+
+      WAITING_APPROVAL = "approval"
+      WAITING_QUESTION = "question"
+      WAITING_CONTINUE = "continue"
+
+      # What a turn waits for the owner on, derived from a pending question
+      # (PendingQuestion#to_h, a snapshot's): "approval" for a guardrail's
+      # approval or a relayed one, "continue" for the step-limit question,
+      # "question" for anything else (the model's own, a hook's, none).
+      def waiting_kind(pending)
+        return WAITING_QUESTION unless pending.is_a?(Hash)
+        return WAITING_APPROVAL if field(pending, :kind).to_s == "approval" || field(pending, :relay).is_a?(Hash)
+        return WAITING_CONTINUE if field(pending, :kind).to_s == "continue"
+
+        WAITING_QUESTION
       end
 
       # Its type alone (and the cursor it was sent at).
@@ -249,7 +417,7 @@ module Samagotchi
                                  field(message, :participant_mode)))
         images = field(message, :images)
         out["images"] = images.size if images.is_a?(Array) && !images.empty?
-        out
+        out.merge!(drawn_field(message))
       end
 
       # A wake turn's start (its prompt a delegate's report or a context
@@ -275,8 +443,32 @@ module Samagotchi
 
         out = { "role" => "assistant", "content" => content, **time_field(message) }
         out["tools"] = rows unless rows.empty?
+        out.merge!(drawn_field(message))
+      end
+
+      # The turn whose drawing draws this message (MessageDisplay's +drawn+
+      # stamp: a turn id), for the main page's show; none on the review read.
+      def drawn_field(message)
+        drawn = field(message, :drawn)
+        drawn.is_a?(String) && !drawn.empty? ? { "drawn" => drawn } : {}
+      end
+
+      # A finished turn's drawing end (Bridge::TurnDrawings' end, its
+      # END_KEYS) as a participant may read it: how it ended, its turn and
+      # duration, and how many steps a failure kept. Never a failure's
+      # summary, message or class (they may name a host path), a cancel's
+      # reason or who stopped it.
+      def drawing_end(raw, turn_id)
+        out = { "type" => (TURN_ENDS.include?(field(raw, :type).to_s) ? field(raw, :type).to_s : "turn_completed"),
+                "turn_id" => turn_id.to_s }
+        duration = field(raw, :duration_ms)
+        out["duration_ms"] = duration if duration.is_a?(Integer)
+        kept = field(raw, :kept_steps)
+        out["kept_steps"] = kept if kept.is_a?(Integer)
         out
       end
+
+      TURN_ENDS = %w[turn_completed turn_canceled turn_failed].freeze
 
       # The turn in progress (TurnAccumulator#current_turn, string keys
       # from the Bridge's snapshot) as a participant sees it: its start
@@ -303,18 +495,106 @@ module Samagotchi
           end
         end
         out = started.merge("text" => text, "tools" => tools)
-        out["waiting_for_owner"] = true if field(turn, :pending_question)
+        # The running generation's phase (Bridge#with_generation: the main
+        # page's delivery-line clock): whether it only thinks so far, and its
+        # age; nothing of what it thinks.
+        generation = field(turn, :generation)
+        if generation.is_a?(Hash)
+          gen = {}
+          gen["thinking_only"] = field(generation, :thinking_only) if [true, false].include?(field(generation, :thinking_only))
+          gen["age"] = field(generation, :age) if field(generation, :age).is_a?(Numeric)
+          out["generation"] = gen
+        end
+        pending = field(turn, :pending_question)
+        out.merge!("waiting_for_owner" => true, "kind" => waiting_kind(pending)) if pending
         Redact.deep(out, viewer)
       end
 
+      # A queued entry (a Bridge snapshot's +queued+ row) when it is the
+      # viewer's own, in the owner's shape: its enqueued id, client id,
+      # prompt, delivery and author. Never its images. nil for another
+      # person's (their prompt).
+      def queued_entry(entry, viewer)
+        return nil unless entry.is_a?(Hash) && viewer.own?(field(entry, :author))
+
+        out = { "enqueued_id" => field(entry, :enqueued_id).to_s, "client_id" => field(entry, :client_id).to_s,
+                "prompt" => field(entry, :prompt).to_s, "author" => field(entry, :author).to_s }
+        delivery = field(entry, :delivery).to_s
+        out["delivery"] = delivery if DELIVERIES.include?(delivery)
+        Redact.deep(out, viewer)
+      end
+
+      DELIVERIES = %w[queue next_step].freeze
+
+      # A turn record's fields a participant reads: its id and times (the
+      # turn time) and its speed. Never its cost, tokens, model, author,
+      # cancel reason or failure.
+      TURN_RECORD_KEYS = %w[id started_at completed_at duration_ms decode_tps tps_source].freeze
+      # The running turn's (SessionMetrics#active_turn_snapshot).
+      ACTIVE_TURN_KEYS = %w[id started_at duration_ms].freeze
+
+      # The show's timing (SessionShow#timing_from) as a participant may
+      # read it: the session's clock, each turn's duration and speed, the
+      # running turn's start, and the context's fill (its token counts).
+      # Never tool_records (guardrail judgment ids, System 1 labels),
+      # active_tools, tokens, model_segments (cost per model), memory_index
+      # (memory names) or side (side requests' cost).
+      def timing(payload)
+        return nil unless payload.is_a?(Hash)
+
+        records = Array(field(payload, :turn_records)).filter_map { |record| pick(record, TURN_RECORD_KEYS) }
+        context = field(payload, :context)
+        {
+          "started_at" => string_or_nil(field(payload, :started_at)),
+          "last_activity_at" => string_or_nil(field(payload, :last_activity_at)),
+          "session_duration_ms" => number_or_nil(field(payload, :session_duration_ms)),
+          "turn_records" => records,
+          "tool_records" => [],
+          "turn_count" => number_or_nil(field(payload, :turn_count)),
+          "active_turn" => pick(field(payload, :active_turn), ACTIVE_TURN_KEYS),
+          "active_tools" => [],
+          "context" => pick(context, %w[used_tokens window_tokens]),
+          "tokens" => nil,
+          "model_segments" => [],
+          "memory_index" => nil,
+          "side" => nil
+        }
+      end
+
+      # +keys+ of +hash+ whose values are plain (a string or a number), nil
+      # for a hash with none.
+      def pick(hash, keys)
+        return nil unless hash.is_a?(Hash)
+
+        out = keys.each_with_object({}) do |key, kept|
+          value = field(hash, key.to_sym)
+          kept[key] = value if value.is_a?(String) || (value.is_a?(Numeric) && value.to_f.finite?)
+        end
+        out.empty? ? nil : out
+      end
+
+      def string_or_nil(value) = value.is_a?(String) ? value : nil
+
+      def number_or_nil(value) = value.is_a?(Numeric) && value.to_f.finite? ? value : nil
+
       # A tool row: the tool's name, and for a file tool the path relative
       # to the session's folder when it is inside it. Never its arguments.
+      # The row's +ref+ is the owner's shape (FileRef#to_h: kind, path, the
+      # lines) with the relative path, for the main page's refs.js; +path+
+      # is the participant page's flat copy until that page goes.
       def tool_row(tool, ref, viewer)
         row = { "tool" => tool.to_s }
         path = ref.is_a?(Hash) ? field(ref, :path) : nil
         relative = project_path(path, viewer.cwd, home: viewer.home)
-        row["path"] = relative if relative
-        row
+        return row unless relative
+
+        row["path"] = relative
+        file = { "kind" => FileRef::KIND, "path" => relative }
+        %i[line end_line].each do |key|
+          value = field(ref, key)
+          file[key.to_s] = value if value.is_a?(Integer) && value.positive?
+        end
+        row.merge("ref" => file)
       end
 
       # +path+ relative to +cwd+ when it is inside it, else nil. None when

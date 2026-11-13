@@ -118,7 +118,19 @@ RSpec.describe Samagotchi::SessionInbox do
         expect(described_class.waits_for_turn_end?(cut)).to be(false)
       end
 
-      it "answers true for a participant's line whatever its delivery: theirs is always a turn of its own" do
+      it "lets a participant's next-step line go into their own running turn only, and nobody else's into it" do
+        theirs = described_class.write_input(session_dir, prompt: "hi", author: "p:p_1")
+        queued = described_class.write_input(session_dir, prompt: "later", author: "p:p_1", delivery: Samagotchi::Delivery::QUEUE)
+        other = described_class.write_input(session_dir, prompt: "Sam's", author: "p:p_2")
+        owner = described_class.write_input(session_dir, prompt: "mine")
+        waits = ->(running) { [theirs, queued, other, owner].map { |file| described_class.waits_for_turn_end?(file, running_author: running) } }
+
+        expect(waits.call("p:p_1")).to eq([false, true, true, true])
+        expect(waits.call("p:p_2")).to eq([true, true, false, true])
+        expect(waits.call(nil)).to eq([true, true, true, false])
+      end
+
+      it "answers true for a participant's line whatever its delivery, in the owner's turn: theirs is a turn of its own" do
         cut = described_class.write_input(session_dir, prompt: "now", delivery: Samagotchi::Delivery::CUT, author: "p:p_1",
                                                        enqueued_id: "e9")
         plain = described_class.write_input(session_dir, prompt: "hi", author: "p:p_1")

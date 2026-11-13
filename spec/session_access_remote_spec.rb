@@ -420,7 +420,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect([code, out.string]).to eq([0, "yes\n"]), err.string
       turn = err.string[/queued as review turn (\S+)\)/, 1]
       expect(turn).not_to be_nil
-      expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: true))
+      expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: false))
     end
 
     it "words each code once, whatever the route, in the server's own words (ParticipantMessages)" do

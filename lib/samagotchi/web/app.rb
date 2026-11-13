@@ -73,6 +73,7 @@ require_relative "viewer"
 require_relative "participant_access"
 require_relative "participants_admin"
 require_relative "participant_review"
+require_relative "participant_show"
 require_relative "message_display"
 require_relative "session_show"
 require_relative "session_create"
@@ -108,6 +109,7 @@ module Samagotchi
       include ParticipantAccess
       include ParticipantsAdmin
       include ParticipantReview
+      include ParticipantShow
       include MessageDisplay
       include SessionShow
       include SessionCreate
@@ -286,7 +288,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :owner, :session],
@@ -319,7 +321,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_list, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_revoke, :owner, :session],
@@ -1402,16 +1404,28 @@ module Samagotchi
       # turn emitted one, or from an older worker without the field, it is
       # the session's messages, behind that turn's events, and the page
       # keeps theirs (working_set.js newerSnapshot).
-      def handle_working_set(_req, id)
+      # A participant's is filtered (ParticipantView.working_set: the
+      # project's files only).
+      def handle_working_set(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
+        set = working_set_payload(id, session)
+        return json_response(200, set) if principal(req).owner?
+
+        viewer = participant_viewer(req, session)
+        # Redacted as the stream's event is (ParticipantView.event): a file name may hold a secret's shape.
+        shown = Redact.deep(ParticipantView.working_set(set, viewer), viewer)
+        json_response(200, shown.merge("running" => set[:running] == true))
+      end
+
+      def working_set_payload(id, session)
         live = bridge_get_json(id, "snapshot")
         worker_snapshot = live && live["snapshot"]
         running = !worker_snapshot&.dig("current_turn").nil?
         turn_set = running && running_working_set(live["snapshot"]["working_set"])
-        return json_response(200, turn_set.merge(running: true)) if turn_set
+        return turn_set.merge(running: true) if turn_set
 
         idle_set = idle_working_set(worker_snapshot && worker_snapshot["idle_working_set"]) unless running
-        return json_response(200, idle_set.merge(running: false)) if idle_set
+        return idle_set.merge(running: false) if idle_set
 
         messages = live_or_saved(worker_snapshot, "messages") { session.messages }
         # A snapshot's entries have string keys (paired_runs reads symbols).
@@ -1421,7 +1435,7 @@ module Samagotchi
         end
         snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context),
                                     pins: session.working_set_pins)
-        json_response(200, snapshot.to_h.merge(running: running))
+        snapshot.to_h.merge(running: running)
       end
 
       # The running turn's set from a worker's snapshot ({"items", "at"}), as
@@ -1957,6 +1971,8 @@ module Samagotchi
       # #code= and the app's start_url "/" all land there). ?dir= beats
       # ?scope=all.
       def index_data_attributes(req)
+        return participant_index_data(req) unless principal(req).owner?
+
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(start_dir), "version" => Samagotchi::VERSION }
@@ -1989,6 +2005,24 @@ module Samagotchi
             attrs["back-dir"] = back
           end
         end
+        body_data(attrs)
+      end
+
+      # A participant's <body> data for index.html (served to them from the
+      # participant main page's Phase C on): who they are (Viewer), their
+      # grant's session and its participant title (the tab's), the version
+      # and the Annotate presets. Nothing of the owner's machine: no home,
+      # folders, project or way back (sessions-dir, server-dir, home,
+      # scope-dir, project-*, back-*).
+      def participant_index_data(req)
+        grant = principal(req).grant
+        attrs = { "version" => Samagotchi::VERSION, "session" => grant.session_id }
+        title = Degrade.call(:web, "participant_title_unreadable", fallback: nil) do
+          participant_title(@session_class.load(grant.session_id, state_dir: default_state_dir))
+        end
+        attrs["session-title"] = title if title
+        attrs.merge!(annotate_presets_data)
+        attrs.merge!(Viewer.for(principal(req)).body_attributes)
         body_data(attrs)
       end
 

@@ -46,8 +46,30 @@ module Samagotchi
       PEM_BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/
       PEM_END = /-----END [A-Z0-9 ]*PRIVATE KEY-----/
 
-      def initialize(viewer)
+      # The enqueued ids of the viewer's own turns: those whose
+      # :turn_enqueued this stream sent them as theirs, and any +known+
+      # names (chi web's record of who sent a turn, ParticipantAccess#own_turn?).
+      class OwnEnqueued
+        MAX_IDS = 1000
+
+        def initialize(known)
+          @known = known
+          @ids = []
+        end
+
+        def add(id)
+          @ids << id
+          @ids.shift while @ids.size > MAX_IDS
+        end
+
+        def include?(id) = @ids.include?(id) || (!@known.nil? && @known.call(id) == true)
+      end
+
+      # @param own_enqueued [#call, nil] (enqueued_id) -> whether the viewer
+      #   sent that turn, for one this stream didn't see queued
+      def initialize(viewer, own_enqueued: nil)
         @viewer = viewer
+        @own = OwnEnqueued.new(own_enqueued)
         @buffer = +""
         @skipping = false
         @held = +""
@@ -97,7 +119,8 @@ module Samagotchi
           end
         end
         event = parse(data.join("\n")) or return ""
-        shown = ParticipantView.event(event, @viewer) or return ""
+        shown = ParticipantView.event(event, @viewer, own_enqueued: @own) or return ""
+        @own.add(shown["enqueued_id"]) if shown["type"] == "turn_enqueued" && shown["enqueued_id"]
         id = nil unless id && EVENT_ID.match?(id)
         return chunk(event, shown, id) if shown["type"] == "generation_chunk"
 

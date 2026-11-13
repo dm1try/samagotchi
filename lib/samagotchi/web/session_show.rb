@@ -50,7 +50,7 @@ module Samagotchi
       private
 
       def handle_show(req, id)
-        return participant_show(id) unless principal(req).owner?
+        return participant_show_read(req, id) unless principal(req).owner?
 
         # The page's light re-reads: never the whole conversation.
         return handle_cards_read(id) if req.params["cards"] == "1"

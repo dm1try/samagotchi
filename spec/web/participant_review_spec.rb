@@ -49,8 +49,16 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
 
   after { FileUtils.remove_entry(root) }
 
-  def review(bearer)
-    env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/review")
+  def review(bearer) = read("/api/sessions/#{session.id}/review", bearer)
+
+  # The main page's show (GET /api/sessions/:id), the other read a
+  # participant's page makes: every leak case runs on both while both exist.
+  def show(bearer, query = "") = read("/api/sessions/#{session.id}#{query}", bearer)
+
+  def both(bearer) = { review: review(bearer), show: show(bearer) }
+
+  def read(path, bearer)
+    env = Rack::MockRequest.env_for(path)
     env["HTTP_HOST"] = "#{lan_ip}:4567"
     env["REMOTE_ADDR"] = "192.168.1.20"
     env["HTTP_AUTHORIZATION"] = "Bearer #{bearer}"
@@ -72,12 +80,37 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
     expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
-                                       "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true)
+                                       "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true,
+                                       "kind" => "question")
     expect(body["waiting_for_owner"]).to be(true)
     expect(body["queued"]).to eq("mine" => [{ "enqueued_id" => "e1", "prompt" => "mine" }], "others" => 1)
     expect(body["last_event_id"]).to eq("12-ep")
     expect(body["verdicts"]).to eq([])
     expect(JSON.generate(body)).not_to include("env?", "CARD", "owner's next", "metrics")
+  end
+
+  it "never sends a participant the owner's question, cards, recap, continue offer, commands, cost or queued prompts" do
+    turn = snapshot["snapshot"]
+    turn.merge!("recap" => { "text" => "RECAP-TEXT" }, "continue_offer" => { "context" => "OFFER-CONTEXT" },
+                "commands" => [{ "name" => "/SECRET-COMMAND" }], "guardrail_warning" => "GUARD-WARN",
+                "plugin_warning" => "PLUGIN-WARN", "init_tasks" => [{ "name" => "INIT-TASK" }],
+                "objectives" => { "items" => [{ "text" => "OBJECTIVE-TEXT" }] },
+                "working_set" => { "items" => [{ "kind" => "memory", "key" => "MEMORY-NAME" }], "at" => 3 })
+    turn["current_turn"]["parts"] << { "kind" => "thinking", "text" => "THINKING-TEXT" }
+    turn["current_turn"]["parts"] << { "kind" => "tool", "tool" => "read", "params" => "TOOL-PARAMS", "output" => "TOOL-OUT",
+                                       "ref" => { "kind" => "file", "path" => "/etc/passwd" } }
+    snapshot["session_state_snapshot"]["metrics"] = {
+      "cost" => 9.87, "model_segments" => [{ "model" => "SEGMENT-MODEL", "cost" => 6.54 }],
+      "memory_index" => { "names" => ["INDEX-MEMORY"] }, "side" => { "cost_sum" => 3.21 },
+      "turn_records" => [{ "id" => "t0", "cost" => 4.32, "model" => "RECORD-MODEL" }],
+      "tool_records" => [{ "id" => "r1", "guardrail" => { "judgment_id" => "JUDGMENT-ID" } }]
+    }
+    both(issued.token).each do |read, (status, body)|
+      expect(status).to eq(200), read.to_s
+      ["env?", "CARD", "owner's next", "RECAP-TEXT", "OFFER-CONTEXT", "SECRET-COMMAND", "GUARD-WARN", "PLUGIN-WARN", "INIT-TASK", "OBJECTIVE-TEXT", "MEMORY-NAME", "THINKING-TEXT", "TOOL-PARAMS", "TOOL-OUT", "/etc/passwd", "9.87", "6.54", "SEGMENT-MODEL", "INDEX-MEMORY", "3.21", "4.32", "RECORD-MODEL", "JUDGMENT-ID"].each do |leak|
+        expect(JSON.generate(body)).not_to include(leak), "#{read}: #{leak}"
+      end
+    end
   end
 
   it "shows a filtered verdict card to participants without exposing reply metadata" do
@@ -95,7 +128,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       "verdict" => "confirmed", "reason" => "supported", "by" => author,
       "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
     }])
-    expect(JSON.generate(body)).not_to include("private", "secret", '"at"')
+    both(issued.token).each_value { |_status, read| expect(JSON.generate(read)).not_to include("private", "secret", '"at":"now"') }
   end
 
   it "hides an automatic turn's prompt by the live worker's record, before analytics.json has it" do
@@ -124,7 +157,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t2" },
       { "role" => "assistant", "content" => "noted" }
     ])
-    expect(JSON.generate(body)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack")
+    both(issued.token).each { |read, (_status, out)| expect(JSON.generate(out)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack"), read.to_s }
   end
 
   it "renders markdown only for the replies it sends, from their redacted text: never the dropped report's" do
@@ -225,7 +258,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     snapshot["snapshot"]["current_turn"]["parts"] << { "kind" => "text", "text" => "seen #{loopback} and #{owner_token}" }
     _status, body = review(issued.token)
     expect(body.dig("current_turn", "text")).to include("seen")
-    expect(JSON.generate(body)).not_to include(loopback, owner_token)
+    both(issued.token).each { |read, (_status, out)| expect(JSON.generate(out)).not_to include(loopback, owner_token), read.to_s }
   end
 
   it "names a participant invited to act pair, and review again while an older worker holds the session" do

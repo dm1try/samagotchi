@@ -92,7 +92,11 @@ module Samagotchi
         return unless @turn && !@claimed
 
         waiting = SessionInbox.waiting_input_data(@session_dir, @turn)
-        @own_turn_input ||= !waiting.nil? && SessionInbox.turn_end_data?(waiting)
+        # A participant's next-step message may go into their own running
+        # turn (its author's), so it runs a turn of its own only when it
+        # would wait even there.
+        @own_turn_input ||= !waiting.nil? &&
+                            SessionInbox.turn_end_data?(waiting, running_author: Steer.sender_author(waiting["author"]))
         @participant_input ||= !waiting.nil? && Steer.participant_author?(waiting["author"])
         @claimed = waiting.nil?
       end

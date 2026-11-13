@@ -11,9 +11,11 @@ require_relative "../session_inbox"
 require_relative "../session_metrics"
 require_relative "../parent_report"
 require_relative "../participant_messages"
+require_relative "../participant_mode"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../turn_checkpoint"
+require_relative "../turn_origin"
 require_relative "../verify_fresh"
 require_relative "../log"
 
@@ -254,14 +256,66 @@ module Samagotchi
                     .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
       end
 
+      # POST …/cancel from a participant: only their own running turn, named
+      # by its turn_id. The live snapshot's turn must be that turn and
+      # theirs (its author is the grant's), and the worker is asked to
+      # cancel that turn id (TurnState#cancel! compares it under its lock,
+      # 409 turn_mismatch): a turn that ended and gave way to another
+      # person's between the read and the cancel is never stopped. No
+      # turn_id (the Bridge would cancel whatever runs), or a turn that
+      # isn't theirs: 403 not_permitted, audited. The reason is the
+      # server's, never the body's.
+      def participant_cancel(req, id)
+        parsed = parse_json(request_body(req))
+        turn_id = (parsed["turn_id"] if parsed.is_a?(Hash)).to_s.strip
+        return not_permitted_for(req, principal(req)) if turn_id.empty?
+
+        live = bridge_get_json(id, "snapshot")
+        return not_live(id) unless live.is_a?(Hash)
+
+        turn = live.dig("snapshot", "current_turn")
+        return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) unless turn.is_a?(Hash)
+        return not_permitted_for(req, principal(req)) unless own_running_turn?(principal(req).grant, turn, turn_id)
+        return cancel_unavailable(req) unless cancels_by_turn_id?(id)
+
+        relay_cancel(id, ->(client) { client.cancel(reason: PARTICIPANT_CANCEL_REASON, turn_id: turn_id) })
+      end
+
+      # Whether the session's live worker cancels only the turn_id it is
+      # named (Delivery::CANCEL_TURN_ID_FEATURE): an older one ignores it and
+      # would stop whatever runs, the owner's next turn too.
+      def cancels_by_turn_id?(id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        Array(ParticipantMode.live_features(session, default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
+      end
+
+      # 409 cancel_unavailable, audited; nothing is relayed.
+      def cancel_unavailable(req)
+        audit_refused(req, principal(req).grant, reason: "cancel_unavailable")
+        error_response(409, "cancel_unavailable", ParticipantMessages::CANCEL_UNAVAILABLE)
+      end
+
+      # Bridge::CANCEL_REASONS' "user": the person who sent it stopped it.
+      PARTICIPANT_CANCEL_REASON = "user"
+
+      # Whether the snapshot's running +turn+ is +turn_id+ and +grant+'s.
+      def own_running_turn?(grant, turn, turn_id)
+        author = turn["author"] || TurnOrigin.from(turn["origin"])&.author
+        turn["turn_id"].to_s == turn_id && author.to_s == grant.author
+      end
+
       # ── A participant's turn ──────────────────────────────────────────
 
-      # POST /api/sessions/:id/turn from a participant: a review turn (D6,
-      # D10). Of the body only the prompt counts: the author and client id
-      # are the grant's (review:<id>), the delivery is always queue, no
-      # images, no no_interrupt; the owner's prompt history never sees it.
-      # Refused: a line starting ! or / (403 not_permitted: shell lines
-      # and commands are the owner's), images (403), their turn limit (429
+      # POST /api/sessions/:id/turn from a participant: their turn (D6,
+      # D10). Of the body only the prompt and the delivery count: the author
+      # and client id are the grant's (review:<id>), no images, no
+      # no_interrupt; the owner's prompt history never sees it. The delivery
+      # is queue or next step (none: next step): the worker puts a next-step
+      # message into a running turn only when that turn is theirs, else it
+      # runs as their own turn after it (Bridge#same_author_steer?; an older
+      # worker queues it). Refused: a line starting ! or / (403
+      # not_permitted: shell lines and commands are the owner's), images
+      # (403), a cut (403: theirs never cuts), their turn limit (429
       # too_many_turns, the Bridge counts) and their cap (429 cap_reached).
       # Every answer is audited (turn: accepted or refused, why).
       def handle_participant_turn(req, id, body)
@@ -273,8 +327,9 @@ module Samagotchi
         return participant_turn_refused(grant, prompt, *reason) if reason
 
         # A Verify turn's claim; never a Revise (the owner's stacks).
+        delivery = Delivery.queue?(body["delivery"]) ? Delivery::QUEUE : Delivery::NEXT_STEP
         result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
-                                                 delivery: Delivery::QUEUE, author: grant.author,
+                                                 delivery: delivery, author: grant.author,
                                                  anchors: TurnAnchors.from(body).without_revises,
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
@@ -288,6 +343,7 @@ module Samagotchi
       def participant_turn_refusal(grant, prompt, body)
         return [403, "not_permitted", NOT_PERMITTED] if prompt.lstrip.start_with?("!", "/")
         return [403, "not_permitted", NOT_PERMITTED] unless body["images"].nil? || body["images"] == []
+        return [403, "not_permitted", NOT_PERMITTED] if Delivery.cut?(body["delivery"])
 
         participant_cap_refusal(grant)
       end
@@ -322,7 +378,10 @@ module Samagotchi
           enqueued_id = result.ack["enqueued_id"]
           remember_participant_turn(enqueued_id, grant.id)
           audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id)
-          json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => Delivery::QUEUE))
+          # What the worker says will happen (a turn of its own, or into
+          # their running turn at its next step); a file (no worker yet)
+          # runs as the next turn, which reads as a queue.
+          json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => result.ack["delivery"] || Delivery::QUEUE))
         when :refused
           audit_turn(grant, prompt, status: "refused", reason: result.ack["error"])
           json_response(result.code, result.ack)
@@ -416,17 +475,18 @@ module Samagotchi
       # answer trimmed to what their turn's reply is (status, text, turn
       # id, a cancel's reason): no file path, no question (an approval or a
       # question their turn raised is the owner's to answer: the status
-      # says waiting_for_owner), no origin, no parent strategy. It waits as
-      # for a queued turn (theirs always is: never merged), so it never
-      # falls back to the next reply past a cursor, which would be anyone's;
-      # the body's cursor doesn't count. A revoke or the expiry ends a wait
+      # says waiting_for_owner), no origin, no parent strategy. It waits on
+      # their turn's id, so it never falls back to the next reply past a
+      # cursor, which would be anyone's (the body's cursor doesn't count);
+      # a message merged into their own running turn is followed into it by
+      # its merge record (ReplyWait::Poll#follow_merge), a turn of theirs. A revoke or the expiry ends a wait
       # already running (the gate checked the grant when it began): 401
       # token_revoked / token_expired, as their next request would get.
       def participant_wait(req, id, options)
         grant = principal(req).grant
         return not_permitted_for(req, principal(req)) unless own_turn?(grant, id, options[:turn])
 
-        options = options.merge(queued: true, cursor: nil)
+        options = options.merge(queued: false, cursor: nil)
         session = session_access.show(id)
         result = session_access.wait_reply(id, **options, poll_interval: @wait_poll_interval,
                                                cancelled: -> { !@server_running.call || !@grants.active?(grant.id) })

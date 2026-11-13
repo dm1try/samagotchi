@@ -26,17 +26,22 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       found - NOT_EVENTS
     end
 
+    # The types only the main page reads (its numbers and working set): the
+    # participant page doesn't listen for them, so its EventSource never
+    # fires them. Phase C points this at the main page's handlers.
+    let(:main_page_only) { %w[context_status generation_completed working_set_updated] }
+
     it "names every emitted type as shown or dropped, never both" do
       known = described_class::EVENTS.keys + described_class::DROPPED
       expect(emitted.to_a.sort - known).to eq([])
       expect(described_class::EVENTS.keys & described_class::DROPPED).to eq([])
     end
 
-    it "is the list the participant page listens for, no more, no fewer" do
+    it "is the list the participant page listens for, no more, no fewer, and the main page's numbers" do
       page = File.read(File.expand_path("../../lib/samagotchi/web/public/participant.js", __dir__))
       list = page[/^const STREAM_EVENTS = \[(.*?)\];/m, 1]
       expect(list).not_to be_nil
-      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq(described_class::EVENTS.keys.sort)
+      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq((described_class::EVENTS.keys - main_page_only).sort)
     end
 
     it "drops every DROPPED type and an unknown one, whatever they carry" do
@@ -51,7 +56,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
       allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
-                   participant_mode automatic continue restarted verdict]
+                   participant_mode automatic continue restarted verdict items kind]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
         next if out.nil?
@@ -97,7 +102,11 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     it "shows a tool row as its name and a project path only" do
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/docs/plan.md" },
                      title: "docs/plan.md", params: "docs/plan.md", view: { command: "x" }, iteration: 1, call_index: 0 }))
-        .to eq("type" => "tool_call_started", "tool" => "read", "path" => "docs/plan.md", "iteration" => 1, "call_index" => 0)
+        .to eq("type" => "tool_call_started", "tool" => "read", "path" => "docs/plan.md",
+               "ref" => { "kind" => "file", "path" => "docs/plan.md" }, "iteration" => 1, "call_index" => 0)
+      expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/a.rb", line: 4, end_line: 9,
+                                                                    id: "SECRET-ID" } }))
+        .to include("ref" => { "kind" => "file", "path" => "a.rb", "line" => 4, "end_line" => 9 })
       home = Samagotchi::Redact::Viewer.new(cwd: "/home/o", home: "/home/o")
       expect(described_class.event({ "type" => "tool_call_started", "tool" => "read", "ref" => { "path" => "/home/o/.config/x.md" } }, home))
         .to eq("type" => "tool_call_started", "tool" => "read")
@@ -107,14 +116,88 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .to eq("type" => "tool_call_started", "tool" => "execute")
       expect(shown({ type: :tool_call_completed, output: "SECRET", activity: { status: "ok", action: "Read" }, iteration: 1,
                      call_index: 0, diff: {} }))
-        .to eq("type" => "tool_call_completed", "status" => "ok", "iteration" => 1, "call_index" => 0)
+        .to eq("type" => "tool_call_completed", "status" => "ok", "activity" => { "status" => "ok" }, "iteration" => 1,
+               "call_index" => 0)
     end
 
-    it "shows a question, an approval or a Continue offer as its type alone" do
-      expect(shown({ type: :question_requested, pending_question: { id: "q", question: "Allow execute: cat .env?" },
-                     event_seq: 4 }))
-        .to eq("type" => "question_requested", "event_seq" => 4)
-      expect(shown({ type: :continue_offered, context: "step limit" })).to eq("type" => "continue_offered")
+    it "shows a question, an approval or a Continue offer as its type and derived kind alone" do
+      asked = ->(pending) { shown({ type: :question_requested, pending_question: pending, event_seq: 4 }) }
+      expect(asked.call({ id: "q", question: "Allow execute: cat .env?", kind: "approval", approval: { command: "cat .env" } }))
+        .to eq("type" => "question_requested", "event_seq" => 4, "kind" => "approval")
+      expect(asked.call({ id: "q", question: "Child asks: rm -rf?", relay: { session: "CHILD-ID" } })["kind"]).to eq("approval")
+      expect(asked.call({ id: "q", question: "Continue?", kind: "continue", limit: 40 })["kind"]).to eq("continue")
+      expect(asked.call({ id: "q", question: "Which db?", options: %w[A B] })["kind"]).to eq("question")
+      expect(asked.call({ id: "q", question: "Hook asks", kind: "hook", hook: "HOOK-NAME" })["kind"]).to eq("question")
+      expect(asked.call(nil)["kind"]).to eq("question")
+      expect(shown({ type: :continue_offered, context: "step limit" })).to eq("type" => "continue_offered", "kind" => "continue")
+      expect(JSON.generate(asked.call({ id: "Q-ID", question: "Q-TEXT", kind: "approval", approval: { x: "Y" } })))
+        .not_to include("Q-ID", "Q-TEXT", "approval\":{")
+    end
+
+    it "sends the viewer's own queued turn in the owner's shape, never its images; another's bare" do
+      own = { type: :turn_enqueued, event_seq: 5, enqueued_id: "e1", client_id: "review:p_1", prompt: "mine", author: "p:p_1",
+              delivery: "queue", images: [{ file: "/home/o/proj/shot.png" }] }
+      expect(shown(own)).to eq("type" => "turn_enqueued", "event_seq" => 5, "enqueued_id" => "e1", "client_id" => "review:p_1",
+                               "prompt" => "mine", "author" => "p:p_1", "delivery" => "queue")
+      expect(shown(own.merge(author: "p:p_2", prompt: "THEIRS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
+      expect(shown(own.except(:author).merge(client_id: "web:o", prompt: "OWNERS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
+    end
+
+    it "names the viewer's own dequeued turn by its enqueued id, never the client that took it back; another's bare" do
+      event = JSON.parse(JSON.generate({ type: :turn_dequeued, event_seq: 6, enqueued_id: "e1", client_id: "web:OWNER-TAB" }))
+      expect(described_class.event(event, viewer, own_enqueued: ["e1"]))
+        .to eq("type" => "turn_dequeued", "event_seq" => 6, "enqueued_id" => "e1")
+      expect(described_class.event(event, viewer, own_enqueued: ["e2"])).to eq("type" => "turn_dequeued", "event_seq" => 6)
+      expect(described_class.event(event, viewer)).to eq("type" => "turn_dequeued", "event_seq" => 6)
+    end
+
+    it "counts and names only the viewer's own merged lines: never a delegate's report or another person's line" do
+      event = { type: :input_merged, event_seq: 7, count: 3,
+                origins: [{ client_id: "review:p_1", enqueued_id: "e1", author: "p:p_1" },
+                          { client_id: "delegate:REPORT-ID", enqueued_id: "r1" },
+                          { client_id: "review:p_2", enqueued_id: "THEIR-ID", author: "p:p_2" }] }
+      expect(shown(event)).to eq("type" => "input_merged", "event_seq" => 7, "count" => 1,
+                                 "origins" => [{ "enqueued_id" => "e1", "client_id" => "review:p_1", "author" => "p:p_1" }])
+      expect(shown(event.merge(origins: event[:origins].drop(1)))).to eq("type" => "input_merged", "event_seq" => 7)
+    end
+
+    it "keeps a context_status's fill, token counts and bucket; never its model-facing line or the sources" do
+      event = { type: :context_status, iteration: 2, status: "[CONTEXT: 41% used. GUIDANCE-LINE]", bucket: "40plus",
+                source: "SERVER-SOURCE", context_window_source: "WINDOW-SOURCE", context_window_tokens: 10_000,
+                usage: { estimated_pct: 41.5, estimated_used_tokens: 4150, estimated_remaining_tokens: 5850, window_tokens: 10_000,
+                         window_source: "WINDOW-SOURCE", source: "SERVER-SOURCE", extra: "NEW-FIELD" } }
+      expect(shown(event)).to eq("type" => "context_status", "iteration" => 2, "bucket" => "40plus", "context_window_tokens" => 10_000,
+                                 "usage" => { "estimated_pct" => 41.5, "estimated_used_tokens" => 4150,
+                                              "estimated_remaining_tokens" => 5850, "window_tokens" => 10_000 })
+      # After a /model whose window didn't resolve: the fill is unknown.
+      expect(shown({ type: :context_status, usage: nil, context_window_tokens: nil }))
+        .to eq("type" => "context_status", "usage" => nil, "context_window_tokens" => nil)
+      expect(JSON.generate(shown(event))).not_to include("GUIDANCE", '"status"', "SOURCE", "NEW-FIELD")
+    end
+
+    it "keeps a generation's decode speed only: never the session's tokens, cost or models" do
+      event = { type: :generation_completed, iteration: 1, speed: { decode_tps: 42.5, source: "server" },
+                tokens: { cost: 9.87, prompt_tokens: 100 }, model_segments: [{ model: "SEGMENT-MODEL" }],
+                served_model: "SERVED-MODEL", served_expected_by: "HOST" }
+      expect(shown(event)).to eq("type" => "generation_completed", "iteration" => 1,
+                                 "speed" => { "decode_tps" => 42.5, "source" => "server" })
+      expect(shown({ type: :generation_completed })).to eq("type" => "generation_completed")
+    end
+
+    it "keeps the working set's project files, relative, with state, tokens, ops, count and pinned; nothing else" do
+      set = { type: :working_set_updated, at: 12,
+              items: [{ kind: "file", key: "/home/o/proj/lib/a.rb", state: "live", tokens: 300, ops: %w[read edit], count: 2,
+                        first_id: "FIRST-ID", pinned: true, has_drop: true },
+                      { kind: "file", key: "/home/o/.ssh/id_rsa", state: "live", tokens: 1, ops: ["read"], count: 1 },
+                      { kind: "memory", key: "MEMORY-NAME", state: "live", tokens: 5, ops: ["read"], count: 1 },
+                      { kind: "url", key: "https://URL-ITEM.test", state: "live", tokens: 5, ops: ["read"], count: 1 }],
+              adds: [{ kind: "file", key: "/home/o/proj/ADDED.md", label: "ADDED.md" }] }
+      expect(shown(set)).to eq("type" => "working_set_updated", "at" => 12,
+                               "items" => [{ "kind" => "file", "key" => "lib/a.rb", "state" => "live", "ops" => %w[read edit],
+                                             "pinned" => true, "tokens" => 300, "count" => 2 }])
+      %w[FIRST-ID has_drop id_rsa MEMORY-NAME URL-ITEM ADDED adds /home/o].each do |leak|
+        expect(JSON.generate(shown(set))).not_to include(leak), leak
+      end
     end
 
     it "turns a snapshot or reset frame into a bare marker: the page re-reads its review data" do
@@ -213,7 +296,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       ]
       expect(described_class.messages(list, viewer)).to eq([
         { "role" => "user", "content" => "look at docs/plan.md", "turn_id" => "t1" },
-        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "path" => "docs/plan.md" }, { "tool" => "memory_read" }] },
+        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "path" => "docs/plan.md", "ref" => { "kind" => "file", "path" => "docs/plan.md" } }, { "tool" => "memory_read" }] },
         { "role" => "user", "content" => "also this", "merged" => true },
         { "role" => "user", "content" => "is step 3 safe?", "turn_id" => "t2", "author" => "p:p_2", "author_name" => "Sam", "images" => 1 },
         { "role" => "assistant", "content" => "Yes." },
@@ -285,8 +368,11 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                            { "kind" => "tool", "tool" => "execute", "params" => "env", "status" => "running", "output" => "X" },
                            { "kind" => "input", "text" => "steer" }] }
       expect(described_class.current_turn(turn, viewer)).to eq(
-        "prompt" => "go", "text" => "Looking", "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true
+        "prompt" => "go", "text" => "Looking", "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true,
+        "kind" => "question"
       )
+      approval = turn.merge("pending_question" => { "kind" => "approval", "question" => "Allow execute: env?" })
+      expect(described_class.current_turn(approval, viewer)).to include("waiting_for_owner" => true, "kind" => "approval")
     end
   end
 
@@ -312,6 +398,17 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
 
   def frame(id, data) = "id: #{id}\r\nevent: #{data[:type]}\r\ndata: #{JSON.generate(data)}\r\n\r\n"
 
+  it "names a dequeued turn the viewer's own once this stream sent its enqueue as theirs, or chi web says it is" do
+    known = described_class.new(viewer, own_enqueued: ->(id) { id == "old" })
+    out = known.call(frame("1-ep", { type: "turn_enqueued", enqueued_id: "e1", client_id: "review:p_1", prompt: "go", author: "p:p_1" }) +
+                     frame("2-ep", { type: "turn_dequeued", enqueued_id: "e1", client_id: "review:p_1" }) +
+                     frame("3-ep", { type: "turn_dequeued", enqueued_id: "old" }) +
+                     frame("4-ep", { type: "turn_dequeued", enqueued_id: "someone-else" }))
+    events = out.scan(/^data: (.*)\r$/).flatten.map { |json| JSON.parse(json) }
+    expect(events.drop(1)).to eq([{ "type" => "turn_dequeued", "enqueued_id" => "e1" },
+                                  { "type" => "turn_dequeued", "enqueued_id" => "old" }, { "type" => "turn_dequeued" }])
+  end
+
   it "sends a snapshot frame bare on the stream: no last_turn_drawing, no messages" do
     snapshot = { type: "snapshot", snapshot: { messages: [{ role: "user", content: "secret" }],
                                                last_turn_drawing: { drawing: { parts: [{ kind: "tool", output: "SECRET OUTPUT" }] }, end: {} } } }
@@ -322,7 +419,7 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
   it "rebuilds shown frames from the filtered event, drops the rest, passes pings, across any chunk split" do
     bytes = frame("1-ep", { type: "generation_chunk", text: "Hi\n", thinking: "secret" }) +
             frame("2-ep", { type: "tool_call_completed", output: "SECRET OUTPUT", iteration: 1, call_index: 0 }) +
-            frame("3-ep", { type: "working_set_updated", items: [{ path: "/p/.env" }] }) +
+            frame("3-ep", { type: "used_memories_updated", names: ["secret-memory"] }) +
             ": ping\r\n\r\n" +
             frame("4-ep", { type: "brand_new", text: "leak" })
     [1, 7, 4096].each do |size|
