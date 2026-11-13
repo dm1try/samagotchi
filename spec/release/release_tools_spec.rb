@@ -566,6 +566,29 @@ RSpec.describe ReleaseTools do
     end
   end
 
+  describe ".refresh_compat_wire_fixtures!" do
+    let(:command) { "UPDATE_COMPAT_WIRE=1 bundle exec rspec spec/compat/wire_readers_spec.rb" }
+
+    it "runs the fixture writer from the repository root" do
+      status = instance_double(Process::Status, success?: true)
+      runner = lambda do |actual_command, chdir:|
+        expect(actual_command).to eq(command)
+        expect(chdir).to eq(tmp)
+        ["", status]
+      end
+
+      expect { described_class.refresh_compat_wire_fixtures!(tmp, runner: runner) }.not_to raise_error
+    end
+
+    it "raises an error with the command to rerun when the fixture writer fails" do
+      status = instance_double(Process::Status, success?: false)
+      runner = ->(_actual_command, chdir:) { expect(chdir).to eq(tmp); ["", status] }
+
+      expect { described_class.refresh_compat_wire_fixtures!(tmp, runner: runner) }
+        .to raise_error(ReleaseTools::Error, /#{Regexp.escape(command)}/)
+    end
+  end
+
   describe ".draft_changelog" do
     it "groups subjects into Added / Changed / Fixed and drops merges and version bumps" do
       draft = described_class.draft_changelog([

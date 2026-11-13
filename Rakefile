@@ -123,12 +123,13 @@ namespace :release do
   desc "Bump VERSION, the system bundle, Gemfile.lock and the CHANGELOG (Unreleased → [VERSION] - today), and raise " \
        "the requires_chi of bundles marked requires_chi_next, then of a profile left below a member's (with a patch " \
        "bump of its version), and move the entries an Unreleased comment names into Plugin::Api::SINCE / " \
-       "Manifest::SINCE at VERSION; no commit"
+       "Manifest::SINCE at VERSION; refresh the shared compat wire fixtures; no commit"
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
     bumped = ReleaseTools.bump!(ROOT, version)
+    ReleaseTools.refresh_compat_wire_fixtures!(ROOT)
     puts "Bumped #{bumped.old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, " \
-         "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/"
+         "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/, spec/shared/compat_wire/"
     unless bumped.raised.empty?
       puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
     end

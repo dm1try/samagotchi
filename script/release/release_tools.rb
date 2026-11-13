@@ -799,6 +799,20 @@ module ReleaseTools
 
   # --- bump ---------------------------------------------------------------
 
+  COMPAT_WIRE_FIXTURE_REFRESH_COMMAND =
+    "UPDATE_COMPAT_WIRE=1 bundle exec rspec spec/compat/wire_readers_spec.rb"
+
+  # Refresh the shared wire fixtures in a fresh process so it loads the
+  # version and compatibility corpus just written by the bump.
+  def refresh_compat_wire_fixtures!(root, runner: ->(command, chdir:) { Open3.capture2e("sh", "-c", command, chdir: chdir) })
+    output, status = runner.call(COMPAT_WIRE_FIXTURE_REFRESH_COMMAND, chdir: root)
+    return if status.success?
+
+    detail = output.to_s.strip
+    raise Error, "compat wire fixture refresh failed; rerun from #{root}: " \
+                 "`#{COMPAT_WIRE_FIXTURE_REFRESH_COMMAND}`#{"\n#{detail}" unless detail.empty?}"
+  end
+
   # What bump! changed: the version before, the bundles whose
   # requires_chi_next it turned into requires_chi, and the [RaisedProfile]s.
   # +since+: the entries moved out of an Unreleased SINCE comment,

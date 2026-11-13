@@ -76,7 +76,7 @@ as the GitHub release body.
 | `rake lint` / `rake lint:fix` | RuboCop over the repo (must report no offenses; CI runs it) / its safe autocorrect (`rubocop -a`). |
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
-| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, a compatibility corpus at `spec/compat/X.Y.Z/` written through the current state writers (with `wire/`: a real Engine and Bridge's replies, recorded twice and refused if the two differ), and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit; commit the corpus with the release. |
+| `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, a compatibility corpus at `spec/compat/X.Y.Z/` written through the current state writers (with `wire/`: a real Engine and Bridge's replies, recorded twice and refused if the two differ), refreshed `spec/shared/compat_wire/*.json` fixtures, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line, and each entry an `# Unreleased` comment in `Plugin::Api::SINCE` or `Manifest::SINCE` names moved into the table at X.Y.Z (the comment dropped). No commit; commit the corpus and fixtures with the release. |
 | `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, no `# Unreleased` comment left in `Plugin::Api::SINCE` or `Manifest::SINCE`, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
@@ -117,7 +117,9 @@ The agent does each step and stops where the user has to say yes.
    VERSION may pass a compat shim's `remove_after` (`Compat::SHIMS`): once the
    shim is also at least 14 days old (`added_on`, `Compat::MIN_AGE_DAYS`),
    `spec/compat_spec.rb` names it, and the shim goes (or its date moves)
-   before the release.
+   before the release. The bump also refreshes `spec/shared/compat_wire/*.json`
+   by running `UPDATE_COMPAT_WIRE=1 bundle exec rspec spec/compat/wire_readers_spec.rb`;
+   commit those fixtures with the release corpus.
 5. **Check.** Add all release files, including the new compatibility corpus, then run it:
    `git add -A && git commit -m "Release X.Y.Z"` and `bundle exec rake release:check`.
    Fix anything it finds in new commits and run it again.
