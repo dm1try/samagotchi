@@ -17,7 +17,10 @@ module Samagotchi
     # waiting states. Verdict cards expose only their anchor, verdict,
     # reason and author. Never: tool output or arguments, thinking, context
     # notes, plugin steers, automatic input, other cards, commands,
-    # questions' internals, memories, the working set, cost or timing, host paths.
+    # questions' internals, memories, the working set's memories and URLs,
+    # cost, tokens per model, host paths. Numbers they read: the context's
+    # fill, the speed, the turn times (#context_status, #generation_completed,
+    # #timing).
     #
     # Every read a participant reaches goes through here: the stream's
     # events (#event, ParticipantStreamFilter), the review route's
@@ -43,6 +46,13 @@ module Samagotchi
         # fields only (#verdict_record).
         "verdict_recorded" => :verdict_recorded,
         "generation_chunk" => :generation_chunk,
+        # A generation's end: its decode speed only (the composer's tok/s).
+        "generation_completed" => :generation_completed,
+        # The context's fill (the composer's ctx %): its numbers only.
+        "context_status" => :context_status,
+        # The files chi works with (the stage's working set): the project's
+        # files only (#working_set).
+        "working_set_updated" => :working_set_updated,
         "generation_retrying" => :generation_retrying,
         "tool_call_started" => :tool_call_started,
         "tool_call_completed" => :tool_call_completed,
@@ -70,12 +80,12 @@ module Samagotchi
       # named is dropped all the same.
       DROPPED = %w[
         after_generation after_tool_call after_turn answer_display before_generation before_tool_call before_turn
-        card command_output command_queued command_ran context_added context_status empty_answer_retry
-        generation_cancelled generation_completed generation_progress generation_started guardrail_warning hook_notice
+        card command_output command_queued command_ran context_added empty_answer_retry
+        generation_cancelled generation_progress generation_started guardrail_warning hook_notice
         llm_context_edited merged_input objectives_updated participants_changed pending_input_merged plugin_init_finished
         plugin_init_started plugin_init_wait prompt_restored question question_relay reasoning_history_refused
         recap_ready reminder_injected sampling_refused session_end session_start side_usage steer_cut thinking_dropped
-        thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated working_set_updated
+        thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated
       ].freeze
 
       # A merged input line's saved sources a participant sees: a person's
@@ -223,6 +233,82 @@ module Samagotchi
         return nil unless text.is_a?(String) && !text.empty?
 
         { "type" => "generation_chunk", "text" => text, **iteration(event) }
+      end
+
+      # A generation's end: its decode speed ({decode_tps, source}, the
+      # composer's tok/s). Never the session's tokens, cost or models
+      # (+tokens+, +model_segments+), nor the served model.
+      def generation_completed(event, _viewer)
+        out = { "type" => "generation_completed", **iteration(event) }
+        speed = field(event, :speed)
+        tps = speed.is_a?(Hash) ? field(speed, :decode_tps) : nil
+        if tps.is_a?(Numeric) && tps.to_f.finite?
+          source = field(speed, :source).to_s
+          out["speed"] = { "decode_tps" => tps, **(SPEED_SOURCES.include?(source) ? { "source" => source } : {}) }
+        end
+        out
+      end
+
+      SPEED_SOURCES = %w[server estimate].freeze
+
+      # The usage numbers of a context_status a participant reads: its fill
+      # and the token counts.
+      CONTEXT_USAGE_KEYS = %w[estimated_pct estimated_used_tokens estimated_remaining_tokens window_tokens].freeze
+
+      # The context's fill (ContextStatus#observe, Engine's switched
+      # context): usage's percentage and token counts (usage null: unknown
+      # after a model switch), the bucket, and the window after a switch.
+      # Never +status+ (the model-facing line, with its guidance), the
+      # counts' source or the window's.
+      def context_status(event, _viewer)
+        out = { "type" => "context_status", **iteration(event) }
+        if event.key?("usage") || event.key?(:usage)
+          usage = field(event, :usage)
+          out["usage"] = usage.is_a?(Hash) ? pick(usage, CONTEXT_USAGE_KEYS) : nil
+        end
+        bucket = field(event, :bucket)
+        out["bucket"] = bucket if bucket.is_a?(String) && bucket.match?(/\A(?:under|\d+plus)\d*\z/)
+        if event.key?("context_window_tokens") || event.key?(:context_window_tokens)
+          window = field(event, :context_window_tokens)
+          out["context_window_tokens"] = window.is_a?(Integer) ? window : nil
+        end
+        out
+      end
+
+      def working_set_updated(event, viewer)
+        { "type" => "working_set_updated", **seq(event), **working_set(event, viewer) }
+      end
+
+      # The working set's states and ops a participant's item may carry
+      # (WorkingSet::Item).
+      WORKING_SET_STATES = %w[live stale forgotten dropped].freeze
+      WORKING_SET_OPS = %w[read edit].freeze
+
+      # A working set (WorkingSet::Snapshot#to_h: the event's and GET
+      # …/working_set's) as a participant may read it: the file items inside
+      # the project, each key made project-relative, with its state, tokens,
+      # ops, count and pinned; +at+ (the page keeps the newer). Never a
+      # memory or URL item, a path outside the project, +first_id+,
+      # +has_drop+ or the pending +adds+.
+      def working_set(set, viewer)
+        items = Array(field(set, :items)).filter_map { |item| working_set_item(item, viewer) }
+        at = field(set, :at)
+        { "items" => items, **(at.is_a?(Integer) ? { "at" => at } : {}) }
+      end
+
+      def working_set_item(item, viewer)
+        return nil unless item.is_a?(Hash) && field(item, :kind).to_s == FileRef::KIND
+
+        key = project_path(field(item, :key), viewer.cwd, home: viewer.home) or return nil
+        state = field(item, :state).to_s
+        out = { "kind" => FileRef::KIND, "key" => key, "state" => WORKING_SET_STATES.include?(state) ? state : "live",
+                "ops" => Array(field(item, :ops)).map(&:to_s).select { |op| WORKING_SET_OPS.include?(op) }.uniq,
+                "pinned" => field(item, :pinned) == true }
+        %i[tokens count].each do |name|
+          value = field(item, name)
+          out[name.to_s] = value if value.is_a?(Integer) && value >= 0
+        end
+        out
       end
 
       # A dropped stream asked again: its text so far is void when restarted.

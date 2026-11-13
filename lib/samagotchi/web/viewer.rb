@@ -53,8 +53,10 @@ module Samagotchi
 
     # A participant's capabilities: names of their own (the owner's are
     # CAPABILITIES), each one a participant route serves. +send+: their
-    # composer (POST …/turn).
-    Viewer::PARTICIPANT_CAPABILITIES = %w[send].freeze
+    # composer (POST …/turn). And of the owner's, the one a participant's
+    # route serves filtered: +working_set+ (GET …/working_set, the
+    # project's files only).
+    Viewer::PARTICIPANT_CAPABILITIES = %w[send working_set].freeze
 
     Viewer::OWNER = Viewer.new(kind: "owner", id: nil, name: nil, can: Viewer::CAPABILITIES)
   end

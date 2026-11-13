@@ -321,7 +321,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_list, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_revoke, :owner, :session],
@@ -1404,16 +1404,26 @@ module Samagotchi
       # turn emitted one, or from an older worker without the field, it is
       # the session's messages, behind that turn's events, and the page
       # keeps theirs (working_set.js newerSnapshot).
-      def handle_working_set(_req, id)
+      # A participant's is filtered (ParticipantView.working_set: the
+      # project's files only).
+      def handle_working_set(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
+        set = working_set_payload(id, session)
+        return json_response(200, set) if principal(req).owner?
+
+        shown = ParticipantView.working_set(set, participant_viewer(req, session))
+        json_response(200, shown.merge("running" => set[:running] == true))
+      end
+
+      def working_set_payload(id, session)
         live = bridge_get_json(id, "snapshot")
         worker_snapshot = live && live["snapshot"]
         running = !worker_snapshot&.dig("current_turn").nil?
         turn_set = running && running_working_set(live["snapshot"]["working_set"])
-        return json_response(200, turn_set.merge(running: true)) if turn_set
+        return turn_set.merge(running: true) if turn_set
 
         idle_set = idle_working_set(worker_snapshot && worker_snapshot["idle_working_set"]) unless running
-        return json_response(200, idle_set.merge(running: false)) if idle_set
+        return idle_set.merge(running: false) if idle_set
 
         messages = live_or_saved(worker_snapshot, "messages") { session.messages }
         # A snapshot's entries have string keys (paired_runs reads symbols).
@@ -1423,7 +1433,7 @@ module Samagotchi
         end
         snapshot = WorkingSet.build(messages, cwd: session.working_directory, strategy: working_set_strategy(llm_context),
                                     pins: session.working_set_pins)
-        json_response(200, snapshot.to_h.merge(running: running))
+        snapshot.to_h.merge(running: running)
       end
 
       # The running turn's set from a worker's snapshot ({"items", "at"}), as

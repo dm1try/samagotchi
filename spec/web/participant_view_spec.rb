@@ -26,17 +26,22 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       found - NOT_EVENTS
     end
 
+    # The types only the main page reads (its numbers and working set): the
+    # participant page doesn't listen for them, so its EventSource never
+    # fires them. Phase C points this at the main page's handlers.
+    let(:main_page_only) { %w[context_status generation_completed working_set_updated] }
+
     it "names every emitted type as shown or dropped, never both" do
       known = described_class::EVENTS.keys + described_class::DROPPED
       expect(emitted.to_a.sort - known).to eq([])
       expect(described_class::EVENTS.keys & described_class::DROPPED).to eq([])
     end
 
-    it "is the list the participant page listens for, no more, no fewer" do
+    it "is the list the participant page listens for, no more, no fewer, and the main page's numbers" do
       page = File.read(File.expand_path("../../lib/samagotchi/web/public/participant.js", __dir__))
       list = page[/^const STREAM_EVENTS = \[(.*?)\];/m, 1]
       expect(list).not_to be_nil
-      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq(described_class::EVENTS.keys.sort)
+      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq((described_class::EVENTS.keys - main_page_only).sort)
     end
 
     it "drops every DROPPED type and an unknown one, whatever they carry" do
@@ -51,7 +56,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
       allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
-                   participant_mode automatic continue restarted verdict]
+                   participant_mode automatic continue restarted verdict items]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
         next if out.nil?
@@ -146,6 +151,45 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(shown(event)).to eq("type" => "input_merged", "event_seq" => 7, "count" => 1,
                                  "origins" => [{ "enqueued_id" => "e1", "client_id" => "review:p_1", "author" => "p:p_1" }])
       expect(shown(event.merge(origins: event[:origins].drop(1)))).to eq("type" => "input_merged", "event_seq" => 7)
+    end
+
+    it "keeps a context_status's fill, token counts and bucket; never its model-facing line or the sources" do
+      event = { type: :context_status, iteration: 2, status: "[CONTEXT: 41% used. GUIDANCE-LINE]", bucket: "40plus",
+                source: "SERVER-SOURCE", context_window_source: "WINDOW-SOURCE", context_window_tokens: 10_000,
+                usage: { estimated_pct: 41.5, estimated_used_tokens: 4150, estimated_remaining_tokens: 5850, window_tokens: 10_000,
+                         window_source: "WINDOW-SOURCE", source: "SERVER-SOURCE", extra: "NEW-FIELD" } }
+      expect(shown(event)).to eq("type" => "context_status", "iteration" => 2, "bucket" => "40plus", "context_window_tokens" => 10_000,
+                                 "usage" => { "estimated_pct" => 41.5, "estimated_used_tokens" => 4150,
+                                              "estimated_remaining_tokens" => 5850, "window_tokens" => 10_000 })
+      # After a /model whose window didn't resolve: the fill is unknown.
+      expect(shown({ type: :context_status, usage: nil, context_window_tokens: nil }))
+        .to eq("type" => "context_status", "usage" => nil, "context_window_tokens" => nil)
+      expect(JSON.generate(shown(event))).not_to include("GUIDANCE", '"status"', "SOURCE", "NEW-FIELD")
+    end
+
+    it "keeps a generation's decode speed only: never the session's tokens, cost or models" do
+      event = { type: :generation_completed, iteration: 1, speed: { decode_tps: 42.5, source: "server" },
+                tokens: { cost: 9.87, prompt_tokens: 100 }, model_segments: [{ model: "SEGMENT-MODEL" }],
+                served_model: "SERVED-MODEL", served_expected_by: "HOST" }
+      expect(shown(event)).to eq("type" => "generation_completed", "iteration" => 1,
+                                 "speed" => { "decode_tps" => 42.5, "source" => "server" })
+      expect(shown({ type: :generation_completed })).to eq("type" => "generation_completed")
+    end
+
+    it "keeps the working set's project files, relative, with state, tokens, ops, count and pinned; nothing else" do
+      set = { type: :working_set_updated, at: 12,
+              items: [{ kind: "file", key: "/home/o/proj/lib/a.rb", state: "live", tokens: 300, ops: %w[read edit], count: 2,
+                        first_id: "FIRST-ID", pinned: true, has_drop: true },
+                      { kind: "file", key: "/home/o/.ssh/id_rsa", state: "live", tokens: 1, ops: ["read"], count: 1 },
+                      { kind: "memory", key: "MEMORY-NAME", state: "live", tokens: 5, ops: ["read"], count: 1 },
+                      { kind: "url", key: "https://URL-ITEM.test", state: "live", tokens: 5, ops: ["read"], count: 1 }],
+              adds: [{ kind: "file", key: "/home/o/proj/ADDED.md", label: "ADDED.md" }] }
+      expect(shown(set)).to eq("type" => "working_set_updated", "at" => 12,
+                               "items" => [{ "kind" => "file", "key" => "lib/a.rb", "state" => "live", "ops" => %w[read edit],
+                                             "pinned" => true, "tokens" => 300, "count" => 2 }])
+      %w[FIRST-ID has_drop id_rsa MEMORY-NAME URL-ITEM ADDED adds /home/o].each do |leak|
+        expect(JSON.generate(shown(set))).not_to include(leak), leak
+      end
     end
 
     it "turns a snapshot or reset frame into a bare marker: the page re-reads its review data" do
@@ -364,7 +408,7 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
   it "rebuilds shown frames from the filtered event, drops the rest, passes pings, across any chunk split" do
     bytes = frame("1-ep", { type: "generation_chunk", text: "Hi\n", thinking: "secret" }) +
             frame("2-ep", { type: "tool_call_completed", output: "SECRET OUTPUT", iteration: 1, call_index: 0 }) +
-            frame("3-ep", { type: "working_set_updated", items: [{ path: "/p/.env" }] }) +
+            frame("3-ep", { type: "used_memories_updated", names: ["secret-memory"] }) +
             ": ping\r\n\r\n" +
             frame("4-ep", { type: "brand_new", text: "leak" })
     [1, 7, 4096].each do |size|

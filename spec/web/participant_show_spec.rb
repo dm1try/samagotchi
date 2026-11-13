@@ -100,12 +100,12 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
                                        "tools" => [{ "tool" => "read", "path" => "docs/plan.md", "status" => "running",
                                                      "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 } }])
     types = body["replay"].map { |event| event["type"] }
-    expect(types).to eq(%w[turn_started generation_chunk tool_call_started turn_enqueued turn_enqueued])
-    expect(body["replay"][2]).to include("tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 })
+    expect(types).to eq(%w[turn_started generation_chunk generation_completed tool_call_started turn_enqueued turn_enqueued])
+    expect(body["replay"][3]).to include("tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 })
     # The viewer's own queued turn as the owner's replay has it; the owner's next one bare.
-    expect(body["replay"][3]).to eq("type" => "turn_enqueued", "enqueued_id" => "e1", "client_id" => client_id,
+    expect(body["replay"][4]).to eq("type" => "turn_enqueued", "enqueued_id" => "e1", "client_id" => client_id,
                                     "prompt" => "mine", "author" => author, "delivery" => "queue")
-    expect(body["replay"][4]).to eq("type" => "turn_enqueued")
+    expect(body["replay"][5]).to eq("type" => "turn_enqueued")
     expect(body["last_event_id"]).to eq("12-ep")
     expect(body["last_event_seq"]).to eq(12)
     expect(JSON.generate(body)).not_to include("TOOL-PARAMS", "SECRET-GEN", root)
@@ -124,7 +124,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
                               "can" => Samagotchi::Web::Viewer::PARTICIPANT_CAPABILITIES, "mode" => "review",
                               "cap_reached" => false, "session_stopped" => false, "participant_kind" => "human")
     expect(viewer["usage"]).to include("spent" => 0.0, "cap" => 2.0, "queued" => 1, "queue_limit" => 3)
-    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq([])
+    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set])
   end
 
   it "keeps each turn's duration and speed of the timing, nothing else" do
@@ -165,6 +165,23 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     status, body = read(issued.token)
     expect([status, body["current_turn"], body["replay"], body["queued"]]).to eq([200, nil, [], []])
     expect(body.dig("session", "bridge_up")).to be(false)
+  end
+
+  it "reads the working set (GET …/working_set) with the project's files only, relative" do
+    snapshot["snapshot"]["working_set"] = {
+      "items" => [{ "kind" => "file", "key" => File.join(root, "lib", "a.rb"), "state" => "live", "tokens" => 20, "ops" => ["read"],
+                    "count" => 1, "first_id" => "FIRST-ID", "pinned" => false, "has_drop" => false },
+                  { "kind" => "memory", "key" => "MEMORY-NAME", "state" => "live" }], "at" => 4
+    }
+    env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/working_set")
+    env["HTTP_HOST"] = "#{lan_ip}:4567"
+    env["REMOTE_ADDR"] = "192.168.1.20"
+    env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+    status, _headers, chunks = app.call(env)
+    expect([status, JSON.parse(chunks.join)]).to eq([200, {
+      "items" => [{ "kind" => "file", "key" => "lib/a.rb", "state" => "live", "ops" => ["read"], "pinned" => false,
+                    "tokens" => 20, "count" => 1 }], "at" => 4, "running" => true
+    }])
   end
 
   it "leaves the owner's show as it was: no client id on the owner's viewer" do

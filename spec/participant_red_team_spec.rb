@@ -465,10 +465,16 @@ RSpec.describe "a participant red-teaming a session" do
           activity: { status: "ok", action: "Ran", params: "cat ~/.ssh/id_rsa" }, output_file: "#{project}/out.txt" },
         { type: :tool_call_started, tool: "memory_read", params: "launch-secrets", title: "launch-secrets", iteration: 1, call_index: 1 },
         { type: :used_memories_updated, names: ["launch-secrets"] },
-        { type: :working_set_updated, items: [{ path: "#{project}/.env" }] },
+        { type: :working_set_updated, at: 3,
+          items: [{ kind: "file", key: "#{project}/docs/plan.md", state: "live", first_id: "FIRST-ID" },
+                  { kind: "file", key: File.join(Dir.home, ".ssh", "id_rsa"), state: "live" },
+                  { kind: "memory", key: "launch-secrets", state: "live" }],
+          adds: [{ kind: "file", key: "#{project}/.env", label: ".env" }] },
         { type: :card, title: "MEMORY-CARD", body: "the launch date" },
         { type: :command_ran, line: "/stats", output: "COMMAND-OUTPUT" },
-        { type: :context_status, used_tokens: 1, window_tokens: 2 },
+        { type: :context_status, status: "[CONTEXT: GUIDANCE-LINE]", source: "COUNT-SOURCE",
+          usage: { estimated_pct: 12.5, window_tokens: 2, source: "COUNT-SOURCE" } },
+        { type: :generation_completed, speed: { decode_tps: 40.0 }, tokens: { cost: 7.65 }, model_segments: [{ model: "SEGMENT-MODEL" }] },
         { type: :hook_notice, message: "HOOK-NOTICE" },
         { type: :turn_enqueued, enqueued_id: "OWNER-EID", client_id: "web:OWNER-TAB", prompt: "OWNER-QUEUED-PROMPT" },
         { type: :turn_dequeued, enqueued_id: "OWNER-EID", client_id: "web:OWNER-TAB" },
@@ -485,8 +491,11 @@ RSpec.describe "a participant red-teaming a session" do
       expect(out).to include("Checking.", %("tool":"execute"), %("tool":"read","path":"docs/plan.md"), "question_requested",
                              "Done: see docs/plan.md")
       expect(out).to include("deploy with [redacted]")
+      # The numbers and files a participant reads: the fill, the speed, the project's files.
+      expect(out).to include(%("estimated_pct":12.5), %("decode_tps":40.0), %("key":"docs/plan.md"))
       %w[sk-ant THINKING-SECRET id_rsa .ssh Allow KEYBYTES PRIVATE launch-secrets .env MEMORY-CARD COMMAND-OUTPUT HOOK-NOTICE
-         NEW-EVENT-TEXT NESTED-SECRET SUMMARY 9.99 shot.png out.txt reply.md context_status used_memories working_set
+         NEW-EVENT-TEXT NESTED-SECRET SUMMARY 9.99 shot.png out.txt reply.md used_memories GUIDANCE-LINE COUNT-SOURCE
+         7.65 SEGMENT-MODEL FIRST-ID
          OWNER-EID OWNER-TAB OWNER-QUEUED-PROMPT DELEGATE-CHILD DELEGATE-EID MERGED-TEXT].each do |leak|
         expect(out).not_to include(leak), leak
       end
