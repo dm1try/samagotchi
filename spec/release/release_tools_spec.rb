@@ -13,6 +13,66 @@ RSpec.describe ReleaseTools do
 
   after { FileUtils.rm_rf(tmp) }
 
+  describe ".bump_summary" do
+    it "summarizes a bump with no raised bundles, profiles or SINCE entries" do
+      bumped = ReleaseTools::Bumped.new(old: "0.1.37", raised: [], profiles: [], since: {})
+
+      expect(described_class.bump_summary(bumped, "0.2.0")).to eq([
+        "Bumped 0.1.37 → 0.2.0: lib/samagotchi/version.rb, " \
+        "lib/samagotchi/bundles/system/manifest.yml, Gemfile.lock, CHANGELOG.md, spec/compat/0.2.0/, " \
+        "spec/shared/compat_wire/"
+      ])
+    end
+
+    it "summarizes a raised bundle, profile and SINCE entry" do
+      profile = ReleaseTools::RaisedProfile.new(name: "dev", old_version: "0.7.1", version: "0.7.2", floor: "0.2.0")
+      bumped = ReleaseTools::Bumped.new(old: "0.1.37", raised: ["mcp"], profiles: [profile],
+                                        since: { ReleaseTools::PLUGIN_API => ["ctx.example"] })
+
+      expect(described_class.bump_summary(bumped, "0.2.0")).to eq([
+        "Bumped 0.1.37 → 0.2.0: lib/samagotchi/version.rb, " \
+        "lib/samagotchi/bundles/system/manifest.yml, Gemfile.lock, CHANGELOG.md, spec/compat/0.2.0/, " \
+        "spec/shared/compat_wire/",
+        "Raised requires_chi to \">= 0.2.0\" (requires_chi_next dropped): mcp",
+        "Raised profile dev's requires_chi to \">= 0.2.0\" (its members'), 0.7.1 → 0.7.2; " \
+        "named in the CHANGELOG's `chi update` line",
+        "Moved to SINCE as 0.2.0: ctx.example (lib/samagotchi/plugin/api.rb)"
+      ])
+    end
+  end
+
+  describe ".bump_with_summary!" do
+    let(:bumped) { ReleaseTools::Bumped.new(old: "0.1.37", raised: [], profiles: [], since: {}) }
+
+    it "prints the summary before refreshing fixtures and the review line only after success" do
+      events = []
+      out = double(puts: nil)
+      allow(out).to receive(:puts) { |line| events << [:puts, line] }
+      bump = ->(root, version) { events << [:bump, root, version]; bumped }
+      refresh = ->(root) { events << [:refresh, root] }
+
+      expect(described_class.bump_with_summary!(tmp, "0.2.0", bump: bump, refresh: refresh, out: out)).to eq(bumped)
+      expect(events).to eq([
+        [:bump, tmp, "0.2.0"],
+        [:puts, described_class.bump_summary(bumped, "0.2.0").first],
+        [:refresh, tmp],
+        [:puts, "Review with `git diff`, then run rake release:check and commit."]
+      ])
+    end
+
+    it "does not print the review line when the fixture refresh fails" do
+      events = []
+      out = double(puts: nil)
+      allow(out).to receive(:puts) { |line| events << line }
+      refresh = ->(_root) { raise ReleaseTools::Error, "refresh failed" }
+
+      expect do
+        described_class.bump_with_summary!(tmp, "0.2.0", bump: ->(*) { bumped }, refresh: refresh, out: out)
+      end.to raise_error(ReleaseTools::Error, "refresh failed")
+      expect(events).to eq(described_class.bump_summary(bumped, "0.2.0"))
+    end
+  end
+
   def sha(text) = Digest::SHA256.hexdigest(text)
 
   def write(rel, text)
@@ -585,7 +645,7 @@ RSpec.describe ReleaseTools do
       runner = ->(_actual_command, chdir:) { expect(chdir).to eq(tmp); ["", status] }
 
       expect { described_class.refresh_compat_wire_fixtures!(tmp, runner: runner) }
-        .to raise_error(ReleaseTools::Error, /#{Regexp.escape(command)}/)
+        .to raise_error(ReleaseTools::Error, /the bump itself was written.*nothing was rolled back.*#{Regexp.escape(command)}/)
     end
   end
 

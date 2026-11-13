@@ -809,8 +809,42 @@ module ReleaseTools
     return if status.success?
 
     detail = output.to_s.strip
-    raise Error, "compat wire fixture refresh failed; rerun from #{root}: " \
+    raise Error, "compat wire fixture refresh failed; the bump itself was written (VERSION and release files are bumped; " \
+                 "nothing was rolled back); rerun from #{root}: " \
                  "`#{COMPAT_WIRE_FIXTURE_REFRESH_COMMAND}`#{"\n#{detail}" unless detail.empty?}"
+  end
+
+  # The lines release:bump prints after writing the version and release files.
+  def bump_summary(bumped, version)
+    lines = [
+      "Bumped #{bumped.old} → #{version}: #{VERSION_FILE}, #{SYSTEM_MANIFEST}, " \
+      "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/, spec/shared/compat_wire/"
+    ]
+    unless bumped.raised.empty?
+      lines << "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
+    end
+    bumped.profiles.each do |profile|
+      moved = if profile.old_version == profile.version
+                "#{profile.version} (already bumped since the last tag)"
+              else
+                "#{profile.old_version} → #{profile.version}"
+              end
+      lines << "Raised profile #{profile.name}'s requires_chi to \">= #{profile.floor}\" (its members'), #{moved}; " \
+               "named in the CHANGELOG's `chi update` line"
+    end
+    bumped.since.each do |rel, names|
+      lines << "Moved to SINCE as #{version}: #{names.join(", ")} (#{rel})"
+    end
+    lines
+  end
+
+  def bump_with_summary!(root, version, bump: ->(path, release) { bump!(path, release) },
+                         refresh: ->(path) { refresh_compat_wire_fixtures!(path) }, out: $stdout)
+    bumped = bump.call(root, version)
+    bump_summary(bumped, version).each { |line| out.puts(line) }
+    refresh.call(root)
+    out.puts("Review with `git diff`, then run rake release:check and commit.")
+    bumped
   end
 
   # What bump! changed: the version before, the bundles whose

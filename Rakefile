@@ -126,22 +126,7 @@ namespace :release do
        "Manifest::SINCE at VERSION; refresh the shared compat wire fixtures; no commit"
   task :bump, [:version] do |_t, args|
     version = args[:version] or abort "usage: rake 'release:bump[0.2.0]'"
-    bumped = ReleaseTools.bump!(ROOT, version)
-    ReleaseTools.refresh_compat_wire_fixtures!(ROOT)
-    puts "Bumped #{bumped.old} → #{version}: #{ReleaseTools::VERSION_FILE}, #{ReleaseTools::SYSTEM_MANIFEST}, " \
-         "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/, spec/shared/compat_wire/"
-    unless bumped.raised.empty?
-      puts "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
-    end
-    bumped.profiles.each do |p|
-      moved = p.old_version == p.version ? "#{p.version} (already bumped since the last tag)" : "#{p.old_version} → #{p.version}"
-      puts "Raised profile #{p.name}'s requires_chi to \">= #{p.floor}\" (its members'), #{moved}; " \
-           "named in the CHANGELOG's `chi update` line"
-    end
-    bumped.since.each do |rel, names|
-      puts "Moved to SINCE as #{version}: #{names.join(", ")} (#{rel})"
-    end
-    puts "Review with `git diff`, then run rake release:check and commit."
+    ReleaseTools.bump_with_summary!(ROOT, version)
   rescue ReleaseTools::Error => e
     abort "release:bump: #{e.message}"
   end
