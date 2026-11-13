@@ -220,7 +220,9 @@ editor and its URL, refs.js's actions): those two are per request.
 each use: a control the viewer may not use is not created and not wired (`const x = viewer.can("…") ? createX(…) :
 null`, then `x?.…` where it is read; a module's hook passed as `null`, as `stage_view.js onCancel`,
 `working_set_view.js sendLine`, `composer_mount.js loadHistory`), and its static element in `index.html` stays hidden
-(`viewer.control(el, name)` / `controls(els, name)`: the element when allowed, else hidden and `null`). A module the
+(`viewer.control(el, name)` / `controls(els, name)`: the element when allowed, else hidden, marked `data-withheld`
+and `null`; index.html's `[data-withheld]{display:none!important}` beats an element's own `display` rule, which a
+bare `hidden` does not). A module the
 page reads everywhere takes a flag instead (`question_cards.js answers`, `block_host.js renderers`,
 `turn_block.js turnHistoryNodes`'s `apply`). No scattered `if (owner)`, and no 403 tolerated as a way of gating. The
 gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answers later, not the controls made.
@@ -236,7 +238,7 @@ gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answer
 | `participants_admin` | the participants chip and panel, Copy link's participant target (`claimTarget`) | `…/participants*` |
 | `rename` | `#titleRenameBtn` | (`/title` goes as a session command) |
 | `images` | `#attachBtn`, `#attachInput`; paste and drop toast `IMAGES_NOT_HERE` | `POST …/images` |
-| `session_controls` | `#infoContinueBtn`, `#infoArchiveBtn`, `#infoStopBtn`, `#infoDeleteBtn`, `#infoMoreBtn` (the ⋯ sheet), the ⚙ panel, the `/` list, the stage's task stop, the working set's drop/undrop | `POST …/command` (`composer.js`: without it a `/` or `!` line goes as a turn, and the worker decides), `…/stop`, `…/holds*`, `…/tasks/:id/stop`, `…/reload_check`, continue → (`POST /api/sessions`) |
+| `session_controls` | `#infoContinueBtn`, `#infoArchiveBtn`, `#infoStopBtn`, `#infoDeleteBtn`, `#infoMoreBtn` (the ⋯ sheet), the ⚙ chip and panel, the `/` list, the stage's task stop, the working set's drop/undrop | `POST …/command` (`composer.js`: without it a `/` or `!` line goes as a turn, and the worker decides), `…/stop`, `…/holds*`, `…/tasks/:id/stop`, `…/reload_check`, continue → (`POST /api/sessions`) |
 | `revise` | the answers' Revise (`revise_stack.js`) | (a Revise goes with `POST …/turn`) |
 | `apply` | the Apply row (`turn_block.js`, `placeApply`, its click) | `GET …/apply` |
 | `answer_cards` | question, approval and continue cards (`question_cards.js`), System 1's "wrong" | `…/answer`, `…/question/dismiss`, `…/guardrails/wrong` |

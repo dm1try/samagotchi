@@ -41,7 +41,7 @@ test("every capability: today's calls and controls", () => {
     // No Notification API here: the bell stays hidden; the model list is empty: no picker.
     notifyBtn: "hidden", titleRenameBtn: "shown", modelPick: "hidden", attachBtn: "shown",
     infoMoreBtn: "shown", infoStopBtn: "shown", infoContinueBtn: "shown", infoArchiveBtn: "shown", infoDeleteBtn: "shown",
-    stopTurn: "shown", questionCard: "shown", applyRow: "shown", reviseBtn: "shown",
+    stopTurn: "shown", questionCard: "shown", applyRow: "shown", reviseBtn: "shown", settingsChip: "shown",
   });
 });
 
@@ -52,7 +52,7 @@ test("no capability: no owner route is called and no owner control is drawn", ()
   assert.deepEqual(streams, [`/api/sessions/${SID}/stream`]);
   for (const [name, state] of Object.entries(controls)) assert.notEqual(state, "shown", `${name} is drawn`);
   // Drawn per turn: none made (the stage's Stop turn is its row's, kept hidden with no onCancel).
-  for (const name of ["questionCard", "applyRow", "reviseBtn"]) assert.equal(controls[name], "absent", `${name} exists`);
+  for (const name of ["questionCard", "applyRow", "reviseBtn", "settingsChip"]) assert.equal(controls[name], "absent", `${name} exists`);
 });
 
 // What each capability gates on this page (docs/internals/web-frontend.md,
@@ -70,7 +70,7 @@ const GATES = {
   block_renderers: { requests: ["GET /api/block_renderers"] },
   rename: { controls: ["titleRenameBtn"] },
   images: { controls: ["attachBtn"] },
-  session_controls: { controls: ["infoMoreBtn", "infoStopBtn", "infoContinueBtn", "infoArchiveBtn", "infoDeleteBtn"] },
+  session_controls: { controls: ["infoMoreBtn", "infoStopBtn", "infoContinueBtn", "infoArchiveBtn", "infoDeleteBtn", "settingsChip"] },
   stop_any_turn: { controls: ["stopTurn"] },
   answer_cards: { controls: ["questionCard"] },
   apply: { controls: ["applyRow"] },

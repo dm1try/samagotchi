@@ -52,8 +52,16 @@ test("control(): the element when allowed, else hidden and null", () => {
   assert.equal(allowed.hidden, false);
   assert.equal(viewer.control(refused, "rename"), null);
   assert.equal(refused.hidden, true);
+  assert.equal(refused.dataset.withheld, "", "hidden whatever its own CSS display says");
+  assert.equal("withheld" in allowed.dataset, false);
   assert.equal(viewer.control(null, "rename"), null);
   const [a, b] = viewer.controls([document.createElement("i"), document.createElement("i")], "models");
   assert.ok(a && b);
   assert.deepEqual(viewer.controls([document.createElement("i")], "answer_cards"), [null]);
+});
+
+test("index.html never shows a withheld control, whatever its own display rule", async () => {
+  const { readFileSync } = await import("node:fs");
+  const html = readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
+  assert.match(html, /\[data-withheld\]\{display:none!important\}/);
 });

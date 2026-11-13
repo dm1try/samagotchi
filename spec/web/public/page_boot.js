@@ -68,7 +68,8 @@ reviewDrawing.events.at(-1).text = "It says:\n\n```mermaid\ngraph TD; A-->B\n```
 const show = {
   session: { id: SID, status: "running", mode: "assist", model_name: "TestModel", working_directory: "/work", created_at: AT,
              updated_at: AT, bridge_up: true, worker_features: ["delivery", "revise", "verify", "task_stop"], owner: "worker",
-             title: "Fix the install notes", first_preview: "look at a.txt" },
+             title: "Fix the install notes", first_preview: "look at a.txt",
+             thinking: { level: "high", source: "session", own: "high" } },
   messages: [...scenario.messages, ...reviewMessages],
   turn_drawings: { ...scenario.turn_drawings, [REVIEW]: reviewDrawing },
   current_turn: { turn_id: "t3", prompt: "Now the changelog", status: "running", pending_question: null },
@@ -135,7 +136,7 @@ const doc = window.document;
 function state(selector) {
   const els = [...doc.querySelectorAll(selector)];
   if (!els.length) return "absent";
-  return els.some((el) => !el.closest("[hidden]") && el.style.display !== "none") ? "shown" : "hidden";
+  return els.some((el) => !el.closest("[hidden], [data-withheld]") && el.style.display !== "none") ? "shown" : "hidden";
 }
 const CONTROLS = {
   newBtn: "#newBtn", scope: "#scope", topStrip: "#topStrip", stripStatus: "#stripStatus", stripGrip: "#stripGrip",
@@ -143,7 +144,7 @@ const CONTROLS = {
   infoMoreBtn: "#infoMoreBtn", infoStopBtn: "#infoStopBtn", infoContinueBtn: "#infoContinueBtn",
   infoArchiveBtn: "#infoArchiveBtn", infoDeleteBtn: "#infoDeleteBtn",
   stopTurn: ".ts-cancel", questionCard: ".bubble.question, details.question",
-  applyRow: ".review-apply", reviseBtn: ".revise-btn",
+  applyRow: ".review-apply", reviseBtn: ".revise-btn", settingsChip: ".settings-chip",
 };
 const controls = Object.fromEntries(Object.entries(CONTROLS).map(([name, selector]) => [name, state(selector)]));
 process.stdout.write(`${JSON.stringify({ requests: [...new Set(requests)].sort(), streams: [...new Set(streams)].sort(), controls, errors })}\n`);

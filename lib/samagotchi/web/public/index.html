@@ -186,6 +186,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:max(16px,var(--s
 /* Plugins' slow setup (chi.init, init_row.js): a quiet line per task over the composer. */
 #initRow{display:flex;flex-direction:column;gap:2px;padding:6px 12px 2px;font-size:12px;line-height:1.4;color:var(--text-3)}
 #initRow[hidden]{display:none}
+/* A control the viewer may not use (viewer.js control): hidden whatever its own display rule says. */
+[data-withheld]{display:none!important}
 .init-task{display:flex;align-items:center;gap:7px;min-width:0;transition:opacity .4s ease}
 .init-task.fading{opacity:0}
 .init-bundle{flex:none;padding:0 5px;border:1px solid var(--border-strong);border-radius:4px;font-size:11px;color:var(--text-muted)}
