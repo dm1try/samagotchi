@@ -13,6 +13,8 @@ RSpec.describe Samagotchi::SessionManager do
   include_context "session manager files"
 
   describe ".live_spawn_pids" do
+    before { described_class.forget_spawns }
+
     it "returns the unique pids of live worker starters" do
       live = double("live waiter", pid: 123, alive?: true)
       dead = double("dead waiter", pid: 456, alive?: false)

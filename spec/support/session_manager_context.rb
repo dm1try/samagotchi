@@ -5,18 +5,14 @@ require "fileutils"
 require_relative "worker_links"
 
 # What every spec/session_manager/*_spec.rb shares: a state dir (tmpdir)
-# removed after each example with the spawns SessionManager remembered,
-# the manager a spawn goes through, and #spawn_owner's stand-in worker
-# (killed after the example).
+# removed after each example, the manager a spawn goes through, and
+# #spawn_owner's stand-in worker (killed after the example).
 RSpec.shared_context "session manager files" do
   include WorkerLinks
 
-  session_manager_class = described_class
   let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
-  let(:spawn_manager) { session_manager_class }
 
   after do
-    spawn_manager.forget_spawns
     FileUtils.rm_rf(tmpdir)
     if @owner_pid
       begin
