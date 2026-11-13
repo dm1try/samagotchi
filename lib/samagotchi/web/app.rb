@@ -73,6 +73,7 @@ require_relative "viewer"
 require_relative "participant_access"
 require_relative "participants_admin"
 require_relative "participant_review"
+require_relative "participant_show"
 require_relative "message_display"
 require_relative "session_show"
 require_relative "session_create"
@@ -108,6 +109,7 @@ module Samagotchi
       include ParticipantAccess
       include ParticipantsAdmin
       include ParticipantReview
+      include ParticipantShow
       include MessageDisplay
       include SessionShow
       include SessionCreate

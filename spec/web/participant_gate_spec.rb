@@ -131,17 +131,21 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
   end
 
   describe "the routes a participant reaches" do
-    it "GET /api/sessions/:id: their session's title, status and participants only" do
-      status, body = json("/api/sessions/#{session.id}")
+    it "GET /api/sessions/:id: the main page's show, filtered (participant_show_spec); brief: title, status and participants" do
+      status, body = json("/api/sessions/#{session.id}?brief=1")
       expect(status).to eq(200)
       expect(body).to eq("session" => { "id" => session.id, "title" => "plan review", "status" => session.status,
                                         "participants" => [{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human",
                                                              "role" => "reviewer" }] })
-      %w[brief=1 cards=1 tail=1 timing=1].each do |query|
-        expect(json("/api/sessions/#{session.id}?#{query}")).to eq([200, body]), query
-      end
+      status, show = json("/api/sessions/#{session.id}")
+      expect(status).to eq(200)
+      expect(show.dig("session", "title")).to eq("plan review")
+      expect(show.dig("viewer", "kind")).to eq("participant")
+      %w[cards=1 tail=1 timing=1].each { |query| expect(json("/api/sessions/#{session.id}?#{query}").first).to eq(200), query }
       # Nothing of the owner's chi web, such as the Markdown tip.
-      expect(body).not_to have_key("markdown_tip")
+      [show, json("/api/sessions/#{session.id}?tail=1").last].each do |read|
+        expect(read.values_at("markdown_tip", "markdown_warning")).to eq([nil, nil])
+      end
     end
 
     it "GET /api/info: app, version and features, not this machine's pid, cwd or LAN address" do

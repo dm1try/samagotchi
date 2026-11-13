@@ -589,7 +589,8 @@ RSpec.describe "a participant red-teaming a session" do
         ["user", ""], ["assistant", "The child finished."], ["user", ""], ["assistant", "Noted the task."],
         ["user", "is step 3 safe?"], ["assistant", "Yes."]
       ])
-      expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" }, { "tool" => "read", "path" => ".env" },
+      expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" },
+                                                    { "tool" => "read", "path" => ".env", "ref" => { "kind" => "file", "path" => ".env" } },
                                                     { "tool" => "memory_read" }])
       # The wake turn's report: its turn's start only, no text.
       expect(review["messages"][3]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")
@@ -665,11 +666,15 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
-    it "reads only the session's title, status and participants through show, whatever the query" do
-      %w[? ?brief=1 ?cards=1 ?tail=1 ?timing=1 ?parts=1].each do |query|
+    it "reads the show filtered whatever the query, and only the title, status and participants through brief" do
+      status, body = get("/api/sessions/#{session.id}?brief=1")
+      expect([status, JSON.parse(body)["session"].keys]).to eq([200, %w[id title status participants]])
+      expect(body).not_to include("deploy", "Yes.")
+      ["", "?cards=1", "?tail=1", "?timing=1", "?parts=1", "?as=owner"].each do |query|
         status, body = get("/api/sessions/#{session.id}#{query}")
-        expect([status, JSON.parse(body)["session"].keys]).to eq([200, %w[id title status participants]]), query
-        expect(body).not_to include("deploy", "Yes.")
+        expect(status).to eq(200), query
+        conversation_leaks.each { |leak| expect(body).not_to include(leak), "#{query}: #{leak}" }
+        expect(body).not_to include(root), query
       end
     end
 
@@ -694,8 +699,9 @@ RSpec.describe "a participant red-teaming a session" do
         end
         reads.first(2).each { |status, body| expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"]), peer }
         reads.last(2).each do |status, body|
-          expect([status, JSON.parse(body)["session"].keys]).to eq([200, %w[id title status participants]]), peer
-          expect(body).not_to include("deploy", "Yes.")
+          expect(status).to eq(200), peer
+          expect(JSON.parse(body).dig("viewer", "kind")).to eq("participant"), peer
+          conversation_leaks.each { |leak| expect(body).not_to include(leak), "#{peer}: #{leak}" }
         end
       end
     end

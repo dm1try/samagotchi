@@ -31,24 +31,28 @@ RSpec.describe Samagotchi::Web::Viewer do
     expect(viewer.to_h).to eq(kind: "owner", id: nil, name: nil, can: described_class::CAPABILITIES)
   end
 
-  it "gives a participant none of them yet, with their grant's id and name" do
+  it "gives a participant none of the owner's, only their own, with their grant's id, name and client id" do
     viewer = described_class.for(Samagotchi::Web::Principal.new(kind: :participant, grant: grant))
 
     expect(viewer).not_to be_owner
-    expect(viewer.to_h).to eq(kind: "participant", id: "p_0123abcd", name: "Alex", can: [])
+    expect(viewer.to_h).to eq(kind: "participant", id: "p_0123abcd", name: "Alex",
+                              can: described_class::PARTICIPANT_CAPABILITIES, client_id: "review:p_0123abcd")
     expect(described_class::CAPABILITIES).to all(satisfy { |name| !viewer.can?(name) })
+    expect(described_class::PARTICIPANT_CAPABILITIES).to all(satisfy { |name| viewer.can?(name) })
   end
 
   it "stamps the kind and the space-separated list, never a name or an id" do
     expect(described_class::OWNER.body_attributes).to eq("viewer-kind" => "owner",
                                                          "viewer-can" => described_class::CAPABILITIES.join(" "))
     participant = described_class.for(Samagotchi::Web::Principal.new(kind: :participant, grant: grant))
-    expect(participant.body_attributes).to eq("viewer-kind" => "participant", "viewer-can" => "")
+    expect(participant.body_attributes).to eq("viewer-kind" => "participant",
+                                              "viewer-can" => described_class::PARTICIPANT_CAPABILITIES.join(" "))
   end
 
-  it "names each capability once, in the page's words (lower snake case)" do
-    expect(described_class::CAPABILITIES).to eq(described_class::CAPABILITIES.uniq)
-    expect(described_class::CAPABILITIES).to all(match(/\A[a-z]+(_[a-z]+)*\z/))
+  it "names each capability once, in the page's words (lower snake case); a participant's are none of the owner's" do
+    all = described_class::CAPABILITIES + described_class::PARTICIPANT_CAPABILITIES
+    expect(all).to eq(all.uniq)
+    expect(all).to all(match(/\A[a-z]+(_[a-z]+)*\z/))
   end
 end
 

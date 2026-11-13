@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../client_id"
+
 module Samagotchi
   module Web
     # Who looks at chi web's main page and what they may do there: the
@@ -16,16 +18,20 @@ module Samagotchi
     Viewer = Data.define(:kind, :id, :name, :can) do
       # @param principal [Principal] the request's
       # @return [Viewer] the owner's with every capability; a participant's
-      #   with none of them (the participant page doesn't read it; the main
-      #   page's participant capabilities come with it).
+      #   with PARTICIPANT_CAPABILITIES only (what their routes serve).
       def self.for(principal)
         return Viewer::OWNER if principal.owner?
 
         grant = principal.grant
-        new(kind: "participant", id: grant.id, name: grant.name, can: [].freeze)
+        new(kind: "participant", id: grant.id, name: grant.name, can: Viewer::PARTICIPANT_CAPABILITIES)
       end
 
       def owner? = kind == "owner"
+
+      # The client id chi web gives this viewer's turns (it replaces the
+      # body's): a participant's review:<grant id> (ClientId.review), so the
+      # page can tell its own turns; nil for the owner (each tab names its own).
+      def client_id = owner? ? nil : ClientId.review(id)
 
       def can?(name) = can.include?(name.to_s)
 
@@ -33,7 +39,8 @@ module Samagotchi
       # space-separated +can+ list (no names or ids: those come with a show).
       def body_attributes = { "viewer-kind" => kind, "viewer-can" => can.join(" ") }
 
-      def to_h = { kind: kind, id: id, name: name, can: can }
+      # A participant's carries their client id too.
+      def to_h = { kind: kind, id: id, name: name, can: can, **(owner? ? {} : { client_id: client_id }) }
     end
 
     # The capabilities the main page gates by, each named for what the
@@ -43,6 +50,11 @@ module Samagotchi
       sessions models prompt_history push context working_set participants_admin rename images session_controls
       revise apply answer_cards render block_renderers stop_any_turn steer_any_turn
     ].freeze
+
+    # A participant's capabilities: names of their own (the owner's are
+    # CAPABILITIES), each one a participant route serves. +send+: their
+    # composer (POST …/turn).
+    Viewer::PARTICIPANT_CAPABILITIES = %w[send].freeze
 
     Viewer::OWNER = Viewer.new(kind: "owner", id: nil, name: nil, can: Viewer::CAPABILITIES)
   end

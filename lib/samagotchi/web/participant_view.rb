@@ -7,6 +7,7 @@ require_relative "../participant_mode"
 require_relative "../revise_anchor"
 require_relative "../verify_anchor"
 require_relative "../redact"
+require_relative "../file_ref"
 
 module Samagotchi
   module Web
@@ -117,6 +118,20 @@ module Samagotchi
           out["automatic"] = true
         end
         out
+      end
+
+      # A drawing's filtered turn_started (#event's) with +prompt+, the
+      # filtered messages' prompt of its turn; nil: an automatic turn's
+      # start, no prompt (a Continue's has none either way). Any other event
+      # as it is.
+      def drawing_start(event, prompt)
+        return event unless event["type"] == "turn_started"
+
+        out = event.except("prompt", "automatic")
+        return out if out["continue"]
+        return out.merge("prompt" => prompt) if prompt
+
+        out.except("continue").merge("automatic" => true)
       end
 
       def turn_ended(event, viewer)
@@ -249,7 +264,7 @@ module Samagotchi
                                  field(message, :participant_mode)))
         images = field(message, :images)
         out["images"] = images.size if images.is_a?(Array) && !images.empty?
-        out
+        out.merge!(drawn_field(message))
       end
 
       # A wake turn's start (its prompt a delegate's report or a context
@@ -275,8 +290,32 @@ module Samagotchi
 
         out = { "role" => "assistant", "content" => content, **time_field(message) }
         out["tools"] = rows unless rows.empty?
+        out.merge!(drawn_field(message))
+      end
+
+      # The turn whose drawing draws this message (MessageDisplay's +drawn+
+      # stamp: a turn id), for the main page's show; none on the review read.
+      def drawn_field(message)
+        drawn = field(message, :drawn)
+        drawn.is_a?(String) && !drawn.empty? ? { "drawn" => drawn } : {}
+      end
+
+      # A finished turn's drawing end (Bridge::TurnDrawings' end, its
+      # END_KEYS) as a participant may read it: how it ended, its turn and
+      # duration, and how many steps a failure kept. Never a failure's
+      # summary, message or class (they may name a host path), a cancel's
+      # reason or who stopped it.
+      def drawing_end(raw, turn_id)
+        out = { "type" => (TURN_ENDS.include?(field(raw, :type).to_s) ? field(raw, :type).to_s : "turn_completed"),
+                "turn_id" => turn_id.to_s }
+        duration = field(raw, :duration_ms)
+        out["duration_ms"] = duration if duration.is_a?(Integer)
+        kept = field(raw, :kept_steps)
+        out["kept_steps"] = kept if kept.is_a?(Integer)
         out
       end
+
+      TURN_ENDS = %w[turn_completed turn_canceled turn_failed].freeze
 
       # The turn in progress (TurnAccumulator#current_turn, string keys
       # from the Bridge's snapshot) as a participant sees it: its start
@@ -303,18 +342,105 @@ module Samagotchi
           end
         end
         out = started.merge("text" => text, "tools" => tools)
+        # The running generation's phase (Bridge#with_generation: the main
+        # page's delivery-line clock): whether it only thinks so far, and its
+        # age; nothing of what it thinks.
+        generation = field(turn, :generation)
+        if generation.is_a?(Hash)
+          gen = {}
+          gen["thinking_only"] = field(generation, :thinking_only) if [true, false].include?(field(generation, :thinking_only))
+          gen["age"] = field(generation, :age) if field(generation, :age).is_a?(Numeric)
+          out["generation"] = gen
+        end
         out["waiting_for_owner"] = true if field(turn, :pending_question)
         Redact.deep(out, viewer)
       end
 
+      # A queued entry (a Bridge snapshot's +queued+ row) when it is the
+      # viewer's own, in the owner's shape: its enqueued id, client id,
+      # prompt, delivery and author. Never its images. nil for another
+      # person's (their prompt).
+      def queued_entry(entry, viewer)
+        return nil unless entry.is_a?(Hash) && viewer.own?(field(entry, :author))
+
+        out = { "enqueued_id" => field(entry, :enqueued_id).to_s, "client_id" => field(entry, :client_id).to_s,
+                "prompt" => field(entry, :prompt).to_s, "author" => field(entry, :author).to_s }
+        delivery = field(entry, :delivery).to_s
+        out["delivery"] = delivery if DELIVERIES.include?(delivery)
+        Redact.deep(out, viewer)
+      end
+
+      DELIVERIES = %w[queue next_step].freeze
+
+      # A turn record's fields a participant reads: its id and times (the
+      # turn time) and its speed. Never its cost, tokens, model, author,
+      # cancel reason or failure.
+      TURN_RECORD_KEYS = %w[id started_at completed_at duration_ms decode_tps tps_source].freeze
+      # The running turn's (SessionMetrics#active_turn_snapshot).
+      ACTIVE_TURN_KEYS = %w[id started_at duration_ms].freeze
+
+      # The show's timing (SessionShow#timing_from) as a participant may
+      # read it: the session's clock, each turn's duration and speed, the
+      # running turn's start, and the context's fill (its token counts).
+      # Never tool_records (guardrail judgment ids, System 1 labels),
+      # active_tools, tokens, model_segments (cost per model), memory_index
+      # (memory names) or side (side requests' cost).
+      def timing(payload)
+        return nil unless payload.is_a?(Hash)
+
+        records = Array(field(payload, :turn_records)).filter_map { |record| pick(record, TURN_RECORD_KEYS) }
+        context = field(payload, :context)
+        {
+          "started_at" => string_or_nil(field(payload, :started_at)),
+          "last_activity_at" => string_or_nil(field(payload, :last_activity_at)),
+          "session_duration_ms" => number_or_nil(field(payload, :session_duration_ms)),
+          "turn_records" => records,
+          "tool_records" => [],
+          "turn_count" => number_or_nil(field(payload, :turn_count)),
+          "active_turn" => pick(field(payload, :active_turn), ACTIVE_TURN_KEYS),
+          "active_tools" => [],
+          "context" => pick(context, %w[used_tokens window_tokens]),
+          "tokens" => nil,
+          "model_segments" => [],
+          "memory_index" => nil,
+          "side" => nil
+        }
+      end
+
+      # +keys+ of +hash+ whose values are plain (a string or a number), nil
+      # for a hash with none.
+      def pick(hash, keys)
+        return nil unless hash.is_a?(Hash)
+
+        out = keys.each_with_object({}) do |key, kept|
+          value = field(hash, key.to_sym)
+          kept[key] = value if value.is_a?(String) || (value.is_a?(Numeric) && value.to_f.finite?)
+        end
+        out.empty? ? nil : out
+      end
+
+      def string_or_nil(value) = value.is_a?(String) ? value : nil
+
+      def number_or_nil(value) = value.is_a?(Numeric) && value.to_f.finite? ? value : nil
+
       # A tool row: the tool's name, and for a file tool the path relative
       # to the session's folder when it is inside it. Never its arguments.
+      # The row's +ref+ is the owner's shape (FileRef#to_h: kind, path, the
+      # lines) with the relative path, for the main page's refs.js; +path+
+      # is the participant page's flat copy until that page goes.
       def tool_row(tool, ref, viewer)
         row = { "tool" => tool.to_s }
         path = ref.is_a?(Hash) ? field(ref, :path) : nil
         relative = project_path(path, viewer.cwd, home: viewer.home)
-        row["path"] = relative if relative
-        row
+        return row unless relative
+
+        row["path"] = relative
+        file = { "kind" => FileRef::KIND, "path" => relative }
+        %i[line end_line].each do |key|
+          value = field(ref, key)
+          file[key.to_s] = value if value.is_a?(Integer) && value.positive?
+        end
+        row.merge("ref" => file)
       end
 
       # +path+ relative to +cwd+ when it is inside it, else nil. None when
