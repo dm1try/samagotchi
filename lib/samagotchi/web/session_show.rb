@@ -17,9 +17,26 @@ require_relative "../session_metrics"
 require_relative "../session_setting"
 require_relative "../system_one/log"
 require_relative "../toolkit"
+require_relative "viewer"
 
 module Samagotchi
   module Web
+    # What a session's show is read from, the same for the owner's and a
+    # participant's (SessionShow#show_reads): the session file, a live
+    # worker's turn snapshot and state snapshot (both nil without one), the
+    # messages shown (the snapshot's, else the file's) and the stream cursor
+    # the page goes on from (+event_seq+, and the snapshot's +event_id+
+    # `<seq>-<epoch>`). Each assembler makes its own payload from it.
+    ShowReads = Data.define(:id, :session, :turn_snapshot, :state, :event_seq, :event_id, :raw_messages) do
+      # The turn in progress, as the worker's snapshot has it (nil: none).
+      def current_turn = turn_snapshot && turn_snapshot["current_turn"]
+
+      def current_turn_id
+        turn = current_turn
+        turn.is_a?(Hash) ? turn["turn_id"] : nil
+      end
+    end
+
     # GET /api/sessions/:id, the page's session read, and its light re-reads
     # (?cards=1, ?tail=1, ?timing=1; ?brief=1 is SessionAccessRoutes'
     # handle_brief_read), GET /api/sessions/:id/output, and the timing
@@ -46,35 +63,59 @@ module Samagotchi
         # (The light re-reads come after a full read only.)
         return scratch_refused(id) if session.scratch
 
-        # Read-only preview: selecting a session never spawns a worker.
-        # The worker is woken only on POST /turn (handle_turn) via
-        # SessionManager.resume_session + write_turn_input. This avoids
-        # replaying last_prompt and spamming workers on preview scrub.
-        # last_event_seq is nil when no live bridge, so the frontend stays
-        # silent until the first Send.
-        #
-        # A live worker's snapshot is the truth (the session file lags its
-        # Engine): the messages, the turn in progress and the prompts queued
-        # behind it, all at one event_seq the client streams on from.
+        owner_show(req, show_reads(id, session))
+      end
+
+      # The reads a session's show is made of, whoever it is for (ShowReads).
+      # Read-only preview: selecting a session never spawns a worker.
+      # The worker is woken only on POST /turn (handle_turn) via
+      # SessionManager.resume_session + write_turn_input. This avoids
+      # replaying last_prompt and spamming workers on preview scrub.
+      # event_seq is nil when no live bridge, so the frontend stays
+      # silent until the first Send.
+      #
+      # A live worker's snapshot is the truth (the session file lags its
+      # Engine): the messages, the turn in progress and the prompts queued
+      # behind it, all at one event_seq the client streams on from.
+      # @return [ShowReads]
+      def show_reads(id, session)
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
-        snapshot = live && live["session_state_snapshot"]
-        last_event_seq = live_or_saved(snapshot, "event_seq") { bridge_event_seq(id) }
-        current_turn = turn_snapshot && turn_snapshot["current_turn"]
+        state = live && live["session_state_snapshot"]
+        ShowReads.new(
+          id: id, session: session, turn_snapshot: turn_snapshot, state: state,
+          event_seq: live_or_saved(state, "event_seq") { bridge_event_seq(id) },
+          # The stream cursor `<seq>-<epoch>`: a later worker resets it
+          # instead of taking the seq as its own. Only the snapshot has it.
+          event_id: turn_snapshot && turn_snapshot["event_id"],
+          raw_messages: live_or_saved(turn_snapshot, "messages") { session.messages }
+        )
+      end
+
+      # Every finished turn of +reads+ drawn from a line (a real one, else
+      # one made from its messages, #drawn_lines): its items are stamped,
+      # and its drawing goes in turn_drawings. The running turn has none yet.
+      def show_drawn_lines(reads, timing:, entries:)
+        drawn_lines(reads.id, reads.raw_messages, timing: timing, entries: entries, cwd: reads.session.working_directory,
+                                                  skip_turn_id: reads.current_turn_id)
+      end
+
+      # The owner's show of +reads+: the whole page's read (its cards,
+      # history, commands, recap, timing and question too).
+      def owner_show(req, reads)
+        id = reads.id
+        session = reads.session
+        turn_snapshot = reads.turn_snapshot
+        raw_messages = reads.raw_messages
         owner = session_owner(id)
         pending = shown_pending_question(session, turn_snapshot, owner)
         # What the worker's server said it served for that model (after a turn);
         # without a worker, what the session's analytics.json last saved.
-        persisted = snapshot ? nil : read_analytics(id)
-        session_json = shown_session_json(session, snapshot, owner, persisted)
-        raw_messages = live_or_saved(turn_snapshot, "messages") { session.messages }
-        timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
-        # Every finished turn is drawn from a line (a real one, else one
-        # made from its messages): its items are stamped, and its drawing
-        # goes in turn_drawings. The running turn has none yet.
+        persisted = reads.state ? nil : read_analytics(id)
+        session_json = shown_session_json(session, reads.state, owner, persisted)
+        timing = timing_payload(id, live_metrics: reads.state && reads.state["metrics"], persisted: persisted)
         raw_cards = live_or_saved(turn_snapshot, "cards") { saved_cards(id, messages: raw_messages) }
-        drawn = drawn_lines(id, raw_messages, timing: timing, entries: raw_cards, cwd: session.working_directory,
-                                              skip_turn_id: current_turn.is_a?(Hash) ? current_turn["turn_id"] : nil)
+        drawn = show_drawn_lines(reads, timing: timing, entries: raw_cards)
         messages = messages_for_display(raw_messages, cwd: session.working_directory, drawings: drawn)
         json_response(200, {
           session: session_json,
@@ -82,7 +123,7 @@ module Samagotchi
           messages: messages,
           **turn_drawings_field(drawn, messages),
           failed_turn: failed_turn_for(session, raw_messages),
-          current_turn: current_turn,
+          current_turn: reads.current_turn,
           # The page's join: the turn in progress and the queue behind it as
           # the live events that draw them (TurnAccumulator.join_events, one
           # unfold, here: any worker's snapshot works).
@@ -107,10 +148,8 @@ module Samagotchi
           # Who looks and what they may do (Viewer), as <body> says it at boot.
           viewer: Viewer.for(principal(req)).to_h,
           pending_question: pending,
-          last_event_seq: last_event_seq,
-          # The stream cursor `<seq>-<epoch>`: a later worker resets it
-          # instead of taking the seq as its own. Only the snapshot has it.
-          last_event_id: turn_snapshot && turn_snapshot["event_id"],
+          last_event_seq: reads.event_seq,
+          last_event_id: reads.event_id,
           timing: timing,
           **objectives_field(id, raw_messages, turn_snapshot)
         })
