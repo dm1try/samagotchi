@@ -63,11 +63,11 @@ module Samagotchi
         "turn_dequeued" => :turn_dequeued,
         "input_merged" => :input_merged,
         # The owner's question, approval or Continue offer: "waiting for the
-        # owner", nothing of it.
-        "question_requested" => :bare,
+        # owner" and for what kind of thing (#waiting_kind), nothing of it.
+        "question_requested" => :question_requested,
         "question_answered" => :bare,
         "question_cancelled" => :bare,
-        "continue_offered" => :bare,
+        "continue_offered" => :continue_offered,
         "continue_resolved" => :bare,
         # The cursor can't be replayed (or a join): the page re-reads.
         "snapshot" => :bare,
@@ -330,6 +330,32 @@ module Samagotchi
         out
       end
 
+      # A question for the owner: its kind (#waiting_kind) only.
+      def question_requested(event, _viewer)
+        { "type" => "question_requested", **seq(event), "kind" => waiting_kind(field(event, :pending_question)) }
+      end
+
+      # The owner's Continue offer: its kind only.
+      def continue_offered(event, _viewer)
+        { "type" => "continue_offered", **seq(event), "kind" => WAITING_CONTINUE }
+      end
+
+      WAITING_APPROVAL = "approval"
+      WAITING_QUESTION = "question"
+      WAITING_CONTINUE = "continue"
+
+      # What a turn waits for the owner on, derived from a pending question
+      # (PendingQuestion#to_h, a snapshot's): "approval" for a guardrail's
+      # approval or a relayed one, "continue" for the step-limit question,
+      # "question" for anything else (the model's own, a hook's, none).
+      def waiting_kind(pending)
+        return WAITING_QUESTION unless pending.is_a?(Hash)
+        return WAITING_APPROVAL if field(pending, :kind).to_s == "approval" || field(pending, :relay).is_a?(Hash)
+        return WAITING_CONTINUE if field(pending, :kind).to_s == "continue"
+
+        WAITING_QUESTION
+      end
+
       # Its type alone (and the cursor it was sent at).
       def bare(event, _viewer)
         { "type" => field(event, :type).to_s, **seq(event) }
@@ -476,7 +502,8 @@ module Samagotchi
           gen["age"] = field(generation, :age) if field(generation, :age).is_a?(Numeric)
           out["generation"] = gen
         end
-        out["waiting_for_owner"] = true if field(turn, :pending_question)
+        pending = field(turn, :pending_question)
+        out.merge!("waiting_for_owner" => true, "kind" => waiting_kind(pending)) if pending
         Redact.deep(out, viewer)
       end
 

@@ -127,6 +127,21 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set])
   end
 
+  it "says what the session waits for the owner on: the running turn's approval, a Continue offer, a question between turns" do
+    expect(read(issued.token).last.dig("viewer", "waiting_for_owner")).to be_nil
+    snapshot["snapshot"]["current_turn"]["pending_question"] = { "kind" => "approval", "question" => "Allow execute: APPROVAL-CMD?" }
+    body = read(issued.token).last
+    expect(body.dig("viewer", "waiting_for_owner")).to eq("approval")
+    expect(body["current_turn"]).to include("waiting_for_owner" => true, "kind" => "approval")
+    expect(JSON.generate(body)).not_to include("APPROVAL-CMD")
+    snapshot["snapshot"]["current_turn"] = nil
+    snapshot["snapshot"]["continue_offer"] = { "context" => "OFFER-CONTEXT" }
+    expect(read(issued.token).last.dig("viewer", "waiting_for_owner")).to eq("continue")
+    snapshot["snapshot"].delete("continue_offer")
+    snapshot["snapshot"]["pending_question"] = { "kind" => "continue", "question" => "Go on?" }
+    expect(read(issued.token).last.dig("viewer", "waiting_for_owner")).to eq("continue")
+  end
+
   it "keeps each turn's duration and speed of the timing, nothing else" do
     timing = read(issued.token).last["timing"]
     expect(timing["turn_records"]).to eq([{ "id" => "t0", "started_at" => "2026-11-13T10:00:00Z", "duration_ms" => 1200,

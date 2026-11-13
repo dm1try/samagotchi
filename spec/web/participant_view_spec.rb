@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
       allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
-                   participant_mode automatic continue restarted verdict items]
+                   participant_mode automatic continue restarted verdict items kind]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
         next if out.nil?
@@ -119,11 +119,18 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .to eq("type" => "tool_call_completed", "status" => "ok", "iteration" => 1, "call_index" => 0)
     end
 
-    it "shows a question, an approval or a Continue offer as its type alone" do
-      expect(shown({ type: :question_requested, pending_question: { id: "q", question: "Allow execute: cat .env?" },
-                     event_seq: 4 }))
-        .to eq("type" => "question_requested", "event_seq" => 4)
-      expect(shown({ type: :continue_offered, context: "step limit" })).to eq("type" => "continue_offered")
+    it "shows a question, an approval or a Continue offer as its type and derived kind alone" do
+      asked = ->(pending) { shown({ type: :question_requested, pending_question: pending, event_seq: 4 }) }
+      expect(asked.call({ id: "q", question: "Allow execute: cat .env?", kind: "approval", approval: { command: "cat .env" } }))
+        .to eq("type" => "question_requested", "event_seq" => 4, "kind" => "approval")
+      expect(asked.call({ id: "q", question: "Child asks: rm -rf?", relay: { session: "CHILD-ID" } })["kind"]).to eq("approval")
+      expect(asked.call({ id: "q", question: "Continue?", kind: "continue", limit: 40 })["kind"]).to eq("continue")
+      expect(asked.call({ id: "q", question: "Which db?", options: %w[A B] })["kind"]).to eq("question")
+      expect(asked.call({ id: "q", question: "Hook asks", kind: "hook", hook: "HOOK-NAME" })["kind"]).to eq("question")
+      expect(asked.call(nil)["kind"]).to eq("question")
+      expect(shown({ type: :continue_offered, context: "step limit" })).to eq("type" => "continue_offered", "kind" => "continue")
+      expect(JSON.generate(asked.call({ id: "Q-ID", question: "Q-TEXT", kind: "approval", approval: { x: "Y" } })))
+        .not_to include("Q-ID", "Q-TEXT", "approval\":{")
     end
 
     it "sends the viewer's own queued turn in the owner's shape, never its images; another's bare" do
@@ -360,8 +367,11 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                            { "kind" => "tool", "tool" => "execute", "params" => "env", "status" => "running", "output" => "X" },
                            { "kind" => "input", "text" => "steer" }] }
       expect(described_class.current_turn(turn, viewer)).to eq(
-        "prompt" => "go", "text" => "Looking", "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true
+        "prompt" => "go", "text" => "Looking", "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true,
+        "kind" => "question"
       )
+      approval = turn.merge("pending_question" => { "kind" => "approval", "question" => "Allow execute: env?" })
+      expect(described_class.current_turn(approval, viewer)).to include("waiting_for_owner" => true, "kind" => "approval")
     end
   end
 

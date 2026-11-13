@@ -80,7 +80,8 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
     expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
-                                       "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true)
+                                       "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true,
+                                       "kind" => "question")
     expect(body["waiting_for_owner"]).to be(true)
     expect(body["queued"]).to eq("mine" => [{ "enqueued_id" => "e1", "prompt" => "mine" }], "others" => 1)
     expect(body["last_event_id"]).to eq("12-ep")

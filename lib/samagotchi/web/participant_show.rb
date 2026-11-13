@@ -112,8 +112,23 @@ module Samagotchi
         review = review_viewer(req, reads.id, session: session, state: reads.state, queued: queued, viewer: viewer, mode: mode)
         Viewer.for(principal(req)).to_h.merge(
           review.slice(:participant_kind, :mode, :cap_reached, :usage),
-          session_stopped: session.status == Session::STATUS_STOPPED
+          session_stopped: session.status == Session::STATUS_STOPPED,
+          waiting_for_owner: participant_waiting(reads.turn_snapshot)
         )
+      end
+
+      # What the session waits for the owner on (ParticipantView.waiting_kind),
+      # nil when it doesn't: the running turn's question or approval, a
+      # Continue offer, or a question between turns (#handle_review's rule).
+      def participant_waiting(turn_snapshot)
+        return nil unless turn_snapshot.is_a?(Hash)
+
+        turn = turn_snapshot["current_turn"]
+        pending = turn.is_a?(Hash) ? turn["pending_question"] : turn_snapshot["pending_question"]
+        return ParticipantView.waiting_kind(pending) if pending
+        return ParticipantView::WAITING_CONTINUE if turn_snapshot["continue_offer"]
+
+        nil
       end
 
       # {turn_drawings: {turn_id => {events:, end:}}} as the owner's
