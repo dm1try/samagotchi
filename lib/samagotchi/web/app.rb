@@ -69,6 +69,7 @@ require_relative "session_hub"
 require_relative "project_list"
 require_relative "session_access_routes"
 require_relative "principal"
+require_relative "viewer"
 require_relative "participant_access"
 require_relative "participants_admin"
 require_relative "participant_review"
@@ -1967,6 +1968,8 @@ module Samagotchi
         # The opt-in reload check (reload_check.js): only when on.
         attrs["reload-check"] = "1" if @reload_check
         attrs.merge!(annotate_presets_data)
+        # Who looks and what they may do (Viewer; viewer.js reads it at boot).
+        attrs.merge!(Viewer.for(principal(req)).body_attributes)
         dir, = scope_dir(req.params["dir"])
         unless dir
           dir = default_scope_dir(req)

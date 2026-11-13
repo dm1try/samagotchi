@@ -104,6 +104,8 @@ module Samagotchi
           markdown_warning: @markdown_renderer.warning,
           markdown_tip: @markdown_renderer.tip,
           **viewer_capabilities(req),
+          # Who looks and what they may do (Viewer), as <body> says it at boot.
+          viewer: Viewer.for(principal(req)).to_h,
           pending_question: pending,
           last_event_seq: last_event_seq,
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
