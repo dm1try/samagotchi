@@ -516,6 +516,11 @@ RSpec.describe "a participant red-teaming a session" do
       Samagotchi::Web::App.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants,
                                lan: { ip: lan_ip, token: "owner-token-owner-token-owner-token-owner" })
     end
+    let(:conversation_leaks) do
+      ["sk-ant", "id_rsa", ".ssh", "KEYBYTES", "ENV-SECRET", "MEMORY-TEXT", "launch", "THINKING",
+       "PLUGIN-STEER", "DELEGATE-REPORT", "shot.png", "SHELL-OUTPUT", "cat .env", "WAKE-REPORT",
+       "0badc0de", "DECLINED-NOTE", "TASK-WAKE-PROMPT"]
+    end
 
     def get(path)
       env = Rack::MockRequest.env_for(path)
@@ -555,6 +560,10 @@ RSpec.describe "a participant red-teaming a session" do
                  JSON.generate({ "turn_records" => [{ "id" => "tt", "automatic" => true }] }))
     end
 
+    # Both reads a participant's page may make (the old page's review data,
+    # the main page's show) are guarded while both exist.
+    def reads = { review: get("/api/sessions/#{session.id}/review"), show: get("/api/sessions/#{session.id}") }
+
     it "reads its own usage only: never the owner's, another participant's or the session's spend" do
       other = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir).grant
       dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
@@ -564,10 +573,11 @@ RSpec.describe "a participant red-teaming a session" do
                            { "id" => "t3", "author" => grant.author, "cost" => 0.25 }],
         "side" => { "cost_sum" => 1.11 }
       }))
-      status, body = get("/api/sessions/#{session.id}/review")
-      expect(status).to eq(200)
-      expect(JSON.parse(body).dig("viewer", "usage")).to include("spent" => 0.25)
-      %w[7.77 3.33 1.11 8.02].each { |leak| expect(body).not_to include(leak), leak }
+      reads.each do |read, (status, body)|
+        expect(status).to eq(200), read.to_s
+        %w[7.77 3.33 1.11 8.02].each { |leak| expect(body).not_to include(leak), "#{read}: #{leak}" }
+      end
+      expect(JSON.parse(reads[:review].last).dig("viewer", "usage")).to include("spent" => 0.25)
     end
 
     it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report, the owner's ! output, an automatic prompt or a host path" do
@@ -585,10 +595,11 @@ RSpec.describe "a participant red-teaming a session" do
       expect(review["messages"][3]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")
       expect(review["messages"][5]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
       expect(review["messages"][7]).to include("author_name" => "Mallory", "mine" => true)
-      ["sk-ant", "id_rsa", ".ssh", "KEYBYTES", "ENV-SECRET", "MEMORY-TEXT", "launch", "THINKING", "PLUGIN-STEER", "DELEGATE-REPORT", "shot.png", "SHELL-OUTPUT", "cat .env", "WAKE-REPORT", "0badc0de", "DECLINED-NOTE", "TASK-WAKE-PROMPT"].each do |leak|
-        expect(body).not_to include(leak), leak
+      reads.each do |read, (read_status, read_body)|
+        expect(read_status).to eq(200), read.to_s
+        conversation_leaks.each { |leak| expect(read_body).not_to include(leak), "#{read}: #{leak}" }
+        expect(read_body).not_to include(root), read.to_s
       end
-      expect(body).not_to include(root)
     end
 
     it "reads the review's subjects redacted, and never a secret, a file outside the project or a symlink out of it, whatever the session file names" do
@@ -649,7 +660,9 @@ RSpec.describe "a participant red-teaming a session" do
       body = get("/api/sessions/#{session.id}/review").last
       expect(JSON.parse(body)["messages"].map { |m| [m["role"], m["content"], m["automatic"]] })
         .to eq([["user", "", true], ["assistant", "Let me look.", nil], ["user", "q", nil], ["assistant", "Answer.", nil]])
-      %w[TASK-TEXT TOOL-ARG THINKING-TAIL].each { |leak| expect(body).not_to include(leak), leak }
+      reads.each do |read, (_status, read_body)|
+        %w[TASK-TEXT TOOL-ARG THINKING-TAIL].each { |leak| expect(read_body).not_to include(leak), "#{read}: #{leak}" }
+      end
     end
 
     it "reads only the session's title, status and participants through show, whatever the query" do
@@ -689,9 +702,10 @@ RSpec.describe "a participant red-teaming a session" do
 
     it "reads no host path in a refusal or an error" do
       allow(Samagotchi::Session).to receive(:load).and_raise(ArgumentError, "bad session file #{root}/x.json")
-      status, body = get("/api/sessions/#{session.id}/review")
-      expect(status).to eq(404)
-      expect(body).not_to include(root)
+      reads.each do |read, (status, body)|
+        expect(status).to eq(404), read.to_s
+        expect(body).not_to include(root), read.to_s
+      end
     end
   end
 
