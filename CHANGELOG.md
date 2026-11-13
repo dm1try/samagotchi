@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - chi web: in the iPhone Home Screen app, the top bar no longer sits in iOS's blurred band under the clock.
+- chi web: a question card folded in the turn box stays folded after a reload or when the page reconnects mid-turn.
 
 ## [0.170.0] - 2026-11-13
 
