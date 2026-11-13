@@ -322,11 +322,14 @@ module Samagotchi
         { "type" => "tool_call_started", **tool_row(field(event, :tool), field(event, :ref), viewer), **call_ids(event) }
       end
 
+      # Its status word, flat for the participant page and as the owner's
+      # +activity+ ({status} only: never its action or params) for the
+      # main page's row (activity.js).
       def tool_call_completed(event, _viewer)
         out = { "type" => "tool_call_completed", **call_ids(event) }
         activity = field(event, :activity)
         status = activity.is_a?(Hash) ? field(activity, :status).to_s : ""
-        out["status"] = status if STATUSES.include?(status)
+        out.merge!("status" => status, "activity" => { "status" => status }) if STATUSES.include?(status)
         out
       end
 

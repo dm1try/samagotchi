@@ -116,7 +116,8 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .to eq("type" => "tool_call_started", "tool" => "execute")
       expect(shown({ type: :tool_call_completed, output: "SECRET", activity: { status: "ok", action: "Read" }, iteration: 1,
                      call_index: 0, diff: {} }))
-        .to eq("type" => "tool_call_completed", "status" => "ok", "iteration" => 1, "call_index" => 0)
+        .to eq("type" => "tool_call_completed", "status" => "ok", "activity" => { "status" => "ok" }, "iteration" => 1,
+               "call_index" => 0)
     end
 
     it "shows a question, an approval or a Continue offer as its type and derived kind alone" do
