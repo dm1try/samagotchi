@@ -87,6 +87,30 @@ test("select shows Loading… and forgets the last session before its read lands
   assert.deepEqual(page.calls.filter((c) => c[0] === "forgetSession").at(-1), ["forgetSession", { keepVerify: true }]);
 });
 
+// The fold of the asking card is this tab's (stage_waiting.js): it follows the
+// session, and the one of a session the page leaves has no page to come back to.
+test("opening another session drops the fold kept for the one left; a reselect of the same keeps it", async () => {
+  const map = new Map([["chi_asking_fold:s1", JSON.stringify({ key: "q:1", with: 1 })]]);
+  const session = {
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+  };
+  const before = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { value: session, configurable: true, writable: true });
+  try {
+    const { sync } = fakePage({ read: async () => ({ messages: [] }) });
+    await sync.select("s1");
+    assert.ok(map.get("chi_asking_fold:s1"), "the same session again: the fold stays");
+    await sync.select("s2");
+    assert.ok(map.get("chi_asking_fold:s1") === undefined, "the session left: its fold goes");
+    assert.ok(map.get("chi_asking_fold:s2") === undefined, "and the new one has none yet");
+  } finally {
+    if (before) Object.defineProperty(globalThis, "sessionStorage", before);
+    else delete globalThis.sessionStorage;
+  }
+});
+
 test("select gives the session a fresh re-read budget", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { page, sync } = fakePage({ read: async () => { throw Object.assign(new Error("offline"), { status: 0 }); } });

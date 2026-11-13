@@ -2,7 +2,7 @@
 // stage_cuts_parity.test.js), in happy-dom (dom_shim.js).
 import "./dom_shim.js";
 
-for (const k of ["MutationObserver", "CustomEvent", "localStorage", "getSelection", "CSS"]) {
+for (const k of ["MutationObserver", "CustomEvent", "localStorage", "sessionStorage", "getSelection", "CSS"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
 }
 globalThis.ResizeObserver ??= class { observe() {} disconnect() {} };
@@ -18,6 +18,13 @@ const { createSessionStore } = await import("../../../lib/samagotchi/web/public/
 const { createShownTexts } = await import("../../../lib/samagotchi/web/public/shown_texts.js");
 const { createQuestionCards } = await import("../../../lib/samagotchi/web/public/question_cards.js");
 const { elementOf, emptyAnswerTemplate } = await import("../../../lib/samagotchi/web/public/turn_html.js");
+
+// What this tab kept in sessionStorage. `npm test` runs every file in one
+// process (no isolation), so a test that folds clears it first: one test's
+// fold is not another's.
+export function clearSession() {
+  try { globalThis.sessionStorage?.clear(); } catch (_) {}
+}
 
 // The live page, its pieces as app.js wires them (the stage view, the
 // bubbles, the cards' placement, the stream handlers), the rest stubbed:

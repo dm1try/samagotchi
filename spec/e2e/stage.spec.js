@@ -515,6 +515,33 @@ test("a long reply that asks: its reason in the history, the card docked while t
   });
 });
 
+// The fold of the asking card is this tab's (audit r20 D5): a reload mid-turn
+// draws it folded as the user left it, and the box's height comes with the
+// fold (a collapsed stage is free of its frame).
+test("a question folded in the stage stays folded across a reload mid-turn, at its row's height", async ({ page, script }) => {
+  script("question_hold");
+  await send(page, "Pick a file for me");
+  const card = stageEl(page).locator(".ts-extras .bubble.question");
+  await expect(card).toBeVisible();
+  await stageEl(page).locator(".ts-fold").click();
+  await expect(stageEl(page)).toHaveClass(/collapsed/);
+  const foldedHeight = await stageEl(page).evaluate((el) => el.offsetHeight);
+  await page.reload();
+  await expect(stageEl(page)).toBeVisible();
+  await expect(stageEl(page)).toHaveClass(/collapsed/);
+  await expect(stageEl(page).locator(".ts-mini.ts-mini-question")).toHaveText("Which file should I read?");
+  await expect(stageEl(page).locator(".ts-scroll")).toBeHidden();
+  expect(await stageEl(page).evaluate((el) => el.offsetHeight)).toBe(foldedHeight);
+  // Unfolded by hand: the reload comes back open, and nothing was written to
+  // the stage's own choice.
+  await stageEl(page).locator(".ts-mini").click();
+  await expect(stageEl(page)).not.toHaveClass(/collapsed/);
+  expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBeNull();
+  await page.reload();
+  await expect(stageEl(page)).not.toHaveClass(/collapsed/);
+  await expect(card).toBeVisible();
+});
+
 // A reload after the turn's question was answered, while the turn still
 // runs (the next step holds 6 s): the replay brings the question after its
 // call completed (TurnAccumulator.join_events), and the page draws what

@@ -15,7 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 
-const { livePage } = await import("./live_page.js");
+const { livePage, clearSession } = await import("./live_page.js");
 const { compareShapes, historyShape } = await import("../../../lib/samagotchi/web/public/history_shape.js");
 const { turnHistoryNodes } = await import("../../../lib/samagotchi/web/public/turn_block.js");
 const { splitSnapshotCards } = await import("../../../lib/samagotchi/web/public/card.js");
@@ -94,11 +94,10 @@ async function livedTo(events) {
   return page;
 }
 
-// The page that reloads to +show+, in renderSessionView's order: the
-// history, the snapshot's placed cards, the replay, the running turn's
-// cards, the pending question, the continue offer.
-async function reloadedTo(show) {
-  const page = livePage({ questions: true });
+// +page+ redrawn from +show+ (session_view.js renderSessionView's order): the
+// history, the snapshot's placed cards, the replay, the running turn's cards,
+// the pending question, the continue offer.
+async function drawShow(page, show) {
   page.historyEl.replaceChildren(turnHistoryNodes(show.messages || [], {}, {
     thumbs: () => null, drawings: show.turn_drawings || null, cards: show.cards || null, runningTurnId: show.current_turn?.turn_id || null,
   }));
@@ -117,6 +116,21 @@ async function reloadedTo(show) {
   if (show.continue_offer) page.questionCards.renderContinue(show.continue_offer);
   await settle();
   return page;
+}
+
+// The page that reloads to +show+.
+async function reloadedTo(show) {
+  return drawShow(livePage({ questions: true }), show);
+}
+
+// The page that resyncs to +show+ mid-turn (session_sync.js resync:
+// resetTurnView, then the session view drawn again) — the same tab, so what
+// sessionStorage holds is still there.
+async function resyncTo(page, show) {
+  page.questionCards.removeQuestion();
+  page.questionCards.forgetContinue();
+  page.turnDom.reset();
+  return drawShow(page, show);
 }
 
 // The live-vs-reload differences still known at a cut, "<scenario>/<cut>":
@@ -150,6 +164,38 @@ for (const scenario of scenarios) {
     });
   }
 }
+
+// The fold the user gave the asking card (audit r20 D5): it is this tab's
+// state, so a resync mid-turn and a reload of the same tab draw the stage as
+// live did.
+test("a card folded by hand stays folded over a resync and a reload", async () => {
+  for (const scenario of scenarios) {
+    // One tab per scenario: the fold this tab kept is not the next one's.
+    clearSession();
+    const cut = scenario.cuts[0];
+    const id = `${scenario.name}/${cut.label}`;
+    const live = await livedTo(scenario.events.slice(0, cut.at));
+    if (!stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).docked.length) {
+      live.turnDom.reset();
+      continue;
+    }
+    live.turnDom.root.querySelector(".ts-fold").click();
+    const key = live.turnDom.waiting.folded();
+    assert.ok(key, `${id}: the asking card folds live`);
+    assert.equal(stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).folded, true, `${id}: the stage is folded`);
+
+    const resynced = await resyncTo(live, cut.show);
+    assert.equal(stageShape(resynced.turnDom.root, resynced.historyEl, resynced.turnDom.waiting).folded, true,
+      `${id}: a mid-turn resync keeps the fold`);
+    live.turnDom.reset();
+
+    const reloaded = await reloadedTo(cut.show);
+    assert.equal(stageShape(reloaded.turnDom.root, reloaded.historyEl, reloaded.turnDom.waiting).folded, true,
+      `${id}: a reload brings the fold back`);
+    assert.equal(reloaded.turnDom.waiting.folded(), key, `${id}: on the card live folded`);
+    reloaded.turnDom.reset();
+  }
+});
 
 test("every waiting cut has a card waiting on the live page", async () => {
   assert.ok(scenarios.length >= 9);

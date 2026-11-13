@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readStored, removeStored, storedKeys, writeStored } from "../../../lib/samagotchi/web/public/storage.js";
+import { readSession, readStored, removeSession, removeStored, storedKeys, writeSession, writeStored } from "../../../lib/samagotchi/web/public/storage.js";
 
 // A Map-backed stand-in, installed for one test and put back after it
 // (npm test shares one globalThis across the files).
@@ -12,6 +12,17 @@ function withStorage(storage, fn) {
   } finally {
     if (before) Object.defineProperty(globalThis, "localStorage", before);
     else delete globalThis.localStorage;
+  }
+}
+
+function withSession(storage, fn) {
+  const before = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { value: storage, configurable: true, writable: true });
+  try {
+    fn();
+  } finally {
+    if (before) Object.defineProperty(globalThis, "sessionStorage", before);
+    else delete globalThis.sessionStorage;
   }
 }
 
@@ -67,4 +78,27 @@ test("storedKeys: the keys with a prefix, a copy safe to remove from; [] when st
   const boom = () => { throw new Error("SecurityError"); };
   withStorage({ get length() { return boom(); }, key: boom }, () => assert.deepEqual(storedKeys("a:"), []));
   withStorage(undefined, () => assert.deepEqual(storedKeys("a:"), []));
+});
+
+test("readSession / writeSession / removeSession: the same guards on sessionStorage", () => {
+  withSession(mapStorage(), () => {
+    assert.equal(readSession("k"), null);
+    assert.equal(readSession("k", "{}"), "{}");
+    writeSession("k", '{"key":"q:1"}');
+    assert.equal(readSession("k"), '{"key":"q:1"}');
+    removeSession("k");
+    assert.equal(readSession("k"), null);
+  });
+  const boom = () => { throw new Error("SecurityError"); };
+  withSession({ getItem: boom, setItem: boom, removeItem: boom }, () => {
+    assert.equal(readSession("k", "x"), "x");
+    assert.doesNotThrow(() => writeSession("k", "1"));
+    assert.doesNotThrow(() => removeSession("k"));
+  });
+  // No sessionStorage at all (a page without a tab): the fallback, and no throw.
+  withSession(undefined, () => {
+    assert.equal(readSession("k", "x"), "x");
+    assert.doesNotThrow(() => writeSession("k", "1"));
+    assert.doesNotThrow(() => removeSession("k"));
+  });
 });

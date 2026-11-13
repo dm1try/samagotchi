@@ -125,6 +125,58 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
 const flush = () => new Promise((r) => setImmediate(r));
 const PQ = { id: "q1", question: "Which one?", options: ["a", "b"], allow_freeform: true };
 
+// A sessionStorage the test owns (the fold of the asking card, stage_waiting.js).
+function withSession(storage, fn) {
+  const before = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { value: storage, configurable: true, writable: true });
+  try { fn(); } finally {
+    if (before) Object.defineProperty(globalThis, "sessionStorage", before);
+    else delete globalThis.sessionStorage;
+  }
+}
+
+test("a real answer or a dismiss drops the fold this tab kept; a resync's remove does not", () => {
+  const map = new Map([["chi_asking_fold:s1", JSON.stringify({ key: "q:q1", with: 1 })]]);
+  const session = {
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+  };
+  withSession(session, () => {
+    const { cards } = setup();
+    cards.renderQuestion(PQ);
+    cards.removeQuestion();
+    assert.ok(map.get("chi_asking_fold:s1"), "resetTurnView's remove keeps the fold for the replay");
+    // renderQuestion replaces a pending card the same way (replaceQuestionCard).
+    cards.renderQuestion(PQ);
+    assert.ok(map.get("chi_asking_fold:s1"), "the same card drawn again keeps it");
+    cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+    assert.ok(map.get("chi_asking_fold:s1") === undefined, "answered for good: no fold to bring back");
+
+    cards.renderQuestion(PQ);
+    cards.resolveQuestion("q1", { cancelled: true, reason: "dismissed" });
+    assert.ok(map.get("chi_asking_fold:s1") === undefined, "cancelled: gone as well");
+  });
+});
+
+test("the continue card's answer drops the fold too", () => {
+  const map = new Map([["chi_asking_fold:s1", JSON.stringify({ key: "continue", with: 1 })]]);
+  const session = {
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+  };
+  withSession(session, () => {
+    const { cards } = setup();
+    cards.renderContinue({ id: "c1", iterations: 10 });
+    cards.forgetContinue();
+    assert.ok(map.get("chi_asking_fold:s1"), "forgetContinue (a resync) keeps it");
+    cards.renderContinue({ id: "c1", iterations: 10 });
+    cards.resolveContinue({ decision: "abort", client_id: "web-me" });
+    assert.ok(map.get("chi_asking_fold:s1") === undefined, "answered: gone");
+  });
+});
+
 test("a question: an open card with its options, a freeform box, Submit and Dismiss", () => {
   const { cards, history, scrolled, hintDrops } = setup();
   cards.renderQuestion(PQ);
