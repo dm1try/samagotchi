@@ -191,6 +191,35 @@ RSpec.describe "a participant's author on delivery" do
       expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")).to be_nil
     end
 
+    it "takes no line of a participant past their cap into their running turn: refused, dropped, never merged" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      spend = 1.0
+      allow(engine.metrics).to receive(:spend).with(author) { spend }
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        if prompt == "first"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          spend = 2.5
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+                                                            enqueued_id: "p2")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+
+      expect(pop!(drained, "the drain")).to eq([])
+      expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "p2")).not_to be_nil
+      expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")).to be_nil
+      refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                    .select { |line| line["event"] == "turn" && line["enqueued_id"] == "p2" }
+      expect(refused.map { |line| line["reason"] }).to eq(["cap_reached"])
+    end
+
     it "doesn't start a participant's queued turn past their cap: dropped from the queue, audited, the owner told once" do
       author = grant.author
       notices = Queue.new
