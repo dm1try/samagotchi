@@ -46,11 +46,12 @@ module Samagotchi
         "generation_retrying" => :generation_retrying,
         "tool_call_started" => :tool_call_started,
         "tool_call_completed" => :tool_call_completed,
-        # Queue changes: the page re-reads its review data, which has the
-        # queue as the participant may see it.
-        "turn_enqueued" => :bare,
-        "turn_dequeued" => :bare,
-        "input_merged" => :bare,
+        # Queue changes: the viewer's own in the owner's shape (the main
+        # page matches its bubbles by them), anyone else's bare (the
+        # participant page re-reads its review data on each).
+        "turn_enqueued" => :turn_enqueued,
+        "turn_dequeued" => :turn_dequeued,
+        "input_merged" => :input_merged,
         # The owner's question, approval or Continue offer: "waiting for the
         # owner", nothing of it.
         "question_requested" => :bare,
@@ -89,14 +90,51 @@ module Samagotchi
 
       # @param event [Hash] a client event (ClientEvent's shape; string keys
       #   from the stream's JSON)
+      # @param own_enqueued [#include?] the enqueued ids of the viewer's own
+      #   turns (a :turn_dequeued names no author; ParticipantStreamFilter's)
       # @return [Hash, nil] what a participant gets, string keys; nil: nothing
-      def event(event, viewer)
+      def event(event, viewer, own_enqueued: [])
         return nil unless event.is_a?(Hash)
 
         type = field(event, :type).to_s
         method = EVENTS[type] or return nil
-        out = send(method, event, viewer)
+        out = method == :turn_dequeued ? turn_dequeued(event, viewer, own_enqueued) : send(method, event, viewer)
         out && Redact.deep(out, viewer)
+      end
+
+      # A turn queued: the viewer's own with its enqueued id, client id,
+      # prompt, delivery and author (never its images); anyone else's bare.
+      def turn_enqueued(event, viewer)
+        entry = queued_entry(event, viewer) or return bare(event, viewer)
+
+        { "type" => "turn_enqueued", **seq(event), **entry }
+      end
+
+      # A queued turn taken back or refused: the viewer's own with its
+      # enqueued id (never the client that took it back); anyone else's bare.
+      def turn_dequeued(event, viewer, own_enqueued)
+        enqueued_id = field(event, :enqueued_id)
+        return bare(event, viewer) unless enqueued_id.is_a?(String) && !enqueued_id.empty? && own_enqueued.include?(enqueued_id)
+
+        { "type" => "turn_dequeued", **seq(event), "enqueued_id" => enqueued_id }
+      end
+
+      # Input merged into the running turn: the viewer's own lines (their
+      # origins' enqueued ids) and how many, bare when none is theirs. The
+      # others' (a delegate's report, another person's line) are not named
+      # nor counted. No text: it comes with the turn's messages.
+      def input_merged(event, viewer)
+        own = Array(field(event, :origins)).filter_map do |origin|
+          next unless origin.is_a?(Hash) && viewer.own?(field(origin, :author))
+
+          enqueued_id = field(origin, :enqueued_id)
+          next unless enqueued_id.is_a?(String) && !enqueued_id.empty?
+
+          { "enqueued_id" => enqueued_id, "client_id" => field(origin, :client_id).to_s, "author" => field(origin, :author).to_s }
+        end
+        return bare(event, viewer) if own.empty?
+
+        { "type" => "input_merged", **seq(event), "count" => own.size, "origins" => own }
       end
 
       # A turn's start: who wrote it, and its prompt when a person sent it

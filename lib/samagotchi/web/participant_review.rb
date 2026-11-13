@@ -276,7 +276,9 @@ module Samagotchi
       # session +id+.
       def participant_stream_filter(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        ParticipantStreamFilter.new(participant_viewer(req, session))
+        grant = principal(req).grant unless principal(req).owner?
+        own = grant && ->(enqueued_id) { own_turn?(grant, id, enqueued_id) }
+        ParticipantStreamFilter.new(participant_viewer(req, session), own_enqueued: own)
       end
 
       # A filtered stream's query: only its cursor and its join.

@@ -121,6 +121,33 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(shown({ type: :continue_offered, context: "step limit" })).to eq("type" => "continue_offered")
     end
 
+    it "sends the viewer's own queued turn in the owner's shape, never its images; another's bare" do
+      own = { type: :turn_enqueued, event_seq: 5, enqueued_id: "e1", client_id: "review:p_1", prompt: "mine", author: "p:p_1",
+              delivery: "queue", images: [{ file: "/home/o/proj/shot.png" }] }
+      expect(shown(own)).to eq("type" => "turn_enqueued", "event_seq" => 5, "enqueued_id" => "e1", "client_id" => "review:p_1",
+                               "prompt" => "mine", "author" => "p:p_1", "delivery" => "queue")
+      expect(shown(own.merge(author: "p:p_2", prompt: "THEIRS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
+      expect(shown(own.except(:author).merge(client_id: "web:o", prompt: "OWNERS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
+    end
+
+    it "names the viewer's own dequeued turn by its enqueued id, never the client that took it back; another's bare" do
+      event = JSON.parse(JSON.generate({ type: :turn_dequeued, event_seq: 6, enqueued_id: "e1", client_id: "web:OWNER-TAB" }))
+      expect(described_class.event(event, viewer, own_enqueued: ["e1"]))
+        .to eq("type" => "turn_dequeued", "event_seq" => 6, "enqueued_id" => "e1")
+      expect(described_class.event(event, viewer, own_enqueued: ["e2"])).to eq("type" => "turn_dequeued", "event_seq" => 6)
+      expect(described_class.event(event, viewer)).to eq("type" => "turn_dequeued", "event_seq" => 6)
+    end
+
+    it "counts and names only the viewer's own merged lines: never a delegate's report or another person's line" do
+      event = { type: :input_merged, event_seq: 7, count: 3,
+                origins: [{ client_id: "review:p_1", enqueued_id: "e1", author: "p:p_1" },
+                          { client_id: "delegate:REPORT-ID", enqueued_id: "r1" },
+                          { client_id: "review:p_2", enqueued_id: "THEIR-ID", author: "p:p_2" }] }
+      expect(shown(event)).to eq("type" => "input_merged", "event_seq" => 7, "count" => 1,
+                                 "origins" => [{ "enqueued_id" => "e1", "client_id" => "review:p_1", "author" => "p:p_1" }])
+      expect(shown(event.merge(origins: event[:origins].drop(1)))).to eq("type" => "input_merged", "event_seq" => 7)
+    end
+
     it "turns a snapshot or reset frame into a bare marker: the page re-reads its review data" do
       frame = { type: "snapshot", snapshot: { messages: [{ role: "user", content: "secret" }], cards: [1] },
                 session_state_snapshot: { participants: [{ id: "p_2" }], status: "idle" } }
@@ -315,6 +342,17 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
   let(:viewer) { Samagotchi::Redact::Viewer.new(author: "p:p_1", cwd: "/p") }
 
   def frame(id, data) = "id: #{id}\r\nevent: #{data[:type]}\r\ndata: #{JSON.generate(data)}\r\n\r\n"
+
+  it "names a dequeued turn the viewer's own once this stream sent its enqueue as theirs, or chi web says it is" do
+    known = described_class.new(viewer, own_enqueued: ->(id) { id == "old" })
+    out = known.call(frame("1-ep", { type: "turn_enqueued", enqueued_id: "e1", client_id: "review:p_1", prompt: "go", author: "p:p_1" }) +
+                     frame("2-ep", { type: "turn_dequeued", enqueued_id: "e1", client_id: "review:p_1" }) +
+                     frame("3-ep", { type: "turn_dequeued", enqueued_id: "old" }) +
+                     frame("4-ep", { type: "turn_dequeued", enqueued_id: "someone-else" }))
+    events = out.scan(/^data: (.*)\r$/).flatten.map { |json| JSON.parse(json) }
+    expect(events.drop(1)).to eq([{ "type" => "turn_dequeued", "enqueued_id" => "e1" },
+                                  { "type" => "turn_dequeued", "enqueued_id" => "old" }, { "type" => "turn_dequeued" }])
+  end
 
   it "sends a snapshot frame bare on the stream: no last_turn_drawing, no messages" do
     snapshot = { type: "snapshot", snapshot: { messages: [{ role: "user", content: "secret" }],

@@ -102,6 +102,10 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     types = body["replay"].map { |event| event["type"] }
     expect(types).to eq(%w[turn_started generation_chunk tool_call_started turn_enqueued turn_enqueued])
     expect(body["replay"][2]).to include("tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 })
+    # The viewer's own queued turn as the owner's replay has it; the owner's next one bare.
+    expect(body["replay"][3]).to eq("type" => "turn_enqueued", "enqueued_id" => "e1", "client_id" => client_id,
+                                    "prompt" => "mine", "author" => author, "delivery" => "queue")
+    expect(body["replay"][4]).to eq("type" => "turn_enqueued")
     expect(body["last_event_id"]).to eq("12-ep")
     expect(body["last_event_seq"]).to eq(12)
     expect(JSON.generate(body)).not_to include("TOOL-PARAMS", "SECRET-GEN", root)

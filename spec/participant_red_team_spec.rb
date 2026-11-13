@@ -470,6 +470,10 @@ RSpec.describe "a participant red-teaming a session" do
         { type: :command_ran, line: "/stats", output: "COMMAND-OUTPUT" },
         { type: :context_status, used_tokens: 1, window_tokens: 2 },
         { type: :hook_notice, message: "HOOK-NOTICE" },
+        { type: :turn_enqueued, enqueued_id: "OWNER-EID", client_id: "web:OWNER-TAB", prompt: "OWNER-QUEUED-PROMPT" },
+        { type: :turn_dequeued, enqueued_id: "OWNER-EID", client_id: "web:OWNER-TAB" },
+        { type: :input_merged, count: 1, origins: [{ client_id: "delegate:DELEGATE-CHILD", enqueued_id: "DELEGATE-EID" }] },
+        { type: :pending_input_merged, count: 1, content: "MERGED-TEXT" },
         { type: :brand_new_event, text: "NEW-EVENT-TEXT" },
         { type: :tool_call_started, tool: "read", ref: { kind: "file", path: "#{project}/docs/plan.md" }, iteration: 2, call_index: 0,
           nested: { output: "NESTED-SECRET" } },
@@ -482,7 +486,8 @@ RSpec.describe "a participant red-teaming a session" do
                              "Done: see docs/plan.md")
       expect(out).to include("deploy with [redacted]")
       %w[sk-ant THINKING-SECRET id_rsa .ssh Allow KEYBYTES PRIVATE launch-secrets .env MEMORY-CARD COMMAND-OUTPUT HOOK-NOTICE
-         NEW-EVENT-TEXT NESTED-SECRET SUMMARY 9.99 shot.png out.txt reply.md context_status used_memories working_set].each do |leak|
+         NEW-EVENT-TEXT NESTED-SECRET SUMMARY 9.99 shot.png out.txt reply.md context_status used_memories working_set
+         OWNER-EID OWNER-TAB OWNER-QUEUED-PROMPT DELEGATE-CHILD DELEGATE-EID MERGED-TEXT].each do |leak|
         expect(out).not_to include(leak), leak
       end
       expect(out).not_to include(root)
