@@ -199,6 +199,20 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     }])
   end
 
+  # Phase C serves index.html to a participant with these; today their
+  # link still opens the participant page (participant_shell).
+  it "stamps the main page's <body> for a participant with nothing of the owner's machine" do
+    session.working_directory = File.join(root, "secret-project")
+    session.save(state_dir: state_dir)
+    env = Rack::MockRequest.env_for("/?dir=#{root}&from=#{root}")
+    env[described_class::PRINCIPAL_ENV] = Samagotchi::Web::Principal.new(kind: :participant, grant: issued.grant)
+    attrs = app.send(:index_data_attributes, Rack::Request.new(env))
+    keys = attrs.scan(/data-([a-z-]+)=/).flatten
+    expect(keys).to contain_exactly("version", "session", "session-title", "annotate-presets", "viewer-kind", "viewer-can")
+    expect(attrs).to include(%(data-session="#{session.id}"), %(data-session-title="plan review"), %(data-viewer-kind="participant"))
+    expect(attrs).not_to include(root, Dir.home, "secret-project")
+  end
+
   it "leaves the owner's show as it was: no client id on the owner's viewer" do
     expect(read(owner_token).last["viewer"]).to eq("kind" => "owner", "id" => nil, "name" => nil,
                                                    "can" => Samagotchi::Web::Viewer::CAPABILITIES)

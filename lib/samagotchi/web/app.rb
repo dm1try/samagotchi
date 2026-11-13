@@ -1969,6 +1969,8 @@ module Samagotchi
       # #code= and the app's start_url "/" all land there). ?dir= beats
       # ?scope=all.
       def index_data_attributes(req)
+        return participant_index_data(req) unless principal(req).owner?
+
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(start_dir), "version" => Samagotchi::VERSION }
@@ -2001,6 +2003,24 @@ module Samagotchi
             attrs["back-dir"] = back
           end
         end
+        body_data(attrs)
+      end
+
+      # A participant's <body> data for index.html (served to them from the
+      # participant main page's Phase C on): who they are (Viewer), their
+      # grant's session and its participant title (the tab's), the version
+      # and the Annotate presets. Nothing of the owner's machine: no home,
+      # folders, project or way back (sessions-dir, server-dir, home,
+      # scope-dir, project-*, back-*).
+      def participant_index_data(req)
+        grant = principal(req).grant
+        attrs = { "version" => Samagotchi::VERSION, "session" => grant.session_id }
+        title = Degrade.call(:web, "participant_title_unreadable", fallback: nil) do
+          participant_title(@session_class.load(grant.session_id, state_dir: default_state_dir))
+        end
+        attrs["session-title"] = title if title
+        attrs.merge!(annotate_presets_data)
+        attrs.merge!(Viewer.for(principal(req)).body_attributes)
         body_data(attrs)
       end
 
