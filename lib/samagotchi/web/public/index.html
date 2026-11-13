@@ -40,6 +40,8 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
    (the gradient covers the body): it is the body's background-color, which is what iOS 26's Home Screen app paints
    the status bar strip in (not theme-color, not html's background; with no colour the strip is black). */
 @media(max-width:600px){body{background:linear-gradient(var(--bg-top),var(--bg) 420px),var(--bg-top)}}
+/* iOS 26 blurs the Home Screen app's top band under the clock; measured 28px total is needed, and a fixed element does not help. */
+@media (display-mode:standalone) and (max-width:600px){body{padding-top:12px}}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 .turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 @media(hover:hover){#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}}

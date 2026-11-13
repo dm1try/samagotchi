@@ -268,11 +268,11 @@ so a Safari tab's toolbar never covers the composer). index.html's `:root` names
 (`env(safe-area-inset-*)`, 0 on a desktop), and only these read them: main's padding (16px, or the inset where it is
 wider; its bottom is 16px less than `--safe-b`, since the session's card floats 16px above main's bottom; a phone's
 session panel has no bottom padding and runs to the screen's bottom, its card at `--dock-bottom`, 16px or the
-indicator's line), a bottom
-sheet's offset (`chip_popover.js place`: 8px above the indicator, or a keyboard's offset alone), the update sheet, the
-toast's fallback place (in a session `--toast-bottom` already sits it above the card), the lightbox's padding and the
-signed-out banner (`auth_lost.js`, `env()` itself: the participant page has no `--safe-*`). A new fixed or bottom-anchored
-piece reads `--safe-*`, never `env()`: the e2e set the names by hand (`web.spec.js`, a portrait phone and a landscape one),
+indicator's line), a bottom sheet's offset (`chip_popover.js place`: 8px above the indicator, or a keyboard's offset
+alone), the update sheet, the toast's fallback place (in a session `--toast-bottom` already sits it above the card), the
+lightbox's padding and the signed-out banner (`auth_lost.js`, `env()` itself: the participant page has no `--safe-*`).
+On phones, the standalone app also has a 12px body inset, keeping its content below iOS 26's blurred band under the
+clock. A new fixed or bottom-anchored piece reads `--safe-*`, never `env()`: the e2e set the names by hand (`web.spec.js`, a portrait phone and a landscape one),
 as Chromium has no insets. The theme-color metas are tokens.css's `--bg-top` per theme up to 600px wide (a phone's page starts from that colour at its top edge, so the status bar meets the top bar with no seam), else its `--bg` (`theme.test.js` pins them). An iOS 26 Home Screen app ignores them for the status bar strip: it paints the strip in the body's `background-color`, so a phone's body gradient keeps a `--bg-top` colour layer under it (black strip without one).
 In a session, the dock (composer card) shares the history's centered column, at most 960px wide; its right edge follows a classic scrollbar (`--history-sb`, 0 with overlay scrollbars; index.html and `dock_reserve.js`).
 
