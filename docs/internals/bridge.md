@@ -57,8 +57,10 @@ Three other users: `replay_events(turn)` turns a `current_turn` back into the li
 `command_queued` per waiting command), which chi web's `GET /api/sessions/:id` sends as `replay` from the worker's
 snapshot (`from_wire` symbolizes it), so any worker's snapshot gives the page the same events
 (`spec/shared/turn_snapshot.json` pins it); `messages_of` gives a
-plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_turn?` tells `POST /turn` that
-a participant's review turn runs, so the owner's input queues behind it.
+plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_author` (and
+`participant_turn?`) tell `POST /turn` whose turn runs: input goes into it only from its own author
+(`Bridge#same_author_steer?`), so the owner's input queues behind a participant's turn, and a participant's goes in at
+the next step of their own turn only.
 
 ## TurnDrawings
 

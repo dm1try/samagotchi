@@ -175,15 +175,17 @@ row answers another session's id 404, so a new route is covered without a new ex
 
 | Route | Permission | A participant gets |
 |---|---|---|
-| `POST /api/sessions/:id/turn` | participant | a queued review turn of their own ([Turns](#turns)) |
+| `POST /api/sessions/:id/turn` | participant | a turn of their own, or a line into their own running turn at its next step ([Turns](#turns)) |
+| `POST /api/sessions/:id/cancel` | participant | their own running turn stopped, named by its `turn_id` ([Turns](#turns), Stopping their turn); no `turn_id`, the owner's turn or another participant's: 403 `not_permitted`, audited |
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); `wait/prepare` answers only what that wait needs, `{session_id, baseline: {last_turn}, known_turn, live, last_turn_id}` (`last_turn_id` only when it is their turn), never the owner's cursor, message count, question or running turn; the answer trimmed to `{status, text, turn_id, outcome, cancel_reason}`, the reply's `text` through `ParticipantView.reply` (no thinking or tool call, redacted) and any other text (an error's exception, a failed turn's summary) `ParticipantMessages::TURN_FAILED`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it; a revoke or the expiry ends a `wait` already running (401 `token_revoked` / `token_expired`), as it ends their stream |
 | `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
 | `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}`; a participant's `viewer` has their `usage` |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
+| `GET /api/sessions/:id/working_set` | participant | the working set's project files only (`ParticipantView.working_set`), with `running` |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
-| `GET /api/sessions/:id` | participant | their session only, whatever the query (`brief`, `cards`, `tail`, `timing`): `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
+| `GET /api/sessions/:id` | participant | the main page's show in the owner's shape, every part filtered (`Web::ParticipantShow`, [The main page's show](#the-main-pages-show)); `?tail=1` and `?timing=1` filtered, `?cards=1` `{cards: []}`; `?brief=1` (what `SessionAccess::Remote#show` reads) `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
 
 Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt carried is "[image]" on their page),
 `/output` (the raw replies), the hub's `/api/events`, the cap route. Static assets (`/app.js`, …) are served to any principal past the gate: they are the public frontend.
@@ -223,30 +225,39 @@ stamped pair (`SessionParticipants#prompt_mode`); the participant page's `viewer
 (`ParticipantMode.live_for`).
 
 A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
-`prompt`. Three layers keep it a participant's own turn, inside its mode's boundary.
+`prompt` and `delivery`. Three layers keep it out of anyone else's turn, inside its mode's boundary: it goes into a
+running turn only when that turn is theirs (at its next step, as the owner's message does), else it runs as a turn
+of its own after it.
 
 **chi web.** The author is the grant's (`p:<id>`) and the client id `review:<id>` (`ClientId.review`: a human's
-input, origin `review`, source `participant`, labelled `review`); the body's `client_id`, `author`, `delivery`,
-`no_interrupt` and `images` never count. Refused before delivery, each audited:
+input, origin `review`, source `participant`, labelled `review`); the body's `client_id`, `author`,
+`no_interrupt` and `images` never count, and its `delivery` only as `queue` or next step (none: next step).
+Refused before delivery, each audited:
 
 - a line starting `!` or `/` (after leading spaces): 403 `not_permitted`, so no shell line, session command or
   plugin command (v1);
 - images: 403 `not_permitted` (D10);
+- a cut (`delivery: cut`): 403 `not_permitted`: a participant's message never cuts a generation;
 - the grant's cap: 429 `cap_reached`, from the session's saved analytics (`SessionMetrics.saved_spend`).
 
-It goes out as `delivery: queue` (D6) with `pending_limit` = the grant's queue limit + 1 (the running one), never
+It goes out with that delivery and `pending_limit` = the grant's queue limit + 1 (the running one), never
 into the owner's prompt history. The Bridge counts the author's running and queued turns under its event lock and
 answers 429 `too_many_turns` past it; with no worker, their waiting input files are counted, and the new one
 written, under the session dir's `participants.lock` (`SessionManager.deliver_turn`), so two at once can't both
-pass. The ack is 202 with
-`delivery: "queue"`; chi web keeps enqueued id → grant (the last 1000), which `dequeue` and `wait` check, falling
+pass. The ack is 202 with the worker's
+`delivery` (`queue`: a turn of its own; `next_step`: into their running turn, or the next turn of an idle worker; a
+file, with no worker yet, reads `queue`); chi web keeps enqueued id → grant (the last 1000), which `dequeue` and `wait` check, falling
 back after a restart to the author the session's files keep (`ParticipantAccess#turn_author`): the waiting or claimed
 input file's, then `last_turn`'s or the settled record's (a refused turn's, `TurnCheckpoint.record_refused`; one whose
 worker died, `TurnCheckpoint.settle`, from its checkpoint mark's `author`).
 
-**The worker.** A participant's input file waits for its own turn whatever its delivery says
-(`SessionInbox.waits_for_turn_end?`), so a drain never merges it into another author's turn; the Bridge queues their
-`POST /turn` whatever it asks and never cuts for it; a participant's `/word` or `!line` is refused by the Bridge (403)
+**The worker.** A participant's input file goes into a running turn only of its own author
+(`SessionInbox.waits_for_turn_end?` / `turn_end_data?` with the running turn's participant author, which the worker
+keeps from the turn's origin, `Worker#@turn_author`), so a drain never merges it into another author's turn, and a
+participant's turn takes nobody else's line; the Bridge queues their `POST /turn` unless their own turn runs
+(`Bridge#same_author_steer?`, under the event log) and never cuts for it; a line merged into their own turn first
+gets the checks their queued turn gets at its start (below: the link, the cap), and one refused is dropped as that turn
+would be, never merged; a participant's `/word` or `!line` is refused by the Bridge (403)
 and dropped from the worker's file path. A participant's turn goes only to a worker that names the `review_turns`
 feature (409 `review_unavailable` otherwise: it has no boundary; restart it), and never as a file while a worker
 that may be older holds the session (504 `worker_timeout`: send again). Before a queued participant turn starts, the
@@ -263,11 +274,24 @@ delivers, on the features of the sidecar its client was made from), since an old
 worker that starts for it is current. The participant page's session summary carries `verify_unavailable`
 (`VerifyAnchor.worker_unavailable?`, from the worker's features; `participant_review.rb`), and the page disables
 Verify and Verify fresh with a "restart this session" hint.
-**The owner's input during a review turn queues.** While a participant's turn runs, the owner's input never merges
+**Their message during their own turn goes in at its next step.** A worker names `participant_steer`
+(`Delivery::OWN_TURN_STEER_FEATURE`) when it does; one without it queues every participant message, which is safe by
+construction, so the feature only says what will really happen (chi web's ack, the page's delivery line). A
+message sent while someone else's turn runs (the owner's, another participant's) queues behind it as their own turn.
+
+**Stopping their turn.** `POST …/cancel` from a participant (`ParticipantAccess#participant_cancel`) names the
+turn by its `turn_id`: chi web reads the live snapshot's running turn, requires it to be that turn and theirs (its
+author the grant's), and asks the worker to cancel that turn id (`BridgeClient#cancel(turn_id:)`), which
+`TurnState#cancel!` compares under its lock (409 `turn_mismatch`): a turn that ended and gave way to another
+person's between the read and the cancel is never stopped. Without a `turn_id` (the Bridge would cancel whatever
+runs), or for a turn not theirs, it is 403 `not_permitted`, audited. The reason is the server's (`user`), never the
+body's.
+
+**The owner's input during a participant's turn queues.** While a participant's turn runs, the owner's input never merges
 into it, from any client (the web, an attached TUI, `chi send` without `--queue`): the Bridge's `POST /turn` makes it
-`delivery: queue` whatever it asked, so it never steers or cuts (`TurnAccumulator#participant_turn?`, under the event
-lock), and its ack and `:turn_enqueued` say `queue`; the worker's drain takes no input file during a participant's
-turn (`Worker#pending_input_drain`, for a file the Bridge never saw), so each runs as the owner's own turn after it.
+`delivery: queue` whatever it asked, so it never steers or cuts (`Bridge#same_author_steer?`, under the event
+lock), and its ack and `:turn_enqueued` say `queue`; the worker's drain takes only the participant's own lines
+during their turn (`Worker#pending_input_drain`, for a file the Bridge never saw), so each runs as the owner's own turn after it.
 The web's delivery line says so (`participantTurn`: Enter queues, no cut), the TUI prints its queued note, `chi send`
 says `(queued: runs after the current turn)` and its `--wait` waits for that turn (`ReplyWait::Target.message`). The owner's
 own turns steer as before. A step-limit Continue of a participant's turn (the owner answers it) continues as theirs: its origin (a `TurnOrigin`,
@@ -283,8 +307,9 @@ turns run in the order they came, each through the link and cap check above as i
 offer too and so releases them. A held file isn't queued input for the idle-exit policy (`Worker#input_pending?`): `/exit`
 and `chi sessions restart` name what waits, the offer (`continue_offered`), not a queued prompt. The offer lives in
 the worker: a worker that restarts has none, and runs them.
-Their `wait` always waits as for a queued turn of theirs, never for the next reply past a cursor (which could be
-anyone's); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`), the offer asked before the wait
+Their `wait` waits on their turn's id, never for the next reply past a cursor (which could be anyone's); a line
+merged into their own running turn is followed into it by its merge record (`ReplyWait::Poll#follow_merge`: chi web
+waits with `queued: false`, and the poll asks `turn_end_data?` as for its author's own turn); on a held turn it answers `waiting_for_owner` (`ReplyWait::Poll#held`), the offer asked before the wait
 began too. A chi client gets it through `--remote` with a participant's token in `remotes.yml`: `chi --remote NAME
 send --wait --turn T ID` reaches only participant routes (resolve, `wait/prepare` and `wait` on their turn), and
 `ParentReport` reads `waiting_for_owner` as its own status, exit 3 like a question, its detail
@@ -339,12 +364,13 @@ made by `chi share revoke` in another process; the page then reads a 401 and sho
 
 ## What a participant sees
 
-D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states.
+D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states
+(and for what kind of thing: an approval, a question, a continue offer); for the main page (2026-11-13) also the
+context's fill, the speed, each turn's time and the working set's file names.
 Not tool output or arguments, thinking, approvals' and questions' content, memories (text or names), context notes,
-plugin steers, automatic and delegate input, cards, command output, the working set (the user decided: not), cost
-(but their own usage, as their grant's exposure shows it),
-timing (durations, records: only the wall time `at` of each prompt, reply and turn start, for the page's gap lines
-and hover times, D6 of the session-time-gaps plan), host paths or the owner's prompt history. Every read a participant reaches goes through one module,
+plugin steers, automatic and delegate input, cards, command output, the working set's memories and URLs, cost
+(but their own usage, as their grant's exposure shows it), tokens and cost per model, guardrail judgments,
+host paths or the owner's prompt history. Every read a participant reaches goes through one module,
 `Web::ParticipantView` (`lib/samagotchi/web/participant_view.rb`), whose every answer is a new hash built from named
 fields: a field added to an event later reaches nobody until it is named there.
 
@@ -354,9 +380,18 @@ fields: a field added to an event later reaches nobody until it is named there.
   type and turn id; `turn_completed` may also carry an allowlisted verdict card), `generation_chunk` (its visible
   `text` only; a thinking-only chunk is dropped),
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
-  the session's folder when it is inside it; never when that folder is home or `/`), `tool_call_completed` (its status word), and bare markers (the type
-  alone) for the queue (`turn_enqueued`, `turn_dequeued`, `input_merged`), the owner's question, approval or Continue
-  offer and their answers, and `snapshot` / `reset`: the page re-reads its review data at each (the latest read
+  the session's folder when it is inside it, flat as `path` for the participant page and as the owner's `ref`
+  `{kind: "file", path, line, end_line}` for the main page; never when that folder is home or `/`),
+  `tool_call_completed` (its status word); the viewer's **own** queue events in the owner's shape (`turn_enqueued`:
+  `enqueued_id`, `client_id`, `prompt`, `delivery`, `author`, never images; `turn_dequeued`: its `enqueued_id`, never
+  the client that took it back, the filter knowing their ids from the `turn_enqueued` it sent them and from
+  `ParticipantAccess#own_turn?`; `input_merged`: the count and origins of their own lines only), anyone else's bare;
+  `question_requested` and `continue_offered` with one derived `kind` (`.waiting_kind`: `approval` for a guardrail's
+  approval or a relayed one, `continue` for the step-limit question and every offer, `question` else); the main
+  page's numbers (`context_status`: usage's `estimated_pct` and token counts, `bucket`, a switch's
+  `context_window_tokens`, never `status`, the model-facing line; `generation_completed`: its `speed` only;
+  `working_set_updated`: `.working_set`, below), which the participant page doesn't listen for; and bare markers
+  (the type alone) for the answers to a question or offer, and `snapshot` / `reset`: the page re-reads its review data at each (the latest read
   wins), draws no live event from a turn's start or end until that re-read, and then streams again from the data's
   `last_event_id`, so the events after its snapshot replay onto it; a read that fails (unreachable, a 5xx) keeps the
   page and is retried with a backoff under a "retrying" line. Refusals show the server's `detail`. Every other type,
@@ -389,6 +424,44 @@ fields: a field added to an event later reaches nobody until it is named there.
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
+- **The working set** (`.working_set`: the event and `GET …/working_set`): the file items inside the project, the
+  key made relative, with `state`, `tokens`, `ops`, `count`, `pinned`, and the set's `at`. Never a memory or URL
+  item, a path outside the project, `first_id`, `has_drop` or the pending `adds`.
+
+### The main page's show
+
+`GET /api/sessions/:id` for a participant (`Web::ParticipantShow#participant_main_show`) is the main page's read
+in the owner's shape (`SessionShow#owner_show`'s keys, from the same `show_reads`), every part through
+`ParticipantView`; Phase C of the participant main page switches their link to it, until then the participant page
+reads `GET …/review`. `spec/web/participant_show_spec.rb` holds its parity: no key the owner's lacks but the
+verdicts' (`fresh_running`, `session.verify_unavailable`).
+
+- `messages` as the review read's, stamped `drawn` (the turn whose drawing draws them); `turn_drawings` each
+  finished turn's drawing replayed event by event through `.event` (no cards), its start's prompt the filtered
+  messages' prompt of that turn, else none (an automatic turn, a wake, a delegate child's task: a made drawing's
+  start has no origin to say so), its end `.drawing_end` (type, turn id, duration, kept steps; never a failure's
+  words or a cancel's reason).
+- `current_turn` (`.current_turn`: its start, text, tool rows, `waiting_for_owner` and `kind`, and the generation's
+  phase, `generation: {thinking_only, age}`, the delivery line's clock), `replay` (the join's events through
+  `.event`) and `queued` (the viewer's own entries, `.queued_entry`).
+- `session`: id, participant title, status (idle when a worker says running with no turn), `bridge_up`,
+  `worker_features`, `verdicts` (filtered, as the review's) and `verify_unavailable`.
+- `viewer`: `Web::Viewer`'s kind, id, name, `can` (`Viewer::PARTICIPANT_CAPABILITIES`: `send`, `stop_own_turn`,
+  `steer_own_turn`, and of the owner's `working_set`), `client_id` (`review:<grant id>`, which chi web gives their
+  turns), the participant page's `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
+  `waiting_for_owner` (the kind the session waits on, the review read's rule: the running turn's question, a
+  Continue offer, a question between turns; nil when nothing).
+- `timing` (`.timing`): the session's clock, each turn record's id, times, `duration_ms`, `decode_tps` and
+  `tps_source`, the running turn's start, the context's `used_tokens` and `window_tokens`. Never `tool_records`,
+  `active_tools`, `tokens`, `model_segments`, `memory_index`, `side`, nor a record's cost, tokens, model, author,
+  cancel reason or failure.
+- Empty or nil: `history`, `commands`, `cards`, `init_tasks`, `queued_commands`, `recap`, `saved_recap`,
+  `continue_offer`, `pending_question`, `failed_turn`, the warnings, the markdown tips; `capabilities` never names
+  the editor.
+
+The main page's `<body>` for a participant (`App#participant_index_data`, for Phase C): `version`, `session`,
+`session-title`, the Annotate presets and the viewer; nothing of the owner's machine (`home`, the folders,
+`project-*`, `back-*`).
 - **Their usage** (`viewer.usage`, `ParticipantReview#review_usage`, built from named fields by the exposure policy
   beside `ParticipantView`'s): the fields their grant's exposure shows
   ([Grants](#grants)); at `own`, `{spent, cap, queued, queue_limit, expires_at, model}`. `spent` is dollars: the saved
@@ -767,12 +840,14 @@ participant TUI in v1.
   from the principal, never the body.
 - Everything a participant reads (their stream, the review, the show) is built by `ParticipantView` from named fields;
   an event type it doesn't name is dropped. The owner's participant view reads through the same filter.
-- A participant's turn is always a queued turn of its own (chi web, the Bridge, the inbox), never a command or a
+- A participant's message is a turn of its own, or goes into their own running turn at its next step (chi web, the
+  Bridge, the inbox), never into anyone else's turn and never a cut, a command or a
   shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary: in a review
   session it denies everything but reads of the project; in a working session (a worker with `pair_turns`) the pair
   boundary denies secrets and owner-voiced tools, the owner's guardrails decide the rest, and every ask is the
   owner's, once only.
 - A participant's message is never sent without its review header, and never merged into the owner's message.
-- The owner's input is never merged into a participant's running turn (the Bridge queues it, the drain takes none):
-  it runs as the owner's own turn after it.
+- The owner's input is never merged into a participant's running turn (the Bridge queues it, the drain takes only
+  the participant's own lines): it runs as the owner's own turn after it.
+- A participant stops only a turn they started, named by its id, which the worker compares under its lock.
 - A participant's turn never answers or drops the owner's Continue offer: it waits until the owner has.

@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web: a participant's message sent while their own turn runs now goes into that turn at its next step, as the owner's does; during someone else's turn it still waits and runs as their own turn after it.
+
 ### Fixed
 
 - chi web: in the iPhone Home Screen app, the top bar no longer sits in iOS's blurred band under the clock.

@@ -247,6 +247,13 @@ gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answer
 | `stop_any_turn` | the stage's Stop turn (`onCancel`) | `POST …/cancel` |
 | `steer_any_turn` | none yet: the server queues a non-owner's input; the delivery line reads it in a later phase | |
 
+A participant's `can` (`Viewer::PARTICIPANT_CAPABILITIES`, in their show's `viewer` and on `<body>`) names
+capabilities of their own, not the owner's: `send` (the composer), `stop_own_turn` (Stop turn on a turn they
+started, `POST …/cancel` with its `turn_id`), `steer_own_turn` (a message during their own turn goes in at its next
+step, on a worker with `participant_steer`); and of the owner's only `working_set`, which their route serves
+filtered. The page reads them from the participant main page's Phase C on
+([participants.md](participants.md#the-main-pages-show)).
+
 The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls without one of the above:
 `/api/update*` and `…/restart` (`version_notices.js`: its versions come only from the hub stream, `sessions`);
 `…/archive`, `…/unarchive`, `DELETE …/:id` (the bar's buttons, `session_controls`; the strip and the all view,
