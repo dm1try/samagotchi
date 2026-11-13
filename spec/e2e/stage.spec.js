@@ -540,6 +540,10 @@ test("a question folded in the stage stays folded across a reload mid-turn, at i
   await page.reload();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
   await expect(card).toBeVisible();
+  await stageEl(page).locator(".ts-cancel").click();
+  await page.mouse.move(0, 0);
+  await handedOff(page, 1);
+  await expect(page.locator("#history .bubble.cancel")).toContainText("canceled");
 });
 
 // A reload after the turn's question was answered, while the turn still
