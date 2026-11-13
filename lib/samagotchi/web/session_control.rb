@@ -311,6 +311,7 @@ module Samagotchi
       # else is manual) and the reply echoes its choice. No reason: user.
       def handle_cancel(req, id)
         @session_class.load(id, state_dir: default_state_dir)
+        return participant_cancel(req, id) unless principal(req).owner?
 
         parsed = parse_json(request_body(req))
         reason = (parsed["reason"] if parsed.is_a?(Hash)).to_s.strip
@@ -318,6 +319,12 @@ module Samagotchi
 
         turn_id = (parsed["turn_id"] if parsed.is_a?(Hash)).to_s.strip
         request = ->(client) { turn_id.empty? ? client.cancel(reason: reason) : client.cancel(reason: reason, turn_id: turn_id) }
+        relay_cancel(id, request)
+      end
+
+      # The cancel's relay to the worker and its answers (the owner's and a
+      # participant's, ParticipantAccess#participant_cancel).
+      def relay_cancel(id, request)
         relay(id, bridge_client(id), request, what: "the turn was not cancelled", cant: "cancel turns") do |reply|
           case reply.status
           when 202

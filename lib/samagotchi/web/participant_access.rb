@@ -14,6 +14,7 @@ require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../turn_checkpoint"
+require_relative "../turn_origin"
 require_relative "../verify_fresh"
 require_relative "../log"
 
@@ -252,6 +253,39 @@ module Samagotchi
         now = @grants.now
         Participants.read(id, state_dir: default_state_dir).select { |entry| entry.active?(now) }
                     .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
+      end
+
+      # POST …/cancel from a participant: only their own running turn, named
+      # by its turn_id. The live snapshot's turn must be that turn and
+      # theirs (its author is the grant's), and the worker is asked to
+      # cancel that turn id (TurnState#cancel! compares it under its lock,
+      # 409 turn_mismatch): a turn that ended and gave way to another
+      # person's between the read and the cancel is never stopped. No
+      # turn_id (the Bridge would cancel whatever runs), or a turn that
+      # isn't theirs: 403 not_permitted, audited. The reason is the
+      # server's, never the body's.
+      def participant_cancel(req, id)
+        parsed = parse_json(request_body(req))
+        turn_id = (parsed["turn_id"] if parsed.is_a?(Hash)).to_s.strip
+        return not_permitted_for(req, principal(req)) if turn_id.empty?
+
+        live = bridge_get_json(id, "snapshot")
+        return not_live(id) unless live.is_a?(Hash)
+
+        turn = live.dig("snapshot", "current_turn")
+        return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) unless turn.is_a?(Hash)
+        return not_permitted_for(req, principal(req)) unless own_running_turn?(principal(req).grant, turn, turn_id)
+
+        relay_cancel(id, ->(client) { client.cancel(reason: PARTICIPANT_CANCEL_REASON, turn_id: turn_id) })
+      end
+
+      # Bridge::CANCEL_REASONS' "user": the person who sent it stopped it.
+      PARTICIPANT_CANCEL_REASON = "user"
+
+      # Whether the snapshot's running +turn+ is +turn_id+ and +grant+'s.
+      def own_running_turn?(grant, turn, turn_id)
+        author = turn["author"] || TurnOrigin.from(turn["origin"])&.author
+        turn["turn_id"].to_s == turn_id && author.to_s == grant.author
       end
 
       # ── A participant's turn ──────────────────────────────────────────

@@ -288,7 +288,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :owner, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/turn/([^/]+)/dequeue\z}, :handle_dequeue_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop, :owner, :session],
