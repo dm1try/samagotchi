@@ -13,7 +13,7 @@ globalThis.matchMedia ??= () => ({ matches: false });
 if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate = () => ({ finished: Promise.resolve(), cancel() {}, playState: "finished" });
 
 const {
-  CONTINUE_KEY, cardIn, createStageWaiting, pluginCardKey, questionKey, waitingKey, waitingKind,
+  CONTINUE_KEY, cardIn, createStageWaiting, foldKey, pluginCardKey, questionKey, waitingKey, waitingKind,
 } = await import("../../../lib/samagotchi/web/public/stage_waiting.js");
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
@@ -86,6 +86,70 @@ test("the fold: the folded card's key; one more card waiting drops it, an answer
   assert.equal(w.folded(), null);
   w.fold(null);
   assert.equal(w.trackFold("q:1"), null);
+});
+
+// The fold of the asking card is this tab's own (audit r20 D5): a Map-backed
+// storage stands in for sessionStorage, one per test.
+function foldStore() {
+  const map = new Map();
+  return {
+    read: (k) => map.get(k) ?? null,
+    write: (k, v) => map.set(k, String(v)),
+    remove: (k) => map.delete(k),
+  };
+}
+
+test("the fold kept for the tab: written on fold, gone on unfold and on the drop; a replay takes it back", () => {
+  const store = foldStore();
+  const at = foldKey("s1");
+  const w = createStageWaiting({ sessionId: () => "s1", storage: store });
+  w.arrive("q:1", { kind: "question", docked: true });
+  assert.ok(store.read(at) === null, "nothing stored before a fold");
+  w.fold("q:1");
+  assert.deepEqual(JSON.parse(store.read(at)), { key: "q:1", with: 1 }, "the card and how many waited");
+
+  // The replay redrew the same card: memory is empty, the stored fold comes back.
+  w.reset();
+  assert.equal(w.folded(), null, "reset clears memory only");
+  assert.ok(store.read(at), "reset leaves the stored entry alone");
+  w.arrive("q:1", { kind: "question", docked: true });
+  assert.equal(w.trackFold("q:1"), "q:1", "the fold the tab kept");
+
+  // A different card is not the folded one.
+  w.fold(null);
+  assert.ok(store.read(at) === null, "unfolded: the entry goes");
+  w.fold("q:1");
+  w.arrive("q:2", { kind: "approval", docked: true });
+  assert.equal(w.trackFold("q:1"), null, "one more waiting drops it");
+  assert.ok(store.read(at) === null, "and a reload must not fold it back");
+  w.arrive("q:1", { kind: "question", docked: true });
+  assert.equal(w.trackFold("q:1"), null, "nothing stored: no fold to take back");
+
+  // A check-in card folds too, by its own key.
+  w.arrive("c:ci", { kind: "asks", docked: true });
+  w.fold("c:ci");
+  assert.deepEqual(JSON.parse(store.read(at)), { key: "c:ci", with: 2 }, "two cards waited at the fold");
+  // Answered for good.
+  w.clearFold();
+  assert.ok(store.read(at) === null);
+
+  // No session: nothing to keep, and nothing thrown.
+  const bare = createStageWaiting({ storage: store });
+  bare.arrive("q:1", { kind: "question", docked: true });
+  bare.fold("q:1");
+  assert.ok(store.read(at) === null, "no session, no entry");
+});
+
+test("the fold survives the cards the resync takes off and puts back", () => {
+  const store = foldStore();
+  const w = createStageWaiting({ sessionId: () => "s1", storage: store });
+  w.arrive("q:1", { kind: "question", docked: true });
+  w.fold("q:1");
+  // removeQuestion / replaceQuestionCard only settle the card: the entry stays.
+  w.settle("q:1");
+  assert.ok(store.read(foldKey("s1")), "settling does not clear it");
+  w.arrive("q:1", { kind: "question", docked: true });
+  assert.equal(w.trackFold("q:1"), "q:1", "the redrawn card is folded as it was");
 });
 
 test("the key and kind read off a card; a plugin card keeps its key across a DIV ↔ DETAILS swap", () => {

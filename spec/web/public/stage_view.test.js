@@ -7,6 +7,17 @@ import assert from "node:assert/strict";
 for (const k of ["MutationObserver", "CustomEvent", "localStorage", "getSelection"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
 }
+// The fold of the asking card is this tab's (stage_waiting.js): a storage of
+// the file's own, emptied for every page, so one test's fold is not another's.
+const foldStore = new Map();
+globalThis.sessionStorage = {
+  get length() { return foldStore.size; },
+  key: (i) => [...foldStore.keys()][i] ?? null,
+  getItem: (k) => foldStore.get(k) ?? null,
+  setItem: (k, v) => foldStore.set(k, String(v)),
+  removeItem: (k) => foldStore.delete(k),
+  clear: () => foldStore.clear(),
+};
 globalThis.ResizeObserver ??= class { observe() {} disconnect() {} };
 globalThis.matchMedia ??= () => ({ matches: false });
 if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate = () => ({ finished: Promise.resolve(), cancel() {}, playState: "finished" });
@@ -15,6 +26,7 @@ const { createStageView } = await import("../../../lib/samagotchi/web/public/sta
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 
 function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null, isNearBottom = () => false } = {}) {
+  foldStore.clear();
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
   const view = createStageView({
@@ -1460,6 +1472,33 @@ test("a reset drops the asking form's fold: the next turn's question arrives ope
     asks(view);
     append(askingCard("Again?", "q9"));
     assert.ok(!collapsed(view));
+  } finally {
+    view.reset();
+  }
+});
+
+test("the docked card's fold is kept for the tab: the replay of the turn folds it again, the hand-off ends it", async (t) => {
+  const { view, append } = savedPage(t, false);
+  try {
+    asks(view);
+    append(askingCard());
+    $(view, ".ts-fold").click();
+    assert.ok(collapsed(view), "folded by hand");
+    assert.equal(sessionStorage.getItem("chi_asking_fold:s1"), JSON.stringify({ key: "q:q1", with: 1 }), "the card and the count");
+    // A resync: the turn's slots emptied, the same card drawn again.
+    view.turnStarted({ promptBubble: row("bubble user") });
+    asks(view);
+    append(askingCard());
+    await frame();
+    assert.ok(collapsed(view), "as the user left it");
+    assert.equal(view.waiting.folded(), "q:q1");
+    // The turn ends and hands off: the fold is done with.
+    asks(view, { it: 2, text: "Read it." });
+    view.generationCompleted();
+    view.turnEnded({ kind: "completed" });
+    view.answerReady();
+    view.handOff({ immediate: true });
+    assert.ok(sessionStorage.getItem("chi_asking_fold:s1") === null, "the hand-off clears it");
   } finally {
     view.reset();
   }
