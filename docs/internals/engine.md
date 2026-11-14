@@ -688,10 +688,10 @@ announced at once, marked `anytime: true`, **never as the running turn's events*
 Both loops, unless marked:
 
 - <a id="a-reply-that-is-only-a-tool-call"></a>**A reply that is only a tool call** (`LLM::StrayToolCall`, chat loop
-  only): a reply with no tool calls whose whole text is one tool-call block closed by the tag that opened it
-  (`<function=` by `</function>`, `<parameter=` by `</parameter>` or `</function>`, `<tool_call>` by
-  `</tool_call>`; inner tags not needed) isn't an answer. Prose or a fence before it, or anything after the close,
-  keeps it an answer. Nothing is guessed from the block and it never enters the history (`:generation_completed` and
+  only): a reply with no tool calls whose whole text is one tool-call block closed by the tag that opened it, or by
+  the wrapper's `</tool_call>` (`<function=` by `</function>` or `</tool_call>`, `<parameter=` by `</parameter>`, `</function>`
+  or `</tool_call>`, `<tool_call>` by `</tool_call>`; inner tags not needed) isn't an answer. Prose or a fence before it, or anything
+  after the close, keeps it an answer. Nothing is guessed from the block and it never enters the history (`:generation_completed` and
   `:after_generation` have already seen the text): `:generation_retrying`
   with `restarted` voids the streamed text, `:empty_answer_retry` with `malformed` goes out, and a hidden
   `TurnNote.malformed_retry` asks again at the retry temperature. Its own budget (`retry.empty_answer: 0` doesn't turn
