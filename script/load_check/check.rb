@@ -257,10 +257,14 @@ module LoadCheck
           next if name.nil? # a loop-built autoload: the name is not a literal to check
 
           definers = definers(name)
+          target = autoload_target(autoload)
           if definers.size > 1
+            others = definers.reject { _1 == target }
+            covered = target && others.all? { |path| closure(@units[target], true).include?(path) }
             finding(3, unit.path, autoload.line, name,
-                    "autoload names a namespace reopened in #{definers.size} files (#{definers.first(3).join(", ")}…)")
-          elsif definers.empty? && (target = autoload_target(autoload))
+                    "autoload names a namespace reopened in #{definers.size} files (#{others.first(3).join(", ")}…)" \
+                    "#{covered ? " — the file it points to loads them all" : " — the file it points to does not load them all"}")
+          elsif definers.empty? && target
             finding(3, unit.path, autoload.line, name, "the file it points to (#{target}) defines no #{name}")
           end
         end

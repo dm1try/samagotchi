@@ -79,6 +79,7 @@ if json
 end
 
 findings.each { |f| puts "#{f.rule} #{f.path}:#{f.line} #{f.constant} — #{f.why}" }
+puts format("shown: %d of %d findings", findings.size, result.findings.size) if findings.size != result.findings.size
 puts format("findings: %d (rule 1 %d, rule 2 %d, rule 3 %d) across %d references", result.findings.size,
             *result.rule_counts.values_at(1, 2, 3).map { _1 || 0 }, result.references)
 puts "by area: #{result.area_counts.sort_by { |area, count| [-count, area] }.map { |area, count| "#{area} #{count}" }.join(", ")}"
