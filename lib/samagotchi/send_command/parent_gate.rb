@@ -2,7 +2,7 @@
 
 require_relative "../session"
 require_relative "../session_chain"
-require_relative "../session_commands"
+require_relative "../session_command_catalog"
 require_relative "../parent_answers_command"
 require_relative "../turn_flow"
 require_relative "../guardrails/parent_approvals"
@@ -49,7 +49,7 @@ module Samagotchi
       end
 
       # Whether +prompt+ is a /parent-answers line.
-      def self.parent_answers_line?(prompt) = SessionCommands.builtin_registry.lookup(prompt)&.id == :parent_answers
+      def self.parent_answers_line?(prompt) = SessionCommandCatalog.builtin_registry.lookup(prompt)&.id == :parent_answers
 
       # Whether +prompt+ is a /parent-answers line that loosens one of
       # +values+ (targets' own parent_answers).

@@ -9,7 +9,7 @@ require_relative "../degrade"
 require_relative "../memory_paths"
 require_relative "../prompt_history"
 require_relative "../tools/memory"
-require_relative "../session_commands"
+require_relative "../session_command_catalog"
 require_relative "line_reader"
 require_relative "reline_history_hook"
 

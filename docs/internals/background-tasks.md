@@ -16,7 +16,7 @@ Recommended workflow:
 4. Use `task_get` or `task_list` for nonblocking status checks, and `task_stop` if needed.
 
 The code is split by who uses it, so a client that only reads (the attached TUI, chi web, `sessions list`) need not
-load the process code:
+load the process code, and does not (`spec/require_cycle_spec.rb`, the thin client load budgets):
 
 | Module | Holds | Read by |
 |---|---|---|

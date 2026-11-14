@@ -6,7 +6,7 @@ require "fileutils"
 require_relative "atomic_file"
 require_relative "config"
 require_relative "paths"
-require_relative "session_commands"
+require_relative "session_command_catalog"
 
 module Samagotchi
   # The prompts typed at a chi prompt, kept for ↑ across launches: one
@@ -81,7 +81,7 @@ module Samagotchi
 
     # A `!command` worth recalling; `!rollback` isn't one.
     def shell_line?(line)
-      line.to_s.start_with?(SessionCommands::SHELL_BANG_PREFIX) && line.to_s.strip != SessionCommands::ROLLBACK_COMMAND
+      line.to_s.start_with?(SessionCommandCatalog::SHELL_BANG_PREFIX) && line.to_s.strip != SessionCommandCatalog::ROLLBACK_COMMAND
     end
 
     def normalize(list)

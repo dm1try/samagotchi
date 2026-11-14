@@ -12,7 +12,7 @@ require_relative "../objectives"
 require_relative "../output_formatter"
 require_relative "../question_asked"
 require_relative "../guardrails/approvals"
-require_relative "../session_commands"
+require_relative "../session_command_catalog"
 require_relative "../session_metrics"
 require_relative "../session_setting"
 require_relative "../system_one/log"
@@ -141,7 +141,7 @@ module Samagotchi
           cards: cards_for_display(raw_cards, cwd: session.working_directory),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
-          commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
+          commands: turn_snapshot&.fetch("commands", nil) || SessionCommandCatalog.builtin_registry.listing,
           markdown_warning: @markdown_renderer.warning,
           markdown_tip: @markdown_renderer.tip,
           **viewer_capabilities(req),

@@ -794,6 +794,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `tool_runner.rb`, `tool_response.rb`, `tool_row_fields.rb`, `row_refs.rb` | Per call; per batch; row fields; plugin row refs |
 | `tool_output_cut.rb`, `tool_output_files.rb` | The output cap's policies; an execute's saved whole output ([tool-output-limits.md](tool-output-limits.md)) |
 | `tools/tool_surface.rb`, `tools/registry.rb`, `tools/tool_index.rb`, `plugin/tool_spec.rb` | The turn's surface; the Registry; `find_tools` / `call_tool`; a checked plugin tool declaration |
+| `tool_names.rb`, `session_command_catalog.rb`, `session_commands.rb` | Each builtin tool's name and result texts (`ToolNames`, no requires: the tool classes and the display read it); the session commands' names, built-ins' registry and class-level reads the clients require (`SessionCommandCatalog`, no tool); the runner a worker dispatches a command line to (`SessionCommands#run`, which includes the catalogue) |
 | `toolkit.rb`, `toolkit_command.rb`, `toolkit_binding.rb` | Toolkits; `/toolkit`; the Engine's toolkit seam (`#published`, `#apply!`) |
 | `empty_answer_retry.rb`, `prompt_warmup.rb` | The empty-answer and cut retry budget; the turn-end warm-up |
 | `system_prompt.rb`, `prompt_files.rb`, `model_notes.rb` | The system prompt; AGENTS.md and appended files; model notes |

@@ -200,8 +200,8 @@ Each entry point requires what it uses, so a process loads its own part of chi a
 |---|---|---|
 | a worker | the boot string's `samagotchi/worker_boot` | the boot, then the Worker, its Engine and Bridge; no TerminalUI, no Reline |
 | `chi <subcommand>`, `chi self`, `chi web push` | `bin/chi`, then the subcommand's file | that command's closure; no `engine.rb`, no Reline (`chi --version` 27 of chi's files, `chi sessions list` about 270) |
-| the attached TUI | `bin/chi` → `terminal_ui/attach_launcher` | the TUI, Reline and its Bridge client; no `engine.rb` |
-| chi web | `bin/chi` → `web/server` | the control plane; no `engine.rb` |
+| the attached TUI | `bin/chi` → `terminal_ui/attach_launcher` | the TUI, Reline and its Bridge client; no `engine.rb`, no tool that runs (`tools/execute`, `tools/builtins`, `tools/task_runtime`) |
+| chi web | `bin/chi` → `web/server` | the control plane; no `engine.rb`, no tool that runs (as the TUI) |
 | the one-shot (`-p X --non-interactive`) | `bin/chi` → `terminal_ui` | TerminalUI and an Engine of its own |
 | outside callers (a script, `chi bundle try`'s sandbox, the suite's `fork_chi` preload) | `samagotchi` (`lib/samagotchi.rb`) | eager: everything a turn needs |
 
@@ -210,7 +210,18 @@ the `--resume`/`--attach` id check, `samagotchi/terminal_ui` before the one-shot
 names**; `autoload` only for a constant defined in one file, never for a namespace other files reopen (that fires
 the autoload from inside the reopening file and ends in a `NameError`). `spec/require_cycle_spec.rb` pins it: no
 `engine.rb` or Reline for `chi --version`, `home`, `sessions list` and `schedule list`, no TerminalUI or Reline in a
-worker.
+worker, and (its thin client load budgets) no turn loop, bundle updater, `tools/execute`, `tools/builtins` or
+`tools/task_runtime` for the attached TUI and chi web.
+
+The clients name tools and the session commands without loading them. A tool's name and the fixed texts it writes
+into results (`Execute::HANDED_OVER`…) live in `ToolNames` (`tool_names.rb`, no requires), which the tool classes
+read their constants from and the display code (`ToolActivity`, `ToolView`, `FileRef`, `ObjectivesBacking`) reads
+directly. The session commands' names, the built-ins' registry and its class-level reads (`builtin_name`,
+`builtin_registry`, `ui_only_entry`, `ui_only_refusal`, `delete_on_exit?`, `SHELL_BANG_PREFIX`…) live in
+`SessionCommandCatalog` (`session_command_catalog.rb`), which the TUI, chi web, `chi send` and `PromptHistory`
+require; `SessionCommands` (the runner, worker-side: `!cmd` runs `Tools::Execute`) includes it and forwards the
+class methods, so `SessionCommands.x` reads the same. A new client-side read of either goes to the table or the
+catalogue, never to the class.
 
 ## Session retention & ordering
 

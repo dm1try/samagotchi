@@ -5,7 +5,7 @@ require_relative "delivery"
 require_relative "terminal_ui/formatting"
 require_relative "session"
 require_relative "worker_link"
-require_relative "session_commands"
+require_relative "session_command_catalog"
 require_relative "parent_answers_command"
 require_relative "session_inbox"
 require_relative "session_manager"
@@ -734,8 +734,8 @@ module Samagotchi
     # (a bundle's too).
     def command_like?(text) = text.to_s.lstrip.start_with?("/", "!")
 
-    # @return [Commands::Registry::Entry, nil] SessionCommands.ui_only_entry
-    def local_command(text) = SessionCommands.ui_only_entry(text)
+    # @return [Commands::Registry::Entry, nil] SessionCommandCatalog.ui_only_entry
+    def local_command(text) = SessionCommandCatalog.ui_only_entry(text)
 
     # A UI-only command: nothing is sent (with --new, no session is created
     # either). /stats points at its model-free reader and names the session;
@@ -761,7 +761,7 @@ module Samagotchi
       CLI::Exit::FAILED
     end
 
-    def local_refusal(name, id) = SessionCommands.ui_only_refusal(name, id, runner: "chi send", remote: @access.invocation.remote)
+    def local_refusal(name, id) = SessionCommandCatalog.ui_only_refusal(name, id, runner: "chi send", remote: @access.invocation.remote)
 
     # --wait after a message that ran as a session command: no reply comes
     # for it. Its output shows where the session is open.

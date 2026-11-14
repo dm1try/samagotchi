@@ -669,3 +669,11 @@ names from elsewhere checked), one-off host pairs (`ToolRun` in `tool_response.r
 autoloads that load whole (`SessionManager`, `Objectives`, `Config`), and `Plugin::Http`'s (its base file
 loads the reopening file only inside a method, and that file requires the base file first). The summary counts the entries that
 matched and those that match nothing: delete a stale one.
+
+**The thin client load budgets.** `spec/require_cycle_spec.rb` loads the attached TUI's files
+(`terminal_ui/attach_launcher`, `attached_loop`) and chi web's (`web/app`) in a fresh ruby and fails when either
+loads the turn loop (`kernel_loop`), the bundle updater (`memory_bundle/shipped_update`), or a tool that runs:
+`tools/execute`, `tools/builtins`, `tools/task_runtime`. A client that needs a tool's name or result text reads
+`ToolNames`; one that needs a session command's name or the built-ins' registry reads `SessionCommandCatalog`;
+task files and transcripts are `TaskFiles` and `TaskTranscript`. A require that breaks a budget is a sign the
+reader wants one of those, not the class.
