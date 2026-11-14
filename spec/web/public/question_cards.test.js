@@ -85,7 +85,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false, onPending = () => {}, onSettled = () => {} } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false, onPending = () => {}, onSettled = () => {}, sessionId = () => "s1" } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -97,7 +97,7 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
   let scrolled = 0;
   let hintDrops = 0;
   const cards = createQuestionCards({
-    sessionId: () => "s1",
+    sessionId,
     clientId: "web-me",
     place: (card) => { history.appendChild(card); card.isConnected = true; return staged; },
     isNearBottom: () => (typeof near === "function" ? near(history) : near),
@@ -158,6 +158,23 @@ test("a real answer or a dismiss drops the fold this tab kept; a resync's remove
     assert.ok(map.get("chi_asking_fold:s1") === undefined, "cancelled: gone as well");
   });
 });
+
+test("with no session id there is no fold key to delete: a resolve leaves the storage alone", () => {
+  // A browser's storage keys are strings: removeItem(null) deletes "null".
+  const map = new Map([["null", "a fold kept by a session-less page"]]);
+  const session = {
+    getItem: (k) => map.get(String(k)) ?? null,
+    setItem: (k, v) => map.set(String(k), String(v)),
+    removeItem: (k) => map.delete(String(k)),
+  };
+  withSession(session, () => {
+    const { cards } = setup({ sessionId: () => null });
+    cards.renderQuestion(PQ);
+    cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+    assert.ok(map.get("null"), "foldKey(null) is null: there is nothing to remove");
+  });
+});
+
 
 test("the continue card's answer drops the fold too", () => {
   const map = new Map([["chi_asking_fold:s1", JSON.stringify({ key: "continue", with: 1 })]]);
