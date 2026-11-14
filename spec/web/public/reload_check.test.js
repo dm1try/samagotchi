@@ -182,7 +182,7 @@ test("a card's title updated after the turn reads the same on both sides (CardSt
   assert.equal(posts[0][1].same, true);
 });
 
-test("an undrawn turn's cards are still left out (the placer comes in the next step)", async () => {
+test("a card entry with no of_turn counts as foreign: its item is dropped on both sides", async () => {
   const live = DRAWN.replace(' data-drawn="T1"', "");
   const { check, posts } = setup({ reloaded: live, data: { cards: [{ id: "c1", type: "card", in_turn: true, title: "Check-in" }] } });
   await check.handedOff({ pieces: pieces(live) });
