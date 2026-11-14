@@ -426,9 +426,11 @@ frame (`frameTarget` returns null) and an unfold refits to what shows. Three thi
 another tab's write doesn't apply live), **revealed** (a ref's "show in turn" opened it for this turn; the choice stays)
 and **the docked card's fold** (the waiting card the user folded, by its key, held in `chi_asking_fold:<session>`
 in sessionStorage: this tab's own, so a reload or a resync mid-turn draws it folded as it was — `stage_waiting.js`
-writes it on the fold and reads it back in `trackFold` once the replay has drawn the card; it goes when the card is
-answered or cancelled (`question_cards.js`), when the fold drops, when the turn hands off, and when the page opens
-another session (`session_sync.js`); `reset` clears the memory only, so the replay can take the fold back). In the
+writes it on the fold and reads it back in `trackFold` once the replay has drawn the card; it goes when that card is
+answered, cancelled or resolved (`stage_waiting.js settle` with `done`, from `question_cards.js onSettled`: only the
+fold that names that card, so a replay or a history question answering another card leaves it), when the fold drops,
+when the turn hands off (`clearFold`), and when the page opens another session (`session_sync.js select`, only when a
+session was open); `reset` clears the memory only, so the replay can take the fold back). In the
 asking form only that fold counts: the ▾ and a tap on the folded row set or clear it and write nothing to
 `chi_stage_collapsed` (another blocking card that comes to wait meanwhile
 drops it, so the stage opens on the front card), so a card always arrives open (in the card's task, before

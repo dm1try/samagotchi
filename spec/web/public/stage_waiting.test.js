@@ -310,3 +310,34 @@ test("the stage's order: blocking cards before the asking ones, arrival within e
   assert.equal(w.shown(), null);
   assert.equal(w.page(1), null);
 });
+
+// The fold's storage (stage_waiting.js FOLD_PREFIX): settle with done removes
+// the fold this tab kept only when it names that card, also with no entry for
+// it (a replay's earlier card, a history question); without done never.
+test("settle with done drops its own stored fold only, entry or not; a plain settle keeps it", () => {
+  const map = new Map();
+  const storage = { read: (k) => map.get(k) ?? null, write: (k, v) => map.set(k, v), remove: (k) => map.delete(k) };
+  const w = createStageWaiting({ sessionId: () => "s1", storage });
+  const key = foldKey("s1");
+  w.arrive("c:ci", { kind: "asks", docked: true });
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  w.fold("c:ci");
+  assert.equal(JSON.parse(map.get(key)).key, "c:ci");
+  assert.equal(w.settle("q:a1", { done: true }), true, "the approval answered");
+  assert.equal(JSON.parse(map.get(key)).key, "c:ci", "another card's answer keeps the fold");
+  assert.equal(w.settle("q:old", { done: true }), false, "a card the stage never held");
+  assert.ok(map.get(key), "still kept");
+  w.settle("c:ci");
+  assert.ok(map.get(key), "a plain settle (a redraw, a resync) keeps it");
+  w.reset();
+  assert.equal(w.settle("c:ci", { done: true }), false, "no entry after a reset");
+  assert.equal(map.get(key), undefined, "its own answer drops it all the same");
+});
+
+test("settle with done and no session stores nothing and removes nothing", () => {
+  const removed = [];
+  const storage = { read: () => JSON.stringify({ key: "q:1", with: 1 }), write() {}, remove: (k) => removed.push(k) };
+  const w = createStageWaiting({ sessionId: () => null, storage });
+  w.settle("q:1", { done: true });
+  assert.deepEqual(removed, []);
+});

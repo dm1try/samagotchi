@@ -111,6 +111,27 @@ test("opening another session drops the fold kept for the one left; a reselect o
   }
 });
 
+test("the first select (no session open before) removes no fold: no \"null\" key", async () => {
+  const removed = [];
+  const map = new Map([["null", "kept"]]);
+  const session = {
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => { removed.push(k); map.delete(String(k)); },
+  };
+  const before = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { value: session, configurable: true, writable: true });
+  try {
+    const { sync } = fakePage({ read: async () => ({ messages: [] }) });
+    await sync.select("s1");
+    assert.deepEqual(removed, [], "nothing removed on the first select");
+    assert.equal(map.get("null"), "kept");
+  } finally {
+    if (before) Object.defineProperty(globalThis, "sessionStorage", before);
+    else delete globalThis.sessionStorage;
+  }
+});
+
 test("select gives the session a fresh re-read budget", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { page, sync } = fakePage({ read: async () => { throw Object.assign(new Error("offline"), { status: 0 }); } });

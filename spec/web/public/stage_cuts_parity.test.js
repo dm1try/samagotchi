@@ -170,34 +170,91 @@ for (const scenario of scenarios) {
 
 // The fold the user gave the asking card (audit r20 D5): it is this tab's
 // state, so a resync mid-turn and a reload of the same tab draw the stage as
-// live did.
-test("a card folded by hand stays folded over a resync and a reload", async () => {
+// live did. At every cut where a card is docked: a replay that answers an
+// earlier card of the turn (question_after_approval's question) keeps it.
+test("a card folded by hand stays folded over a resync and a reload, at every cut", async () => {
+  let folds = 0;
   for (const scenario of scenarios) {
-    // One tab per scenario: the fold this tab kept is not the next one's.
-    clearSession();
-    const cut = scenario.cuts[0];
-    const id = `${scenario.name}/${cut.label}`;
-    const live = await livedTo(scenario.events.slice(0, cut.at));
-    if (!stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).docked.length) {
+    for (const cut of scenario.cuts) {
+      // One tab per cut: the fold this tab kept is not the next one's.
+      clearSession();
+      const id = `${scenario.name}/${cut.label}`;
+      const live = await livedTo(scenario.events.slice(0, cut.at));
+      if (!stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).docked.length) {
+        live.turnDom.reset();
+        continue;
+      }
+      folds += 1;
+      live.turnDom.root.querySelector(".ts-fold").click();
+      const key = live.turnDom.waiting.folded();
+      assert.ok(key, `${id}: the asking card folds live`);
+      assert.equal(stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).folded, true, `${id}: the stage is folded`);
+
+      const resynced = await resyncTo(live, cut.show);
+      assert.equal(stageShape(resynced.turnDom.root, resynced.historyEl, resynced.turnDom.waiting).folded, true,
+        `${id}: a mid-turn resync keeps the fold`);
       live.turnDom.reset();
-      continue;
+
+      const reloaded = await reloadedTo(cut.show);
+      assert.equal(stageShape(reloaded.turnDom.root, reloaded.historyEl, reloaded.turnDom.waiting).folded, true,
+        `${id}: a reload brings the fold back`);
+      assert.equal(reloaded.turnDom.waiting.folded(), key, `${id}: on the card live folded`);
+      reloaded.turnDom.reset();
     }
-    live.turnDom.root.querySelector(".ts-fold").click();
-    const key = live.turnDom.waiting.folded();
-    assert.ok(key, `${id}: the asking card folds live`);
-    assert.equal(stageShape(live.turnDom.root, live.historyEl, live.turnDom.waiting).folded, true, `${id}: the stage is folded`);
-
-    const resynced = await resyncTo(live, cut.show);
-    assert.equal(stageShape(resynced.turnDom.root, resynced.historyEl, resynced.turnDom.waiting).folded, true,
-      `${id}: a mid-turn resync keeps the fold`);
-    live.turnDom.reset();
-
-    const reloaded = await reloadedTo(cut.show);
-    assert.equal(stageShape(reloaded.turnDom.root, reloaded.historyEl, reloaded.turnDom.waiting).folded, true,
-      `${id}: a reload brings the fold back`);
-    assert.equal(reloaded.turnDom.waiting.folded(), key, `${id}: on the card live folded`);
-    reloaded.turnDom.reset();
   }
+  assert.ok(folds > scenarios.length, "more than one cut per scenario on average");
+});
+
+// An answered question of an earlier turn (the snapshot's cards, placed
+// before the replay: placeSnapshotCards → placeResolvedQuestion) is not the
+// folded card: a reload keeps the fold.
+test("a fold survives a reload of a session with an answered question in its history", async () => {
+  const scenario = scenarios.find((s) => s.name === "approval_bare");
+  const cut = scenario.cuts[0];
+  clearSession();
+  const live = await livedTo(scenario.events.slice(0, cut.at));
+  live.turnDom.root.querySelector(".ts-fold").click();
+  const key = live.turnDom.waiting.folded();
+  assert.ok(key);
+  live.turnDom.reset();
+  const earlier = {
+    type: "question", in_turn: true, of_turn: "turn-earlier", iteration: 1, calls: 1, turns_since: 1,
+    pending_question: { id: "q-earlier", kind: "question", question: "Which one, earlier?", options: ["a", "b"], status: "answered" },
+    answer: { selected: ["a"] },
+  };
+  const reloaded = await reloadedTo({ ...cut.show, cards: [earlier, ...(cut.show.cards || [])] });
+  assert.ok(reloaded.historyEl.querySelector('.bubble.question.answered[data-qid="q-earlier"]'), "the earlier question is drawn, answered");
+  assert.equal(reloaded.turnDom.waiting.folded(), key, "the fold is back after the reload");
+  assert.equal(stageShape(reloaded.turnDom.root, reloaded.historyEl, reloaded.turnDom.waiting).folded, true);
+  reloaded.turnDom.reset();
+});
+
+// Live: two docked cards (check-in, then an approval), the pager on check-in
+// and it folded; the approval answered from another client. A reload keeps
+// check-in's fold: the answer settles the approval's own fold only.
+test("a folded check-in card stays folded over a reload after the approval beside it is answered elsewhere", async () => {
+  const scenario = scenarios.find((s) => s.name === "checkin_approval");
+  const both = scenario.cuts.find((c) => c.label === "both");
+  const after = scenario.cuts.find((c) => c.label === "approval answered");
+  clearSession();
+  const live = await livedTo(scenario.events.slice(0, both.at));
+  assert.equal(live.turnDom.waiting.docked().length, 2);
+  live.turnDom.root.querySelectorAll(".ts-pager .ts-page")[1].click();
+  await settle();
+  live.turnDom.root.querySelector(".ts-fold").click();
+  const key = live.turnDom.waiting.folded();
+  assert.ok(key?.startsWith("c:"), `check-in is folded (${key})`);
+  for (const event of scenario.events.slice(both.at, after.at)) {
+    await live.handlers[event.type]?.({ ...event, client_id: "web:other" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  await settle();
+  assert.equal(live.turnDom.waiting.folded(), key, "live keeps the fold");
+  live.turnDom.reset();
+  const reloaded = await reloadedTo(after.show);
+  assert.equal(reloaded.turnDom.waiting.folded(), key, "a reload brings it back");
+  assert.equal(stageShape(reloaded.turnDom.root, reloaded.historyEl, reloaded.turnDom.waiting).folded, true);
+  reloaded.turnDom.reset();
 });
 
 test("every waiting cut has a card waiting on the live page", async () => {

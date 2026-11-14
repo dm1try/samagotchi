@@ -60,7 +60,7 @@ export function livePage({ questions = false } = {}) {
       scrollToEnd() {}, removeHintIfEmpty() {}, askingText: (pq) => turnDom.askingText(pq),
       api: { sendAnswer: async () => ({}), dismissQuestion: async () => ({}), sendCommand: async () => ({}) },
       onArrive: (key, info) => turnDom.expectWaiting?.(key, info),
-      onSettled: (key) => turnDom.settleWaiting?.(key),
+      onSettled: (key, opts) => turnDom.settleWaiting?.(key, opts),
     })
     : new Proxy({}, { get: () => () => null });
   const cards = createCardsPlace({

@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - `execute`: the hint for a background process that left the command's process group and is still running now says chi
   can't stop it and to kill it if it shouldn't run, instead of advising how to keep it running.
+- Web: a card you folded while the turn waits stays folded after a reload or a reconnect when the session has an answered
+  question (in its history, or earlier in the same turn); it used to come back unfolded. Answering one card no longer
+  unfolds another you folded.
 
 ## [0.172.0] - 2026-11-14
 
