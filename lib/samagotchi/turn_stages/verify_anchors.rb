@@ -4,6 +4,7 @@ require "time"
 require_relative "../answer_tail"
 require_relative "../log"
 require_relative "../output_formatter"
+require_relative "../participant_revise"
 require_relative "../redact"
 require_relative "../revise_anchor"
 require_relative "../session"
@@ -90,7 +91,12 @@ module Samagotchi
       # anything. A draft no prompt in the messages carries is no target (a
       # stale page, a rolled-back turn); one a stamped turn already revised
       # is re-targeted to its stack's top, the newest version, which the
-      # person meant ("this draft").
+      # person meant ("this draft"). A participant's draft first meets
+      # ParticipantRevise (theirs, with only their own turns after it, up
+      # to this turn): chi web checked it at the send, and this is the
+      # check at the stamp, so a turn someone else's overtook since runs
+      # as a plain turn (logged). The re-target walk then stays inside
+      # their own turns.
       def revision_target(messages, turn, outcome)
         return unless turn.revises && outcome == "completed"
 
@@ -98,6 +104,12 @@ module Samagotchi
         return unless slice&.any? { |message| AnswerTail.answer?(message) }
 
         target = turn.revises.turn_id
+        author = turn.origin&.author
+        if Steer.participant_author?(author) &&
+           (refused = ParticipantRevise.refusal(messages, turn_id: target, author: author, before: turn.id))
+          return reject_revise(turn.revises, refused)
+        end
+
         seen = [turn.id]
         until seen.include?(target)
           return reject_revise(turn.revises, :turn_missing) unless AnswerTail.turn_slice(messages, target)
