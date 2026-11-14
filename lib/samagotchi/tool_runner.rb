@@ -224,11 +224,13 @@ module Samagotchi
     # A memory_read's stamp, one entry per name it read: the file that
     # answered it, and the model overlay read with it when there was one, as
     # they are right after the call:
-    # {memories: {name => {path:, mtime_ns:, size:, overlay: {path:, mtime_ns:,
-    # size:}}}} (no +overlay+ key when no overlay was read). Nothing at the
-    # top carries mtime_ns, so a reader that knows only file stamps
-    # (WorkingSet.stamp_of) sees none here, and a session saved before memory
-    # stamps has none: either way its memories are never stale (compat N-1).
+    # {memories: {name => {path:, mtime_ns:, size:, overlay: {…},
+    # requested_scope:, model_key:, fallback_model_key:, project_dir:}}}
+    # (no +overlay+ key when no overlay was read). Request metadata lets the
+    # working set re-resolve the answer; older path-only stamps compare those
+    # paths as before. Nothing at the top carries mtime_ns, so a reader that
+    # knows only file stamps (WorkingSet.stamp_of) sees none here, and a
+    # session saved before memory stamps has none (compat N-1).
     # nil when the read answered no name (the index listing, every name
     # missing), or none of its files can be stat'd.
     def memory_stamp(result)
@@ -241,6 +243,7 @@ module Samagotchi
 
         overlay = stat_entry(read[:overlay_path])
         entry[:overlay] = overlay if overlay
+        entry.merge!(read.slice(:requested_scope, :model_key, :fallback_model_key, :project_dir))
         [name, entry]
       end
       entries.empty? ? nil : { memories: entries.to_h }

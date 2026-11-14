@@ -26,11 +26,11 @@ module Samagotchi
       SEPARATOR = "\n\n---\n\n"
 
       # A memory_read's text, and which file answered each name it read
-      # (+reads+: name => {path:, overlay_path:}, absolute paths, the overlay
-      # only when one was read with the entry). A String, so every reader of
-      # the result reads the same bytes the model does; ToolRunner turns
-      # +reads+ into the run's stamp (ToolRunner#memory_stamp), which is what
-      # later tells a memory the model read from one whose file changed after.
+      # (+reads+: name => {path:, overlay_path:, requested_scope:, model_key:,
+      # fallback_model_key:, project_dir:}, absolute paths, the overlay only
+      # when one was read with the entry). A String, so every reader of the
+      # result reads the same bytes the model does; ToolRunner turns +reads+
+      # into the run's stamp (ToolRunner#memory_stamp).
       class Result < String
         attr_reader :reads
 
@@ -139,7 +139,8 @@ module Samagotchi
           body = File.read(resolved.path, encoding: "UTF-8")
           body = append_overlay(body, File.read(resolved.overlay_path, encoding: "UTF-8"), resolved.overlay_key) if resolved.overlay_path
           results << body
-          reads[name] = { path: resolved.path, overlay_path: resolved.overlay_path }
+          reads[name] = { path: resolved.path, overlay_path: resolved.overlay_path, requested_scope: scope,
+                          model_key: model_key, fallback_model_key: fallback_model_key, project_dir: project_dir }
         end
 
         return Result.new(results.join(SEPARATOR), reads) if missing.empty?

@@ -207,14 +207,18 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
         result = described_class.call("notes", model_key: "deepseek")
         expect(result.to_s).to eq("the body" + described_class::SEPARATOR + "Model-specific guidance (deepseek):\nfor deepseek")
         expect(result.reads).to eq({ "notes" => { path: File.join(project_memories_dir, "notes.md"),
-                                                  overlay_path: File.join(project_memories_dir, "notes.deepseek.md") } })
+                                                  overlay_path: File.join(project_memories_dir, "notes.deepseek.md"),
+                                                  requested_scope: nil, model_key: "deepseek", fallback_model_key: nil,
+                                                  project_dir: project_memories_dir } })
       end
 
       it "has no overlay path when none was read" do
         File.write(File.join(project_memories_dir, "notes.md"), "the body")
 
         expect(described_class.call("notes").reads["notes"]).to eq({ path: File.join(project_memories_dir, "notes.md"),
-                                                                     overlay_path: nil })
+                                                                     overlay_path: nil, requested_scope: nil,
+                                                                     model_key: nil, fallback_model_key: nil,
+                                                                     project_dir: project_memories_dir })
       end
 
       it "is per name, in the scope that answered it" do

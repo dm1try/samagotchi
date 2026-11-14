@@ -28,10 +28,11 @@ RSpec.describe "a memory's stamp in the working set" do
 
   after { FileUtils.rm_rf(memories) }
 
-  def read(names, model_key: nil)
+  def read(names, model_key: nil, fallback_model_key: nil, scope: "system")
     kernel = test_kernel(tools: registry)
-    Samagotchi::ToolRunner.new(kernel).run({ name: "memory_read", content: names, scope: "system" },
-                                           context: run_context(tools: registry, cwd: memories, model_key: model_key),
+    Samagotchi::ToolRunner.new(kernel).run({ name: "memory_read", content: names, scope: scope },
+                                           context: run_context(tools: registry, cwd: memories, model_key: model_key,
+                                                                fallback_model_key: fallback_model_key),
                                            iteration: 1, call_index: 1, call_count: 1,
                                            on_stream_event: ->(event) { events << event },
                                            max_tool_output_chars: nil)
@@ -67,6 +68,25 @@ RSpec.describe "a memory's stamp in the working set" do
     expect(state(conversation(read("notes")))).to eq("notes" => "live")
   end
 
+  it "does not mark a memory stale when its stamped path has a different spelling" do
+    run = read("notes")
+    messages = conversation(run)
+    FileUtils.mkdir_p(File.join(memories, "nested"))
+    messages.last[:tool_stamps].first[:memories]["notes"][:path] = File.join(memories, "nested", "..", "notes.md")
+
+    expect(state(messages)).to eq("notes" => "live")
+  end
+
+  it "does not resolve a stamped project memories folder outside the memories root" do
+    messages = conversation(read("notes", scope: nil))
+    outside_project = File.expand_path(File.join(memories, "..", "outside-project"))
+    messages.last[:tool_stamps].first[:memories]["notes"][:project_dir] = outside_project
+    allow(File).to receive(:exist?).and_call_original
+
+    expect(state(messages)).to eq("notes" => "live")
+    expect(File).not_to have_received(:exist?).with(File.join(outside_project, "notes.md"))
+  end
+
   it "is stale when the model overlay read with it changed" do
     overlay = File.join(memories, "notes.test-model.md")
     File.write(overlay, "overlay guidance")
@@ -76,6 +96,29 @@ RSpec.describe "a memory's stamp in the working set" do
     File.write(overlay, "overlay guidance changed")
 
     expect(state(conversation(run))).to eq("notes" => "stale")
+  end
+
+  it "is stale when an unscoped system read would now resolve to a new project memory" do
+    run = read("notes", scope: nil)
+    project_dir = File.join(memories, "project")
+    FileUtils.mkdir_p(project_dir)
+    File.write(File.join(project_dir, "notes.md"), "project memory")
+    messages = conversation(run)
+
+    expect(state(messages)).to eq("notes" => "stale")
+    expect(Samagotchi::WorkingSet.memory_now(messages, key: "notes", strategy: :none, cwd: memories, root: memories).text)
+      .to eq("project memory")
+  end
+
+  it "is stale when a matching overlay appears after the read and shows the reader's appended text" do
+    run = read("notes", model_key: "test-model")
+    overlay = File.join(memories, "notes.test-model.md")
+    File.write(overlay, "new overlay guidance")
+    messages = conversation(run)
+
+    expect(state(messages)).to eq("notes" => "stale")
+    expect(Samagotchi::WorkingSet.memory_now(messages, key: "notes", strategy: :none, cwd: memories, root: memories).text)
+      .to eq("the text chi read#{Samagotchi::Tools::MemoryRead::SEPARATOR}Model-specific guidance (test-model):\nnew overlay guidance")
   end
 
   it "is stale when the memory is gone" do
@@ -96,6 +139,20 @@ RSpec.describe "a memory's stamp in the working set" do
     expect(state(conversation)).to eq("notes" => "live")
   end
 
+  it "keeps resolving an older path-only stamp as before" do
+    legacy_stamp = { memories: { "notes" => { path: memory_file, mtime_ns: 1, size: File.size(memory_file) } } }
+    entry = {
+      role: "tool_response", content: "[memory_read]\nthe text chi read", tool_call_id: "c1", tool_ids: ["t1"],
+      tool_stamps: [legacy_stamp]
+    }
+    messages = conversation_with(entry)
+    File.write(memory_file, "changed legacy memory")
+
+    expect(state(messages)).to eq("notes" => "stale")
+    expect(Samagotchi::WorkingSet.memory_now(messages, key: "notes", strategy: :none, cwd: memories, root: memories).text)
+      .to eq("changed legacy memory")
+  end
+
   describe "the stamp" do
     it "is one entry per name, with the file that answered and its mtime" do
       File.write(File.join(memories, "other.md"), "second")
@@ -104,8 +161,17 @@ RSpec.describe "a memory's stamp in the working set" do
       expect(stamp.keys).to eq(%w[notes other])
       expect(stamp["notes"]).to eq({ path: memory_file,
                                      mtime_ns: (stat(memory_file).mtime.to_i * 1_000_000_000) + stat(memory_file).mtime.nsec,
-                                     size: File.size(memory_file) })
+                                     size: File.size(memory_file), requested_scope: "system", model_key: nil,
+                                     fallback_model_key: nil, project_dir: nil })
       expect(stamp["other"]).not_to have_key(:overlay)
+    end
+
+    it "keeps the request settings and project memories folder for a future resolution" do
+      entry = read("notes", model_key: "test-model", fallback_model_key: "fallback-model", scope: nil)
+        .stamp[:memories]["notes"]
+
+      expect(entry).to include(requested_scope: nil, model_key: "test-model", fallback_model_key: "fallback-model",
+                               project_dir: File.join(memories, "project"))
     end
 
     it "carries the overlay's stamp when one was read with the entry" do
@@ -116,6 +182,8 @@ RSpec.describe "a memory's stamp in the working set" do
       expect(entry[:overlay]).to eq({ path: overlay,
                                       mtime_ns: (stat(overlay).mtime.to_i * 1_000_000_000) + stat(overlay).mtime.nsec,
                                       size: File.size(overlay) })
+      expect(entry).to include(requested_scope: "system", model_key: "test-model", fallback_model_key: nil,
+                               project_dir: nil)
     end
 
     it "has no mtime at its top, so a reader that knows only file stamps sees none" do

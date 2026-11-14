@@ -153,11 +153,32 @@ RSpec.describe Samagotchi::WorkingSet, ".timeline_of" do
       expect(found.gone).to be(false)
     end
 
+    it "uses stamped paths without checking an out-of-root project directory" do
+      outside_project = File.join(dir, "outside-project").tap { |d| FileUtils.mkdir_p(d) }
+      outside_entry = File.join(outside_project, "style.md").tap { |p| File.write(p, "outside project memory\n") }
+      stamped = stamp_of(entry).merge(requested_scope: nil, model_key: nil, fallback_model_key: nil,
+                                      project_dir: outside_project)
+      conversation = [head, *memory_read("c1", "t1", "style", text, { memories: { "style" => stamped } })]
+      checked_paths = []
+      allow(File).to receive(:exist?).and_wrap_original do |original, path, *args|
+        checked_paths << path
+        original.call(path, *args)
+      end
+
+      found = described_class.memory_now(conversation, key: "style", strategy: :none, cwd: root, root: File.join(dir, "memories"))
+
+      expect(found.text).to eq("be brief\n")
+      expect(found.gone).to be(false)
+      expect(checked_paths).not_to include(a_string_starting_with("#{outside_project}/"))
+      expect(checked_paths).not_to include(outside_entry)
+    end
+
     it "never reads a stamped path outside the memories folder" do
       outside = File.join(dir, "secret.md").tap { |p| File.write(p, "token\n") }
+      outside_project = File.join(dir, "outside-project").tap { |p| FileUtils.mkdir_p(p) }
+      File.write(File.join(outside_project, "style.md"), "outside project memory\n")
       escaping = { memories: { "style" => stamp_of(entry).merge(path: File.join(project, "..", "..", "..", "secret.md")) } }
       overlay_out = { memories: { "style" => stamp_of(entry).merge(overlay: stamp_of(outside)) } }
-
       [escaping, overlay_out, { memories: { "style" => stamp_of(outside) } }].each do |stamped|
         conversation = [head, *memory_read("c1", "t1", "style", text, stamped)]
         expect(described_class.memory_now(conversation, key: "style", strategy: :none, cwd: root, root: File.join(dir, "memories"))).to be_nil
