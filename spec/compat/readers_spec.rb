@@ -15,6 +15,7 @@ require "samagotchi/memory_bundle/provenance"
 require "samagotchi/objectives_check"
 require "samagotchi/objectives_track"
 require "samagotchi/participants"
+require "samagotchi/participant_uploads"
 require "samagotchi/recap_store"
 require "samagotchi/reminder_carry"
 require "samagotchi/reminder_store"
@@ -40,6 +41,9 @@ RSpec.describe "the recorded compatibility corpus" do
   # The last release whose corpus has no participant's input by its sender
   # (ClientId.participant): a later one must hold it.
   let(:participant_input_after) { Gem::Version.new("0.171.0") }
+  # The last release whose corpus has no participant_images.json
+  # (ParticipantUploads): a later one must hold it.
+  let(:participant_images_after) { Gem::Version.new("0.171.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -195,7 +199,8 @@ RSpec.describe "the recorded compatibility corpus" do
       next if store.corpus_exception?
 
       path = File.join(root, store.corpus_dir, store.file)
-      next unless recorded?(path, version, session_stores_after)
+      after = store.file == Samagotchi::ParticipantUploads::FILE ? participant_images_after : session_stores_after
+      next unless recorded?(path, version, after)
 
       case store.file
       when "archived"
@@ -226,6 +231,12 @@ RSpec.describe "the recorded compatibility corpus" do
       when "thinking_tails.jsonl"
         expect(Samagotchi::ThinkingTails.read(session_dir)).to include(a_hash_including("turn_id" => "compat-tail-turn",
                                                                                         "tail" => "compatibility thinking"))
+      when "participant_images.json"
+        state = Samagotchi::ParticipantUploads.read(session_dir)
+        expect(state.broken).to be(false)
+        expect(state.owned?(ReleaseTools::COMPAT_PARTICIPANT_IMAGE, ReleaseTools::COMPAT_GRANT_ID)).to be(true)
+        expect([state.count(ReleaseTools::COMPAT_GRANT_ID), state.attempts_of(ReleaseTools::COMPAT_GRANT_ID)]).to eq([1, 2])
+        expect(state.entries.map(&:at)).to eq(["2026-01-01T00:00:00Z"])
       when "delegates.json"
         cursor = Samagotchi::Tools::DelegateCursors.get("compat-session", "compat-child", state_dir: sessions_dir)
         expect(cursor).to have_attributes(reply_file: "output/compat-child.json", question_id: "compat-question")
