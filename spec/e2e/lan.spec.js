@@ -241,8 +241,12 @@ test("a participant: the owner invites from the panel, warned that their turns a
   await page.locator("#prompt").fill("shorter");
   await page.locator("#prompt").press("Enter");
   await expect(page.locator("#reviseChip")).toBeHidden();
-  // The ended turn leaves the stage for the history once the pointer is away.
+  // The ended turn leaves the stage for the history once the pointer is away,
+  // on each page: the owner's pointer still rests where its Copy link click
+  // left it, which the stage may cover by then (a hold that never ends: the
+  // CI flake of 2026-11-14).
   await page.mouse.move(0, 0);
+  await owner.mouse.move(0, 0);
   await expect(page.locator("#history .stack-stub")).toHaveCount(1);
   await expect(page.locator("#history .stack-versions > summary")).toHaveText("v2 · 1 earlier");
   await expect(owner.locator("#history .stack-stub")).toHaveCount(1);
