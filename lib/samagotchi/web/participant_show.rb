@@ -4,7 +4,7 @@ require "json"
 require_relative "participant_view"
 require_relative "viewer"
 require_relative "../bridge/turn_accumulator"
-require_relative "../participant_mode"
+require_relative "../worker_link"
 require_relative "../verify_anchor"
 require_relative "../verify_fresh"
 
@@ -40,7 +40,7 @@ module Samagotchi
         session = reads.session
         viewer = participant_viewer(req, session)
         turn_snapshot = reads.turn_snapshot
-        features = ParticipantMode.live_features(session, default_state_dir)
+        features = WorkerLink.live_features(session.id, state_dir: default_state_dir)
         timing = participant_timing(reads.id, live_metrics: reads.state && reads.state["metrics"])
         raw = visible_replies(reads.raw_messages)
         drawn = drawn_lines(reads.id, raw, timing: {}, entries: [], cwd: session.working_directory,
@@ -110,7 +110,7 @@ module Samagotchi
         session = reads.session
         review = review_viewer(req, reads.id, session: session, state: reads.state, queued: queued, viewer: viewer)
         Viewer.for(principal(req)).to_h.merge(
-          review.slice(:participant_kind, :mode, :cap_reached, :usage),
+          review.slice(:mode, :cap_reached, :usage),
           session_stopped: session.status == Session::STATUS_STOPPED,
           waiting_for_owner: participant_waiting(reads.turn_snapshot)
         )

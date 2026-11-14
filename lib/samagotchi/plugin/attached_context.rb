@@ -100,7 +100,7 @@ module Samagotchi
         return nil if own.declined?(candidate.name) || (url && own.declined_hints.include?(candidate.url))
 
         session = saved_session
-        return nil if session&.review? || attached?(candidate, session)
+        return nil if attached?(candidate, session)
 
         recorded = own.add_candidate(candidate)
         if recorded.equal?(candidate)

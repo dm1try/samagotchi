@@ -773,12 +773,12 @@ module Samagotchi
     # Stop's last_turn carry the turn's enqueued_id (ReplyWait.own_turn).
     # unqueue: POST turn/dequeue (#handle_dequeue_turn) takes a queued
     # message back before it runs.
-    # review_turns: a participant's turn runs as its own, inside the review
-    # boundary (Guardrails::ReviewBoundary); a worker without it has none,
-    # so chi web sends it no participant's turn (Delivery::REVIEW_FEATURE).
-    # pair_turns: a participant's turn in a working session runs as a pair
-    # turn (Guardrails::PairBoundary); a worker without it runs it as a
-    # review turn, and chi web says so (Delivery::PAIR_FEATURE).
+    # review_turns: a participant's turn runs as its own, inside a
+    # boundary; kept for an older chi web, which sends no participant's turn
+    # to a worker without it (Delivery::REVIEW_FEATURE).
+    # pair_turns: a participant's turn runs under the owner's guardrails
+    # (Guardrails::PairBoundary); chi web sends no participant's turn to a
+    # worker without it, nor invites anyone to its session (Delivery::PAIR_FEATURE).
     # participant_steer: a participant's message sent while their own turn
     # runs goes in at its next step (a worker without it queues it); only
     # what the page's delivery line and chi web's ack say depends on it

@@ -64,20 +64,6 @@ module SessionSetupEntrypoints
 
   # (b) derived from another session (SessionSetup.of), (c) fixed or special.
   OTHER = {
-    web_review_create: { # POST /api/sessions with review, no from: web_create's setup, then ReviewStart.start
-      llm_context: :given, thinking: :given, reasoning_history: [:not_applicable, NOT_REQUESTED],
-      appended_prompt_files: :not_applicable, preloaded_memory_names: :not_applicable,
-      muted_memory_names: :not_applicable, toolkit: :given,
-      toolkit_origin: [:fixed, "chosen: a review session is never offered a toolkit suggestion"],
-      settings: :given, parent_answers: :given, working_set_pins: [:not_applicable, NO_PINS]
-    },
-    chi_review: { # chi review FILE… (ReviewStart.start from SessionAccess::Local#create_review): no setup flags
-      llm_context: :not_applicable, thinking: :not_applicable, reasoning_history: :not_applicable,
-      appended_prompt_files: :not_applicable, preloaded_memory_names: :not_applicable,
-      muted_memory_names: :not_applicable, toolkit: :not_applicable,
-      toolkit_origin: [:fixed, "chosen, as web_review_create"], settings: :not_applicable,
-      parent_answers: :not_applicable, working_set_pins: :not_applicable
-    },
     continue: { # SessionContinue (chi send --continues, /continue, the web's continue, schedules)
       llm_context: :inherited, thinking: :inherited, reasoning_history: :inherited,
       appended_prompt_files: :inherited, preloaded_memory_names: :inherited, muted_memory_names: :inherited,
@@ -90,13 +76,6 @@ module SessionSetupEntrypoints
       appended_prompt_files: :inherited,
       preloaded_memory_names: [:inherited, "less the delegate memory: a fork's parent_id would mark it a delegate"],
       muted_memory_names: :inherited, toolkit: :inherited, toolkit_origin: [:fixed, "inherited (SessionSetup::CARRY)"],
-      settings: :inherited, parent_answers: :inherited, working_set_pins: :inherited
-    },
-    review_fork: { # chi review --from ID, the web's review fork (ReviewStart.fork)
-      llm_context: :inherited, thinking: :inherited, reasoning_history: :inherited,
-      appended_prompt_files: :inherited,
-      preloaded_memory_names: [:fixed, "[]: a review starts from the recap, not the working session's memories"],
-      muted_memory_names: :inherited, toolkit: :inherited, toolkit_origin: [:fixed, "chosen, as web_review_create"],
       settings: :inherited, parent_answers: :inherited, working_set_pins: :inherited
     },
     delegate: { # the delegate tool's child (Tools::Delegate.start_child)
@@ -222,7 +201,7 @@ RSpec.describe Samagotchi::SessionSetup, "entrypoints × members" do
     expect_cells(:web_create, setups.fetch(0))
   end
 
-  it "carries every :inherited member from the session a continue, a fork and a review fork start from" do
+  it "carries every :inherited member from the session a continue and a fork start from" do
     source = Samagotchi::Session.new_session(
       mode: "assist", model_name: "m", working_directory: Dir.pwd,
       setup: described_class.new(llm_context: Samagotchi::LLMContextOverride.new(strategy: [:stale]), thinking: :low,
@@ -231,8 +210,7 @@ RSpec.describe Samagotchi::SessionSetup, "entrypoints × members" do
                                  settings: settings, parent_answers: "hard",
                                  working_set_pins: [{ "kind" => "file", "key" => "/r/a.rb" }])
     )
-    { continue: described_class.of(source), plugin_fork: described_class.of(source, forked: true),
-      review_fork: described_class.of(source).with(preloaded_memory_names: [], toolkit_origin: "chosen") }
+    { continue: described_class.of(source), plugin_fork: described_class.of(source, forked: true) }
       .each do |entrypoint, setup|
         described_class.members.each do |member|
           next unless SessionSetupEntrypoints.cell(entrypoint, member) == :inherited

@@ -26,7 +26,7 @@ module Samagotchi
       # compares with ==, a 0.156 page reads them by name).
       WEB_KEYS = %i[id status mode model_name working_directory created_at updated_at last_prompt short_id test_run
                     used_memory_names preloaded_memory_names muted_memory_names prompt_notes parent_id delegate
-                    continues review first_preview title owner recap auto_title ctx_pct tokens memory_index side
+                    continues first_preview title owner recap auto_title ctx_pct tokens memory_index side
                     archived project_root bridge_up worker_version worker_features worker_compat pending_question pending_card
                     last_turn verdicts verify_fresh last_verdict].freeze
 
@@ -84,9 +84,6 @@ module Samagotchi
           # The session this one continues (the previous link of its
           # chain), else nil: the lists draw chains from it.
           continues: row.continues,
-          # A review session's {subjects, from} (SessionReview), else nil:
-          # the session bar offers Start review on the others.
-          review: session.review&.to_file,
           first_preview: first_preview_for(session),
           # The session's own name (/title), else nil: the pages show it in
           # place of the first message.

@@ -26,9 +26,8 @@
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). What a parent may pick follows `guardrails.parent_answers`, or the session's own `parent_answers` when stricter (`soft`, the default: a deny, a plain answer, Continue and "Allow once"; `standard`: no allow; `hard`: no Continue either), never a wider scope or an allow on chi's own config; a refused pick exits 1 with what to answer instead (a convention, not a security boundary; see [Guardrails](guardrails.md#answers-from-a-parent-agent))
 - `chi schedule <add|list|show|tick|run-now|enable|disable|cancel>` — durable schedules on this machine: a prompt with a clock that fires out of no worker (cron, systemd, or chi web's hub with `schedule.auto_tick`), as the next link of a session's chain or as a turn in the session itself (see [Scheduling](scheduling.md) and [Durable schedules](#durable-schedules-chi-schedule)). A usage error exits 2, an unknown session or schedule 1; `chi --remote X schedule list` exits 2
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
-- `chi review FILE… [--dir DIR] [--model M]`, `chi review --from ID [FILE…]` — start a review session to invite participants to: for files of a project, or as a review of a working session that starts from its recap, not its transcript (see [Review sessions](#review-sessions))
-- `chi share ID --name NAME [--identity EMAIL] [--agent] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant to a session through chi web on the LAN (read-only review turns in a review session, pair turns that act under your guardrails in a working session) (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
-- `chi --remote NAME send|answer|note|context|sessions|share|review …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
+- `chi share ID --name NAME [--identity EMAIL] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant into a session through chi web on the LAN, whose turns act under your guardrails (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
+- `chi --remote NAME send|answer|note|context|sessions|share …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
 - `chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR [-p TEXT]`) — the attached TUI on a session of that machine (see [Remote sessions](#remote-sessions))
 - `chi memory ls [--scope project|system] [--format text|json]` — the memories of both scopes (this folder's project first), one row each: scope, name, size, date, `from <bundle>`, the index description and its model overlays; `chi memory rm NAME [--scope project|system]` removes one as `memory_write` with `remove: true` does: its file and model overlays go to the bundle trash (the line names the dir; `chi bundle trash` lists and empties it) and its index line is dropped. NAME in both scopes without `--scope` exits 2 naming both; a missing NAME or a bundle's memory (`chi bundle uninstall` removes it) exits 1. `chi memory usage [--scope project|system] [--top N] [--format text|json]` reports what the memories cost over the saved sessions: each scope's index tokens and how many of its lines name a memory nobody read, the memories read most by tokens, and the user's own memories no saved session read (`--top` caps the rows per section, 10; no sessions says so and exits 0) — see [Memory: What the memories cost](memory.md#what-the-memories-cost)
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
@@ -488,7 +487,7 @@ fire twice.
 The model can register its own schedules with `schedule_task` (defaulting to the
 session it is in), list them with `list_schedules` and stop them with
 `cancel_schedule`; like `register_reminder`, these are owner-voiced tools, refused
-in a participant's review or pair turn.
+in a participant's turn.
 
 ## Flags
 
@@ -1453,8 +1452,8 @@ On a touch screen (a phone, a tablet) the bar sits just above the composer
 instead of next to the selection, where the system's own Copy menu and the
 selection handles would cover it; several pills wrap to a second row.
 
-Participants get the same on their page (a `chi share` / `chi review`
-link, the main page): a selection quotes into their composer with the same
+Participants get the same on their page (a `chi share` link, the main
+page): a selection quotes into their composer with the same
 presets; no plugin pills and no Copy link there.
 
 After the presets comes a built-in **Verify**: the quote, then
@@ -1464,7 +1463,7 @@ claim a verdict card can come from; elsewhere (an earlier reply, a step, a messa
 still running) the bar keeps its other actions. A session whose worker predates Verify (started by an older chi) refuses it (409
 `verify_unavailable`); a participant's page disables Verify and Verify fresh with a hint to restart the session. On your page a selection in a turn
 also offers **Copy link**: a link to that turn and quote for a participant's
-browser (the one their review link was opened in), which opens their page
+browser (the one their invite link was opened in), which opens their page
 scrolled to the quote and highlights it; with no one invited, a link to it
 on your own page. A secret in the selection goes into the link as
 `[redacted]`, as the participant's page shows it. One browser holds one participant link at a time, and
@@ -1723,12 +1722,12 @@ How it works inside (`SessionAccess`, chi web's routes, where each check runs):
 
 ### Participants
 
-A session's owner can invite **participants**, people or agents, to review it through chi web on the LAN
-(`web.host: lan`), each with a link of their own that reaches that one session:
+A session's owner can invite **participants** into it through chi web on the LAN (`web.host: lan`), each with a
+link of their own that reaches that one session, whose turns act in it under the owner's guardrails:
 
 ```sh
 chi share 3f9a1c2e --name Alex
-# p_7c01d2aa  Alex (human, reviewer) · session 3f9a1c2e · expires 2026-10-30 14:02 · cap $2.00
+# p_7c01d2aa  Alex (reviewer) · session 3f9a1c2e · expires 2026-10-30 14:02 · cap $2.00
 # http://192.168.1.29:4567/?token=chp_…#s=3f9a1c2e-…
 # (shown once: chi keeps only its digest; chi share revoke 3f9a1c2e p_7c01d2aa ends it)
 chi share ls                    # every session's participants (--format json; never a token)
@@ -1738,42 +1737,41 @@ chi share revoke --all          # every link to every session
 ```
 
 - The link is printed once (with a QR code at a terminal): chi keeps only a digest of its token. Send it to the
-  participant; opening it sets their browser's cookie, as the owner's LAN link does. `--agent` marks an agent
-  participant, which uses the token as `Authorization: Bearer` (e.g. `chi --remote` with that token).
+  participant; opening it sets their browser's cookie, as the owner's LAN link does. The same link works from the
+  command line: its token as `Authorization: Bearer` (a script, another agent, your own second tool; `chi --remote`
+  with that token), on the LAN, this machine or an SSH tunnel, not behind a sign-in proxy.
 - It works for 7 days (`--expires Nh` or `Nd`, 1 hour to 30 days; `web.participants.expires`), until it is revoked,
-  or until the session is archived or deleted. A revoked link shows "This review link was revoked by the session's
-  owner.", an expired one "This review link expired: ask the session's owner for a new one."
-- **Review turns (experimental).** A participant can ask questions and comment through chi web's `POST …/turn`: each
-  message is a turn of its own, queued behind the running one, that the model answers **read-only**. It may read the
-  project (never its secret files or chi's own), and proposes changes as text or a diff for you to apply; it can't
-  write, run, fetch, send notes or set reminders, and any approval or question is yours. A line starting `!` or `/`
-  is refused. A participant can attach images to their own messages (paste, drop or the image button; png, jpeg, gif
-  or webp), up to 40 per invite and within their cap, when the session's model takes images; they see only their own
-  images, anyone else's as "N images". One running and 3 waiting turns per participant (`web.participants.queue`). You pay: each
-  participant has a spending cap (`--cap DOLLARS`, default $2, `web.participants.cap`), counted from their turns'
-  cost and the side requests they cause; at the cap their next comment is refused and you get a notice, and `chi
-  share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review
-  boundary: restart an older one. While your turn waits at the step limit (Continue or Stop), their turns wait too
-  (still queued, still counted): they run, in order, once you continue, stop or send a turn of your own.
-- **Pair turns: sharing a working session.** The read-only review turn is a review session's (`chi review`). Invite
-  someone to a working session instead and their turns **act** in it with its tools, writes included, under your
-  guardrails: what your rules allow runs, what they ask about comes to you as "Sam's turn asks: approve tool call?"
-  with **Allow once** only (nothing session-wide or repo-wide is approved from their calls), and System 1 never
-  answers for you. A write outside the project always asks you, whatever you approved before. It can't read or
+  or until the session is archived or deleted. A revoked link shows "This link was revoked by the session's
+  owner.", an expired one "This link expired: ask the session's owner for a new one." A link an older chi issued
+  for read-only review turns has ended too: "This link is from an older chi: ask the session's owner for a new one."
+  (the panel lists it as "ended (older link)"); invite them again.
+- **Their turns (experimental).** A participant sends messages through chi web's `POST …/turn`: each message is a
+  turn of its own, queued behind the running one, that **acts** in the session with its tools, writes included,
+  under your guardrails: what your rules allow runs, what they ask about comes to you as "Sam's turn asks: approve
+  tool call?" with **Allow once** only (nothing session-wide or repo-wide is approved from their calls), and System 1
+  never answers for you. A write outside the project always asks you, whatever you approved before. It can't read or
   write secrets or chi's own files (keys, shell startup files, histories, credential files; by a file tool, a
   command, a glob or a variable), run chi, leave a command running in the background, read the environment or the
   keychain, sweep your home with find/tar/cp/grep, delegate, set or cancel reminders, send notes, start or stop
   background tasks, load tools, forget outputs or write memories, and it asks its questions in its reply, not on a
   card. Its commands run without your secret-named environment variables (`KEY`, `TOKEN`, `SECRET`, `PASS`,
   `CREDENTIAL`, `AUTH` in the name) and are killed at the execute limit rather than left running; a command that
-  writes outside the project asks you, as a write does (the tmp dirs aside). A pair turn stops mid-turn once their
-  cap is passed or their link ends. `chi share` and the panel's Invite
-  warn you with what their turns may do and how many tool outputs the history holds, and only a link issued with
-  that warning acts: links from before, or issued while the session's worker predated pair turns (the warning says
-  so), stay read-only until you restart the worker and invite them again. Their messages carry a `pair` badge and no
-  Apply (they acted already). This is an accident guard for a trusted team, not containment: a pair turn can still
-  send what it reads out through `web_fetch` or your MCP tools. A link without `--identity` gets the same access:
-  share it only with people you'd let type in your session.
+  writes outside the project asks you, as a write does (the tmp dirs aside). A line starting `!` or `/` is refused.
+  `chi share` and the panel's Invite warn you with what their turns may do and how many tool outputs the history
+  holds. This is an accident guard for a trusted team, not containment: a turn can still send what it reads out
+  through `web_fetch` or your MCP tools. A link without `--identity` gets the same access: share it only with people
+  you'd let type in your session.
+- **Images, queue and cap.** A participant can attach images to their own messages (paste, drop or the image button;
+  png, jpeg, gif or webp), up to 40 per invite and within their cap, when the session's model takes images; they see
+  only their own images, anyone else's as "N images". One running and 3 waiting turns per participant
+  (`web.participants.queue`). You pay: each participant has a spending cap (`--cap DOLLARS`, default $2,
+  `web.participants.cap`), counted from their turns' cost and the side requests they cause; a turn stops mid-turn
+  once their cap is passed or their link ends, their next one is refused and you get a notice, and `chi share cap`
+  raises it. `/stats` shows each participant's spend. Their turns go only to a worker that runs them under your rules,
+  and nobody is invited to a session whose worker predates that ("restart the session first"): restart an older one.
+  While your turn waits at the step limit (Continue or Stop), their turns wait too (still queued, still counted):
+  they run, in order, once you continue, stop or send a turn of your own. Their messages carry a `pair` badge; one
+  an older chi ran read-only reads `· read-only`.
 - **Their page is the main page.** Their link opens the page you use, as theirs: the session's title, their name
   ("Alex · invited") and when the link ends, the conversation with the same folded steps, answers and live turn box
   (what chi says, which tools and files it touches, the working set's file names; never thinking, tool arguments or
@@ -1787,21 +1785,16 @@ chi share revoke --all          # every link to every session
   (yet), session menu, participants panel, cards or approvals, and no file panel (they ask chi to quote what they
   need). They never see tool output or arguments, thinking, approvals or questions, memories, context notes,
   plugin and delegate input, cards, command output, your cost or host paths; secret-shaped text (API keys, tokens,
-  private keys) is redacted too. An agent participant can wait on its
-  turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
+  private keys) is redacted too. From the command line an invite link
+  waits on its turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
   or `send -m`, which prints the turn id `--wait --turn T` takes; that wait exits 3 with `waiting_for_owner` while
   their turn waits on you (a question, an approval, your step-limit Continue) and 1 with `refused` (`cancel_reason`
-  `revoked` or `cap_reached`) when their queued turn is refused before it runs. They can't reach anything else: every other route answers them 403, another
+  `revoked`, `outdated` or `cap_reached`) when their queued turn is refused before it runs. They can't reach anything else: every other route answers them 403, another
   session 404.
-- **Apply.** Under each of a participant's review turns that has a reply, your page shows **Apply** (full width on a
-  phone): it puts an Apply turn in your composer, not sent, `Apply this proposal from Alex's review turn 3f2a1c0d, as
-  far as it fits the plan. It's quoted: …` and the reply quoted line by line. Read it, edit it, send it: the
-  participant's text reaches the model as a quote under your line, never as your instruction. Don't send "do what
-  Alex said" instead: that hands their words your tools.
 - **Your side of it.** In the session bar, the participants chip (`participants · invite` while nobody has a link,
   then `2 participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
   spend against their cap, turns and expiry, with **Cap** and **Revoke** (revoking ends their page and stream and
-  drops their queued comments). **Invite** takes a name, person or agent, the expiry and a cap, and shows the link
+  drops their queued turns). **Invite** takes a name, the expiry and a cap, and shows the link
   once, with Copy, Share (a phone's share sheet) and its QR code. A participant's prompt
   shows their name in their colour, live and after a reload.
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
@@ -1813,50 +1806,26 @@ chi share revoke --all          # every link to every session
   127.0.0.1). A tunnel link opens only on a device on your tailnet; the grant still decides.
 - **A link for one account.** Behind an auth proxy that names the signed-in user (`web.public_url` with
   `web.proxy.identity_header`, or `chi web --tunnel tailscale`), `--identity EMAIL` binds the link to that account:
-  it opens only through the proxy, signed in as EMAIL. A forwarded link opened by anyone else says "This review link
+  it opens only through the proxy, signed in as EMAIL. A forwarded link opened by anyone else says "This link
   is for another account …", and its one-time code still works for EMAIL. `chi share` says `· bound to EMAIL`, `chi
   share ls` `alex@corp · bound`, and the panel's Invite has an email field there. Without such a proxy `--identity`
   is refused (the link could never open); with one, an unbound invite gets a warning line. Through `chi --remote`
   it needs that chi web to have bound links (this version or newer), else it is refused before anything is issued.
   See [configuration.md](configuration.md#inviting-colleagues).
 - The owner's own token and the `chi web --new-token` rotation are separate: rotating it ends no participant's link.
-- **In the attached terminal.** A participant's message reads `Alex ▸ review> is step 3 right?`, the name in that
+- **In the attached terminal.** A participant's message reads `Alex ▸ invited> is step 3 right?`, the name in that
   participant's own colour (queued, running, and the last exchange when you join); yours stay as they were. A line
   says when someone is invited, revoked or their link expires (`participants> Alex joined (p_7c01d2aa)`,
   `participants> Alex left: their link was revoked`), within a few seconds and between turns, and the status row
-  counts who is in the review (`2 participants`). The same commands work from there, on the attached session:
-  `/share NAME [--agent] [--expires 3d] [--cap 2]` (the link and its QR code, once), `/participants` (the list),
+  counts who is in the session (`2 participants`). The same commands work from there, on the attached session:
+  `/share NAME [--expires 3d] [--cap 2]` (the link and its QR code, once), `/participants` (the list),
   `/participants revoke [P]` (one participant, or everyone) and `/participants cap P DOLLARS`. They are `chi share`'s
   own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does; an invite or
   a revoke made with them isn't announced again by the `participants>` line.
 
-#### Review sessions
-
-Share a **review session**, not a working one: a working session's history holds its tool outputs, and a review
-turn's model may quote them. `chi review` starts one, idle:
-
-```sh
-chi review docs/plan.md docs/spec.md          # a fresh session in this project for those files
-# 4b7e9a01-…  review · docs/plan.md, docs/spec.md · idle
-# open it: chi --attach 4b7e9a01 or the web
-# invite someone: chi share 4b7e9a01 --name NAME
-chi review --from 3f9a1c2e docs/plan.md       # a review of a working session: its recap, not its transcript
-```
-
-- Each FILE is a **subject**: a file in the session's project (the git work tree of its folder, `--dir`, else
-  here), relative to that folder or absolute. A missing file, a folder, a file outside the project, a secret
-  (`.env*`, keys and certificates, credentials files, a git config) or chi's own refuses the review with one line:
-  `chi review: .env can't be a review subject: …`. At most 20.
-- `--from ID` (an id, a prefix, `last:ID`) starts a **review fork**: a new session in ID's folder, on its model
-  (`--model` to change it) and setup, seeded with a fresh recap of ID (its live worker is asked first, as a continue
-  asks), never its transcript. ID keeps running, unarchived, its delegates its own. Its FILEs are relative to ID's
-  folder.
-- `chi --remote NAME review … --dir /path/there` starts it on that machine; its chi web checks the files there.
-- Sharing a working session (one `chi review` didn't start) still works, with a warning on stderr that says how many
-  tool outputs its history holds: `chi share: warning: 3f9a1c2e is a working session, not a review session: a
-  participant's review turn can quote what its history holds (42 tool outputs so far). … (chi review --from 3f9a1c2e
-  starts one)`. On the web the participants panel shows the same words before its Invite, with **Start a review of
-  it**, and again above the link an invite gives.
+- **A session an older chi started as a review** (`chi review`, the web's Start review) is an ordinary session
+  now: it stays in the list, its participants' turns act as anyone's, and it carries its last answer and objectives
+  on a continue. `chi review` is gone.
 
 How it works inside (grants, the gate, the routes, the audit trail):
 [internals/participants.md](internals/participants.md).
@@ -2026,7 +1995,7 @@ status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | 2 participants | ctx=8.
   ends and when a delegate's report merges into a turn. A
   child that starts waiting on an approval (which doesn't wake the parent) shows at the next of
   those.
-- `N participants`: who is in the session's review now ([Participants](#participants)).
+- `N participants`: who is in the session now ([Participants](#participants)).
 - `ctx=`: the kernel's context estimate and its bucket, updated during a turn (on hosts that
   report none, `api: openai`, at the turn's end).
 - `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.

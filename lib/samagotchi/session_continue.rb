@@ -534,8 +534,7 @@ module Samagotchi
     # IdleRecap#request_now) and wait, up to +wait+ seconds, for recap.json
     # to change. A worker that is gone wrote its recap when it left; one
     # that has nothing new to say, too short a conversation, or recaps off
-    # answers at once. Best effort: the continue goes on without. A review
-    # fork (ReviewStart) asks the same, with nothing archived after.
+    # answers at once. Best effort: the continue goes on without.
     def self.recap_before_archive(id, state_dir, wait:)
       dir = Session.session_dir(id, state_dir: state_dir)
       client = WorkerLink.client(id, session_dir: dir) or return

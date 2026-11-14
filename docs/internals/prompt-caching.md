@@ -158,14 +158,13 @@ right-hand column happens.
   notes are (`Prompt::ESCAPED_KINDS`). The turn-end warm-up never warms a drop sent after the turn: it misses once.
 - **Participants** ([participants.md](participants.md#attribution)). A participant's message carries a wire-only
   header line (`Steer.review_header`), a pure function of the saved message (its `author_name` and its
-  `participant_mode` stamp included: a review or a pair header), so a replay sends the same bytes; the owner's
+  `participant_mode` stamp included: the pair header, or the review one for an older chi's message), so a replay sends the same bytes; the owner's
   messages are sent as before (`spec/review_contribution_spec.rb`, per loop and on a Messages host). The
   participants line opens the system prompt's volatile tail, after breakpoint #1: a new session's cache is
-  untouched. Its words follow the session's `ParticipantMode` (a review or a working session's line), which never
-  changes for a session. The Engine checks the sidecar at each turn's start and rebuilds (`reset!`) only when the
+  untouched. It has one wording (`SystemPrompt::PARTICIPANTS_LINE`). The Engine checks the sidecar at each turn's start and rebuilds (`reset!`) only when the
   first participant joins and when the last leaves or expires: one history re-read each, then stable. Under D3(a)
-  the declared tools stay the session's, so an author switch costs nothing: the review and pair boundaries are
-  gates on the calls, not a toolkit switch. The forged-header mark (`(quoted) `) is a pure function of the text too.
+  the declared tools stay the session's, so an author switch costs nothing: the participant boundary is a gate
+  on the calls, not a toolkit switch. The forged-header mark (`(quoted) `) is a pure function of the text too.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt (the recap's also
   asks for its auto title line, `RecapPrompt::TITLE`: static text, still that one request). On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.

@@ -29,14 +29,18 @@ RSpec.describe Samagotchi::ShareCommand do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  # A review session (chi review), what one shares; a working session
-  # sets review: nil (chi share warns).
+  # A session to share (an older chi's review session by default: it is
+  # shared as any session, warning included).
   def new_session(review: { "subjects" => ["plan.md"] })
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, review: review).tap do |session|
       session.save(state_dir: state_dir)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     end
   end
+
+  # What chi share printed on stderr besides the share warning every
+  # invite prints (ShareTerms::WARNING).
+  def other_err = err.string.lines.grep_v(/\Achi share: warning: \h{8}: a participant's turns act /).join
 
   it "prints the usage for no arguments and --help" do
     expect(described_class.new([], stdout: out, stderr: err).run).to eq(0)
@@ -61,7 +65,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(grant.identity).to eq("alex@corp.test")
         expect(out.string.lines[0]).to end_with("· cap $2.00 · bound to alex@corp.test\n")
         expect(out.string.lines[1]).to match(%r{\Ahttps://4567\.pod\.test/#code=chc_\S+&s=#{session.id}$})
-        expect(err.string).to eq("")
+        expect(other_err).to eq("")
 
         out.truncate(0)
         out.rewind
@@ -77,7 +81,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(run_with(access, session.id, "--name", "Alex")).to eq(0), err.string
         expect(grants.list.first.identity).to be_nil
         warning = format(described_class::UNBOUND_WARNING, header: header)
-        expect(err.string).to eq("chi share: warning: #{warning}\n")
+        expect(other_err).to eq("chi share: warning: #{warning}\n")
         expect(warning).to include("--identity EMAIL")
       end
     end
@@ -149,7 +153,7 @@ RSpec.describe Samagotchi::ShareCommand do
         grant = grants.list(session_id: session.id).first
         lines = out.string.lines.map(&:chomp)
         expires = Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")
-        expect(lines[0]).to eq("#{grant.id}  Alex (human, reviewer) · session #{session.id[0, 8]} · expires #{expires} · cap $2.00")
+        expect(lines[0]).to eq("#{grant.id}  Alex (reviewer) · session #{session.id[0, 8]} · expires #{expires} · cap $2.00")
         token = lines[1][/token=(chp_[^#]+)#/, 1]
         expect(grants.lookup(token)&.id).to eq(grant.id)
         expect(lines[1]).to end_with("#s=#{session.id}")
@@ -158,17 +162,15 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(File.read(grants.path)).not_to include(token)
       end
 
-      it "warns, naming its tool outputs, when the session isn't a review session; not for a review session" do
+      it "warns, naming its tool outputs, that a participant's turns act; an older chi's review session alike" do
         session.review = nil
         session.messages = [{ role: "user", content: "go" }, { role: "tool_response", content: "out" },
                             { role: "tool", content: "out2" }]
         session.save(state_dir: state_dir)
         expect(run(session.id, "--name", "Alex")).to eq(0), err.string
         short = session.id[0, 8]
-        expect(err.string).to eq("chi share: warning: #{Samagotchi::ReviewStart.share_warning(session)} " \
-                                 "(#{via.command("review --from #{short}")} starts one)\n")
-        expect(err.string).to include("#{short} is a working session").and include("(2 tool outputs so far)")
-        # The warning said their turns act: the grant is stamped pair.
+        expect(err.string).to eq("chi share: warning: #{Samagotchi::ShareTerms.of(session).warning}\n")
+        expect(err.string).to include("#{short}: a participant's turns act").and include("(2 tool outputs so far)")
         expect(grants.list(session_id: session.id).last.mode).to eq("pair")
 
         err.truncate(0)
@@ -176,7 +178,8 @@ RSpec.describe Samagotchi::ShareCommand do
         session.review = { "subjects" => ["plan.md"] }
         session.save(state_dir: state_dir)
         expect(run(session.id, "--name", "Kim")).to eq(0), err.string
-        expect(err.string).to eq("")
+        expect(err.string).to include("#{short}: a participant's turns act")
+        expect(grants.list(session_id: session.id).last.mode).to eq("pair")
       end
 
       it "names the remote's LAN address in a remote's link" do
@@ -260,10 +263,10 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(out.string.lines[1]).to start_with("http://192.0.2.5:4567/?token=chp_")
       end
 
-      it "takes --agent, and prints a QR code at a terminal" do
-        expect(run(session.id, "--name", "Bot", "--agent", tty: true)).to eq(0), err.string
-        expect(grants.list.first.kind).to eq("agent")
+      it "prints a QR code at a terminal, and has no --agent" do
+        expect(run(session.id, "--name", "Bot", tty: true)).to eq(0), err.string
         expect(out.string.lines.size).to be > 10
+        expect(run(session.id, "--name", "Bot", "--agent")).to eq(2)
       end
 
       it "refuses usage errors (exit 2) and an unknown session (exit 1)" do
@@ -288,7 +291,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(out.string.lines[0]).to end_with("· cap $5.50\n")
         expect(run(session.id, "--name", "Kim", "--cap", "1001")).to eq(2)
         expect(run(session.id, "--name", "Kim", "--cap", "lots")).to eq(2)
-        expect(err.string.lines.map(&:chomp).uniq).to eq(["chi share: #{described_class::CAP_USAGE} (see chi share --help)"])
+        expect(other_err.lines.map(&:chomp).uniq).to eq(["chi share: #{described_class::CAP_USAGE} (see chi share --help)"])
         expect(grants.list.size).to eq(1)
       end
 
@@ -315,16 +318,16 @@ RSpec.describe Samagotchi::ShareCommand do
       it "lists one session's or every session's participants, never a token, as text or JSON" do
         a = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
         other = new_session
-        Samagotchi::Participants.invite(grants, session_id: other.id, name: "Kim", kind: "agent", state_dir: state_dir)
+        Samagotchi::Participants.invite(grants, session_id: other.id, name: "Kim", state_dir: state_dir)
 
         expect(run("ls")).to eq(0), err.string
         lines = out.string.lines.map(&:rstrip)
         expect(lines[0].split(/\s{2,}/))
-          .to eq(["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
+          .to eq(["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
                   "STATE"])
         expect(lines.size).to eq(3)
-        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 5, 8, 9, 10))
-          .to eq([session.id[0, 8], a.grant.id, "Alex", "-", "human", "reviewer", "-", "$2.00", "active"])
+        expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 7, 8, 9))
+          .to eq([session.id[0, 8], a.grant.id, "Alex", "-", "reviewer", "-", "$2.00", "active"])
         expect(out.string).not_to include(a.token)
 
         out.truncate(0)
@@ -410,7 +413,7 @@ RSpec.describe Samagotchi::ShareCommand do
 
   describe "a participant's token through --remote" do
     it "is refused the owner's share routes in its one message (Dispatch prints it, exit 1)" do
-      issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bot", kind: "agent", state_dir: state_dir)
+      issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bot", state_dir: state_dir)
       access = RemoteBackend.access(state_dir: state_dir, token: issued.token)
       expect { described_class.new(["ls", session.id], stdout: out, stderr: err, access: access).run }
         .to raise_error(Samagotchi::SessionAccess::NotPermitted,

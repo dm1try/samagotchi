@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
                            "schedule_task, list_schedules, cancel_schedule, list_sessions, send_note, delegate, " \
                            "delegate_result, objectives")
     expect(lines[4]).to eq("  removed: none")
-    expect(lines[5]).to eq("  toolkits: full, lean, child, review; /toolkit [NAME | add TOOL | remove TOOL] changes it")
+    expect(lines[5]).to eq("  toolkits: full, lean, child; /toolkit [NAME | add TOOL | remove TOOL] changes it")
     expect(command.run("child")[0].lines[3..4].map(&:chomp))
       .to eq(["  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, schedule_task, list_schedules, cancel_schedule, list_sessions, objectives",
               "  removed: memory_write, delegate, delegate_result"])
@@ -190,7 +190,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
   end
 
   it "refuses an unknown toolkit or tool, keeping a tool's case" do
-    expect { command.run("nope") }.to raise_error(ArgumentError, "no toolkit named nope (toolkits: full, lean, child, review)")
+    expect { command.run("nope") }.to raise_error(ArgumentError, "no toolkit named nope (toolkits: full, lean, child)")
     expect { command.run("add Delegate") }.to raise_error(ArgumentError, "no tool named Delegate in this session")
     expect { command.run("add") }.to raise_error(ArgumentError, /needs a tool name/)
     engine.tools.register("Mixed_Tool", schema: { name: "Mixed_Tool" }, handler: ->(*) {}, source: "mcp")

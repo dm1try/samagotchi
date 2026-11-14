@@ -1,21 +1,20 @@
 ---
 name: coordinator
-version: 0.8.1
+version: 0.9.0
 scope: system
-description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, merges under a guardrail approval (the git-merge rule) or a question, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end, /coordinate review (experimental: a sprint review session to share) and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions, objectives) and the coding toolkit for build children (child + be concise)"
+description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, merges under a guardrail approval (the git-merge rule) or a question, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions, objectives) and the coding toolkit for build children (child + be concise)"
 trust_level: reviewed
 files:
   skill_coordinator.md:
-    sha256: sha256:1cac885facd28757aaa0197b28889246f845834c17101d59b5625d1b2b89679a
+    sha256: sha256:21a56711f4ac1252ff6012a6ed0a743cb90732939abed406a9b8753a755c8d0c
     description: "Coordinate parallel work: split it, delegate each task wait:false in its own worktree (cwd:), check each report, merge under the git-merge approval or ask the user; resume from a handoff_* memory"
 plugin:
   file: plugin.rb
-  sha256: sha256:540dd6369342ea4dcbc6ba5ee17fb20d980b880df614a475668c70115e7ec6b8
+  sha256: sha256:406b9827485535a8be17d4f1b291997ebf5c3f7d5616d20812c53b4ea153f601
 # the coordinator toolkit needs chi.toolkit and ctx.use_toolkit (0.66.0); the
 # coding toolkit (chi.toolkit prompt:) and the skill's delegate toolkit: need
 # the next chi.
 requires_chi: ">= 0.107.0"
-# /coordinate review uses ctx.sessions.review (the next chi).
 # No requires_chi_next for guardrails/merge.yml: its keys are long supported, and first-ever too-new rules would make a
 # live older worker deny every call. A chi without `chi guardrails rule` gives a usage error, and the skill then asks.
 # Nor for the objectives tool in the kit and the skill: on an older chi the kit's add names nothing (it declares only what

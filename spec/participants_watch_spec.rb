@@ -25,8 +25,9 @@ RSpec.describe Samagotchi::ParticipantsWatch do
   after { FileUtils.rm_rf(state_dir) }
 
   def entry(id, name, expires_in: 3600, removed: false)
-    { "id" => id, "kind" => "human", "name" => name, "role" => "reviewer", "added_at" => now.first.iso8601,
-      "expires_at" => (now.first + expires_in).iso8601, "removed_at" => removed ? now.first.iso8601 : nil, "cap" => 2.0 }
+    { "id" => id, "name" => name, "role" => "reviewer", "added_at" => now.first.iso8601,
+      "expires_at" => (now.first + expires_in).iso8601, "removed_at" => removed ? now.first.iso8601 : nil, "cap" => 2.0,
+      "mode" => "pair" }
   end
 
   # The sidecar as Participants.write leaves it, with a new mtime.
@@ -48,19 +49,24 @@ RSpec.describe Samagotchi::ParticipantsWatch do
 
     write(entry("p_aaaaaaaa", "Alex"), entry("p_bbbbbbbb", "Bo", expires_in: 60))
     change = watch.changes
-    expect(change.joined).to eq([{ id: "p_bbbbbbbb", name: "Bo", kind: "human" }])
+    expect(change.joined).to eq([{ id: "p_bbbbbbbb", name: "Bo" }])
     expect(change.left).to eq([])
     expect(change.participants.map { |row| row[:id] }).to eq(%w[p_aaaaaaaa p_bbbbbbbb])
     expect(watch.changes).to be_nil
 
     now[0] += 120
-    expect(watch.changes.left).to eq([{ id: "p_bbbbbbbb", name: "Bo", kind: "human", reason: "expired" }])
+    expect(watch.changes.left).to eq([{ id: "p_bbbbbbbb", name: "Bo", reason: "expired" }])
 
     write(entry("p_aaaaaaaa", "Alex", removed: true), entry("p_bbbbbbbb", "Bo", expires_in: -60))
     change = watch.changes
-    expect(change.left).to eq([{ id: "p_aaaaaaaa", name: "Alex", kind: "human", reason: "revoked" }])
+    expect(change.left).to eq([{ id: "p_aaaaaaaa", name: "Alex", reason: "revoked" }])
     expect(change.participants).to eq([])
     expect(change.to_event).to include(type: :participants_changed, participants: [])
+  end
+
+  it "counts no older chi's read-only participant (no mode): they are not in the session" do
+    write(entry("p_aaaaaaaa", "Alex"), entry("p_bbbbbbbb", "Bo").except("mode"))
+    expect(watch.active).to eq([{ id: "p_aaaaaaaa", name: "Alex" }])
   end
 
   it "reads the sidecar again only when its mtime moves" do
@@ -130,12 +136,12 @@ RSpec.describe Samagotchi::Worker, "participants joining and leaving" do
 
     bo = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", state_dir: tmpdir).grant
     joined = events.pop(timeout: 5)
-    expect(joined).to include(joined: [{ id: bo.id, name: "Bo", kind: "human" }], left: [])
+    expect(joined).to include(joined: [{ id: bo.id, name: "Bo" }], left: [])
     expect(joined[:participants].map { |row| row[:name] }).to eq(%w[Alex Bo])
 
     Samagotchi::Participants.revoke(grants, session_id: session.id, id: bo.id, state_dir: tmpdir)
     left = events.pop(timeout: 5)
-    expect(left).to include(joined: [], left: [{ id: bo.id, name: "Bo", kind: "human", reason: "revoked" }])
+    expect(left).to include(joined: [], left: [{ id: bo.id, name: "Bo", reason: "revoked" }])
     loop_rounds
     expect(events).to be_empty
   end

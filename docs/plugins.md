@@ -682,7 +682,7 @@ chi refuses the keyword, a load error: a bundle that passes it sets
 too, so a bundle passing it sets `requires_chi: ">= 0.121.0"` (`chi bundle check` warns on a lower one).
 
 ```ruby
-chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
+chi.toolkit "audit", base: "lean", add: %w[delegate delegate_result]
 chi.toolkit "coding", base: "child", prompt: "- Be concise in your responses"
 chi.toolkit "web", base: "lean", groups: %w[chrome db*]
 ```
@@ -879,7 +879,6 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
 | `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
-| `ctx.review?` | whether the session is a review session (`chi review`): one its participants read, not the owner's working session |
 | `ctx.frontend` | what runs the session, read now: `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). There is no `:repl` any more: a bundle that checks for it never matches. Only a worker's answers reach the web while it runs; a one-shot's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
 | `ctx.continues` | the id of the session this one continues (a [continue](sessions.md#session-chains)'s new link), else nil |
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
@@ -1228,7 +1227,6 @@ ctx.sessions.send(id, "then the docs", delivery: :queue)  # after its running tu
 ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}  (title: its /title, else its preview)
 ctx.sessions.children      # => [{id:, short_id:, state:, branch:, last_reply:, reported:, ...}]
 ctx.sessions.stop(id)      # one of this session's own children
-ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review session's id (chi review --from)
 ```
 
 - `fork(messages:, title: nil, prompt: nil)` starts a child session in its
@@ -1247,18 +1245,6 @@ ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review se
   - A child chi won't start raises `Error` with chi's reason: the session's
     model is gone from the config, or its toolkit is a config kit with an
     invalid `groups:` (`toolkit.kits`, `Toolkit.check_new!`).
-- `review(subjects: [], seed: nil, recap_wait: 0)` starts a review session of
-  this one, as `chi review --from` does (see [Review sessions](sessions.md#review-sessions)):
-  a new session in this session's folder, on its model and setup, seeded with
-  its recap (never its transcript) and `seed:` (more context, a handoff say),
-  idle, to share with participants (`chi share ID`). This session keeps
-  running, unarchived; the review isn't its child. `subjects:` are project
-  files relative to its folder (a secret or a file outside the project raises
-  `Error` with chi review's one message). It uses the recap already saved: the
-  worker is asked for a fresh one but not waited on unless `recap_wait:` (in
-  seconds) says so, as it runs in this session's own worker. It returns the
-  review session's id. The test kit's `bundle.sessions` answers `review-1`,
-  `review-2`…
 - `send(id, text)` sends a user message to a session (an id or a unique
   prefix); it runs as a turn, and an idle session is woken. A session its
   owner stopped or archived is not: `Error` (`session_stopped` /
@@ -1336,7 +1322,7 @@ gets a note when its text changes.
   why "you mentioned …". `title` is what a person reads (no probabilities or
   place facts: "#42 Make the thing"), `describe` more of it. A candidate of
   that name stays as first proposed (a worker restart proposing again
-  changes nothing). Nothing is proposed (nil) in a review session, for a
+  changes nothing). Nothing is proposed (nil) for a
   source attached already (its name or its URL, at any scope), or for one
   the user removed from the session. A new candidate that an owner prompt
   already in the session mentions is attached at once: an init task's

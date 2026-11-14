@@ -1,5 +1,5 @@
 // The settings panel's shared rows (settings_panel.js): the segments, the
-// rows a caller passes, the disclosure and the review line.
+// rows a caller passes and the disclosure.
 // start_settings.test.js covers the start page's panel drawn through it.
 import "./dom_shim.js";
 import test from "node:test";
@@ -40,7 +40,7 @@ test("the disclosure's fields: the model's apply and budget as the defaults, the
   assert.match(markupOf(sentAnywayTemplate("Gone.", "x-clear")), /Gone\.\s+<button type="button" class="sset-link" data-act="x-clear">Clear<\/button>/);
 });
 
-test("the panel: heading and kind, the rows in the caller's order (null skipped), the disclosure, review line and note", () => {
+test("the panel: heading and kind, the rows in the caller's order (null skipped), the disclosure and note", () => {
   const ctx = contextSegments(LLM_CONTEXT, null);
   const rows = [
     { name: "rh", label: "Reasoning history", segments: [{ value: "all", label: "all", pressed: true }], act: "reasoning" },
@@ -53,16 +53,11 @@ test("the panel: heading and kind, the rows in the caller's order (null skipped)
   assert.ok(closed.indexOf("sset-rh-label") < closed.indexOf("sset-ctx-label"));
   assert.ok(closed.indexOf("sset-ctx-label") < closed.indexOf("Thinking low: sent anyway."));
   assert.match(closed, /data-act="ctx-more" aria-expanded="false">Apply and budget ▸/);
-  assert.doesNotMatch(closed, /sset-ctx-form|sset-review|Review files/);
+  assert.doesNotMatch(closed, /sset-ctx-form/);
   assert.match(closed, /<div class="ctx-pop-meta">Soon\.<\/div>$/);
   rows[2].more.open = true;
-  const open = markupOf(settingsPanelTemplate({ heading: "New session", rows, review: [], note: "N." }));
+  const open = markupOf(settingsPanelTemplate({ heading: "New session", rows, note: "N." }));
   assert.doesNotMatch(open, /ctx-pop-kind/);
   assert.match(open, /aria-expanded="true">Apply and budget ▾/);
   assert.match(open, /<form class="sset-ctx-form">/);
-  assert.match(open, /<hr class="sset-rule"><div class="sset-review">/);
-  assert.match(open, /Review files…/);
-  const reviewOnly = markupOf(settingsPanelTemplate({ heading: "New session", rows: [null], review: ["a.md"], note: "N." }));
-  assert.doesNotMatch(reviewOnly, /sset-rule/);
-  assert.match(reviewOnly, /Review: a\.md<\/span>/);
 });

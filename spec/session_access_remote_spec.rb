@@ -173,7 +173,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
   describe "a bound invite (chi share --identity)" do
     let(:participant) do
-      { id: "p_0000beef", session_id: "s", kind: "human", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",
+      { id: "p_0000beef", session_id: "s", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",
         state: "active", cap: 2.0, queue: 3 }
     end
     let(:bound_info) { { app: "chi-web", version: "9.9.9", features: %w[session_commands bound_grants] } }
@@ -186,18 +186,18 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     it "is never sent to a chi web without bound grants, which would ignore the identity" do
       old, calls = scripted([201, { participant: participant, token: "chp_x", link: "https://l" }],
                             info: { app: "chi-web", version: "0.119.0", features: %w[session_commands] })
-      expect { old.invite("s", name: "Alex", kind: "human", identity: "alex@corp.test") }
+      expect { old.invite("s", name: "Alex", identity: "alex@corp.test") }
         .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /runs chi 0\.119\.0, too old/)
       expect(calls.map(&:first)).to eq([:get])
       # An unbound invite still goes to it, as before.
-      expect(old.invite("s", name: "Alex", kind: "human").participant.identity).to be_nil
+      expect(old.invite("s", name: "Alex").participant.identity).to be_nil
       expect(calls.map { |method, path| [method, path] }).to include([:post, "/api/sessions/s/participants"])
     end
 
     it "revokes and refuses a grant that came back unbound (its link never printed)" do
       access, calls = scripted([201, { participant: participant, token: "chp_x", link: "https://l" }], [200, { revoked: [] }],
                                info: bound_info)
-      expect { access.invite("s", name: "Alex", kind: "human", identity: "alex@corp.test") }
+      expect { access.invite("s", name: "Alex", identity: "alex@corp.test") }
         .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /issued p_0000beef unbound, so chi revoked it/)
       expect(calls.last.first(2)).to eq([:delete, "/api/sessions/s/participants"])
       expect(calls.last[2][:query]).to eq({ id: "p_0000beef" })
@@ -207,7 +207,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     it "takes the grant chi web bound, compared as the gate compares (lower case)" do
       bound = participant.merge(identity: "alex@corp.test")
       access, = scripted([201, { participant: bound, token: "chp_x", link: "https://l" }], info: bound_info)
-      invitation = access.invite("s", name: "Alex", kind: "human", identity: " Alex@Corp.Test")
+      invitation = access.invite("s", name: "Alex", identity: " Alex@Corp.Test")
       expect(invitation.participant.identity).to eq("alex@corp.test")
     end
 
@@ -215,7 +215,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       message = "/x/participants.json can't be read (not JSON): chi won't write over it"
       access, = scripted([409, { error: "grants_unwritable", detail: message }], [409, { error: "grants_unwritable", detail: message }],
                          info: bound_info)
-      expect { access.invite("s", name: "Alex", kind: "human") }.to raise_error(Samagotchi::Grants::Unwritable, message)
+      expect { access.invite("s", name: "Alex") }.to raise_error(Samagotchi::Grants::Unwritable, message)
       expect { access.participants("s") }.to raise_error(Samagotchi::Grants::Unwritable, message)
     end
 
@@ -345,7 +345,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: state))
       end
     end
-    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Agent", kind: "agent", state_dir: state) }
+    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Agent", state_dir: state) }
 
     def as_participant(token = issued.token)
       described_class.new(RemoteBackend.entry(token: token),
@@ -367,7 +367,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       token = issued.token
       Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state)
       expect { as_participant(token).show(session.id) }
-        .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this review link was revoked by the session's owner")
+        .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this link was revoked by the session's owner")
     end
 
     # The participant routes chi send --wait reaches (resolve, wait/prepare
@@ -394,15 +394,15 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                             "detail" => "waiting for the session's owner: #{wait_again}")
     end
 
-    it "sends a review turn with chi send -m and names its id and the wait for it" do
+    it "sends a participant's turn with chi send -m and names its id and the wait for it" do
       access = as_participant
       code = Samagotchi::SendCommand.new(["-m", "is step 3 right?", session.id[0, 8]], stdout: out, stderr: err,
                                                                                       state_dir: state, access: access).run
 
       expect(code).to eq(0), err.string
-      turn = out.string[/review turn (\S+);/, 1]
+      turn = out.string[/queued as turn (\S+);/, 1]
       expect(turn).not_to be_nil
-      expect(out.string).to eq("#{session.id[0, 8]}  sent (queued as review turn #{turn}; " \
+      expect(out.string).to eq("#{session.id[0, 8]}  sent (queued as turn #{turn}; " \
                                "chi --remote studio send --wait --turn #{turn} #{session.id} waits for its reply)\n")
     end
 
@@ -418,7 +418,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                                                                           state_dir: state, access: access).run
 
       expect([code, out.string]).to eq([0, "yes\n"]), err.string
-      turn = err.string[/queued as review turn (\S+)\)/, 1]
+      turn = err.string[/queued as turn (\S+)\)/, 1]
       expect(turn).not_to be_nil
       expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: false))
     end
@@ -429,6 +429,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       {
         [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, messages::TOKEN_EXPIRED],
         [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, messages::TOKEN_REVOKED],
+        [401, "token_outdated"] => [Samagotchi::SessionAccess::TokenOutdated, messages::TOKEN_OUTDATED],
         [401, "token_bound"] => [Samagotchi::SessionAccess::TokenBound, messages::TOKEN_BOUND],
         [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, messages::NOT_PERMITTED],
         [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, messages::TOO_MANY_TURNS],
@@ -440,7 +441,8 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       end
       expect(Samagotchi::SessionAccess::TokenExpired.ancestors).to include(Samagotchi::SessionAccess::AuthRefused)
       expect(Samagotchi::Web::ParticipantAccess::ENDED)
-        .to eq(revoked: ["token_revoked", messages::TOKEN_REVOKED], expired: ["token_expired", messages::TOKEN_EXPIRED])
+        .to eq(revoked: ["token_revoked", messages::TOKEN_REVOKED], expired: ["token_expired", messages::TOKEN_EXPIRED],
+               outdated: ["token_outdated", messages::TOKEN_OUTDATED])
     end
   end
 

@@ -69,7 +69,7 @@ module Samagotchi
     # Starts a fresh child for the parent's unclear verdict +of+ (its
     # check_turn_id). +author+: the requester ("p:<id>"), nil for the
     # owner; +mode+: a participant's grant's mode in the parent
-    # (ParticipantMode.live_for), saved on the child.
+    # (Grants::PAIR_MODE), saved on the child.
     # @return [Session] the child
     # @raise [Refused] no such verdict, not unclear, or a fresh check of it
     #   still runs

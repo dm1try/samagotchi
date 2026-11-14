@@ -47,8 +47,8 @@ module Samagotchi
       # @param note [String, nil] a context note the session starts with,
       #   from +note_source+: queued before its worker spawns, so its first
       #   turn sees it
-      # @param review [SessionReview, nil] a review session's (ReviewStart; a
-      #   continue keeps its previous link's)
+      # @param review [SessionReview, nil] an older chi's review session's
+      #   field, kept as it was by a continue of one (nothing reads it)
       # @param verify_fresh [VerifyFreshOrigin, nil] a Verify fresh child's
       #   requester, rules and claim (VerifyFresh.start)
       # @param before_spawn [#call, nil] (session) runs once the session and

@@ -37,7 +37,7 @@ until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`,
 |---|---|---|
 | **The main page**: the start page and a session page, the owner's and a participant's | `index.html` → `app.js` | **Render once, then patch.** A session's open (`session_sync.js` `select` → `resync` → `session_view.js` `renderSessionView`) draws the history from `GET /api/sessions/:id`; from then on each stream event changes the DOM in place (`stream_handlers.js`). The DOM *is* the log. The start page is the same app with `store.selected` null. |
 
-A participant's link (a review or pair grant) opens the same page: chi web serves them `index.html` stamped with
+A participant's link opens the same page: chi web serves them `index.html` stamped with
 their viewer (The viewer, below), their show and stream are filtered (`Web::ParticipantView`,
 [participants.md](participants.md#what-a-participant-sees)), and what is theirs on the page is
 `participant_main.js` (The participant's page, below). There is no second page: the participant page
@@ -114,7 +114,7 @@ a store write. A value written unchanged redraws nothing (a chunk with the same 
 
 An input the store doesn't hold calls `store.touch(name)` where it changes: `infoBar` for the clock (liveTurn's
 `onTick`), the versions and the sessions restarting (`version_notices.js` `notice`, `restart`), the stream (`session_sync.js` `startStream`, `workerGone`), the working
-set's and the participants' `onChange`, the continue and review in-flight sets
+set's and the participants' `onChange`, the continue in-flight set
 (`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`, with `settingsPanel`:
 the open ⚙ panel's running-turn note) and at the end of `renderSessionView` (a whole view drawn). Left as they are,
 on purpose: `composer_mode.js`'s phone-width listener calls its `update()` (the bar doesn't read it),
@@ -219,8 +219,7 @@ null`, then `x?.…` where it is read; a module's hook passed as `null`, as `sta
 (`viewer.control(el, name)` / `controls(els, name)`: the element when allowed, else hidden, marked `data-withheld`
 and `null`; index.html's `[data-withheld]{display:none!important}` beats an element's own `display` rule, which a
 bare `hidden` does not). A module the
-page reads everywhere takes a flag instead (`question_cards.js answers`, `block_host.js renderers`,
-`turn_block.js turnHistoryNodes`'s `apply`). No scattered `if (owner)`, and no 403 tolerated as a way of gating. The
+page reads everywhere takes a flag instead (`question_cards.js answers`, and `block_host.js renderers`). No scattered `if (owner)`, and no 403 tolerated as a way of gating. The
 gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answers later, not the controls made.
 
 | Capability | Controls | Calls |
@@ -238,7 +237,6 @@ gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answer
 | `session_controls` | `#infoContinueBtn`, `#infoArchiveBtn`, `#infoStopBtn`, `#infoDeleteBtn`, `#infoMoreBtn` (the ⋯ sheet), the ⚙ chip and panel, the `/` list, the stage's task stop, the working set's drop/undrop | `POST …/command` (`composer.js`: without it a `/` or `!` line goes as a turn, and the worker decides), `…/stop`, `…/holds*`, `…/tasks/:id/stop`, `…/reload_check`, continue → (`POST /api/sessions`) |
 | `revise` | the answers' Revise (`revise_stack.js`) | (a Revise goes with `POST …/turn`) |
 | `revise_own_turn` (a participant's) | Revise on the answers to their own messages (`participant_revise.js`, `revise_stack.js mayRevise`); the stacks for everyone | (`POST …/turn` with `revises`, checked by chi web) |
-| `apply` | the Apply row (`turn_block.js`, `placeApply`, its click) | `GET …/apply` |
 | `answer_cards` | question, approval and continue cards (`question_cards.js`), System 1's "wrong" | `…/answer`, `…/question/dismiss`, `…/guardrails/wrong` |
 | `render` | | `POST /api/render` (`markdown_place.js`: step texts, a question's kept reply) |
 | `block_renderers` | a bundle's drawn blocks (the core `chi-ui` drawer stays) | `/api/block_renderers*` |
@@ -259,8 +257,7 @@ The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls witho
 `/api/update*` and `…/restart` (`version_notices.js`: its versions come only from the hub stream, `sessions`);
 `…/archive`, `…/unarchive`, `DELETE …/:id` (the bar's buttons, `session_controls`; the strip and the all view,
 `sessions`); `POST /api/sessions` from the start page (a participant's page opens the grant's session and never the start
-page) and the
-participants panel's review start (`participants_admin`); `GET …/images/:file` (a message's image refs; a
+page); `GET …/images/:file` (a message's image refs; a
 participant's messages carry refs only for their own uploads, the one image a participant's route serves them); the objectives strip's posts and the plugin cards' actions (`…/command`:
 drawn only from the show's `objectives` / `cards` and their stream events, which `ParticipantView` drops). Not called
 by the page at all: `/api/sessions/summaries`, `…/output`, `…/notes`, `…/wake`, `…/worker`, `…/exit`, `…/recap`,
@@ -281,8 +278,8 @@ What is a participant's on the main page is `participant_main.js`, made by app.j
   since `<body>` names no ids. `turn_events.js isOwn` counts their client id (`review:<grant>`, chi web's for every
   tab of theirs) as the tab's own; a `turn_started` with `mine` starts their queued bubble (`bubbles.js
   queuedOwnBubble`: no origin names its enqueued id to them). `turn_html.js userBubbleTemplate` gives their echo
-  their badge and the owner's prompts the "owner" label; `participant_names.js authorBadgeText` reads a pair turn as
-  the name alone for them ("· review" stays).
+  their badge and the owner's prompts the "owner" label; `participant_names.js authorBadgeText` reads their turn as
+  the name alone for them (an older chi's read-only turn "· read-only").
 - **The rows.** The top row: a plain logo (`.plain-brand`, not `#newBtn`), their name ("Alex · invited") and, on a
   desktop, when the link ends. The bottom row (`#participantBar`) in `#infoText`'s place, drawn by the `infoBar`
   redraw (`updateInfoBar` returns early): status, ctx %, the last speed (the turn's time while one runs), their
@@ -565,7 +562,7 @@ On it: `context_chips.js`, `project_picker.js`, `participants_panel.js` (`load`)
 (`refreshCardBodies`), `stream_handlers.js` (`answer_display`), `working_set_view.js` (`fetchServer`), `ws_peek.js` and `ws_reader.js` (an item's timeline), the
 turn-end re-reads (`session_view.js` `readTurnEnd`, app.js's `refreshTimingFromSession`, `mergeTurnTiming`) and app.js's init-row timers. Still by hand
 (the id decides more than "drop it"): `session_sync.js` `resync`/`retryResync` (the re-read budget, `resyncAgain`), the stream's
-close, `session_actions.js` (continue/review open another session on purpose), `send_turn.js` (a failure for another
+close, `session_actions.js` (a continue opens another session on purpose), `send_turn.js` (a failure for another
 session becomes a toast). A new await in a component
 uses `latest.js`.
 

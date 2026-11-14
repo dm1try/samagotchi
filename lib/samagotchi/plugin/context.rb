@@ -276,10 +276,6 @@ module Samagotchi
       # another session handed over, not the user's own.
       def delegate? = !!saved_session&.delegate?
 
-      # Whether the session is a review session (`chi review`, Session#review?):
-      # one its participants read, not the owner's working session.
-      def review? = !!saved_session&.review?
-
       # The id of the session this one continues (a continue's new link,
       # Session#continues), else nil.
       # @return [String, nil]

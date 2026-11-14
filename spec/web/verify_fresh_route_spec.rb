@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/outdated_grants"
 require "tmpdir"
 require "json"
 require "rack/mock"
@@ -16,6 +17,8 @@ require "samagotchi/verify_fresh"
 # participant's Verify fresh. A participant's is refused as their turn
 # would be, audited like one, and their child gets their grant's mode.
 RSpec.describe Samagotchi::Web::App, "Verify fresh" do
+  include OutdatedGrants
+
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { Dir.mktmpdir("web-verify-fresh") }
@@ -34,8 +37,7 @@ RSpec.describe Samagotchi::Web::App, "Verify fresh" do
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
     end
   end
-  let(:mode) { "pair" }
-  let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: mode, state_dir: state_dir) }
+  let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir) }
   let(:grant) { issued.grant }
   let(:spawned) { [] }
 
@@ -90,13 +92,11 @@ RSpec.describe Samagotchi::Web::App, "Verify fresh" do
     expect(audit.last).to include("participant" => grant.id, "status" => "accepted", "mode" => "pair", "of" => check_turn)
   end
 
-  context "with a review grant" do
-    let(:mode) { nil }
-
-    it "saves review on the child" do
-      expect(call.first).to eq(202)
-      expect(spawned.first[:verify_fresh].turn_mode).to eq(:review)
-    end
+  it "refuses an older chi's read-only grant at the gate (token_outdated): no child" do
+    make_outdated!(grants, grant, state_dir: state_dir)
+    status, body = call
+    expect([status, body["error"]]).to eq([401, "token_outdated"])
+    expect(spawned).to eq([])
   end
 
   it "refuses one past the cap, counting the participant's fresh children, audited" do
@@ -166,14 +166,16 @@ RSpec.describe Samagotchi::Web::App, "Verify fresh" do
     end
   end
 
-  it "refuses a participant's while the session's live worker predates participants' turns" do
-    allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(%w[delivery verify])
-    expect(call.first(2).last).to include("error" => "review_unavailable")
+  it "refuses a participant's while the session's live worker predates their turns (no pair_turns)" do
+    [%w[delivery verify], %w[delivery review_turns verify]].each do |features|
+      allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(features)
+      expect(call.first(2).last).to include("error" => "pair_unavailable")
+    end
     expect(spawned).to eq([])
   end
 
   it "refuses Verify fresh for the owner and participant when the live worker lacks Verify" do
-    allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(%w[delivery review_turns])
+    allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(%w[delivery review_turns])
 
     [nil, issued.token].each do |token|
       expect(call(token: token)).to eq([409, Samagotchi::VerifyAnchor::UNAVAILABLE])

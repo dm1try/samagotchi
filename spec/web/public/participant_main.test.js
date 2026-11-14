@@ -76,7 +76,7 @@ ptest("labels: the owner's prompt reads \"owner\" to a participant, their echo c
   const echo = html(userBubbleTemplate({ content: "Mine" }, { own: true }));
   assert.equal(echo.querySelector(".author-badge").textContent, "Alex");
   assert.equal(authorBadgeText("Alex", "pair"), "Alex");
-  assert.equal(authorBadgeText("Alex", "review"), "Alex · review");
+  assert.equal(authorBadgeText("Alex", "review"), "Alex · read-only");
   setViewerSelf(null);
   assert.ok(html(userBubbleTemplate({ content: "Check the shell" })).querySelector(".origin-label") === null);
   assert.equal(authorBadgeText("Alex", "pair"), "Alex · pair");
@@ -107,7 +107,7 @@ ptest("the closed line: their limit (the mock-up's words), else a refusal or an 
   });
   const stopped = closedLine({ refusal: { code: "session_stopped", text: "the session is stopped; only its owner's message starts it again" } });
   assert.equal(stopped.title, "The session is stopped; only its owner's message starts it again.");
-  assert.equal(closedLine({ refusal: { code: "token_revoked", text: "this review link was revoked by the session's owner" } }).kind, "token_revoked");
+  assert.equal(closedLine({ refusal: { code: "token_revoked", text: "this link was revoked by the session's owner" } }).kind, "token_revoked");
 });
 
 ptest("the delivery line: their own turn takes the message at its next step (Alt+Enter queues); another's queues it as their own turn", () => {
@@ -242,11 +242,15 @@ ptest("participant_main: closed() follows the closed line, and onClosed runs on 
 });
 
 ptest("participant_main: an ended link shows the 401's words from a brief read, or a refused send's own", async () => {
-  const probe = async () => ({ status: 401, json: async () => ({ error: "token_expired", detail: "this review link expired: ask the session's owner for a new one" }) });
+  const probe = async () => ({ status: 401, json: async () => ({ error: "token_expired", detail: "this link expired: ask the session's owner for a new one" }) });
   const { main } = page({ probe });
   await main.linkEnded();
   assert.equal(document.querySelector("#participantClosed").dataset.kind, "token_expired");
-  assert.match(document.querySelector("#participantClosed").textContent, /^This review link expired/);
+  assert.match(document.querySelector("#participantClosed").textContent, /^This link expired/);
+  const older = page({ probe: async () => ({ status: 401, json: async () => ({ error: "token_outdated", detail: "this link is from an older chi: ask the session's owner for a new one" }) }) });
+  await older.main.linkEnded();
+  assert.equal(document.querySelector("#participantClosed").dataset.kind, "token_outdated");
+  assert.match(document.querySelector("#participantClosed").textContent, /^This link is from an older chi: ask the session's owner for a new one\./);
   const unreadable = page({ probe: async () => { throw new Error("down"); } });
   await unreadable.main.linkEnded();
   assert.match(document.querySelector("#participantClosed").textContent, new RegExp(`^${LINK_ENDED[0].toUpperCase()}`));

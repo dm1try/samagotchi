@@ -125,7 +125,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
 
     # A live worker: its features, and the snapshot's messages (string keys).
     def live(features, snapshot_messages = nil)
-      allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(features)
+      allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(features)
       return unless snapshot_messages
 
       snapshot = { "snapshot" => { "messages" => JSON.parse(JSON.generate(snapshot_messages)) } }

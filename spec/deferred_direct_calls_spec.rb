@@ -216,21 +216,6 @@ RSpec.describe "direct calls of deferred tools" do
                                   "only the user can switch (/toolkit web, which reaches fs).")
     end
 
-    it "lets a participant's review boundary deny before the toolkit-group refusal" do
-      loads_tools!
-      registry.toolkit = registry.toolkit.with(groups: [])
-      participant!(:review)
-      boundary = Samagotchi::Guardrails::ReviewBoundary.new(author: -> { "p:review" }, root: -> { Dir.pwd },
-                                                            denied_dirs: -> { [] })
-      checks << boundary
-
-      result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "fs/read_file" }))
-
-      expect(result.output).to include("a participant's review turn may only read")
-      expect(result.output).not_to include("isn't in this session's toolkit")
-      expect(ran).to be_empty
-    end
-
     it "gives a participant's pair turn the toolkit-group refusal, as the owner's turns get" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])

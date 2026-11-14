@@ -47,7 +47,7 @@ An entry stored with one before that fails when it fires (toward its `max_failur
 before anything is started or delivered. A chi web
 (or cron tick) still running an older chi starts chain links without the origin, so
 restart it after updating. Like `register_reminder`, the schedule tools are owner-voiced:
-a participant's review or pair turn is denied them ([guardrails.md](guardrails.md)).
+a participant's turn is denied them ([guardrails.md](guardrails.md)).
 
 ## The two modes
 

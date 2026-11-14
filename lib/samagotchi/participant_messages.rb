@@ -7,18 +7,23 @@ module Samagotchi
   # No requires, so any file can use it.
   module ParticipantMessages
     # 401 token_revoked: the owner revoked the grant, or archived or deleted its session.
-    TOKEN_REVOKED = "this review link was revoked by the session's owner"
+    TOKEN_REVOKED = "this link was revoked by the session's owner"
     # 401 token_expired: the grant's time ran out.
-    TOKEN_EXPIRED = "this review link expired: ask the session's owner for a new one"
+    TOKEN_EXPIRED = "this link expired: ask the session's owner for a new one"
     # 401 token_bound: a link bound to one account (chi share --identity)
     # opened by another, or not through the auth proxy (the LAN, this
     # machine). Never names either identity.
-    TOKEN_BOUND = "this review link is for another account: open it through the proxy, signed in as the person " \
+    TOKEN_BOUND = "this link is for another account: open it through the proxy, signed in as the person " \
                   "it was sent to"
     # Either of those, where only that the link ended is known: the
     # worker's cancel_reason "revoked" (participants.json reads them
     # removed or past expires_at), as their chi send --wait reports it.
-    TOKEN_ENDED = "this review link was revoked or expired"
+    TOKEN_ENDED = "this link was revoked or expired"
+    # 401 token_outdated: a link an older chi issued for read-only turns
+    # (a grant without the pair mode: Grants::Grant#state :outdated), and
+    # the worker's cancel_reason "outdated" for their queued turn. This chi
+    # runs no read-only turn; the owner invites them again.
+    TOKEN_OUTDATED = "this link is from an older chi: ask the session's owner for a new one"
     # 403 not_permitted: a route, a command or a shell line only the owner may use.
     NOT_PERMITTED = "a participant can't do that: only the session's owner can"
     # 429 too_many_turns: their running turn and its queue are full.

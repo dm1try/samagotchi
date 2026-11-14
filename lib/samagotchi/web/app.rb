@@ -55,7 +55,6 @@ require_relative "../system_one/client"
 require_relative "../turn_flow"
 require_relative "../session_chain"
 require_relative "../session_access"
-require_relative "../review_start"
 require_relative "../parent_answers_command"
 require_relative "../guardrails/parent_policy"
 require_relative "markdown_renderer"
@@ -331,7 +330,6 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_revoke, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/participants/([^/]+)/cap\z}, :handle_participants_cap, :owner, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/apply\z}, :handle_apply, :owner, :session],
         ["GET", %r{\A/api/participants\z}, :handle_participants_list, :owner],
         ["DELETE", %r{\A/api/participants\z}, :handle_participants_revoke, :owner],
         ["GET", %r{\A/api/push\z}, :handle_push_info, :owner],
@@ -1154,9 +1152,9 @@ module Samagotchi
         json_response(200, payload)
       end
 
-      # Kits the web never offers: the participants' boundary, a delegate
-      # child's, and ToolkitSuggest's defer sentinel.
-      PICKER_HIDDEN_KITS = [Toolkit::REVIEW, Toolkit::CHILD, ToolkitSuggest::UNDECIDED].freeze
+      # Kits the web never offers: a delegate child's, and ToolkitSuggest's
+      # defer sentinel.
+      PICKER_HIDDEN_KITS = [Toolkit::CHILD, ToolkitSuggest::UNDECIDED].freeze
 
       # The start page's toolkit picker: {default:, suggest:, kits: [{name,
       # description?}]}. Built-in and config kits only (a bundle's load in

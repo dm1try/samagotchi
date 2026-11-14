@@ -3,6 +3,7 @@
 require "spec_helper"
 require "samagotchi/worker_link"
 require "support/worker_fixtures"
+require "support/outdated_grants"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -26,6 +27,8 @@ require_relative "support/remote_backend"
 # never a command (a /word input file or POST /turn). The owner's events
 # and commands carry no author key.
 RSpec.describe "a participant's author on delivery" do
+  include OutdatedGrants
+
   let(:tmpdir) { Dir.mktmpdir("delivery-author") }
 
   after { FileUtils.rm_rf(tmpdir) }
@@ -59,7 +62,7 @@ RSpec.describe "a participant's author on delivery" do
     let(:events) { Queue.new }
     let(:grant) do
       grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
-      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: tmpdir).grant
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: tmpdir).grant
     end
 
     before do
@@ -332,6 +335,62 @@ RSpec.describe "a participant's author on delivery" do
       refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
                     .select { |line| line["event"] == "turn" }
       expect(refused.map { |line| line["reason"] }).to eq(["revoked"])
+    end
+
+    # The safety rule: no turn that was read-only before the upgrade runs
+    # with tool rights after it. An older chi's invite (no "pair" in the
+    # grant and the sidecar) is refused at the worker, wherever the turn
+    # came from (an older chi web's POST /turn or file too), in a working
+    # session and in an older chi's review session alike.
+    it "refuses an older chi's read-only participant's queued turn (outdated), with its sentence, in any session" do
+      author = grant.author
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
+      make_outdated!(grants, grant, state_dir: tmpdir)
+      session.review = { subjects: ["plan.md"] }
+      session.save(state_dir: tmpdir)
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      allow(engine).to receive(:run_turn).and_return(result)
+      baseline = Samagotchi::ReplyWait.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:p", author: author, enqueued_id: "e1")
+
+      expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "e1")
+      expect(engine).not_to have_received(:run_turn)
+      refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
+                    .select { |line| line["event"] == "turn" }
+      expect(refused.map { |line| line["reason"] }).to eq(["outdated"])
+      wait = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 5, poll_interval: 0.02,
+                                                    baseline: baseline, turn: "e1", queued: true)
+      expect(wait).to have_attributes(status: :no_reply, cancel_reason: "outdated")
+      expect(Samagotchi::ParentReport.json(wait, session_id: session.id)[:detail])
+        .to start_with("the turn was refused (#{Samagotchi::ParticipantMessages::TOKEN_OUTDATED}); no turn ran for it")
+    end
+
+    # The main page's own-turn merge (#pending_input_drain) asks the same
+    # rule of each line it would take into their running turn.
+    it "takes no line of a participant whose invite reads as an older chi's into their running turn (outdated)" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      dequeued = Queue.new
+      engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        if prompt == "first"
+          engine.instance_variable_get(:@participants).refresh!(turn_session)
+          make_outdated!(Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir)), grant, state_dir: tmpdir)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+                                                            enqueued_id: "p2")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+
+      expect(pop!(drained, "the drain")).to eq([])
+      expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
+      expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "p2").cancel_reason).to eq("outdated")
+      expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")).to be_nil
     end
 
     it "saves a participant's prompt as theirs before the loop's first boundary (a worker killed there keeps the author)" do

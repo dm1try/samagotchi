@@ -1,6 +1,6 @@
 // The start page's ⚙ panel (start_settings.js): its rows' segments, the
 // override chips' words, and the panel in happy-dom (picks, the Apply and
-// budget disclosure, the review view, hidden rows). start_page.test.js
+// budget disclosure, hidden rows). start_page.test.js
 // covers it wired to the page's choices.
 import "./dom_shim.js";
 import test from "node:test";
@@ -36,15 +36,14 @@ test("the Context row: the model's strategy first, stale + forget experimental i
 
 test("override chips: only what is set, sent anyway when the model has no row for it; ⚙'s label lists them", () => {
   const none = overrides({ thinkingSummary: THINKING, llmContextSummary: LLM_CONTEXT });
-  assert.deepEqual(none, { thinking: null, llmContext: null, review: null });
+  assert.deepEqual(none, { thinking: null, llmContext: null });
   assert.deepEqual(settingsLabel(none), { set: false, label: "Session settings" });
-  const all = overrides({ thinking: "high", llmContext: { strategy: ["stale"], budget_tokens: 64000 }, review: ["docs/a.md", "b.md"],
+  const all = overrides({ thinking: "high", llmContext: { strategy: ["stale"], budget_tokens: 64000 },
                           thinkingSummary: THINKING, llmContextSummary: LLM_CONTEXT });
   assert.equal(all.thinking.text, "think high");
   assert.match(all.thinking.title, /^Thinking: high for the new session \(the model's: high\)/);
   assert.equal(all.llmContext.text, "ctx stale · budget 64000");
-  assert.equal(all.review.text, "review: a.md +1");
-  assert.deepEqual(settingsLabel(all), { set: true, label: "Session settings: think high, ctx stale · budget 64000, review: a.md +1" });
+  assert.deepEqual(settingsLabel(all), { set: true, label: "Session settings: think high, ctx stale · budget 64000" });
   const orphan = overrides({ thinking: "low", llmContext: { apply: "turn_end" } });
   assert.match(orphan.thinking.title, /the picked model has no thinking setting; it is sent anyway/);
   assert.equal(orphan.llmContext.text, "ctx apply turn_end");
@@ -54,18 +53,14 @@ test("override chips: only what is set, sent anyway when the model has no row fo
 });
 
 test("the panel: rows hidden without the model's values, a choice left over said and clearable, the note", () => {
-  const markup = markupOf(panelTemplate({ thinking: { summary: null, choice: "high" }, llmContext: { summary: null, choice: null },
-                                          review: [] }));
+  const markup = markupOf(panelTemplate({ thinking: { summary: null, choice: "high" }, llmContext: { summary: null, choice: null } }));
   assert.doesNotMatch(markup, /sset-row/);
   assert.match(markup, /Thinking high: the picked model has no thinking setting; it is sent anyway\./);
   assert.match(markup, /data-act="think-clear"/);
-  assert.match(markup, /Review files…/);
-  assert.doesNotMatch(markup, /sset-rule/); // no rows above the review: no rule
   assert.match(markup, /For this new session only\./);
-  const noReview = markupOf(panelTemplate({ thinking: { summary: THINKING, choice: null },
-                                            llmContext: { summary: LLM_CONTEXT, choice: null } }));
-  assert.match(noReview, /role="group"/);
-  assert.doesNotMatch(noReview, /Review files/);
+  const rows = markupOf(panelTemplate({ thinking: { summary: THINKING, choice: null },
+                                        llmContext: { summary: LLM_CONTEXT, choice: null } }));
+  assert.match(rows, /role="group"/);
 });
 
 // A panel in happy-dom over plain state, ⚙ on the body.
@@ -73,12 +68,11 @@ function panel(t, { thinkingSummary = THINKING, llmSummary = LLM_CONTEXT, choice
   const button = document.createElement("button");
   button.id = "gearTest";
   document.body.append(button);
-  const state = { thinking: null, llmContext: null, review: [], ...choice };
+  const state = { thinking: null, llmContext: null, ...choice };
   const ctl = createStartSettings({
     el: button, button,
     thinking: { summary: () => thinkingSummary, choice: () => state.thinking, choose: (next) => { state.thinking = next; } },
     llmContext: { summary: () => llmSummary, choice: () => state.llmContext, choose: (next) => { state.llmContext = next; } },
-    review: { choice: () => state.review, choose: (next) => { state.review = next; } },
     win,
   });
   const pop = [...document.querySelectorAll("#startSettingsPopover")].pop();
@@ -168,47 +162,16 @@ test("after a strategy with a rule and a budget, the default pick clears the chi
   assert.deepEqual(settingsLabel(over()), { set: false, label: "Session settings" });
 });
 
-test("the review view: ‹ back, an open quote's error, Set returns with the files, No review clears them", (t) => {
+test("a closed panel opens again; toggle closes an open one", (t) => {
   const p = panel(t);
-  p.button.click();
-  p.act("review");
-  assert.ok(document.activeElement === p.pop.querySelector("textarea"));
-  p.act("back");
-  assert.ok(p.pop.querySelector("textarea") === null);
-  p.act("review");
-  p.pop.querySelector("textarea").value = '"docs/my plan';
-  p.submit("form.rs-form");
-  assert.equal(p.pop.querySelector(".ctx-pop-error").textContent, 'A quote isn\'t closed: "docs/my plan');
-  assert.deepEqual(p.state.review, []);
-  p.pop.querySelector("textarea").value = '"docs/my plan.md"';
-  p.submit("form.rs-form");
-  assert.deepEqual(p.state.review, ["docs/my plan.md"]);
-  assert.match(p.pop.querySelector(".sset-review-set").textContent, /Review: my plan\.md/);
-  assert.ok(document.activeElement === p.pop.querySelector('[data-act="review"]')); // Edit
-  p.act("review");
-  assert.equal(p.pop.querySelector("textarea").value, '"docs/my plan.md"');
-  p.act("clear"); // No review
-  assert.deepEqual(p.state.review, []);
-  assert.ok(p.pop.querySelector(".sset-row"));
-  p.state.review = ["a.md"];
-  p.ctl.refresh();
-  p.act("review-clear");
-  assert.deepEqual(p.state.review, []);
-});
-
-test("a closed panel opens on the main view again; refuse opens the review view with the message", (t) => {
-  const p = panel(t, { choice: { review: ["x.md"] } });
-  p.ctl.open("review");
-  assert.ok(p.pop.querySelector("textarea"));
+  p.ctl.open();
   assert.equal(p.button.getAttribute("aria-expanded"), "true");
   p.act("close");
   assert.equal(p.button.getAttribute("aria-expanded"), "false");
-  p.button.click();
+  p.ctl.toggle();
   assert.equal(p.button.getAttribute("aria-expanded"), "true");
-  assert.ok(p.pop.querySelector("textarea") === null);
-  p.ctl.refuse("x.md: no such file");
-  assert.equal(p.pop.querySelector(".ctx-pop-error").textContent, "x.md: no such file");
-  assert.equal(p.pop.querySelector("textarea").getAttribute("aria-invalid"), "true");
+  p.ctl.toggle();
+  assert.equal(p.button.getAttribute("aria-expanded"), "false");
 });
 
 test("every class and id the panel draws has its own sset- prefix (the stop sheet's is ss-)", (t) => {

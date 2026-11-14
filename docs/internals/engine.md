@@ -84,7 +84,7 @@ hook's model switch names the new model and `incoming` the old one. Building one
 | Stage | Built with | Called with | Called | State |
 |---|---|---|---|---|
 | `TurnStages::ToolkitSuggestion` (ToolkitSuggest's ask; configuration.md (Toolkits), guardrails.md (System 1)) | side judgments, host registry, toolkit binding, tools | `start(turn, recorder:)`; `settle`, `abandon(turn, why)`, `finish` (the turn); `warm!(session)` | `start` before `refresh_profile!`; `settle` after `apply_staged_tools!` (on mode: waits up to System 1's timeout or a Stop, which wins over an answer already in; a pick ≥ threshold → `ToolkitBinding#suggest`); `abandon` at STOP CHECK A and in the ensure, then `finish`; `warm!` / `stop_warmup` (Worker start, `shutdown`) | the turn's `ToolkitSuggest::Pending` (turn thread only; another turn's is never touched; dropped at `finish`), the warm-up thread |
-| `TurnStages::ContextJudge` ([attached-context.md](attached-context.md), [context.md](../context.md) "The judge") | side judgments, host registry, `TurnState`, `show_card:`, `current_session:` | `start(turn, recorder:)`; `late_candidates(session, messages:, recorder:, state_dir:)`; `show_cards_after_turn` | `start` after `settle`, before `apply_toolkit!` (owner turns only); `late_candidates` from `judge_late_candidates` (which returns on no session or a review session first, before reading anything else); `show_cards_after_turn` after `release_turn` | the cards an answer brought while a turn ran, under their mutex |
+| `TurnStages::ContextJudge` ([attached-context.md](attached-context.md), [context.md](../context.md) "The judge") | side judgments, host registry, `TurnState`, `show_card:`, `current_session:` | `start(turn, recorder:)`; `late_candidates(session, messages:, recorder:, state_dir:)`; `show_cards_after_turn` | `start` after `settle`, before `apply_toolkit!` (owner turns only); `late_candidates` from `judge_late_candidates` (which returns on no session first, before reading anything else); `show_cards_after_turn` after `release_turn` | the cards an answer brought while a turn ran, under their mutex |
 | `TurnStages::Objectives` ([objectives.md](objectives.md)) | side judgments, host registry | `incoming(turn, recorder:)`, `outgoing(turn, result, recorder:)`, `note(session, note, recorder:, state_dir:)`, `announce(session, state_dir:, running:)` → the event or nil, `propose(proposal)`, `finally(turn)` → the cards, `track(turn, engine:)` → the tracker's thread or nil, `cancel_track` | `cancel_track` first thing in `begin_turn` (any turn, a wake's too); `incoming` after the judge's `start` (owner and human prompts only); `announce` from `announce_objectives` (inside `end_turn`'s step, and between turns from any thread); `outgoing` in `complete_turn` before `:after_turn`, `track` right after it (`Engine#track_objectives_after`); `note` in `add_context_note`; `propose`; `finally` from `show_objective_proposals` in the ensure | the turn's proposals under their mutex (drained at `finally`), the last view announced (touched only under the event lock), the tracker's automatic read's cancel under its own mutex; the `ObjectivesAudit` is built per call |
 | `TurnStages::Warmup` (PromptWarmup) | `PromptWarmup`, kernel, `TurnState`, model settings, reminder queue, `system_prompt` | `after(turn, result, next_turn_waiting:)` | after `complete_turn` (reads `turn.context.settings`) | none (PromptWarmup keeps its pin and thread) |
 | `TurnStages::VerifyAnchors` | nothing | `verified(session, anchor, state_dir:)`; `stamp_opening`, `record_verdict` | `verified` in `begin_turn` (before any `TurnContext`); `stamp_opening`, `record_verdict` inside `end_turn`'s step | none |
@@ -533,7 +533,7 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`) goes (the
   grouped by sender and author so a participant's lines never share the owner's message (`Steer::Line#author`).
   Assistant and tool messages carry none: `Steer.author_at(messages, index)` resolves by position. `ChatLoop#plain`
   keeps the keys (`Steer::AUTHOR_KEYS`).
-- **The wire**: such a message goes out under the review-contribution header (`Steer.wire_text`; prompt-caching.md).
+- **The wire**: such a message goes out under its participant header (`Steer.wire_text`: the pair one, or the review one for an older chi's; prompt-caching.md).
   Saved raw.
 - **`Session#last_turn.author`** and the analytics record's `author` (`SessionMetrics`); a Continue keeps the offer
   turn's author (`ContinueOffer#run_continue_turn`).
@@ -547,9 +547,10 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`) goes (the
   for `#initial_command?` and `Worker#run_initial_prompt`.
 - **Delivery**: a participant's input always waits for a turn of its own (`SessionInbox.waits_for_turn_end?`), so
   the drain never merges it; their turns count against chi web's `pending_limit` (429 `too_many_turns`).
-  `Worker#run_prompt` checks their link and cap (`participant_refusal`) before the turn and after it.
-- **The gate**: `GuardrailWiring#participant_boundary` picks `Guardrails::PairBoundary` or
-  `Guardrails::ReviewBoundary` by `TurnContext#participant_mode` (guardrails.md). Both are no-ops for the owner.
+  `Worker#run_prompt` checks their link (an older chi's read-only one is `outdated`) and cap (`participant_refusal`) before the turn and after it.
+- **The gate**: `GuardrailWiring#participant_boundary` picks `Guardrails::PairBoundary` for a pair turn, else
+  `Guardrails::ParticipantRefusal` (every call denied), by `TurnContext#participant_mode` (guardrails.md). Both are
+  no-ops for the owner.
   The declared tools stay the session's (no rebuild per author).
 - **Hooks and plugins**: `Engine#turn_author` (the published `TurnContext#author`, so any thread reads it from the
   turn's first moment) is the hook runtime's (`author:` on every event of such a turn) and `ctx.turn_author`.

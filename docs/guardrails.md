@@ -13,8 +13,8 @@ Who votes, in order:
 
 1. `before_tool_call` hooks (Ruby; see [Hooks](hooks.md#guardrails-from-a-hook)).
 2. Core checks (`GuardrailWiring#checks`): a required guardrail that failed to load, then (a participant's turn only)
-   [the review boundary](#a-participants-review-boundary) or, for a pair turn,
-   [the pair boundary](#a-participants-pair-boundary), then protected paths, then (a `chi scratch` session only)
+   [the pair boundary](#a-participants-pair-boundary) (or, for a turn this chi doesn't run under the owner's rules,
+   [the refusal seat](#a-participants-turn-without-a-current-invite)), then protected paths, then (a `chi scratch` session only)
    writes to the memories folder (rule `scratch-session`), then (a delegate child only)
    [the child boundary](#a-delegate-childs-boundary).
 3. YAML rules: `config.yml`'s `guardrails:` section, then installed bundles' rule files (by bundle name).
@@ -312,7 +312,7 @@ task or follow-up, a schedule's firing (both modes), a plugin's message, a conte
 `403 command_not_permitted` with one message, an input file's line shows as the command's error, and nothing runs.
 Their `/word` line is plain text: the model reads it. `delegate`, `schedule_task` and `chi schedule add` refuse a task
 or prompt that starts with `!` with the same message, so the model can rewrite it. A participant's command is refused
-as before ([their review boundary](#a-participants-review-boundary)). The rule is `CommandIntake`
+as before ([their boundary](#a-participants-pair-boundary)). The rule is `CommandIntake`
 (`lib/samagotchi/command_intake.rb`), asked by `Bridge#handle_post_turn` and `WorkerInbound#queue_as_command`;
 `POST /command` (a UI's or a card's explicit command line) is not a message and is not covered.
 
@@ -379,77 +379,31 @@ card still names `child-boundary`. The parent (never a delegate), forks and
 ordinary sessions don't get it. Like the rules it reads command text: a
 `sh -c` body, a script or `$(…)` isn't looked into.
 
-## A participant's review boundary
+## A participant's turn without a current invite
 
-Built in, for a [participant's](internals/participants.md#turns) turns in a
-**review session** only (a turn whose author is `p:<id>`, in a session with a
-`review:` key: `ParticipantMode.of` is `:review`; a working session's
-participant turns get the [pair boundary](#a-participants-pair-boundary)
-instead), in every mode (also with
-`guardrails.enabled: false`) and without the guardrails bundle:
-`Guardrails::ReviewBoundary`, rule `review-boundary`, source `core`. It comes
-right after the load-failure check (rules that don't load deny every call) and before the hooks' asks, the
-protected paths and the rules (`GuardrailWiring#checks`; a deny is sticky, so no later vote turns it into a
-question), and it
-**denies, never asks**: nobody on the participant's side may approve, and the
-owner's approval would give the participant's text the owner's tools. A
-participant's turn may call only the `review` kit's tools:
-
-- `read`, under the session's project root (the work tree top of its folder)
-  and never a secret: chi's state and config dirs (sessions, the grants, the
-  web token, memories and their `.bundles`, `config.yml`, hooks, and a
-  `hooks.hooks_dir` configured outside the config dir), `~/.ssh`,
-  `~/.gnupg`, `~/.aws`, and the project's `.env*`, `.netrc`, `*.pem`, `*.key`,
-  `*.p12`, anything named `credentials` (`.git-credentials` too), `.npmrc`,
-  `.pypirc`, ssh keys (`id_rsa`, `id_ed25519`, …), `*.tfstate`,
-  `secrets.yml`/`.json`, `.docker/config.json`, `.kube/config` and any config
-  under `.git` (a submodule's too). The path is checked as given and as it
-  resolves, so a symlink in the project to `~/.ssh` is `~/.ssh`, and
-  `node_modules/foo/../../.config/gh/hosts.yml` with `foo` a link to `~/src/foo`
-  is `~/.config/gh/hosts.yml` ([How paths resolve](#how-paths-resolve)). A session
-  whose folder is the home folder or above it reads nothing.
-- `memory_read` with `scope: project` (a read without a scope would fall back
-  to the system memories). The prompt's preloaded memories and the memory
-  index are in the system prompt anyway: a review session should start
-  without personal ones.
-
-Everything else is denied with "a participant's review turn may only read …",
-and the model is told to propose the change as text or a diff for the owner
-to apply: `write`, `edit`, `memory_write`, `execute`, the task tools,
-`delegate`, `send_note`, `list_sessions`, `register_reminder` (it would fire
-an owner turn later), `web_fetch`, `context_read`, `ask_user_question`,
-`forget_outputs` (it would replace the owner's earlier tool outputs with the
-participant's note, which later owner turns would read as their own), and
-every plugin or MCP tool, including through `call_tool` (a built-in reached
-through `call_tool` is checked as that built-in). The session's declared tools
-stay its own (no prompt rebuild per author), so the model may still try a
-write; the turn's header ("This turn may only read") keeps that rare.
-
-The kit is `Toolkit::REVIEW`, a frozen built-in: config's `toolkit.kits.review`
-is refused with one message ([configuration](configuration.md#toolkits)), so
-config can't widen the boundary. Hooks still run on a participant's turn, with
-the owner's power ([hooks](hooks.md#participants-turns)); a hook that rewrites a
-call is checked on the call it leaves.
+chi runs no read-only turn: no turn an older chi ran read-only may run with tool rights here. The worker refuses a
+participant's turn whose invite is an older chi's (a grant or `participants.json` entry without `mode: pair`), a Verify
+fresh child saved for a read-only turn, and a participant with no invite at all, before it starts
+([participants](internals/participants.md#turns)). Should such a turn start anyway, its seat in
+`GuardrailWiring#checks` is `Guardrails::ParticipantRefusal` (rule `participant-refused`, source `core`): every call
+is denied, nobody is asked, in every mode and with `guardrails.enabled: false`.
 
 ## A participant's pair boundary
 
-A participant's turn in a **working session** acts with the session's tools
-under the owner's guardrails, as the owner's own turns do: the rules, the
-protected paths and every approval the owner already granted apply, and an ask
-goes to the owner. It is a pair turn only when all three hold
-(`ParticipantMode.for_turn`, decided once at the turn's start:
-`GuardrailWiring#begin_turn`, into the turn's `TurnContext#participant_mode`): the session has no `review:` key, its worker
-names the `pair_turns` feature, and the participant's grant was issued with
-`mode: pair`, which chi share and the web's Invite stamp only when the warning
-they showed said their turns act. A grant from before, or one issued while an
-older worker held the session, keeps review turns until it is invited again.
+A participant's turn acts with the session's tools under the owner's
+guardrails, as the owner's own turns do: the rules, the protected paths and
+every approval the owner already granted apply, and an ask goes to the owner.
+Every invite is stamped `mode: pair`; the turn's mode is decided once at its
+start (`GuardrailWiring#participant_turn_mode`, into the turn's
+`TurnContext#participant_mode`), and it runs only on a worker that names the
+`pair_turns` feature.
 
 `Guardrails::PairBoundary` (rule `pair-boundary`, source `core`) sits in the
-review boundary's seat in `GuardrailWiring#checks`, in every mode (also with
+participant boundary's seat in `GuardrailWiring#checks`, in every mode (also with
 `guardrails.enabled: false`), and **denies, never asks**, each with its own
 message:
 
-- secrets, read or written: the review boundary's denylist (chi's state and
+- secrets, read or written: `ReviewPaths`' denylist (chi's state and
   config dirs, so `grants.json`, the web token and every `participants.json`;
   `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.config/fish`,
   `~/.config/git`, `~/Library/LaunchAgents`, `~/.local/bin`; the home's shell
@@ -685,7 +639,7 @@ A command that makes a link asks too, wherever it points (`ln`, `link`, `cp
 a link the same command makes is judged before the link exists, so `ln -s ..
 up && cat up/…` can't be read for what it reaches.
 A session whose folder is the home folder or above it has no project to
-keep the turn in (`ReviewPaths.home_root?`, the review boundary's test): every
+keep the turn in (`ReviewPaths.home_root?`): every
 write there asks.
 
 A participant's ask names them on the owner's card ("Sam's turn asks: approve
@@ -699,7 +653,7 @@ cap or their link was revoked or expired
 
 The trust model is a team's (everyone invited is trusted): the boundary is an
 **accident guard** for secrets and the owner's voice, not containment of a
-hostile participant; a review session is. A pair turn can still reach, through
+hostile participant. A participant's turn can still reach, through
 the owner's rules: `web_fetch` (an open egress path: what the turn can read it
 can send out in a URL), plugin and MCP tools, `memory_read` and `context_read`,
 `list_sessions` (the owner's other sessions' titles), chi web by a name the
@@ -716,17 +670,16 @@ delegate child chi web starts for an unclear verdict) runs a participant's
 check under **the boundary that participant has in the parent**. A verdict a
 participant recorded is always checked again as them, even when the owner
 clicks (the claim is their text; their link must still be live), so it never
-runs with the owner's rules or System 1's auto-allows. The mode is decided once,
-at the start, from their grant's mode there (`ParticipantMode.live_for`) and
-saved on the child (`verify_fresh.mode`): `review` keeps every turn of it
-inside `ReviewBoundary` (read only), `pair` inside `PairBoundary`.
+runs with the owner's rules or System 1's auto-allows. The mode is saved on the
+child at its start (`verify_fresh.mode`: `pair`, every live grant's); a child an
+older chi saved `review` is refused, never run.
 `GuardrailWiring#begin_turn` reads the saved mode and never looks it up again,
 and every turn of the child carries the participant as its author, whoever
 started it, so the boundary can't fall away for a turn the owner typed into it
 or for an author lookup that finds nobody (the child has no
 `participants.json`; revoke and cap read the parent's). It fails closed: a
-`verify_fresh` field that doesn't read is a participant nobody has, under
-review, whose turns are refused. `ChildBoundary` applies on top, as for every
+`verify_fresh` field that doesn't read is a participant nobody has, whose turns
+are refused. `ChildBoundary` applies on top, as for every
 delegate child, and its asks go to the owner (once only, as a participant's
 do; System 1 skips them). The owner's own fresh child is an ordinary delegate
 child: the owner's turns, `ChildBoundary`.
@@ -931,7 +884,7 @@ name too) is always outside, in the repo or a tmp folder alike
 #### How paths resolve
 
 Every path check (protected paths, `outside_repo`, `touches`, `rm`, `memory:
-prompt`, the child, review and pair boundaries, System 1's own-files test)
+prompt`, the child and pair boundaries, System 1's own-files test)
 resolves paths with `Guardrails::PathResolve` (the map below):
 
 - `..` is taken the kernel's way (`.expand`): after a symlinked folder it
@@ -1168,7 +1121,7 @@ user's **earlier asks they answered** (`SystemOne::Similar`) — this rule in
 this repository first, then this rule anywhere, then any answered ask, ranked
 by how many words the logged call shares with this one, ties going to the
 newest. Reading the log is best-effort, so a log that cannot be read simply
-offers no examples. A participant's turn (review or pair) is never judged:
+offers no examples. A participant's turn is never judged:
 there is no user there to ask, and its asks go to the owner. The judgment runs before the card appears, so an ask is
 slower by up to `timeout_ms` (2000 ms by default).
 
@@ -1494,7 +1447,7 @@ else goes to chi's own rules. It needs nah installed; see its README for the set
 
 ## Participants' text in later turns
 
-A participant's message (a review contribution, see
+A participant's message (see
 [internals/participants.md](internals/participants.md#attribution)) stays in
 the history, so later **owner** turns read it. chi marks it: the wire header
 above it says it is a participant's and not the owner's instruction, and the
@@ -1502,21 +1455,15 @@ system prompt says the same while the session has participants. Owner turns
 keep every guardrail. But an owner turn that says "do what Alex said" hands
 Alex's text the owner's tools: the model will act on it as the owner asked.
 That is the residual risk, documented rather than engineered away: on a
-session with sensitive tools, quote the proposal you want applied in your own
-turn instead: the web's **Apply** under a review turn does that (it puts your
-line and the reply quoted line by line in your composer, for you to read and
-send; [internals/participants.md](internals/participants.md#apply)). A quote
-lowers the risk, it doesn't remove it: your line still asks the model to act
-on what it quotes, with your tools, so read the quote before you send it.
+session with sensitive tools, quote what you want done in your own turn
+instead. A quote lowers the risk, it doesn't remove it: your line still asks
+the model to act on what it quotes, with your tools, so read it before you send
+it.
 
-Within its own turn in a review session a participant's text can't act: the
-review boundary leaves it reads of the project only, and an injection that
-convinces the model still meets the boundary (containment over detection). In
-a working session it acts, by design ([the pair boundary](#a-participants-pair-boundary)):
-invite only people you would let type in your session, under your guardrails. What it can do
-is make the model *say* what the history holds: a review turn's model sees the
-whole conversation, earlier tool outputs included, so start a review in a
-fresh session (or a continue), not on a working session full of outputs. A
+Within its own turn a participant's text acts, by design ([the pair boundary](#a-participants-pair-boundary)):
+invite only people you would let type in your session, under your guardrails. It can also make the model *say*
+what the history holds: a participant's turn sees the whole conversation, earlier tool outputs included, so invite
+them to a fresh session (or a continue) when the history holds what they shouldn't read. A
 line of a participant's text that looks like one of chi's own headers goes
 out quoted (`(quoted) [Steer from the user, …]`), under the real one, in any
 case and after any spaces (chi's context-note and task frames too). The owner's

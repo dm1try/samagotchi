@@ -623,7 +623,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       it "says so on the page too, never naming either identity" do
         status, _, body = call("/", headers: proxied("mallory@pod.test", [bearer(bound.token)]))
         expect(status).to eq(401)
-        expect(body).to include("This review link is for another account: open it through the proxy, signed in as the person it was sent to.")
+        expect(body).to include("This link is for another account: open it through the proxy, signed in as the person it was sent to.")
         expect(body).not_to include("alex@pod.test")
         expect(body).not_to include("mallory@pod.test")
       end

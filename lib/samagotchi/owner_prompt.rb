@@ -23,11 +23,8 @@ module Samagotchi
         !(field(message, :turn_id) || field(message, MessageTime::KEY)).nil?
     end
 
-    # Whether a turn by +author+ in +session+ is the owner's own: not a
-    # participant's, not in a review session.
-    def turn?(session:, author:)
-      !session&.review? && !Steer.participant_author?(author)
-    end
+    # Whether a turn by +author+ is the owner's own: not a participant's.
+    def turn?(author:) = !Steer.participant_author?(author)
 
     def field(hash, key)
       return nil unless hash.is_a?(Hash)

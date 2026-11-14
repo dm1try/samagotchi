@@ -96,7 +96,6 @@ class Plugin
     mode = auto_attach_mode(ctx)
     return "auto_attach: off" if mode == :off
     return "skipped: a delegate child" if mode == :attach && ctx.delegate?
-    return "skipped: a review session" if mode == :propose && ctx.review?
 
     branch = run(ctx, "git", "branch", "--show-current").to_s.strip
     return "not on a branch" if branch.empty?

@@ -9,10 +9,10 @@ require_relative "../steer"
 
 module Samagotchi
   module Guardrails
-    # A participant's pair turn (ParticipantMode :pair, a working session):
-    # it acts with the session's tools under the owner's guardrails, and
-    # their asks go to the owner (GuardrailWiring#request_approval). This
-    # check sits in ReviewBoundary's seat (GuardrailWiring#checks), on in
+    # A participant's turn (GuardrailWiring::PAIR): it acts with the
+    # session's tools under the owner's guardrails, and their asks go to the
+    # owner (GuardrailWiring#request_approval). This check sits in the
+    # participant boundary's seat (GuardrailWiring#checks), on in
     # every guardrails mode and with guardrails.enabled: false, active only
     # while the running turn's author is a participant. An accident guard
     # for a trusted team, not containment. It denies, never asks (the
@@ -146,8 +146,8 @@ module Samagotchi
       )
 
       # @param author [#call] → String, nil: the running turn's author
-      #   (the call's TurnContext#author, GuardrailWiring#review_boundary /
-      #   #pair_boundary); the check is off unless it is a
+      #   (the call's TurnContext#author, GuardrailWiring#pair_boundary);
+      #   the check is off unless it is a
       #   participant's (Steer.participant_author?)
       # @param denied_dirs [#call] → Array<String>: chi's own dirs
       # @param home [#call] → String, nil

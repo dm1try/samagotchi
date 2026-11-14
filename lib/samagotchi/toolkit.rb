@@ -63,9 +63,6 @@ module Samagotchi
     FULL = "full"
     LEAN = "lean"
     CHILD = "child"
-    # A participant's turn (Guardrails::ReviewBoundary): the name is
-    # reserved, so config and plugins can't redefine the boundary.
-    REVIEW = "review"
 
     # A name that can't be resolved (unknown, a cycle).
     class Unresolved < StandardError; end
@@ -167,7 +164,7 @@ module Samagotchi
 
       name = toolkit.name
       seen = []
-      until seen.include?(name) || name == REVIEW || BUILTIN_KITS.key?(name)
+      until seen.include?(name) || BUILTIN_KITS.key?(name)
         seen << name
         spec = config[name] || config[name.to_sym]
         break unless spec.is_a?(Hash)
@@ -233,20 +230,13 @@ module Samagotchi
       ask_user_question web_fetch context_read
     ].freeze
 
-    # The built-ins a participant's turn may call (REVIEW): reads only.
-    # ReviewBoundary denies everything else, whatever the session declares
-    # (D3: the declared tools stay the session's), the forget layer's
-    # forget_outputs too (a layer tool, declared with every kit).
-    REVIEW_TOOLS = %w[read memory_read].freeze
-
     BUILTIN_KITS = [
       Kit.new(name: FULL, tools: :all, groups: :all),
       Kit.new(name: LEAN, tools: LEAN_TOOLS, groups: :all),
       # A delegate child: it reports to its parent (send_note; the
       # delegated-by line names it) and leaves memory writes to it, and
       # starts no children of its own (removed: not even through call_tool).
-      Kit.new(name: CHILD, base: LEAN, add: %w[send_note], remove: %w[memory_write delegate delegate_result]),
-      Kit.new(name: REVIEW, tools: REVIEW_TOOLS, groups: [])
+      Kit.new(name: CHILD, base: LEAN, add: %w[send_note], remove: %w[memory_write delegate delegate_result])
     ].to_h { |kit| [kit.name, kit] }.freeze
 
     # What a toolkit declares, the Registry's filter: every registered tool,
@@ -365,18 +355,12 @@ module Samagotchi
           .with(name: name, prompt: prompt.to_s.empty? ? nil : prompt, groups: groups)
     end
 
-    # config.yml's toolkit.kits.review, refused: the review kit is the
-    # participants' boundary, which config may not widen.
-    RESERVED_REVIEW = "toolkit.kits.review: review is reserved for participants' turns (chi share); " \
-                      "name your kit something else"
-
     # The keys a config kit entry takes.
     KIT_KEYS = %w[base add remove prompt groups description].freeze
 
     # The kits known: the built-ins, then config's toolkit.kits, then the
     # plugins' (chi.toolkit). A config kit with a built-in's name is left
-    # out (one it can't redefine; review, the participants' boundary, is
-    # reserved) with a line in +errors+, and so is one
+    # out (one it can't redefine) with a line in +errors+, and so is one
     #   that isn't a {base:, add:, remove:, prompt:, groups:, description:} map. One with another key
     # (a typo, a tools: list) still loads, with a line naming the key, and
     # so does one whose prompt isn't text or is over PROMPT_MAX characters:
@@ -392,9 +376,7 @@ module Samagotchi
       kits = BUILTIN_KITS.dup
       (config.is_a?(Hash) ? config : {}).each do |name, spec|
         name = name.to_s
-        if name == REVIEW
-          errors << RESERVED_REVIEW
-        elsif kits.key?(name)
+        if kits.key?(name)
           errors << "toolkit.kits.#{name}: #{name} is a built-in toolkit"
         elsif !spec.is_a?(Hash)
           errors << "toolkit.kits.#{name}: expected {base:, add:, remove:, prompt:, groups:, description:}"

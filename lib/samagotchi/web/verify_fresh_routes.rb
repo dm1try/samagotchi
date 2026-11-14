@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../delivery"
-require_relative "../participant_mode"
+require_relative "../worker_link"
 require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
@@ -16,7 +16,7 @@ module Samagotchi
     # with their fresh children's spend; a worker that predates
     # participants' turns) and audited like one (participants.log,
     # verify_fresh); their child runs under the boundary their grant has
-    # here now (ParticipantMode.live_for), saved on the child. See
+    # here now (Grants::PAIR_MODE), saved on the child. See
     # docs/internals/participants.md (Verify fresh).
     module VerifyFreshRoutes
       private
@@ -48,7 +48,7 @@ module Samagotchi
           return verify_fresh_refused(clicker, of, *refused, runner: runner)
         end
 
-        mode = runner && ParticipantMode.live_for(session, runner, state_dir: default_state_dir)
+        mode = runner && Grants::PAIR_MODE
         child = VerifyFresh.start(id, of: of, author: runner&.author, mode: mode, state_dir: default_state_dir,
                                       spawn: fresh_spawn)
         audit_verify_fresh(clicker, of, status: "accepted", child: child.id, mode: mode&.to_s, runner: runner)
@@ -81,14 +81,15 @@ module Samagotchi
       def field_of(record, key) = record && (record[key] || record[key.to_s])
 
       # A live worker must support VerifyFresh's parent checks. For a
-      # participant's child it must also have the review boundary.
+      # participant's child it must also run their turns under the owner's
+      # rules (Delivery::PAIR_FEATURE).
       def fresh_worker_refusal(session, participant: false)
-        features = ParticipantMode.live_features(session, default_state_dir)
+        features = WorkerLink.live_features(session.id, state_dir: default_state_dir)
         return nil if features.nil?
         return [409, VerifyAnchor::UNAVAILABLE["error"], VerifyAnchor::UNAVAILABLE["detail"]] if VerifyAnchor.worker_unavailable?(features)
-        return nil unless participant && !features.include?(Delivery::REVIEW_FEATURE)
+        return nil unless participant && !features.include?(Delivery::PAIR_FEATURE)
 
-        [409, Delivery::REVIEW_UNAVAILABLE["error"], Delivery::REVIEW_UNAVAILABLE["detail"]]
+        [409, Delivery::PAIR_UNAVAILABLE["error"], Delivery::PAIR_UNAVAILABLE["detail"]]
       end
 
       def verify_fresh_refused(clicker, of, status, code, detail, runner: nil)

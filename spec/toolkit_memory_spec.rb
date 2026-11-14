@@ -90,7 +90,6 @@ RSpec.describe Samagotchi::ToolkitBinding, "memory kits" do
     write_memory("project", "toolkit_work.md", memory("Work", base: "configured", add: ["web_fetch"]))
     write_memory("project", "toolkit_config_wins.md", memory("Ignored config collision", base: "full"))
     write_memory("project", "toolkit_bundle_wins.md", memory("Ignored bundle collision", base: "full"))
-    write_memory("project", "toolkit_review.md", memory("Reserved kit name", base: "full"))
     write_memory("project", "toolkit_scope_wins.md", memory("Project scope", base: "lean"))
     write_memory("system", "toolkit_scope_wins.md", memory("System scope", base: "full"))
     errors = []
@@ -100,12 +99,10 @@ RSpec.describe Samagotchi::ToolkitBinding, "memory kits" do
 
     expect(kits.fetch("configured").source).to eq("config")
     expect(kits.fetch("bundle_wins").source).to eq("sample-bundle")
-    expect(kits.fetch("review").source).to eq("core")
     expect(kits.fetch("scope_wins").source).to eq("memory:project")
     expect(resolved.added).to contain_exactly("delegate", "web_fetch")
     expect(errors).to include(a_string_including("toolkit_config_wins", "already defined"),
                               a_string_including("toolkit_bundle_wins", "already defined"),
-                              a_string_including("toolkit_review", "already defined"),
                               a_string_including("toolkit_scope_wins", "already defined"))
   end
 
@@ -138,6 +135,6 @@ RSpec.describe Samagotchi::ToolkitBinding, "memory kits" do
     engine = double(toolkit_kits: kits, toolkit_explained: explained)
     command = Samagotchi::ToolkitCommand.new(engine: engine, save: ->(*) {})
 
-    expect(command.listing(explained)).to include("toolkits: full, lean, child, review, project (memory:project);")
+    expect(command.listing(explained)).to include("toolkits: full, lean, child, project (memory:project);")
   end
 end

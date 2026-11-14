@@ -107,7 +107,7 @@ module Samagotchi
       session = turn.session
       return false unless active?(Objectives.current(session.id, session.messages, state_dir: engine.session_state_dir))
       return false if engine.interface == :non_interactive
-      return false unless OwnerPrompt.turn?(session: session, author: turn.origin.author)
+      return false unless OwnerPrompt.turn?(author: turn.origin.author)
 
       worked_without_move?(session.messages)
     end

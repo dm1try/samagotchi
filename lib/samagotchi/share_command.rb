@@ -12,9 +12,9 @@ require_relative "grants"
 require_relative "web/qr"
 
 module Samagotchi
-  # `chi share`: invite a participant to review a session (the
-  # shared-sessions plan: a Grants grant, one session, one person or
-  # agent, 7 days unless --expires says otherwise), list the participants,
+  # `chi share`: invite a participant into a session (a Grants grant, one
+  # session, one participant, 7 days unless --expires says otherwise; their
+  # turns act under the owner's rules), list the participants,
   # revoke them. Local or through chi --remote NAME (SessionAccess). The
   # token is printed once, in the link; chi keeps only its digest. See
   # docs/internals/participants.md.
@@ -22,17 +22,16 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi share ID --name NAME [--identity EMAIL] [--agent] [--expires 3d] [--cap 2]
+      Usage: chi share ID --name NAME [--identity EMAIL] [--expires 3d] [--cap 2]
              chi share ls [ID] [--format text|json]
              chi share cap ID PARTICIPANT DOLLARS
              chi share revoke ID [PARTICIPANT] | --all
-        ID --name NAME   invite NAME to review session ID: prints the link they open (chi web on
+        ID --name NAME   invite NAME into session ID: prints the link they open (chi web on
                          the LAN, web.host: lan) and its QR code at a terminal. The link is shown
                          once; chi keeps only a digest of its token.
           --identity EMAIL  bind the link to that account: it opens only through chi web's auth proxy
                          signed in as EMAIL (web.public_url with web.proxy.identity_header, or
                          chi web --tunnel tailscale); a forwarded link opens for nobody else
-          --agent        the participant is an agent (the same link, used as a Bearer token)
           --expires N    Nh or Nd, 1h to 30d (default 7d, web.participants.expires)
           --cap DOLLARS  what their turns may cost you, $0 to $1000 (default $2, web.participants.cap)
         ls [ID]          the participants of ID, or of every session (never a token)
@@ -54,7 +53,6 @@ module Samagotchi
     FLAGS = CLI::Flags.new(help: HELP_WORDS) do |f|
       f.value "--name"
       f.value "--identity"
-      f.switch "--agent"
       f.value "--expires"
       f.value "--cap"
     end
@@ -123,7 +121,7 @@ module Samagotchi
       identity = options[:identity] && Grants.clean_identity(options[:identity])
 
       id = @access.resolve(args.first)
-      invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap,
+      invitation = @access.invite(id, name: options[:name], ttl: ttl, cap: cap,
                                       identity: identity)
       print_invitation(id, invitation)
       warn_unbound(invitation.participant)
@@ -208,12 +206,12 @@ module Samagotchi
 
     def print_invitation(id, invitation)
       row = invitation.participant
-      @stdout.puts("#{row.id}  #{row.name} (#{row.kind}, #{row.role}) · session #{id[0, 8]} · expires " \
+      @stdout.puts("#{row.id}  #{row.name} (#{row.role}) · session #{id[0, 8]} · expires " \
                    "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}#{" · bound to #{row.identity}" if row.identity}")
       @stdout.puts(invitation.link)
       @stdout.puts("(shown once: chi keeps only its digest; chi share revoke #{id[0, 8]} #{row.id} ends it)")
       if invitation.warning
-        error_line("#{command_name}: warning: #{invitation.warning} (#{@access.invocation.command("review --from #{id[0, 8]}")} starts one)")
+        error_line("#{command_name}: warning: #{invitation.warning}")
       end
       unless invitation.lan
         @stdout.puts("chi web isn't on the LAN there (web.host: lan): this link opens on that machine only, as the participant")
@@ -221,12 +219,12 @@ module Samagotchi
       @stdout.puts(Web::QR.lines(invitation.link)) if @tty
     end
 
-    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "KIND", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
+    COLUMNS = ["SESSION", "PARTICIPANT", "NAME", "IDENTITY", "ROLE", "CREATED", "EXPIRES", "LAST USED", "CAP",
                "STATE"].freeze
 
     def print_table(rows)
       cells = rows.map do |row|
-        [row.session_id[0, 8], row.id, row.name, row.identity ? "#{row.identity} · bound" : "-", row.kind, row.role,
+        [row.session_id[0, 8], row.id, row.name, row.identity ? "#{row.identity} · bound" : "-", row.role,
          local(row.created_at), local(row.expires_at), row.last_used_at ? local(row.last_used_at) : "-", money(row.cap),
          row.state]
       end

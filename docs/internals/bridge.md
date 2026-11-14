@@ -157,7 +157,7 @@ no line for (an older worker's, one from before drawings, a dropped one) gets on
   is memoized per range (`Synth.memoized`), so a show after a turn end makes no old turn again. What each step did
   as message parts (`MessageParts`, `parts: true`) is the participant review's only (`ParticipantReview`, frozen on
   its message model).
-- **Compat.** An older worker writes nothing, a continue (a note, no turns) and a review fork copy no drawings, and
+- **Compat.** An older worker writes nothing, a continue (a note, no turns) copies no drawings, and
   an older chi's fork or one-shot wrote none: their turns are made from their messages. A `/btw keep` child forked
   before its first turn (saved without its system head) draws its turns made from its messages, without CardStore
   rows, until that turn puts the head back and its carried lines hold (`Synth::LOSSES` `fork_before_first_turn`;

@@ -377,7 +377,7 @@ RSpec.describe "Tool host characterization" do
       session.save(state_dir: state_dir)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
       grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
-      grant = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair",
+      grant = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex",
                                                       state_dir: state_dir).grant
       checks = 0
       engine.participant_stop = lambda { |_who|

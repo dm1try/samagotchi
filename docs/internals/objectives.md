@@ -133,8 +133,7 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 - **Declared**: on `full` (`all_core`) and on the coordinator kit (its bundle adds it); named in the not-loaded line
   elsewhere, and so counted in `find_tools`' chi line, and among the deferred tools on a host that loads tools.
 - **Cost**: one extra generation when the move is the step's only call, none when it comes in a batch with another call.
-- **Guardrails**: no rule names it, so it passes with no ask, in `strict` too. `ReviewBoundary` denies it as anything
-  outside its kit. `PairBoundary` denies it as owner-voiced: a move stays in the owner's history and reads as the
+- **Guardrails**: no rule names it, so it passes with no ask, in `strict` too. `PairBoundary` denies it as owner-voiced: a move stays in the owner's history and reads as the
   session's own.
 - **The row**: `recording a move` in the TUI's line with `id=`, `state=` (blocked or done only, before `note=` so a cut
   can't drop it: `ToolActivity#objectives_state_param`), `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
@@ -239,8 +238,7 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   after the carry note and any moved context's note, so the list reads as the latest word. It is not in
   `SessionChain.note_text` (capped; the last answer gets what the recap leaves). It reads the previous link fresh,
   with its unabsorbed newest file. A failure is only logged (`continue_objectives_failed`), because it runs inside the
-  continue's rollback. A review link's list stays behind, as its last answer does: the next link's participants could
-  differ. The previous link's other waiting notes move after it (`NoteMove.move`, the step after: moved first, the
+  continue's rollback. The previous link's other waiting notes move after it (`NoteMove.move`, the step after: moved first, the
   carry would miss a pending edit, and the stale list would be the batch's newest); its objectives notes never move,
   and the new link's worker never adopts one from it (`NoteMove.adoption`), so a list from the archived link can't
   overwrite the carried one.
@@ -373,7 +371,7 @@ not a canceled or exhausted one), on the turn's thread after `end_turn` and befo
 `ObjectivesTrack.after_turn?` decides, in this order: the setting (`objectives.tracker`, default `off`), then the list (an
 active item; `pending_payload` is a file read), then the turn: not a `--non-interactive` run (`Engine#interface ==
 :non_interactive`: its origin can't tell, `ClientId.human?(nil)` is true), the owner's (`OwnerPrompt.turn?`: not a
-participant's, not a review session's; a person's prompt or a wake), and the newest turn of the stored conversation (after
+participant's; a person's prompt or a wake), and the newest turn of the stored conversation (after
 its last `Steer.turn_prompt?` entry) has at least one run that is work (`Objectives::Backing.work?`: an edit or write that
 succeeded, an execute that finished ok, the page's no-move rule) and no objectives call that recorded a move. The stored
 conversation is copied on the turn's thread; the request goes on a thread of its own kind (`SideJudgments#start`), so the

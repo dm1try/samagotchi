@@ -16,7 +16,7 @@ require "samagotchi/grants"
 # viewer_boot.test.js.
 RSpec.describe Samagotchi::Web::Viewer do
   let(:grant) do
-    Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: "s1", digest: "d", kind: "participant", name: "Alex",
+    Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: "s1", digest: "d", name: "Alex",
                                   role: "participant", created_at: nil, expires_at: nil, revoked_at: nil,
                                   revoked_by: nil, last_used_at: nil)
   end

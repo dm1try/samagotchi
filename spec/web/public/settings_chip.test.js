@@ -70,7 +70,6 @@ test("the panel: Thinking, Reasoning history (a chat host's) and Context; the de
   assert.deepEqual(labels(follows, "reasoning"), ["default (turn)*", "drop", "turn", "all"]);
   assert.match(follows, /id="sset-rh-label">Reasoning<\/span>/);
   assert.deepEqual(labels(follows, "ctx"), ["default (none)*", "none", "stale", "stale + forget"]);
-  assert.doesNotMatch(follows, /Review files|sset-review/);
   const own = markupOf(panelTemplate({ thinking: THINK_OWN, reasoningHistory: null, llmContext: CTX_OWN, more: true }));
   assert.deepEqual(labels(own, "think"), ["default", "off", "low*", "medium", "high"]);
   assert.doesNotMatch(own, /sset-rh-label/);

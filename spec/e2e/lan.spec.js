@@ -1,7 +1,7 @@
 // chi web on the LAN (--web-host lan), reached at this machine's LAN
 // address as a phone would, and on loopback: the access token is asked for
 // on both. Without a private IPv4 the project's chi web is on loopback only
-// (playwright.config.js): the LAN tests skip, the review journey runs there.
+// (playwright.config.js): the LAN tests skip, the participant journey runs there.
 import fs from "node:fs";
 import { test, expect } from "./support/fixtures.js";
 import { clickBarItem } from "./support/layout.js";
@@ -107,7 +107,7 @@ test.describe("on the LAN", () => {
   });
 });
 
-test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control but the image button, a message with an image (a double Enter) is queued once, starts and gets its answer, the owner applies it, a claim link opens in Alex's browser, and Alex revises their own answer (a stack on both pages)", async ({ chi, context, browser, script }) => {
+test("a participant: the owner invites from the panel, warned that their turns act; the link opens the main page (over the LAN when there is one) with the history and no owner control but the image button, a message with an image (a double Enter) is queued once, starts and gets its answer, a claim link opens in Alex's browser, and Alex revises their own answer (a stack on both pages)", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -125,14 +125,6 @@ test("a review: the owner starts one for a file and invites from the panel; the 
     // A chi web on loopback only: this machine's browser is the owner.
     await owner.goto(`${chi.baseURL}/`);
   }
-  // The start page's ⚙ panel, Review files…: the new session is a review of README.md.
-  await owner.locator("#settingsNew").click();
-  await owner.locator("#startSettingsPopover").getByRole("button", { name: "Review files…" }).click();
-  await owner.locator("#startSettingsPopover textarea").fill("README.md");
-  await owner.locator("#startSettingsPopover button[type=submit]").click();
-  await expect(owner.locator("#startSettingsPopover .sset-review-set")).toHaveText("Review: README.md");
-  await owner.keyboard.press("Escape");
-  await expect(owner.locator("#reviewNew")).toHaveText("review: README.md");
   await owner.locator("#prompt").fill("Say pong");
   await owner.locator("#actionBtn").click();
   await expect(owner).toHaveURL(/#\/s\/[0-9a-f-]+$/);
@@ -146,8 +138,8 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await owner.locator("#participantsPopover .pp-invite-btn").click();
   const link = await owner.locator("#participantsPopover .pp-link input").inputValue();
   expect(link).toMatch(/\/\?token=chp_[\w-]+#s=[0-9a-f-]+$/);
-  // A review session: no warning about a working session's tool outputs.
-  await expect(owner.locator("#participantsPopover .pp-warning")).toHaveCount(0);
+  // The warning: a participant's turns act in it.
+  await expect(owner.locator("#participantsPopover .pp-warning").first()).toContainText("a participant's turns act in this session");
   // No "view as a participant" any more.
   await expect(owner.locator("#participantsPopover a[href*='as=participant']")).toHaveCount(0);
   await expect(chip).toHaveText("1 participant");
@@ -160,7 +152,7 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   page.on("response", (r) => { if (r.status() === 403) refused.push(`${r.request().method()} ${r.url()}`); });
   await page.goto(link.replace(/^http:\/\/[^/]+/, guestURL));
   // The grant's session, whatever the old link's #s= said; its history.
-  await expect(page.locator("#sessionTitle")).toHaveText("review of README.md");
+  await expect(page.locator("#sessionTitle")).toHaveText("an untitled session");
   await expect(page.locator("#participantWho .pb-who")).toHaveText("Alex · invited");
   const ownerPrompt = page.locator("#history .bubble.user").first();
   await expect(ownerPrompt).toContainText("Say pong");
@@ -198,7 +190,7 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await page.locator("#prompt").press("Enter");
   const mine = page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" });
   await expect(mine).toHaveCount(1);
-  await expect(mine.locator(".author-badge")).toHaveText("Alex · review");
+  await expect(mine.locator(".author-badge")).toHaveText("Alex");
   await expect(mine.locator(".thumbs img.thumb")).toHaveCount(1);
   await expect(page.locator("#history .bubble.output")).toHaveCount(2);
   await expect(page.locator("#history .bubble.output").last()).toHaveText(/PONG from the fake model/);
@@ -207,14 +199,8 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   expect(posts).toHaveLength(1);
   await page.unroute("**/turn");
 
-  await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
+  await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · pair");
   await expect(owner.locator("#history .bubble.user.by-participant .thumbs img.thumb")).toHaveCount(1);
-  // Apply under the review turn's reply: the owner's turn in the composer,
-  // the proposal quoted, not sent.
-  await owner.locator(".review-apply-btn").last().click();
-  await expect(owner.locator("#prompt")).toHaveValue(/^Apply this proposal from Alex's review turn \w+, as far as it fits the plan\. [^\n]*\n\n> PONG from the fake model/);
-  // Never on Alex's page.
-  await expect(page.locator(".review-apply-btn")).toHaveCount(0);
 
   // A claim link: the owner selects a word of the first answer, Copy link
   // gives Alex's link to that turn and quote; Alex's browser (its cookie,
@@ -255,8 +241,12 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await page.locator("#prompt").fill("shorter");
   await page.locator("#prompt").press("Enter");
   await expect(page.locator("#reviseChip")).toBeHidden();
-  // The ended turn leaves the stage for the history once the pointer is away.
+  // The ended turn leaves the stage for the history once the pointer is away,
+  // on each page: the owner's pointer still rests where its Copy link click
+  // left it, which the stage may cover by then (a hold that never ends: the
+  // CI flake of 2026-11-14).
   await page.mouse.move(0, 0);
+  await owner.mouse.move(0, 0);
   await expect(page.locator("#history .stack-stub")).toHaveCount(1);
   await expect(page.locator("#history .stack-versions > summary")).toHaveText("v2 · 1 earlier");
   await expect(owner.locator("#history .stack-stub")).toHaveCount(1);

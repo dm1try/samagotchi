@@ -9,6 +9,7 @@ require "samagotchi/session"
 require "samagotchi/grants"
 require "samagotchi/participants"
 require_relative "support/fake_provider_server"
+require_relative "support/outdated_grants"
 
 # The goldens' fixed inputs and masks (a module: constants in a describe
 # block would be top-level ones).
@@ -68,9 +69,9 @@ end
 # then a write a config rule asks about, allowed once through the question
 # flow, then the answer) per wire; a before_turn hook switching the model
 # per wire (the request names the new model; its sampling and thinking are
-# the old model's: #turn_settings runs before the hooks); and a review
-# participant's turn on the openai wire (its write refused by
-# Guardrails::ReviewBoundary). System 1, the toolkit suggestion, the
+# the old model's: #turn_settings runs before the hooks); and an older
+# chi's read-only participant's turn on the openai wire (its calls refused
+# by Guardrails::ParticipantRefusal). System 1, the toolkit suggestion, the
 # context judge, the recap and the turn-end warm-up are off by config, so
 # the order is the turn's own.
 #
@@ -80,6 +81,8 @@ end
 # A failing run writes what it got to tmp/turn_goldens/<golden>.actual and
 # names the diff to run.
 RSpec.describe "Engine turn goldens" do
+  include OutdatedGrants
+
   let(:tmp) { File.realpath(Dir.mktmpdir("turn-golden")) }
   let(:project) { File.join(tmp, "project") }
   let(:state_dir) { File.join(tmp, "state", "samagotchi", "sessions") }
@@ -410,15 +413,15 @@ RSpec.describe "Engine turn goldens" do
     end
   end
 
-  describe "a review participant's turn on the openai wire" do
-    it "keeps the turn whose write the review boundary refuses" do
+  describe "an older chi's read-only participant's turn on the openai wire" do
+    it "keeps the turn whose read and write the participant seat refuses" do
       model = TurnGolden::WIRES["openai"][:model]
       engine = engine_on(model)
       session = session_on(model)
-      session.review = { subjects: ["notes.txt"] }
       session.save(state_dir: state_dir)
       grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
       grant = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Mallory", state_dir: state_dir).grant
+      grant = make_outdated!(grants, grant, state_dir: state_dir)
       enqueue("openai", calls: [["call_r1", "read", { "path" => "notes.txt" }],
                                 ["call_w1", "write", { "path" => "notes.txt", "content" => "pwned" }]])
       enqueue("openai", text: "Proposed a change.")
@@ -428,8 +431,9 @@ RSpec.describe "Engine turn goldens" do
       expect(File.read(File.join(project, "notes.txt"))).to eq("golden notes\n")
       expect(asked).to eq([])
       text = golden_text(session, result).gsub(grant.id, "<GRANT>")
-      expect(text).to include("denied by guardrail (rule review-boundary, core)")
-      expect_golden("openai_review_participant.txt", text)
+      expect(text).to include("denied by guardrail (rule participant-refused, core)")
+      expect(text).not_to include("golden notes")
+      expect_golden("openai_refused_participant.txt", text)
     end
   end
 end

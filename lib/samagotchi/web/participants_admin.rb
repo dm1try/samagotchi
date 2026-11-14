@@ -2,8 +2,7 @@
 
 require_relative "../grants"
 require_relative "qr"
-require_relative "../review_start"
-require_relative "../review_apply"
+require_relative "../share_terms"
 require_relative "../session_metrics"
 require_relative "../participants"
 require_relative "../session"
@@ -11,8 +10,7 @@ require_relative "../session"
 module Samagotchi
   module Web
     # The owner's routes for a session's participants, mixed into App:
-    # invite, list, revoke, a participant's cap, and the review Apply (the
-    # owner's turn quoting a review turn's proposal). What a participant
+    # invite, list, revoke and a participant's cap. What a participant
     # may do themselves is ParticipantAccess's. See
     # docs/internals/participants.md.
     module ParticipantsAdmin
@@ -21,12 +19,11 @@ module Samagotchi
       # GET /api/sessions/:id/participants, GET /api/participants: the
       # grants (one session's, or every one), in every state, never a token
       # or digest. One session's also carries +warning+: the share warning
-      # for a session that isn't a review session (ReviewStart.share_warning,
-      # null for one), which the panel shows before its Invite; and
-      # +identity_header+: the header this chi web's auth proxy names the
-      # signed-in user in (null without one), for the Invite's email field;
-      # +mode+: what a participant invited now gets, "pair" or "review"
-      # (ReviewStart.share_terms), for the panel's words; +link_base+: where
+      # (ShareTerms#warning: what a participant's turns do there, or why no
+      # one can be invited until the session restarts), which the panel shows
+      # before its Invite; +identity_header+: the header this chi web's auth
+      # proxy names the signed-in user in (null without one), for the
+      # Invite's email field; and +link_base+: where
       # a participant's link opens (participant_base), for a claim link
       # (claim_link.js) the participant's browser opens with its cookie.
       def handle_participants_list(req, id = nil)
@@ -34,8 +31,8 @@ module Samagotchi
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
-        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
-        json_response(200, { participants: with_spend(id, grants), warning: terms.warning, mode: terms.mode.to_s,
+        terms = ShareTerms.of(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        json_response(200, { participants: with_spend(id, grants), warning: terms.warning,
                              identity_header: @public_url&.identity_header, link_base: participant_base(req) })
       rescue Grants::Unwritable => e
         grants_unwritable(e)
@@ -57,12 +54,12 @@ module Samagotchi
         end
       end
 
-      # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
+      # POST /api/sessions/:id/participants {name, ttl? (seconds),
       # cap? (dollars), identity? (an email: the grant is bound to it, only
       # behind an auth proxy with an identity header)}: a new grant. The
       # answer carries the token and the link once (chi keeps only its
-      # digest), and +warning+ for a session that isn't a review session
-      # (ReviewStart.share_warning; null for one).
+      # digest), and +warning+ (ShareTerms#warning); 409 worker_too_old
+      # while the session's live worker would refuse their turns.
       def handle_participants_invite(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         ttl = body["ttl"]
@@ -71,12 +68,14 @@ module Samagotchi
         cap = body["cap"]
         return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
 
-        # The grant is stamped pair only when the warning that comes back says
-        # their turns act (one read: ReviewStart.share_terms).
-        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
-        issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
-                                              ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
-                                              mode: terms.grant_mode, state_dir: default_state_dir)
+        # No link while the live worker would refuse every turn of theirs
+        # (one read: ShareTerms.of, the warning that comes back).
+        terms = ShareTerms.of(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        return error_response(409, "worker_too_old", terms.refusal) if terms.refusal
+
+        # An older chi --remote share --agent's kind is ignored.
+        issued = Participants.invite(@grants, session_id: id, name: body["name"], ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
+                                              state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
                              link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: terms.warning })
@@ -84,25 +83,6 @@ module Samagotchi
         error_response(400, "invalid_participant", e.message)
       rescue Grants::Unwritable => e
         grants_unwritable(e)
-      end
-
-      # GET /api/sessions/:id/apply[?turn=T] (owner): the owner's turn that
-      # applies review turn T's proposal (ReviewApply: the reply quoted
-      # under one line of the owner's), for the composer: never sent from
-      # here. Without turn, the latest review turn with a reply. Read from
-      # the live worker's messages, else the saved ones.
-      # @return 200 {text, turn_id, author, author_name}; 404 not_found (no
-      #   such turn, or no review turn); 400 not_review_turn; 409 no_reply
-      def handle_apply(req, id)
-        session = @session_class.load(id, state_dir: default_state_dir)
-        live = bridge_get_json(id, "snapshot")
-        messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
-        proposal = ReviewApply.find(messages, req.params["turn"])
-        json_response(200, { text: ReviewApply.compose(proposal), turn_id: proposal.turn_id, author: proposal.author,
-                             author_name: proposal.author_name })
-      rescue ReviewApply::Refused => e
-        status = { not_found: 404, not_review_turn: 400, no_reply: 409 }.fetch(e.code)
-        error_response(status, e.code.to_s, e.message)
       end
 
       # DELETE /api/sessions/:id/participants[?id=p_…], DELETE

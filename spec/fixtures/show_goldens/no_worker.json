@@ -17,7 +17,6 @@
     "parent_id": null,
     "delegate": false,
     "continues": null,
-    "review": null,
     "first_preview": "look at a.txt",
     "title": null,
     "owner": null,
@@ -496,7 +495,7 @@
     },
     {
       "name": "/share",
-      "description": "invite someone to review this session (/share NAME [--agent] [--expires 3d] [--cap 2])",
+      "description": "invite someone into this session (/share NAME [--expires 3d] [--cap 2])",
       "anytime": false,
       "mid_turn": "refuse",
       "local": true,

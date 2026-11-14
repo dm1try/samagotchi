@@ -418,9 +418,6 @@ module Samagotchi
       @settings = SessionConfig::Settings.of(value)
     end
 
-    # Whether this is a review session (chi review, the web's Start review).
-    def review? = !@review.nil?
-
     # The session whose participants.json names this session's
     # participants: a Verify fresh child's parent (its requester's grant is
     # the parent's), else the session itself.

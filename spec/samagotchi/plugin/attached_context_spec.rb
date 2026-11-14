@@ -168,16 +168,16 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect { ctx.context.propose(name: "x", cmd: "date", title: " ") }.to raise_error(described_class::Error, "give title:")
   end
 
-  it "proposes nothing in a review session, or for a source attached already (by name or URL, any scope)" do
+  it "proposes nothing for a source attached already (by name or URL, any scope); an older chi's review session as any" do
     install_provider
     ctx.context.attach(url: "https://example.com/pull/7")
     expect(ctx.context.propose(url: "https://example.com/pull/7", title: "#7")).to be_nil
     expect(ctx.context.propose(url: "https://example.com/pull/7", name: "other", title: "#7")).to be_nil
+    expect(ctx.context.candidates).to eq([])
 
     session.review = { "subjects" => ["a.md"] }
     session.save(state_dir: state_dir)
-    expect(ctx.context.propose(url: "https://example.com/pull/8", title: "#8")).to be_nil
-    expect(ctx.context.candidates).to eq([])
+    expect(ctx.context.propose(url: "https://example.com/pull/8", title: "#8")).not_to be_nil
   end
 
   context "with the owner's prompts in the session already (a late proposal)" do

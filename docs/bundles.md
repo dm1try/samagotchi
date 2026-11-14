@@ -273,8 +273,7 @@ bundles:
 | `categories`, `engines` | unset | comma-separated. SearXNG silently drops names it doesn't know, so a typo gives its defaults |
 
 - **Privacy:** the query goes to your SearXNG and on to the engines it is configured with. No guardrail rule asks
-  about it by default; add one (`tool: web_search`, `verdict: ask`) if you want to approve each search. A review
-  turn can't call it.
+  about it by default; add one (`tool: web_search`, `verdict: ask`) if you want to approve each search.
 - **Toolkits:** the tool follows a kit's list like a built-in ([Toolkits](configuration.md#toolkits)). `full` (and
   any kit on `base: full`) declares it (about 150 tokens per request); on `lean`, `child` and the kits built on them
   it is reachable, not declared: the model finds it with `find_tools` (`chi/web_search`) and calls it with
@@ -926,21 +925,6 @@ replies wouldn't come back by themselves there.
   report ending with the `/coordinate resume <slug>` to pick it up next
   time. It starts, merges and stops nothing: running children stay running
   and are named in the report.
-- **Sprint review (experimental, 0.6.0).** **`/coordinate review [name]`**
-  starts a review session of this coordinator session (`ctx.sessions.review`:
-  its recap, never its transcript; this session keeps running) seeded with the
-  open handoff's body (the one named, the only one, or a card with a Review
-  action each when several are open; with none, the recap alone), and prints
-  the `chi share <id> --name NAME` line. A participant (a manager, a teammate)
-  brings new context there; the skill's Sprint review section (copied into
-  the seed: a participant's turn reads project memories only, and the skill
-  is a system one) has the review's model answer it with a **hand-off diff** (the handoff's lines as
-  they would change, in a `diff` block, and what it means per branch), in a
-  turn that may only read. Your **Apply** under it (the web's) quotes the
-  diff in your turn there: the model brings the handoff up to date and
-  re-plans in words, and starts, stops or merges nothing from the review
-  session: the coordinator session picks the change up from the handoff,
-  and merges as it always does. Experimental: it may go if it doesn't earn its place.
 - **The coordinator toolkit.** The bundle declares `coordinator`: `lean`
   plus `delegate`, `delegate_result`, `list_sessions` and `objectives` (the skill records moves with it)
   ([Toolkits](configuration.md#toolkits)). `/coordinate` puts a fresh session
@@ -1376,10 +1360,9 @@ this API (`lib/samagotchi/bundles/inline-widgets/plugin.rb`) and has no settings
   choose from.
 - **Where it draws**: chi web, in the answers. The terminal shows the block's YAML, and a block chi can't read stays
   YAML with a short note under it.
-- **Where the prompt has none**: a delegate child (its parent reads the report, nobody sees it drawn), a one-shot
-  `chi -p … --non-interactive`, and a review session (`chi review`: its participants' page draws no widgets, so they
-  would read the YAML). A working session you pair in keeps them: your page draws them, and inviting someone later
-  doesn't change the prompt. `/stats` lists the sections a session's prompt holds: `picks (inline-widgets), walk
+- **Where the prompt has none**: a delegate child (its parent reads the report, nobody sees it drawn) and a one-shot
+  `chi -p … --non-interactive`. A session with participants keeps them: its pages draw them, and inviting someone
+  later doesn't change the prompt. `/stats` lists the sections a session's prompt holds: `picks (inline-widgets), walk
   (inline-widgets)`.
 - **Cost**: about 2,900 characters in the stable part of the prompt, the same at every build, so the prompt cache keeps.
 - **Uninstall**: `chi bundle uninstall inline-widgets` takes the sections out of new sessions' prompts (a session you

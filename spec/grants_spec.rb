@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::Grants do
       issued = issue
 
       expect(issued.token).to match(/\Achp_[A-Za-z0-9_-]{43}\z/)
-      expect(issued.grant).to have_attributes(session_id: session_id, name: "Alex", kind: "human", role: "reviewer",
+      expect(issued.grant).to have_attributes(session_id: session_id, name: "Alex", role: "reviewer",
                                               created_at: "2026-10-23T12:00:00Z", expires_at: "2026-10-30T12:00:00Z")
       expect(issued.grant.id).to match(described_class::ID_RE)
       expect(issued.grant.author).to eq("p:#{issued.grant.id}")
@@ -49,16 +49,15 @@ RSpec.describe Samagotchi::Grants do
       expect(File.stat(File.dirname(path)).mode & 0o777).to eq(0o700)
     end
 
-    it "takes an agent, a shorter expiry, and cleans the name to one bracket-free line" do
-      grant = issue(kind: "agent", ttl: 3 * 86_400).grant
-      expect(grant).to have_attributes(kind: "agent", expires_at: "2026-10-26T12:00:00Z")
+    it "takes a shorter expiry, and cleans the name to one bracket-free line" do
+      grant = issue(ttl: 3 * 86_400).grant
+      expect(grant).to have_attributes(expires_at: "2026-10-26T12:00:00Z")
       odd = grants.issue(session_id: session_id, name: "  [Owner]\nsays #{"x" * 80}").grant
       expect(odd.name).to eq(" Owner  says #{"x" * 80}".squeeze(" ").strip[0, 64].strip)
       expect(odd.name).not_to match(/[\[\]\n]/)
     end
 
-    it "refuses a bad kind, role, expiry, name or session id" do
-      expect { issue(kind: "bot") }.to raise_error(described_class::Invalid, /human or agent/)
+    it "refuses a bad role, expiry, name or session id" do
       expect { issue(role: "owner") }.to raise_error(described_class::Invalid, /reviewer/)
       expect { issue(ttl: 31 * 86_400) }.to raise_error(described_class::Invalid, /1 hour to 30 days/)
       expect { grants.issue(session_id: session_id, name: " [] ") }.to raise_error(described_class::Invalid, /needs a name/)
@@ -68,14 +67,37 @@ RSpec.describe Samagotchi::Grants do
   end
 
   describe "#issue for pair turns" do
-    it "stores the pair mode only when given, reads it back, and refuses another" do
-      pair = issue(mode: "pair").grant
-      plain = issue.grant
-      stored = JSON.parse(File.read(path))["grants"]
-      expect(stored.find { |g| g["id"] == pair.id }).to include("mode" => "pair")
-      expect(stored.find { |g| g["id"] == plain.id }).not_to have_key("mode")
-      expect(grants.list(session_id: session_id).map(&:mode)).to contain_exactly("pair", nil)
-      expect { issue(mode: "owner") }.to raise_error(described_class::Invalid, /mode is pair or none/)
+    it "stamps every grant pair; a stored grant without it (an older chi's) reads as ended, outdated" do
+      grant = issue.grant
+      stored = JSON.parse(File.read(path))
+      expect(stored["grants"].first).to include("mode" => "pair")
+      expect(grant.state(now.first)).to eq(:active)
+
+      stored["grants"].first.delete("mode")
+      File.write(path, JSON.generate(stored))
+      older = grants.find(grant.id)
+      expect(older.mode).to be_nil
+      expect(older.state(now.first)).to eq(:outdated)
+      expect(older.active?(now.first)).to be(false)
+      expect(older.ended_at(now.first)).to be_nil
+      expect(older.public_h(now.first)).to include(state: "outdated")
+      expect(grants.active?(grant.id)).to be(false)
+      # Revoked and expired say so first.
+      expect(older.with(revoked_at: now.first.utc.iso8601).state(now.first)).to eq(:revoked)
+      expect(older.state(now.first + (8 * 86_400))).to eq(:expired)
+      # Nothing to revoke: no write.
+      expect(grants.revoke(session_id: session_id)).to eq([])
+    end
+
+    it "reads an older chi's retired kind as known and drops it: not an unknown field (a newer store keeps the grant)" do
+      grant = issue.grant
+      stored = JSON.parse(File.read(path))
+      stored["grants"].first["kind"] = "agent"
+      File.write(path, JSON.generate(stored))
+      read = grants.find(grant.id)
+      expect(read.extra).to eq({})
+      expect(read.to_store).not_to have_key("kind")
+      expect(read.state(now.first)).to eq(:active)
     end
   end
 
@@ -326,7 +348,7 @@ RSpec.describe Samagotchi::Grants do
         end
         row = stored["grants"].first
         read = older.from_h(row)
-        expect(read.extra).to eq("exposure" => "session")
+        expect(read.extra).to eq("exposure" => "session", "mode" => "pair")
         expect(read.to_store).to eq(row)
       end
     end

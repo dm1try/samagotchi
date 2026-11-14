@@ -21,7 +21,7 @@ require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
 require_relative "../worker_link"
 require_relative "../worker_presence"
-require_relative "../review_start"
+require_relative "../share_terms"
 require_relative "../launch_mode"
 require_relative "../participants"
 require_relative "../config"
@@ -144,11 +144,9 @@ module Samagotchi
       # @return [Session] the session created (its id, model_warning,
       #   continues, moved_children)
       # @raise [SessionContinue::Refused, SessionManager::ArchiveRefused,
-      #   SessionManager::OwnedByTUI, ReviewStart::Refused] refused;
+      #   SessionManager::OwnedByTUI] refused;
       #   StandardError: could not start
       def create(spec)
-        return create_review(spec) if spec.review
-
         start = spec.preview ? { prompt: spec.prompt, preview: spec.preview } : { prompt: spec.prompt }
         if spec.continues
           return SessionContinue.run(spec.continues, **start, model: spec.model_name, client_id: spec.client_id, **dir)
@@ -156,18 +154,6 @@ module Samagotchi
 
         SessionManager.spawn_session(**start, working_directory: spec.working_directory, model_name: spec.model_name,
                                               setup: spec.setup, client_id: spec.client_id, **dir)
-      end
-
-      # A review session (ReviewStart): a fork of review.from, or a fresh
-      # one in the spec's folder.
-      def create_review(spec)
-        review = spec.review
-        if review.from
-          return ReviewStart.fork(from: review.from, subjects: review.subjects, model: spec.model_name, state_dir: state_dir!)
-        end
-
-        ReviewStart.start(subjects: review.subjects, dir: spec.working_directory || Dir.pwd, model: spec.model_name,
-                          setup: spec.setup || SessionSetup.new, state_dir: state_dir!)
       end
 
       # Whether a just-created session's worker came up (its Bridge
@@ -443,15 +429,16 @@ module Samagotchi
       # header (Participants.invite).
       # @return [Invitation]
       # @raise [ArgumentError] no such session
-      # @raise [BadRequest] a bad name, kind, ttl or identity, an archived
+      # @raise [BadRequest] a bad name, ttl or identity, an archived
       #   session, an identity with no proxy to check it
-      def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
+      def invite(id, name:, ttl: nil, cap: nil, identity: nil)
         public_url = configured_public_url
-        # Stamped pair only when the warning chi share prints says their turns act.
-        terms = ReviewStart.share_terms(Session.load(id, **dir), state_dir: state_dir!)
-        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap,
-                                             identity: identity, public_url: public_url, mode: terms.grant_mode,
-                                             state_dir: state_dir!)
+        # No link while the live worker would refuse every turn of theirs.
+        terms = ShareTerms.of(Session.load(id, **dir), state_dir: state_dir!)
+        raise BadRequest.new(terms.refusal, code: "worker_too_old") if terms.refusal
+
+        issued = Participants.invite(grants, session_id: id, name: name, ttl: ttl, cap: cap,
+                                             identity: identity, public_url: public_url, state_dir: state_dir!)
         web = public_url ? nil : local_web
         link = if public_url then public_url.link(link_code(issued), "s=#{id}")
                else "http://#{web.ip || "127.0.0.1"}:#{web.port}/?token=#{issued.token}#s=#{id}"

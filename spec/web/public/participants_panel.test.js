@@ -11,7 +11,7 @@ import { CONTACT_WORDS } from "../../../lib/samagotchi/web/public/no_contact_fil
 const NOW = Date.parse("2026-10-23T12:00:00Z");
 const iso = (ms) => new Date(ms).toISOString();
 const grant = (over = {}) => ({
-  id: "p_0001abcd", name: "Alex", kind: "human", state: "active", cap: 2, spend: 0.5, turns: 3,
+  id: "p_0001abcd", name: "Alex", state: "active", cap: 2, spend: 0.5, turns: 3,
   expires_at: iso(NOW + 7 * 864e5), last_used_at: iso(NOW - 30_000), ...over,
 });
 const markupOf = (template) => {
@@ -43,6 +43,8 @@ test("participants: a row says here now, spend of cap, turns, expiry; a reached 
   const ended = rowModel(grant({ state: "revoked", revoked_by: "owner" }), NOW);
   assert.deepEqual([ended.active, ended.state, ended.expires, ended.present], [false, "revoked (owner)", "", false]);
   assert.equal(rowModel(grant({ state: "expired" }), NOW).state, "expired");
+  const outdated = rowModel(grant({ state: "outdated" }), NOW);
+  assert.deepEqual([outdated.active, outdated.state, outdated.expires], [false, "ended (older link)", ""]);
 });
 
 test("participants: the chip invites with nobody, else counts the active ones with a dot while one is here", () => {
@@ -56,17 +58,17 @@ test("participants: the chip invites with nobody, else counts the active ones wi
   assert.match(markupOf(chipTemplate(chipModel([], NOW))), /participants-chip none/);
 });
 
-test("participants: Invite's body: a name, person or agent, the expiry in seconds, a cap in dollars", () => {
-  assert.deepEqual(inviteBody({ name: " Alex ", kind: "human", days: "3", cap: "" }), { body: { name: "Alex", kind: "human", ttl: 259200 } });
-  assert.deepEqual(inviteBody({ name: "Bot", kind: "agent", days: "99", cap: "$5" }).body, { name: "Bot", kind: "agent", ttl: 604800, cap: 5 });
+test("participants: Invite's body: a name, the expiry in seconds, a cap in dollars; no kind", () => {
+  assert.deepEqual(inviteBody({ name: " Alex ", days: "3", cap: "" }), { body: { name: "Alex", ttl: 259200 } });
+  assert.deepEqual(inviteBody({ name: "Bot", days: "99", cap: "$5" }).body, { name: "Bot", ttl: 604800, cap: 5 });
   assert.match(inviteBody({ name: "  " }).error, /name/);
   assert.match(inviteBody({ name: "A", cap: "lots" }).error, /dollars/);
   assert.match(inviteBody({ name: "A", cap: "5000" }).error, /dollars/);
 });
 
 test("participants: Invite's email binds the link (lower case), names them by its local part, refuses a non-address", () => {
-  assert.deepEqual(inviteBody({ name: "", kind: "human", days: "7", identity: " Alex.Doe@Corp.Example " }).body,
-    { name: "alex.doe", kind: "human", ttl: 604800, identity: "alex.doe@corp.example" });
+  assert.deepEqual(inviteBody({ name: "", days: "7", identity: " Alex.Doe@Corp.Example " }).body,
+    { name: "alex.doe", ttl: 604800, identity: "alex.doe@corp.example" });
   assert.equal(inviteBody({ name: "Alex", identity: "alex@github" }).body.name, "Alex");
   assert.ok(!("identity" in inviteBody({ name: "Alex", identity: "  " }).body));
   for (const bad of ["alex", "a@b@c", "a b@c", "a,b@c", "<a@b>"]) {
@@ -117,8 +119,7 @@ test("participants panel: the list's identity_header shows the email field, and 
   c.submit(form);
   await tick();
   await tick();
-  assert.deepEqual(sent.map(({ name, kind, identity }) => ({ name, kind, identity })),
-    [{ name: "kim", kind: "human", identity: "kim@corp.example" }]);
+  assert.deepEqual(sent.map(({ name, identity, kind }) => ({ name, identity, kind })), [{ name: "kim", identity: "kim@corp.example", kind: undefined }]);
   assert.match(c.pop.querySelector(".pp-invite-done").textContent, /for kim@corp\.example only/);
   c.done();
 });
@@ -163,16 +164,16 @@ test("participants: a badge drawn before the names came is named when they come"
   root.append(elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") })),
               elementOf(userBubbleTemplate({ content: "r" }, { author: authorBadge("p:p_0001abcd", "Alex B") })));
   const [early, own] = root.querySelectorAll(".author-badge");
-  assert.equal(early.textContent, `${UNNAMED} · review`);
+  assert.equal(early.textContent, `${UNNAMED} · pair`);
   assert.equal(early.dataset.unnamed, "1");
   assert.equal(own.dataset.unnamed, undefined);
   assert.equal(nameUnnamedBadges(root), 0, "no names yet: left as it is");
   setParticipantNames([grant()]);
   assert.equal(nameUnnamedBadges(root), 1);
-  assert.equal(early.textContent, "Alex · review");
-  assert.match(early.title, /^A review comment from Alex, /);
+  assert.equal(early.textContent, "Alex · pair");
+  assert.match(early.title, /^A turn from Alex, a participant: /);
   assert.equal(early.dataset.unnamed, undefined);
-  assert.equal(own.textContent, "Alex B · review");
+  assert.equal(own.textContent, "Alex B · pair");
   setParticipantNames([]);
 });
 
@@ -204,39 +205,42 @@ test("participants: a participant's queued or started prompt carries their badge
   const bubble = markupOf(userBubbleTemplate({ content: "q" }, { author: started.author, label: "review" }));
   assert.match(bubble, /class="bubble user by-participant"/);
   assert.match(bubble, /style="--author-color:var\(--author-[1-6]\)"/);
-  assert.match(bubble, /<span class="origin-label author-badge"[^>]*>Alex B · review<\/span>/);
+  assert.match(bubble, /<span class="origin-label author-badge"[^>]*>Alex B · pair<\/span>/);
   setParticipantNames([]);
 });
 
-test("participants: a badge drawn while its turn was queued takes the pair mode at turn_started", async () => {
+test("participants: a badge drawn while its turn was queued reads pair; an older chi's review stamp reads read-only", async () => {
   const { userBubbleTemplate, elementOf } = await import("../../../lib/samagotchi/web/public/turn_html.js");
   const { setBadgeMode } = await import("../../../lib/samagotchi/web/public/participant_names.js");
   setParticipantNames([grant()]);
   const bubble = elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") }));
   const badge = bubble.querySelector(".author-badge");
-  assert.equal(badge.textContent, "Alex · review", "a queued prompt's mode isn't known yet: the review words");
+  assert.equal(badge.textContent, "Alex · pair", "a queued prompt's mode isn't known yet: a participant's turn acts");
   setBadgeMode(bubble, "pair");
   assert.equal(badge.textContent, "Alex · pair");
   assert.match(badge.title, /^A turn from Alex, a participant: it acted with this session's tools/);
   assert.equal(bubble.dataset.participantMode, "pair");
   setBadgeMode(bubble, "review");
-  assert.equal(badge.textContent, "Alex · review");
+  assert.equal(badge.textContent, "Alex · read-only");
+  assert.match(badge.title, /under an older chi: it could only read/);
+  // Unnamed in the list now: the name is read back from the badge, its " · read-only" stripped.
+  setParticipantNames([]);
+  setBadgeMode(bubble, "pair");
+  assert.equal(badge.textContent, "Alex · pair");
   setParticipantNames([]);
 });
 
-test("participants: the empty list says what a participant's turn does, by the session's mode", () => {
-  const review = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
-  assert.match(review, /their comments become read-only review turns/);
-  const pair = markupOf(panelTemplate([], { now: NOW, sessionId: "s", pair: true }));
-  assert.match(pair, /their turns act with this session's tools under your guardrails, and their asks come to you/);
-  assert.doesNotMatch(pair, /read-only/);
+test("participants: the empty list says what a participant's turn does", () => {
+  const empty = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
+  assert.match(empty, /their turns act with this session's tools under your guardrails, and their asks come to you/);
+  assert.doesNotMatch(empty, /read-only|review/);
 });
 
-test("participants: a working session's warning comes before the Invite, with Start a review of it; none for a review session", () => {
-  const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e is a working session" }));
-  assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e is a working session<button[^>]*data-act="start-review"[^>]*>Start a review of it<\/button>/);
+test("participants: the server's warning comes before the Invite, and goes with the invite's link", () => {
+  const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e: a participant's turns act" }));
+  assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e: a participant's turns act<\/div>/);
+  assert.doesNotMatch(working, /start-review|Start a review/);
   assert.ok(working.indexOf("pp-working") < working.indexOf('class="pp-invite"'));
-  assert.match(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", reviewing: true })), /disabled[^>]*>Starting…</);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s" })), /pp-working/);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", invite: { name: "A", link: "x", lan: true } })), /pp-working/);
 });
@@ -323,7 +327,7 @@ test("participants panel: a late invite's Copy link that fails shows the link it
   c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
   await tick();
   await toasts[0].action.run();
-  assert.deepEqual(toasts.slice(1).map((t) => [t.text, t.options.sticky]), [["Kim's review link: http://x/?token=chp_late", true]]);
+  assert.deepEqual(toasts.slice(1).map((t) => [t.text, t.options.sticky]), [["Kim's link: http://x/?token=chp_late", true]]);
   c.done();
 });
 
@@ -349,7 +353,7 @@ test("participants panel: a failed list for another session drops the previous s
   const c = panelControl({ api: { list: async () => {
     if (fail) throw new Error("down");
     return { participants: [grant()], warning: "s1 is a working session" };
-  } }, startReview: async () => null });
+  } } });
   await c.ctl.load();
   fail = true;
   c.switchTo("s2");
@@ -362,59 +366,6 @@ test("participants panel: a failed list for another session drops the previous s
   assert.doesNotMatch(c.pop.innerHTML, /s1 is a working session/);
   assert.doesNotMatch(c.pop.innerHTML, /pp-row/);
   c.done();
-});
-
-// Start a review of it: closed once the review is made; a refusal stays in
-// the open panel, said there. "Starting…" while one is under way.
-test("participants panel: Start a review closes the panel when made, and keeps it open with the refusal when not", async () => {
-  const under = new Set();
-  let answer = deferred();
-  const c = panelControl({
-    api: { list: async () => ({ participants: [], warning: "s1 is a working session" }) },
-    reviewing: () => under.has("s1"),
-    startReview: ({ onError }) => {
-      under.add("s1");
-      return answer.promise.then((made) => {
-        under.delete("s1");
-        if (!made && !onError("Can't start a review of s1: the folder is gone")) throw new Error("not shown");
-        return made;
-      });
-    },
-  });
-  await c.ctl.load();
-  c.chip.click();
-  await tick();
-  c.pop.querySelector('[data-act="start-review"]').click();
-  assert.match(c.pop.innerHTML, /Starting…/);
-  answer.resolve(null);
-  await tick();
-  assert.ok(c.ctl.isOpen(), "a refused review leaves the panel open");
-  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, "Can't start a review of s1: the folder is gone");
-  assert.match(c.pop.innerHTML, /Start a review of it</);
-  answer = deferred();
-  c.pop.querySelector('[data-act="start-review"]').click();
-  answer.resolve({ id: "s3" });
-  await tick();
-  assert.ok(!c.ctl.isOpen());
-  c.done();
-});
-
-// The empty list's words follow the server's mode, never the warning: an
-// older worker's warning still means review turns.
-test("participants panel: the empty list says pair only when the server's mode is pair", async () => {
-  const words = async (body) => {
-    const c = panelControl({ api: { list: async () => body } });
-    await c.ctl.load();
-    c.chip.click();
-    await tick();
-    const text = c.pop.querySelector(".ctx-pop-meta").textContent;
-    c.done();
-    return text;
-  };
-  assert.match(await words({ participants: [], warning: "s1 is a working session", mode: "pair" }), /their turns act/);
-  assert.match(await words({ participants: [], warning: "s1 is a working session, but its worker predates pair turns",
-    mode: "review" }), /read-only review turns/);
-  assert.match(await words({ participants: [], warning: null, mode: "review" }), /read-only review turns/);
 });
 
 // Revoke can't be undone: it asks first, as a delete does.
@@ -502,11 +453,16 @@ test("participants panel: a claim link's target is the list's link base and the 
   c.done();
 });
 
-test("participants panel: no claim target with only agents active (no browser to open it)", async () => {
+test("participants panel: a claim target for every active participant, an older chi's agent-kind grant too", async () => {
   const c = panelControl({ api: { list: async () => ({ participants: [grant({ kind: "agent", name: "Bot" })], link_base: "http://x/" }) } });
   await c.ctl.load();
-  assert.equal(c.ctl.claimTarget(), null);
+  assert.deepEqual(c.ctl.claimTarget(), { base: "http://x/", names: ["Bot"] });
   c.done();
+});
+
+test("participants panel: no person / agent choice, no agent tag", () => {
+  const out = markupOf(panelTemplate([grant({ kind: "agent", name: "Bot" })], { now: NOW, sessionId: "s" }));
+  assert.doesNotMatch(out, /name="kind"|pp-tag|>agent</);
 });
 
 test("participants panel: no claim target without a link base (an older chi web) or anyone active", async () => {

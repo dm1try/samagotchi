@@ -5,7 +5,6 @@ require "fileutils"
 require "json"
 require "openssl"
 require_relative "steer"
-require_relative "participant_mode"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
@@ -53,14 +52,13 @@ module Samagotchi
     KEEP_ENDED = 30 * DAY
     # last_used_at is written at most this often per grant.
     TOUCH_INTERVAL = 60
-    KINDS = %w[human agent].freeze
     # The only role in v1: a reviewer reads and (P3) comments.
     ROLES = %w[reviewer].freeze
-    # The participant mode a grant was issued for (ParticipantMode): "pair"
-    # only when the owner was shown that a participant's turns act
-    # (ReviewStart::PAIR_WARNING); none for every other grant, and every
-    # grant from before it, whose turns stay review turns.
-    PAIR_MODE = ParticipantMode::PAIR.to_s
+    # The mark of a grant this chi honours: every grant is issued with it
+    # (a participant's turns act under the owner's rules). A grant without
+    # it was issued by an older chi for read-only turns, which this chi
+    # doesn't run: it reads as ended (Grant#state :outdated).
+    PAIR_MODE = "pair"
     NAME_MAX = ParticipantName::MAX
     ID_RE = /\Ap_[0-9a-f]{8}\z/
     # D7: what a participant's turns (and the side calls they cause) may
@@ -149,10 +147,11 @@ module Samagotchi
     # +extra+: the stored keys this chi doesn't know (a newer chi's,
     # such as a field added to a grant without a version bump), written
     # back as they were, so a rewrite here never drops them.
-    # +mode+: PAIR_MODE when the owner invited them to act (Grants#issue's
-    # mode:), nil otherwise. Stored only when set; a chi that doesn't know
-    # it keeps it in +extra+ and runs their turns as review turns.
-    Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
+    # +mode+: PAIR_MODE for every grant this chi issues; nil in a grant an
+    # older chi issued for read-only turns, which reads as ended
+    # (#state :outdated). Stored only when set; a chi that doesn't know it
+    # keeps it in +extra+.
+    Grant = Data.define(:id, :session_id, :digest, :name, :role, :created_at, :expires_at, :revoked_at,
                         :revoked_by, :last_used_at, :cap, :queue, :identity, :exposure, :mode, :extra) do
       # identity: the proxy identity (an email, lower case) the grant is
       # bound to, nil for any (Web::ProxyGate; issued from shared-sessions P6).
@@ -163,7 +162,7 @@ module Samagotchi
 
       def self.from_h(hash)
         known = members - [:extra]
-        extra = hash.reject { |key, _| known.include?(key.to_s.to_sym) }
+        extra = hash.reject { |key, _| known.include?(key.to_s.to_sym) || self::RETIRED.include?(key.to_s) }
         new(**known.to_h { |key| [key, hash[key.to_s]] }, extra: extra)
       end
 
@@ -176,10 +175,13 @@ module Samagotchi
       # The author a participant's turn carries (Principal#author).
       def author = Steer.author_for(id)
 
-      # :active, :revoked or :expired at +now+ (a Time).
+      # :active, :revoked, :expired or :outdated (an older chi's grant
+      # for read-only turns: no PAIR_MODE) at +now+ (a Time). Derived, never
+      # written: an outdated grant is swept as any other once it expires.
       def state(now)
         return :revoked if revoked_at
         return :expired if Time.iso8601(expires_at) <= now
+        return :outdated unless mode.to_s == Grants::PAIR_MODE
 
         :active
       end
@@ -196,7 +198,7 @@ module Samagotchi
 
       # Never the digest: what chi share ls and the owner's routes show.
       def public_h(now)
-        { id: id, session_id: session_id, kind: kind, name: name, role: role, created_at: created_at,
+        { id: id, session_id: session_id, name: name, role: role, created_at: created_at,
           expires_at: expires_at, revoked_at: revoked_at, revoked_by: revoked_by, last_used_at: last_used_at,
           state: state(now).to_s, cap: spend_cap, queue: queue_limit, identity: identity }
       end
@@ -221,6 +223,12 @@ module Samagotchi
       def inspect = "#<Grant #{id} #{session_id[0, 8]} #{name.inspect}>"
       alias_method :to_s, :inspect
     end
+
+    # Keys an older chi stored that this one reads as known and drops:
+    # "kind" (human / agent, retired with the agent label). Not kept in
+    # #extra, so a newer store's check for unknown fields (#reload) doesn't
+    # leave an older pair grant out for it.
+    Grant::RETIRED = %w[kind].freeze
 
     # A new grant and its token: the only time the token exists outside
     # the participant's hands.
@@ -331,16 +339,13 @@ module Samagotchi
     # @param on_write [#call, nil] see #update
     # @return [Issued]
     # @raise [Invalid]
-    def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, identity: nil, mode: nil,
-              on_write: nil)
+    def issue(session_id:, name:, role: "reviewer", ttl: nil, cap: nil, identity: nil, on_write: nil)
       Session.check_id!(session_id)
       ttl ||= Grants.default_ttl
       cap = Grants.default_cap if cap.nil?
-      raise Invalid, "kind is human or agent, not #{kind}" unless KINDS.include?(kind)
       raise Invalid, "role is reviewer, not #{role}" unless ROLES.include?(role)
       raise Invalid, "a grant lasts 1 hour to 30 days" unless ttl.is_a?(Integer) && ttl.between?(3600, MAX_TTL)
       raise Invalid, CAP_RANGE unless Grants.cap?(cap)
-      raise Invalid, "mode is #{PAIR_MODE} or none, not #{mode}" unless mode.nil? || mode == PAIR_MODE
 
       clean = Grants.clean_name(name)
       identity = Grants.clean_identity(identity) unless identity.nil?
@@ -348,10 +353,10 @@ module Samagotchi
       issued = now
       update(on_write) do |grants|
         id = fresh_id(grants)
-        grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
+        grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), name: clean,
                           role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
                           revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue,
-                          identity: identity, mode: mode)
+                          identity: identity, mode: PAIR_MODE)
         [grants + [grant], Issued.new(grant: grant, token: token)]
       end
     end

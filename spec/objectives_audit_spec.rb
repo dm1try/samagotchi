@@ -241,13 +241,10 @@ RSpec.describe Samagotchi::ObjectivesAudit do
     expect(Samagotchi::Log).to have_received(:warn).with(:system_one, "objectives_audit_failed", anything)
   end
 
-  it "leaves a scratch session, a review session and a session with no id alone" do
+  it "leaves a scratch session and a session with no id alone" do
     on
     with_list("active")
     session.scratch = true
-    audit.incoming(session, prompt)
-    session.scratch = false
-    allow(session).to receive(:review?).and_return(true)
     audit.incoming(session, prompt)
     settle
 

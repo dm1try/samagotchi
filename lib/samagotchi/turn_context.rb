@@ -19,7 +19,7 @@ module Samagotchi
   # +session+    the Session it runs in (live: its working-set pins are read at call time)
   # +origin+     its TurnOrigin (TurnOrigin::NONE for the owner's)
   # +author+     the participant's author ("p:<id>") when one wrote it, else nil
-  # +participant_mode+ a participant's turn's mode (ParticipantMode: :review, :pair), nil for the owner's
+  # +participant_mode+ a participant's turn's mode (GuardrailWiring::PAIR, or REFUSED: no current invite), nil for the owner's
   # +participant+ that participant's Participants::Entry (participants.json), nil for none
   # +controller+ the turn's CancellationController (live: its cancel state); a thread
   #   off the turn cancels through TurnState#controller, never through this

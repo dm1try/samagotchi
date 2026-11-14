@@ -10,7 +10,7 @@ module Samagotchi
     # "chi <cmd> runs on this machine only: run it on <remote>"). The v1 scope is the remote-sessions plan's
     # D3: send, answer, note, a session's context (add, push, ls, show, rm)
     # and sessions list/stop/restart/archive/unarchive/delete, chi share
-    # (the shared-sessions plan's P2) and chi review (P5); the rest
+    # (the shared-sessions plan's P2); the rest
     # stays local. bin/chi's subcommands that act on the machine, not on
     # sessions, are MACHINE. The run flags (chi --attach, -p, --resume: a
     # session in this terminal, a remote attach there) are RUN's.
@@ -124,7 +124,6 @@ module Samagotchi
         # through its chi web's participants routes.
         "share" => SUPPORTED,
         "share --name" => SUPPORTED,
-        "share --agent" => SUPPORTED,
         "share --expires" => SUPPORTED,
         "share --cap" => SUPPORTED,
         # A chi web without bound grants (Remote#invite checks its
@@ -135,14 +134,6 @@ module Samagotchi
         "share ls --format" => SUPPORTED,
         "share revoke" => SUPPORTED,
         "share revoke --all" => SUPPORTED,
-
-        # A review session (docs/sessions.md): the remote's chi web checks
-        # the files against its own project; --dir is required there
-        # unless --from (D4).
-        "review" => SUPPORTED,
-        "review --dir" => SUPPORTED,
-        "review --model" => SUPPORTED,
-        "review --from" => SUPPORTED,
 
         "broadcast" => LOCAL_ONLY
       }.freeze

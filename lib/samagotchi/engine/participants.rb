@@ -23,19 +23,18 @@ module Samagotchi
       # nothing is checked mid-turn.
       attr_writer :participant_stop
 
-      # Before each generation (KernelLoop::Services#generation_guard): a pair turn whose
-      # participant's link ended, or whose spend (Engine#metrics: their
-      # finished turns, this one's finished generations, their side requests)
-      # passed their cap, stops on the plugins' stop path (cost-cap's,
-      # work-cap's), with its notice. A generation's own cost is known only
-      # once it ends, so a turn can pass the cap by its last generation. The
-      # turn-start check is the Worker's (Worker#participant_refusal); a
-      # review turn only reads, and keeps to it.
+      # Before each generation (KernelLoop::Services#generation_guard): a
+      # participant's turn whose link ended (or is an older chi's), or whose
+      # spend (Engine#metrics: their finished turns, this one's finished
+      # generations, their side requests) passed their cap, stops on the
+      # plugins' stop path (cost-cap's, work-cap's), with its notice. A
+      # generation's own cost is known only once it ends, so a turn can pass
+      # the cap by its last generation. The turn-start check is the Worker's
+      # (Worker#participant_refusal).
       # @param context [TurnContext] the running turn's (the loop's)
       def guard_participant_spend(context)
         author = context&.author
         return if author.nil? || @participant_stop.nil?
-        return unless context.participant_mode == ParticipantMode::PAIR
 
         reason = @participant_stop.call(author) or return
         hook_stop_turn(reason, PARTICIPANTS_HOOK)
@@ -78,13 +77,14 @@ module Samagotchi
         Steer.author_fields(author, @participants.name_for(author, session: session))
       end
 
-      # A participant's opening message keeps the rules it was delivered under
-      # (ParticipantMode), stamped before any request carries it, so its header
-      # never changes when the session's mode does.
+      # A participant's opening message keeps the rules it was delivered under,
+      # stamped before any request carries it, so its header never changes
+      # afterwards: "pair" for a pair turn (GuardrailWiring::PAIR). A turn this
+      # chi refuses (GuardrailWiring::REFUSED) gets no stamp: it reads as a
+      # review, whose header says the turn may only read.
       # @param context [TurnContext] the turn's
       def participant_mode_fields(context)
-        mode = context.participant? && context.participant_mode
-        mode ? { participant_mode: mode.to_s } : {}
+        context.participant? && context.participant_mode == GuardrailWiring::PAIR ? { participant_mode: "pair" } : {}
       end
     end
   end

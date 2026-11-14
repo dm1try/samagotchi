@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
   end
   let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir)) }
   let!(:grant) do
-    Samagotchi::Participants.invite(grants, session_id: parent.id, name: "Alex", mode: "pair", state_dir: tmpdir).grant
+    Samagotchi::Participants.invite(grants, session_id: parent.id, name: "Alex", state_dir: tmpdir).grant
   end
   let!(:child) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir,
@@ -125,6 +125,18 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
     Samagotchi::SessionInbox.write_input(dir_of(child.id), prompt: "owner here", client_id: "web:o", enqueued_id: "e1")
 
     wait_for("the refusal") { parent_audit.any? { |line| line["event"] == "turn" && line["reason"] == "revoked" } }
+    expect(engine).not_to have_received(:run_turn)
+  end
+
+  # An older chi saved a child for a read-only turn ("review") though the
+  # requester's entry in the parent says pair: no read-only turn runs here.
+  it "refuses every turn of a child saved for a read-only turn (outdated), whatever the requester's entry says" do
+    child.verify_fresh = child.verify_fresh.with(mode: "review")
+    child.save(state_dir: tmpdir)
+    allow(engine).to receive(:run_turn).and_return(result)
+    start_worker(child)
+
+    wait_for("the refusal") { parent_audit.any? { |line| line["event"] == "turn" && line["reason"] == "outdated" } }
     expect(engine).not_to have_received(:run_turn)
   end
 

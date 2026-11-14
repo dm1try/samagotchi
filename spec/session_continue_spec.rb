@@ -236,12 +236,12 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(notes_of(continue(make.id).id).size).to eq(1)
     end
 
-    it "stay behind on a review link" do
+    it "carry over from an older chi's review link as from any link" do
       previous = with_list(list)
       previous.review = Samagotchi::SessionReview.new(subjects: ["a.rb"])
       previous.save(state_dir: tmpdir)
 
-      expect(notes_of(continue(previous.id).id).map { |n| n[:source] }).to eq([Samagotchi::SessionChain::NOTE_SOURCE])
+      expect(notes_of(continue(previous.id).id).size).to eq(2)
     end
 
     it "fail alone: a list that can't be read logs and the continue goes on" do
@@ -324,12 +324,12 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       end
     end
 
-    it "gives no answer on a review link, whose next link's participants could differ" do
+    it "carries the answer of an older chi's review link as any link's" do
       previous = with_messages(answer("for this link's participants"))
       previous.review = Samagotchi::SessionReview.new(subjects: ["docs/plan.md"])
       previous.save(state_dir: tmpdir)
 
-      expect(note_after_continue(previous)).to end_with("It left no recap.")
+      expect(note_after_continue(previous)).to include("for this link's participants")
     end
 
     it "continues with no answer, logging why, when the previous link's file can't be read any more" do

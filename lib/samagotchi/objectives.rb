@@ -404,12 +404,9 @@ module Samagotchi
     # A continue's copy: +previous+'s list as a note file in the new link,
     # read fresh, its unabsorbed newest file included. It runs inside the
     # continue's rollback, and a link without the list is still a good link:
-    # a failure is logged. Not for a review link, whose next link's
-    # participants could differ (as SessionChain.carried_answer).
+    # a failure is logged.
     # @return [String, nil] the note file's path
     def carry(previous, to:, state_dir:)
-      return nil if previous.review?
-
       list = current(previous.id, Session.load(previous.id, state_dir: state_dir).messages, state_dir: state_dir)
       return nil if list.empty?
 

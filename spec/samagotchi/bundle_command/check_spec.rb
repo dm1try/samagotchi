@@ -324,6 +324,13 @@ RSpec.describe Samagotchi::BundleCommand::Check do
       expect(@status).to eq(1)
     end
 
+    it "flags the review session names this chi removed (ctx.review?, ctx.sessions.review)" do
+      code = "class P; def register(chi); chi.command(\"/x\", \"d\") { |_a, ctx| ctx.review?; ctx.sessions.review }; end; end"
+      expect(Samagotchi::BundleCommand::ApiCalls.new(code).findings.map(&:message))
+        .to eq(["ctx.review? isn't in chi #{Samagotchi::VERSION}'s plugin API",
+                "ctx.sessions.review isn't in chi #{Samagotchi::VERSION}'s plugin API"])
+    end
+
     it "keeps every shipped plugin free of findings" do
       Dir[File.join(Samagotchi::Testing::Bundle::SHIPPED_DIR, "*", "plugin.rb")].each do |file|
         expect(Samagotchi::BundleCommand::ApiCalls.new(File.read(file)).findings).to eq([]), file
@@ -335,7 +342,6 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     { "ctx.context.propose(title: \"t\")" => %w[ctx.context.propose 0.140.0],
       "ctx.context.candidates" => %w[ctx.context.candidates 0.140.0],
       "ctx.context.withdraw(\"n\")" => %w[ctx.context.withdraw 0.140.0],
-      "ctx.review?" => %w[ctx.review 0.140.0],
       "ctx.continues" => %w[ctx.continues 0.141.0],
       "ctx.context.left_behind" => %w[ctx.context.left_behind 0.141.0],
       "ctx.context.attach(url: \"u\", movable: true)" => ["ctx.context.attach(movable:)", "0.141.0"] }.each do |code, (call, version)|

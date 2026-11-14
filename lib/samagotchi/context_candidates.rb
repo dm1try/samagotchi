@@ -21,9 +21,8 @@ module Samagotchi
   # when it is at least 6 characters and holds a /, - or _; a URL exactly.
   # Text inside fenced code blocks (pasted logs) never counts.
   #
-  # Only the owner's own prompts count (OwnerPrompt), and nothing happens in
-  # a review session: a participant never attaches a source to the owner's
-  # session.
+  # Only the owner's own prompts count (OwnerPrompt): a participant never
+  # attaches a source to the owner's session.
   module ContextCandidates
     STATUSES = %w[proposed attached declined].freeze
     # How long a turn waits for a mention-attached source's first text, so
@@ -190,7 +189,7 @@ module Samagotchi
       return [] unless session&.id
 
       own = ContextSources.session_location(session.id, state_dir: state_dir)
-      return [] if own.candidates.empty? || !OwnerPrompt.turn?(session: session, author: author)
+      return [] if own.candidates.empty? || !OwnerPrompt.turn?(author: author)
 
       # The earlier owner prompts too: a proposal that came while one ran
       # (a one-shot's plugins never see a running turn's prompt).

@@ -66,11 +66,4 @@ RSpec.describe "The inline-widgets plugin", :bundle do
     expect(bundle.prompt_sections).to be_empty
     expect(bundle.prompt_text).to be_nil
   end
-
-  it "adds nothing to a review session's prompt (its participants' page draws no widgets)" do
-    bundle = plugin
-    allow(bundle.ctx).to receive(:review?).and_return(true)
-    expect(bundle.prompt_sections).to be_empty
-    expect(bundle.prompt_text).to be_nil
-  end
 end

@@ -76,13 +76,12 @@ cheap).
 
 ## Participants' turns
 
-A [participant's](internals/participants.md#turns) turn — a review turn or a pair turn — fires the same hooks, and
+A [participant's](internals/participants.md#turns) turn fires the same hooks, and
 every event of it carries `author: "p:<id>"` (the owner's carry no `author:` key, as before); a plugin reads the
-same as `ctx.turn_author` (nil for the owner's turns and between turns). The mode does not change that: `author:`
-comes from who wrote the turn, not from `ParticipantMode`. **A hook runs with the owner's power whatever the
+same as `ctx.turn_author` (nil for the owner's turns and between turns). `author:` comes from who wrote the turn. **A hook runs with the owner's power whatever the
 author**: it may read, write and run what the owner's chi may, and `notify`, `ask_user` and `steer` reach the
 owner. A bundle that acts on a turn's text (a prompt rewrite, a fetch of what it names) should check `author:`
-first: the text may be a participant's. The participant's boundary (the review or pair one) checks a tool call
+first: the text may be a participant's. The participant's boundary (the pair one) checks a tool call
 after the hooks, on the call they leave.
 
 ## What a hook can do: the runtime

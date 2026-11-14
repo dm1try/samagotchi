@@ -48,22 +48,27 @@ module Samagotchi
                   "restart it (chi sessions restart ID, or the web's update badge) and send again"
     }.freeze
 
-    # A worker that runs participants' turns inside the review boundary
+    # A worker that runs participants' turns inside a boundary
     # (Bridge::FEATURES): one without it would run theirs with the owner's
-    # tools, so none is sent to it.
+    # tools. Kept on the wire for an older chi web; this chi checks
+    # PAIR_FEATURE, which every worker with this one's boundary has.
     REVIEW_FEATURE = "review_turns"
-    REVIEW_UNAVAILABLE = {
-      "error" => "review_unavailable",
-      "detail" => "this session's worker predates participants' turns, so it has no review boundary; " \
-                  "the owner must restart it (chi sessions restart ID, or the web's update badge)"
-    }.freeze
 
-    # A worker that runs a participant's turn in a working session as a pair
-    # turn (ParticipantMode :pair, Guardrails::PairBoundary). One without it
-    # still runs it as a review turn (ReviewBoundary), so chi web and chi
-    # share treat the session as :review (ParticipantMode.live) until it
-    # restarts.
+    # A worker that runs a participant's turn as a pair turn under the
+    # owner's guardrails (Guardrails::PairBoundary). One without it would
+    # run it as a read-only review turn, which this chi doesn't run: chi web
+    # sends it no participant's turn (PAIR_UNAVAILABLE) and no invite is
+    # issued for its session (ShareTerms.of) until it restarts.
+    # Workers advertise REVIEW_FEATURE too: an older chi web refuses
+    # participants' turns to a worker without it.
     PAIR_FEATURE = "pair_turns"
+    # The one sentence for a live worker without PAIR_FEATURE; each caller
+    # adds what to do (PAIR_UNAVAILABLE, ShareTerms::OLDER_WORKER_REFUSAL).
+    OLDER_THAN_PAIR = "this session's worker is too old to run a participant's turn"
+    PAIR_UNAVAILABLE = {
+      "error" => "pair_unavailable",
+      "detail" => "#{OLDER_THAN_PAIR}: the owner must restart it (chi sessions restart ID, or the web's update badge)"
+    }.freeze
     # The worker sidecar feature (Bridge::FEATURES) of a worker whose
     # participant's message sent while their own turn runs goes in at its
     # next step (Bridge#same_author_steer?, SessionInbox.turn_end_data?'s

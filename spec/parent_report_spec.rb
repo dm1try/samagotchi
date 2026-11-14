@@ -141,7 +141,7 @@ RSpec.describe Samagotchi::ParentReport do
   # A participant's queued turn the worker refused (its settled record; chi
   # web's participant wait sends the reason and no outcome): refused, exit 1.
   it "words a revoked participant turn as either end of their link (the worker's \"revoked\" is both)" do
-    expect(Samagotchi::ParticipantMessages::TOKEN_ENDED).to eq("this review link was revoked or expired")
+    expect(Samagotchi::ParticipantMessages::TOKEN_ENDED).to eq("this link was revoked or expired")
   end
 
   it "reads a refused participant turn as refused, with its reason, from either wait" do

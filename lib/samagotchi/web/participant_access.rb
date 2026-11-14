@@ -11,7 +11,7 @@ require_relative "../session_inbox"
 require_relative "../session_metrics"
 require_relative "../parent_report"
 require_relative "../participant_messages"
-require_relative "../participant_mode"
+require_relative "../worker_link"
 require_relative "../participant_revise"
 require_relative "../participants"
 require_relative "../session"
@@ -24,7 +24,7 @@ module Samagotchi
   module Web
     # What a participant (a Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
-    # (token_revoked, token_expired with its ended page, token_bound for a
+    # (token_revoked, token_expired, token_outdated with its ended page, token_bound for a
     # link bound to another account, another session's
     # 404, not_permitted by role), the trimmed answers of their own routes
     # (info, the session, resolve, a wait on their turn), their turns, and
@@ -44,7 +44,8 @@ module Samagotchi
 
       ENDED = {
         revoked: ["token_revoked", ParticipantMessages::TOKEN_REVOKED],
-        expired: ["token_expired", ParticipantMessages::TOKEN_EXPIRED]
+        expired: ["token_expired", ParticipantMessages::TOKEN_EXPIRED],
+        outdated: ["token_outdated", ParticipantMessages::TOKEN_OUTDATED]
       }.freeze
       NOT_PERMITTED = ParticipantMessages::NOT_PERMITTED
 
@@ -139,7 +140,7 @@ module Samagotchi
         grant.with(revoked_at: @grants.now.utc.iso8601, revoked_by: by)
       end
 
-      # 401 token_revoked / token_expired for an ended grant's token (the
+      # 401 token_revoked / token_expired / token_outdated for an ended grant's token (the
       # page's HTML says the same words), nil when none was presented.
       def grant_ended_response(req)
         grant, state = req.env[ENDED_GRANT_ENV]
@@ -240,13 +241,7 @@ module Samagotchi
       # first prompt's opening words: the conversation).
       def participant_title(session)
         title = session.title.to_s.strip
-        return title unless title.empty?
-
-        # A review session's subjects are what participants read anyway.
-        subjects = session.review&.subjects || []
-        return UNTITLED if subjects.empty?
-
-        "review of #{subjects.first}#{" +#{subjects.size - 1}" if subjects.size > 1}"
+        title.empty? ? UNTITLED : title
       end
 
       UNTITLED = "an untitled session"
@@ -254,7 +249,7 @@ module Samagotchi
       def participant_names(id)
         now = @grants.now
         Participants.read(id, state_dir: default_state_dir).select { |entry| entry.active?(now) }
-                    .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
+                    .map { |entry| { id: entry.id, name: entry.name, role: entry.role } }
       end
 
       # POST …/cancel from a participant: only their own running turn, named
@@ -287,7 +282,7 @@ module Samagotchi
       # would stop whatever runs, the owner's next turn too.
       def cancels_by_turn_id?(id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        Array(ParticipantMode.live_features(session, default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
+        Array(WorkerLink.live_features(session.id, state_dir: default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
       end
 
       # 409 cancel_unavailable, audited; nothing is relayed.
@@ -369,7 +364,7 @@ module Samagotchi
         return nil unless anchors.revises
 
         session = @session_class.load(id, state_dir: default_state_dir)
-        features = ParticipantMode.live_features(session, default_state_dir)
+        features = WorkerLink.live_features(session.id, state_dir: default_state_dir)
         if features && !features.include?(ReviseAnchor::PARTICIPANT_FEATURE)
           return [409, "revise_unavailable", ParticipantMessages::REVISE_UNAVAILABLE]
         end
@@ -589,7 +584,7 @@ module Samagotchi
         <!doctype html>
         <html lang="en"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>chi: review link ended</title>
+        <title>chi: link ended</title>
         <style>#{PAGE_STYLE}</style></head>
         <body>
         <h1>chi</h1>
@@ -611,7 +606,7 @@ module Samagotchi
         </script>
         </body></html>
       HTML
-      BOUND_PAGE = ENDED_PAGE.sub("<title>chi: review link ended</title>", "<title>chi: review link for another account</title>")
+      BOUND_PAGE = ENDED_PAGE.sub("<title>chi: link ended</title>", "<title>chi: link for another account</title>")
     end
   end
 end

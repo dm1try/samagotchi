@@ -13,7 +13,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
   let(:screen) { RecordingSurface.new(columns: 100) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
-  let(:alex) { { id: "p_aaaa1111", name: "Alex", kind: "human" } }
+  let(:alex) { { id: "p_aaaa1111", name: "Alex" } }
 
   before { allow(Samagotchi::ChildrenStatus).to receive(:counts).and_return(nil) }
 
@@ -34,9 +34,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
          { type: :turn_started, prompt: "unseen", turn_id: "t1",
            origin: { client_id: "review:p_bbbb2222", enqueued_id: "e3", author: "p:p_bbbb2222" } })
 
-    expect(screen.lines).to include("Alex ▸ review> is step 3 right? (queued: runs after this turn)",
+    expect(screen.lines).to include("Alex ▸ invited> is step 3 right? (queued: runs after this turn)",
                                     "web> mine (queued: runs after this turn)",
-                                    "p_bbbb2222 ▸ review> unseen")
+                                    "p_bbbb2222 ▸ invited> unseen")
   end
 
   it "names the participant in the join's last exchange, its queued rows and its running turn" do
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
                   current_turn: { prompt: "now", origin: { client_id: "review:p_aaaa1111", author: "p:p_aaaa1111" },
                                   events: [] }))
 
-    expect(screen.lines).to include("Alex ▸ review> older", "Alex ▸ review> now", "queued Alex ▸ review> next")
+    expect(screen.lines).to include("Alex ▸ invited> older", "Alex ▸ invited> now", "queued Alex ▸ invited> next")
   end
 
   it "says who joined and who left, and why, and counts them on the status row" do
@@ -54,24 +54,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
     feed(snapshot)
     expect(screen.slots[:status].first).to include("1 participant")
 
-    feed({ type: :participants_changed, participants: [alex, { id: "p_cccc3333", name: "Bot", kind: "agent" }],
-           joined: [{ id: "p_cccc3333", name: "Bot", kind: "agent" }], left: [] },
+    feed({ type: :participants_changed, participants: [alex, { id: "p_cccc3333", name: "Bot" }],
+           joined: [{ id: "p_cccc3333", name: "Bot" }], left: [] },
          { type: :participants_changed, participants: [],
-           joined: [], left: [alex.merge(reason: "revoked"), { id: "p_cccc3333", name: "Bot", kind: "agent", reason: "expired" }] })
+           joined: [], left: [alex.merge(reason: "revoked"), { id: "p_cccc3333", name: "Bot", reason: "expired" }] })
 
-    expect(screen.lines).to eq(["participants> Bot joined (p_cccc3333, an agent)",
+    expect(screen.lines).to eq(["participants> Bot joined (p_cccc3333)",
                                 "participants> Alex left: their link was revoked",
                                 "participants> Bot left: their link expired"])
     expect(screen.slots[:status]).to be_nil
     # One who left is still named on a line of theirs.
     feed({ type: :turn_enqueued, enqueued_id: "e1", client_id: "review:p_cccc3333", prompt: "late", author: "p:p_cccc3333" })
-    expect(screen.lines.last).to eq("Bot ▸ review> late")
+    expect(screen.lines.last).to eq("Bot ▸ invited> late")
   end
 
   it "cleans a name before it reaches the terminal" do
-    feed(snapshot(participants: [{ id: "p_aaaa1111", name: "Al\e[31mex\n[x]", kind: "human" }]),
+    feed(snapshot(participants: [{ id: "p_aaaa1111", name: "Al\e[31mex\n[x]" }]),
          { type: :turn_enqueued, enqueued_id: "e1", client_id: "review:p_aaaa1111", prompt: "hi", author: "p:p_aaaa1111" })
-    expect(screen.lines.last).to eq("Al 31mex x ▸ review> hi")
+    expect(screen.lines.last).to eq("Al 31mex x ▸ invited> hi")
   end
 end
 
@@ -100,10 +100,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "its own /share and /partic
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: "/state") }
   let(:access) { instance_double(Samagotchi::SessionAccess::Local, identity_header: nil) }
-  let(:alex) { { id: "p_aaaa1111", name: "Alex", kind: "human" } }
+  let(:alex) { { id: "p_aaaa1111", name: "Alex" } }
   let(:grant) do
     Samagotchi::SessionAccess::ParticipantView.new(
-      id: "p_aaaa1111", session_id: "s-1234", kind: "human", name: "Alex", role: "reviewer",
+      id: "p_aaaa1111", session_id: "s-1234", name: "Alex", role: "reviewer",
       created_at: "2026-10-23T10:00:00Z", expires_at: "2026-10-30T10:00:00Z", revoked_at: nil, revoked_by: nil,
       last_used_at: nil, state: "active", cap: 2.0, queue: 3
     )
@@ -146,7 +146,7 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
   let(:commands) { described_class.new(access: access, session_id: "abcdef12-0000", tty: false) }
   let(:grant) do
     Samagotchi::SessionAccess::ParticipantView.new(
-      id: "p_aaaa1111", session_id: "abcdef12-0000", kind: "human", name: "Alex Smith", role: "reviewer",
+      id: "p_aaaa1111", session_id: "abcdef12-0000", name: "Alex Smith", role: "reviewer",
       created_at: "2026-10-23T10:00:00Z", expires_at: "2026-10-30T10:00:00Z", revoked_at: nil, revoked_by: nil,
       last_used_at: nil, state: "active", cap: 2.0, queue: 3
     )
@@ -164,9 +164,9 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
     )
     out = commands.run("/share Alex Smith --cap 5 --expires 3d")
 
-    expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", kind: "human", ttl: 3 * 86_400, cap: 5.0,
+    expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", ttl: 3 * 86_400, cap: 5.0,
                                                                  identity: nil)
-    expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (human, reviewer) · session abcdef12 · expires " \
+    expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (reviewer) · session abcdef12 · expires " \
                                           "#{Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")} · cap $2.00",
                                           "http://10.0.0.2:8080/?token=chp_x#s=abcdef12",
                                           "(shown once: chi keeps only its digest; chi share revoke abcdef12 p_aaaa1111 ends it)"])
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
   it "/participants lists, revokes and caps this session's" do
     allow(access).to receive_messages(participants: [grant], revoke_participants: [grant], set_participant_cap: grant)
 
-    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  -         human")
+    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  -         reviewer")
     expect(access).to have_received(:participants).with("abcdef12-0000")
     expect(commands.run("/participants revoke p_aaaa1111")).to eq("p_aaaa1111  Alex Smith  revoked")
     expect(access).to have_received(:revoke_participants).with("abcdef12-0000", participant: "p_aaaa1111")
