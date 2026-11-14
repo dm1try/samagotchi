@@ -175,12 +175,15 @@ RSpec.describe "the recorded compatibility corpus" do
     return unless recorded?(grants_path, version, since)
 
     grant = Samagotchi::Grants.new(grants_path, clock: -> { Time.utc(2026, 1, 2) }).lookup(ReleaseTools::COMPAT_GRANT_TOKEN)
-    expect(grant).to have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, session_id: "compat-session", kind: "agent",
+    # An older chi's kind ("agent", "human") is a key this chi doesn't know:
+    # kept as it was (Grant#extra), never read.
+    expect(grant).to have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, session_id: "compat-session",
                                      name: "Compat", identity: "compat@example.com", mode: "pair", spend_cap: 2.0,
-                                     expires_at: "2026-01-08T00:00:00Z", extra: {})
+                                     expires_at: "2026-01-08T00:00:00Z")
+    expect(grant.extra).to eq({})
     expect(grant.state(Time.utc(2026, 1, 2))).to eq(:active)
     expect(Samagotchi::Participants.read("compat-session", state_dir: sessions_dir))
-      .to match([have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, name: "Compat", kind: "agent", mode: "pair", cap: 2.0,
+      .to match([have_attributes(id: ReleaseTools::COMPAT_GRANT_ID, name: "Compat", mode: "pair", cap: 2.0,
                                  expires_at: "2026-01-08T00:00:00Z", removed_at: nil)])
   end
 

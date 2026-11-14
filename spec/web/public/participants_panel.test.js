@@ -11,7 +11,7 @@ import { CONTACT_WORDS } from "../../../lib/samagotchi/web/public/no_contact_fil
 const NOW = Date.parse("2026-10-23T12:00:00Z");
 const iso = (ms) => new Date(ms).toISOString();
 const grant = (over = {}) => ({
-  id: "p_0001abcd", name: "Alex", kind: "human", state: "active", cap: 2, spend: 0.5, turns: 3,
+  id: "p_0001abcd", name: "Alex", state: "active", cap: 2, spend: 0.5, turns: 3,
   expires_at: iso(NOW + 7 * 864e5), last_used_at: iso(NOW - 30_000), ...over,
 });
 const markupOf = (template) => {
@@ -58,17 +58,17 @@ test("participants: the chip invites with nobody, else counts the active ones wi
   assert.match(markupOf(chipTemplate(chipModel([], NOW))), /participants-chip none/);
 });
 
-test("participants: Invite's body: a name, person or agent, the expiry in seconds, a cap in dollars", () => {
-  assert.deepEqual(inviteBody({ name: " Alex ", kind: "human", days: "3", cap: "" }), { body: { name: "Alex", kind: "human", ttl: 259200 } });
-  assert.deepEqual(inviteBody({ name: "Bot", kind: "agent", days: "99", cap: "$5" }).body, { name: "Bot", kind: "agent", ttl: 604800, cap: 5 });
+test("participants: Invite's body: a name, the expiry in seconds, a cap in dollars; no kind", () => {
+  assert.deepEqual(inviteBody({ name: " Alex ", days: "3", cap: "" }), { body: { name: "Alex", ttl: 259200 } });
+  assert.deepEqual(inviteBody({ name: "Bot", days: "99", cap: "$5" }).body, { name: "Bot", ttl: 604800, cap: 5 });
   assert.match(inviteBody({ name: "  " }).error, /name/);
   assert.match(inviteBody({ name: "A", cap: "lots" }).error, /dollars/);
   assert.match(inviteBody({ name: "A", cap: "5000" }).error, /dollars/);
 });
 
 test("participants: Invite's email binds the link (lower case), names them by its local part, refuses a non-address", () => {
-  assert.deepEqual(inviteBody({ name: "", kind: "human", days: "7", identity: " Alex.Doe@Corp.Example " }).body,
-    { name: "alex.doe", kind: "human", ttl: 604800, identity: "alex.doe@corp.example" });
+  assert.deepEqual(inviteBody({ name: "", days: "7", identity: " Alex.Doe@Corp.Example " }).body,
+    { name: "alex.doe", ttl: 604800, identity: "alex.doe@corp.example" });
   assert.equal(inviteBody({ name: "Alex", identity: "alex@github" }).body.name, "Alex");
   assert.ok(!("identity" in inviteBody({ name: "Alex", identity: "  " }).body));
   for (const bad of ["alex", "a@b@c", "a b@c", "a,b@c", "<a@b>"]) {
@@ -119,8 +119,7 @@ test("participants panel: the list's identity_header shows the email field, and 
   c.submit(form);
   await tick();
   await tick();
-  assert.deepEqual(sent.map(({ name, kind, identity }) => ({ name, kind, identity })),
-    [{ name: "kim", kind: "human", identity: "kim@corp.example" }]);
+  assert.deepEqual(sent.map(({ name, identity, kind }) => ({ name, identity, kind })), [{ name: "kim", identity: "kim@corp.example", kind: undefined }]);
   assert.match(c.pop.querySelector(".pp-invite-done").textContent, /for kim@corp\.example only/);
   c.done();
 });
@@ -449,11 +448,16 @@ test("participants panel: a claim link's target is the list's link base and the 
   c.done();
 });
 
-test("participants panel: no claim target with only agents active (no browser to open it)", async () => {
+test("participants panel: a claim target for every active participant, an older chi's agent-kind grant too", async () => {
   const c = panelControl({ api: { list: async () => ({ participants: [grant({ kind: "agent", name: "Bot" })], link_base: "http://x/" }) } });
   await c.ctl.load();
-  assert.equal(c.ctl.claimTarget(), null);
+  assert.deepEqual(c.ctl.claimTarget(), { base: "http://x/", names: ["Bot"] });
   c.done();
+});
+
+test("participants panel: no person / agent choice, no agent tag", () => {
+  const out = markupOf(panelTemplate([grant({ kind: "agent", name: "Bot" })], { now: NOW, sessionId: "s" }));
+  assert.doesNotMatch(out, /name="kind"|pp-tag|>agent</);
 });
 
 test("participants panel: no claim target without a link base (an older chi web) or anyone active", async () => {

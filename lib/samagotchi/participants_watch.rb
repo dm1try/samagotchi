@@ -36,7 +36,7 @@ module Samagotchi
       @known = nil
     end
 
-    # The participants in the review now: [{id:, name:, kind:}], [] for none.
+    # The participants in the session now: [{id:, name:}], [] for none.
     # @return [Array<Hash>]
     def active
       @mutex.synchronize { active_rows(read_entries) }
@@ -68,7 +68,7 @@ module Samagotchi
 
     def active_rows(entries)
       now = @clock.call
-      entries.select { |entry| entry.active?(now) }.map { |entry| { id: entry.id, name: entry.name, kind: entry.kind } }
+      entries.select { |entry| entry.active?(now) }.map { |entry| { id: entry.id, name: entry.name } }
     end
 
     # The sidecar's entries, read again only when its mtime moved.

@@ -249,7 +249,7 @@ module Samagotchi
       def participant_names(id)
         now = @grants.now
         Participants.read(id, state_dir: default_state_dir).select { |entry| entry.active?(now) }
-                    .map { |entry| { id: entry.id, name: entry.name, kind: entry.kind, role: entry.role } }
+                    .map { |entry| { id: entry.id, name: entry.name, role: entry.role } }
       end
 
       # POST …/cancel from a participant: only their own running turn, named

@@ -32,10 +32,10 @@ RSpec.describe Samagotchi::Participants do
   describe ".invite" do
     it "issues the grant and writes the sidecar (no token, no digest) and an audit line, both 0600" do
       FileUtils.mkdir_p(dir)
-      issued = described_class.invite(grants, session_id: session.id, name: "Alex", kind: "agent", state_dir: state_dir)
+      issued = described_class.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
 
       entries = described_class.read(session.id, state_dir: state_dir)
-      expect(entries.map(&:to_h)).to eq([{ id: issued.grant.id, kind: "agent", name: "Alex", role: "reviewer",
+      expect(entries.map(&:to_h)).to eq([{ id: issued.grant.id, name: "Alex", role: "reviewer",
                                            added_at: issued.grant.created_at, expires_at: issued.grant.expires_at,
                                            removed_at: nil, cap: 2.0, mode: "pair" }])
       expect(entries.first.active?(Time.now)).to be(true)

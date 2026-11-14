@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
     it "is none for the owner (with ?as=participant too: that view is gone); a participant's filters the frames" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: state_dir)
       session.save(state_dir: state_dir)
-      grant = Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: session.id, digest: "d", kind: "human", name: "Alex",
+      grant = Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: session.id, digest: "d", name: "Alex",
                                             role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
                                             revoked_by: nil, last_used_at: nil)
       request = lambda do |principal, query = ""|

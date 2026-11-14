@@ -286,7 +286,7 @@ module Samagotchi
       def participants_change_lines(joined, left)
         label = paint("participants>", 35)
         lines = Array(joined).map do |row|
-          "#{label} #{participant_name_text(row)} joined (#{ParticipantName.clean(row[:id])}#{", an agent" if row[:kind] == "agent"})"
+          "#{label} #{participant_name_text(row)} joined (#{ParticipantName.clean(row[:id])})"
         end
         lines + Array(left).map do |row|
           "#{label} #{participant_name_text(row)} left: their link #{row[:reason] == "revoked" ? "was revoked" : "expired"}"

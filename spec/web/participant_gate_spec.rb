@@ -137,7 +137,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       status, body = json("/api/sessions/#{session.id}?brief=1")
       expect(status).to eq(200)
       expect(body).to eq("session" => { "id" => session.id, "title" => "plan review", "status" => session.status,
-                                        "participants" => [{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human",
+                                        "participants" => [{ "id" => issued.grant.id, "name" => "Alex",
                                                              "role" => "reviewer" }] })
       status, show = json("/api/sessions/#{session.id}")
       expect(status).to eq(200)

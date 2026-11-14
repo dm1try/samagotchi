@@ -125,7 +125,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     viewer = read(issued.token).last["viewer"]
     expect(viewer).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex", "client_id" => client_id,
                               "can" => Samagotchi::Web::Viewer::PARTICIPANT_CAPABILITIES, "mode" => "pair",
-                              "cap_reached" => false, "session_stopped" => false, "participant_kind" => "human")
+                              "cap_reached" => false, "session_stopped" => false)
     expect(viewer["usage"]).to include("spent" => 0.0, "cap" => 2.0, "queued" => 1, "queue_limit" => 3)
     expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set images])
   end

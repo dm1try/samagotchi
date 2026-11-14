@@ -81,7 +81,7 @@ module Samagotchi
         capped = !participant_cap_refusal(grant).nil?
         # Their turns act under the owner's rules (every active grant is pair).
         mode = Grants::PAIR_MODE
-        { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, mode: mode, can_comment: !capped,
+        { kind: "participant", id: grant.id, name: grant.name, mode: mode, can_comment: !capped,
           cap_reached: capped, session_id: id,
           usage: review_usage(grant, session: session, state: state, queued: queued, viewer: viewer) }
       end

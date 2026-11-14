@@ -9,12 +9,12 @@ module Samagotchi
     # attached session, through the same SessionAccess (this machine's, or
     # the remote's under chi --remote), with its words and its one message
     # per condition. Errors are led by the command as typed.
-    #   /share NAME [--agent] [--expires 3d] [--cap 2]   chi share ID --name NAME …
+    #   /share NAME [--expires 3d] [--cap 2]   chi share ID --name NAME …
     #   /participants                                    chi share ls ID
     #   /participants revoke [P]                         chi share revoke ID [P]
     #   /participants cap P DOLLARS                      chi share cap ID P DOLLARS
     class ParticipantCommands
-      SHARE_USAGE = "usage: /share NAME [--agent] [--expires 3d] [--cap 2]: invite NAME to review this session"
+      SHARE_USAGE = "usage: /share NAME [--expires 3d] [--cap 2]: invite NAME into this session"
       PARTICIPANTS_USAGE = "usage: /participants [revoke [PARTICIPANT] | cap PARTICIPANT DOLLARS]"
 
       # @param access [SessionAccess::Local, SessionAccess::Remote]

@@ -52,7 +52,6 @@ module Samagotchi
     KEEP_ENDED = 30 * DAY
     # last_used_at is written at most this often per grant.
     TOUCH_INTERVAL = 60
-    KINDS = %w[human agent].freeze
     # The only role in v1: a reviewer reads and (P3) comments.
     ROLES = %w[reviewer].freeze
     # The mark of a grant this chi honours: every grant is issued with it
@@ -152,7 +151,7 @@ module Samagotchi
     # older chi issued for read-only turns, which reads as ended
     # (#state :outdated). Stored only when set; a chi that doesn't know it
     # keeps it in +extra+.
-    Grant = Data.define(:id, :session_id, :digest, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
+    Grant = Data.define(:id, :session_id, :digest, :name, :role, :created_at, :expires_at, :revoked_at,
                         :revoked_by, :last_used_at, :cap, :queue, :identity, :exposure, :mode, :extra) do
       # identity: the proxy identity (an email, lower case) the grant is
       # bound to, nil for any (Web::ProxyGate; issued from shared-sessions P6).
@@ -163,7 +162,7 @@ module Samagotchi
 
       def self.from_h(hash)
         known = members - [:extra]
-        extra = hash.reject { |key, _| known.include?(key.to_s.to_sym) }
+        extra = hash.reject { |key, _| known.include?(key.to_s.to_sym) || self::RETIRED.include?(key.to_s) }
         new(**known.to_h { |key| [key, hash[key.to_s]] }, extra: extra)
       end
 
@@ -199,7 +198,7 @@ module Samagotchi
 
       # Never the digest: what chi share ls and the owner's routes show.
       def public_h(now)
-        { id: id, session_id: session_id, kind: kind, name: name, role: role, created_at: created_at,
+        { id: id, session_id: session_id, name: name, role: role, created_at: created_at,
           expires_at: expires_at, revoked_at: revoked_at, revoked_by: revoked_by, last_used_at: last_used_at,
           state: state(now).to_s, cap: spend_cap, queue: queue_limit, identity: identity }
       end
@@ -224,6 +223,12 @@ module Samagotchi
       def inspect = "#<Grant #{id} #{session_id[0, 8]} #{name.inspect}>"
       alias_method :to_s, :inspect
     end
+
+    # Keys an older chi stored that this one reads as known and drops:
+    # "kind" (human / agent, retired with the agent label). Not kept in
+    # #extra, so a newer store's check for unknown fields (#reload) doesn't
+    # leave an older pair grant out for it.
+    Grant::RETIRED = %w[kind].freeze
 
     # A new grant and its token: the only time the token exists outside
     # the participant's hands.
@@ -334,11 +339,10 @@ module Samagotchi
     # @param on_write [#call, nil] see #update
     # @return [Issued]
     # @raise [Invalid]
-    def issue(session_id:, name:, kind: "human", role: "reviewer", ttl: nil, cap: nil, identity: nil, on_write: nil)
+    def issue(session_id:, name:, role: "reviewer", ttl: nil, cap: nil, identity: nil, on_write: nil)
       Session.check_id!(session_id)
       ttl ||= Grants.default_ttl
       cap = Grants.default_cap if cap.nil?
-      raise Invalid, "kind is human or agent, not #{kind}" unless KINDS.include?(kind)
       raise Invalid, "role is reviewer, not #{role}" unless ROLES.include?(role)
       raise Invalid, "a grant lasts 1 hour to 30 days" unless ttl.is_a?(Integer) && ttl.between?(3600, MAX_TTL)
       raise Invalid, CAP_RANGE unless Grants.cap?(cap)
@@ -349,7 +353,7 @@ module Samagotchi
       issued = now
       update(on_write) do |grants|
         id = fresh_id(grants)
-        grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), kind: kind, name: clean,
+        grant = Grant.new(id: id, session_id: session_id, digest: Grants.digest(token), name: clean,
                           role: role, created_at: stamp(issued), expires_at: stamp(issued + ttl), revoked_at: nil,
                           revoked_by: nil, last_used_at: nil, cap: cap.to_f, queue: Grants.default_queue,
                           identity: identity, mode: PAIR_MODE)

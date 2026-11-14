@@ -298,12 +298,12 @@ module Samagotchi
       #   chi web with bound grants (BOUND_FEATURE) is asked; an older one
       #   would ignore it and issue a grant anyone could open
       # @return [Invitation]
-      # @raise [BadRequest] a bad name, kind, ttl or identity, an archived
+      # @raise [BadRequest] a bad name, ttl or identity, an archived
       #   session, an identity that chi web has no proxy to check
       # @raise [RemoteTooOld] an identity, and a chi web without bound grants
-      def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
+      def invite(id, name:, ttl: nil, cap: nil, identity: nil)
         require_feature!(BOUND_FEATURE) unless identity.nil?
-        body = { name: name, kind: kind, ttl: ttl, cap: cap, identity: identity }.compact
+        body = { name: name, ttl: ttl, cap: cap, identity: identity }.compact
         reply = request(:post, "#{session_path(id)}/participants", body: body)
         raise_refusal(reply) unless reply.status == 201
 
@@ -782,7 +782,7 @@ module Samagotchi
         # The grants store doesn't read there: chi share says what it says here.
         when "grants_unwritable" then raise Grants::Unwritable, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images", "worker_too_old"
-          # invalid_participant: chi share's name, kind or ttl, an archived
+          # invalid_participant: chi share's name or ttl, an archived
           # session; worker_too_old: an invite to a session whose worker
           # must restart first
           raise BadRequest.new(message.to_s, code: error)

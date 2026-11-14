@@ -38,7 +38,7 @@ module Samagotchi
     # from before caps.
     # +mode+: "pair" (Grant#mode); nil for an older chi's read-only
     # participant, who is not active (their turns are refused).
-    Entry = Data.define(:id, :kind, :name, :role, :added_at, :expires_at, :removed_at, :cap, :mode) do
+    Entry = Data.define(:id, :name, :role, :added_at, :expires_at, :removed_at, :cap, :mode) do
       def self.from_h(hash) = new(**members.to_h { |key| [key, hash[key.to_s]] })
 
       # Still invited at +now+: not removed, not expired, and invited by
@@ -80,7 +80,7 @@ module Samagotchi
       return unless File.directory?(dir)
 
       entries = grants.map do |grant|
-        { "id" => grant.id, "kind" => grant.kind, "name" => grant.name, "role" => grant.role,
+        { "id" => grant.id, "name" => grant.name, "role" => grant.role,
           "added_at" => grant.created_at, "expires_at" => grant.expires_at, "removed_at" => grant.revoked_at,
           "cap" => grant.spend_cap, **(grant.mode ? { "mode" => grant.mode } : {}) }
       end
@@ -115,7 +115,7 @@ module Samagotchi
     # @raise [Grants::Invalid] an archived session, or bad values
     #   (Unbindable: an identity without such a public_url)
     # @raise [Session::NotFound] no such session
-    def invite(grants, session_id:, name:, kind: "human", ttl: nil, cap: nil, identity: nil, public_url: nil,
+    def invite(grants, session_id:, name:, ttl: nil, cap: nil, identity: nil, public_url: nil,
                state_dir: Session.default_state_dir)
       raise Session::NotFound, session_id unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
 
@@ -125,10 +125,10 @@ module Samagotchi
         raise Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
       end
 
-      issued = grants.issue(session_id: session_id, name: name, kind: kind, ttl: ttl, cap: cap, identity: identity,
+      issued = grants.issue(session_id: session_id, name: name, ttl: ttl, cap: cap, identity: identity,
                             on_write: sidecar_writer(state_dir, [session_id]))
       grant = issued.grant
-      log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name, kind: grant.kind,
+      log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name,
                                role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap,
                                **(grant.identity ? { identity: grant.identity } : {}), mode: grant.mode)
       issued

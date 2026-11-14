@@ -110,13 +110,14 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
   end
 
   describe "POST /api/sessions/:id/participants" do
-    it "issues a grant and answers its token and LAN link once; chi keeps only the digest" do
+    it "issues a grant and answers its token and LAN link once; chi keeps only the digest; an older client's kind is ignored" do
       status, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex", kind: "agent", ttl: 3 * 86_400 })
 
       expect(status).to eq(201)
-      expect(body["participant"]).to include("name" => "Alex", "kind" => "agent", "role" => "reviewer", "state" => "active",
+      expect(body["participant"]).to include("name" => "Alex", "role" => "reviewer", "state" => "active",
                                              "session_id" => session.id)
       expect(body["participant"]).not_to have_key("digest")
+      expect(body["participant"]).not_to have_key("kind")
       expect(body["token"]).to start_with("chp_")
       expect(body["link"]).to eq("http://192.168.1.55:4567/?token=#{body["token"]}#s=#{session.id}")
       expect(body["lan"]).to be(true)
@@ -149,10 +150,9 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       expect(listed["warning"]).to eq(older["detail"])
     end
 
-    it "refuses a bad name, kind or ttl (400 invalid_participant) and an unknown session (404)" do
+    it "refuses a bad name or ttl (400 invalid_participant) and an unknown session (404)" do
       expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: " " }))
         .to eq([400, { "error" => "invalid_participant", "detail" => "a participant needs a name" }])
-      expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "A", kind: "bot" }).first).to eq(400)
       expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "A", ttl: "3d" }).first).to eq(400)
       expect(call("/api/sessions/nope/participants", method: "POST", body: { name: "A" }).first).to eq(404)
       expect(grants.list).to eq([])

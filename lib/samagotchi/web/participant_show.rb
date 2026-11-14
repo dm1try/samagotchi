@@ -110,7 +110,7 @@ module Samagotchi
         session = reads.session
         review = review_viewer(req, reads.id, session: session, state: reads.state, queued: queued, viewer: viewer)
         Viewer.for(principal(req)).to_h.merge(
-          review.slice(:participant_kind, :mode, :cap_reached, :usage),
+          review.slice(:mode, :cap_reached, :usage),
           session_stopped: session.status == Session::STATUS_STOPPED,
           waiting_for_owner: participant_waiting(reads.turn_snapshot)
         )

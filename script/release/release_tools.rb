@@ -361,7 +361,7 @@ module ReleaseTools
   # @return [Array<String>] grants.json and participants.json
   def write_compat_grant!(sessions_dir, at)
     grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: sessions_dir), clock: -> { at })
-    grants.issue(session_id: COMPAT_SESSION_ID, name: "Compat", kind: "agent", ttl: Samagotchi::Grants::DEFAULT_TTL,
+    grants.issue(session_id: COMPAT_SESSION_ID, name: "Compat", ttl: Samagotchi::Grants::DEFAULT_TTL,
                  cap: 2.0, identity: "compat@example.com",
                  on_write: Samagotchi::Participants.sidecar_writer(sessions_dir, [COMPAT_SESSION_ID]))
     store = JSON.parse(File.read(grants.path))

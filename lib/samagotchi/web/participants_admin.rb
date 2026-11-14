@@ -54,7 +54,7 @@ module Samagotchi
         end
       end
 
-      # POST /api/sessions/:id/participants {name, kind?, ttl? (seconds),
+      # POST /api/sessions/:id/participants {name, ttl? (seconds),
       # cap? (dollars), identity? (an email: the grant is bound to it, only
       # behind an auth proxy with an identity header)}: a new grant. The
       # answer carries the token and the link once (chi keeps only its
@@ -73,8 +73,8 @@ module Samagotchi
         terms = ShareTerms.of(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         return error_response(409, "worker_too_old", terms.refusal) if terms.refusal
 
-        issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
-                                              ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
+        # An older chi --remote share --agent's kind is ignored.
+        issued = Participants.invite(@grants, session_id: id, name: body["name"], ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
                                               state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,

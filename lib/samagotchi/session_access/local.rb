@@ -429,15 +429,15 @@ module Samagotchi
       # header (Participants.invite).
       # @return [Invitation]
       # @raise [ArgumentError] no such session
-      # @raise [BadRequest] a bad name, kind, ttl or identity, an archived
+      # @raise [BadRequest] a bad name, ttl or identity, an archived
       #   session, an identity with no proxy to check it
-      def invite(id, name:, kind:, ttl: nil, cap: nil, identity: nil)
+      def invite(id, name:, ttl: nil, cap: nil, identity: nil)
         public_url = configured_public_url
         # No link while the live worker would refuse every turn of theirs.
         terms = ShareTerms.of(Session.load(id, **dir), state_dir: state_dir!)
         raise BadRequest.new(terms.refusal, code: "worker_too_old") if terms.refusal
 
-        issued = Participants.invite(grants, session_id: id, name: name, kind: kind, ttl: ttl, cap: cap,
+        issued = Participants.invite(grants, session_id: id, name: name, ttl: ttl, cap: cap,
                                              identity: identity, public_url: public_url, state_dir: state_dir!)
         web = public_url ? nil : local_web
         link = if public_url then public_url.link(link_code(issued), "s=#{id}")

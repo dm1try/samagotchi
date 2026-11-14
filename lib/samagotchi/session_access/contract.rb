@@ -124,7 +124,6 @@ module Samagotchi
         # through its chi web's participants routes.
         "share" => SUPPORTED,
         "share --name" => SUPPORTED,
-        "share --agent" => SUPPORTED,
         "share --expires" => SUPPORTED,
         "share --cap" => SUPPORTED,
         # A chi web without bound grants (Remote#invite checks its

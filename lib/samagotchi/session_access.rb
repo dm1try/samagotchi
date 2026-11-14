@@ -108,7 +108,7 @@ module Samagotchi
     # "active", "revoked" or "expired".
     # +cap+ dollars and +queue+ turns (nil from a chi web before them).
     # +identity+ the email the grant is bound to, nil for any.
-    ParticipantView = Data.define(:id, :session_id, :kind, :name, :role, :created_at, :expires_at, :revoked_at,
+    ParticipantView = Data.define(:id, :session_id, :name, :role, :created_at, :expires_at, :revoked_at,
                                   :revoked_by, :last_used_at, :state, :cap, :queue, :identity) do
       def initialize(identity: nil, **) = super
 
