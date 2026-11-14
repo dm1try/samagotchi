@@ -169,7 +169,7 @@ module Samagotchi
 
       # The session's project env (ProjectEnv.current: the worker's mise env,
       # the chi shim first on PATH) for the commands the owner's turns run;
-      # less what every tool runs without (TaskRuntime::SANITIZED_ENV_KEYS).
+      # less what every tool runs without (SpawnEnv::SANITIZED_ENV_KEYS).
       # A participant's turn gets none of it: a project's [env] may load its
       # .env files.
       def project_env(kctx)

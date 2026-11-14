@@ -4,7 +4,7 @@ require "json"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/project_env"
-require "samagotchi/tools/task_runtime"
+require "samagotchi/spawn_env"
 
 RSpec.describe Samagotchi::ProjectEnv do
   let(:tmp) { Dir.mktmpdir("project-env") }
@@ -256,7 +256,7 @@ RSpec.describe Samagotchi::ProjectEnv do
 
   it "gives tools its env without what every tool sets itself, NONE outside a worker" do
     expect(described_class.current).to eq(described_class::NONE)
-    expect(described_class::TOOLS_DROP).to eq(Samagotchi::Tools::TaskRuntime::SANITIZED_ENV_KEYS)
+    expect(described_class::TOOLS_DROP).to eq(Samagotchi::SpawnEnv::SANITIZED_ENV_KEYS)
     fake_mise({ "PATH" => project_path, "RUBYLIB" => "/p", "BUNDLE_GEMFILE" => "/p/Gemfile", "A" => "1" })
     described_class.install!(overlay)
     expect(described_class.tools_env).to include("A" => "1", "PATH" => project_path)

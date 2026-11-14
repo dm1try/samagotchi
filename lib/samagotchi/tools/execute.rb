@@ -8,6 +8,7 @@ require_relative "../process_group"
 require_relative "leftovers"
 require_relative "output_guardrails"
 require_relative "shell"
+require_relative "../spawn_env"
 require_relative "task_runtime"
 require_relative "../tool_names"
 
@@ -96,7 +97,7 @@ module Samagotchi
       #   instead of the user)
       # @param env [Hash, nil] added to the command's environment, over
       #   chi's Ruby/Bundler variables scrubbed as task_create scrubs them
-      #   (TaskRuntime.sanitized_spawn_env); chi's callers build it, so it
+      #   (SpawnEnv.sanitized_spawn_env); chi's callers build it, so it
       #   may set those keys (task_create refuses them from the model)
       # @param on_timeout [Symbol, String, nil] :task or :kill (ON_TIMEOUT);
       #   nil reads execute.on_timeout
@@ -301,7 +302,7 @@ module Samagotchi
         # file, and each write lands at the end.
         ios = logs.map { |path| File.open(path, "a") }
         ios.each { |io| io.flock(File::LOCK_SH) }
-        ProcessGroup.spawn(TaskRuntime.sanitized_spawn_env.merge(env || {}), *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
+        ProcessGroup.spawn(SpawnEnv.sanitized_spawn_env.merge(env || {}), *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
                            chdir: cwd, in: File::NULL, out: ios[0], err: ios[1])
       ensure
         ios&.each(&:close)

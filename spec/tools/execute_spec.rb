@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT" => ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"]
-    }.merge(Samagotchi::Tools::TaskRuntime::SANITIZED_ENV_KEYS.to_h { |key| [key, ENV[key]] })
+    }.merge(Samagotchi::SpawnEnv::SANITIZED_ENV_KEYS.to_h { |key| [key, ENV[key]] })
 
     example.run
   ensure
@@ -113,7 +113,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
-    # The same scrub as task_create (TaskRuntime.sanitized_spawn_env): chi run
+    # The same scrub as task_create (SpawnEnv.sanitized_spawn_env): chi run
     # under `bundle exec` doesn't hand a project's command its Gemfile.
     it "keeps chi's Bundler setup out of the command, and other RUBYOPT flags in" do
       ENV.update("RUBYOPT" => "-W0 -rbundler/setup", "BUNDLE_GEMFILE" => "/chi/Gemfile",
