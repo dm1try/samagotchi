@@ -250,9 +250,12 @@ If a link to prune still has a worker (`DeleteRefused(:worker_running)`), prunin
 stops there for this firing and is retried at the next one.
 
 Retention keeps the stored `anchor` and `head`, as well as the resolved target,
-of every enabled schedule. Deleting a protected session is refused—even with
+of every enabled schedule. Deleting a protected session (a schedule's target,
+anchor or head: a deleted head would make the schedule fall back to an archived
+link and lose the links after it) is refused—even with
 `chi sessions delete --force`—until the schedule is cancelled with
 `chi schedule cancel ID`; a disabled schedule does not protect its sessions.
+Deleting a whole chain (`--chain`) is refused while any enabled schedule is on it.
 
 ## Running the tick
 

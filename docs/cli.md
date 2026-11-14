@@ -762,9 +762,16 @@ archives it (an empty session is discarded instead; `chi scratch` refuses
 it). See
 [Sessions](sessions.md#archiving-a-session).
 
-`chi sessions delete [--force] ID...` deletes sessions for good: the
+`chi sessions delete [--force] [--chain] ID...` deletes sessions for good: the
 session file and its whole directory (notes, images, queued input). Each id
-(or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
+(or unique prefix) gets one line: `deleted`, or `refused` with the reason.
+Deleting a chain's newest link undoes its continue and says so (`… deleted;
+the previous link 1a2b3c4d is back in the lists`): the previous link comes
+back, not started, with the delegates and notes that had moved on. `--chain`
+deletes every link of the session's chain with their delegates (a running
+delegate is left running), one line per link and a `chain: …` summary; a
+schedule on the chain refuses it. See docs/sessions.md (Session chains →
+Deleting a link). A
 session whose worker runs is refused unless `--force` stops the worker first;
 one a `--non-interactive` run has is always refused ("in use by a one-turn chi
 --non-interactive run or an older chi's terminal; let it finish first"). Exit

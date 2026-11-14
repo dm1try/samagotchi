@@ -178,6 +178,14 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `identity`: an older chi web drops it and issues a link anyone could open) gets a feature of its own
   (`bound_grants`, `App::BOUND_FEATURE`), and `Remote` requires it before sending the field (`require_feature!`):
   never a silent downgrade.
+- **A new route.** `DELETE /api/sessions/:id/chain?force=` (`chi --remote NAME sessions delete --chain`) is
+  `chain_delete` (`App::CHAIN_DELETE_FEATURE`): `Remote#delete_chain` requires it first, so an older chi web gives
+  "update it" (`RemoteTooOld`) and deletes nothing, rather than a 404 read as "not found". The route is query-only
+  (`force` from `req.GET`, no body read) and declared before the plain `/api/sessions/:id` rows. The plain delete
+  needs no feature: an older chi web deletes the link plainly (no revive, no undo) and its 200 has no
+  `unarchived`/`moved_back` (read as `[]`). The delete refusals reach the CLI with their own reason and message
+  (`continuing`, `delegate_unmovable`, `scheduled`, `chain_scheduled`, `worker_running`, `still_stopping`:
+  `Remote#raise_refusal` raises `DeleteRefused` with `ids` and `schedule_id`).
 
 ## Which checks run where
 

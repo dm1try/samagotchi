@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi sessions delete --chain` deletes every link of a session chain, with their finished delegates (running ones are
+  left running). A schedule on the chain refuses it.
+
+### Changed
+
+- Deleting a chain's newest link (CLI, web, `/exit --delete`) undoes its continue: the previous link comes back to the
+  lists (not started) with the delegates and notes that had moved on, and the CLI says so. Before, the earlier links
+  stayed archived and dropped out of every list. A delete is refused while a continue of that session is under way,
+  and a schedule's first or current link can't be deleted. Against an older chi web, `--remote` deletes plainly.
+
 ## [0.173.0] - 2026-11-14
 
 ### Added
