@@ -322,6 +322,11 @@ worker checks their link (`participants.json`: revoked, expired, an older chi's)
 turn is dequeued (`:turn_dequeued`) and audited (`revoked`, `outdated`, `cap_reached`) instead of run, so a revoke also stops what they
 had queued; its settled record (`TurnCheckpoint.record_refused`: canceled, `cancel_reason` the reason) ends their
 wait on it at once, which `ParentReport` reads as status `refused`, exit 1.
+Every one of these asks is one seat, `WorkerParticipantGate` (`worker_participant_gate.rb`, built in `Worker#start`):
+`#refusal` for a queued turn as it starts, a line the drain would merge and the owner's Continue on a participant's
+offer (`ContinueOffer`'s `participant_refused:`), `#turn_stop` for a running pair turn (`Engine#participant_stop`),
+`#refuse` for the dequeue and audit, `#watch` for `:participants_changed`. It runs on the worker's loop thread only
+(a turn runs there too) and takes no lock; `Worker#held_for_offer?` (read from Bridge threads too) is not in it.
 
 **The Verify gate.** A worker names `verify` (`VerifyAnchor::FEATURE`, in the Bridge's `FEATURES`) when it understands a
 Verify turn's anchor (`VerifyAnchor`, `{turn_id, quote}`: a UUID and a quote of 1 to 200 characters). A turn carrying an
