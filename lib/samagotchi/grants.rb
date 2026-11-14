@@ -72,6 +72,11 @@ module Samagotchi
     # (config web.participants.queue); at most MAX_QUEUE.
     DEFAULT_QUEUE = 3
     MAX_QUEUE = 20
+    # How many distinct image files a participant may upload into the
+    # grant's session (ParticipantUploads, chi web's participant upload),
+    # and how many uploads they may try in all, refused ones counted.
+    MAX_IMAGES = 40
+    MAX_IMAGE_ATTEMPTS = 2 * MAX_IMAGES
     # chi share --expires and config web.participants.expires: Nh or Nd.
     EXPIRES_RE = /\A(\d+)([hd])\z/
 
