@@ -63,6 +63,47 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
   end
 
+  # A stored image ref as the worker has it, and what the viewer's own gets of it.
+  STORED = { file: "images/0123456789abcdef.png", name: "shot.png", width: 3, height: 2, mime: "image/png", bytes: 99,
+             source: "user" }.freeze
+  STORED_SHOWN = { "file" => "images/0123456789abcdef.png", "name" => "shot.png", "width" => 3, "height" => 2 }.freeze
+
+  describe ".image_refs (a message's, a turn's, a queued entry's images)" do
+    def refs(images, author) = described_class.send(:image_refs, JSON.parse(JSON.generate(images)), author, viewer)
+
+    it "gives the viewer's own stored refs without source, bytes or mime; drops any other file; another's as a count" do
+      expect(refs([STORED], "p:p_1")).to eq([STORED_SHOWN])
+      expect(refs([STORED, { file: "/home/o/proj/shot.png", name: "x" }, { file: "images/../x.png" }, "x"], "p:p_1"))
+        .to eq([STORED_SHOWN])
+      expect(refs([{ file: "/home/o/proj/shot.png" }], "p:p_1")).to be_nil
+      expect(refs([STORED, STORED], "p:p_2")).to eq(2)
+      expect(refs([STORED], nil)).to eq(1)
+      expect(refs([], "p:p_1")).to be_nil
+      expect(refs(nil, "p:p_1")).to be_nil
+    end
+
+    it "shows the viewer's own turn_started with its refs, another's with a count" do
+      own = { type: :turn_started, prompt: "look", turn_id: "t1", author: "p:p_1", origin: { client_id: "review:p_1" }, images: [STORED] }
+      expect(shown(own)["images"]).to eq([STORED_SHOWN])
+      expect(shown(own.merge(author: "p:p_2", origin: { client_id: "review:p_2" }))["images"]).to eq(1)
+      expect(shown(own.except(:author).merge(origin: { client_id: "web:tab" }))["images"]).to eq(1)
+    end
+
+    it "gives the running turn (current_turn) the viewer's own refs, another's a count" do
+      own = { "prompt" => "look", "turn_id" => "t1", "author" => "p:p_1", "origin" => { "client_id" => "review:p_1" },
+              "images" => [STORED.transform_keys(&:to_s)] }
+      expect(described_class.current_turn(own, viewer)["images"]).to eq([STORED_SHOWN])
+      other = own.merge("author" => "p:p_2", "origin" => { "client_id" => "review:p_2" })
+      expect(described_class.current_turn(other, viewer)["images"]).to eq(1)
+    end
+
+    it "shows the viewer's own message with its refs, another's with a count" do
+      list = [{ role: "user", content: "mine", turn_id: "t1", author: "p:p_1", images: [STORED] },
+              { role: "user", content: "theirs", turn_id: "t2", author: "p:p_2", images: [STORED] }]
+      expect(described_class.messages(list, viewer).map { |m| m["images"] }).to eq([[STORED_SHOWN], 1])
+    end
+  end
+
   describe ".event" do
     it "shows a person's turn with its prompt and author, an automatic one without its text" do
       expect(shown({ type: :turn_started, prompt: "is step 3 safe?", turn_id: "t1", author: "p:p_1", author_name: "Alex",
@@ -130,11 +171,12 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .not_to include("Q-ID", "Q-TEXT", "approval\":{")
     end
 
-    it "sends the viewer's own queued turn in the owner's shape, never its images; another's bare" do
+    it "sends the viewer's own queued turn in the owner's shape, its stored image refs only; another's bare" do
       own = { type: :turn_enqueued, event_seq: 5, enqueued_id: "e1", client_id: "review:p_1", prompt: "mine", author: "p:p_1",
               delivery: "queue", images: [{ file: "/home/o/proj/shot.png" }] }
       expect(shown(own)).to eq("type" => "turn_enqueued", "event_seq" => 5, "enqueued_id" => "e1", "client_id" => "review:p_1",
                                "prompt" => "mine", "author" => "p:p_1", "delivery" => "queue")
+      expect(shown(own.merge(images: [STORED, { file: "/home/o/proj/shot.png" }]))["images"]).to eq([STORED_SHOWN])
       expect(shown(own.merge(author: "p:p_2", prompt: "THEIRS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
       expect(shown(own.except(:author).merge(client_id: "web:o", prompt: "OWNERS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
     end
