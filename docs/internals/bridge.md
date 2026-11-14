@@ -618,6 +618,29 @@ the Live's client or nil; `WorkerLink.await` polls for a new worker's Live (an `
 successor from the old worker); chi web's `App#worker_link` / `#await_worker_link` wrap them. The Bridge writes
 `pid` and `protocol` with its port and removes its sidecar on stop only when the file still carries its epoch.
 
+The sidecar's `features` array is the worker's capability handshake: clients check a name rather than infer
+compatibility from its version. `Bridge::FEATURES` advertises:
+
+| Feature | What a client gains |
+|---|---|
+| `restart` | `POST /session/:id/exit` can hand the session to a worker running the newest chi (`chi sessions restart`). |
+| `task_stop` | The web can stop a running background task with `POST /session/:id/tasks/stop`. |
+| `reparent` | A continued chain can move a live delegate worker with its parent. |
+| `delivery` | The worker understands all delivery modes, including queueing a turn until the current turn ends. |
+| `turn_ids` | A client can wait for a particular enqueued turn across running, continued and stopped turns. |
+| `verify` | The worker accepts and validates Verify anchors on turns. |
+| `revise` | The worker accepts and validates Revise anchors on turns. |
+| `unqueue` | A client can take back a queued turn before it starts (`POST /session/:id/turn/dequeue`). |
+| `review_turns` | An older chi web checks this before sending legacy participant turns; it is not a read-only mode on current workers. |
+| `pair_turns` | The worker runs participant turns under the owner's guardrails, so chi web may invite participants. |
+| `turn_drawings` | chi web can render completed turns from their saved drawings instead of reconstructing them. |
+| `activity` | `GET /activity` tells `chi schedule tick` what the live worker is doing. |
+| `objectives_track` | chi web can show the worker's progress tracking for active objectives. |
+| `participant_steer` | A participant's message during their own turn can go in at its next step. |
+| `cancel_turn_id` | `POST /session/:id/cancel` can stop only the named turn. |
+| `participant_revise` | chi web can pass a participant's Revise draft for worker-side validation. |
+| `participant_client_id` | chi web can identify a participant as `participant:<id>` instead of using the legacy `review:<id>`. |
+
 `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` for no worker, a leaving or stuck worker, or an unreachable Bridge; 502 `worker_newer` for skew and
 `bridge_error` / `bridge_secret` for a refused Bridge; 200 only after the Bridge answers; full history of any session
