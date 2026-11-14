@@ -3,6 +3,7 @@
 require_relative "../working_set"
 require_relative "../llm_context_view"
 require_relative "../session_setting"
+require_relative "../memory_paths"
 require_relative "participant_view"
 
 module Samagotchi
@@ -40,6 +41,33 @@ module Samagotchi
         # Redacted as the stream's event is (ParticipantView.event): a file name may hold a secret's shape.
         shown = Redact.deep(ParticipantView.working_set(set, viewer), viewer)
         json_response(200, shown.merge("running" => set[:running] == true))
+      end
+
+      # GET /api/sessions/:id/working_set/item?kind=&key=[&now=1]: what the
+      # model has of one item, its timeline (WorkingSet.timeline_of: every
+      # run of it, in conversation order), the reader's and the popover
+      # peek's. Owner only. Always built from messages, unlike the set's
+      # route: the worker's snapshot messages (they lag a running turn's
+      # events; the page asks again on its next :working_set_updated), else
+      # the file's. Whole texts: the tool limits bound them (read's
+      # truncate_at_bytes, the ToolRunner cap). +now+ (a memory): what its
+      # latest read would answer now and the diff (WorkingSet.memory_now).
+      def handle_working_set_item(req, id)
+        kind = req.params["kind"].to_s
+        key = req.params["key"].to_s
+        unless [WorkingSet::FILE, WorkingSet::MEMORY, WorkingSet::URL].include?(kind) && !key.strip.empty?
+          return error_response(400, "invalid_item", "expected kind (file, memory or url) and key")
+        end
+
+        session = @session_class.load(id, state_dir: default_state_dir)
+        source = working_set_source(bridge_get_json(id, "snapshot"), session)
+        timeline = WorkingSet.timeline_of(source.messages, kind: kind, key: key, strategy: source.strategy, cwd: source.cwd)
+        body = timeline.to_h
+        if req.params["now"] == "1" && kind == WorkingSet::MEMORY
+          body[:now] = WorkingSet.memory_now(source.messages, key: key, strategy: source.strategy, cwd: source.cwd,
+                                             root: MemoryPaths.system_dir)&.to_h
+        end
+        json_response(200, body)
       end
 
       def working_set_payload(id, session)
