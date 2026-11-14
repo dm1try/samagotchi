@@ -202,6 +202,10 @@ RSpec.describe Samagotchi::Web::App, "a participant's images" do
       expect(audit.last.values_at("status", "reason")).to eq(%w[refused too_many_images])
     end
 
+    it "keeps the name's base without control characters" do
+      expect(upload(png, name: "a%2Fb%1B%5B2Jc%0A.png").last["name"]).to eq("b[2Jc.png")
+    end
+
     it "counts a cap-refused upload as an attempt" do
       File.write(Samagotchi::AnalyticsFile.path(dir),
                  JSON.generate({ "turn_records" => [{ "id" => "t1", "author" => grant.author, "cost" => 2.0 }] }))

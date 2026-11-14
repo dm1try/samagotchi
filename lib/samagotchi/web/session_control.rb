@@ -298,9 +298,10 @@ module Samagotchi
 
       def image_too_large_detail = "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB"
 
-      # An upload's ?name=, a base name; "image" without one.
+      # An upload's ?name=, a base name without control characters; "image"
+      # without one.
       def upload_name(req)
-        name = File.basename(req.params["name"].to_s)[0, 120]
+        name = File.basename(req.params["name"].to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
         name.empty? ? "image" : name
       end
 

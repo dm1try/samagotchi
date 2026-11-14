@@ -322,7 +322,7 @@ module Samagotchi
         return "images are refs to uploaded files, not paths" if ref.key?(:path)
         return Error.unknown_image(ref[:file]).message unless valid_ref?(session_dir, ref)
 
-        { file: ref[:file].to_s, name: File.basename(ref[:name].to_s)[0, 120] }
+        { file: ref[:file].to_s, name: File.basename(ref[:name].to_s).gsub(/[[:cntrl:]]/, "")[0, 120] }
       end
     end
 

@@ -115,6 +115,12 @@ RSpec.describe Samagotchi::ImageStore do
       expect(ref).to include(mime: "image/jpeg", width: 5, height: 4)
     end
 
+    it "check_refs keeps a ref's base name without control characters" do
+      ref = described_class.ingest(dir, bytes: png_bytes(4, 4), name: "a.png", resizer: none, limits: limits)
+      expect(described_class.check_refs(dir, [{ "file" => ref[:file], "name" => "x/ev\e[2Jil\n.png" }]))
+        .to eq([{ file: ref[:file], name: "ev[2Jil.png" }])
+    end
+
     describe Samagotchi::ImageResizer do
       it "kills a tool that runs past the timeout (its own pid), an Error" do
         resizer = described_class.new(:sips)
