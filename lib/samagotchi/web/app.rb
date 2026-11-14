@@ -600,7 +600,9 @@ module Samagotchi
       # but for a grant's code bound to another identity: decision C, kept
       # for the right one, and refused token_bound, #code_token).
       def traded_token(req)
-        return req.params["token"] unless fragment_trade?(req)
+        # The page's trade is the query string's only: req.params would
+        # parse a urlencoded or multipart body too, before the gate.
+        return req.GET["token"] unless fragment_trade?(req)
 
         req.env.fetch(TRADED_TOKEN_ENV) do
           raw = request_body(req, TRADE_BODY_LIMIT).to_s
@@ -683,7 +685,7 @@ module Samagotchi
         # Through the proxy no GET trade (a ?token= rides the sign-in
         # redirect, and a crafted link would swap the owner's cookie): a
         # link's #code= and the 401 page's POST do it.
-        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token") && !(@public_url && proxied?(req))
+        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.GET.key?("token") && !(@public_url && proxied?(req))
         return false unless page || fragment_trade?(req)
 
         token_required?(req) || Grants.token?(traded_token(req))
