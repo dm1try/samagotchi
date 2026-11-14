@@ -45,6 +45,12 @@ module Samagotchi
     # 422 bad_image: their upload isn't an image chi can store. Never
     # ImageStore's words (an image tool's output may name a host path).
     BAD_IMAGE = "this file can't be sent as an image: send a png, jpeg, gif or webp"
+    # 400 bad_images: their turn's images aren't a list of at most
+    # ImageStore::MAX_TURN_REFS {file, name} refs (no path).
+    IMAGES_SHAPE = "images are a list of at most 20 {file, name} refs to your uploads"
+    # 400 bad_images: an image they uploaded is no longer in the session
+    # (ImageStore's words, which name the file, only in the audit line).
+    IMAGE_GONE = "an image you uploaded is no longer in this session: attach it again"
     # 422 no_vision: their turn has images and the session's model can't
     # take them. Never the model's name or the /model hint: those are the
     # owner's (the audit line has the full refusal).

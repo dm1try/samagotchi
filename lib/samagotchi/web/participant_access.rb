@@ -307,16 +307,19 @@ module Samagotchi
       # ── A participant's turn ──────────────────────────────────────────
 
       # POST /api/sessions/:id/turn from a participant: their turn (D6,
-      # D10). Of the body only the prompt and the delivery count: the author
-      # and client id are the grant's (review:<id>), no images, no
-      # no_interrupt; the owner's prompt history never sees it. The delivery
+      # D10). Of the body only the prompt, the delivery and images they
+      # uploaded count: the author and client id are the grant's
+      # (review:<id>), no no_interrupt; the owner's prompt history never
+      # sees it. The delivery
       # is queue or next step (none: next step): the worker puts a next-step
       # message into a running turn only when that turn is theirs, else it
       # runs as their own turn after it (Bridge#same_author_steer?; an older
       # worker queues it). Refused: a line starting ! or / (403
-      # not_permitted: shell lines and commands are the owner's), images
-      # (403), a cut (403: theirs never cuts), their turn limit (429
-      # too_many_turns, the Bridge counts) and their cap (429 cap_reached).
+      # not_permitted: shell lines and commands are the owner's), a cut
+      # (403: theirs never cuts), their cap (429 cap_reached), images not
+      # theirs or a model without vision (ParticipantImages#
+      # participant_images_refusal) and their turn limit (429
+      # too_many_turns, the Bridge counts).
       # Every answer is audited (turn: accepted or refused, why).
       def handle_participant_turn(req, id, body)
         grant = principal(req).grant
@@ -326,15 +329,19 @@ module Samagotchi
         reason = participant_turn_refusal(grant, prompt, body)
         return participant_turn_refused(grant, prompt, *reason) if reason
 
+        reason, images = participant_images_refusal(grant, id, body["images"])
+        return participant_turn_refused(grant, prompt, *reason) if reason
+
         # A Verify turn's claim; never a Revise (the owner's stacks).
         delivery = Delivery.queue?(body["delivery"]) ? Delivery::QUEUE : Delivery::NEXT_STEP
         result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
                                                  delivery: delivery, author: grant.author,
+                                                 **(images.empty? ? {} : { images: images }),
                                                  anchors: TurnAnchors.from(body).without_revises,
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
-        participant_turn_result(grant, prompt, result)
+        participant_turn_result(grant, prompt, result, images: images.empty? ? nil : images.size)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
@@ -342,7 +349,6 @@ module Samagotchi
       # [status, code, detail] for a turn refused before delivery, nil to send it.
       def participant_turn_refusal(grant, prompt, body)
         return [403, "not_permitted", NOT_PERMITTED] if prompt.lstrip.start_with?("!", "/")
-        return [403, "not_permitted", NOT_PERMITTED] unless body["images"].nil? || body["images"] == []
         return [403, "not_permitted", NOT_PERMITTED] if Delivery.cut?(body["delivery"])
 
         participant_cap_refusal(grant)
@@ -367,26 +373,28 @@ module Samagotchi
           VerifyFresh.children_spend(grant.session_id, grant.author, state_dir: default_state_dir)
       end
 
-      def participant_turn_refused(grant, prompt, status, code, detail)
-        audit_turn(grant, prompt, status: "refused", reason: code)
+      # +audit_detail+: what only the audit line says (no_vision's full words).
+      def participant_turn_refused(grant, prompt, status, code, detail, audit_detail = nil)
+        audit_turn(grant, prompt, status: "refused", reason: code, detail: audit_detail)
         error_response(status, code, detail)
       end
 
-      def participant_turn_result(grant, prompt, result)
+      # +images+: how many the turn carried (nil: none), for the audit line.
+      def participant_turn_result(grant, prompt, result, images: nil)
         case result.status
         when :accepted
           enqueued_id = result.ack["enqueued_id"]
           remember_participant_turn(enqueued_id, grant.id)
-          audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id)
+          audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id, images: images)
           # What the worker says will happen (a turn of its own, or into
           # their running turn at its next step); a file (no worker yet)
           # runs as the next turn, which reads as a queue.
           json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => result.ack["delivery"] || Delivery::QUEUE))
         when :refused
-          audit_turn(grant, prompt, status: "refused", reason: result.ack["error"])
+          audit_turn(grant, prompt, status: "refused", reason: result.ack["error"], images: images)
           json_response(result.code, result.ack)
         when :timeout
-          audit_turn(grant, prompt, status: "refused", reason: "worker_timeout")
+          audit_turn(grant, prompt, status: "refused", reason: "worker_timeout", images: images)
           error_response(504, "worker_timeout", result.detail)
         else error_response(500, "enqueue_failed", "could not write turn input")
         end

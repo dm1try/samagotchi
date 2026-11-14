@@ -221,6 +221,11 @@ module Samagotchi
 
     UNKNOWN_VISION = VisionSupport::Answer.new(value: nil, reason: nil)
 
+    # .vision_refusal for +model_name+ (+typed+: as the user typed it) on
+    # .vision_answer's answer: chi web's turn and create routes and a
+    # participant's turn ask this one helper.
+    def self.vision_refusal_for(model_name, typed: nil) = vision_refusal(model_name, vision_answer(model_name, typed: typed))
+
     # What to say when +answer+ (.vision_answer's for +model_name+) is a
     # no, or nil: the words chi send and chi web's turn and create routes
     # refuse images with.

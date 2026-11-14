@@ -14,6 +14,8 @@ require "samagotchi/llm/chat_loop"
 require "samagotchi/bridge"
 require "samagotchi/bridge_client"
 require "samagotchi/participants"
+require "samagotchi/participant_uploads"
+require "samagotchi/image_store"
 require "samagotchi/prompt_history"
 require "samagotchi/analytics_file"
 require "samagotchi/toolkit"
@@ -419,8 +421,18 @@ RSpec.describe "a participant red-teaming a session" do
       expect(JSON.generate(body)).not_to include("owner")
     end
 
-    it "can't send images" do
-      expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] })).to eq(not_permitted)
+    it "can't send someone else's image: the owner's, another participant's, a guessed hash, a forged source" do
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m")
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "owner.png")
+      bos = Samagotchi::ImageStore.ingest(dir, bytes: "#{png}bo", name: "bo.png")
+      Samagotchi::ParticipantUploads.add(dir, file: bos[:file], grant_id: "p_bbbbbbbb")
+      [[{ file: owners[:file], name: "a" }], [{ file: bos[:file], name: "a" }],
+       [{ file: "images/0000000000000000.png", name: "guess" }], [{ file: "a.png", name: "a" }],
+       [{ file: owners[:file], name: "a", source: "participant" }]].each do |images|
+        expect(turn({ prompt: "look", images: images })).to eq(not_permitted)
+      end
+      expect(inputs).to eq([])
     end
 
     it "can't queue past its turn limit" do

@@ -5,6 +5,7 @@ require_relative "../image_store"
 require_relative "../participant_messages"
 require_relative "../participant_uploads"
 require_relative "../participants"
+require_relative "../send_command"
 require_relative "../session"
 
 module Samagotchi
@@ -134,6 +135,42 @@ module Samagotchi
           ParticipantUploads.add(dir, file: ref[:file], grant_id: grant.id, state: record)
         end
         added ? Upload.accepted(ref) : too_many_images
+      end
+
+      # A participant's turn's images: [nil, refs] to deliver (refs [] for
+      # none), or [[status, code, detail(, audit detail)], nil]. In this
+      # order, so nothing tells them which files exist: the shape (400
+      # bad_images), then ownership (403 not_permitted for any ref they
+      # didn't upload, there or not), only then the files (ImageStore.
+      # check_refs), then the model (422 no_vision in their words; the
+      # model's name and the /model hint only in the audit line).
+      def participant_images_refusal(grant, id, raw)
+        return [nil, []] if raw.nil? || raw == []
+        return [[400, "bad_images", ParticipantMessages::IMAGES_SHAPE], nil] unless participant_refs_shape?(raw)
+
+        dir = Session.session_dir(id, state_dir: default_state_dir)
+        record = @participant_images_mutex.synchronize { ParticipantUploads.read(dir) }
+        owned = raw.all? { |ref| record.owned?(ref["file"].to_s, grant.id) }
+        return [[403, "not_permitted", ParticipantMessages::NOT_PERMITTED], nil] unless owned
+
+        images = ImageStore.check_refs(dir, raw)
+        return [[400, "bad_images", ParticipantMessages::IMAGE_GONE, images], nil] if images.is_a?(String)
+
+        refusal = participant_vision_refusal(id)
+        refusal ? [[422, "no_vision", ParticipantMessages::NO_VISION, refusal], nil] : [nil, images]
+      end
+
+      def participant_refs_shape?(raw)
+        raw.is_a?(Array) && raw.size <= ImageStore::MAX_TURN_REFS &&
+          raw.all? { |ref| ref.is_a?(Hash) && ref["file"].is_a?(String) && !ref.key?("path") }
+      end
+
+      # chi send's refusal for this session's model, nil when it takes
+      # images or nobody knows (the Engine stays the backstop). The model's
+      # name can lag a live /model.
+      def participant_vision_refusal(id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        SendCommand.vision_refusal_for(session.model_name, typed: session.model_typed)
       end
 
       def too_many_images = Upload.refused(429, "too_many_images", ParticipantMessages::TOO_MANY_IMAGES)
