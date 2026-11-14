@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.172.1] - 2026-11-14
+
 ### Fixed
 
 - `execute`: the hint for a background process that left the command's process group and is still running now says chi
@@ -15,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a card you folded while the turn waits stays folded after a reload or a reconnect when the session has an answered
   question (in its history, or earlier in the same turn); it used to come back unfolded. Answering one card no longer
   unfolds another you folded.
+
+Update with `chi update`.
 
 ## [0.172.0] - 2026-11-14
 
@@ -6355,7 +6359,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.172.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.172.1...HEAD
+[0.172.1]: https://github.com/dm1try/samagotchi/compare/v0.172.0...v0.172.1
 [0.172.0]: https://github.com/dm1try/samagotchi/compare/v0.171.0...v0.172.0
 [0.171.0]: https://github.com/dm1try/samagotchi/compare/v0.170.0...v0.171.0
 [0.170.0]: https://github.com/dm1try/samagotchi/compare/v0.169.0...v0.170.0
