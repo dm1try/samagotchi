@@ -1,0 +1,4 @@
+- rule: 1
+  file: lib/samagotchi/uses_session.rb
+  constant: Samagotchi::Session
+  reason: the entry point that reaches this file always loads Session first.

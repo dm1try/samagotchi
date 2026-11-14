@@ -1,0 +1,88 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# script/load-check: every file under lib/samagotchi (the shipped bundles
+# apart) and bin/chi is parsed with Prism, never loaded, and checked against
+# three rules about requires. Advisory in report mode (exit 0); --strict exits
+# 1 when findings remain after the allow-list.
+#
+#   script/load-check --help    # the rules and how to read a line
+#
+# See docs/testing.md.
+
+HELP = <<~TEXT
+  usage: script/load-check [--strict] [--rule N] [--limit N] [--allow FILE] [--json]
+
+  Checks three rules over lib/samagotchi/**/*.rb and bin/chi (the shipped
+  bundles under lib/samagotchi/bundles/ are out of this build's rules):
+
+    1  call-time reference: a constant named inside a method body is defined
+       in the file, or reached by its requires and autoloads, transitively.
+    2  load-time reference: a constant evaluated while the file loads
+       (superclass, include/extend/prepend, a class body, a default argument)
+       comes from a file required above that line, with no require cycle.
+       A require inside a method satisfies 1 only.
+    3  autoload: an autoload names a constant defined in exactly one file; one
+       that names a namespace reopened in several files is a finding.
+
+  A name that resolves to nothing of chi's (a stdlib or gem constant) is out
+  of scope. Each line is
+
+    RULE file:line Constant — why
+
+  Proven false positives live in script/load_check/allow.yml, each with a
+  reason; the summary says how many entries matched.
+TEXT
+
+if ARGV.include?("-h") || ARGV.include?("--help")
+  puts HELP
+  exit 0
+end
+
+require "json"
+
+begin
+  require "prism"
+rescue LoadError
+  warn "script/load-check: needs Prism (Ruby 3.4+, or bundle exec on 3.3); skipped"
+  exit 0
+end
+
+require_relative "load_check/check"
+
+options = {}
+index = 0
+while index < ARGV.size
+  flag = ARGV[index]
+  if %w[--rule --limit --allow].include?(flag)
+    options[flag] = ARGV[index + 1]
+    index += 2
+  else
+    index += 1
+  end
+end
+
+strict = ARGV.include?("--strict")
+rule = options["--rule"]
+limit = options["--limit"]&.to_i
+allow = options["--allow"]
+json = ARGV.include?("--json")
+
+result = LoadCheck::Check.new(allow: allow).run
+findings = result.findings
+findings = findings.select { _1.rule.to_s == rule } if rule
+findings = findings.first(limit) if limit
+
+if json
+  puts JSON.pretty_generate(findings.map { |f| f.to_h })
+  exit(strict && findings.any? ? 1 : 0)
+end
+
+findings.each { |f| puts "#{f.rule} #{f.path}:#{f.line} #{f.constant} — #{f.why}" }
+puts format("shown: %d of %d findings", findings.size, result.findings.size) if findings.size != result.findings.size
+puts format("findings: %d (rule 1 %d, rule 2 %d, rule 3 %d) across %d references", result.findings.size,
+            *result.rule_counts.values_at(1, 2, 3).map { _1 || 0 }, result.references)
+puts "by area: #{result.area_counts.sort_by { |area, count| [-count, area] }.map { |area, count| "#{area} #{count}" }.join(", ")}"
+puts "files scanned: #{result.files} (lib/samagotchi + bin/chi, shipped bundles excluded)"
+puts "allow-list: #{result.allow_used} entries matched, #{result.allow_stale} matched nothing"
+exit(strict && result.findings.any? ? 1 : 0)
