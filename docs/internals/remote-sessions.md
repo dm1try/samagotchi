@@ -199,7 +199,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 | `sessions list`'s default project (`ProjectScope.root_for(Dir.pwd)`) | client | every project's; `--scope=project` needs `--cwd` (a folder there) |
 | `context`'s default session (`SAMAGOTCHI_PARENT_SESSION`, `ContextCommand#inside_session`) | client | no default: ids are required (`added_by` still reads it) |
 | A context URL's provider (`ContextProviders.resolve`) | client's bundles | server's bundles (`Remote#context_add_url`) |
-| UI-only slash commands (`SessionCommands.ui_only_entry`), `--image` ingest, note text (`SessionInbox.checked_text`), push text (`ContextSources.parse_output`) | client | client too (the server checks note and push text again) |
+| UI-only slash commands (`SessionCommandCatalog.ui_only_entry`), `--image` ingest, note text (`SessionInbox.checked_text`), push text (`ContextSources.parse_output`) | client | client too (the server checks note and push text again) |
 | A remote attach's `--attach`/`--resume` id (`Session.resolve_id`), the leftover scratch check, the one-turn run's refusal (`OwnerLock::TUI_BUSY`) | client (bin/chi, `AttachLauncher.connect`) | server: `Remote#resolve`, then `POST …/wake`'s 409s |
 | A new attached session's `--toolkit`, `--set`, `--thinking`, `--llm-context*`, `--parent-answers`, `--model` | client (bin/chi) | server: `POST /api/sessions` with `idle: true` and `SetupWords`; its warnings printed as `send --new` prints them |
 | The status row's default model, the newest chi for the version line, what a parent may pick (exit 3) | client | server: the wake's `default_model`, `installed`, `parent_strategy` (the last read again from `GET …/worker` at report time) |

@@ -6,7 +6,7 @@ require_relative "../delivery"
 require_relative "../image_store"
 require_relative "../prompt_history"
 require_relative "../session"
-require_relative "../session_commands"
+require_relative "../session_command_catalog"
 require_relative "../session_manager"
 
 module Samagotchi
@@ -155,7 +155,7 @@ module Samagotchi
             # One of this chi's own commands the worker doesn't know: it runs an
             # older chi. command: which one, so a remote TUI names it as its
             # Bridge's own 400 unknown_command would (WebBridgeClient).
-            name = reply.json&.dig("error") == "unknown_command" && SessionCommands.builtin_name(line)
+            name = reply.json&.dig("error") == "unknown_command" && SessionCommandCatalog.builtin_name(line)
             next older_worker_command(id, name) if name
 
             error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))

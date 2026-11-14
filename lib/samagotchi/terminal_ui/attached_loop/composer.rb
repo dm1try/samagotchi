@@ -2,7 +2,7 @@
 
 require_relative "../../composer_route"
 require_relative "../../prompt_history"
-require_relative "../../session_commands"
+require_relative "../../session_command_catalog"
 require_relative "../exit_lines"
 require_relative "../reline_seam"
 
@@ -112,7 +112,7 @@ module Samagotchi
           return submit(nil) if local == :detach
           return end_scratch if local == :exit && @scratch
           return refuse_scratch_archive if local == :archive && @scratch
-          return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
+          return SessionCommandCatalog.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
           return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
           return exit_and_archive if local == :archive
 
@@ -173,7 +173,7 @@ module Samagotchi
         # The session's commands as its worker's snapshot names them (its
         # plugins' too); the built-ins until one arrives, or from a worker too
         # old to name them. An unknown /foo is a prompt.
-        def command_registry = @command_registry || SessionCommands.builtin_registry
+        def command_registry = @command_registry || SessionCommandCatalog.builtin_registry
 
         # Ctrl-C cancels the running turn (whoever started it). At an idle
         # prompt it clears the line; on an empty one it says how to detach, and

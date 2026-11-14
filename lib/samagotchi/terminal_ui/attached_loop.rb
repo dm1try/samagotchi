@@ -35,7 +35,7 @@ require_relative "../steer"
 require_relative "../turn_origin"
 require_relative "../model_profile"
 require_relative "../output_formatter"
-require_relative "../session_commands"
+require_relative "../session_command_catalog"
 require_relative "../session_manager"
 require_relative "../session_metrics"
 require_relative "../children_status"
@@ -506,7 +506,7 @@ module Samagotchi
       def older_worker_command(reply, line)
         return nil unless reply.status == 400 && reply.json&.fetch("error", nil) == "unknown_command"
 
-        SessionCommands.builtin_name(line)
+        SessionCommandCatalog.builtin_name(line)
       end
 
       def stale_worker(cant)
@@ -556,7 +556,7 @@ module Samagotchi
           @screen.commit(paint(version_line, 2)) if version_line
         end
         if snapshot[:commands]
-          @command_registry = Commands::Registry.from_listing(snapshot[:commands], base: SessionCommands.builtin_registry)
+          @command_registry = Commands::Registry.from_listing(snapshot[:commands], base: SessionCommandCatalog.builtin_registry)
         end
         Array(snapshot[:init_tasks]).each { |task| @view.init_started(task) }
         cards = Array(snapshot[:cards])

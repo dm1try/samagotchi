@@ -2,7 +2,7 @@
 
 require_relative "../../client_id"
 require_relative "../exit_lines"
-require_relative "../../session_commands"
+require_relative "../../session_command_catalog"
 require_relative "../question_prompt"
 
 module Samagotchi
@@ -29,7 +29,7 @@ module Samagotchi
 
         # A bare answer at the continue prompt (an empty one is yes).
         def continue_line(text)
-          text.empty? ? SessionCommands::CONTINUE_COMMAND : "#{SessionCommands::CONTINUE_COMMAND} #{text}"
+          text.empty? ? SessionCommandCatalog::CONTINUE_COMMAND : "#{SessionCommandCatalog::CONTINUE_COMMAND} #{text}"
         end
 
         def offer_continue(event)
