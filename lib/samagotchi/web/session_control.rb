@@ -393,7 +393,9 @@ module Samagotchi
         unless (who = principal(req)).owner?
           return not_permitted_for(req, who) unless own_turn?(who.grant, id, enqueued_id)
 
-          client_id = ClientId.review(who.grant.id)
+          # Only echoed in the worker's turn_dequeued (no shim: an older
+          # worker's echo of it is a cosmetic mismatch).
+          client_id = ClientId.participant(who.grant.id)
         end
 
         request = ->(client) { client.dequeue(enqueued_id: enqueued_id, client_id: client_id) }

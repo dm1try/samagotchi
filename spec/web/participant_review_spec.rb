@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
                             "pending_question" => { "question" => "Allow execute: env?" },
                             "parts" => [{ "kind" => "text", "text" => "Let me check" },
                                         { "kind" => "tool", "tool" => "execute", "params" => "env", "status" => "running" }] },
-        "queued" => [{ "enqueued_id" => "e1", "client_id" => "review:#{issued.grant.id}", "prompt" => "mine", "author" => author },
+        "queued" => [{ "enqueued_id" => "e1", "client_id" => "participant:#{issued.grant.id}", "prompt" => "mine", "author" => author },
                      { "enqueued_id" => "e2", "client_id" => "web:1", "prompt" => "owner's next" }],
         "cards" => [{ "type" => "card", "body" => "CARD" }], "event_id" => "12-ep"
       },
@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
     expect(body["current_turn"]).to include("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
                                             "tools" => [{ "tool" => "execute", "status" => "running" }],
                                             "waiting_for_owner" => true, "kind" => "question")
-    expect(body["queued"]).to eq([{ "enqueued_id" => "e1", "client_id" => "review:#{issued.grant.id}", "prompt" => "mine",
+    expect(body["queued"]).to eq([{ "enqueued_id" => "e1", "client_id" => "participant:#{issued.grant.id}", "prompt" => "mine",
                                     "author" => author }])
     expect(body["last_event_id"]).to eq("12-ep")
     expect(JSON.generate(body)).not_to include("env?", "CARD", "owner's next", "metrics")

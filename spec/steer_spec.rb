@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::Steer do
                    "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send",
                    "child:abcd1234" => "delegate_report", "context:pr-1" => "automatic:context:pr-1",
                    "system:reminder" => "automatic:system:reminder", "cli:answer" => "automatic:cli:answer",
-                   "other" => "automatic:other", "" => "automatic:", "review:p_0123abcd" => "participant" }
+                   "other" => "automatic:other", "" => "automatic:", "participant:p_0123abcd" => "participant" }
       expect(expected.keys.to_h { |id| [id, described_class.source_for_client(id)] }).to eq(expected)
       expect(described_class.cuts?("delegate_report")).to be(false)
       expect(described_class.cuts?("participant")).to be(false)

@@ -932,7 +932,7 @@ RSpec.describe Samagotchi::ReplyWait do
         # chi web waits for a participant (queued: false), it is followed in.
         it "follows a participant's line merged into their own turn: that turn's reply" do
           Samagotchi::SessionInbox.write_input(dir, prompt: "only step 3", enqueued_id: "y1", author: "p:p_1",
-                                                    client_id: "review:p_1")
+                                                    client_id: "participant:p_1")
           base = baseline
           later do
             merge("y1", into: "a1")

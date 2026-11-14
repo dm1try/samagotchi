@@ -136,7 +136,7 @@ module Samagotchi
     # By the message's participant_mode stamp; a missing or unknown one is
     # a review (every message saved before the stamp).
     PARTICIPANT_HEADERS = { "review" => REVIEW_HEADER, "pair" => PAIR_HEADER }.freeze
-    # A participant's line's saved source (review:<id>): never the user's,
+    # A participant's line's saved source (participant:<id>): never the user's,
     # and never one that cuts (CUT_SOURCES). Its header is the review one,
     # by its author.
     PARTICIPANT_SOURCE = "participant"

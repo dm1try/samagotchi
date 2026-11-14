@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
     probes = Queue.new
     allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
       if prompt == "first"
-        Samagotchi::SessionInbox.write_input(session_dir, prompt: "theirs", client_id: "review:p_1", author: "p:p_1",
+        Samagotchi::SessionInbox.write_input(session_dir, prompt: "theirs", client_id: "participant:p_1", author: "p:p_1",
                                                           enqueued_id: "e9")
       end
       probes << [prompt, kwargs[:input_waiting].call]

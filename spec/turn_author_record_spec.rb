@@ -80,7 +80,7 @@ RSpec.describe "a turn's author on the record" do
 
     it "stamps no mode for an older chi's read-only participant (no grant mode): the worker refuses their turn first" do
       grant = make_outdated!(grants, invite("Alex"), state_dir: state_dir)
-      engine.run_turn(session, "go", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
+      engine.run_turn(session, "go", origin: { client_id: "participant:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
       expect(session.messages.find { |m| m[:role] == "user" }).not_to have_key(:participant_mode)
     end
@@ -88,7 +88,7 @@ RSpec.describe "a turn's author on the record" do
     it "stamps a participant's opening message in an older chi's review session pair, with its header" do
       session.review = { subjects: ["docs/plan.md"] }
       grant = invite("Alex")
-      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
+      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "participant:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(participant_mode: "pair")
@@ -98,14 +98,14 @@ RSpec.describe "a turn's author on the record" do
     it "saves a participant's opening message with author and name, and puts the author in last_turn and analytics" do
       grant = invite("Alex")
       events = []
-      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author },
+      engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "participant:#{grant.id}", enqueued_id: "e1", author: grant.author },
                                                   on_event: ->(e) { events << e })
 
       opening = session.messages.find { |m| m[:role] == "user" }
       # A working session: a pair turn.
       expect(opening).to include(content: "Is step 3 safe?", author: grant.author, author_name: "Alex",
                                  participant_mode: "pair")
-      expect(session.last_turn).to have_attributes(author: grant.author, origin: "review")
+      expect(session.last_turn).to have_attributes(author: grant.author, origin: "participant")
       expect(session.to_h["last_turn"]).to include("author" => grant.author)
       expect(analytics["turn_records"].last).to include("author" => grant.author)
       # Stamped before the first request carries it (its header comes from the stamp).
@@ -115,7 +115,7 @@ RSpec.describe "a turn's author on the record" do
     end
 
     it "names a participant the sidecar doesn't know by id only (the header says the id)" do
-      engine.run_turn(session, "hi", origin: { client_id: "review:p_0000abcd", author: "p:p_0000abcd" })
+      engine.run_turn(session, "hi", origin: { client_id: "participant:p_0000abcd", author: "p:p_0000abcd" })
 
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(author: "p:p_0000abcd")

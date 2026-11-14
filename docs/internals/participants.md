@@ -240,9 +240,13 @@ A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_partici
 running turn only when that turn is theirs (at its next step, as the owner's message does), else it runs as a turn
 of its own after it.
 
-**chi web.** The author is the grant's (`p:<id>`) and the client id `review:<id>` (`ClientId.review`: a human's
-input, origin `review`, source `participant`, labelled `invited`; the prefix and origin stay `review`, as saved in
-session files); the body's `client_id`, `author` and
+**chi web.** The author is the grant's (`p:<id>`) and the client id `participant:<id>` (`ClientId.participant`, its
+`ClientId::Sender` row: a human's input, never the owner's, origin `participant`, source `participant`, labelled
+`invited`; not the author, which says who wrote it). A `review:<id>` from chi 0.171 and before (in
+`turn_drawings.jsonl`, input files, an older chi web still running) reads the same (`ClientId::LEGACY_REVIEW_PREFIX`,
+compat shim `review_client_id`, until 0.173), and a live worker that doesn't name `participant_client_id`
+(`Delivery::PARTICIPANT_ID_FEATURE`) is sent `review:<id>` (`SessionManager` delivery; a dequeue's id, only echoed
+back, is left as it is); the body's `client_id`, `author` and
 `no_interrupt` never count, its `images` only as refs to their own uploads, and its `delivery` only as `queue` or
 next step (none: next step).
 Refused before delivery, each audited:
@@ -522,7 +526,7 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
 - `session`: id, participant title, status (idle when a worker says running with no turn), `bridge_up`,
   `worker_features`, `verdicts` (filtered, as the review's) and `verify_unavailable`.
 - `viewer`: `Web::Viewer`'s kind, id, name, `can` (`Viewer::PARTICIPANT_CAPABILITIES`: `send`, `stop_own_turn`,
-  `steer_own_turn`, `revise_own_turn`, and of the owner's `working_set` and `images`), `client_id` (`review:<grant id>`, which chi web gives their
+  `steer_own_turn`, `revise_own_turn`, and of the owner's `working_set` and `images`), `client_id` (`participant:<grant id>`, which chi web gives their
   turns), their `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
   `waiting_for_owner` (the kind the session waits on, the review read's rule: the running turn's question, a
   Continue offer, a question between turns; nil when nothing).

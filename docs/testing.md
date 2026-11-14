@@ -195,7 +195,9 @@ registered in `Compat::SHIMS` (`lib/samagotchi/compat.rb`): an id, the release
 that added it, `remove_after` (nil: the owner hasn't dated it) and its files,
 each Ruby one naming it in a comment (`compat shim <id>`). `spec/compat_spec.rb`
 fails once `Samagotchi::VERSION` passes a shim's `remove_after`, naming it:
-remove the shim, or move its date with the owner's OK. A new shim gets a row.
+remove the shim, or move its date with the owner's OK. A new shim gets a row
+(`review_client_id`: a participant's `review:<id>` from 0.171 and before, until 0.173; its old-shape samples are
+hand-made in `spec/fixtures/compat_review_client_id/`, as no corpus recorded one).
 
 ## Levels
 

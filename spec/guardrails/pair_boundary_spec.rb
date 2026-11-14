@@ -918,7 +918,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by the turn's mode" do
                                         cancelled: -> { false }, ask: ->(_) {},
                                         participant: ->(_author) { entry })
     w.state_dir = File.join(base, "state")
-    turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
+    turn_of.new(w, wiring_turn_context(w, { client_id: "participant:p_0123abcd", author: author }, session: session))
   end
 
   def evaluate(turn, call) = turn.wiring.gate(hooks: nil, tools: nil).evaluate(call, context: turn.context, iteration: 1, params: "")
@@ -986,7 +986,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by the turn's mode" do
     owner.settle!(:allow)
     owner.scope = "session"
     w.approvals.add(owner, "session")
-    turn = turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
+    turn = turn_of.new(w, wiring_turn_context(w, { client_id: "participant:p_0123abcd", author: author }, session: session))
     verdict = w.gate(hooks: nil, tools: nil).settle_ask(evaluate(turn, call), context: turn.context)
 
     expect(asked.size).to eq(1)

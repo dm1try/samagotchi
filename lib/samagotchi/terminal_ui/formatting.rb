@@ -311,7 +311,7 @@ module Samagotchi
         source = (message[:source] || message["source"]).to_s
         content = (message[:content] || message["content"]).to_s
         author = Steer.sender_author(message[:author] || message["author"])
-        return prompt_line(ClientId::REVIEW_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
+        return prompt_line(ClientId::PARTICIPANT_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
         return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
 
         content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")

@@ -43,9 +43,16 @@ module Samagotchi
     PLUGIN = "plugin"
     # A relayed answer (RelayVerifier): relay:<parent8>.
     RELAY_PREFIX = "relay:"
-    # A participant's review turn: review:<participant id> (chi web stamps
-    # it from the participant's token, never from the request's body).
-    REVIEW_PREFIX = "review:"
+    # A participant's turn: participant:<participant id> (chi web stamps it
+    # from the participant's token, never from the request's body). Not
+    # their author (Steer::PARTICIPANT_PREFIX, "p:<id>"), which says who
+    # wrote a turn: this says which sender delivered it.
+    PARTICIPANT_PREFIX = "participant:"
+    # compat shim review_client_id: chi before 0.172 gave a participant's
+    # turns review:<id> (in turn_drawings.jsonl, input files, an older chi
+    # web still running): read as a participant's, never the owner's, and
+    # sent to a worker without Delivery::PARTICIPANT_ID_FEATURE.
+    LEGACY_REVIEW_PREFIX = "review:"
 
     # A worker's own first prompt (spawn_session's) when no sender was
     # saved for it (WorkerInbound#initial_origin: a person's session saves
@@ -82,6 +89,10 @@ module Samagotchi
     unattended = { human: false, owner: false, interactive: false, wake: :automatic, origin: "client", source: :automatic,
                    label: "automatic" }
 
+    # A participant: a human's input, never the owner's.
+    participant = Sender.new(match: PARTICIPANT_PREFIX, human: true, owner: false, interactive: false, wake: :participant,
+                             origin: "participant", source: "participant", label: "invited")
+
     # Every id chi makes: an allowlist. Delegates, plugins, reminders,
     # context changes and any id chi doesn't know (UNKNOWN) are no human's.
     ROWS = [
@@ -108,9 +119,9 @@ module Samagotchi
       Sender.new(match: SCHEDULE_PREFIX, **unattended, wake: :schedule, origin: "schedule", label: "schedule"),
       Sender.new(match: PLUGIN, **unattended, wake: :plugin, source: "plugin_send", label: "plugin"),
       Sender.new(match: RELAY_PREFIX, **unattended),
-      # A participant: a human's input, never the owner's.
-      Sender.new(match: REVIEW_PREFIX, human: true, owner: false, interactive: false, wake: :participant, origin: "review",
-                 source: "participant", label: "invited")
+      participant,
+      # compat shim review_client_id: the same row for the old prefix.
+      participant.with(match: LEGACY_REVIEW_PREFIX)
     ].freeze
 
     # No client id: reaches only a worker's own seams (an input file from
@@ -141,7 +152,7 @@ module Samagotchi
 
     # What sent a turn: "delegate" (a delegating parent), "delegate_report"
     # (a child's report), "context" (a context wake), "task" (a task finish
-    # wake), "review" (a participant), "reminder", "schedule" (a durable
+    # wake), "participant", "reminder", "schedule" (a durable
     # schedule's firing), else "client" (the owner, chi send, a plugin, nil).
     # @return [String]
     def origin(client_id) = sender(client_id).origin
@@ -167,11 +178,19 @@ module Samagotchi
     def wake_kind(client_id) = sender(client_id).wake
 
     # The client id a participant's turn carries (chi web's, from their
-    # grant): review:<participant id>.
-    def review(participant_id) = "#{REVIEW_PREFIX}#{participant_id}"
+    # grant): participant:<participant id>.
+    def participant(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"
 
-    # Whether +client_id+ is a participant's (review:).
-    def review?(client_id) = client_id.to_s.start_with?(REVIEW_PREFIX)
+    # Whether +client_id+ is a participant's (participant:, or an older
+    # chi's review:).
+    def participant?(client_id) = sender(client_id).wake == :participant
+
+    # compat shim review_client_id: +client_id+ as a worker from before
+    # participant: reads a participant's (review:<id>); any other as it is.
+    def legacy_participant(client_id)
+      id = client_id.to_s
+      id.start_with?(PARTICIPANT_PREFIX) ? "#{LEGACY_REVIEW_PREFIX}#{id.delete_prefix(PARTICIPANT_PREFIX)}" : client_id
+    end
 
     # The client id a delegating parent's task and follow-ups carry:
     # delegate:<parent8>.

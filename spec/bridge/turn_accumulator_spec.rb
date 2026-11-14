@@ -403,7 +403,7 @@ exit: 0"
 
   it "names a participant's prompt and merged input as theirs, live and replayed; the owner's carry no author" do
     feed({ type: :turn_started, prompt: "is step 3 safe?", author: "p:p_1", author_name: "Alex",
-           origin: { client_id: "review:p_1", author: "p:p_1" } },
+           origin: { client_id: "participant:p_1", author: "p:p_1" } },
          { type: :pending_input_merged, iteration: 2, count: 1, content: "and step 4?", author: "p:p_1", author_name: "Alex" })
 
     expect(described_class.messages_of(acc.current_turn)).to eq([

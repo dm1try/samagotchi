@@ -16,7 +16,7 @@ require "samagotchi/participants"
 # GuardrailWiring (its #begin_turn's git, participant and mode), as
 # Engine#begin_turn builds it.
 #
-#   turn = wiring_turn_context(wiring, { client_id: "review:p_1", author: "p:p_1" }, session: session)
+#   turn = wiring_turn_context(wiring, { client_id: "participant:p_1", author: "p:p_1" }, session: session)
 #   wiring.request_approval(verdict, turn)
 #
 # #participant_entry: a participants.json entry (current for a day) a

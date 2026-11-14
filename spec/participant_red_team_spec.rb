@@ -92,7 +92,7 @@ RSpec.describe "a participant red-teaming a session" do
       results.map { |m| m[:content].to_s }
     end
 
-    def participant_turn(calls) = turn(calls, origin: { client_id: "review:#{grant.id}", author: grant.author })
+    def participant_turn(calls) = turn(calls, origin: { client_id: "participant:#{grant.id}", author: grant.author })
 
     def refused = a_string_including("denied by guardrail (rule participant-refused, core): " \
                                      "#{Samagotchi::Guardrails::ParticipantRefusal::REASON}")
@@ -161,7 +161,7 @@ RSpec.describe "a participant red-teaming a session" do
       session.messages.select { |m| m[:role] == "tool_response" }.last(calls.size).map { |m| m[:content].to_s }
     end
 
-    def participant_turn(calls) = turn(calls, origin: { client_id: "review:#{grant.id}", author: grant.author })
+    def participant_turn(calls) = turn(calls, origin: { client_id: "participant:#{grant.id}", author: grant.author })
 
     def denied(reason) = a_string_including("denied by guardrail (rule pair-boundary, core): #{reason}")
 
@@ -357,11 +357,11 @@ RSpec.describe "a participant red-teaming a session" do
 
       expect([status, body["delivery"]]).to eq([202, "queue"])
       expect(body).not_to have_key("cut")
-      expect(inputs).to contain_exactly(include("client_id" => "review:#{grant.id}", "author" => grant.author,
+      expect(inputs).to contain_exactly(include("client_id" => "participant:#{grant.id}", "author" => grant.author,
                                                 "delivery" => "queue"))
       expect(inputs.first).not_to have_key("no_interrupt")
       enqueued = announced.find { |event| event[:type] == :turn_enqueued }
-      expect(enqueued).to include(client_id: "review:#{grant.id}", author: grant.author)
+      expect(enqueued).to include(client_id: "participant:#{grant.id}", author: grant.author)
       expect(Samagotchi::PromptHistory).not_to have_received(:append)
     end
 

@@ -19,6 +19,7 @@ and commands may change between minor versions. How releases are made:
 - Participants: a participant's turn uses only your approvals for this session ("Allow … for the session"); a call your repo or rule approval would allow asks you on a card.
 - Participants: a participant's turn in your own Verify fresh child is refused before it starts ("revoked"), rather than starting and having every call denied as an older chi's.
 - Input that names no sender is never taken as yours: its `/model x` line is text and its `!` line is refused, it doesn't un-archive the session, and the worker's `POST /command` without a `client_id` answers 400 (every chi UI and command names itself); from a participant, a delegate, a plugin or an id chi doesn't know it answers 403 and runs nothing. A session's first prompt and your Continue / Stop on a card still count as yours.
+- Participants: a participant's client id is `participant:<id>` (was `review:<id>`); a `review:<id>` from before (drawn turns, queued input, an older `chi web` or worker still running) is read as a participant's until 0.173.
 
 ### Removed
 

@@ -275,8 +275,8 @@ What is a participant's on the main page is `participant_main.js`, made by app.j
   names (an old `#s=ID` link, a claim link's `#s=…&t=…&q=…`, which `owner_claim.js` still shows); `allViewOpen` is
   never true; there is no start page.
 - **Who they are** (`viewer_self.js`): set from each show's `viewer` (`setCapabilities` → `participant.shown`),
-  since `<body>` names no ids. `turn_events.js isOwn` counts their client id (`review:<grant>`, chi web's for every
-  tab of theirs) as the tab's own; a `turn_started` with `mine` starts their queued bubble (`bubbles.js
+  since `<body>` names no ids. `turn_events.js isOwn` counts their client id (`participant:<grant>`, chi web's for every
+  tab of theirs, and the same grant's `review:<grant>` from an older chi: `viewer_self.js isViewerClient`) as the tab's own; a `turn_started` with `mine` starts their queued bubble (`bubbles.js
   queuedOwnBubble`: no origin names its enqueued id to them). `turn_html.js userBubbleTemplate` gives their echo
   their badge and the owner's prompts the "owner" label; `participant_names.js authorBadgeText` reads their turn as
   the name alone for them (an older chi's read-only turn "· read-only").

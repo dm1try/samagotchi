@@ -375,7 +375,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     it "waits on their own turn with chi send --wait --turn: a turn waiting on the owner exits 3, wait again" do
       session_dir = Samagotchi::Session.session_dir(session.id, state_dir: state)
       FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:#{issued.grant.id}",
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "participant:#{issued.grant.id}",
                                                         author: issued.grant.author, enqueued_id: "e-1", delivery: "queue")
       app = RemoteBackend.app(state_dir: state)
       allow(app.send(:session_access)).to receive(:wait_reply)

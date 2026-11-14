@@ -46,7 +46,7 @@ module Samagotchi
     # owner's input (ClientId.owner?: a web tab, a chi TUI, chi send, a
     # worker's own first prompt, a person's card answer) and chi answer's.
     # No client id is no one's: refused (every sender names itself). A
-    # participant (review:) is refused on its own.
+    # participant (participant:) is refused on its own.
     # A delegate, a child's report, a context or task wake, a schedule, a
     # reminder, a relay and a plugin may not (the bundles that send,
     # coordinator and skills, send prose).

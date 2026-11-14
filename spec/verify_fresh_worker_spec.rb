@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
     child.save(state_dir: tmpdir)
     allow(engine).to receive(:run_turn).and_return(result)
     start_worker(child)
-    Samagotchi::SessionInbox.write_input(dir_of(child.id), prompt: "try it", client_id: "review:#{grant.id}",
+    Samagotchi::SessionInbox.write_input(dir_of(child.id), prompt: "try it", client_id: "participant:#{grant.id}",
                                                            author: grant.author, enqueued_id: "e1")
 
     wait_for("the refusal") { parent_audit.any? { |line| line["event"] == "turn" && line["reason"] == "revoked" } }

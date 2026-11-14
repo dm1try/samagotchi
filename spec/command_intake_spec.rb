@@ -24,7 +24,7 @@ RSpec.describe Samagotchi::CommandIntake do
       "system:schedule:0123456789abcdef" => false,
       "plugin" => false,
       "relay:1234abcd" => false,
-      "review:p_0123abcd" => false,
+      "participant:p_0123abcd" => false,
       "other" => false
     }
   end

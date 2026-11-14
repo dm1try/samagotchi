@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   def run(origin) = engine.run_turn(session, "go", origin: origin, on_event: ->(event) { events << event })
 
   it "stops a participant's pair turn before its next generation, with the stop notice" do
-    run({ client_id: "review:#{grant.id}", author: author })
+    run({ client_id: "participant:#{grant.id}", author: author })
 
     expect(asked).to eq([author])
     expect(generations).to be_empty
@@ -74,7 +74,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
     expect(generations).to eq(%i[ran ran])
 
     session.review = { subjects: ["README.md"] }
-    run({ client_id: "review:#{grant.id}", author: author })
+    run({ client_id: "participant:#{grant.id}", author: author })
     expect(asked).to eq([author])
     expect(generations).to eq(%i[ran ran])
   end

@@ -18,8 +18,8 @@ RSpec.describe Samagotchi::Engine, "cross-thread readers of the running turn" do
   let(:kernel) { test_kernel(client: client) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
-  let(:first) { { client_id: "review:p_a", enqueued_id: "e1", author: "p:p_a" } }
-  let(:second) { { client_id: "review:p_b", enqueued_id: "e2", author: "p:p_b" } }
+  let(:first) { { client_id: "participant:p_a", enqueued_id: "e1", author: "p:p_a" } }
+  let(:second) { { client_id: "participant:p_b", enqueued_id: "e2", author: "p:p_b" } }
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")

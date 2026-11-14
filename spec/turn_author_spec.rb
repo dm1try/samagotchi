@@ -184,7 +184,7 @@ RSpec.describe "a turn's author" do
         result
       end
       events = []
-      origin = { client_id: "review:p_1", enqueued_id: "e1", author: "p:p_1" }
+      origin = { client_id: "participant:p_1", enqueued_id: "e1", author: "p:p_1" }
 
       engine.run_turn(session, "hi", origin: origin, on_event: ->(e) { events << e })
 

@@ -36,7 +36,9 @@ RSpec.describe "ClientId: what each sender gets" do
     "system:schedule:1234abcd" => automatic.call("schedule", :schedule),
     ids::PLUGIN => [false, false, false, :plugin, "client", "plugin_send"],
     "relay:1234abcd" => automatic.call,
-    "review:p_0123abcd" => [true, false, false, :participant, "review", "participant"],
+    "participant:p_0123abcd" => [true, false, false, :participant, "participant", "participant"],
+    # compat shim review_client_id: an older chi's participant id, origin "review" before the rename.
+    "review:p_0123abcd" => [true, false, false, :participant, "participant", "participant"],
     "other:1" => automatic.call,
     "webby" => automatic.call,
     "web" => automatic.call,

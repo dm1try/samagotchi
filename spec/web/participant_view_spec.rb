@@ -83,17 +83,17 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
 
     it "shows the viewer's own turn_started with its refs, another's with a count" do
-      own = { type: :turn_started, prompt: "look", turn_id: "t1", author: "p:p_1", origin: { client_id: "review:p_1" }, images: [STORED] }
+      own = { type: :turn_started, prompt: "look", turn_id: "t1", author: "p:p_1", origin: { client_id: "participant:p_1" }, images: [STORED] }
       expect(shown(own)["images"]).to eq([STORED_SHOWN])
-      expect(shown(own.merge(author: "p:p_2", origin: { client_id: "review:p_2" }))["images"]).to eq(1)
+      expect(shown(own.merge(author: "p:p_2", origin: { client_id: "participant:p_2" }))["images"]).to eq(1)
       expect(shown(own.except(:author).merge(origin: { client_id: "web:tab" }))["images"]).to eq(1)
     end
 
     it "gives the running turn (current_turn) the viewer's own refs, another's a count" do
-      own = { "prompt" => "look", "turn_id" => "t1", "author" => "p:p_1", "origin" => { "client_id" => "review:p_1" },
+      own = { "prompt" => "look", "turn_id" => "t1", "author" => "p:p_1", "origin" => { "client_id" => "participant:p_1" },
               "images" => [STORED.transform_keys(&:to_s)] }
       expect(described_class.current_turn(own, viewer)["images"]).to eq([STORED_SHOWN])
-      other = own.merge("author" => "p:p_2", "origin" => { "client_id" => "review:p_2" })
+      other = own.merge("author" => "p:p_2", "origin" => { "client_id" => "participant:p_2" })
       expect(described_class.current_turn(other, viewer)["images"]).to eq(1)
     end
 
@@ -107,14 +107,14 @@ RSpec.describe Samagotchi::Web::ParticipantView do
   describe ".event" do
     it "shows a person's turn with its prompt and author, an automatic one without its text" do
       expect(shown({ type: :turn_started, prompt: "is step 3 safe?", turn_id: "t1", author: "p:p_1", author_name: "Alex",
-                     origin: { client_id: "review:p_1", enqueued_id: "e1", author: "p:p_1" }, images: [{ file: "/x.png" }],
+                     origin: { client_id: "participant:p_1", enqueued_id: "e1", author: "p:p_1" }, images: [{ file: "/x.png" }],
                      cut_after: 3, session_id: "s" }))
         .to eq("type" => "turn_started", "turn_id" => "t1", "prompt" => "is step 3 safe?", "author" => "p:p_1",
                "author_name" => "Alex", "mine" => true)
       expect(shown({ type: :turn_started, prompt: "fix it", turn_id: "t2", author: "p:p_1", participant_mode: "pair",
-                     origin: { client_id: "review:p_1", author: "p:p_1" } }))
+                     origin: { client_id: "participant:p_1", author: "p:p_1" } }))
         .to include("author" => "p:p_1", "participant_mode" => "pair")
-      expect(shown({ type: :turn_started, prompt: "x", author: "p:p_1", participant_mode: "<b>", origin: { client_id: "review:p_1" } }))
+      expect(shown({ type: :turn_started, prompt: "x", author: "p:p_1", participant_mode: "<b>", origin: { client_id: "participant:p_1" } }))
         .not_to have_key("participant_mode")
       expect(shown({ type: :turn_started, prompt: "owner's", origin: { client_id: "web:tab" } }))
         .to eq("type" => "turn_started", "prompt" => "owner's")
@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
 
     it "marks no turn as the owner's own when the owner looks through the participant view" do
       owner = Samagotchi::Redact::Viewer.new(cwd: "/p")
-      out = described_class.event({ "type" => "turn_started", "author" => "p:p_1", "origin" => { "client_id" => "review:p_1" } }, owner)
+      out = described_class.event({ "type" => "turn_started", "author" => "p:p_1", "origin" => { "client_id" => "participant:p_1" } }, owner)
       expect(out).not_to have_key("mine")
     end
 
@@ -172,9 +172,9 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
 
     it "sends the viewer's own queued turn in the owner's shape, its stored image refs only; another's bare" do
-      own = { type: :turn_enqueued, event_seq: 5, enqueued_id: "e1", client_id: "review:p_1", prompt: "mine", author: "p:p_1",
+      own = { type: :turn_enqueued, event_seq: 5, enqueued_id: "e1", client_id: "participant:p_1", prompt: "mine", author: "p:p_1",
               delivery: "queue", images: [{ file: "/home/o/proj/shot.png" }] }
-      expect(shown(own)).to eq("type" => "turn_enqueued", "event_seq" => 5, "enqueued_id" => "e1", "client_id" => "review:p_1",
+      expect(shown(own)).to eq("type" => "turn_enqueued", "event_seq" => 5, "enqueued_id" => "e1", "client_id" => "participant:p_1",
                                "prompt" => "mine", "author" => "p:p_1", "delivery" => "queue")
       expect(shown(own.merge(images: [STORED, { file: "/home/o/proj/shot.png" }]))["images"]).to eq([STORED_SHOWN])
       expect(shown(own.merge(author: "p:p_2", prompt: "THEIRS"))).to eq("type" => "turn_enqueued", "event_seq" => 5)
@@ -191,11 +191,11 @@ RSpec.describe Samagotchi::Web::ParticipantView do
 
     it "counts and names only the viewer's own merged lines: never a delegate's report or another person's line" do
       event = { type: :input_merged, event_seq: 7, count: 3,
-                origins: [{ client_id: "review:p_1", enqueued_id: "e1", author: "p:p_1" },
+                origins: [{ client_id: "participant:p_1", enqueued_id: "e1", author: "p:p_1" },
                           { client_id: "delegate:REPORT-ID", enqueued_id: "r1" },
-                          { client_id: "review:p_2", enqueued_id: "THEIR-ID", author: "p:p_2" }] }
+                          { client_id: "participant:p_2", enqueued_id: "THEIR-ID", author: "p:p_2" }] }
       expect(shown(event)).to eq("type" => "input_merged", "event_seq" => 7, "count" => 1,
-                                 "origins" => [{ "enqueued_id" => "e1", "client_id" => "review:p_1", "author" => "p:p_1" }])
+                                 "origins" => [{ "enqueued_id" => "e1", "client_id" => "participant:p_1", "author" => "p:p_1" }])
       expect(shown(event.merge(origins: event[:origins].drop(1)))).to eq("type" => "input_merged", "event_seq" => 7)
     end
 
@@ -460,8 +460,8 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
 
   it "names a dequeued turn the viewer's own once this stream sent its enqueue as theirs, or chi web says it is" do
     known = described_class.new(viewer, own_enqueued: ->(id) { id == "old" })
-    out = known.call(frame("1-ep", { type: "turn_enqueued", enqueued_id: "e1", client_id: "review:p_1", prompt: "go", author: "p:p_1" }) +
-                     frame("2-ep", { type: "turn_dequeued", enqueued_id: "e1", client_id: "review:p_1" }) +
+    out = known.call(frame("1-ep", { type: "turn_enqueued", enqueued_id: "e1", client_id: "participant:p_1", prompt: "go", author: "p:p_1" }) +
+                     frame("2-ep", { type: "turn_dequeued", enqueued_id: "e1", client_id: "participant:p_1" }) +
                      frame("3-ep", { type: "turn_dequeued", enqueued_id: "old" }) +
                      frame("4-ep", { type: "turn_dequeued", enqueued_id: "someone-else" }))
     events = out.scan(/^data: (.*)\r$/).flatten.map { |json| JSON.parse(json) }

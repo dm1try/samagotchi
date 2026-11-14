@@ -796,11 +796,14 @@ module Samagotchi
     # to pass one on (ReviseAnchor::PARTICIPANT_FEATURE).
     # activity: GET /activity answers with Worker#activity_snapshot, so
     # `chi schedule tick` can ask a live worker what it is busy with.
+    # participant_client_id: it reads a participant's client id as
+    # participant:<id>; chi web sends a worker without it review:<id>
+    # (Delivery::PARTICIPANT_ID_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
-                Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE].freeze
+                Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

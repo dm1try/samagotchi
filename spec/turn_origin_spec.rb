@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::TurnOrigin do
     end
 
     it "reads back as the same origin" do
-      origin = described_class.new(client_id: "review:p_1", enqueued_id: "e2", author: "p:p_1")
+      origin = described_class.new(client_id: "participant:p_1", enqueued_id: "e2", author: "p:p_1")
 
       expect(described_class.from(origin.to_h)).to eq(origin)
       expect(described_class.from(JSON.parse(JSON.generate(origin.to_h)))).to eq(origin)
@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::TurnOrigin do
 
   describe "the author" do
     it "is a participant's for any author but none or the owner's (Steer.participant_author?)" do
-      participant = described_class.new(client_id: "review:p_1", author: "p:p_1")
+      participant = described_class.new(client_id: "participant:p_1", author: "p:p_1")
 
       expect(participant).to be_participant
       expect(participant.participant_author).to eq("p:p_1")

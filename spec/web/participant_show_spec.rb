@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
   end
   let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir) }
   let(:author) { issued.grant.author }
-  let(:client_id) { "review:#{issued.grant.id}" }
+  let(:client_id) { "participant:#{issued.grant.id}" }
   let(:own_image) { { "file" => "images/0123456789abcdef.png", "name" => "s.png", "width" => 3, "height" => 2 } }
   let(:snapshot) do
     { "snapshot" => {

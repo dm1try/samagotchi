@@ -155,7 +155,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
 
   it "judges nothing for a participant's turn" do
     w = wiring
-    turn = wiring_turn_context(w, { client_id: "review:p_0123abcd", author: "p_0123abcd" }, session: session)
+    turn = wiring_turn_context(w, { client_id: "participant:p_0123abcd", author: "p_0123abcd" }, session: session)
     verdict = w.request_approval(verdict_for, turn)
     expect(verdict).to be_allow
     expect(File.exist?(log_path)).to be false
@@ -176,7 +176,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
                                         })
     w.state_dir = state_dir
     w.interface = :worker
-    turn = wiring_turn_context(w, { client_id: "review:p_0123abcd", author: "p:p_0123abcd" }, session: session)
+    turn = wiring_turn_context(w, { client_id: "participant:p_0123abcd", author: "p:p_0123abcd" }, session: session)
     expect(turn.participant_mode).to eq(:pair)
     expect(on).not_to receive(:ask)
 
