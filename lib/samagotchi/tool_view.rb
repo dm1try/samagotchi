@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "command_steps"
-require_relative "tools/execute"
-require_relative "tools/task_create"
-require_relative "tools/task_wait"
+require_relative "tool_names"
 
 module Samagotchi
   # What a richer UI shows of a tool call beyond its one-line params: the
@@ -29,7 +27,7 @@ module Samagotchi
     # The longest command a view carries (the spike's longest was 3,799).
     COMMAND_LIMIT = 8_000
 
-    TOOLS = [Tools::Execute::NAME, Tools::TaskCreate::NAME].freeze
+    TOOLS = [ToolNames::Execute::NAME, ToolNames::TaskCreate::NAME].freeze
 
     # The longest description a view carries; a row's title shows the
     # first TITLE_LIMIT characters of it.
@@ -39,7 +37,7 @@ module Samagotchi
     # @return [ToolView, nil] nil for a tool without a view and for an
     #   empty command
     def self.for(tool_name, call)
-      return task_wait(call) if tool_name == Tools::TaskWait::NAME && call.is_a?(Hash)
+      return task_wait(call) if tool_name == ToolNames::TaskWait::NAME && call.is_a?(Hash)
       return nil unless TOOLS.include?(tool_name) && call.is_a?(Hash)
 
       command = call[:content].to_s

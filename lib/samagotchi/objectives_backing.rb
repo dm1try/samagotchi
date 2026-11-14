@@ -3,11 +3,7 @@
 require_relative "steer"
 require_relative "tool_activity"
 require_relative "tool_response"
-require_relative "tools/edit"
-require_relative "tools/execute"
-require_relative "tools/objectives_tool"
-require_relative "tools/task_wait"
-require_relative "tools/write"
+require_relative "tool_names"
 
 module Samagotchi
   module Objectives
@@ -37,7 +33,7 @@ module Samagotchi
     class Backing
       OK = "ok"
       FAILED = "failed"
-      CHANGES = [Tools::Edit::NAME, Tools::Write::NAME].freeze
+      CHANGES = [ToolNames::Edit::NAME, ToolNames::Write::NAME].freeze
 
       # +runs+ the move's turn's paired runs before it (LLMContextStale.paired_runs'),
       # in order; +state+ the move's.
@@ -58,7 +54,7 @@ module Samagotchi
             edited_after = false
           end
         end
-        unbacked = state == Tools::ObjectivesTool::DONE && !command.nil? && (command == FAILED || edited_after)
+        unbacked = state == ToolNames::ObjectivesTool::DONE && !command.nil? && (command == FAILED || edited_after)
         new(edits: edits, command: command, edited_after_command: edited_after, unbacked: unbacked)
       end
 
@@ -79,7 +75,7 @@ module Samagotchi
       # an execute that finished ok (a failed, denied, stopped one isn't; one
       # handed over as a task still runs, and isn't either).
       def self.work?(run)
-        edit?(run) || (run.call[:name].to_s == Tools::Execute::NAME && command_status(run) == OK)
+        edit?(run) || (run.call[:name].to_s == ToolNames::Execute::NAME && command_status(run) == OK)
       end
 
       def self.edit?(run)
@@ -95,12 +91,12 @@ module Samagotchi
       # a waiting message) or that waited on nothing (an Error:).
       def self.command_status(run)
         name = run.call[:name].to_s
-        return nil unless [Tools::Execute::NAME, Tools::TaskWait::NAME].include?(name)
+        return nil unless [ToolNames::Execute::NAME, ToolNames::TaskWait::NAME].include?(name)
         return nil if ToolResponse.interrupted_text?(run.text)
 
         text = ToolActivity.saved_result_text(run.text)
         return nil if ToolActivity.guardrail_denied?(text)
-        return task_status(text) if name == Tools::TaskWait::NAME
+        return task_status(text) if name == ToolNames::TaskWait::NAME
         return nil if ToolActivity.handed_over?(name, text)
 
         case ToolActivity.tool_activity_status(text, name, command: run.call[:content])
