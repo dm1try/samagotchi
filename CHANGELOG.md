@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.172.0] - 2026-11-14
+
 ### Changed
 
 - Participants: one kind of invite. An invited person's turns act in the session under your guardrails (asks come to you, Allow once only); there are no read-only turns any more. `chi share` and the panel's Invite always say so, and refuse to invite anyone to a session whose worker is older ("restart the session first").
@@ -33,8 +35,9 @@ and commands may change between minor versions. How releases are made:
 
 - `chi -p` in a terminal: a turn that ends with an empty answer prints "chi: the model gave an empty answer" again, instead of an error (NameError) since 0.171.0.
 - chi web: a memory in the working set is marked stale when a project memory or model overlay now answers its read.
-- chi web: a memory preview uses only stamped paths when its project directory is outside the memories folder.
 - A background task that leaves processes running after its command ends (`cmd &` without `wait`) has them stopped, as `execute` does, and the task's result says so. `execute`'s note on a stopped background process now says to start a long job with `task_create` in the foreground (no `&`).
+
+Update with `chi update` (it upgrades coordinator to 0.9.0, github-pr to 0.6.5 and inline-widgets to 0.1.2), then restart chi web and running sessions (`chi sessions restart`).
 
 ## [0.171.0] - 2026-11-14
 
@@ -6344,7 +6347,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.171.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.172.0...HEAD
+[0.172.0]: https://github.com/dm1try/samagotchi/compare/v0.171.0...v0.172.0
 [0.171.0]: https://github.com/dm1try/samagotchi/compare/v0.170.0...v0.171.0
 [0.170.0]: https://github.com/dm1try/samagotchi/compare/v0.169.0...v0.170.0
 [0.169.0]: https://github.com/dm1try/samagotchi/compare/v0.168.0...v0.169.0
