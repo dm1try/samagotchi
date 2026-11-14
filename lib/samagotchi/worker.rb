@@ -45,6 +45,7 @@ require_relative "context_poller"
 require_relative "task_watch"
 require_relative "tools/task_runtime"
 require_relative "worker_participant_gate"
+require_relative "worker_exit_claim"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -150,13 +151,8 @@ module Samagotchi
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
       @command_queue = Thread::Queue.new
-      # The client_id of a client that asked the worker to exit (POST /exit).
-      @exit_requested = nil
-      @exit_requested_by = nil
       # Set as it leaves: nothing happened in the session (#discard?).
       @discard = false
-      # The exit asked for is a restart (POST /exit restart: true).
-      @exit_restart = false
       # The lines the running turn's drain merged ([prompt, TurnOrigin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
@@ -175,10 +171,10 @@ module Samagotchi
       @loop_started = false
       @left_loop = false
       @signal_mutex = Mutex.new
-      # The exit being taken or taken (:exit, :delete, :restart), claimed
-      # under its own lock before #exit_request's slow stop-all (#claim_exit).
-      @exit_claim = nil
-      @exit_claim_mutex = Mutex.new
+      # The exit being taken or taken (POST /exit: :exit, :delete, :restart,
+      # who asked), claimed under its own lock before #exit_request's slow
+      # stop-all, and what that stop-all stopped.
+      @exit_claim = WorkerExitClaim.new
       @grace_expired = false
       # The running turn has ended (its end event) and its after_turn hooks
       # run: a signal's grace waits for them (#signalled).
@@ -231,9 +227,13 @@ module Samagotchi
     end
 
     # The step that stops what the user can stop (the reminders, the watched
-    # tasks and the delegate children the exit ask lists), and what the last
-    # stop-all exit stopped. /exit's 2 uses it; the web's Stop will too.
-    attr_reader :hold_stop, :stopped_holds
+    # tasks and the delegate children the exit ask lists). /exit's 2 uses
+    # it; the web's Stop will too.
+    attr_reader :hold_stop
+
+    # @return [HoldStop::Stopped, nil] the last stop-all's list (the Bridge's
+    #   exit_stopped)
+    def stopped_holds = @exit_claim.stopped
 
     private
 
@@ -324,7 +324,7 @@ module Samagotchi
       # one that finishes unseen wakes the idle session (#run_task_wake).
       @task_wakes = WorkerTaskWakes.new(engine: @engine, session: @session, wakes: @wakes,
                                         awaiting_continue: -> { @turn_flow.awaiting_continue? },
-                                        idle: -> { nothing_queued? && !@exit_requested },
+                                        idle: -> { nothing_queued? && !@exit_claim.taken? },
                                         save: -> { save_or_log(:task_notes) { save_session } })
       @engine.subscribe(observer: lambda { |event|
         if Events::TURN_END.include?(event[:type])
@@ -529,7 +529,7 @@ module Samagotchi
       # ahead of an exit or restart a client asked for: it is a note then.
       @inbound.absorb_notes
       absorb_fresh_verdicts
-      return if absorb_context(wake: nothing_queued? && !@exit_requested)
+      return if absorb_context(wake: nothing_queued? && !@exit_claim.taken?)
 
       if (prompt = @inbound.take_initial_prompt)
         run_initial_prompt(prompt) unless @inbound.initial_command?(prompt)
@@ -559,7 +559,7 @@ module Samagotchi
       return left(:scratch_left) if scratch_unattended? && !@engine.turn_running? && leave_scratch
       return left(:idle_exit) if @idle_exit.due? && leave_idle
 
-      leaving = @exit_requested && leave_on_request
+      leaving = @exit_claim.taken? && leave_on_request
       return left(leaving) if leaving
 
       @participant_gate.watch
@@ -1717,7 +1717,7 @@ module Samagotchi
       return if @marked_leaving
 
       @marked_leaving = true
-      wait ||= @exit_restart ? 0 : @engine.recap_timeout.to_f
+      wait ||= @exit_claim.restart? ? 0 : @engine.recap_timeout.to_f
       @owner_lock&.mark_leaving(wait: wait)
     rescue StandardError => e
       Log.warn(:worker, "mark_leaving_failed", error: e.class.name, msg: e.message)
@@ -1752,53 +1752,22 @@ module Samagotchi
       # stop-all, so a request of another kind meanwhile is refused (409),
       # not told it went through. Held at the leave, it is forgotten and the
       # next request counts again.
-      refused = claim_exit(kind)
+      refused = @exit_claim.claim(kind)
       return refused.value if refused
 
       hold = exit_hold(client_id, kind: kind, stop: stop, ask: ask)
       if hold
-        forget_exit
+        @exit_claim.forget
         return hold
       end
 
-      @stopped_holds = nil unless stop
-      @exit_requested_by = client_id
-      @exit_deletes = kind == :delete
-      @exit_restart = kind == :restart
-      @exit_requested = true
+      @exit_claim.accept(by: client_id, stop: stop)
       @waker.wake
       nil
     rescue StandardError
       # A look or a stop that raised lets the claim go (the Bridge answers 500).
-      forget_exit unless @exit_requested
+      @exit_claim.release
       raise
-    end
-
-    # One answer for an exit request that doesn't get the claim, boxed so a
-    # nil (accepted) is told apart from "claimed".
-    ExitRefused = Data.define(:value)
-
-    # @return [ExitRefused, nil] nil when this request now holds the claim;
-    #   else its answer: nil (accepted: an exit of the same kind is already
-    #   taken) or WorkerIdleExit.leaving (one of another kind is, or is still
-    #   being taken)
-    def claim_exit(kind)
-      @exit_claim_mutex.synchronize do
-        next ExitRefused.new(value: nil) if @exit_claim == kind && @exit_requested
-        next ExitRefused.new(value: WorkerIdleExit.leaving(@exit_claim)) if @exit_claim
-
-        @exit_claim = kind
-        nil
-      end
-    end
-
-    # The taken exit is let go: held at the leave, or its hand-off failed.
-    def forget_exit
-      @exit_claim_mutex.synchronize do
-        @exit_requested = nil
-        @exit_restart = false
-        @exit_claim = nil
-      end
     end
 
     # What keeps the worker up for this request, nil when nothing does; a
@@ -1823,7 +1792,7 @@ module Samagotchi
       # The ask's 409: the list, for the terminal to ask with.
       return hold unless stop
 
-      @stopped_holds = @hold_stop.stop_all
+      @exit_claim.stopped!(@hold_stop.stop_all)
       # An unstoppable hold may have arrived while stopping (a child stopped
       # here is no longer counted).
       @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
@@ -1839,23 +1808,26 @@ module Samagotchi
     def leave_on_request
       stop_bridge_after do
         @engine.synchronize_events do
-          hold = if @exit_restart
+          # One read: the kind and the asker of the same exit.
+          taken = @exit_claim.taken
+          restart = taken&.restart?
+          hold = if restart
                    @idle_exit.hold_for_restart
                  else
-                   @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+                   @idle_exit.hold_for_request(requester: taken&.by, streams: false)
                  end
           if hold
-            forget_exit
+            @exit_claim.forget
             Log.info(:worker, "exit_held", reason: hold)
             next false
           end
-          next false if @exit_restart && !carry_reminders
+          next false if restart && !carry_reminders
 
           @bridge&.close_intake
           # Not joined: a recap tick's emit waits for the event log held here.
           @engine.stop_idle(join: false)
-          Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
-          @exit_restart ? :restart : :exit_requested
+          Log.info(:worker, restart ? "restart_requested" : "exit_requested", by: taken&.by || "a client")
+          restart ? :restart : :exit_requested
         end
       end
     end
@@ -1874,7 +1846,7 @@ module Samagotchi
       end
       true
     rescue StandardError => e
-      forget_exit
+      @exit_claim.forget
       Log.warn(:worker, "reminders_carry_failed", error: e.class.name, msg: e.message)
       false
     end
@@ -1907,7 +1879,7 @@ module Samagotchi
     # A restart keeps even an empty session (a new worker takes it over at
     # once) and leaves the recap to the conversation's next real pause.
     def left(result)
-      deleting = (result == :exit_requested && @exit_deletes) || result == :scratch_left
+      deleting = (result == :exit_requested && @exit_claim.deletes?) || result == :scratch_left
       # The attached context goes with this process: a change that landed after
       # the leaving pass looked at it has no later pass to note it, so note it
       # here (no wake turn: the worker is on its way out). Not into a session

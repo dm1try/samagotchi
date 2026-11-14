@@ -100,12 +100,12 @@ RSpec.describe Samagotchi::WorkerExitClaim do
     readers = Array.new(3) do
       Thread.new do
         until stop
-          taken = claim.taken
-          next Thread.pass unless taken
-
-          errors << [:by, taken] unless taken.by.start_with?("#{taken.kind}-")
-          errors << [:restart, taken] unless taken.restart? == (taken.kind == :restart)
-          errors << [:deletes, taken] unless taken.deletes? == (taken.kind == :delete)
+          if (taken = claim.taken)
+            errors << [:by, taken] unless taken.by.start_with?("#{taken.kind}-")
+            errors << [:restart, taken] unless taken.restart? == (taken.kind == :restart)
+            errors << [:deletes, taken] unless taken.deletes? == (taken.kind == :delete)
+          end
+          Thread.pass
         end
       end
     end
