@@ -91,24 +91,24 @@ module Samagotchi
       LINGER_BYTES = 4 * 1024 * 1024
       LINGER_SECONDS = 2.0
 
-      # A refusal (status 400 or more) to a request that declared a body
-      # (Content-Length > 0, or Transfer-Encoding), and any answer with
-      # Connection: close (App's 413 too_large), end the connection: WEBrick
-      # would otherwise read and drop the rest of the body
-      # (HTTPRequest#fixup, up to its Content-Length) to keep the connection
-      # alive, before it sends the answer; rackup never tells WEBrick about
-      # the header (WEBrick reads it only as it sends). One rule here, not
-      # per route: the gate's 401, a participant's 403/404, the image
-      # path's own 413 and 429 close as App's 413 does. A 2xx/3xx stays
-      # alive (WEBrick drains a body the app left, as before); a hijacked
-      # stream is left to its own.
+      # A refusal (status 400 or more) to a request with a body, a successful
+      # answer to a large body the app may have left unread (over the small
+      # body limit or any Transfer-Encoding), and any answer with
+      # Connection: close end the connection: otherwise WEBrick drains the
+      # unread body before answering, holding a thread for an unbounded
+      # upload. One rule here, not per route. A small body on a 2xx/3xx stays
+      # alive; a hijacked stream is left to its own.
       module CloseOnConnectionClose
         def service(req, res)
           super
           return if res.body.respond_to?(:call)
 
-          body = req["content-length"].to_i.positive? || !req["transfer-encoding"].nil?
-          return unless res["connection"].to_s.casecmp?("close") || (res.status >= 400 && body)
+          content_length = req["content-length"].to_i
+          transfer_encoding = !req["transfer-encoding"].nil?
+          body = content_length.positive? || transfer_encoding
+          large_body = content_length > RequestBody::SMALL_BODY_LIMIT || transfer_encoding
+          close_for_body = body && (res.status >= 400 || large_body)
+          return unless res["connection"].to_s.casecmp?("close") || close_for_body
 
           res.keep_alive = false
           res.linger = body

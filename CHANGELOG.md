@@ -20,6 +20,10 @@ and commands may change between minor versions. How releases are made:
   stayed archived and dropped out of every list. A delete is refused while a continue of that session is under way,
   and a schedule's first or current link can't be deleted. Against an older chi web, `--remote` deletes plainly.
 
+### Fixed
+
+- chi web answers successful requests without draining large ignored bodies first, closing the connection instead.
+
 ## [0.173.0] - 2026-11-14
 
 ### Added

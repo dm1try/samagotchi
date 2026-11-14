@@ -53,6 +53,60 @@ RSpec.describe Samagotchi::Web::Server::Log do
   end
 end
 
+RSpec.describe Samagotchi::Web::Server::CloseOnConnectionClose do
+  def service_response(status:, body:, request_headers:, connection: "keep-alive")
+    response_class = Struct.new(:status, :body, :keep_alive, :linger, :headers) do
+      def [](name) = headers[name]
+    end
+    response = response_class.new(status, body, true, false, { "connection" => connection })
+    handler = Class.new do
+      def service(_request, _response); end
+    end
+    handler.prepend(described_class)
+    handler.new.service(request_headers, response)
+    response
+  end
+
+  it "closes a successful answer to a declared body larger than the small-body limit" do
+    response = service_response(status: 200, body: "ok",
+                                request_headers: { "content-length" => Samagotchi::Web::RequestBody::SMALL_BODY_LIMIT + 1 })
+
+    expect([response.keep_alive, response.linger]).to eq([false, true])
+  end
+
+  it "keeps a successful answer to a body at the small-body limit alive" do
+    response = service_response(status: 200, body: "ok",
+                                request_headers: { "content-length" => Samagotchi::Web::RequestBody::SMALL_BODY_LIMIT })
+
+    expect([response.keep_alive, response.linger]).to eq([true, false])
+  end
+
+  it "closes a successful answer to a chunked body" do
+    response = service_response(status: 204, body: "",
+                                request_headers: { "transfer-encoding" => "chunked" })
+
+    expect([response.keep_alive, response.linger]).to eq([false, true])
+  end
+
+  it "still closes a 4xx answer to a body" do
+    response = service_response(status: 404, body: "not found", request_headers: { "content-length" => 1 })
+
+    expect([response.keep_alive, response.linger]).to eq([false, true])
+  end
+
+  it "still closes a response with Connection: close" do
+    response = service_response(status: 200, body: "ok", request_headers: {}, connection: "close")
+
+    expect([response.keep_alive, response.linger]).to eq([false, false])
+  end
+
+  it "leaves a hijacked body untouched" do
+    response = service_response(status: 200, body: -> {}, request_headers: { "content-length" => 100_000 })
+
+    expect([response.keep_alive, response.linger]).to eq([true, false])
+  end
+end
+
 RSpec.describe Samagotchi::Web::Server do
   # The hub logs nothing of its own: the web log's start and stop lines
   # are the server's. Server.start starts it before WEBrick and stops it
@@ -1000,9 +1054,9 @@ RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
     [text, true]
   end
 
-  # +head+ declaring 300 MB, then up to +sent+ bytes while the answer is
+  # +head+ declaring a body, then up to +bytes+ while the answer is
   # read: [status, JSON body, closed, seconds, bytes written].
-  def refused_big_body(head)
+  def answered_big_body(head, bytes: sent)
     socket = connect
     socket.write(head)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -1010,7 +1064,7 @@ RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
       written = 0
       chunk = "a" * 65_536
       begin
-        while written < sent
+        while written < bytes
           socket.write(chunk)
           written += chunk.bytesize
         end
@@ -1037,14 +1091,14 @@ RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
   end
 
   it "answers App's 413 at once and closes, having read a bounded part of a 300 MB body" do
-    result = refused_big_body(post_head("/api/render", huge))
+    result = answered_big_body(post_head("/api/render", huge))
 
     expect_closed_fast(result, 413, "too_large")
     expect(result[1]["detail"]).to eq("a text to render may be up to 64 KB")
   end
 
   it "answers a request without a token 401 at once and closes" do
-    expect_closed_fast(refused_big_body(post_head("/api/render", huge, bearer: nil)), 401, "unauthorized")
+    expect_closed_fast(answered_big_body(post_head("/api/render", huge, bearer: nil)), 401, "unauthorized")
   end
 
   it "answers a participant's oversized image (the image path's own 413) at once and closes" do
@@ -1054,7 +1108,7 @@ RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
     issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
 
     head = post_head("/api/sessions/#{session.id}/images?name=a.png", huge, bearer: issued.token, content_type: "image/png")
-    expect_closed_fast(refused_big_body(head), 413, "too_large")
+    expect_closed_fast(answered_big_body(head), 413, "too_large")
   end
 
   it "keeps a connection alive after a body it took" do
@@ -1068,5 +1122,16 @@ RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
     end
   ensure
     socket&.close
+  end
+
+  it "answers a GET before the client finishes sending a large ignored body" do
+    length = 50 * 1024 * 1024
+    head = "GET /api/info HTTP/1.1\r\nHost: 127.0.0.1:#{server.port}\r\n" \
+      "Content-Length: #{length}\r\nConnection: keep-alive\r\n\r\n"
+    status, _json, closed, seconds, written = answered_big_body(head, bytes: length)
+
+    expect([status, closed]).to eq([200, true])
+    expect(seconds).to be < time_bound(3, below: 5)
+    expect(written).to be < length
   end
 end
