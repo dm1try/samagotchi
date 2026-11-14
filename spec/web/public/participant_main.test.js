@@ -236,3 +236,41 @@ ptest("participant_main: an ended link shows the 401's words from a brief read, 
   await unreadable.main.linkEnded();
   assert.match(document.querySelector("#participantClosed").textContent, new RegExp(`^${LINK_ENDED[0].toUpperCase()}`));
 });
+
+ptest("participant_main: a load or resync while their turn waits for the owner keeps the waiting look and the bar's \"waiting\"", () => {
+  const { main, state } = page();
+  const handlers = main.wrapHandlers({ turn_started: () => {} });
+  // renderSessionView: the show's viewer first (no turn runs yet on the page), then the replay.
+  main.shown({ ...ALEX, waiting_for_owner: "approval" });
+  state.running = true;
+  handlers.turn_started({ turn_id: "t1", author: "p:p_0123abcd", mine: true, replayed: true });
+  assert.equal(main.ownerWait(), "approval");
+  main.drawBar();
+  assert.equal(document.querySelector("#participantBar [data-key=status]").textContent, "waiting");
+  // A live start is a new turn: it waits for nothing yet.
+  handlers.turn_started({ turn_id: "t2", mine: true });
+  assert.equal(main.ownerWait(), null);
+});
+
+ptest("participant_main: a turn-end re-read a turn started after says nothing of the wait; a second end while one is out reads again", async () => {
+  const pending = [];
+  const read = () => new Promise((resolve) => pending.push(resolve));
+  const { main, state } = page({ read });
+  const handlers = main.wrapHandlers({});
+  main.shown(ALEX);
+  state.running = true;
+  handlers.turn_started({ turn_id: "t1", mine: true });
+  handlers.turn_completed({ turn_id: "t1" });
+  handlers.turn_completed({ turn_id: "t1b" });
+  assert.equal(pending.length, 1);
+  // The next turn starts (a Continue) before the read comes back saying "continue".
+  handlers.turn_started({ turn_id: "t2", mine: true });
+  pending[0]({ viewer: { ...ALEX, waiting_for_owner: "continue" }, session: { title: "Renamed" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(main.ownerWait(), null);
+  assert.equal(main.title(), "Renamed");
+  // The queued second read.
+  assert.equal(pending.length, 2);
+  pending[1]({ viewer: ALEX });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
