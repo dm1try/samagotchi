@@ -27,8 +27,8 @@ participant** and **one role**, until it expires or is revoked.
   compares it with every grant's digest (`Rack::Utils.secure_compare`).
 - **Participant.** The grant's `id`, `p_<8 hex>`, names the participant: a turn they send is authored
   `"p:<id>"` (`Grant#author`, `Principal#author`). There is no kind: a grant an older chi stored with `kind`
-  (`human`, `agent`) keeps it in `Grant#extra`, never read. `role` is `reviewer` (the stored value; only its label
-  changed), the only one in v1. `name` is cleaned to
+  (  `human`, `agent`) keeps it in `Grant#extra`, never read. `role` remains `reviewer` in stored grants and JSON;
+  text output labels it `participant`. It is the only stored role in v1. `name` is cleaned to
   one line of at most 64 characters with no brackets (`Grants.clean_name`), so it can't forge the
   `[Review contribution from …]` header.
 - **Lifetime (D8).** 7 days by default (`web.participants.expires`; `chi share --expires Nh|Nd`, 1 hour to 30 days). Revoked by the owner
@@ -180,9 +180,11 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `POST /api/sessions/:id/turn` | participant | a turn of their own, or a line into their own running turn at its next step ([Turns](#turns)) |
 | `POST /api/sessions/:id/cancel` | participant | their own running turn stopped, named by its `turn_id` ([Turns](#turns), Stopping their turn); no `turn_id`, the owner's turn or another participant's: 403 `not_permitted`, audited |
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
+| `POST /api/sessions/:id/verdicts/:check_turn_id/fresh` | participant | a fresh child to check an unclear verdict, running as the requester under pair rules and counted toward their cap ([Verify fresh](#what-a-participant-sees)) |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); `wait/prepare` answers only what that wait needs, `{session_id, baseline: {last_turn}, known_turn, live, last_turn_id}` (`last_turn_id` only when it is their turn), never the owner's cursor, message count, question or running turn; the answer trimmed to `{status, text, turn_id, outcome, cancel_reason}`, the reply's `text` through `ParticipantView.reply` (no thinking or tool call, redacted) and any other text (an error's exception, a failed turn's summary) `ParticipantMessages::TURN_FAILED`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it; a revoke or the expiry ends a `wait` already running (401 `token_revoked` / `token_expired`), as it ends their stream |
 | `GET /` | participant | the main page (`index.html`) stamped for them (`App#participant_index_data`: their viewer, the grant's session and its title; [web-frontend.md](web-frontend.md#the-participants-page)); the page reads the rest through the show and the stream below |
+| `POST /api/token` | participant | trade a link's one-time code or a pasted token for the `chi_token` cookie (the token is not left in the page URL) |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/sessions/:id/working_set` | participant | the working set's project files only (`ParticipantView.working_set`), with `running` |
 | `POST /api/sessions/:id/images` | participant | their upload ([Participant images](#participant-images)): refused at their cap, past their attempts or quota, a bmp/tiff/heic; the reply `{file, name, width, height}` |
@@ -435,8 +437,7 @@ headers alike. A revoked or expired grant is refused by the gate (401) as on eve
 **Their turn** takes only refs they uploaded ([Turns](#turns)); **what they see** is their own images as thumbnails
 and anyone else's as "N images" ([What a participant sees](#what-a-participant-sees)). A corrupt or unreadable
 record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. Not covered:
-a participant's `chi --remote … --image`; a failed turn of theirs gives the text back without its chips; Apply
-doesn't mention a proposal's images.
+a participant's `chi --remote … --image`; a failed turn of theirs gives the text back without its chips.
 
 ## What a participant sees
 

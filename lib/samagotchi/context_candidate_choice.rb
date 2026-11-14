@@ -19,8 +19,7 @@ module Samagotchi
   # - below, it stays proposed.
   #
   # The card's actions are /context attach NAME and /context decline NAME
-  # (#choose), the owner's only: a participant can't send a / line, and a
-  # review session refuses them.
+  # (#choose), the owner's only: a participant can't send a / line.
   module ContextCandidateChoice
     CARD_SOURCE = "context"
     # The judge's attach, as the source's why (no probability: it is

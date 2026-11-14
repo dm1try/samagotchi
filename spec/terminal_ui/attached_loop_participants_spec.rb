@@ -166,7 +166,7 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
 
     expect(access).to have_received(:invite).with("abcdef12-0000", name: "Alex Smith", ttl: 3 * 86_400, cap: 5.0,
                                                                  identity: nil)
-    expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (reviewer) · session abcdef12 · expires " \
+    expect(out.lines.map(&:chomp)).to eq(["p_aaaa1111  Alex Smith (participant) · session abcdef12 · expires " \
                                           "#{Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")} · cap $2.00",
                                           "http://10.0.0.2:8080/?token=chp_x#s=abcdef12",
                                           "(shown once: chi keeps only its digest; chi share revoke abcdef12 p_aaaa1111 ends it)"])
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::TerminalUI::ParticipantCommands do
   it "/participants lists, revokes and caps this session's" do
     allow(access).to receive_messages(participants: [grant], revoke_participants: [grant], set_participant_cap: grant)
 
-    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  -         reviewer")
+    expect(commands.run("/participants")).to include("PARTICIPANT", "p_aaaa1111   Alex Smith  -         participant")
     expect(access).to have_received(:participants).with("abcdef12-0000")
     expect(commands.run("/participants revoke p_aaaa1111")).to eq("p_aaaa1111  Alex Smith  revoked")
     expect(access).to have_received(:revoke_participants).with("abcdef12-0000", participant: "p_aaaa1111")

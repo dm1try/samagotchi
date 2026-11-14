@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - Participants: one kind of invite. An invited person's turns act in the session under your guardrails (asks come to you, Allow once only); there are no read-only turns any more. `chi share` and the panel's Invite always say so, and refuse to invite anyone to a session whose worker is older ("restart the session first").
+- `chi share`: text invites and `ls` label the stored `reviewer` role as `participant`.
 - Participants: a link an older chi issued for read-only review turns has ended: opening it says "This link is from an older chi: ask the session's owner for a new one", the panel lists it as "ended (older link)", and its queued turns are refused. Invite them again. Restart `chi web` after updating: an older chi web still running keeps such a link opening (and its conversation readable) until then; restarted sessions refuse its turns either way.
 - A session an older chi started as a review is an ordinary session now: it stays in the list, its participants' turns act like anyone's, and a continue carries its last answer and objectives.
 - `toolkit.kits.review` is an ordinary config kit name now (there is no built-in review kit).

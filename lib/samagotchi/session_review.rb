@@ -1,13 +1,11 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  # A review session's own field (chi review, the web's Start review): the
-  # files under review, project-relative (the session's work tree top),
-  # and, for a review fork (chi review --from), the session it started from.
-  # A session without one isn't a review session; its file has no "review"
-  # key at all (Session::OPTIONAL_FIELDS), so other session files stay as
-  # they were. Kept by continues; never by forks or delegate children.
-  # See docs/sessions.md (Review sessions).
+  # Legacy metadata on a session started by an older chi review command:
+  # the project-relative files and, for a fork, the session it came from.
+  # Current chi keeps the "review" key as written for compatibility, but
+  # does not use it to change session behavior. Continues keep it; forks
+  # and delegate children do not. See docs/sessions.md (Older review sessions).
   SessionReview = Data.define(:subjects, :from) do
     def initialize(subjects: [], from: nil)
       super(subjects: Array(subjects).map(&:to_s).reject(&:empty?).uniq.freeze, from: from&.to_s)

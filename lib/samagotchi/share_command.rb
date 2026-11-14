@@ -206,7 +206,7 @@ module Samagotchi
 
     def print_invitation(id, invitation)
       row = invitation.participant
-      @stdout.puts("#{row.id}  #{row.name} (#{row.role}) · session #{id[0, 8]} · expires " \
+      @stdout.puts("#{row.id}  #{row.name} (participant) · session #{id[0, 8]} · expires " \
                    "#{local(row.expires_at, "%Y-%m-%d %H:%M")} · cap #{money(row.cap)}#{" · bound to #{row.identity}" if row.identity}")
       @stdout.puts(invitation.link)
       @stdout.puts("(shown once: chi keeps only its digest; chi share revoke #{id[0, 8]} #{row.id} ends it)")
@@ -224,7 +224,7 @@ module Samagotchi
 
     def print_table(rows)
       cells = rows.map do |row|
-        [row.session_id[0, 8], row.id, row.name, row.identity ? "#{row.identity} · bound" : "-", row.role,
+        [row.session_id[0, 8], row.id, row.name, row.identity ? "#{row.identity} · bound" : "-", "participant",
          local(row.created_at), local(row.expires_at), row.last_used_at ? local(row.last_used_at) : "-", money(row.cap),
          row.state]
       end

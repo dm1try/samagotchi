@@ -635,9 +635,9 @@ module Samagotchi
       wait_for_reply(id, target: target, timeout: options[:timeout])
     end
 
-    # A participant's --wait -m (a review turn through chi --remote with
-    # their token): their message always runs as a queued turn of its own
-    # (chi web's review turns), so a running turn doesn't refuse it and
+    # A participant's --wait -m (a participant turn through chi --remote
+    # with their token): their message always runs as a queued turn of its
+    # own, so a running turn doesn't refuse it and
     # there is no busy check (the owner's route, refused to them). Their
     # wait routes take only a turn of theirs: the wait is on the one just
     # queued, as --wait --turn T.
@@ -868,7 +868,7 @@ module Samagotchi
       return " (started its worker)" if owner.nil? && !@continued_here&.key?(id)
       return queue_note(result, running: running) if Delivery.queue?(delivery)
       return "" unless running
-      # A participant's review turn was running: the worker queued it.
+      # A participant's turn was running: the worker queued it.
       return queue_note(result, running: running) if result.delivery == Delivery::QUEUE
 
       # A busy worker runs a message with images as its own next turn
@@ -884,8 +884,8 @@ module Samagotchi
       " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, result.cut_after)}"
     end
 
-    # A participant's message: queued as a review turn of its own (chi
-    # web's), its id the one their wait takes.
+    # A participant's message: queued as a turn of its own, its id the one
+    # their wait takes.
     def participant_note(id, result)
       turn = result.enqueued_id.to_s
       return " (queued as their own turn)" if turn.empty?

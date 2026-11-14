@@ -41,7 +41,7 @@ A participant's link opens the same page: chi web serves them `index.html` stamp
 their viewer (The viewer, below), their show and stream are filtered (`Web::ParticipantView`,
 [participants.md](participants.md#what-a-participant-sees)), and what is theirs on the page is
 `participant_main.js` (The participant's page, below). There is no second page: the participant page
-(`participant.html`, `participant.js`, `GET …/review`) went with the participant main page's Phase C.
+(`participant.html`, `participant.js`, `GET …/review`) was retired in favor of the participant main page.
 
 ## Where state lives (owner page)
 
