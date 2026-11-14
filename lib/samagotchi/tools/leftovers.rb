@@ -26,6 +26,16 @@ module Samagotchi
 
       # The hint's two endings, by what happened to the holder.
       WHAT = { stopped: "was stopped", detached: "was left running" }.freeze
+      # What each tool's hint tells the model to do instead. Never just
+      # "with task_create": a `server &` there is stopped too. The task
+      # side never says "use task_create" (that is how it got there), and a
+      # holder left running is told how to end it.
+      EXECUTE_ADVICE = "to keep a server or long job running, start it with task_create in the foreground (no `&`)"
+      TASK_ADVICE = {
+        stopped: "to keep one running, run it in the foreground or end the command with `wait`",
+        detached: "it left the task's process group, so task_stop can't reach it: kill it if it shouldn't run; " \
+                  "next time, run it in the foreground or end the command with `wait`"
+      }.freeze
 
       module_function
 
@@ -34,9 +44,16 @@ module Samagotchi
       # what to do instead. The wording lives here, for every tool.
       def hint(kind, held:, advice:) = "(a background process kept #{held} open and #{WHAT.fetch(kind)}; #{advice})"
 
+      # execute's hint (Execute::BACKGROUND_HINT, BACKGROUND_DETACHED_HINT).
+      def execute_hint(kind) = hint(kind, held: "the output", advice: EXECUTE_ADVICE)
+
+      # A task's hint (TaskRuntime.leftovers_note: task_get, task_wait, the
+      # finish note, task_list).
+      def task_hint(kind) = hint(kind, held: "the task's log", advice: TASK_ADVICE.fetch(kind))
+
       # After the shell exited: a holder of +logs+ gets +grace+, then the
-      # group +pgid+ is stopped (TERM, +stop_grace+, KILL), unless the
-      # deadline or +cancelled+ came first.
+      # group +pgid+ is stopped (stop_group), unless the deadline or
+      # +cancelled+ came first.
       # @return [Outcome]
       def check(pgid, logs, grace:, stop_grace:, poll:, deadline:, cancelled:)
         return Outcome.new(wait: :done, leftovers: nil) unless held?(logs)
@@ -44,11 +61,31 @@ module Samagotchi
         wait = await_release(logs, until_time: monotonic + grace, deadline: deadline, cancelled: cancelled, poll: poll)
         return Outcome.new(wait: wait, leftovers: nil) if wait == :done
 
-        # Only the group: the leader's pid is reaped, so it may name another process.
-        ProcessGroup.stop(pgid, grace: stop_grace, poll: poll, stopped: -> { !held?(logs) })
-        return Outcome.new(wait: wait, leftovers: nil) unless wait == :grace
+        found = stop_group(pgid, logs, grace: stop_grace, poll: poll)
+        Outcome.new(wait: wait, leftovers: wait == :grace ? found : nil)
+      end
 
-        Outcome.new(wait: wait, leftovers: held?(logs) ? :detached : :stopped)
+      # Stops what is left of the group +pgid+ once its leader is dead and
+      # reaped: TERM, +grace+, KILL (ProcessGroup.stop, the groups its
+      # members started too). Only while the group still has members: a pgid
+      # isn't reused while its group has any (POSIX), so they are the
+      # command's; logs held with the group empty mean a holder that left it
+      # (setsid), and nothing is signalled. Done once the group is empty or
+      # nothing holds the logs, so no KILL goes out to an emptied group.
+      # @param kill_wait [Numeric, nil] ProcessGroup.stop's (nil: its default)
+      # @return [Symbol, nil] :stopped, :detached when the logs are still
+      #   held, nil when the group was empty and nothing holds them (an
+      #   earlier held? that read another probe's lock: nothing to say)
+      def stop_group(pgid, logs, grace:, poll:, kill_wait: nil)
+        alive = ProcessGroup.group_alive?(pgid)
+        if alive
+          options = kill_wait ? { kill_wait: kill_wait } : {}
+          ProcessGroup.stop(pgid, grace: grace, poll: poll, quiet: ProcessGroup::QUIET,
+                                  stopped: -> { !ProcessGroup.group_alive?(pgid) || !held?(logs) }, **options)
+        end
+        return :detached if held?(logs)
+
+        alive ? :stopped : nil
       end
 
       # Whether some process still has one of +paths+ open from the spawn:

@@ -108,12 +108,13 @@ module Samagotchi
       # A finished task's text, as task_wait gives it: its status lines and
       # always the log's last lines (a test run's summary, an error), then a
       # stderr_tail when the record has a non-empty one. A task the user
-      # stopped also says so. Public: a task finish wake's note
-      # (TaskFinishNote) carries the same text.
+      # stopped also says so, and one whose shell left processes holding
+      # its log (TaskRuntime.leftovers_note). Public: a task finish wake's
+      # note (TaskFinishNote) carries the same text.
       # @param record [TaskRecord] a finished one
       # @return [String] a RefText of its output_path when it has one
       def self.finished_text(record, tail_lines: TAIL_LINES_DEFAULT)
-        extra = record.stopped_by_user? ? [TaskRuntime::USER_STOP_NOTE] : []
+        extra = [TaskRuntime.leftovers_note(record), (TaskRuntime::USER_STOP_NOTE if record.stopped_by_user?)].compact
         format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines, extra: extra)
       end
 

@@ -34,6 +34,7 @@ and commands may change between minor versions. How releases are made:
 - `chi -p` in a terminal: a turn that ends with an empty answer prints "chi: the model gave an empty answer" again, instead of an error (NameError) since 0.171.0.
 - chi web: a memory in the working set is marked stale when a project memory or model overlay now answers its read.
 - chi web: a memory preview uses only stamped paths when its project directory is outside the memories folder.
+- A background task that leaves processes running after its command ends (`cmd &` without `wait`) has them stopped, as `execute` does, and the task's result says so. `execute`'s note on a stopped background process now says to start a long job with `task_create` in the foreground (no `&`).
 
 ## [0.171.0] - 2026-11-14
 

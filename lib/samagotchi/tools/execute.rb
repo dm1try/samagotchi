@@ -46,10 +46,9 @@ module Samagotchi
       # How long the output may stay open once the shell has exited: a
       # `server &` child keeps the logs (Leftovers).
       BACKGROUND_GRACE_SEC = Leftovers::GRACE_SEC
-      BACKGROUND_ADVICE = "to keep a server or long job running, start it with task_create"
-      BACKGROUND_HINT = Leftovers.hint(:stopped, held: "the output", advice: BACKGROUND_ADVICE)
+      BACKGROUND_HINT = Leftovers.execute_hint(:stopped)
       # It had left the process group (setsid), so it is still running.
-      BACKGROUND_DETACHED_HINT = Leftovers.hint(:detached, held: "the output", advice: BACKGROUND_ADVICE)
+      BACKGROUND_DETACHED_HINT = Leftovers.execute_hint(:detached)
       # What a command still running at the limit gets (execute.on_timeout):
       # :task hands it over as a task (HANDED_OVER), :kill stops it.
       ON_TIMEOUT = %i[task kill].freeze

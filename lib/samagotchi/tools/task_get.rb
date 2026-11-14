@@ -33,6 +33,7 @@ module Samagotchi
           "output_path: #{record.output_path}",
           # A handed-over execute's stderr has a log of its own.
           ("stderr_path: #{record.stderr_path}" if record.stderr_path),
+          TaskRuntime.leftovers_note(record),
           (TaskRuntime::USER_STOP_NOTE if record.stopped_by_user?)
         ].compact.join("\n")
       end
