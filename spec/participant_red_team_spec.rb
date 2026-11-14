@@ -495,7 +495,7 @@ RSpec.describe "a participant red-teaming a session" do
       ].each { |event| observer.notify(event) }
 
       out = participant_stream("turn_completed")
-      expect(out).to include("Checking.", %("tool":"execute"), %("tool":"read","path":"docs/plan.md"), "question_requested",
+      expect(out).to include("Checking.", %("tool":"execute"), %("tool":"read","ref":{"kind":"file","path":"docs/plan.md"), "question_requested",
                              "Done: see docs/plan.md")
       expect(out).to include("deploy with [redacted]")
       # The numbers and files a participant reads: the fill, the speed, the project's files.
@@ -610,7 +610,7 @@ RSpec.describe "a participant red-teaming a session" do
         ["user", "is step 3 safe?"], ["assistant", "Yes."]
       ])
       expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" },
-                                                    { "tool" => "read", "path" => ".env", "ref" => { "kind" => "file", "path" => ".env" } },
+                                                    { "tool" => "read", "ref" => { "kind" => "file", "path" => ".env" } },
                                                     { "tool" => "memory_read" }])
       # The wake turn's report: its turn's start only, no text.
       expect(review["messages"][3].except("drawn")).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")

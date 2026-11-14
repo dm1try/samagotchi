@@ -51,7 +51,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       noisy = { event_seq: 7, turn_id: "t", iteration: 1, call_index: 0, text: "hi", tool: "read", output: "SECRET OUTPUT",
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
-      allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
+      allowed = %w[type event_seq turn_id iteration call_index text tool status prompt author author_name mine
                    participant_mode automatic continue restarted verdict items kind]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     it "shows a tool row as its name and a project path only" do
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/docs/plan.md" },
                      title: "docs/plan.md", params: "docs/plan.md", view: { command: "x" }, iteration: 1, call_index: 0 }))
-        .to eq("type" => "tool_call_started", "tool" => "read", "path" => "docs/plan.md",
+        .to eq("type" => "tool_call_started", "tool" => "read",
                "ref" => { "kind" => "file", "path" => "docs/plan.md" }, "iteration" => 1, "call_index" => 0)
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/a.rb", line: 4, end_line: 9,
                                                                     id: "SECRET-ID" } }))
@@ -292,7 +292,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       ]
       expect(described_class.messages(list, viewer)).to eq([
         { "role" => "user", "content" => "look at docs/plan.md", "turn_id" => "t1" },
-        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "path" => "docs/plan.md", "ref" => { "kind" => "file", "path" => "docs/plan.md" } }, { "tool" => "memory_read" }] },
+        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md" } }, { "tool" => "memory_read" }] },
         { "role" => "user", "content" => "also this", "merged" => true },
         { "role" => "user", "content" => "is step 3 safe?", "turn_id" => "t2", "author" => "p:p_2", "author_name" => "Sam", "images" => 1 },
         { "role" => "assistant", "content" => "Yes." },

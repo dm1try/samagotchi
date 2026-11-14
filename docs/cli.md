@@ -1336,7 +1336,7 @@ made (up to 120 lines or 8 KB), live and after a reload (see
 `web.view`, `chi web --web-view`, `SAMAGOTCHI_WEB_VIEW` and `?view=` were removed with the turn view (the
 stage is the only view; a config.yml that still sets `web.view:` warns about an unknown key).
 
-**When things happened**, on the owner's page and on a participant's review page: where 10 minutes or
+**When things happened**, on the owner's page and on a participant's: where 10 minutes or
 more of quiet passed between the end of one activity and the start of the next (a turn, a context
 note, a reminder), the history has one dim centred line, `── 14:32 · 47 min later ──`; the date is
 added when the day changed or the turn wasn't today (`── Sat 24 Oct 09:10 · 13 h later ──`).

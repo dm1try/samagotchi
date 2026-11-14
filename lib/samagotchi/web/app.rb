@@ -1972,8 +1972,8 @@ module Samagotchi
         # version: the chi that served the page; the events snapshot names
         # the one serving now (an upgraded chi web after a reconnect).
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(start_dir), "version" => Samagotchi::VERSION }
-        # The owner's home: a claim link's quote reads it "~", as the
-        # participant page shows it (claim_link.js).
+        # The owner's home: a claim link's quote reads it "~", as a
+        # participant's page shows it (claim_link.js).
         attrs["home"] = Dir.home
         # Only when on: the page reads its presence.
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])
@@ -2026,8 +2026,8 @@ module Samagotchi
       # +attrs+ as <body> data attributes, each value escaped.
       def body_data(attrs) = attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
 
-      # The Annotate presets (web.annotate_presets) for a page's <body>, the
-      # owner's and the participant page's. Always there: an empty one means
+      # The Annotate presets (web.annotate_presets) for the page's <body>,
+      # the owner's and a participant's. Always there: an empty one means
       # no presets, not the default.
       def annotate_presets_data = { "annotate-presets" => @annotate_presets }
 

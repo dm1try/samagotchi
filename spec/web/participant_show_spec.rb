@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
     expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
                                        "generation" => { "thinking_only" => true, "age" => 2.5 },
-                                       "tools" => [{ "tool" => "read", "path" => "docs/plan.md", "status" => "running",
+                                       "tools" => [{ "tool" => "read", "status" => "running",
                                                      "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 } }])
     types = body["replay"].map { |event| event["type"] }
     expect(types).to eq(%w[turn_started generation_chunk generation_completed tool_call_started turn_enqueued turn_enqueued])
