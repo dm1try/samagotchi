@@ -7,6 +7,7 @@ import { test, expect } from "./support/fixtures.js";
 import { clickBarItem } from "./support/layout.js";
 
 const NO_LAN = "no private IPv4 address on this machine";
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 test.describe("on the LAN", () => {
   // Decided by the project's option alone (playwright.config.js), before
@@ -106,7 +107,7 @@ test.describe("on the LAN", () => {
   });
 });
 
-test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control, a message (a double Enter) is queued once, starts and gets its answer, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control but the image button, a message with an image (a double Enter) is queued once, starts and gets its answer, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -165,9 +166,11 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await expect(ownerPrompt).toContainText("Say pong");
   await expect(ownerPrompt.locator(".origin-label")).toHaveText("owner");
   await expect(page.locator("#history .bubble.output").first()).toHaveText(/PONG/);
-  // No owner control: no new session, list, rename, model, images, session
-  // menu, participants; no file panel (the Plan is gone with the old page).
-  for (const id of ["newBtn", "scope", "stripStatus", "topStrip", "titleRenameBtn", "modelPick", "attachBtn", "infoMoreBtn",
+  // No owner control: no new session, list, rename, model, session menu,
+  // participants; no file panel (the Plan is gone with the old page). Their
+  // own images: the image button.
+  await expect(page.locator("#attachBtn")).toBeVisible();
+  for (const id of ["newBtn", "scope", "stripStatus", "topStrip", "titleRenameBtn", "modelPick", "infoMoreBtn",
     "infoStopBtn", "infoContinueBtn", "notifyBtn"]) {
     await expect(page.locator(`#${id}`), id).toBeHidden();
   }
@@ -187,12 +190,16 @@ test("a review: the owner starts one for a file and invites from the panel; the 
     await page.waitForTimeout(400); // eslint-disable-line no-restricted-syntax -- a slow post is the case
     await route.fulfill({ response: res });
   });
+  // With an image of theirs (uploaded to /images, not counted above).
+  await page.locator("#attachInput").setInputFiles({ name: "step3.png", mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") });
+  await expect(page.locator("#chips .chip")).toHaveCount(1);
   await page.locator("#prompt").fill("Is step 3 safe?");
   await page.locator("#prompt").press("Enter");
   await page.locator("#prompt").press("Enter");
   const mine = page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" });
   await expect(mine).toHaveCount(1);
   await expect(mine.locator(".author-badge")).toHaveText("Alex · review");
+  await expect(mine.locator(".thumbs img.thumb")).toHaveCount(1);
   await expect(page.locator("#history .bubble.output")).toHaveCount(2);
   await expect(page.locator("#history .bubble.output").last()).toHaveText(/PONG from the fake model/);
   await expect(page.locator(".bubble.user.queued")).toHaveCount(0);
@@ -201,6 +208,7 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await page.unroute("**/turn");
 
   await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
+  await expect(owner.locator("#history .bubble.user.by-participant .thumbs img.thumb")).toHaveCount(1);
   // Apply under the review turn's reply: the owner's turn in the composer,
   // the proposal quoted, not sent.
   await owner.locator(".review-apply-btn").last().click();
@@ -230,6 +238,11 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   await page.goto(claimLink.replace(/^http:\/\/[^/]+/, guestURL));
   await expect(page.locator("#history .claim-hit").first()).toBeVisible();
   expect(await page.evaluate(() => CSS.highlights.get("chi-claim")?.size)).toBe(1);
+  // A reload: Alex's own image loads from the session (theirs to read back).
+  await page.reload();
+  const thumb = page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" }).locator("img.thumb");
+  await expect(thumb).toHaveAttribute("src", /\/images\/[0-9a-f]{16}\.png$/);
+  await expect.poll(() => thumb.evaluate((img) => img.complete && img.naturalWidth)).toBe(1);
   expect(refused, "requests answered 403").toEqual([]);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
