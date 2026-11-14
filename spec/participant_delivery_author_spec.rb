@@ -277,6 +277,59 @@ RSpec.describe "a participant's author on delivery" do
       expect(notice[:text]).to start_with("Alex reached their $2.00 cap: their turns stop")
     end
 
+    # The gate's paths share one notice per (participant, cap): the mid-turn
+    # stop, the drain's refused line and the refused queued turn tell the
+    # owner once between them; a raised cap reached again says so again.
+    it "tells the owner of a cap once across the stop, the drain and a queued turn, and again for a raised cap" do
+      author = grant.author
+      engine.session_state_dir = tmpdir
+      notices = Queue.new
+      dequeued = Queue.new
+      engine.subscribe(observer: lambda { |event|
+        notices << event if event[:type] == :hook_notice && event[:text].to_s.start_with?("Alex reached")
+        dequeued << event if event[:type] == :turn_dequeued
+      })
+      spend = 1.0
+      allow(engine.metrics).to receive(:spend).with(author) { spend }
+      stops = Queue.new
+      # The check the Worker hands the Engine (Engine#participant_stop).
+      stop_check = nil
+      allow(engine).to receive(:participant_stop=).and_wrap_original do |original, check|
+        stop_check = check
+        original.call(check)
+      end
+      allow(engine).to receive(:run_turn) do |_turn_session, prompt, **kwargs|
+        if prompt == "q1"
+          spend = 2.5
+          stops << stop_check.call(author)
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "participant:p", author: author,
+                                                            enqueued_id: "p2")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "later", client_id: "participant:p", author: author,
+                                                            enqueued_id: "p3", delivery: "queue")
+          drained << kwargs[:pending_input].call
+        end
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "participant:p", author: author, enqueued_id: "p1")
+
+      expect(pop!(stops, "the mid-turn stop")).to eq("Alex reached their $2.00 cap")
+      expect(pop!(drained, "the drain")).to eq([])
+      expect(pop!(dequeued, "the drain's refused line")).to include(enqueued_id: "p2")
+      expect(pop!(dequeued, "the refused queued turn")).to include(enqueued_id: "p3")
+      expect(pop!(notices, "the cap notice")[:text]).to start_with("Alex reached their $2.00 cap: ")
+      expect(notices).to be_empty
+
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
+      Samagotchi::Participants.set_cap(grants, session_id: session.id, id: grant.id, cap: 3.0, state_dir: tmpdir)
+      spend = 3.5
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q4", client_id: "participant:p", author: author, enqueued_id: "p4")
+
+      expect(pop!(dequeued, "the turn past the raised cap")).to include(enqueued_id: "p4")
+      expect(pop!(notices, "the raised cap's notice")[:text]).to start_with("Alex reached their $3.00 cap: ")
+      expect(notices).to be_empty
+    end
+
     it "stops a participant's running pair turn once their link is revoked mid-turn (Engine#participant_stop)" do
       author = grant.author
       reasons = Queue.new
@@ -521,6 +574,34 @@ RSpec.describe "a participant's author on delivery" do
 
         expect(pop!(resolved, "the offer's answer")).to include(decision: "abort")
         expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "p1")
+        expect(prompts).to be_empty
+      end
+
+      # The Worker hands ContinueOffer its gate: the owner's Continue on the
+      # offer of a participant revoked since ends as a Stop, refused.
+      it "refuses the owner's Continue on a participant's offer whose link ended since: not continued, the owner told" do
+        notices = Queue.new
+        engine.subscribe(observer: lambda { |event|
+          notices << event if event[:type] == :hook_notice && event[:text].to_s.start_with?("Not continued")
+        })
+        run_out_of_iterations
+        start_worker
+        write_queued(prompt: "long task", author: grant.author, enqueued_id: "p1", now: t0)
+        expect(pop!(prompts, "the participant's turn")).to eq("long task")
+        wait_for("the offer's question") do
+          Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question&.kind.to_s == "continue"
+        end
+
+        grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
+        Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
+        write_queued(prompt: "/continue yes")
+
+        expect(pop!(resolved, "the refused Continue")).to include(decision: "refused", reason: "revoked", client_id: "web:o")
+        expect(pop!(notices, "the owner's notice")[:text]).to include(grant.id)
+        wait_for("the offer turn's last_turn") do
+          Samagotchi::Session.load(session.id, state_dir: tmpdir).last_turn&.outcome == "not_continued"
+        end
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_turn.enqueued_id).to eq("p1")
         expect(prompts).to be_empty
       end
     end
