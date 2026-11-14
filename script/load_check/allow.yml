@@ -17,3 +17,24 @@
     method; http_transport.rb requires http.rb above its `class Http`. The
     autoload's target never loads the reopener at load time, so no load order
     fires the autoload from inside a file that is still loading.
+
+# Rule 3: an autoload of a namespace whose target file requires every file that
+# reopens it, and is the only file that does (session_manager.rb its parts,
+# objectives.rb objectives_{backing,edit}.rb, config.rb config/restart_watch.rb).
+# Firing the autoload loads the whole namespace; no reopener is required first.
+# Kept as autoloads so a process loads those files only when it uses them.
+- rule: 3
+  file: "*"
+  constant: Samagotchi::SessionManager
+  reason: >-
+    session_manager.rb requires all its parts; spec/require_cycle_spec.rb pins
+    that each autoload loads it whole and that no part requires a file that
+    autoloads it. The ~80 files stay out of processes that never start a worker.
+- rule: 3
+  file: "*"
+  constant: Samagotchi::Objectives
+  reason: objectives.rb requires objectives_backing.rb and objectives_edit.rb, and nothing else does.
+- rule: 3
+  file: lib/samagotchi/log.rb
+  constant: Samagotchi::Config
+  reason: config.rb requires config/restart_watch.rb, and nothing else does.
