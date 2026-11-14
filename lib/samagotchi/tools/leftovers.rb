@@ -28,9 +28,13 @@ module Samagotchi
       WHAT = { stopped: "was stopped", detached: "was left running" }.freeze
       # What each tool's hint tells the model to do instead. Never just
       # "with task_create": a `server &` there is stopped too. The task
-      # side never says "use task_create" (that is how it got there), and a
-      # holder left running is told how to end it.
-      EXECUTE_ADVICE = "to keep a server or long job running, start it with task_create in the foreground (no `&`)"
+      # side never says "use task_create" (that is how it got there); a
+      # holder left running on either side is told how to end it.
+      EXECUTE_ADVICE = {
+        stopped: "to keep a server or long job running, start it with task_create in the foreground (no `&`)",
+        detached: "it left the command's process group, so chi can't stop it: kill it if it shouldn't run; " \
+                  "next time, start a long job with task_create in the foreground (no `&`)"
+      }.freeze
       TASK_ADVICE = {
         stopped: "to keep one running, run it in the foreground or end the command with `wait`",
         detached: "it left the task's process group, so task_stop can't reach it: kill it if it shouldn't run; " \
@@ -45,7 +49,7 @@ module Samagotchi
       def hint(kind, held:, advice:) = "(a background process kept #{held} open and #{WHAT.fetch(kind)}; #{advice})"
 
       # execute's hint (Execute::BACKGROUND_HINT, BACKGROUND_DETACHED_HINT).
-      def execute_hint(kind) = hint(kind, held: "the output", advice: EXECUTE_ADVICE)
+      def execute_hint(kind) = hint(kind, held: "the output", advice: EXECUTE_ADVICE.fetch(kind))
 
       # A task's hint (TaskRuntime.leftovers_note: task_get, task_wait, the
       # finish note, task_list).

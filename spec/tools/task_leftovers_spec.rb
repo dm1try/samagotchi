@@ -266,5 +266,12 @@ RSpec.describe "a background task's leftover processes" do
         .to eq("(a background process kept the output open and was stopped; to keep a server or long job running, " \
                "start it with task_create in the foreground (no `&`))")
     end
+
+    it "tells execute's model how to end a holder left running" do
+      expect(Samagotchi::Tools::Execute::BACKGROUND_DETACHED_HINT)
+        .to eq("(a background process kept the output open and was left running; it left the command's process group, " \
+               "so chi can't stop it: kill it if it shouldn't run; next time, start a long job with task_create in " \
+               "the foreground (no `&`))")
+    end
   end
 end

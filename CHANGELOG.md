@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `execute`: the hint for a background process that left the command's process group and is still running now says chi
+  can't stop it and to kill it if it shouldn't run, instead of advising how to keep it running.
+
 ## [0.172.0] - 2026-11-14
 
 ### Changed
