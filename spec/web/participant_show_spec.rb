@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
                               "can" => Samagotchi::Web::Viewer::PARTICIPANT_CAPABILITIES, "mode" => "review",
                               "cap_reached" => false, "session_stopped" => false, "participant_kind" => "human")
     expect(viewer["usage"]).to include("spent" => 0.0, "cap" => 2.0, "queued" => 1, "queue_limit" => 3)
-    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set])
+    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set images])
   end
 
   it "says what the session waits for the owner on: the running turn's approval, a Continue offer, a question between turns" do
