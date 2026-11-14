@@ -305,17 +305,23 @@ module Samagotchi
       end
 
       # GET /api/sessions/:id/images/<hash>.<ext>: a stored image (only
-      # raster types; never svg), for the page's thumbnails.
-      def handle_image(_req, id, name)
+      # raster types; never svg), for the page's thumbnails. A participant
+      # reads only an image they uploaded (ParticipantImages), never
+      # cached; any other is the 404 an unknown file gets.
+      def handle_image(req, id, name)
         session_dir = image_session_dir(id)
         return not_found(path: "images/#{name}") unless session_dir && IMAGE_NAME_RE.match?(name.to_s)
+
+        participant = !principal(req).owner?
+        return not_found(path: "images/#{name}") if participant && !participant_owns_image?(req, session_dir, name)
 
         path = File.join(session_dir, ImageStore::DIR, name)
         return not_found(path: "images/#{name}") unless File.file?(path) && !File.symlink?(path)
 
         body = File.binread(path)
         [200, { "Content-Type" => IMAGE_TYPES.fetch(File.extname(name).delete(".")), "Content-Length" => body.bytesize.to_s,
-                "X-Content-Type-Options" => "nosniff", "Cache-Control" => "private, max-age=86400" }, [body]]
+                "X-Content-Type-Options" => "nosniff", "Cache-Control" => participant ? "no-store" : "private, max-age=86400" },
+         [body]]
       end
 
       # The Bridge decides the reason (Bridge::CANCEL_REASONS; anything

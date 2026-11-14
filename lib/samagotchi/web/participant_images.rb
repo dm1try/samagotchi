@@ -173,6 +173,12 @@ module Samagotchi
         SendCommand.vision_refusal_for(session.model_name, typed: session.model_typed)
       end
 
+      # Whether the request's participant uploaded <session_dir>/images/+name+
+      # (a bare "<hash>.<ext>"): the record alone (they had the bytes).
+      def participant_owns_image?(req, session_dir, name)
+        ParticipantUploads.owned?(session_dir, "#{ImageStore::DIR}/#{name}", principal(req).grant.id)
+      end
+
       def too_many_images = Upload.refused(429, "too_many_images", ParticipantMessages::TOO_MANY_IMAGES)
     end
   end

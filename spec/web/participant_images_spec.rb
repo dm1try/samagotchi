@@ -237,4 +237,52 @@ RSpec.describe Samagotchi::Web::App, "a participant's images" do
       expect(File.exist?(File.join(dir, Samagotchi::ParticipantUploads::FILE))).to be(false)
     end
   end
+
+  describe "GET …/images/<name>" do
+    def image(file, token: issued.token) = call("/api/sessions/#{session.id}/#{file}", token: token)
+
+    it "serves an image they uploaded, never cached" do
+      _, ref = upload(png)
+      status, headers, body = image(ref["file"])
+      expect(status).to eq(200)
+      expect(body.b).to eq(png.b)
+      expect(headers).to include("Content-Type" => "image/png", "Cache-Control" => "no-store", "X-Content-Type-Options" => "nosniff")
+    end
+
+    it "answers anything else with the 404 a missing file gets, body and headers alike: the owner's, another grant's, a guess" do
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: "#{png}owner", name: "o.png")
+      _, bos = upload("#{png}bo", token: other.token)
+      missing = "images/0123456789abcdef.png"
+      expect(image(bos["file"], token: other.token).first).to eq(200)
+      answers = [owners[:file], bos["file"], missing].map do |file|
+        status, headers, body = image(file)
+        [status, headers.except("Content-Length"), JSON.parse(body)["error"], JSON.parse(body)["detail"].sub(/[0-9a-f]{16}/, "H")]
+      end
+      expect(answers.uniq.size).to eq(1)
+      expect(answers.first.first).to eq(404)
+      expect(answers.first[2]).to eq("not_found")
+    end
+
+    it "serves the same bytes to the owner and a participant who uploaded them too (they had the bytes), to nobody else" do
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "o.png")
+      expect(image(owners[:file]).first).to eq(404)
+      upload(png)
+      expect(image(owners[:file]).first).to eq(200)
+      expect(image(owners[:file], token: other.token).first).to eq(404)
+      expect(image(owners[:file], token: owner_token)[1]["Cache-Control"]).to eq("private, max-age=86400")
+    end
+
+    it "serves no record file and nothing outside images/" do
+      upload(png)
+      ["images/participant_images.json", "images/..%2Fparticipant_images.json"].each do |file|
+        expect(image(file).first).to eq(404)
+      end
+    end
+
+    it "is 401 for a revoked grant, its own image too" do
+      _, ref = upload(png)
+      Samagotchi::Participants.revoke(grants, id: grant.id, state_dir: state_dir)
+      expect(image(ref["file"]).first).to eq(401)
+    end
+  end
 end

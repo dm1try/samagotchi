@@ -703,10 +703,16 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
-    it "can't read the raw output or an image" do
-      [get("/api/sessions/#{session.id}/output"), get("/api/sessions/#{session.id}/images/0"),
-       get("/api/sessions/#{session.id}/images/shot.png")].each do |status, body|
-        expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"])
+    it "can't read the raw output or an image it didn't upload (the owner's: by its hash too)" do
+      status, body = get("/api/sessions/#{session.id}/output")
+      expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"])
+      expect(body).not_to include("deploy", "KEYBYTES")
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m")
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "owner.png")
+      [get("/api/sessions/#{session.id}/images/0"), get("/api/sessions/#{session.id}/images/shot.png"),
+       get("/api/sessions/#{session.id}/#{owners[:file]}")].each do |status, body|
+        expect([status, JSON.parse(body)["error"]]).to eq([404, "not_found"])
         expect(body).not_to include("deploy", "KEYBYTES")
       end
     end
@@ -722,7 +728,8 @@ RSpec.describe "a participant red-teaming a session" do
           status, _headers, chunks = web.call(env)
           [status, chunks.join]
         end
-        reads.first(2).each { |status, body| expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"]), peer }
+        expect([reads[0][0], JSON.parse(reads[0][1])["error"]]).to eq([403, "not_permitted"]), peer
+        expect([reads[1][0], JSON.parse(reads[1][1])["error"]]).to eq([404, "not_found"]), peer
         reads.last(2).each do |status, body|
           expect(status).to eq(200), peer
           expect(JSON.parse(body).dig("viewer", "kind")).to eq("participant"), peer

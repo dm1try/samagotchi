@@ -319,7 +319,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss, :owner],
         ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :participant, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :owner],
+        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
