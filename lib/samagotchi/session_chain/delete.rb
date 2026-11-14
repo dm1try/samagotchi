@@ -6,6 +6,7 @@ require_relative "../archive_store"
 require_relative "../child_move"
 require_relative "../continue_intent"
 require_relative "../continued_from"
+require_relative "../note_move"
 require_relative "../owner_lock"
 require_relative "../session"
 require_relative "../starting_marker"
@@ -84,6 +85,43 @@ module Samagotchi
 
       module_function
 
+      # What deleting the link +id+ alone does, read from one listing: the
+      # one plan the delete runs (.link) and the web's sheet shows (.preview).
+      # +previous+: the link whose continue is undone (D2/D5), nil when
+      # none is; +revive+: what comes back to the lists; +moved+: the
+      # delegates that go back to it; +delegates+: DELEGATES' Plan for the
+      # rest of its delegates; +notes+: the waiting notes that go back.
+      LinkPlan = Data.define(:id, :previous, :revive, :moved, :delegates, :notes)
+
+      # @param undo [Boolean] the caller undoes a newest link's continue
+      #   (revive_previous)
+      # @return [LinkPlan]
+      def link_plan(id, state_dir:, links:, undo: true)
+        previous = links.continues(id)
+        previous = nil unless undo && previous && revivable?(id, previous, links)
+        moved = previous ? moved_ids(id, previous, state_dir) : []
+        LinkPlan.new(id: id, previous: previous, revive: previous ? revive_ids(id, previous, state_dir) : [],
+                     moved: moved, delegates: DELEGATES.plan(id, state_dir: state_dir, except: moved),
+                     notes: previous ? NoteMove.returnable(from: id, moved: [], state_dir: state_dir).size : 0)
+      end
+
+      # What deleting every link of +id+'s chain does: the links on its
+      # branch (root to end, past a gap only the part after it), each
+      # link's DELEGATES plan, and whether a gap cut earlier links off.
+      ChainPlan = Data.define(:id, :links, :delegates, :cut_off)
+
+      # @return [ChainPlan]
+      def chain_plan(id, state_dir:, links:)
+        ids = links.live_links(id)
+        ChainPlan.new(id: id, links: ids, delegates: ids.to_h { |link| [link, DELEGATES.plan(link, state_dir: state_dir)] },
+                      cut_off: links.gone?(links.chain(id).first))
+      end
+
+      # Whether +id+ is in a chain of 2 or more links that still exist (D1):
+      # a link alone past a gap (its predecessor deleted) is deleted as a
+      # session in no chain is.
+      def chained?(id, links) = links.live_links(id).size > 1
+
       # Delete the link +id+ (a full id that exists), inside a shared hold
       # of its continue lock (and the previous link's when it would come
       # back), so no continue of either starts meanwhile.
@@ -97,20 +135,21 @@ module Samagotchi
           raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
 
           links = Links.new(state_dir: state_dir)
-          previous = links.continues(id)
-          return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait)) unless previous || links.next_of(id)
-
-          unless revive_previous && previous && revivable?(id, previous, links)
-            return delete_link(id, previous: nil, state_dir: state_dir, stop: stop, wait: wait)
+          unless chained?(id, links)
+            return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait))
           end
 
-          # Taken before the link's file goes: after it, a continue of the
-          # previous link would no longer be refused.
-          ContinueIntent.hold(previous, state_dir: state_dir) do |previous_held|
-            raise SessionManager::DeleteRefused.new(previous, :continuing) unless previous_held
+          plan = link_plan(id, state_dir: state_dir, links: links, undo: revive_previous)
+          return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait) unless plan.previous
 
-            again = revivable?(id, previous, Links.new(state_dir: state_dir))
-            return delete_link(id, previous: again ? previous : nil, state_dir: state_dir, stop: stop, wait: wait)
+          # Taken before the link's file goes: after it, a continue of the
+          # previous link would no longer be refused. The plan is made again
+          # under it.
+          ContinueIntent.hold(plan.previous, state_dir: state_dir) do |previous_held|
+            raise SessionManager::DeleteRefused.new(plan.previous, :continuing) unless previous_held
+
+            again = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: true)
+            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait)
           end
         end
       end
@@ -123,36 +162,45 @@ module Samagotchi
 
       def plain(result) = result.merge(unarchived: [], moved_back: [], deleted: [result[:id]], left_running: [])
 
-      # Every refusal first, then the link's worker stopped, then the owner
-      # lock (kind deleting, no wait) on the link and every D7 delegate that
-      # goes, and only under those locks the delegates' files, then either the
-      # undo (+previous+ given: D5) or the link's files. So a refusal (a
-      # schedule on a delegate, a one-turn run, a worker that took the link
-      # or a delegate after the checks) leaves every session in place.
-      def delete_link(id, previous:, state_dir:, stop:, wait:)
-        SessionManager.refuse_scheduled!(id, state_dir)
-        moved = previous ? moved_ids(id, previous, state_dir) : []
-        refuse_unmovable!(id, moved, state_dir)
-        plan = DELEGATES.plan(id, state_dir: state_dir, except: moved)
-        precheck!(plan.delete, state_dir)
+      # The refusals a link's delete makes before anything changes (the
+      # sheet's too): a schedule's target, anchor or head, on the link or a
+      # delegate that would go; a moved delegate that can't go back; a
+      # delegate that would go in a one-turn run.
+      # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
+      def check_link!(plan, state_dir)
+        SessionManager.refuse_scheduled!(plan.id, state_dir)
+        refuse_unmovable!(plan.id, plan.moved, state_dir)
+        precheck!(plan.delegates.delete, state_dir)
+      end
+
+      # Every refusal first (check_link!), then the link's worker stopped,
+      # then the owner lock (kind deleting, no wait) on the link and every
+      # D7 delegate that goes, and only under those locks the delegates'
+      # files, then either the undo (+plan.previous+: D5) or the link's
+      # files. So a refusal (a schedule on a delegate, a one-turn run, a
+      # worker that took the link or a delegate after the checks) leaves
+      # every session in place.
+      def delete_link(plan, state_dir:, stop:, wait:)
+        id = plan.id
+        check_link!(plan, state_dir)
         stopped = SessionManager.release_for_delete!(id, state_dir: state_dir, stop: stop, wait: wait)
         path = Session.session_file(id, state_dir: state_dir)
         dir = Session.session_dir(id, state_dir: state_dir)
-        revive = previous ? revive_ids(id, previous, state_dir) : []
-        removed = locked([*plan.delete, id], state_dir) do
-          remove_locked(plan.delete, state_dir)
-          if previous
-            SessionContinue.undo_deleted_link(from: previous, link: id, moved: moved, state_dir: state_dir) do
+        doomed = [*plan.delegates.delete, id]
+        removed = locked(doomed, state_dir) do
+          remove_locked(plan.delegates.delete, state_dir)
+          if plan.previous
+            SessionContinue.undo_deleted_link(from: plan.previous, link: id, moved: plan.moved, state_dir: state_dir) do
               SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true)
             end
           else
             SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true)
           end
         end
-        SessionManager.purge_removal_stores([*plan.delete, id], state_dir: state_dir)
-        unarchived = revive.select { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
-        { id: id, removed: removed, stopped: stopped, unarchived: unarchived, moved_back: moved,
-          deleted: [*plan.delete, id], left_running: plan.leave }
+        SessionManager.purge_removal_stores(doomed, state_dir: state_dir)
+        unarchived = plan.revive.select { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
+        { id: id, removed: removed, stopped: stopped, unarchived: unarchived, moved_back: plan.moved,
+          deleted: doomed, left_running: plan.delegates.leave }
       end
 
       # The refusals of every id a batch would delete, before the first
@@ -161,7 +209,15 @@ module Samagotchi
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       def precheck!(ids, state_dir)
         ids.each do |sid|
-          SessionManager.refuse_scheduled!(sid, state_dir)
+          begin
+            SessionManager.refuse_scheduled!(sid, state_dir)
+          rescue SessionManager::DeleteRefused => e
+            raise SessionManager::DeleteRefused.new(
+              sid, :scheduled, schedule_id: e.schedule_id,
+                               message: "its delegate #{sid[0, 8]} is the target of an enabled schedule; " \
+                                        "cancel it with chi schedule cancel #{e.schedule_id}"
+            )
+          end
           raise SessionManager::OwnedByTUI, sid if SessionManager.session_owner(sid, state_dir: state_dir)&.tui?
         end
       end
@@ -227,6 +283,13 @@ module Samagotchi
         nil
       end
 
+      # Whether the page can stop the workers of +ids+ (moved delegates that
+      # can't go back): none is in a one-turn chi run, which can't be stopped
+      # from here. The 409 and the preview say it.
+      def stoppable?(ids, state_dir)
+        ids.none? { |sid| SessionManager.session_owner(sid, state_dir: state_dir)&.tui? }
+      end
+
       def refuse_unmovable!(id, moved, state_dir)
         stuck = moved.filter_map { |child| (why = ChildMove.unmovable(child, state_dir: state_dir)) && [child, why] }
         return if stuck.empty?
@@ -253,26 +316,31 @@ module Samagotchi
       #   nothing was deleted
       def chain(id, state_dir:, stop:, wait:)
         links = Links.new(state_dir: state_dir)
-        ids = links.live_links(id)
-        cut_off = links.gone?(links.chain(id).first)
-        plans = ids.to_h { |link| [link, DELEGATES.plan(link, state_dir: state_dir)] }
-        refuse_chain!(id, ids, state_dir, stop: stop)
-        precheck!(plans.values.flat_map(&:delete), state_dir)
-        hold_all(ids, state_dir) do
-          stopped = ids.select { |link| SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait) }
-          delete_links(id, ids.reverse, plans, links, state_dir).merge(stopped: stopped, cut_off: cut_off)
+        plan = chain_plan(id, state_dir: state_dir, links: links)
+        check_chain!(plan, state_dir, stop: stop)
+        hold_all(plan.links, state_dir) do
+          stopped = plan.links.select do |link|
+            SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
+          end
+          delete_links(plan, links, state_dir).merge(stopped: stopped, cut_off: plan.cut_off)
         end
       end
 
-      def refuse_chain!(id, ids, state_dir, stop:)
-        schedule = Schedules.new(state_dir: state_dir).for_chain(id).first
-        raise SessionManager::DeleteRefused.new(id, :chain_scheduled, schedule_id: schedule.id) if schedule
+      # The refusals a chain's delete makes before anything goes (the
+      # sheet's too): a schedule on the chain, a link in a one-turn run,
+      # without +stop+ a link with a worker, then every delegate that would
+      # go (precheck!: a schedule on one, a one-turn run).
+      # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
+      def check_chain!(plan, state_dir, stop:)
+        schedule = Schedules.new(state_dir: state_dir).for_chain(plan.id).first
+        raise SessionManager::DeleteRefused.new(plan.id, :chain_scheduled, schedule_id: schedule.id) if schedule
 
-        ids.each do |link|
+        plan.links.each do |link|
           presence = WorkerPresence.read(link, state_dir: state_dir, owner: SessionManager.session_owner(link, state_dir: state_dir))
           raise SessionManager::OwnedByTUI, link if presence.tui_owned?
           raise SessionManager::DeleteRefused.new(link, :worker_running) if !stop && (presence.owned? || presence.starting?)
         end
+        precheck!(plan.delegates.values.flat_map(&:delete), state_dir)
       end
 
       # The block inside a shared continue hold of every id.
@@ -289,12 +357,13 @@ module Samagotchi
 
       # Each link with its delegates under their locks, newest first; a
       # refused one keeps it and every earlier link whole.
-      def delete_links(id, newest_first, plans, links, state_dir)
-        done = { id: id, deleted: [], left: [], left_running: [], unarchived: [], refusal: nil }
+      def delete_links(plan, links, state_dir)
+        done = { id: plan.id, deleted: [], left: [], left_running: [], unarchived: [], refusal: nil }
+        newest_first = plan.links.reverse
         record = nil
         newest_first.each_with_index do |link, at|
-          plan = plans.fetch(link)
-          batch = [*plan.delete, link]
+          delegates = plan.delegates.fetch(link)
+          batch = [*delegates.delete, link]
           deleted_record = ContinuedFrom.read(link, state_dir: state_dir)
           begin
             locked(batch, state_dir) { remove_locked(batch, state_dir) }
@@ -312,7 +381,7 @@ module Samagotchi
           # next link's revive takes what its continue archived.
           record = deleted_record
           done[:deleted].concat(batch)
-          done[:left_running].concat(plan.leave)
+          done[:left_running].concat(delegates.leave)
         end
         done
       end
