@@ -44,9 +44,10 @@ namespace :gem do
   task install: [:validate, "rake:install:local"]
 end
 
-desc "RuboCop over the repo: must report no offenses (CI runs it)"
+desc "RuboCop over the repo and script/load-check --strict: both must report none (CI runs it)"
 task :lint do
   sh "bundle exec rubocop"
+  sh RbConfig.ruby, "script/load-check", "--strict"
 end
 
 namespace :lint do

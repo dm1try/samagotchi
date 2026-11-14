@@ -8,7 +8,7 @@ npm test                          # web frontend specs
 npm run lint                      # web frontend: undefined names and unused imports (ESLint; CI runs it)
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 npx playwright test spec/e2e/stage.spec.js   # one e2e file (the root playwright.config.js is the suite's)
-bundle exec rake lint             # RuboCop: no offenses (CI runs it)
+bundle exec rake lint             # RuboCop and script/load-check --strict: no offenses, no findings (CI runs it)
 ```
 
 Run `bundle exec rubocop -a` on the files you changed before committing: every enabled style cop follows the
@@ -20,7 +20,7 @@ bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:
 with two rules only, `no-undef` (a name used but never imported or declared: a dropped import) and `no-unused-vars`
 (an import or variable left over), over the browser's globals (`eslint.config.js`). It is a missing-name guard, not a
 style pass: add a rule only for a bug class it would have caught. It runs in about 2 s, in CI's `npm test` job and in
-`rake release:check`; `rake lint` stays RuboCop alone (CI's rubocop job has no node). A name that is also a browser
+`rake release:check`; `rake lint` stays Ruby only (RuboCop and the load check: CI's rubocop job has no node). A name that is also a browser
 global (`name`, `status`, `open`…) passes even when its import is gone: give an export such a name only with care.
 It also caps every web module's size and `app.js`'s own, lower (`max-lines`; see docs/internals/web-frontend.md).
 It also checks `spec/e2e/` for two things: `no-unused-vars`, and the Playwright twin of `Samagotchi/SpecSleep`: no `page.waitForTimeout`.
@@ -612,6 +612,27 @@ run it. Its spec is `spec/script/dead_code_spec.rb`.
 A name that resolves to nothing of chi's (a stdlib or gem constant) is out of scope, and lexical scope is
 mimicked: a bare `Log` inside `module Samagotchi` is `Samagotchi::Log`. Each line is
 `RULE file:line Constant — why`; the summary counts findings per rule, per `lib/samagotchi/<dir or file>`,
-and the files scanned. Proven false positives go in `script/load_check/allow.yml` with a reason; the
-summary says which entries match nothing. Report mode exits 0; `--strict` exits 1 when findings remain, and
-the check joins `rake lint` once it reports none. Its spec is `spec/script/load_check_spec.rb`.
+and the files scanned. Report mode exits 0; `--strict` exits 1 when findings remain, and `rake lint` (so
+CI) runs `--strict`: the tree reports none. Its spec is `spec/script/load_check_spec.rb`.
+
+**Reading a finding.** `1 lib/samagotchi/engine/models.rb:63 Samagotchi::Log — no require or autoload here
+reaches lib/samagotchi/log.rb, which defines it` says that a method in `models.rb` names `Log` and that the
+file works today only because someone else required `log.rb` first. The fix is the require the line names,
+at the top of the file (`require_relative "../log"`): a require only adds what the file already gets through
+its loaders, so the processes' loaded files don't change (`spec/require_cycle_spec.rb`'s budgets say if they
+do). Prefer an existing door when there is one: `LLM::ChatLoop` is `llm/backend.rb`'s autoload, so a file
+naming it requires `llm/backend`. When the file is needed only on one path a thin process never takes,
+require it inside that method (a method-body require satisfies rule 1). When the require would close a cycle
+(the defining file requires this one: a part naming its host's constants), the finding goes in the
+allow-list. A rule 2 finding is a load-order bug and is fixed, not allow-listed. A rule 3 finding is fixed
+by pointing the autoload at the namespace's base file, or allow-listed when that file requires every file
+that reopens the namespace and nothing else does (then firing the autoload loads it whole).
+
+**The allow-list.** `script/load_check/allow.yml` (`--allow FILE` reads another): each entry matches on
+`rule`, `file` and `constant`, with `*` and `[A-Z]` globs, and says why in `reason`. Its entries are of
+four kinds: a part naming its host's value constants (`Samagotchi::Engine::[A-Z][A-Z_]*` in
+`engine/*.rb`: the host requires the part, so a require back is a cycle; the glob leaves classes a part
+names from elsewhere checked), one-off host pairs (`ToolRun` in `tool_response.rb`), the namespace
+autoloads that load whole (`SessionManager`, `Objectives`, `Config`), and `Plugin::Http`'s (its base file
+loads the reopening file only inside a method, and that file requires the base file first). The summary counts the entries that
+matched and those that match nothing: delete a stale one.

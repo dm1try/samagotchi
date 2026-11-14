@@ -107,7 +107,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - name: RuboCop (.rubocop.yml; TargetRubyVersion 3.3)
+      - name: RuboCop (.rubocop.yml; TargetRubyVersion 3.3) and script/load-check --strict
         run: bundle exec rake lint
 
   bundles:
