@@ -1639,6 +1639,23 @@ RSpec.describe Samagotchi::Worker do
           expect(engine.reminder_store.reminders.keys).to eq(["api_health"])
         end
 
+        # The failed hand-off lets the restart's claim go: a later exit of
+        # another kind is taken, not refused as "restarting".
+        it "takes a later stop-all exit once the restart's hand-off failed" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          allow(Samagotchi::ReminderCarry).to receive(:write).and_raise(Errno::ENOSPC)
+          start_worker(poll_interval: 0.05)
+
+          expect(post_restart.first).to eq(200)
+          loop_rounds
+          expect(@thread).to be_alive
+          status, body = post_exit(stop: true)
+
+          expect(status).to eq(200)
+          expect(body["stopped"]).to include("reminders" => ["api_health"])
+          expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+        end
+
         it "restores nothing into a stopped session's worker, and deletes the hand-off" do
           File.write(carry_file, JSON.generate("session_id" => session.id, "written_at" => Time.now.utc.iso8601(3),
                                                "reminders" => [{ "id" => "a1", "name" => "late", "description" => "d",
