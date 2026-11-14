@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: after a reload, a second question or approval from the same step of a finished turn no longer repeats the step's
+  reply above it, as live.
+
 ## [0.172.1] - 2026-11-14
 
 ### Fixed

@@ -55,7 +55,9 @@
       "duration_ms": 2400,
       "turn_summary": {
         "output": "Done."
-      }
+      },
+      "kept_from": 1,
+      "kept_to": 3
     }
   ],
   "cuts": [
@@ -276,6 +278,110 @@
             },
             "turns_since": 0,
             "current": true,
+            "of_turn": "turn-bh"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 7,
+      "label": "turn end",
+      "show": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "do it",
+            "at": "2026-11-12T10:00:00.000+01:00",
+            "turn_id": "turn-bh",
+            "drawn": "turn-bh"
+          },
+          {
+            "role": "assistant",
+            "content": "Done.",
+            "drawn": "turn-bh"
+          }
+        ],
+        "turn_drawings": {
+          "turn-bh": {
+            "events": [
+              {
+                "type": "turn_started",
+                "prompt": "do it",
+                "origin": {
+                  "client_id": "web:me"
+                },
+                "continue": false,
+                "turn_id": "turn-bh"
+              },
+              {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "h1",
+                  "kind": "hook",
+                  "hook": "gate",
+                  "question": "Start this turn?",
+                  "options": [
+                    "Yes",
+                    "No"
+                  ],
+                  "status": "pending"
+                }
+              },
+              {
+                "type": "question_answered",
+                "id": "h1",
+                "answer": {
+                  "selected": [
+                    "Yes"
+                  ]
+                }
+              },
+              {
+                "type": "generation_started",
+                "iteration": 1
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Done.",
+                "thinking": "",
+                "iteration": 1
+              }
+            ],
+            "end": {
+              "type": "turn_completed",
+              "turn_id": "turn-bh",
+              "duration_ms": 2400
+            }
+          }
+        },
+        "current_turn": null,
+        "replay": [],
+        "cards": [
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "h1",
+              "kind": "hook",
+              "hook": "gate",
+              "question": "Start this turn?",
+              "options": [
+                "Yes",
+                "No"
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "calls": 0,
+            "answer": {
+              "selected": [
+                "Yes"
+              ]
+            },
+            "turns_since": 0,
+            "opening_id": "turn-bh",
+            "current": false,
             "of_turn": "turn-bh"
           }
         ],

@@ -20,9 +20,11 @@ export const test = base.extend({
   installed: [null, { option: true, scope: "worker" }],
   // The proxy project: chi web behind support/pod_proxy.rb (proxy.spec.js).
   authProxy: [false, { option: true, scope: "worker" }],
-  // The stage's drift check (<body data-stage-check="1">, stage_asking.js
-  // reconcileWaiting) on in every page load, and a "stage: waiting …"
-  // console warning fails the test (stage.spec.js).
+  // The stage's check (stage.spec.js): a "stage: waiting …" console warning
+  // (card_kinds.js warnDiffers: the data and the node disagree) fails the
+  // test, and so does a drift at its end: the stage's waiting cards as data
+  // (stage_waiting.js, read off the stage's node: stage_view.js chiWaiting)
+  // against the cards in its slots.
   stageCheck: [false, { option: true }],
 
   chi: [async ({ lan, installed, authProxy }, use) => {
@@ -94,18 +96,31 @@ export const test = base.extend({
     page.on("pageerror", (e) => errors.push(e.message));
     const waitingWarnings = [];
     if (stageCheck) {
-      await page.addInitScript(() => {
-        const on = () => { document.body.dataset.stageCheck = "1"; };
-        if (document.body) on();
-        else document.addEventListener("DOMContentLoaded", on, { once: true });
-      });
       page.on("console", (m) => { if (m.type() === "warning" && m.text().startsWith("stage: waiting")) waitingWarnings.push(m.text()); });
     }
     await page.goto(chi.baseURL + (workingSet ? "/" : "/?working_set=0"));
     await use(page);
     expect(errors, "page errors").toEqual([]);
     expect(waitingWarnings, "the stage's waiting cards as data agree with the cards drawn").toEqual([]);
+    if (stageCheck && !page.isClosed()) expect(await stageDrift(page), "the stage's waiting cards as data agree with its slots").toEqual([]);
   },
 });
+
+// The stage's drift (fixtures' stageCheck): the keys the registry holds with no
+// waiting card in the stage's extras or tail, and the waiting cards there with
+// no entry, read with the page's own stage_waiting.js (the same module
+// instance: its URL next to app.js). [] when the page has no stage.
+async function stageDrift(page) {
+  return page.evaluate(async () => {
+    const stage = document.getElementById("turnStage");
+    if (!stage?.chiWaiting) return [];
+    const app = document.querySelector('script[type="module"][src$="app.js"]');
+    const { waitingKey, waitingKind } = await import(new URL("stage_waiting.js", app.src).href);
+    const slots = [...(stage.querySelector(".ts-extras")?.children || []), ...(stage.querySelector(".ts-tail")?.children || [])];
+    const kinds = new Map(slots.map((el) => [waitingKey(el), waitingKind(el)]).filter(([key, kind]) => key && kind));
+    const keys = new Set(stage.chiWaiting().map((e) => e.key));
+    return [...[...keys].filter((key) => !kinds.has(key)), ...[...kinds.keys()].filter((key) => !keys.has(key))];
+  });
+}
 
 export { expect };

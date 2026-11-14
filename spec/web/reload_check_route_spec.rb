@@ -6,6 +6,7 @@ require "json"
 require "rack/mock"
 
 require "samagotchi/web/app"
+require "samagotchi/bridge/card_store"
 
 # POST /api/sessions/:id/reload_check: the opt-in reload check's counts
 # (reload_check.js), logged as one line per check, never content.
@@ -95,6 +96,18 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions/:id/reload_check" do
   it "refuses a body that isn't a JSON object" do
     expect(post("nope").first).to eq(400)
     expect(lines).to eq([])
+  end
+
+  it "says when the page compared no cards (no card registry), and only then" do
+    post({ turn_id: "T1", same: true, kinds: [], drawn: true, cards_compared: false })
+    post({ turn_id: "T2", same: true, kinds: [], drawn: true, cards_compared: "no" })
+
+    expect(lines.map { |_, fields| fields.key?(:cards_compared) ? fields[:cards_compared] : :absent }).to eq([false, :absent])
+  end
+
+  it "keeps the page's CardStore cap CardStore's (reload_check.js CARD_STORE_CAP)" do
+    source = File.read(File.expand_path("../../lib/samagotchi/web/public/reload_check.js", __dir__))
+    expect(source[/^const CARD_STORE_CAP = (\d+);/, 1].to_i).to eq(Samagotchi::Bridge::CardStore::CAPACITY)
   end
 
   it "keeps its kinds and ACCEPTED ids the page's (history_shape.js KINDS, ACCEPTED)" do

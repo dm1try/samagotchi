@@ -10,7 +10,8 @@
 // a difference not listed fails, and so does one listed that is gone (the
 // build that removes it flips it here). On both pages the stage's waiting
 // cards as data (stage_waiting.js) agree with the slots (the DOM read is a
-// cross-check here only).
+// cross-check here only), and so does the page's card registry
+// (card_registry.js): what it says waits is what the stage holds.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { failOnWaitingWarnings } from "./waiting_warnings.js";
@@ -71,27 +72,53 @@ export function stageShape(stageEl, historyEl, waiting) {
   };
 }
 
+// The registry against the slots after each event (the drift check the page
+// ran at each refresh until A1 phase 5): an entry whose card is gone from the
+// extras and the tail or waits no more, a card there that waits with no entry.
+function drift(page) {
+  const root = page.turnDom.root;
+  const slots = [...root.querySelector(".ts-extras").children, ...root.querySelector(".ts-tail").children];
+  const kinds = new Map(slots.map((el) => [waitingKey(el), waitingKind(el)]).filter(([key, kind]) => key && kind));
+  const keys = new Set(page.turnDom.waiting.list().map((e) => e.key));
+  return [...[...keys].filter((key) => !kinds.has(key)), ...[...kinds.keys()].filter((key) => !keys.has(key))];
+}
+
 // The registry against the slots: the same keys and kinds, in order.
 function crossCheck(page, label) {
+  assert.deepEqual(drift(page), [], `${label}: no entry without its card, no waiting card without its entry`);
   const shape = stageShape(page.turnDom.root, page.historyEl, page.turnDom.waiting);
   const fromDom = shape.cards.filter((c) => c.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.ok(shape.showing.length <= 1, `${label}: one docked card shows at a time`);
   const fromData = page.turnDom.waiting.list().filter((e) => e.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.deepEqual(fromData, fromDom, `${label}: the waiting cards as data agree with the slots`);
   assert.deepEqual(page.turnDom.waiting.docked(), shape.docked, `${label}: docked as data agrees with the asking form`);
+  // The cards as data (card_registry.js, an observer) against the stage's:
+  // what waits of the running turn, warnings apart (the step limit's question
+  // is of no turn: it goes under its ended turn, never into the stage).
+  const sorted = (list) => list.map(({ key, kind }) => ({ key, kind })).sort((a, b) => a.key.localeCompare(b.key));
+  const turn = page.cardRegistry.turn();
+  const registryWaits = turn ? page.cardRegistry.forTurn(turn).filter((e) => ["pending", "asks"].includes(e.status) && e.kind !== "warn") : [];
+  assert.deepEqual(sorted(registryWaits), sorted(fromData), `${label}: the cards as data wait as the stage's do`);
 }
+
+const TURN_ENDS = ["turn_completed", "turn_canceled", "turn_failed"];
 
 // The page that lived through +events+.
 async function livedTo(events) {
   const page = livePage({ questions: true });
-  for (const event of events) {
+  for (const [i, event] of events.entries()) {
     await page.handlers[event.type]?.({ ...event });
     // Events apart, as they come live: each one's microtasks (the stage's
     // refresh on a card's change) run before the next.
     await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(drift(page), [], `after event ${i} (${event.type}): the waiting cards as data agree with the slots`);
   }
   page.turnDom.flush();
   await settle();
+  // A cut at the turn's end: the page as it reads once the stage handed the
+  // turn off (live, a moment after the end; turn_drawing_parity.test.js
+  // does the same).
+  if (TURN_ENDS.includes(events.at(-1)?.type)) page.turnDom.handOff({ immediate: true });
   // A turn handed off meanwhile has landed (its fold's end).
   page.turnDom.settleFold();
   return page;
@@ -106,6 +133,7 @@ async function drawShow(page, show) {
   }));
   const snapshotCards = splitSnapshotCards(show.cards, {});
   page.cards.placeSnapshotCards(snapshotCards.placed);
+  page.cardRegistry.seed(show);
   for (const event of show.replay || []) await page.handlers[event.type]?.({ ...event, replayed: true });
   page.turnDom.flush();
   snapshotCards.current.forEach((card) => page.cards.upsertCard(card));
@@ -137,9 +165,18 @@ async function resyncTo(page, show) {
 }
 
 // The live-vs-reload differences still known at a cut, "<scenario>/<cut>":
-// the stageShape fields (and "history") that differ. None today: a build
+// the stageShape fields (and "history") that differ. A build
 // that brings one back lists it here with its reason.
-const EXPECTED = {};
+const EXPECTED = {
+  // Live, the answered approval went into the history under its lead-in
+  // while check-in's card still waited in the stage (handed off at the end);
+  // a reload puts the question before the answer, after the drawn turn's
+  // check-in card. The reload can't tell when a card stopped asking (a card
+  // tapped Keep going/Nudge leaves the stage earlier; TurnAccumulator's
+  // fold_card keeps only its first arrival). Follow-up: a server-side record
+  // of where a card stopped asking, or questions as drawing parts.
+  "checkin_approval/turn end": ["history"],
+};
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));
 

@@ -7,7 +7,8 @@ import { barItemOnRow, clickBarItem, expectNoHorizontalOverflow } from "./suppor
 import { expectSameAfterReload } from "./support/history_shape.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
-// The stage's drift check on: a "stage: waiting …" warning fails the test.
+// The stage check on (fixtures.js stageCheck): a "stage: waiting …" warning,
+// or the waiting cards as data drifting from the slots at the end, fails the test.
 test.use({ stageCheck: true });
 
 const stageEl = (page) => page.locator("#turnStage");

@@ -3,6 +3,7 @@
 # one turn that asks a question and an approval, a reload mid-wait; prints
 # the stage's refresh times, the open, tap→settled, reload→card and the heap.
 # See script/stage_perf_probe/probe.js and docs/testing.md (The stage perf
-# probe). --keep leaves its tmp/ dir; --headed shows the browser;
+# probe). --keep leaves its tmp/ dir; --headed shows the browser; --reload-check
+# turns web.reload_check on and times its compare and post;
 # PROBE_MACHINE=<label> names the machine in the output.
 exec node "$(dirname "$0")/stage_perf_probe/probe.js" "$@"

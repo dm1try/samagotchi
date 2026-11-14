@@ -1,11 +1,10 @@
-// The stage's cross-check (card_kinds.js warnDiffers; stage_asking.js
-// reconcileWaiting's drift check, switched on for each test): a test file
-// that calls this fails any of its tests during which the page warned
-// "stage: waiting …". console.warn
+// The stage's cross-check (card_kinds.js warnDiffers: the data and the
+// node disagree): a test file that calls this fails any of its tests during
+// which the page warned "stage: waiting …". console.warn
 // is wrapped once for the process (npm test runs every file in one) and still
 // prints. Top-level hooks: under npm test's one process they apply to the
 // files loaded after this one too, which keep the check as well.
-import { afterEach, beforeEach } from "node:test";
+import { afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 const seen = [];
@@ -23,13 +22,9 @@ if (!console.warn.chiWaitingSpy) {
 // one reads it here, so the after-each check doesn't fail it).
 export const takeWaitingWarnings = () => seen.splice(0);
 
-// The drift check on (<body data-stage-check="1">) for each test of the file.
+// Each test of the file ends with no such warning.
 export function failOnWaitingWarnings() {
-  beforeEach(() => {
-    if (globalThis.document?.body) document.body.dataset.stageCheck = "1";
-  });
   afterEach(() => {
-    if (globalThis.document?.body) delete document.body.dataset.stageCheck;
     assert.deepEqual(seen.splice(0), [], "the stage's waiting cards as data agree with the cards drawn");
   });
 }
