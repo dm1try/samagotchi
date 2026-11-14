@@ -5,6 +5,9 @@ require "fileutils"
 require "tmpdir"
 require "socket"
 require "samagotchi/web/server"
+require_relative "../support/web_server"
+require "samagotchi/grants"
+require "samagotchi/participants"
 
 RSpec.describe Samagotchi::Web::Server::Log do
   let(:out) { StringIO.new }
@@ -944,5 +947,126 @@ RSpec.describe Samagotchi::Web::Server do
       expect { expect(described_class.launch(port: 4567)).to eq(1) }.to output(/port 4567 is in use/).to_stderr
       expect(described_class).not_to have_received(:start)
     end
+  end
+end
+
+# A refused body on a real socket, which a Rack mock can't show: WEBrick
+# would read and drop the rest of the body to keep the connection alive
+# before it answers (HTTPRequest#fixup). Server's CloseOnConnectionClose
+# ends the connection on any 4xx to a request with a body (and on App's
+# Connection: close), and LingerAfterAnswer reads at most LINGER_BYTES more
+# after the answer so the client reads it. The client declares 300 MB and
+# sends only a few. A LAN chi web: this machine's loopback needs the token.
+RSpec.describe Samagotchi::Web::Server, "a refused body on a real socket" do
+  let(:token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
+  let(:root) { File.realpath(Dir.mktmpdir("web-server-body")) }
+  let(:state_dir) { File.join(root, "samagotchi", "sessions") }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
+  let(:app) do
+    Samagotchi::Web::App.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants,
+                             lan: { ip: "192.168.1.55", token: token })
+  end
+  let(:server) { WebServer.start(app) }
+  let(:sent) { 8 * 1024 * 1024 }
+  let(:huge) { 300 * 1024 * 1024 }
+
+  before { stub_const("#{described_class}::LINGER_BYTES", 1024 * 1024) }
+
+  after do
+    server.stop
+    FileUtils.remove_entry(root)
+  end
+
+  def connect = TCPSocket.new("127.0.0.1", server.port)
+
+  def post_head(path, length, bearer: token, content_type: "application/json")
+    auth = bearer ? "Authorization: Bearer #{bearer}\r\n" : ""
+    "POST #{path} HTTP/1.1\r\nHost: 127.0.0.1:#{server.port}\r\nContent-Type: #{content_type}\r\n#{auth}" \
+      "Content-Length: #{length}\r\nConnection: keep-alive\r\n\r\n"
+  end
+
+  # What came back until the server closed (EOF or a reset), within
+  # +seconds+ (nil: still open then).
+  def read_until_closed(socket, seconds: 5)
+    text = +""
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+    loop do
+      left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      return [text, nil] unless left.positive? && socket.wait_readable(left)
+
+      text << socket.readpartial(65_536)
+    end
+  rescue EOFError, Errno::ECONNRESET
+    [text, true]
+  end
+
+  # +head+ declaring 300 MB, then up to +sent+ bytes while the answer is
+  # read: [status, JSON body, closed, seconds, bytes written].
+  def refused_big_body(head)
+    socket = connect
+    socket.write(head)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    writer = Thread.new do
+      written = 0
+      chunk = "a" * 65_536
+      begin
+        while written < sent
+          socket.write(chunk)
+          written += chunk.bytesize
+        end
+      rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+        nil
+      end
+      written
+    end
+    text, closed = read_until_closed(socket)
+    written = SpecWaiting.join!(writer, "the body writer").value
+    seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+    head, body = text.split("\r\n\r\n", 2)
+    [head.to_s[%r{\AHTTP/1\.1 (\d+)}, 1].to_i, (JSON.parse(body) if body && !body.empty?), closed, seconds, written]
+  ensure
+    socket&.close
+  end
+
+  def expect_closed_fast(result, status, error)
+    code, json, closed, seconds, written = result
+    expect([code, json&.dig("error"), closed]).to eq([status, error, true])
+    expect(seconds).to be < 3
+    # The server read no more than the client wrote, and stopped well before the 8 MB.
+    expect(written).to be < sent
+  end
+
+  it "answers App's 413 at once and closes, having read a bounded part of a 300 MB body" do
+    result = refused_big_body(post_head("/api/render", huge))
+
+    expect_closed_fast(result, 413, "too_large")
+    expect(result[1]["detail"]).to eq("a text to render may be up to 64 KB")
+  end
+
+  it "answers a request without a token 401 at once and closes" do
+    expect_closed_fast(refused_big_body(post_head("/api/render", huge, bearer: nil)), 401, "unauthorized")
+  end
+
+  it "answers a participant's oversized image (the image path's own 413) at once and closes" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: root)
+    session.save(state_dir: state_dir)
+    FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+    issued = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+
+    head = post_head("/api/sessions/#{session.id}/images?name=a.png", huge, bearer: issued.token, content_type: "image/png")
+    expect_closed_fast(refused_big_body(head), 413, "too_large")
+  end
+
+  it "keeps a connection alive after a body it took" do
+    socket = connect
+    body = JSON.generate({ text: "hi" })
+    2.times do
+      socket.write(post_head("/api/render", body.bytesize) + body)
+      head = socket.gets("\r\n\r\n")
+      expect(head).to start_with("HTTP/1.1 200")
+      expect(socket.read(head[/^content-length: (\d+)/i, 1].to_i)).to eq('{"html":null}')
+    end
+  ensure
+    socket&.close
   end
 end

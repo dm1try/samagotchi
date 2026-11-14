@@ -82,6 +82,76 @@ module Samagotchi
       # chi web is the only WEBrick server chi runs.
       WEBrick::HTTPRequest.prepend(ProxyGate::RawHeaderNames) unless WEBrick::HTTPRequest < ProxyGate::RawHeaderNames
 
+      # How much of a refused body (any 4xx or 5xx to a request with a
+      # body) the server still reads and drops after its answer, and for
+      # how long, so the client reads the answer before the close (a close
+      # with unread bytes is a reset, which can lose the answer on the
+      # client's side). The thread is held at most LINGER_SECONDS; memory
+      # is one 64 KB buffer.
+      LINGER_BYTES = 4 * 1024 * 1024
+      LINGER_SECONDS = 2.0
+
+      # A refusal (status 400 or more) to a request that declared a body
+      # (Content-Length > 0, or Transfer-Encoding), and any answer with
+      # Connection: close (App's 413 too_large), end the connection: WEBrick
+      # would otherwise read and drop the rest of the body
+      # (HTTPRequest#fixup, up to its Content-Length) to keep the connection
+      # alive, before it sends the answer; rackup never tells WEBrick about
+      # the header (WEBrick reads it only as it sends). One rule here, not
+      # per route: the gate's 401, a participant's 403/404, the image
+      # path's own 413 and 429 close as App's 413 does. A 2xx/3xx stays
+      # alive (WEBrick drains a body the app left, as before); a hijacked
+      # stream is left to its own.
+      module CloseOnConnectionClose
+        def service(req, res)
+          super
+          return if res.body.respond_to?(:call)
+
+          body = req["content-length"].to_i.positive? || !req["transfer-encoding"].nil?
+          return unless res["connection"].to_s.casecmp?("close") || (res.status >= 400 && body)
+
+          res.keep_alive = false
+          res.linger = body
+        end
+      end
+
+      # The answer of a connection CloseOnConnectionClose ended with a body
+      # left: sent, then the rest read and dropped up to LINGER_BYTES /
+      # LINGER_SECONDS (Server.linger) before WEBrick closes the socket.
+      module LingerAfterAnswer
+        attr_accessor :linger
+
+        def send_response(socket)
+          super
+          Server.linger(socket) if linger
+        end
+      end
+
+      Rackup::Handler::WEBrick.prepend(CloseOnConnectionClose) unless Rackup::Handler::WEBrick < CloseOnConnectionClose
+      WEBrick::HTTPResponse.prepend(LingerAfterAnswer) unless WEBrick::HTTPResponse < LingerAfterAnswer
+
+      # Read and drop what the client still sends after the answer (its
+      # write side shut first, so the answer and an EOF reach it), up to
+      # +bytes+ or +seconds+, whichever comes first.
+      def self.linger(socket, bytes: LINGER_BYTES, seconds: LINGER_SECONDS)
+        io = socket.to_io
+        io.shutdown(Socket::SHUT_WR)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+        buffer = +""
+        while bytes.positive?
+          wait = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          break unless wait.positive? && io.wait_readable(wait)
+
+          chunk = io.read_nonblock([bytes, 65_536].min, buffer, exception: false)
+          break if chunk.nil?
+          next if chunk == :wait_readable
+
+          bytes -= chunk.bytesize
+        end
+      rescue IOError, SystemCallError
+        nil
+      end
+
       # `chi web`: one server serves every project, the scope is in the page
       # URL. If a chi web already runs on the port, print (and with --open,
       # open) its page for +start_dir+ and leave it be; else start one.
