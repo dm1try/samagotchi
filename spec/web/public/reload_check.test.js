@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { createReloadCheck } from "../../../lib/samagotchi/web/public/reload_check.js";
 import { splitSnapshotCards } from "../../../lib/samagotchi/web/public/card.js";
 import { placeCardsOffscreen } from "../../../lib/samagotchi/web/public/cards_offscreen.js";
+import { historyShape } from "../../../lib/samagotchi/web/public/history_shape.js";
 import { livePage } from "./live_page.js";
 
 function nodes(markup) {
@@ -208,6 +209,58 @@ test("only a card entry's id drops a card item: a notice with the same id doesn'
 
 const ASKED = { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
   pending_question: { id: "q1", question: "Which one?", options: [{ label: "A" }, { label: "B" }] }, answer: { selected: ["A"] } };
+const QCARD = (summary, said = "") => `<details class="bubble question answered"><summary>${summary}`
+  + (said ? `<div class="question-said" aria-hidden="true">${said}</div>` : "") + `</summary></details>`;
+// The same holder, placed offscreen, read alone: what the compare saw on the reload side.
+function offscreenShape(markup, cards, capabilities = null) {
+  const holder = document.createElement("div");
+  holder.innerHTML = markup;
+  placeCardsOffscreen(holder, cards, { capabilities, answers: true });
+  return historyShape([...holder.children]);
+}
+
+// A drawn turn's asking line, as a reload renders it: the placer takes the
+// question card's kept reply from its step's text.
+const ASK_BLOCK = '<details class="turn-work" data-drawn="T1"><summary><span class="turn-steps">1 step</span></summary>'
+  + '<div class="gen"><summary>ask</summary><div class="gen-text">rm tmp is in the way</div></div></details>';
+const APPROVAL = { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+  pending_question: { id: "q2", kind: "approval", approval: { tool: "execute", label: "rm tmp" }, options: ["Allow", "Deny"] },
+  answer: { selected: ["Deny"], freeform: "keep it" } };
+
+// Hand-written live markup, so these compare the placer against the page's
+// order rather than against itself (c4da0b424: an answered approval's lead-in
+// came after its verdict after a reload).
+test("an answered approval's card reads the asking line, then the verdict, on both sides", async () => {
+  const live = `${PROMPT}${ASK_BLOCK}<details class="bubble question approval answered denied"><summary class="approval-said">`
+    + '<div class="question-said" aria-hidden="true">rm tmp is in the way</div>'
+    + '<span class="question-summary-text">rm tmp → Denied</span></summary></details>'
+    + '<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>';
+  const reloaded = `${PROMPT}${ASK_BLOCK}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const { check, posts } = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [APPROVAL] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+  assert.ok(posts[0][1].kinds.length === 0);
+});
+
+// placeResolvedQuestion puts a turn's question before the steered lines that
+// came after it was asked, not after the answer.
+test("a question sits before the steered line that followed it, live and reloaded", async () => {
+  const steered = '<div class="bubble user steered" data-step="2"><div class="user-message">also this</div></div>';
+  const asked = QCARD("Which one? → A", "rm tmp is in the way");
+  const live = `${PROMPT}${ASK_BLOCK}${asked}${steered}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const reloaded = `${PROMPT}${ASK_BLOCK}${steered}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const { check, posts } = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [ASKED] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+
+  // The live card after the steered line instead: the reload's order is a
+  // finding (compareShapes pairs the two question items and names the steered
+  // line that moved).
+  const after = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [ASKED] } });
+  await after.check.handedOff({ pieces: pieces(`${PROMPT}${ASK_BLOCK}${steered}${asked}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`) });
+  assert.equal(after.posts[0][1].same, false);
+  assert.deepEqual(after.posts[0][1].kinds, ["steered"]);
+});
 
 test("the page's own question card, placed offscreen the same way, is no finding", async () => {
   const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED] } });
@@ -219,9 +272,11 @@ test("the page's own question card, placed offscreen the same way, is no finding
 
 test("a question the live page put after the answer is a finding of kind question", async () => {
   const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED] } });
-  await check.handedOff({ pieces: pieces(`${PROMPT}${ANSWER}<details class="bubble question answered"><summary>Which one? → A</summary></details>`) });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${ANSWER}${QCARD("Which one? → A")}`) });
   assert.equal(posts[0][1].same, false);
   assert.deepEqual(posts[0][1].kinds, ["question"]);
+  assert.ok(offscreenShape(`${PROMPT}${ANSWER}`, [ASKED]).some((item) => item.kind === "question"),
+    "the reload did place the card: the finding is its place, not its absence");
 });
 
 test("a deny with a reason, a cancelled question and a step-limit one read the same on both sides", async () => {
@@ -248,6 +303,22 @@ test("a question entry with no of_turn (an older worker) is dropped on both side
   assert.deepEqual(placed[0], []);
   assert.equal(posts[0][1].same, true);
   assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("a question stamped to another turn does not silence this turn's questions", async () => {
+  const other = { type: "question", opening_id: "T2", pending_question: { id: "q9", question: "Elsewhere?" }, answer: { selected: ["yes"] } };
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED, other] } });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${QCARD("Which one? → wrong")}${ANSWER}`) });
+  assert.equal(posts[0][1].same, false, JSON.stringify(posts[0][1]));
+  assert.deepEqual(posts[0][1].kinds, ["question"]);
+});
+
+test("a question with no of_turn but this turn's opening stamp is still left out", async () => {
+  const stale = { type: "question", opening_id: "T1", pending_question: { id: "q1", question: "Which one?" }, answer: { selected: ["A"] } };
+  const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [stale] } });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${QCARD("Which one? → A")}${ANSWER}`) });
+  assert.deepEqual(placed[0], []);
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
 });
 
 test("an undrawn turn's own card and notice are placed and compared", async () => {
@@ -278,6 +349,8 @@ test("the kept reply's line differing between live and reload is a finding of ki
   await check.handedOff({ pieces: pieces(live) });
   assert.equal(posts[0][1].same, false);
   assert.deepEqual(posts[0][1].kinds, ["question"]);
+  assert.ok(offscreenShape(reloaded, [ASKED]).some((item) => item.kind === "question"),
+    "the reload placed its own card: only the kept line differs");
 });
 
 test("two questions of one turn are compared in their order", async () => {
