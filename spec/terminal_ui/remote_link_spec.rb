@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::TerminalUI::RemoteLink do
   # A new terminal command (local: true, shown in the attached TUI) must
   # say what it does remotely.
   it "handles every terminal command of the attached TUI remotely" do
-    ids = Samagotchi::SessionCommands.builtin_registry.entries.select { |entry| entry.local && entry.in_ui?(:attached) }.map(&:id).uniq
+    ids = Samagotchi::SessionCommandCatalog.builtin_registry.entries.select { |entry| entry.local && entry.in_ui?(:attached) }.map(&:id).uniq
     expect(ids.sort).to eq(described_class::HANDLED_COMMANDS.sort)
   end
 end

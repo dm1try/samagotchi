@@ -198,7 +198,7 @@ module Samagotchi
       # A UI-only command (/stats, /exit …) isn't run without a terminal,
       # and isn't a prompt either: refused as chi send refuses it, before
       # any session is made (bin/chi exits 1).
-      return refuse_one_shot_ui_command if SessionCommands.ui_only_entry(@prompt)
+      return refuse_one_shot_ui_command if SessionCommandCatalog.ui_only_entry(@prompt)
 
       session = @resume_session || @engine.store_model!(Session.new_session(
         mode: "assist",
@@ -356,8 +356,8 @@ module Samagotchi
     # `chi -p /stats --non-interactive`: why it doesn't run, on stderr.
     # @return [Symbol] :turn_failed
     def refuse_one_shot_ui_command
-      name = SessionCommands.ui_only_entry(@prompt).name
-      warn "chi: refused: #{SessionCommands.ui_only_refusal(name, @resume_session&.id, runner: "--non-interactive")}"
+      name = SessionCommandCatalog.ui_only_entry(@prompt).name
+      warn "chi: refused: #{SessionCommandCatalog.ui_only_refusal(name, @resume_session&.id, runner: "--non-interactive")}"
       :turn_failed
     end
 

@@ -368,7 +368,7 @@ module Samagotchi
                                         task_finish_notes: task_finish_notes)
       restrict_scratch_tools! if @scratch
       # Likewise the slash commands its SessionCommands run.
-      @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
+      @command_registry = SessionCommandCatalog.register_builtins(Commands::Registry.new)
       # Installed bundles' plugins add commands, tools and hooks to these
       # (docs/plugins.md); one that fails is announced with the load
       # failures, and the rest still load.

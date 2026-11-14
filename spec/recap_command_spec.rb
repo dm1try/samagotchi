@@ -68,7 +68,7 @@ RSpec.describe "/recap on|off|default", :recap do
     expect(commands.run("/recap")).to be_nil
     expect(engine.command_registry.lookup_local("/recap")&.id).to eq(:recap)
     expect(engine.command_registry.lookup_local("/recap off")).to be_nil
-    expect(Samagotchi::SessionCommands.ui_only_entry("/recap off")).to be_nil
+    expect(Samagotchi::SessionCommandCatalog.ui_only_entry("/recap off")).to be_nil
   end
 
   it "runs mid-turn too (it toggles the idle job only)" do

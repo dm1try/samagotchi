@@ -16,16 +16,13 @@ RSpec.describe Samagotchi::SessionCommandCatalog do
     expect(status).to be_success, err
   end
 
-  it "is what SessionCommands reads: the same registry and constants" do
+  it "is what SessionCommands reads: its constants, and no class methods of its own" do
     require "samagotchi/session_commands"
     commands = Samagotchi::SessionCommands
 
-    expect(commands.builtin_registry).to be(described_class.builtin_registry)
     expect(commands::SHELL_BANG_PREFIX).to eq(described_class::SHELL_BANG_PREFIX)
     expect(commands::CONTINUE_COMMAND).to eq(described_class::CONTINUE_COMMAND)
-    expect(commands.builtin_name("/model x")).to eq("/model")
-    expect(commands.delete_on_exit?("/exit --delete")).to be(true)
-    expect(commands.ui_only_entry("/stats")&.name).to eq("/stats")
-    expect(commands.ui_only_refusal("/exit", nil, runner: "chi send")).to eq(described_class.ui_only_refusal("/exit", nil, runner: "chi send"))
+    # The class methods live in the catalogue alone: a caller names it.
+    expect(commands).not_to respond_to(:builtin_registry)
   end
 end

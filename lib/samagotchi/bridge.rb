@@ -1077,7 +1077,7 @@ module Samagotchi
       # The Engine's own commands: the built-ins and its plugins' (a card's
       # action is a plugin command line).
       unless command_registry.command?(line)
-        known = command_registry.entries.reject(&:local).map { |entry| SessionCommands.display_name(entry) }.sort
+        known = command_registry.entries.reject(&:local).map { |entry| SessionCommandCatalog.display_name(entry) }.sort
         detail = "not a session command: #{line[0, 80]} (known: #{known.join(", ")}; /help lists them)"
         return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: detail }]
       end

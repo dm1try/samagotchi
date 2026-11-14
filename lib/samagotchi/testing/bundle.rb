@@ -99,7 +99,7 @@ module Samagotchi
         # @return [Plugin::Registries]
         def registries(**fields)
           Plugin::Registries.new(
-            commands: SessionCommands.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
+            commands: SessionCommandCatalog.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
             services: Plugin::Services.new, stage_tools: ->(*) {}, toolkits: [], tool_index: Tools::ToolIndex.new,
             peer_sources: PeerSources.new, prompt_sections: Plugin::PromptSections.new,
             judgments: SystemOne::Judgments.new, **fields

@@ -69,24 +69,24 @@ RSpec.describe Samagotchi::SessionCommands do
                                                           pending_tool_calls: true, tool_activity: [], canceled: false))
   end
 
-  describe ".builtin_registry" do
+  describe "the built-in registry (SessionCommandCatalog.builtin_registry)" do
     it "knows the commands a worker runs, and nothing else" do
-      expect(%w[/model /models /guardrails !rollback /continue].map { |c| described_class.builtin_registry.command?(c) }).to all(be(true))
-      expect(described_class.builtin_registry.command?("/guardrails revoke 2")).to be(true)
-      expect(described_class.builtin_registry.command?("/guardrails wrong 2")).to be(true)
-      expect(described_class.builtin_registry.command?("/guardrailsx")).to be(false)
-      expect(described_class.builtin_registry.command?("/model beta:x --default")).to be(true)
-      expect(described_class.builtin_registry.command?("/continue no, too slow")).to be(true)
-      expect(described_class.builtin_registry.command?("!ls -la")).to be(true)
-      expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| described_class.builtin_registry.command?(c) }).to all(be(false))
+      expect(%w[/model /models /guardrails !rollback /continue].map { |c| Samagotchi::SessionCommandCatalog.builtin_registry.command?(c) }).to all(be(true))
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/guardrails revoke 2")).to be(true)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/guardrails wrong 2")).to be(true)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/guardrailsx")).to be(false)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/model beta:x --default")).to be(true)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/continue no, too slow")).to be(true)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("!ls -la")).to be(true)
+      expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| Samagotchi::SessionCommandCatalog.builtin_registry.command?(c) }).to all(be(false))
     end
 
     it "takes ! followed by a command (a space between is fine) as a shell command" do
       ["!ls", "!ruby -e 'puts 1'", "! ls"].each do |line|
-        expect(described_class.builtin_registry.lookup(line)&.id).to eq(:shell)
+        expect(Samagotchi::SessionCommandCatalog.builtin_registry.lookup(line)&.id).to eq(:shell)
       end
       ["!", "hello !", "hello world", ""].each do |line|
-        expect(described_class.builtin_registry.lookup(line)).to be_nil
+        expect(Samagotchi::SessionCommandCatalog.builtin_registry.lookup(line)).to be_nil
       end
     end
   end
@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::SessionCommands do
   describe "the Engine's registry" do
     it "holds the built-ins, one registry per Engine" do
       other = Samagotchi::Engine.new(host_registry: registry, model_name: "beta:Qwen3-14B")
-      expect(engine.command_registry.entries.map(&:name)).to eq(described_class.builtin_registry.entries.map(&:name))
+      expect(engine.command_registry.entries.map(&:name)).to eq(Samagotchi::SessionCommandCatalog.builtin_registry.entries.map(&:name))
       expect(engine.command_registry).not_to be(other.command_registry)
       expect(engine.command_registry).not_to be_frozen
     end
@@ -136,7 +136,7 @@ RSpec.describe Samagotchi::SessionCommands do
       commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                                      registry: engine.command_registry)
       expect(commands.run("/hello  you ").output).to eq("hi you")
-      expect(described_class.builtin_registry.command?("/hello")).to be(false)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/hello")).to be(false)
     end
 
     it "runs a bundle's command with no output as nil, and a raise as an error" do
@@ -576,8 +576,8 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "is a command with an argument too" do
-      expect(described_class.builtin_registry.command?("/models qwen")).to be(true)
-      expect(described_class.builtin_registry.command?("/modelsx")).to be(false)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/models qwen")).to be(true)
+      expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/modelsx")).to be(false)
     end
   end
 
@@ -790,7 +790,7 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "lists while a turn runs; a drop or undrop waits for the turn's end" do
-      registry = described_class.builtin_registry
+      registry = Samagotchi::SessionCommandCatalog.builtin_registry
 
       expect(registry.mid_turn("/working-set")).to eq(:anytime)
       expect(registry.mid_turn("/working-set drop README.md")).to eq(:queue)
@@ -1299,7 +1299,7 @@ RSpec.describe Samagotchi::SessionCommands do
     # H2: the auth is the call's own; another run in between (an anytime
     # command on its thread) doesn't change it.
     it "keeps each call's own auth when another run comes in between" do
-      registry = described_class.register_builtins(Samagotchi::Commands::Registry.new)
+      registry = Samagotchi::SessionCommandCatalog.register_builtins(Samagotchi::Commands::Registry.new)
       cmds = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                                  save: ->(s) { saved << s.model_name }, registry: registry)
       # Another run (an anytime /help on its thread) right after the line is

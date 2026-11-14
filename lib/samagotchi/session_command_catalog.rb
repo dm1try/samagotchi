@@ -19,8 +19,8 @@ module Samagotchi
   # delete_on_exit?…). No Engine, no tool: the attached TUI, chi web,
   # chi send and the prompt history require this file, not
   # session_commands (which loads tools/execute and tools/builtins for
-  # !cmd and /context). SessionCommands includes it (its constants) and
-  # forwards the class methods, so SessionCommands.x keeps working.
+  # !cmd and /context). Every caller of the class methods names this module
+  # directly; SessionCommands only includes it, for its constants.
   module SessionCommandCatalog
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
