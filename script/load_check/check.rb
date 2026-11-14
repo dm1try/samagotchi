@@ -255,7 +255,7 @@ module LoadCheck
       @units.flat_map do |_path, unit|
         unit.autoloads.filter_map do |autoload|
           name = autoload.name
-          next if name.nil? # a loop-built autoload: the name is not a literal to check
+          next finding(3, unit.path, autoload.line, "(dynamic autoload)", "autoload name is dynamic and cannot be checked") if name.nil?
 
           definers = definers(name)
           target = autoload_target(autoload)

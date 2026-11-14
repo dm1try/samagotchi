@@ -23,7 +23,8 @@ HELP = <<~TEXT
        comes from a file required above that line, with no require cycle.
        A require inside a method satisfies 1 only.
     3  autoload: an autoload names a constant defined in exactly one file; one
-       that names a namespace reopened in several files is a finding.
+       that names a namespace reopened in several files is a finding. A
+       dynamically named autoload is reported unread.
 
   A name that resolves to nothing of chi's (a stdlib or gem constant) is out
   of scope. Each line is

@@ -25,8 +25,16 @@ RSpec.describe LoadCheck::Check do
     expect(result.files).to eq(4)
   end
 
-  it "reads an autoload written in a loop as reaching the file it names" do
-    expect(check("dynamic_autoload").findings).to be_empty
+  it "reads literal autoload names from a loop" do
+    root = File.join(FIXTURES, "dynamic_autoload")
+    path = File.join(root, "lib/samagotchi/session_inbox.rb")
+    scan = LoadCheck::Scan.new(path, root)
+    result = check("dynamic_autoload")
+
+    expect(scan.autoloads.map(&:name)).to eq(
+      %w[Samagotchi::SessionInbox::Dispatch Samagotchi::SessionInbox::Head Samagotchi::SessionInbox::Resolved]
+    )
+    expect(result.findings).to be_empty
   end
 
   it "treats a default argument as a call-time reference, not a load-time one" do
@@ -91,6 +99,7 @@ RSpec.describe LoadCheck::Check do
     expect(result.findings.first).to have_attributes(rule: 3, path: "lib/samagotchi/holder.rb", line: 2,
                                                      constant: "Samagotchi::Widget")
     expect(result.findings.first.why).to include("reopened in 2 files")
+    expect(result.findings.first.why).to include("the file it points to does not load them all")
   end
 
   it "drops an allow-listed finding and says when an entry matches nothing" do
