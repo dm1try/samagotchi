@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "../events"
-require_relative "../kernel_loop"
 require_relative "../log"
 require_relative "../steer"
 require_relative "../tool_output_cut"
