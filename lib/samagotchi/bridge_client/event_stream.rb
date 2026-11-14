@@ -3,6 +3,8 @@
 require "json"
 require "uri"
 require_relative "../bridge_secret"
+require_relative "sse_parser"
+require_relative "stream_open"
 
 module Samagotchi
   class BridgeClient

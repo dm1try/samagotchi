@@ -7,6 +7,7 @@ require_relative "../events"
 require_relative "../state_format"
 require_relative "card_places"
 require_relative "turn_notice"
+require_relative "../log"
 
 module Samagotchi
   class Bridge
