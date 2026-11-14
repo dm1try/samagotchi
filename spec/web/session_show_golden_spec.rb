@@ -57,6 +57,8 @@ RSpec.describe Samagotchi::Web::App, "the owner's show (golden)" do
       },
       "session_state_snapshot" => {
         "event_seq" => 42, "model_name" => "LiveModel", "status" => "running", "served_model" => "live-served",
+        # The turn's newest request estimate, kept mid-turn (the page's ctx chip).
+        "context_status" => { "est_pct" => 12.5, "bucket" => "under20" },
         "metrics" => { "turns" => 2, "turn_records" => [{ "id" => "t1", "duration_ms" => 4000 }], "tool_records" => [],
                        "active_turn" => { "id" => "t2" }, "active_tools" => [] }
       }

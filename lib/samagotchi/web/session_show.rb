@@ -272,6 +272,12 @@ module Samagotchi
                                             served_expected_by: snapshot["served_expected_by"])
           # The model notes its prompt carries now (a /model there changes them).
           session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
+          # The newest context estimate the worker has (a turn in flight: the
+          # last request's), so a page opened mid-turn shows the percent at
+          # once. Owner show only: a participant's show is ParticipantView's
+          # allowlist. A snapshot without the key (an older worker) sends
+          # nothing, so its page reads as it always did.
+          session_json = session_json.merge(context_status: snapshot["context_status"]) if snapshot.key?("context_status")
         else
           session_json = session_json.merge(saved_served_model(session, persisted))
         end

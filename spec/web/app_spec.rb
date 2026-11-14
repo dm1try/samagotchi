@@ -1650,6 +1650,27 @@ RSpec.describe Samagotchi::Web::App do
                                                               "chars" => 40, "digest" => "0123456789ab" }])
     end
 
+    # The ctx chip of a page opened while a turn runs: the worker's newest
+    # request estimate, kept mid-turn by the Engine (see the golden show).
+    it "passes the worker's context estimate to the page, and nothing when its snapshot has none" do
+      with_status = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }] },
+                      "session_state_snapshot" => { "status" => "running", "event_seq" => 3,
+                                                    "context_status" => { "est_pct" => 12.5, "bucket" => "under20" } } }
+      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+      stub_worker(app, with_status)
+      payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
+      expect(payload.dig("session", "context_status")).to eq("est_pct" => 12.5, "bucket" => "under20")
+
+      # A worker (or a stopped one) whose snapshot has no such key: the key
+      # is not invented, so the page falls back to the saved fill.
+      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+      stub_worker(app, { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }] },
+                         "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } })
+      payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
+      expect(payload.dig("session", "context_status")).to be_nil
+      expect(payload["session"]).not_to have_key("context_status")
+    end
+
     # A session opened with no worker running: its ⚠ comes from the served
     # model analytics.json saved, as long as it answered the session's model.
     describe "the served model of a session no worker runs" do
