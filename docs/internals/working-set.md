@@ -135,10 +135,11 @@ a canceled continue's restore, a failed turn's) announces the set at once (`anno
 smaller set reaches the page then, not at the next request. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
-**The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
+**The route.** `GET /api/sessions/:id/working_set` (`Web::WorkingSetRoutes#handle_working_set`, mixed into App) answers the snapshot's `to_h`
 and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` (`Web::SessionShow`) reads them, keys
 symbolized) and the worker's `llm_context` summary. Without one it builds from the session file and its saved chip
-(`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
+(`SessionSetting::LLM_CONTEXT`); both through `working_set_source` (a `WorkingSetRoutes::Source`), which the item's
+timeline route builds from too (Timeline, below). The folder is the session's `working_directory`. `running` is true when the
 snapshot has a turn in progress (`current_turn`). Between turns, a newer worker's `idle_working_set` is used directly;
 an older worker without that key still gets the file-build fallback.
 
