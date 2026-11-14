@@ -53,8 +53,8 @@ module Samagotchi
       # truncate_at_bytes, the ToolRunner cap). +now+ (a memory): what its
       # latest read would answer now and the diff (WorkingSet.memory_now).
       def handle_working_set_item(req, id)
-        kind = req.params["kind"].to_s
-        key = req.params["key"].to_s
+        kind = req.GET["kind"].to_s
+        key = req.GET["key"].to_s
         unless [WorkingSet::FILE, WorkingSet::MEMORY, WorkingSet::URL].include?(kind) && !key.strip.empty?
           return error_response(400, "invalid_item", "expected kind (file, memory or url) and key")
         end
@@ -63,7 +63,7 @@ module Samagotchi
         source = working_set_source(bridge_get_json(id, "snapshot"), session)
         timeline = WorkingSet.timeline_of(source.messages, kind: kind, key: key, strategy: source.strategy, cwd: source.cwd)
         body = timeline.to_h
-        if req.params["now"] == "1" && kind == WorkingSet::MEMORY
+        if req.GET["now"] == "1" && kind == WorkingSet::MEMORY
           body[:now] = WorkingSet.memory_now(source.messages, key: key, strategy: source.strategy, cwd: source.cwd,
                                              root: MemoryPaths.system_dir)&.to_h
         end

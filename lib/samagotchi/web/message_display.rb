@@ -376,13 +376,7 @@ module Samagotchi
       # reply), session-free. {html: nil} when markdown is off or
       # commonmarker is missing: the page keeps the raw text.
       def handle_render(req)
-        too_large = error_response(413, "too_large", "a text to render may be up to #{MAX_RENDER_BYTES / 1024} KB")
-        return too_large if req.content_length.to_i > MAX_RENDER_BYTES
-
-        raw = request_body(req, MAX_RENDER_BYTES + 1).to_s
-        return too_large if raw.bytesize > MAX_RENDER_BYTES
-
-        body = parse_json(raw)
+        body = parse_json(request_body(req, MAX_RENDER_BYTES, what: "a text to render"))
         return error_response(400, "invalid_json", "give {text}") unless body.is_a?(Hash) && body["text"].is_a?(String)
 
         html = @markdown_renderer.render(body["text"]) if @markdown_renderer.available?

@@ -17,6 +17,7 @@ require_relative "../session_setup"
 require_relative "../thinking"
 require_relative "../toolkit"
 require_relative "../turn_flow"
+require_relative "request_body"
 
 module Samagotchi
   module Web
@@ -40,7 +41,7 @@ module Samagotchi
       private
 
       def handle_create(req)
-        body = parse_json(request_body(req))
+        body = parse_json(request_body(req, RequestBody::OWNER_TURN_BODY_LIMIT))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end

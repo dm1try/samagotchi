@@ -68,6 +68,7 @@ require_relative "session_hub"
 require_relative "project_list"
 require_relative "session_access_routes"
 require_relative "principal"
+require_relative "request_body"
 require_relative "viewer"
 require_relative "participant_access"
 require_relative "participant_images"
@@ -106,6 +107,7 @@ module Samagotchi
     class App
       # @lan holds the LAN access token.
       include RedactedInspect
+      include RequestBody
       include SessionAccessRoutes
       include ParticipantAccess
       include ParticipantImages
@@ -386,6 +388,11 @@ module Samagotchi
         # with an invalid groups: (Toolkit.check_new!), whichever handler
         # spawned it.
         error_response(400, "toolkit_refused", e.message)
+      rescue BodyTooLarge => e
+        # Connection: close, so Web::Server ends the connection rather than
+        # read the rest of the body to keep it alive.
+        status, headers, body = error_response(413, "too_large", e.message)
+        [status, headers.merge("Connection" => "close"), body]
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         # A participant never reads an exception's words (they may name a
@@ -600,14 +607,18 @@ module Samagotchi
       # but for a grant's code bound to another identity: decision C, kept
       # for the right one, and refused token_bound, #code_token).
       def traded_token(req)
-        return req.params["token"] unless fragment_trade?(req)
+        # The page's trade is the query string's only: req.params would
+        # parse a urlencoded or multipart body too, before the gate.
+        return req.GET["token"] unless fragment_trade?(req)
 
         req.env.fetch(TRADED_TOKEN_ENV) do
-          raw = request_body(req, TRADE_BODY_LIMIT).to_s
-          value = if raw.bytesize >= TRADE_BODY_LIMIT then nil
-                  elsif form_post?(req) then Rack::Utils.parse_query(raw)
-                  else parse_json(raw)
-                  end
+          value = begin
+            # Under TRADE_BODY_LIMIT: a body of the limit or more is no token.
+            raw = request_body(req, TRADE_BODY_LIMIT - 1)
+            form_post?(req) ? Rack::Utils.parse_query(raw) : parse_json(raw)
+          rescue BodyTooLarge
+            nil
+          end
           value = {} unless value.is_a?(Hash)
           req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(req, value["code"]) : string_or_nil(value["token"])
         end
@@ -683,7 +694,7 @@ module Samagotchi
         # Through the proxy no GET trade (a ?token= rides the sign-in
         # redirect, and a crafted link would swap the owner's cookie): a
         # link's #code= and the 401 page's POST do it.
-        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.params.key?("token") && !(@public_url && proxied?(req))
+        page = req.get? && PAGE_PATHS.include?(req.path_info) && req.GET.key?("token") && !(@public_url && proxied?(req))
         return false unless page || fragment_trade?(req)
 
         token_required?(req) || Grants.token?(traded_token(req))
@@ -752,10 +763,7 @@ module Samagotchi
       def handle_update(req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        raw = request_body(req, 16_385)
-        return error_response(413, "body_too_large", "update request is too large") if raw.bytesize > 16_384
-
-        payload = parse_json(raw)
+        payload = parse_json(request_body(req, 16_384, what: "an update request"))
         return error_response(400, "invalid_update", "expected a JSON object with a version") unless payload.is_a?(Hash)
 
         version = payload["version"]
@@ -986,15 +994,15 @@ module Samagotchi
       def handle_list(req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        dir, error = scope_dir(req.params["dir"])
+        dir, error = scope_dir(req.GET["dir"])
         return error if error
 
         root = dir && ProjectScope.root_for(dir)
         # Lazy retention sweep (once per 24h)
         Degrade.call(:web, "retention_sweep_failed") { @manager.retention_sweep_if_due(state_dir: @state_dir) }
-        limit = sanitize_limit(req.params["limit"])
-        offset = sanitize_offset(req.params["offset"])
-        all = @hub.snapshot(project_root: root, sort: sanitize_sort(req.params["sort"]), order: sanitize_order(req.params["order"]))
+        limit = sanitize_limit(req.GET["limit"])
+        offset = sanitize_offset(req.GET["offset"])
+        all = @hub.snapshot(project_root: root, sort: sanitize_sort(req.GET["sort"]), order: sanitize_order(req.GET["order"]))
         page = all.drop(offset)
         page = page.first(limit) if limit
         headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store" }
@@ -1007,7 +1015,7 @@ module Samagotchi
       def handle_projects(req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        dir, error = scope_dir(req.params["dir"])
+        dir, error = scope_dir(req.GET["dir"])
         return error if error
 
         current_root = dir && ProjectScope.root_for(dir)
@@ -1408,7 +1416,7 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         subs = own.subscriptions
-        full = truthy_param?(req.params["full"])
+        full = truthy_param?(req.GET["full"])
         rows = attached_context(session, shadowed: full).map { |attached| context_row(attached, own, subs, full: full) }
         body = { session_id: id, sources: rows, can_add_url: ContextProviders.any? }
         # The candidates too, for chi context ls (no UI shows them yet).
@@ -1426,7 +1434,7 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         attached = find_context(session, name) or return error_response(404, "context_missing", "no source #{name[0, 40]}")
         own = ContextSources.session_location(id, state_dir: default_state_dir)
-        row = context_row(attached, own, own.subscriptions, full: truthy_param?(req.params["full"]))
+        row = context_row(attached, own, own.subscriptions, full: truthy_param?(req.GET["full"]))
         json_response(200, row.merge(text: attached.snapshot.text))
       end
 
@@ -1507,7 +1515,7 @@ module Samagotchi
       # detached: a project's is 409 project_source, as chi context rm
       # refuses it.
       def handle_context_delete(req, id, name)
-        return context_remove_own(id, name) if truthy_param?(req.params["own"])
+        return context_remove_own(id, name) if truthy_param?(req.GET["own"])
 
         session = @session_class.load(id, state_dir: default_state_dir)
         attached = find_context(session, name) or return error_response(404, "context_missing", "no source #{name[0, 40]}")
@@ -1641,7 +1649,7 @@ module Samagotchi
       def handle_events(req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        dir, error = scope_dir(req.params["dir"])
+        dir, error = scope_dir(req.GET["dir"])
         return error if error
 
         root = dir && ProjectScope.root_for(dir)
@@ -1905,13 +1913,13 @@ module Samagotchi
         # participant's page shows it (claim_link.js).
         attrs["home"] = Dir.home
         # Only when on: the page reads its presence.
-        attrs["working-set"] = "1" if working_set?(req.params["working_set"])
+        attrs["working-set"] = "1" if working_set?(req.GET["working_set"])
         # The opt-in reload check (reload_check.js): only when on.
         attrs["reload-check"] = "1" if @reload_check
         attrs.merge!(annotate_presets_data)
         # Who looks and what they may do (Viewer; viewer.js reads it at boot).
         attrs.merge!(Viewer.for(principal(req)).body_attributes)
-        dir, = scope_dir(req.params["dir"])
+        dir, = scope_dir(req.GET["dir"])
         unless dir
           dir = default_scope_dir(req)
           attrs["scope-dir"] = dir if dir
@@ -1923,7 +1931,7 @@ module Samagotchi
         elsif dir.nil?
           # The all view's way back: the project view it came from
           # (?from=), else the project chi web starts in.
-          back, = scope_dir(req.params["from"])
+          back, = scope_dir(req.GET["from"])
           back ||= start_dir
           if (back_root = ProjectScope.root_for(back))
             attrs["back-name"] = File.basename(back_root)
@@ -1942,7 +1950,7 @@ module Samagotchi
       def participant_index_data(req)
         grant = principal(req).grant
         attrs = { "version" => Samagotchi::VERSION, "session" => grant.session_id }
-        attrs["working-set"] = "1" if working_set?(req.params["working_set"])
+        attrs["working-set"] = "1" if working_set?(req.GET["working_set"])
         title = Degrade.call(:web, "participant_title_unreadable", fallback: nil) do
           participant_title(@session_class.load(grant.session_id, state_dir: default_state_dir))
         end
@@ -1964,8 +1972,8 @@ module Samagotchi
       # start folder when it is still a folder in a repo, else nil (every
       # session).
       def default_scope_dir(req)
-        return nil unless req.params["dir"].to_s.strip.empty?
-        return nil if req.params["scope"] == "all"
+        return nil unless req.GET["dir"].to_s.strip.empty?
+        return nil if req.GET["scope"] == "all"
 
         dir = File.expand_path(start_dir)
         File.directory?(dir) && ProjectScope.root_for(dir) ? dir : nil
@@ -1984,15 +1992,6 @@ module Samagotchi
       def json_response(status, payload)
         body = JSON.generate(payload)
         [status, { "Content-Type" => "application/json; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" }, [body]]
-      end
-
-      # The request body, "" when there is none: WEBrick (through rackup)
-      # raises LengthRequired on reading a POST that has neither a
-      # Content-Length nor a chunked body (plain `curl -X POST`).
-      def request_body(req, limit = nil)
-        return "" if req.get_header("CONTENT_LENGTH").nil? && req.get_header("HTTP_TRANSFER_ENCODING").nil?
-
-        req.body.read(*limit)
       end
 
       def error_response(status, code, detail)

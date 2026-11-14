@@ -26,7 +26,7 @@ module Samagotchi
       def handle_push_info(req)
         return json_response(200, { enabled: false, public_key: nil, origin: nil, this: nil }) unless @push
 
-        endpoint = req.params["endpoint"].to_s
+        endpoint = req.GET["endpoint"].to_s
         subs = @push.store.subscriptions
         mine = subs.select { |sub| sub.origin == @push.origin }
         this = endpoint.empty? ? nil : mine.find { |sub| sub.endpoint == endpoint }

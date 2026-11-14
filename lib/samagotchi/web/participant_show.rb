@@ -27,10 +27,10 @@ module Samagotchi
       private
 
       def participant_show_read(req, id)
-        return participant_show(id) if req.params["brief"] == "1"
-        return participant_cards_read(id) if req.params["cards"] == "1"
-        return participant_tail_read(req, id) if req.params["tail"] == "1"
-        return participant_timing_read(req, id) if req.params["timing"] == "1"
+        return participant_show(id) if req.GET["brief"] == "1"
+        return participant_cards_read(id) if req.GET["cards"] == "1"
+        return participant_tail_read(req, id) if req.GET["tail"] == "1"
+        return participant_timing_read(req, id) if req.GET["timing"] == "1"
 
         session = @session_class.load(id, state_dir: default_state_dir)
         participant_main_show(req, show_reads(id, session))
@@ -191,7 +191,7 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         reads = show_reads(id, session)
         viewer = participant_viewer(req, session)
-        turn_id = req.params["turn_id"].to_s.strip
+        turn_id = req.GET["turn_id"].to_s.strip
         raw = visible_replies(reads.raw_messages)
         shown = messages_for_display(raw, parts: true, cwd: session.working_directory, markdown: false)
         messages = ParticipantView.messages(shown, viewer)

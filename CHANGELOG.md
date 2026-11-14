@@ -12,6 +12,16 @@ and commands may change between minor versions. How releases are made:
 
 - Web: after a reload, a second question or approval from the same step of a finished turn no longer repeats the step's
   reply above it, as live.
+- Web: `/api/update`'s answer to a body over 16 KB is `413 too_large`, as every other route's, and a stop whose body
+  is over 4 KB is refused instead of using the default wait.
+
+### Security
+
+- chi web no longer reads a form or file body sent with the page's `?token=` link before checking the token: a large
+  one sent to the login page was read into memory or temp files by anyone who could reach chi web.
+- chi web caps every request body: 64 KB unless a route needs more (a turn, an image, a context push). A bigger one
+  gets `413 too_large` and the connection is closed, instead of being read whole, so a participant can't fill chi
+  web's memory with one request.
 
 ## [0.172.1] - 2026-11-14
 

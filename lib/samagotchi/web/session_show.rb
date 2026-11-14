@@ -53,10 +53,10 @@ module Samagotchi
         return participant_show_read(req, id) unless principal(req).owner?
 
         # The page's light re-reads: never the whole conversation.
-        return handle_cards_read(id) if req.params["cards"] == "1"
-        return handle_tail_read(req, id) if req.params["tail"] == "1"
-        return handle_timing_read(id) if req.params["timing"] == "1"
-        return handle_brief_read(id) if req.params["brief"] == "1"
+        return handle_cards_read(id) if req.GET["cards"] == "1"
+        return handle_tail_read(req, id) if req.GET["tail"] == "1"
+        return handle_timing_read(id) if req.GET["timing"] == "1"
+        return handle_brief_read(id) if req.GET["brief"] == "1"
 
         session = @session_class.load(id, state_dir: default_state_dir)
         # A tab opened at a chi scratch session's id: its terminal's alone.
@@ -317,7 +317,7 @@ module Samagotchi
       def handle_tail_read(req, id)
         return session_not_found(id) unless session_exists?(id)
 
-        turn_id = req.params["turn_id"].to_s.strip
+        turn_id = req.GET["turn_id"].to_s.strip
         turn_id = nil if turn_id.empty?
         tail = live_tail(id, turn_id: turn_id)
         state = tail && tail["session_state_snapshot"]
@@ -408,7 +408,7 @@ module Samagotchi
 
       def handle_output(req, id)
         # Query ?since= may be an ISO8601 time or numeric mtime; we treat it as Time parse.
-        since_param = req.params["since"]
+        since_param = req.GET["since"]
         since_time = parse_since(since_param)
         session = @session_class.load(id, state_dir: default_state_dir)
         raw = @manager.read_responses(id, since_time: since_time, state_dir: @state_dir)

@@ -11,6 +11,7 @@ require "samagotchi/web/token"
 require "samagotchi/grants"
 require "samagotchi/web/link_codes"
 require "samagotchi/session"
+require_relative "../support/counting_input"
 
 # chi web on the LAN (web.host: lan): every route answers a phone, and this
 # Mac's loopback too, only with the access token (the chi_token cookie, a
@@ -98,6 +99,38 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
       expect(call("/api/info", headers: { "HTTP_AUTHORIZATION" => "Bearer wrong" }).first).to eq(401)
       expect(call("/?token=wrong").first).to eq(401)
       expect(call("/api/info", headers: cookie("")).first).to eq(401)
+    end
+
+    # The page's trade is the query's ?token= only: a body sent with the
+    # GET is never parsed for one (Rack's req.params would read a
+    # urlencoded body into memory and a multipart one into temp files).
+    describe "a page trade with a body" do
+      let(:size) { 20 * 1024 * 1024 }
+
+      def trade_with(content_type, input)
+        env = Rack::MockRequest.env_for("/?token=wrong", method: "GET", input: input)
+        env["CONTENT_TYPE"] = content_type
+        env["CONTENT_LENGTH"] = input.size.to_s
+        env["HTTP_HOST"] = "#{lan_ip}:4567"
+        env["REMOTE_ADDR"] = phone
+        app.call(env).first
+      end
+
+      it "answers a multipart body 401 and reads none of it" do
+        part = "--xx\r\nContent-Disposition: form-data; name=\"token\"; filename=\"t\"\r\n" \
+               "Content-Type: application/octet-stream\r\n\r\n"
+        input = CountingInput.new(size, prefix: part)
+
+        expect(trade_with("multipart/form-data; boundary=xx", input)).to eq(401)
+        expect(input.bytes_read).to eq(0)
+      end
+
+      it "answers a urlencoded body 401 and reads none of it" do
+        input = CountingInput.new(size, prefix: "token=#{token}&x=")
+
+        expect(trade_with("application/x-www-form-urlencoded", input)).to eq(401)
+        expect(input.bytes_read).to eq(0)
+      end
     end
 
     it "still gets a 401 with X-Forwarded-For: 127.0.0.1 (the peer is the socket's address)" do
