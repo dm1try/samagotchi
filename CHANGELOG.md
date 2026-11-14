@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.174.0] - 2026-11-15
+
 ### Added
 
 - `chi sessions delete --chain` deletes every link of a session chain, with their finished delegates (running ones are
@@ -24,9 +26,16 @@ and commands may change between minor versions. How releases are made:
 - chi web: a chain whose earlier links were deleted says "earlier links deleted", whoever deleted them (it said "pruned
   by a schedule").
 
+### Removed
+
+- Bundles: `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `::EXIT_CODE_FILENAME`, kept one release after they moved;
+  name `Samagotchi::TaskFiles::TASKS_DIR` and `::EXIT_CODE_FILENAME`.
+
 ### Fixed
 
 - chi web answers successful requests without draining large ignored bodies first, closing the connection instead.
+
+Update with `chi update`.
 
 ## [0.173.0] - 2026-11-14
 
@@ -6408,7 +6417,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.173.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.174.0...HEAD
+[0.174.0]: https://github.com/dm1try/samagotchi/compare/v0.173.0...v0.174.0
 [0.173.0]: https://github.com/dm1try/samagotchi/compare/v0.172.1...v0.173.0
 [0.172.1]: https://github.com/dm1try/samagotchi/compare/v0.172.0...v0.172.1
 [0.172.0]: https://github.com/dm1try/samagotchi/compare/v0.171.0...v0.172.0

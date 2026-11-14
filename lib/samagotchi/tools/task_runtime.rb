@@ -19,11 +19,6 @@ require_relative "task_record"
 module Samagotchi
   module Tools
     module TaskRuntime
-      # Moved to TaskFiles; kept here one release for bundles that name
-      # them (the boundary's stable list). Remove in the release after the
-      # one that ships TaskFiles, with their stable-list entries.
-      TASKS_DIR = TaskFiles::TASKS_DIR
-      EXIT_CODE_FILENAME = TaskFiles::EXIT_CODE_FILENAME
       STOP_GRACE_SEC = 3.0
       STOP_POLL_INTERVAL_SEC = 0.1
       METADATA_VERSION = TaskRecord::METADATA_VERSION

@@ -25,9 +25,6 @@ load the process code, and does not (`spec/require_cycle_spec.rb`, the thin clie
 | `TaskFiles` (`task_files.rb`) | where a task's files are: `TASKS_DIR`, `METADATA_FILENAME`, `OUTPUT_FILENAME`, `EXIT_CODE_FILENAME`, `TASK_ID`, `metadata_path`, `task_dir_for`, `command_of` (a record read, no refresh) | `TaskRuntime`, `execute`, `ToolActivity`, `SessionManager`, `chi bundle try`'s sandbox, the slow-commands bundle |
 | `TaskTranscript` (`task_transcript.rb`) | which tasks a conversation started, from its results' text: `created_ids_in`, `created_id`, `handed_over_id`, `RAN_AS_LINE` (matching on `ToolNames::Execute`) | `TaskRuntime.running_created_in`, `Bridge`, `TaskWatch`, `WorkerTaskWakes`, `SessionManager` |
 
-`TaskRuntime::TASKS_DIR` and `TaskRuntime::EXIT_CODE_FILENAME` forward to `TaskFiles` for one release (bundles named
-them; the boundary's stable list has both homes until they are removed).
-
 Behavior:
 
 - `execute`, `task_create` and the `!cmd` shell bang run the command in a non-login shell: `/bin/sh -c` on Linux; on macOS, when `/bin/zsh` is there, `/bin/zsh --emulate sh +o ignore_braces +o sh_glob -o bash_rematch +o bsd_echo -c` (macOS's `/bin/sh` is bash 3.2, which can't parse an apostrophe in a heredoc inside `"$( )"`, the usual commit message shape). That mode reads no rc files and keeps POSIX word splitting, unmatched globs left as is, `{1..3}`, `[[ … =~ (…) ]]` with `BASH_REMATCH`, arrays, `$'…'`, `&>` and echo expanding `\t`. Bash-only builtins and variables (`shopt`, `BASH_VERSION`, `${!prefix*}`, `read -p`) are not there.

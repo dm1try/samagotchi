@@ -38,11 +38,6 @@ module Samagotchi
         Allowed.new(name: "Samagotchi::Tools::Execute.timeout_seconds", file: "samagotchi/tools/execute"),
         Allowed.new(name: "Samagotchi::TaskFiles::TASKS_DIR", file: "samagotchi/task_files"),
         Allowed.new(name: "Samagotchi::TaskFiles::EXIT_CODE_FILENAME", file: "samagotchi/task_files"),
-        # The two names' old home, forwarding to TaskFiles for one release:
-        # remove these entries with TaskRuntime's two constants in the
-        # release after the one that ships TaskFiles.
-        Allowed.new(name: "Samagotchi::Tools::TaskRuntime::TASKS_DIR", file: "samagotchi/tools/task_runtime"),
-        Allowed.new(name: "Samagotchi::Tools::TaskRuntime::EXIT_CODE_FILENAME", file: "samagotchi/tools/task_runtime"),
         Allowed.new(name: "Samagotchi::AtomicFile.write", file: "samagotchi/atomic_file"),
         Allowed.new(name: "Samagotchi::Log.warn", file: "samagotchi/log"),
         Allowed.new(name: "Samagotchi::Log.debug", file: "samagotchi/log"),
