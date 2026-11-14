@@ -209,6 +209,14 @@ module Samagotchi
       entries.find { |entry| target_of(entry, links).first == session_id }
     end
 
+    # The enabled schedule a delete of +session_id+ would break: one whose
+    # target (#protecting), anchor or head it is. A head deleted would make
+    # the schedule fall back to its anchor (an archived link) and fail.
+    # @return [Entry, nil]
+    def protecting_link(session_id)
+      entries.find { |entry| entry.anchor == session_id || entry.head == session_id } || protecting(session_id)
+    end
+
     # @param id_or_name [String] an id, a unique prefix of one, or a title
     # @return [Entry, nil]
     # @raise [Usage] the prefix or the title names more than one schedule
