@@ -255,6 +255,10 @@ module Samagotchi
       store(session_dir, bytes, info, name, source)
     end
 
+    # Where +bytes+ of +format+ (a SENDABLE one) are stored as they are:
+    # images/<sha256's first 16 hex>.<ext>.
+    def self.file_name_for(bytes, format) = "#{DIR}/#{Digest::SHA256.hexdigest(bytes)[0, 16]}.#{EXT.fetch(format)}"
+
     # A ref is only ever read when its file name matches REF_RE and the file
     # is inside this session's images folder.
     def self.valid_ref?(session_dir, ref)
@@ -417,7 +421,7 @@ module Samagotchi
       raise Error, "#{name}: can't read its size" unless info&.width && info.height
       raise Error, "#{name} is not an image chi can send" unless MIME.key?(info.format)
 
-      file = "#{DIR}/#{Digest::SHA256.hexdigest(bytes)[0, 16]}.#{EXT.fetch(info.format)}"
+      file = file_name_for(bytes, info.format)
       path = File.join(session_dir.to_s, file)
       unless File.file?(path)
         FileUtils.mkdir_p(File.dirname(path))

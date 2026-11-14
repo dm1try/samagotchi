@@ -31,5 +31,23 @@ module Samagotchi
     # A participant's Stop on a worker that can't stop only the turn named
     # (Delivery::CANCEL_TURN_ID_FEATURE): it might stop the owner's next turn.
     CANCEL_UNAVAILABLE = "this session's worker is too old to stop only your turn: ask the session's owner to restart it"
+    # 429 too_many_images: their grant uploaded Grants::MAX_IMAGES distinct images.
+    TOO_MANY_IMAGES = "this participant's image allowance is used up: describe what the image shows"
+    # 429 too_many_image_attempts: Grants::MAX_IMAGE_ATTEMPTS uploads tried, refused ones counted.
+    TOO_MANY_IMAGE_ATTEMPTS = "this participant has tried too many image uploads: describe what the image shows"
+    # 422 unsupported_image: a bmp, tiff or heic, the formats chi converts
+    # with an external tool (sips or magick). Their png, jpeg, gif or webp
+    # still goes through the tool when it must be downscaled.
+    IMAGE_TYPE = "this image type can't be sent from a participant's page: send a png, jpeg, gif or webp"
+    # 422 image_too_big: no size in its header, or over the participant
+    # limits (Web::ParticipantImages::MAX_PARTICIPANT_PIXELS / _SIDE).
+    IMAGE_TOO_BIG = "this image is too large to send from a participant's page: send a smaller one (at most 40 megapixels)"
+    # 422 bad_image: their upload isn't an image chi can store. Never
+    # ImageStore's words (an image tool's output may name a host path).
+    BAD_IMAGE = "this file can't be sent as an image: send a png, jpeg, gif or webp"
+    # 422 no_vision: their turn has images and the session's model can't
+    # take them. Never the model's name or the /model hint: those are the
+    # owner's (the audit line has the full refusal).
+    NO_VISION = "this session's model can't take images: send text only"
   end
 end
