@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // only. Unstepped, it draws every frame; a paint property (box-shadow, a
 // background) repaints on each of them.
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../lib/samagotchi/web/public");
-const SOURCES = ["index.html", "participant.html", ...fs.readdirSync(PUBLIC).filter((name) => name.endsWith(".css"))];
+const SOURCES = ["index.html", ...fs.readdirSync(PUBLIC).filter((name) => name.endsWith(".css"))];
 const CHEAP = new Set(["opacity", "transform"]);
 // Shown only while a list loads, which ends by itself.
 const ALLOWED = [".card.skeleton"];

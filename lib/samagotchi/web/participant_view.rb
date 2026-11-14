@@ -57,8 +57,8 @@ module Samagotchi
         "tool_call_started" => :tool_call_started,
         "tool_call_completed" => :tool_call_completed,
         # Queue changes: the viewer's own in the owner's shape (the main
-        # page matches its bubbles by them), anyone else's bare (the
-        # participant page re-reads its review data on each).
+        # page matches its bubbles by them), anyone else's bare (their
+        # prompts are theirs).
         "turn_enqueued" => :turn_enqueued,
         "turn_dequeued" => :turn_dequeued,
         "input_merged" => :input_merged,
@@ -322,9 +322,8 @@ module Samagotchi
         { "type" => "tool_call_started", **tool_row(field(event, :tool), field(event, :ref), viewer), **call_ids(event) }
       end
 
-      # Its status word, flat for the participant page and as the owner's
-      # +activity+ ({status} only: never its action or params) for the
-      # main page's row (activity.js).
+      # Its status word, flat and as the owner's +activity+ ({status} only:
+      # never its action or params) for the main page's row (activity.js).
       def tool_call_completed(event, _viewer)
         out = { "type" => "tool_call_completed", **call_ids(event) }
         activity = field(event, :activity)
@@ -580,15 +579,13 @@ module Samagotchi
       # A tool row: the tool's name, and for a file tool the path relative
       # to the session's folder when it is inside it. Never its arguments.
       # The row's +ref+ is the owner's shape (FileRef#to_h: kind, path, the
-      # lines) with the relative path, for the main page's refs.js; +path+
-      # is the participant page's flat copy until that page goes.
+      # lines) with the relative path, for the main page's refs.js.
       def tool_row(tool, ref, viewer)
         row = { "tool" => tool.to_s }
         path = ref.is_a?(Hash) ? field(ref, :path) : nil
         relative = project_path(path, viewer.cwd, home: viewer.home)
         return row unless relative
 
-        row["path"] = relative
         file = { "kind" => FileRef::KIND, "path" => relative }
         %i[line end_line].each do |key|
           value = field(ref, key)

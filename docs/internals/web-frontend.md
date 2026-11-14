@@ -5,7 +5,7 @@ reaches the screen, and the guards every new piece should use. The modules' own 
 does; this page says how they hang together. The server side is [architecture.md](../architecture.md) (Web);
 the working set's overlay is [working-set.md](working-set.md), participants are [participants.md](participants.md).
 
-No build step: `index.html` and `participant.html` load ES modules as they are, with lit-html (`vendor/`) as the
+No build step: `index.html` loads ES modules as they are, with lit-html (`vendor/`) as the
 only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`, `turn_range.js`, …) touch no DOM
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
 by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec of its own; `viewer_boot.test.js` boots the whole page
@@ -29,23 +29,19 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it), `stage_stall.js` (the stage's quiet signal), `history_end.js` (the stage's one move of pieces to the history's end), `stage_opened.js` (a running turn opened in the history while a card waits: the lead-in bubble, the moves, the end fold), `stage_asking.js` (the stage's docked card and its fold: the docking and lead-in rules, the opening, a waiting card's own toggle, the folded row's text per kind, the fold's choice, reveal and the docked card's fold; `stage_view.js` wires it), `stage_waiting.js` (the stage's waiting cards as data, keyed by `data-qid` / `data-card-id`: kind, docked, approval, the stage's order, the shown card and its pager, the docked card's fold, kept for this tab in `chi_asking_fold:<session>`; `front`, `count`, `shown`, `blocking`), `stage_cards.js` (the cards that wait in the stage: `PENDING`, `ASKS`, `waitsInStage`, read by `stage_model.js placeKind`), `resync_reach.js` (a re-read that can't reach chi web keeps the drawn history; the status chip says retrying / offline, outside a turn), `session_sync.js` (the open session's sync: `select`, `resync` and its retries, the stream's life; the stream handle and the re-read bookkeeping are its own), `session_view.js` (the open session's view: `renderSessionView` draws a read, `forgetSession` resets the page for another session, `readTurnEnd`, `endTurnView`; app.js makes both right after the cards, each reaching the other and the later views through getters), `no_contact_fill.js` (a text field that isn't a contact form: autocomplete off and a name with no contact word, against iOS Safari's AutoFill Contact bar; a template's fields carry the same attributes, and its spec checks the page's markup for them) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `block_watch.js`, `card_stamps.js`, `recap_stamp.js` (a saved recap's place by its `opening_id` stamp, else its count), `inline_widgets.js`, `widget_walk.js`, `widget_picks.js`, `history_shape.js` (the history's shape, live against a reload: the e2e reload checks and the opt-in reload check share its normalizer and its `ACCEPTED` allowlist), `turn_pieces.js` (a finished turn's one order and its answer rule: the live hand-off's `handOffOrder` and `turnEnded`, and a reload's `turnHistoryNodes`), `reload_check.js` (the opt-in `web.reload_check`: after the stage's hand-off, the turn against a reload of it, the counts posted), `turn_drawing.js` (a finished turn's drawing, `turn_drawings` in the show: its fold into steps and its end kind; `turn_block.js` draws it), `stage_stall.js` (the stage's quiet signal), `history_end.js` (the stage's one move of pieces to the history's end), `stage_opened.js` (a running turn opened in the history while a card waits: the lead-in bubble, the moves, the end fold), `stage_asking.js` (the stage's docked card and its fold: the docking and lead-in rules, the opening, a waiting card's own toggle, the folded row's text per kind, the fold's choice, reveal and the docked card's fold; `stage_view.js` wires it), `stage_waiting.js` (the stage's waiting cards as data, keyed by `data-qid` / `data-card-id`: kind, docked, approval, the stage's order, the shown card and its pager, the docked card's fold, kept for this tab in `chi_asking_fold:<session>`; `front`, `count`, `shown`, `blocking`), `stage_cards.js` (the cards that wait in the stage: `PENDING`, `ASKS`, `waitsInStage`, read by `stage_model.js placeKind`), `resync_reach.js` (a re-read that can't reach chi web keeps the drawn history; the status chip says retrying / offline, outside a turn), `session_sync.js` (the open session's sync: `select`, `resync` and its retries, the stream's life; the stream handle and the re-read bookkeeping are its own), `session_view.js` (the open session's view: `renderSessionView` draws a read, `forgetSession` resets the page for another session, `readTurnEnd`, `endTurnView`; app.js makes both right after the cards, each reaching the other and the later views through getters), `participant_main.js`, `participant_bar.js`, `viewer_self.js`, `stage_owner_wait.js` (a participant's page: The participant's page, below), `no_contact_fill.js` (a text field that isn't a contact form: autocomplete off and a name with no contact word, against iOS Safari's AutoFill Contact bar; a template's fields carry the same attributes, and its spec checks the page's markup for them) and the `objectives_*.js` modules are new modules for that reason. The last four `block_*` draw fenced blocks (`block_watch.js` finds and watches them, `block_host.js` is its frame drawer for a bundle's renderers): [block-renderers.md](block-renderers.md). `inline_widgets.js` is its core drawer for `chi-ui` blocks, drawing `widget_walk.js`'s and `widget_picks.js`'s widgets in a shadow root styled by `widgets.css`: [inline-widgets.md](inline-widgets.md).
 
-## Two pages, two models
+## One page, every viewer
 
 | Page | Entry | Model |
 |---|---|---|
-| **Owner page**: the start page and a session page | `index.html` → `app.js` | **Render once, then patch.** A session's open (`session_sync.js` `select` → `resync` → `session_view.js` `renderSessionView`) draws the history from `GET /api/sessions/:id`; from then on each stream event changes the DOM in place (`stream_handlers.js`). The DOM *is* the log. The start page is the same app with `store.selected` null. |
-| **Participant page**: a review or pair link | `participant.html` → `participant.js` | **Re-read at a turn boundary, then a keyed redraw.** It reads `GET …/review`, draws it, and streams; an event that ends or changes a turn (`reloads`) marks the data stale and the page reads it again. `drawnMessages` keeps a message's node while its signature is unchanged; a small `live` overlay (`participant_model.js applyLive`) draws the running turn on top. |
+| **The main page**: the start page and a session page, the owner's and a participant's | `index.html` → `app.js` | **Render once, then patch.** A session's open (`session_sync.js` `select` → `resync` → `session_view.js` `renderSessionView`) draws the history from `GET /api/sessions/:id`; from then on each stream event changes the DOM in place (`stream_handlers.js`). The DOM *is* the log. The start page is the same app with `store.selected` null. |
 
-The participant page is **deliberately separate**: it shares leaf modules with the owner page (the annotate bar,
-claim links, `composer_mount.js`, the verdict card and Verify fresh, `verify_target.js`, `verify_preset.js`,
-`auth_lost.js`, `token_fragment.js`, `format.js`) but none of the data layer, the stream handling or the message
-rendering. It has its own `api` (`{status, ok, body}`, never throws, its own ended / auth-lost handling) and its own
-`EventSource`. Its parallel copies of the owner's Verify and claim helpers (`verifyFreshState`, `verifyAnchorFor`,
-`showPendingClaim`, `CLAIM_ROOTS`; the owner's are `owner_verify.js` and `owner_claim.js`) differ on purpose in places (the source kind `reply` vs `answer`, the server's
-`fresh_running` vs `verify_fresh`, no home/cwd in its claim options). Don't converge them as a side effect of another
-change.
+A participant's link (a review or pair grant) opens the same page: chi web serves them `index.html` stamped with
+their viewer (The viewer, below), their show and stream are filtered (`Web::ParticipantView`,
+[participants.md](participants.md#what-a-participant-sees)), and what is theirs on the page is
+`participant_main.js` (The participant's page, below). There is no second page: the participant page
+(`participant.html`, `participant.js`, `GET …/review`) went with the participant main page's Phase C.
 
 ## Where state lives (owner page)
 
@@ -59,7 +55,7 @@ change.
 | **The history DOM** | the conversation as drawn (a running turn's reason bubble, `.bubble.said`, is live only: see A turn opened in the history): which turn a bubble belongs to (`data-turn-id`, `data-answer-turn`), what opens a turn (`TURN_PROMPT`, `bubbles.js`: a prompt or a wake's note, the same turns `Steer.turn_opening?` counts for a card's `turns_since`), an opening's id for a card's and the saved recap's stamp (`data-turn-id` on a prompt, `data-opening-id` on a wake's note or `/continue no`'s reason line; `card_stamps.js` places a snapshot's card after the stamped opening, `recap_stamp.js` the saved recap after the last turn it covers, each by its count (`turns_since`) only without one), kept command bubbles, which texts were shown, unnamed badges, folded answers and long prompts (`.folded`), Revise stamps (`data-revises` on a prompt; a Verify turn's `data-verify`) and the stacks' folded versions (`.stack-hidden`, `.stack-stub.open`); the switcher's version on view is `revise_stack.js`'s own (a copy `.stack-view` before the top answer, the top `.stack-swapped`; never stored) | `bubbles.js`, `cards_place.js`, `question_cards.js`, `turn_block.js`/`stage_view.js`, `answer_fold.js`, `revise_stack.js`, `stream_handlers.js` (a live `turn_completed`'s `revises` and `verify` onto its prompt) | read back as state: `turn_range.js turnElements` (one walker for a turn's elements), `keptCommandBubbles`, `seedSeenFromDom`, `nameUnnamedBadges`/`nameVerdictCards`, `answer_fold.js` and `revise_stack.js` (their observers decorate every path that fills `#history`; the stacks are `stacks()` of the stamps, read again on each change, never a store field), `history_reveal.js revealInHistory` (the one way a jump unfolds what hides its target) |
 | **A drawn turn** (`turn_drawings` of the full read) | every finished turn, as live drew it: `turnGroups` groups by the stamps only, a turn's stamped items (`drawn: <turn_id>`) one group, and `turnHistoryNodes` draws it by feeding its drawing's events to a live turn block offscreen (`turn_block.js drawnTurnNodes`: the block's own handlers, as the stage's), the stage's extras (a reminder, merged lines, a card that asks or warns) and end as live, then the answer, the merged lines and the steps' texts from their saved items (markdown, refs). Each of its top-level elements carries `data-drawn`: `cards_place.js` leaves that turn's in-turn CardStore entries (`of_turn`) to it, and a kept reminder bubble of that turn (`data-turn-id`) stays out after a resync. chi web sends a drawing for every finished turn (one made from its messages where live wrote none): `drawnGroup` pairs the record the end names (`end.record_id`, by place for a turn saved before turn ids), else by the turn's id, and the answer's `data-answer-turn` is the end's own `turn_id` only (a made-up id, `m…` or `…~N`, keys none: no Revise). Nothing is rebuilt from messages: an item that comes unstamped is a `plain` group drawn as a plain row of its text (its prompt or answer bubble, no steps), the running turn's as expected (`runningTurnId`, the show's `current_turn`: it has no line yet), any other a miss, marked `data-undrawn`, logged once per render (`console.warn`) and counted by the reload check (`undrawn`), never a throw; a drawing with no parts (a minimal line) draws its prompt, answer and end | chi web (the show) | `renderHistory`, the reload check's render |
 | **localStorage** (`storage.js` `readStored`/`writeStored`, guarded) | per-browser choices only | the module that owns the choice | read at start (see Storage keys) |
-| **SSE** | see Streams | the server | owner page: events go into the DOM directly; participant page: an event marks the data stale |
+| **SSE** | see Streams | the server | events go into the DOM directly (a participant's through `participant_main.js wrapHandlers` first) |
 
 The objectives' strip keeps the list in its own closure (`objectives_strip.js`, seeded by `renderSessionView`, reset by
 `forgetSession`, updated by `objectives_updated`): [objectives.md](objectives.md#the-page).
@@ -245,26 +241,58 @@ gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answer
 | `render` | | `POST /api/render` (`markdown_place.js`: step texts, a question's kept reply) |
 | `block_renderers` | a bundle's drawn blocks (the core `chi-ui` drawer stays) | `/api/block_renderers*` |
 | `stop_any_turn` | the stage's Stop turn (`onCancel`) | `POST …/cancel` |
-| `steer_any_turn` | none yet: the server queues a non-owner's input; the delivery line reads it in a later phase | |
+| `steer_any_turn` | none: the delivery line reads a participant's own `steer_own_turn` instead (`viewerTurn`) | |
 
 A participant's `can` (`Viewer::PARTICIPANT_CAPABILITIES`, in their show's `viewer` and on `<body>`) names
 capabilities of their own, not the owner's: `send` (the composer), `stop_own_turn` (Stop turn on a turn they
 started, `POST …/cancel` with its `turn_id`), `steer_own_turn` (a message during their own turn goes in at its next
 step, on a worker with `participant_steer`); and of the owner's only `working_set`, which their route serves
-filtered. The page reads them from the participant main page's Phase C on
-([participants.md](participants.md#the-main-pages-show)).
+filtered ([participants.md](participants.md#the-main-pages-show)). `stop_any_turn` / `stop_own_turn` both make the
+stage's Stop turn (`onCancel`); a participant's shows on their own turn only (`stage_view.js canCancel`).
 
 The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls without one of the above:
 `/api/update*` and `…/restart` (`version_notices.js`: its versions come only from the hub stream, `sessions`);
 `…/archive`, `…/unarchive`, `DELETE …/:id` (the bar's buttons, `session_controls`; the strip and the all view,
 `sessions`); `POST /api/sessions` from the start page (a participant's page opens the grant's session and never the start
-page, from the participant main page's Phase C on) and the
+page) and the
 participants panel's review start (`participants_admin`); `GET …/images/:file` (a message's image refs; a
 participant's messages carry a count); the objectives strip's posts and the plugin cards' actions (`…/command`:
 drawn only from the show's `objectives` / `cards` and their stream events, which `ParticipantView` drops). Not called
 by the page at all: `/api/sessions/summaries`, `…/output`, `…/notes`, `…/wake`, `…/worker`, `…/exit`, `…/recap`,
 `…/stats`, `…/children/counts`, `…/turns/:id/records`, `/api/participants`. `viewer_boot.test.js` pins the table:
-with every capability today's calls and controls, with none no owner call and no owner control, and each one alone.
+with every capability today's calls and controls, with none no owner call and no owner control, each one alone,
+and a participant's (their show, the working set and their stream, nothing else).
+
+## The participant's page
+
+What is a participant's on the main page is `participant_main.js`, made by app.js only when `viewer.kind()` is
+`participant` (`participant`, null on the owner's page) and wired in a few lines; its pure views are
+`participant_bar.js`. The page stays the owner's model (render once, then patch); the participant's parts only read:
+
+- **One session.** `<body data-session>` (the grant's) is the session `selectFromHash` opens, whatever the hash
+  names (an old `#s=ID` link, a claim link's `#s=…&t=…&q=…`, which `owner_claim.js` still shows); `allViewOpen` is
+  never true; there is no start page.
+- **Who they are** (`viewer_self.js`): set from each show's `viewer` (`setCapabilities` → `participant.shown`),
+  since `<body>` names no ids. `turn_events.js isOwn` counts their client id (`review:<grant>`, chi web's for every
+  tab of theirs) as the tab's own; a `turn_started` with `mine` starts their queued bubble (`bubbles.js
+  queuedOwnBubble`: no origin names its enqueued id to them). `turn_html.js userBubbleTemplate` gives their echo
+  their badge and the owner's prompts the "owner" label; `participant_names.js authorBadgeText` reads a pair turn as
+  the name alone for them ("· review" stays).
+- **The rows.** The top row: a plain logo (`.plain-brand`, not `#newBtn`), their name ("Alex · invited") and, on a
+  desktop, when the link ends. The bottom row (`#participantBar`) in `#infoText`'s place, drawn by the `infoBar`
+  redraw (`updateInfoBar` returns early): status, ctx %, the last speed (the turn's time while one runs), their
+  spend of the cap, and on a desktop what their turns may do (`RULES_TEXT`). Never the owner's cost, the model,
+  memories or a path.
+- **The running turn.** `wrapHandlers` wraps `stream_handlers.js`'s handlers: `turn_started`'s author and `mine`
+  decide Stop turn (`canCancel`) and the delivery line (`deliveryTurn` → `delivery_line.js viewerTurn`: their own
+  turn on a `participant_steer` worker takes the message at its next step, Alt+Enter queues; anyone else's queues it
+  as their own turn) and the placeholder (`composer_mode.js steers`); `question_requested` / `continue_offered`
+  (their `kind` alone) set the stage's waiting look (`stage_owner_wait.js`, through `stage_view.js ownerWait`), no
+  card; a turn's end reads the show again for their usage (the light re-reads carry no viewer).
+- **The closed composer** (`#participantClosed`): their cap reached (the show's `cap_reached`, or a send refused
+  `cap_reached`: the show read again), a send refused `session_stopped`, or a link that ended (`token_revoked`,
+  `token_expired`: a refused send's words, or `linkEnded`, `onAuthLost`'s handler, from a brief read's 401). The
+  refusals show the server's `detail` as it is (`send_turn.js closesOn`); every other refusal is the toast.
 
 ## Render idioms
 
@@ -274,7 +302,7 @@ Three, for one job. Pick by what the piece is:
 |---|---|---|
 | **lit `render(template, keptContainer)`** | most components (~26): the info bar, chips and their popovers, panels, the init row, the working set, `start_page.js` | anything redrawn while the user may be in it: lit keeps the nodes, so focus, typed text, an open `<details>` and a tooltip survive. **The default for new UI.** |
 | **lit as a string builder**: `turn_html.js elementOf(template)`, `lists_view.js` (a fresh fragment, then `replaceChildren`) | history bubbles appended once; the session lists | a node built once and then owned by the DOM (history), or a list redrawn whole. `lists_view.js` throws away lit's diffing and binds card listeners per draw, with an `entering` tracker for its animations |
-| **hand-built DOM** (`createElement`) | `question_cards.js`, `verdict_card.js`, `verdict_fresh.js`, `participant.js` (`el()`) and a few small ones | older pieces; don't add new ones this way |
+| **hand-built DOM** (`createElement`) | `question_cards.js`, `verdict_card.js`, `verdict_fresh.js` and a few small ones | older pieces; don't add new ones this way |
 
 Listeners: every factory is a page-lifetime singleton, so `addEventListener` without a remove is fine; a per-render
 listener lands on a fresh node. A popover goes through `chip_popover.js createChipPopover` (its own outside-click,
@@ -333,7 +361,7 @@ wider; its bottom is 16px less than `--safe-b`, since the session's card floats 
 session panel has no bottom padding and runs to the screen's bottom, its card at `--dock-bottom`, 16px or the
 indicator's line), a bottom sheet's offset (`chip_popover.js place`: 8px above the indicator, or a keyboard's offset
 alone), the update sheet, the toast's fallback place (in a session `--toast-bottom` already sits it above the card), the
-lightbox's padding and the signed-out banner (`auth_lost.js`, `env()` itself: the participant page has no `--safe-*`).
+lightbox's padding and the signed-out banner (`auth_lost.js`, `env()` itself).
 On phones, the standalone app also has a 12px body inset, keeping its content below iOS 26's blurred band under the
 clock. A new fixed or bottom-anchored piece reads `--safe-*`, never `env()`: the e2e set the names by hand (`web.spec.js`, a portrait phone and a landscape one),
 as Chromium has no insets. The theme-color metas are tokens.css's `--bg-top` per theme up to 600px wide (a phone's page starts from that colour at its top edge, so the status bar meets the top bar with no seam), else its `--bg` (`theme.test.js` pins them). An iOS 26 Home Screen app ignores them for the status bar strip: it paints the strip in the body's `background-color`, so a phone's body gradient keeps a `--bg-top` colour layer under it (black strip without one).
@@ -506,7 +534,7 @@ On it: `context_chips.js`, `project_picker.js`, `participants_panel.js` (`load`)
 turn-end re-reads (`session_view.js` `readTurnEnd`, app.js's `refreshTimingFromSession`, `mergeTurnTiming`) and app.js's init-row timers. Still by hand
 (the id decides more than "drop it"): `session_sync.js` `resync`/`retryResync` (the re-read budget, `resyncAgain`), the stream's
 close, `session_actions.js` (continue/review open another session on purpose), `send_turn.js` (a failure for another
-session becomes a toast), and `participant.js` (its own `loadSeq`, the separate page). A new await in a component
+session becomes a toast). A new await in a component
 uses `latest.js`.
 
 ## API clients
@@ -516,7 +544,8 @@ uses `latest.js`.
   HTML) or a fetch that fails on a sign-in redirect reports to `auth_lost.js` (`onAuthLost`, set by app.js).
   `cantText(what, error)` is the toast.
 - `method_api.js methodApi(method, path, body)`: the same, as `notifications.js` and `push_devices.js` call it.
-- `participant.js api`: its own (see above).
+- A participant's page uses `data.js api` too: a 401 (their link ended) goes to `participant_main.js linkEnded`
+  (`onAuthLost` set again by app.js), never the owner's signed-out banner.
 
 ## Streams
 
@@ -525,10 +554,10 @@ uses `latest.js`.
 | The hub, `GET /api/events` (`data.js openEvents`) | app.js `openSessionEvents` (scoped by `?dir`) | `snapshot` then `session` / `session_gone` → `applySessionEvent` → `allSessions`; EventSource reconnects itself (a fresh snapshot); `onClosed` (a proxy sign-in on reconnect): probe, reopen after `EVENTS_REOPEN_MS` |
 | A second hub stream, unscoped | `notifications.js` (`allEvents`) on a project's page | the Home Screen app's device tidy-up across projects |
 | The open session, `GET /api/sessions/:id/stream?from_seq=` (`data.js openStream`) | `session_sync.js` `startStream` from `store.current.streamSeq` | events → `stream_handlers.js`. It closes itself on an error; the page resyncs (`resync`: a fresh render and a new stream from its cursor), once at once when it had opened, else after `STREAM_RETRY_MS`. Meanwhile a turn the stage holds reads "reconnecting…" (Quiet, under Frames), and the Bridge's `: ping` is invisible to the page. A re-read that can't reach chi web keeps the history it drew (`resync_reach.js`): the session bar's status chip says "retrying" while `retryResync` tries, "offline" once the tries ran out (`store.current.reach`; short words that fit the chip's reserved width, the full words in its tooltip), but only while no turn runs: during a turn the stage's "reconnecting…" is the one signal (on a phone the bar can hide its status) and the chip keeps the turn's word, and any hub event for the session then re-reads it (`followSelectedSession`); the next drawn re-read clears it. Only a first load (select's "Loading…") shows the error in the history |
-| The participant stream | `participant.js connect` | listens for `STREAM_EVENTS`, which is `Web::ParticipantView::EVENTS` (checked by `spec/web/participant_view_spec.rb`); reopened from fresh data when CLOSED |
 
-A new event type for the owner page is a handler in `stream_handlers.js` (the participant view spec makes it decide
-`EVENTS` or `DROPPED`); for the participant page also an entry in `STREAM_EVENTS`.
+A new event type is a handler in `stream_handlers.js`; the participant view spec makes it decide `EVENTS` or `DROPPED`,
+and checks that every type in `EVENTS` has a handler there or in `participant_main.js` (a participant's page opens
+the same stream, filtered).
 
 ## Storage keys
 
@@ -548,7 +577,6 @@ reach another device or the server.
 | `chi_update_available_shown` | `version_notices.js` | update notices already shown |
 | `chi_notify`, `chi_push_device` | `notifications.js` (an injected storage) | the bell's state, this device's push id |
 | `chi_answer_fold:<session>` | `answer_fold.js`, `revise_stack.js` | the answers and long prompts (`<turn id>:prompt`) folded by hand, and the Revise stubs unfolded by hand (`stub:<turn id>`) (swept with the session list) |
-| `chi_review_history:<grant>`, `chi_review_history_session:<session>` | `review_history.js` (participant page) | a participant's composer history |
 
 sessionStorage (this tab only, `storage.js` `readSession`/`writeSession`/`removeSession`, guarded the same way):
 `chi_client_id` (`turn_events.js`: this tab's client id, kept over a reload mid-turn),

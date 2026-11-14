@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, INVITE_FIELDS, lateInviteText, panelTemplate, revokeConfirmText, rowModel, untilText, viewURL, PRESENT_MS,
+  agoText, capValue, chipModel, chipTemplate, createParticipantsControl, inviteBody, INVITE_FIELDS, lateInviteText, panelTemplate, revokeConfirmText, rowModel, untilText, PRESENT_MS,
 } from "../../../lib/samagotchi/web/public/participants_panel.js";
 import { authorBadge, nameUnnamedBadges, participantName, setParticipantNames, UNNAMED } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
@@ -123,13 +123,12 @@ test("participants panel: the list's identity_header shows the email field, and 
   c.done();
 });
 
-test("participants: the panel lists the active ones with Cap and Revoke, folds the ended, links the participant view", () => {
+test("participants: the panel lists the active ones with Cap and Revoke, folds the ended; no participant view", () => {
   const out = markupOf(panelTemplate([grant(), grant({ id: "p_old", name: "Kim", state: "expired" })], { now: NOW, sessionId: "s 1" }));
   assert.match(out, /data-act="revoke" data-id="p_0001abcd"/);
   assert.match(out, /<summary>Ended \(1\)<\/summary>/);
   assert.match(out, /class="pp-invite"/);
-  assert.match(out, /href="\/\?as=participant#s=s%201"/);
-  assert.equal(viewURL("abc"), "/?as=participant#s=abc");
+  assert.doesNotMatch(out, /as=participant|Participant view/);
   const shown = markupOf(panelTemplate([], { now: NOW, sessionId: "s", invite: { name: "Alex", link: "http://x/?token=chp_t", lan: true }, canShare: true }));
   assert.match(shown, /shown once/);
   assert.match(shown, /data-act="share"/);

@@ -15,8 +15,8 @@ module Samagotchi
     # project to ~/.ssh is ~/.ssh; a `..` after a symlinked dir climbs out
     # of its target, as the kernel opens it: PathResolve.reals).
     # ReviewBoundary asks it for every read of a participant's turn; a
-    # review session's subjects (chi review, the participant page's Plan)
-    # go through the same check.
+    # review session's subjects (chi review) go through the same
+    # check.
     class ReviewPaths
       # Home folders that hold keys and tokens, never read in a review turn
       # (nor read or written in a pair turn).

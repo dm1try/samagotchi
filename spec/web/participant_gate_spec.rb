@@ -20,8 +20,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
   let(:public_dir) do
     Dir.mktmpdir("web-participant-public").tap do |dir|
-      File.write(File.join(dir, "index.html"), "<html><body>owner page</body></html>")
-      File.write(File.join(dir, "participant.html"), "<html><body>participant page</body></html>")
+      File.write(File.join(dir, "index.html"), "<html><body>main page</body></html>")
     end
   end
   let(:now) { [Time.now] }
@@ -88,7 +87,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(json("/api/sessions", peer: loopback)).to eq([403, { "error" => "not_permitted",
                                                                   "detail" => Samagotchi::ParticipantMessages::NOT_PERMITTED }])
       cookie = { "HTTP_COOKIE" => "chi_token=#{token}" }
-      expect(call("/", peer: loopback, bearer: nil, headers: cookie)[2]).to include(%(data-name="Alex"))
+      expect(call("/", peer: loopback, bearer: nil, headers: cookie)[2]).to include(%(data-viewer-kind="participant"))
       status, headers, = call("/?token=#{token}", peer: loopback, bearer: nil)
       expect([status, headers["Location"], headers["Set-Cookie"].to_s[/\Achi_token=[^;]*/]]).to eq([303, "/", "chi_token=#{token}"])
 
@@ -117,7 +116,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       status, headers, = plain.call(env)
       expect([status, headers["Set-Cookie"].to_s]).to match([401, a_string_starting_with("chi_token=; ")])
       env = Rack::MockRequest.env_for("/", "HTTP_HOST" => "127.0.0.1:4567", "REMOTE_ADDR" => loopback)
-      expect(plain.call(env).last.each.to_a.join).to include("owner page")
+      expect(plain.call(env).last.each.to_a.join).to include(%(data-viewer-kind="owner"))
     end
 
     it "is the owner with the owner's token, whatever cookie a participant link left; with no token at all, nobody" do
@@ -155,20 +154,20 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(body["features"]).to include(Samagotchi::Web::SessionAccessRoutes::FEATURE)
     end
 
-    it "GET /: the participant page's shell, naming their session and name, never the owner's page" do
+    it "GET /: the main page, stamped with their viewer and their grant's session, nothing of the owner's machine" do
       status, headers, body = call("/")
       expect(status).to eq(200)
       expect(headers["Content-Type"]).to start_with("text/html")
-      expect(body).to include("participant page", %(data-viewer="participant"), %(data-session="#{session.id}"), %(data-name="Alex"))
-      expect(body).not_to include("owner page")
-      expect(call("/?as=owner")[2]).to include("participant page")
+      expect(body).to include("main page", %(data-viewer-kind="participant"), %(data-session="#{session.id}"),
+                              %(data-session-title="plan review"))
+      expect(body).not_to include("data-home", "data-sessions-dir", "data-server-dir", "data-project-")
+      expect(call("/?as=owner")[2]).to include(%(data-viewer-kind="participant"))
+      # The owner's "view as a participant" is gone: the owner's page.
+      expect(call("/?as=participant", bearer: owner_token)[2]).to include(%(data-viewer-kind="owner"))
     end
 
-    it "GET /: the participant page carries the Annotate presets; the owner's participant view (no composer) doesn't" do
+    it "GET /: the main page carries the Annotate presets for a participant too" do
       expect(call("/")[2]).to include(%(data-annotate-presets="Agreed|Could you please elaborate?"))
-      owner_view = call("/?as=participant", bearer: owner_token)[2]
-      expect(owner_view).to include(%(data-viewer="owner"))
-      expect(owner_view).not_to include("data-annotate-presets")
     end
 
     it "never shows an untitled session's first prompt as its title (Session#display_title's fallback)" do
@@ -179,21 +178,22 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(session.display_title).to include("secret plan")
 
       expect(json("/api/sessions/#{session.id}").last.dig("session", "title")).to eq("an untitled session")
-      expect(json("/api/sessions/#{session.id}/review").last.dig("session", "title")).to eq("an untitled session")
       expect(call("/")[2]).not_to include("secret plan")
     end
 
     it "escapes what the page shows" do
-      named = Samagotchi::Participants.invite(grants, session_id: session.id, name: "<b>Kim</b>", state_dir: state_dir)
-      body = call("/", bearer: named.token)[2]
-      expect(body).to include(%(data-name="&lt;b&gt;Kim&lt;/b&gt;"))
+      session.title = "<b>Kim</b>"
+      session.save(state_dir: state_dir)
+      body = call("/")[2]
+      expect(body).to include(%(data-session-title="&lt;b&gt;Kim&lt;/b&gt;"))
       expect(body).not_to include("<b>Kim</b>")
     end
 
-    it "keeps a backslash-ampersand in a name as it is, never a backreference into the page" do
-      named = Samagotchi::Participants.invite(grants, session_id: session.id, name: 'Al\&ex', state_dir: state_dir)
-      body = call("/", bearer: named.token)[2]
-      expect(body).to include(%(data-name="Al\\&amp;ex"))
+    it "keeps a backslash-ampersand in a title as it is, never a backreference into the page" do
+      session.title = 'Al\&ex'
+      session.save(state_dir: state_dir)
+      body = call("/")[2]
+      expect(body).to include(%(data-session-title="Al\\&amp;ex"))
       expect(body.scan("<body").size).to eq(1)
     end
 
@@ -202,7 +202,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(status).to eq(303)
       expect(headers["Location"]).to eq("/?x=1")
       expect(headers["Set-Cookie"]).to start_with("chi_token=#{token};")
-      expect(call("/", bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })[2]).to include(%(data-name="Alex"))
+      expect(call("/", bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })[2]).to include(%(data-viewer-kind="participant"))
     end
   end
 
@@ -364,8 +364,8 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
 
   it "leaves the owner's requests as they were (the owner's token, on loopback and on the LAN)" do
     token
-    expect(call("/", peer: "127.0.0.1", bearer: owner_token)[2]).to include("owner page")
-    expect(call("/", bearer: owner_token)[2]).to include("owner page")
+    expect(call("/", peer: "127.0.0.1", bearer: owner_token)[2]).to include(%(data-viewer-kind="owner"))
+    expect(call("/", bearer: owner_token)[2]).to include(%(data-viewer-kind="owner"))
     expect(json("/api/info", bearer: owner_token).last.keys).to include("pid", "cwd", "lan")
   end
 end

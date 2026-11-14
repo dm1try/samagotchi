@@ -180,8 +180,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `POST /api/sessions/:id/turn/:eid/dequeue` | participant | their own queued turn back; another's (the owner's included) is 403 `not_permitted` |
 | `GET /api/sessions/resolve?id=` | participant | their session for its id or a prefix of it; anything else 404 as no session (never an ambiguity listing others) |
 | `POST /api/sessions/:id/wait/prepare`, `…/wait` | participant | only for a turn of theirs (`turn`: the enqueued id `POST …/turn` answered; else 403); `wait/prepare` answers only what that wait needs, `{session_id, baseline: {last_turn}, known_turn, live, last_turn_id}` (`last_turn_id` only when it is their turn), never the owner's cursor, message count, question or running turn; the answer trimmed to `{status, text, turn_id, outcome, cancel_reason}`, the reply's `text` through `ParticipantView.reply` (no thinking or tool call, redacted) and any other text (an error's exception, a failed turn's summary) `ParticipantMessages::TURN_FAILED`; a question or approval their turn raised, or their turn held by the owner's step-limit Continue offer ([Turns](#turns)), is `{status: "waiting_for_owner", detail: "waiting for the session's owner"}` with nothing of it; a revoke or the expiry ends a `wait` already running (401 `token_revoked` / `token_expired`), as it ends their stream |
-| `GET /` | participant | the participant page's shell (`participant.html`, its body's `data-session` and `data-name` the grant's; `participant.js` reads the rest through the two routes below). Never the owner's page, where every route would refuse them. |
-| `GET /api/sessions/:id/review` | participant | the page's data, filtered ([What a participant sees](#what-a-participant-sees)): `{viewer, session: {id, title, status}, subjects, participants, messages, current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}`; a participant's `viewer` has their `usage` |
+| `GET /` | participant | the main page (`index.html`) stamped for them (`App#participant_index_data`: their viewer, the grant's session and its title; [web-frontend.md](web-frontend.md#the-participants-page)); the page reads the rest through the show and the stream below |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/sessions/:id/working_set` | participant | the working set's project files only (`ParticipantView.working_set`), with `running` |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
@@ -221,7 +220,7 @@ The worker decides it once at the turn's start (`GuardrailWiring#begin_turn` →
 (`participant_mode`), the boundary in `GuardrailWiring#checks`, `ToolRunner#unreached_group_refusal` (through
 the call's `TurnContext`: a review turn's boundary words the refusal; a pair turn gets the owner's), the
 mid-turn stop and the cap notice's words. The system prompt's line is the pair one once an active participant is
-stamped pair (`SessionParticipants#prompt_mode`); the participant page's `viewer.mode` is their own grant's
+stamped pair (`SessionParticipants#prompt_mode`); their show's `viewer.mode` is their own grant's
 (`ParticipantMode.live_for`).
 
 A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
@@ -271,8 +270,8 @@ Verify turn's anchor (`VerifyAnchor`, `{turn_id, quote}`: a UUID and a quote of 
 anchor, or a Verify fresh check, sent to a connected worker without it is refused 409 `verify_unavailable`
 (`VerifyAnchor::UNAVAILABLE`: "restart this session to use Verify"; `SessionManager` checks `worker_has?` before it
 delivers, on the features of the sidecar its client was made from), since an older worker would run it as a plain prompt. A session with no connected worker is not gated: the
-worker that starts for it is current. The participant page's session summary carries `verify_unavailable`
-(`VerifyAnchor.worker_unavailable?`, from the worker's features; `participant_review.rb`), and the page disables
+worker that starts for it is current. A participant's show carries `session.verify_unavailable`
+(`VerifyAnchor.worker_unavailable?`, from the worker's features; `participant_show.rb`), and the page disables
 Verify and Verify fresh with a "restart this session" hint.
 **Their message during their own turn goes in at its next step.** A worker names `participant_steer`
 (`Delivery::OWN_TURN_STEER_FEATURE`) when it does; one without it queues every participant message, which is safe by
@@ -382,8 +381,8 @@ fields: a field added to an event later reaches nobody until it is named there.
   type and turn id; `turn_completed` may also carry an allowlisted verdict card), `generation_chunk` (its visible
   `text` only; a thinking-only chunk is dropped),
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
-  the session's folder when it is inside it, flat as `path` for the participant page and as the owner's `ref`
-  `{kind: "file", path, line, end_line}` for the main page; never when that folder is home or `/`),
+  the session's folder when it is inside it, as the owner's `ref`
+  `{kind: "file", path, line, end_line}`; never when that folder is home or `/`),
   `tool_call_completed` (its status word); the viewer's **own** queue events in the owner's shape (`turn_enqueued`:
   `enqueued_id`, `client_id`, `prompt`, `delivery`, `author`, never images; `turn_dequeued`: its `enqueued_id`, never
   the client that took it back, the filter knowing their ids from the `turn_enqueued` it sent them and from
@@ -392,11 +391,8 @@ fields: a field added to an event later reaches nobody until it is named there.
   approval or a relayed one, `continue` for the step-limit question and every offer, `question` else); the main
   page's numbers (`context_status`: usage's `estimated_pct` and token counts, `bucket`, a switch's
   `context_window_tokens`, never `status`, the model-facing line; `generation_completed`: its `speed` only;
-  `working_set_updated`: `.working_set`, below), which the participant page doesn't listen for; and bare markers
-  (the type alone) for the answers to a question or offer, and `snapshot` / `reset`: the page re-reads its review data at each (the latest read
-  wins), draws no live event from a turn's start or end until that re-read, and then streams again from the data's
-  `last_event_id`, so the events after its snapshot replay onto it; a read that fails (unreachable, a 5xx) keeps the
-  page and is retried with a backoff under a "retrying" line. Refusals show the server's `detail`. Every other type,
+  `working_set_updated`: `.working_set`, below); and bare markers (the type alone) for the answers to a question or
+  offer, and `snapshot` / `reset` (the page re-reads the session at a `reset`, as the owner's). Every other type,
   known (`DROPPED`) or new, is dropped. `spec/web/participant_view_spec.rb` scans every `type: :name` chi emits and
   every handler of the web's stream, and fails until a new one is named in `EVENTS` or `DROPPED`.
 - **The frames** (`Web::ParticipantStreamFilter`). The Bridge's chunks are cut into frames (`\r?\n\r?\n`, a partial
@@ -409,8 +405,8 @@ fields: a field added to an event later reaches nobody until it is named there.
   and never after a key word whose value is still to come, `Redact::OPEN_VALUE`; past 1600 with no such space,
   the line's last unbroken run and the rest of that line go out as one `[redacted]`). The owner's stream never
   goes through it (a byte pipe).
-- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`, `Web::MessageDisplay`; no turn drawings: the
-  participant page rebuilds every turn from its messages, [bridge.md](bridge.md#turndrawings)): a user message only when it is a
+- **The conversation** (`.messages`, over `App#messages_for_display(parts: true)`, `Web::MessageDisplay`; each finished
+  turn's drawing comes with the show, [The main page's show](#the-main-pages-show)): a user message only when it is a
   turn's prompt (it has the turn's id) or a person's merged line, and never one from a source that isn't a person's;
   so the owner's `!` line and its output, a delegate's report (a wake turn's too), and the notes chi adds (a declined
   Continue) never show. A turn no person sent (its record's `automatic`, `SessionMetrics`: a task's or a plugin's,
@@ -434,8 +430,8 @@ fields: a field added to an event later reaches nobody until it is named there.
 
 `GET /api/sessions/:id` for a participant (`Web::ParticipantShow#participant_main_show`) is the main page's read
 in the owner's shape (`SessionShow#owner_show`'s keys, from the same `show_reads`), every part through
-`ParticipantView`; Phase C of the participant main page switches their link to it, until then the participant page
-reads `GET …/review`. `spec/web/participant_show_spec.rb` holds its parity: no key the owner's lacks but the
+`ParticipantView`: the one read their page makes (the participant page's `GET …/review` is gone).
+`spec/web/participant_show_spec.rb` holds its parity: no key the owner's lacks but the
 verdicts' (`fresh_running`, `session.verify_unavailable`).
 
 - `messages` as the review read's, stamped `drawn` (the turn whose drawing draws them); `turn_drawings` each
@@ -450,7 +446,7 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
   `worker_features`, `verdicts` (filtered, as the review's) and `verify_unavailable`.
 - `viewer`: `Web::Viewer`'s kind, id, name, `can` (`Viewer::PARTICIPANT_CAPABILITIES`: `send`, `stop_own_turn`,
   `steer_own_turn`, and of the owner's `working_set`), `client_id` (`review:<grant id>`, which chi web gives their
-  turns), the participant page's `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
+  turns), their `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
   `waiting_for_owner` (the kind the session waits on, the review read's rule: the running turn's question, a
   Continue offer, a question between turns; nil when nothing).
 - `timing` (`.timing`): the session's clock, each turn record's id, times, `duration_ms`, `decode_tps` and
@@ -461,9 +457,9 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
   `continue_offer`, `pending_question`, `failed_turn`, the warnings, the markdown tips; `capabilities` never names
   the editor.
 
-The main page's `<body>` for a participant (`App#participant_index_data`, for Phase C): `version`, `session`,
-`session-title`, the Annotate presets and the viewer; nothing of the owner's machine (`home`, the folders,
-`project-*`, `back-*`).
+The main page's `<body>` for a participant (`App#participant_index_data`): `version`, `session`,
+`session-title`, the Annotate presets, the viewer and `working-set` (the owner's `web.working_set`); nothing of the
+owner's machine (`home`, the folders, `project-*`, `back-*`).
 - **Their usage** (`viewer.usage`, `ParticipantReview#review_usage`, built from named fields by the exposure policy
   beside `ParticipantView`'s): the fields their grant's exposure shows
   ([Grants](#grants)); at `own`, `{spent, cap, queued, queue_limit, expires_at, model}`. `spent` is dollars: the saved
@@ -472,62 +468,33 @@ The main page's `<body>` for a participant (`App#participant_index_data`, for Ph
   running turn shows before it is saved; the two are never added), read from the Bridge snapshot the review already
   reads. `queued` counts their own queued turns on the worker; `model` is the session's model as its host is sent it
   (the alias applied, no host name), live else saved, redacted. Every source reads the grant's own author: another
-  participant's spend, the owner's and the session's totals never reach them (the red-team spec checks the body). The
-  owner's participant view has none. The page draws it as one line in the comment box card's footer
-  (`.composer-card-foot`, `usageItems`): "$0.42 of
-  $2.00 cap · 1/3 queued · link: 6 d left · model", each with a title in words; warn colours from 80% of the cap, a
-  full queue and a link's last day, "over" at the cap. The key hint is the line above the text field, wrapping to at most two (hidden on a
-  phone). The usage is cut at the end (the model first); folded, it stays as the card's footer under the grip. It is redrawn at each re-read (a
-  turn's end, a queued or taken-back comment), not while a turn streams.
+  participant's spend, the owner's and the session's totals never reach them (the red-team spec checks the body). Their
+  page draws the spend of the cap in its bottom row ("$0.42 of $2.00 used") and the link's end in its top row; it reads
+  the show again at each turn's end for it (the light re-reads carry no viewer).
 - **A fork's note.** A review fork (`chi review --from`, `/coordinate review`) starts with a note holding the source's
   recap and, from the coordinator, its handoff's body: a participant's review turn reads it like the rest of the
   history and may quote it (host paths, worktree names). That is by design (it is what the review is about); the
   owner chose to share it. Nothing else of the source comes along.
-- **The subjects** (`subjects`, a review session's: [docs/sessions.md](../sessions.md#review-sessions)): each
-  `{path, text, truncated, html}` (`html` for markdown only, rendered from the redacted text), or `{path, missing:
-  true}`. Every read checks the path again with `Guardrails::ReviewPaths` (a review turn's own check: under the
-  project root, as given and as it resolves, never a secret file or chi's own), so a subject that became a symlink
-  out of the project, or a session file edited to name `.env` or `../x`, is `missing`, never read. The text is cut
-  at 256 KiB (`SUBJECT_BYTES`) and redacted. The real path is what is checked and opened, with `O_NOFOLLOW`: a
-  symlink swapped in for the file itself after the check isn't read. That guards the last path component only: a
-  folder on the way swapped for a symlink between the check and the open is still followed. Doing that takes write
-  access to the project tree, the owner's, so it isn't a participant's way out; the next read checks again.
-  `[]` for a session that isn't a review session. The page's title for a
-  review session with no title of its own is `review of docs/plan.md` (`+N` for more), never the first prompt. The
-  page shows them as the Plan: beside the thread on a wide screen (≥ 1100 px), a Plan | Thread toggle on a narrower
-  one (the thread first, the composer pinned in both views); several subjects get a file picker. It re-reads them
-  with the rest at every turn boundary and redraws the Plan only when they changed.
-- **Annotate** (`participant_annotate.js` over the owner's `annotate_bar.js`, styled by the shared
-  `annotate_bar.css`). A participant who can comment selects text in the Plan or the thread and gets **Annotate** and
-  the owner's `web.annotate_presets` (the participant shell's `data-annotate-presets`, as `index.html`'s), which append
-  the quote to the comment box; nothing is sent. Labels: the Plan `From docs/plan.md:` (the subject shown), a comment
-  `From Sam's comment:` / `From my earlier comment:` / `From the owner's message:` (the message's `data-by`,
-  `data-name`), a reply none. Not annotatable: the reply still streaming, tool rows, waiting lines, gap lines, the
-  header, the Plan's truncation note. No plugin pills (a review turn refuses `/` lines), and none of it in the owner's
-  participant view (no presets in its shell) or while `can_comment` is false. On a touch screen the bar docks above the
-  composer. A re-read keeps unchanged thread nodes and the Plan's (redrawn only on change), so a selection survives it.
-  After the presets comes the built-in **Verify** (`verify_preset.js`, on the owner's page too): the quote, then
-  "Verify this claim against the code. If this session's context doesn't settle it, say so. End with a line
-  `Verdict: confirmed|refuted|unclear — <one-line reason>`." It fills the box like any preset and never sends.
-  It is offered only where the Engine will take the claim (`verify_target.js`, the bar's `offeredPreset`): a
-  selection in the final answer of an ended turn, the last answer bubble (the owner's `.bubble.output` that isn't a
-  delegate report's reply; a participant's last `.p-msg.reply > .p-bubble`) between the turn's opening
-  (`[data-turn-id]`) and the next one (or, on the owner's page, a context note: a wake turn opens with one; a
-  participant's page gets a wake turn's opening as an automatic turn).
-  Anywhere else (an earlier reply, a step, a prompt, a line merged mid-turn, the Plan, the running turn) the button
-  is hidden and the bar keeps its other actions.
+- **No file view.** A review session's subjects are not sent to a participant (their page has no file panel; they ask
+  chi to quote the part they need: [docs/sessions.md](../sessions.md#review-sessions)). Its title for a review session
+  with no title of its own is `review of docs/plan.md` (`+N` for more), never the first prompt.
+- **Annotate** is the main page's (`annotate_bar.js`): a selection in the conversation offers **Annotate** and the
+  owner's `web.annotate_presets` (their `<body>`'s `data-annotate-presets`), which append the quote to the composer,
+  then the built-in **Verify** (`verify_preset.js`), offered only where the Engine takes the claim (`verify_target.js`
+  `OWNER_FINAL`: the final answer of an ended turn). No plugin pills (their show's `commands` is empty) and no Copy
+  link (no participants panel).
 - **Deep links to a claim** (`claim_link.js`). The owner selects text in a turn's answer, step or own message and
   Annotate's **Copy link** copies `<base>/#s=<id>&t=<turn8>&q=<quote>&p=<prefix>`: `base` the participants list's
   `link_base` (`ParticipantsAdmin#participant_base`: `web.public_url`'s origin, else the LAN address, else the Host),
   `t` the turn's id (its first 8 characters, the opening message's `data-turn-id`), `q` the selection's rendered
   text (whitespace collapsed, at most 200 characters) and `p` up to 32 characters before it in the same bubble, both
-  URL-encoded by `URLSearchParams`. The text is read as the participant page shows it, by `Redact`'s own rules
+  URL-encoded by `URLSearchParams`. The text is read as a participant's page shows it, by `Redact`'s own rules
   mirrored in JS (`spec/fixtures/redact_cases.json` holds cases both sides must read the same): secret shapes
   `[redacted]`, whole even when the selection cuts into one, so a link never carries a secret; on the owner's page
   also the session's folder relative and the home folder `~` (the page's `data-home`). Not the owner's token (the
   page doesn't hold it). With no person (`kind: human`) active in the session, Copy link gives the owner's own form,
-  `#/s/<id>?t=…&q=…&p=…`; the owner's page also opens the participant form. Opening one: the turn's bubbles
-  (`.p-msg > .p-bubble`; the owner's answers, own messages and steps) are searched for the prefix and quote, then
+  `#/s/<id>?t=…&q=…&p=…`; the main page opens either form (`owner_claim.js`, a participant's page too: its one
+  session is the claim's). Opening one: the turn's bubbles (answers, own messages and steps) are searched for the prefix and quote, then
   the quote alone; the match's bubble is ringed (`.claim-hit`), a closed `<details>` around it opened, and the quote
   highlighted (the CSS Highlight API, `::highlight(chi-claim)`, where the browser has it). A quote not found (text
   that reads differently) rings the turn's opening. A turn no opening carries (a non-person turn the page doesn't
@@ -553,11 +520,10 @@ The main page's `<body>` for a participant (`App#participant_index_data`, for Ph
   a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
   in the source turn, right after the bubble that holds the quote (the answer's, matched as a claim link reads the
   page; a quote not found yet goes at the turn's end), name its author, show the reason and quote, and link to the
-  checking turn; a live completion adds the card without a reload. The participant view receives only the card fields through its allowlist, with the
+  checking turn; a live completion adds the card without a reload. A participant receives only the card fields through its allowlist, with the
   quote and reason redacted by the view's normal rules, never the full reply.
 - **Verify fresh** (`VerifyFresh`, `verdict_fresh.js`). An `unclear` card has a **Verify fresh** button (the owner's
-  page always; a participant's while `can_comment`, i.e. while their grant could run a turn now; never in the owner's
-  participant view). It is `POST /api/sessions/:id/verdicts/:check_turn_id/fresh` (`VerifyFreshRoutes`, `:owner`
+  page always; a participant's while their grant could run a turn now). It is `POST /api/sessions/:id/verdicts/:check_turn_id/fresh` (`VerifyFreshRoutes`, `:owner`
   and `:participant`), which starts a **fresh child**: a delegate child (`spawn_session`, `delegate: true`,
   `parent_id`) in the session's own folder (no worktree; a folder outside git too), on its model, whose first and only
   prompt is the claim, quoted, and "Verify this claim against the files here. You have none of the original session's
@@ -614,38 +580,32 @@ The main page's `<body>` for a participant (`App#participant_index_data`, for Ph
     data). The card shows "Verifying fresh…" while the child runs (the summary's `verify_fresh` `{of, child_id}`,
     the review data's `fresh_running`, ids only) and the fresh verdict as a `fresh: ✅ confirmed — …` line on the same
     card. The original stays unclear, so the button stays, as **Verify fresh again**: each press is another paid
-    child (a participant's against their cap). The participant view passes `fresh` and `of`, never the child's id (a
+    child (a participant's against their cap). `ParticipantView` passes `fresh` and `of`, never the child's id (a
     participant can't open it). No push
     for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
-- **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
-  `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
-  double-click resets, click or drag down folds it; folded, the grip is the handle on the card's top edge and typing on the
-  page opens it; Annotate opens it for the visit), the one-row layout of the owner's session composer (Send at its
-  bottom right; a phone keeps it one row), and ↑/↓ over the participant's own comments: the ones the server took from
-  this browser, in localStorage under `chi_review_history:<grant id>` (`review_history.js`; the grant id is the review
-  data's `viewer.id`), at most 50, forgotten when the link ends (a 401 with chi's words), never the owner's `GET
-  /api/history` (the owner may open a link in the same browser). It lacks: the `/` list and plugin pills (a review turn
-  refuses `/` lines), the delivery line and its steer/queue choices (every comment is `POST …/turn`, a queued review
-  turn; Alt+Enter is Enter), the model picker, Stop turn (the owner page's sits in its stage's status row; this
-  page has no stage), and images: the chips are mounted but `imagesOff` refuses a
-  paste, drop or pick with one line (the image button is hidden) until participant images land. The grip's floor and
-  the fold are the owner page's keys (`chi_composer_floor`, `chi_composer_collapsed`), per browser. The owner's
-  participant view mounts none: its dock stays hidden.
+- **The composer** is the owner's, with what is theirs (`participant_main.js`; [web-frontend.md](web-frontend.md#the-participants-page)):
+  no `/` list or plugin pills, no ↑/↓ prompt history (the owner's `GET /api/history`), no images yet (`imagesOff`:
+  one line, the button hidden), no model picker. While their own turn runs, a message goes in at its next step on a
+  worker with `participant_steer` (Alt+Enter queues it); while anyone else's runs, it goes in as their own turn after
+  it, and the delivery line says so. Stop turn shows on their own turn only. At their cap, in a stopped session, or
+  once their link ended, the composer gives way to one line (the cap's own words; the server's for the others) and
+  the conversation stays readable. A turn of theirs that waits for the owner (an approval, a question, a Continue
+  offer) gives the stage its waiting look with one line naming the kind, never a card.
 - **Redaction** (`Samagotchi::Redact`, `lib/samagotchi/redact.rb`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
   not, and a URL's password), the owner's web token, the session's folder (shown as relative paths) and the home
   folder (`~`). Defence in depth only: the allowlist is the control; a reply that paraphrases a secret isn't caught.
 - **Errors.** A participant's 404 and 500 carry fixed words, never an exception's (which may name a path); so does their `wait` on a turn that failed (`TURN_FAILED`).
-- **The owner's participant view.** The owner reaches the same reads: `/?as=participant#s=<id>` serves the participant
-  page, `GET …/review` is always the filtered view, and `…/stream?as=participant` goes through the same filter, with
-  no participant of their own (nothing `mine`, no composer). It is the server's filter, never a page imitating it.
+- **No "view as a participant" for the owner.** The owner's `/?as=participant` view went with the participant page
+  (2026-11-13: every read on the main page would need the flag threaded through, and one missed read would show
+  unfiltered data in a view that claims to be the participant's).
 
-The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, the review, every show variant, `/output`
-and an image as a participant, with an approval, a question, a tool's call and output, thinking, a memory, a steer,
-a delegate report, an unknown event and host paths in the session, and finds none of them. It also names a secret,
-a file outside the project and a symlink out of it as subjects in the session file and reads none of them through
-`…/review`, and has `chi review` refuse each as a subject.
+The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, every show variant, `/output` and an image
+as a participant, with an approval, a question, a tool's call and output, thinking, a memory, a steer, a delegate
+report, an unknown event and host paths in the session, and finds none of them. It also names a secret and a file
+outside the project as subjects in a review session's file and reads none of them in the show, and has `chi review`
+refuse each as a subject.
 
 ## The owner's controls
 
@@ -773,13 +733,13 @@ means the owner: a turn or session with no author keys reads as the owner's and 
 - **Records.** `last_turn.author`, the analytics turn record's `author`, `turn_enqueued`'s `author`, and the
   Bridge's queued rows. `turn_started` carries `author`, `author_name` and `participant_mode` on a participant's turn
   (the owner's carries none), and so does the Bridge's turn snapshot and its replay. The owner's history
-  (`MessageDisplay`) and the participant view pass a participant message's `participant_mode` on: the author badge
-  reads "Alex · review" or "Alex · pair" (a prompt drawn while queued takes its mode at `turn_started`).
+  (`MessageDisplay`) and `ParticipantView` pass a participant message's `participant_mode` on: the author badge
+  reads "Alex · review" or "Alex · pair" (to a participant, a pair turn is the name alone, the owner's prompt "owner") (a prompt drawn while queued takes its mode at `turn_started`).
 - **Side models' transcripts.** The idle recap's (`IdleRecap::TranscriptFilter`) leads a participant's message with
   "(a review contribution from Alex, a participant; not the user's words)", and `ctx.ask_model`'s names its paragraph
   `Participant`. The UI's readers name them: `TurnAccumulator.messages_of` gives a participant's prompt and merged
   input `author` and `author_name`, `Merge#event_fields` names the merged text's author when one participant wrote all
-  of it, and the web's display messages carry both (the owner's badge, the participant page).
+  of it, and the web's display messages carry both (the badges).
 - **Through `--remote`.** `SessionAccess::WebBridgeClient#post_turn` takes `author:` and drops it: the remote chi web
   stamps the author from the token.
 
@@ -840,8 +800,8 @@ participant TUI in v1.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.
 - No participant reaches `/command`, `/answer`, `/output` or an image. Their turn's author and client id are stamped
   from the principal, never the body.
-- Everything a participant reads (their stream, the review, the show) is built by `ParticipantView` from named fields;
-  an event type it doesn't name is dropped. The owner's participant view reads through the same filter.
+- Everything a participant reads (their stream, the show) is built by `ParticipantView` from named fields;
+  an event type it doesn't name is dropped.
 - A participant's message is a turn of its own, or goes into their own running turn at its next step (chi web, the
   Bridge, the inbox), never into anyone else's turn and never a cut, a command or a
   shell line (chi web, the Bridge, the worker), and runs only on a worker with the review boundary: in a review

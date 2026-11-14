@@ -26,22 +26,18 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       found - NOT_EVENTS
     end
 
-    # The types only the main page reads (its numbers and working set): the
-    # participant page doesn't listen for them, so its EventSource never
-    # fires them. Phase C points this at the main page's handlers.
-    let(:main_page_only) { %w[context_status generation_completed working_set_updated] }
-
     it "names every emitted type as shown or dropped, never both" do
       known = described_class::EVENTS.keys + described_class::DROPPED
       expect(emitted.to_a.sort - known).to eq([])
       expect(described_class::EVENTS.keys & described_class::DROPPED).to eq([])
     end
 
-    it "is the list the participant page listens for, no more, no fewer, and the main page's numbers" do
-      page = File.read(File.expand_path("../../lib/samagotchi/web/public/participant.js", __dir__))
-      list = page[/^const STREAM_EVENTS = \[(.*?)\];/m, 1]
-      expect(list).not_to be_nil
-      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq((described_class::EVENTS.keys - main_page_only).sort)
+    it "is what the main page's stream handlers draw (stream_handlers.js, participant_main.js's own), no more" do
+      public_dir = File.expand_path("../../lib/samagotchi/web/public", __dir__)
+      handlers = File.read(File.join(public_dir, "stream_handlers.js")).scan(/^ {4}([a-z_]+):/).flatten
+      wrapped = File.read(File.join(public_dir, "participant_main.js")).scan(/"([a-z_]+)"/).flatten
+      # snapshot: a join's marker (?snapshot=1), which the main page's stream never asks for.
+      expect(described_class::EVENTS.keys - handlers - wrapped).to eq(["snapshot"])
     end
 
     it "drops every DROPPED type and an unknown one, whatever they carry" do
@@ -55,7 +51,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       noisy = { event_seq: 7, turn_id: "t", iteration: 1, call_index: 0, text: "hi", tool: "read", output: "SECRET OUTPUT",
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
-      allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
+      allowed = %w[type event_seq turn_id iteration call_index text tool status prompt author author_name mine
                    participant_mode automatic continue restarted verdict items kind]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
@@ -102,7 +98,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     it "shows a tool row as its name and a project path only" do
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/docs/plan.md" },
                      title: "docs/plan.md", params: "docs/plan.md", view: { command: "x" }, iteration: 1, call_index: 0 }))
-        .to eq("type" => "tool_call_started", "tool" => "read", "path" => "docs/plan.md",
+        .to eq("type" => "tool_call_started", "tool" => "read",
                "ref" => { "kind" => "file", "path" => "docs/plan.md" }, "iteration" => 1, "call_index" => 0)
       expect(shown({ type: :tool_call_started, tool: "read", ref: { kind: "file", path: "/home/o/proj/a.rb", line: 4, end_line: 9,
                                                                     id: "SECRET-ID" } }))
@@ -296,7 +292,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       ]
       expect(described_class.messages(list, viewer)).to eq([
         { "role" => "user", "content" => "look at docs/plan.md", "turn_id" => "t1" },
-        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "path" => "docs/plan.md", "ref" => { "kind" => "file", "path" => "docs/plan.md" } }, { "tool" => "memory_read" }] },
+        { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md" } }, { "tool" => "memory_read" }] },
         { "role" => "user", "content" => "also this", "merged" => true },
         { "role" => "user", "content" => "is step 3 safe?", "turn_id" => "t2", "author" => "p:p_2", "author_name" => "Sam", "images" => 1 },
         { "role" => "assistant", "content" => "Yes." },

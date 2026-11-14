@@ -55,6 +55,13 @@ test("no capability: no owner route is called and no owner control is drawn", ()
   for (const name of ["questionCard", "applyRow", "reviseBtn", "settingsChip"]) assert.equal(controls[name], "absent", `${name} exists`);
 });
 
+test("a participant: their show and the working set, their stream; no owner control, and no Stop turn on the owner's running turn", () => {
+  const { requests, streams, controls } = boot({ kind: "participant", can: ["send", "stop_own_turn", "steer_own_turn", "working_set"] });
+  assert.deepEqual(requests, [`GET /api/sessions/${SID}`, `GET /api/sessions/${SID}/working_set`]);
+  assert.deepEqual(streams, [`/api/sessions/${SID}/stream`]);
+  for (const [name, state] of Object.entries(controls)) assert.notEqual(state, "shown", `${name} is drawn`);
+});
+
 // What each capability gates on this page (docs/internals/web-frontend.md,
 // The viewer): without it alone, those calls and controls go, and the rest
 // of today's page stays.

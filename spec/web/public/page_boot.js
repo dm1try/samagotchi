@@ -29,6 +29,8 @@ window.document.write(html);
 const body = window.document.body;
 const stamp = { "data-version": "0.0.0", "data-annotate-presets": "[]", "data-working-set": "1", "data-reload-check": "1",
                 "data-viewer-kind": args.kind || "owner", "data-viewer-can": (args.can || []).join(" ") };
+// A participant's page opens their grant's session (App#participant_index_data).
+if (args.kind === "participant") Object.assign(stamp, { "data-session": SID, "data-session-title": "Fix the install notes" });
 for (const [key, value] of Object.entries(stamp)) body.setAttribute(key, value);
 
 // The page's globals: happy-dom's window's, where the process has none.

@@ -136,7 +136,7 @@ same cleaned id (`rowId`, one rule for both), so what is drawn is what fills. A 
 strings reach the page through `textContent` and attributes only, never `innerHTML`, so a step reading
 `<img src=x onerror=…>` shows as those characters.
 
-**What doesn't draw.** The participant page (`participant.js` wires no block host), `web.markdown` off (no
+**What doesn't draw.** `web.markdown` off (no
 `data-lang`), a live answer while it streams (its YAML shows until the turn's end re-renders it as markdown), and
 anything outside `TEXTS`: cards, question replies, a lead-in bubble, delegate reports. The terminal shows the YAML.
 

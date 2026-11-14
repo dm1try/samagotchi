@@ -11,6 +11,12 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - chi web: a participant's message sent while their own turn runs now goes into that turn at its next step, as the owner's does; during someone else's turn it still waits and runs as their own turn after it.
+- chi web: a participant's link now opens the main page: the same conversation, live turn box and composer as the owner's, with their name and link expiry at the top, their spending against the cap under the composer, Stop turn on their own turns, "waiting for the owner" (and for what kind of thing) when their turn needs you, and the composer giving way to one line at their limit, in a stopped session or once their link ended. Your messages read "owner" to them; they get none of your controls and no file panel.
+- chi web: pressing Enter twice while a message is still being sent sends it once.
+
+### Removed
+
+- chi web: the separate participant page (with its Plan view of a review's files) and the owner's "Participant view ↗" in the participants panel.
 
 ### Fixed
 

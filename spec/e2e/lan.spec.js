@@ -106,7 +106,7 @@ test.describe("on the LAN", () => {
   });
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins (over the LAN when there is one) with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser, where Verify on it gets a verdict card", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control, a message (a double Enter) is queued once, starts and gets its answer, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -147,35 +147,39 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   expect(link).toMatch(/\/\?token=chp_[\w-]+#s=[0-9a-f-]+$/);
   // A review session: no warning about a working session's tool outputs.
   await expect(owner.locator("#participantsPopover .pp-warning")).toHaveCount(0);
+  // No "view as a participant" any more.
+  await expect(owner.locator("#participantsPopover a[href*='as=participant']")).toHaveCount(0);
   await expect(chip).toHaveText("1 participant");
 
-  // Another browser (on the LAN address): the participant page, no owner page.
+  // Another browser (on the LAN address): the main page, as Alex's.
   const guest = await browser.newContext();
   const page = await guest.newPage();
+  const refused = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("response", (r) => { if (r.status() === 403) refused.push(`${r.request().method()} ${r.url()}`); });
   await page.goto(link.replace(/^http:\/\/[^/]+/, guestURL));
-  await expect(page.locator("#title")).toContainText("Alex's review");
-  // The Plan beside the thread: the subject's rendered markdown.
-  await expect(page.locator("#planPath")).toHaveText("README.md");
-  await expect(page.locator("#planDoc h1")).toHaveText("e2e project");
-  await expect(page.locator("#thread .p-msg.user").first()).toContainText("Say pong");
-  // The shared composer, a participant's subset: no owner composer, no `/` list.
-  await expect(page.locator("#actionBtn")).toHaveCount(0);
-  await expect(page.locator("#commandList")).toHaveCount(0);
-  await expect(page.locator("#composeGrip")).toHaveAttribute("aria-expanded", "true");
-  // Their own usage under the comment box: spend of the cap, queue, the link's time left, the model.
-  await expect(page.locator("#usage [data-key=spent]")).toHaveText(/^\$\d+\.\d\d of \$2\.00 cap$/);
-  await expect(page.locator("#usage [data-key=queued]")).toHaveText("0/3 queued");
-  await expect(page.locator("#usage [data-key=expires_at]")).toHaveText("link: 7 d left");
-  // Annotate: a selection in the Plan quotes it into the comment box,
-  // labelled with the subject's path; nothing is sent.
-  await page.locator("#planDoc h1").selectText();
-  await page.locator("#annotateBar .annotate-main").click();
-  await expect(page.locator("#comment")).toHaveValue("From README.md:\n> e2e project\n\n");
-  await expect(page.locator("#comment")).toBeFocused();
+  // The grant's session, whatever the old link's #s= said; its history.
+  await expect(page.locator("#sessionTitle")).toHaveText("review of README.md");
+  await expect(page.locator("#participantWho .pb-who")).toHaveText("Alex · invited");
+  const ownerPrompt = page.locator("#history .bubble.user").first();
+  await expect(ownerPrompt).toContainText("Say pong");
+  await expect(ownerPrompt.locator(".origin-label")).toHaveText("owner");
+  await expect(page.locator("#history .bubble.output").first()).toHaveText(/PONG/);
+  // No owner control: no new session, list, rename, model, images, session
+  // menu, participants; no file panel (the Plan is gone with the old page).
+  for (const id of ["newBtn", "scope", "stripStatus", "topStrip", "titleRenameBtn", "modelPick", "attachBtn", "infoMoreBtn",
+    "infoStopBtn", "infoContinueBtn", "notifyBtn"]) {
+    await expect(page.locator(`#${id}`), id).toBeHidden();
+  }
+  await expect(page.locator("#infoText .participants-chip")).toHaveCount(0);
+  await expect(page.locator("#planPath, #planDoc")).toHaveCount(0);
+  // Their own usage in the bottom row: spend of the cap.
+  await expect(page.locator("#participantBar [data-key=spent]")).toHaveText(/^\$\d+\.\d\d of \$2\.00 used$/);
+  await expect(page.locator("#participantBar [data-key=status]")).toHaveText("idle");
 
-  // A double Enter posts the comment once (the post held in flight, as on
-  // a phone's slow link).
+  // A double Enter posts the message once (the post held in flight, as on
+  // a phone's slow link); its queued bubble clears when its turn starts,
+  // and the answer arrives.
   const posts = [];
   await page.route("**/turn", async (route) => {
     posts.push(route.request().url());
@@ -183,33 +187,30 @@ test("a review: the owner starts one for a file and invites from the panel, the 
     await page.waitForTimeout(400); // eslint-disable-line no-restricted-syntax -- a slow post is the case
     await route.fulfill({ response: res });
   });
-  await page.locator("#comment").fill("Is step 3 safe?");
-  await page.locator("#comment").press("Enter");
-  await page.locator("#comment").press("Enter");
-  await expect(page.locator("#thread .p-msg.user.mine")).toContainText("Is step 3 safe?");
-  await expect(page.locator("#thread .p-msg.reply .p-bubble")).toHaveCount(2);
-  await expect(page.locator("#thread .p-msg.user.mine")).toHaveCount(1);
+  await page.locator("#prompt").fill("Is step 3 safe?");
+  await page.locator("#prompt").press("Enter");
+  await page.locator("#prompt").press("Enter");
+  const mine = page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" });
+  await expect(mine).toHaveCount(1);
+  await expect(mine.locator(".author-badge")).toHaveText("Alex · review");
+  await expect(page.locator("#history .bubble.output")).toHaveCount(2);
+  await expect(page.locator("#history .bubble.output").last()).toHaveText(/PONG from the fake model/);
+  await expect(page.locator(".bubble.user.queued")).toHaveCount(0);
+  await expect(mine).toHaveCount(1);
   expect(posts).toHaveLength(1);
   await page.unroute("**/turn");
-  await expect(page.locator("#thread .p-msg.reply .p-bubble").last()).toHaveText(/PONG from the fake model/);
-  // A shell line is refused in words, before it reaches the session.
-  await page.locator("#comment").fill("!ls");
-  await page.locator("#send").click();
-  await expect(page.locator("#error")).toHaveText("A participant can't do that: only the session's owner can.");
-  // ↑ in the emptied box: this link's own comment (a refused one isn't kept), never the owner's prompts.
-  await page.locator("#comment").fill("");
-  await page.locator("#comment").press("ArrowUp");
-  await expect(page.locator("#comment")).toHaveValue("Is step 3 safe?");
 
   await expect(owner.locator("#history .bubble.user.by-participant .author-badge")).toHaveText("Alex · review");
   // Apply under the review turn's reply: the owner's turn in the composer,
   // the proposal quoted, not sent.
   await owner.locator(".review-apply-btn").last().click();
   await expect(owner.locator("#prompt")).toHaveValue(/^Apply this proposal from Alex's review turn \w+, as far as it fits the plan\. [^\n]*\n\n> PONG from the fake model/);
+  // Never on Alex's page.
+  await expect(page.locator(".review-apply-btn")).toHaveCount(0);
 
   // A claim link: the owner selects a word of the first answer, Copy link
   // gives Alex's link to that turn and quote; Alex's browser (its cookie,
-  // no token) opens it with the reply marked and the word highlighted.
+  // no token) opens it with the answer marked and the word highlighted.
   await owner.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { window.copiedLink = text; } } });
     const bubble = document.querySelector("#history .bubble.output");
@@ -227,40 +228,9 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   const claimLink = await owner.evaluate(() => window.copiedLink);
   expect(claimLink).toMatch(/^http:\/\/[^/]+\/#s=[0-9a-f-]+&t=[0-9a-f-]{8}&q=PONG/);
   await page.goto(claimLink.replace(/^http:\/\/[^/]+/, guestURL));
-  await expect(page.locator("#thread .p-msg.reply .p-bubble").first()).toHaveClass(/claim-hit/);
-  await expect(page.locator("#thread .claim-hit")).toBeInViewport();
+  await expect(page.locator("#history .claim-hit").first()).toBeVisible();
   expect(await page.evaluate(() => CSS.highlights.get("chi-claim")?.size)).toBe(1);
-
-  // Verify from a reply: Alex selects the claim in the first answer, Verify
-  // sends it with that turn's anchor, and the verdict's card lands after it.
-  script("verdict");
-  await page.locator("#comment").fill("");
-  // Alex's own comment holds no claim the server takes: the bar, no Verify.
-  await page.evaluate(() => {
-    const range = document.createRange();
-    range.selectNodeContents(document.querySelector("#thread .p-msg.user.mine .p-bubble"));
-    getSelection().removeAllRanges();
-    getSelection().addRange(range);
-  });
-  await expect(page.locator("#annotateBar .annotate-main")).toBeVisible();
-  await expect(page.locator("#annotateBar .annotate-preset", { hasText: "Verify" })).toBeHidden();
-  await page.evaluate(() => {
-    const bubble = document.querySelector("#thread .p-msg.reply .p-bubble");
-    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node && !node.data.includes("PONG")) node = walker.nextNode();
-    const range = document.createRange();
-    range.setStart(node, node.data.indexOf("PONG"));
-    range.setEnd(node, node.data.indexOf("PONG") + 4);
-    getSelection().removeAllRanges();
-    getSelection().addRange(range);
-  });
-  await page.locator("#annotateBar .annotate-preset", { hasText: "Verify" }).click();
-  await page.locator("#send").click();
-  const card = page.locator("#thread .verify-verdict");
-  await expect(card).toHaveClass(/confirmed/);
-  await expect(card.locator(".verify-verdict-quote")).toHaveText("PONG");
-  expect(await card.evaluate((node) => node.previousElementSibling === document.querySelector("#thread .p-msg.reply"))).toBe(true);
+  expect(refused, "requests answered 403").toEqual([]);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
 });

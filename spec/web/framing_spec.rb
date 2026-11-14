@@ -16,7 +16,7 @@ RSpec.describe Samagotchi::Web::App, "framing" do
   let(:public_dir) do
     Dir.mktmpdir("web-framing-public").tap do |dir|
       File.write(File.join(dir, "index.html"), "<html><body>chi</body></html>")
-      File.write(File.join(dir, "participant.html"), "<html><body>p</body></html>")
+      File.write(File.join(dir, "static.html"), "<html><body>p</body></html>")
     end
   end
   let(:lan) { nil }
@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::Web::App, "framing" do
 
   it "says DENY and frame-ancestors 'none' on the page, and on the static HTML" do
     expect(frame_headers(call("/").last)).to eq(["DENY", policy])
-    expect(frame_headers(call("/participant.html").last)).to eq(["DENY", policy])
+    expect(frame_headers(call("/static.html").last)).to eq(["DENY", policy])
   end
 
   # A block renderer's srcdoc frame loads under it; a frame navigating itself
