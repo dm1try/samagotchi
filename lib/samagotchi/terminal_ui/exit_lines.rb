@@ -10,6 +10,22 @@ module Samagotchi
     module ExitLines
       module_function
 
+      # What /exit --delete's line adds from the delete's result: the previous
+      # link back in the lists (D2), the delegates deleted with it and the
+      # ones left running (D7). "" for a plain delete.
+      def deleted_tail(result, id)
+        return "" unless result.is_a?(Hash)
+
+        back = Array(result[:unarchived]).first
+        gone = Array(result[:deleted]).reject { |sid| sid == id }.size
+        running = Array(result[:left_running])
+        parts = []
+        parts << " The previous link #{back[0, 8]} is back in the lists." if back
+        parts << " #{gone} delegate#{"s" unless gone == 1} deleted with it." if gone.positive?
+        parts << " #{running.size} left running: #{running.map { |sid| sid[0, 8] }.join(", ")}." unless running.empty?
+        parts.join
+      end
+
       # Why a request the Bridge read after its deadline didn't go through.
       LATE = "worker not answering in time"
       # An exit the worker agreed to in an empty session. Said before it has

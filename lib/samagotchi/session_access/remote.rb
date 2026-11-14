@@ -316,6 +316,8 @@ module Samagotchi
 
       # Web::App::BOUND_FEATURE: POST …/participants takes an identity.
       BOUND_FEATURE = "bound_grants"
+      # Web::App::CHAIN_DELETE_FEATURE: DELETE …/chain.
+      CHAIN_DELETE_FEATURE = "chain_delete"
 
       # The header that chi web names the signed-in user in (GET
       # /api/info's proxy), nil when it has no such proxy, or is a chi
@@ -493,12 +495,32 @@ module Samagotchi
       end
 
       # @return [Hash] {id:, stopped:}
+      # A chi web before chain_delete answers without unarchived,
+      # moved_back, deleted and left_running (no revive, no undo, no D7
+      # there): each reads as [].
       def delete(id, force:)
         reply = request(:delete, session_path(id), query: { force: (true if force) })
         raise_refusal(reply) unless reply.status == 200
 
-        { id: reply.json["session_id"] || id, stopped: reply.json["stopped"] == true }
+        { id: reply.json["session_id"] || id, stopped: reply.json["stopped"] == true,
+          unarchived: ids_of(reply.json["unarchived"]), moved_back: ids_of(reply.json["moved_back"]),
+          deleted: ids_of(reply.json["deleted"]), left_running: ids_of(reply.json["left_running"]) }
       end
+
+      # DELETE …/chain there (SessionManager.delete_chain's result).
+      # @raise [RemoteTooOld] a chi web without it (an older one would answer 404)
+      def delete_chain(id, force:)
+        require_feature!(CHAIN_DELETE_FEATURE)
+        reply = request(:delete, "#{session_path(id)}/chain", query: { force: (true if force) })
+        raise_refusal(reply) unless reply.status == 200
+
+        json = reply.json
+        { id: json["session_id"] || id, deleted: ids_of(json["deleted"]), left: ids_of(json["left"]),
+          left_running: ids_of(json["left_running"]), unarchived: ids_of(json["unarchived"]),
+          stopped: ids_of(json["stopped"]), cut_off: json["cut_off"] == true, refusal: json["refusal"] }
+      end
+
+      private def ids_of(value) = Array(value).select { |id| Session.valid_id?(id) }
 
       # --- context (a session's own sources: a project's are local only)
 
@@ -761,8 +783,9 @@ module Samagotchi
           raise SessionManager::ScratchSession, sid if json["scratch"] == true
 
           raise SessionManager::OwnedByTUI, sid
-        when "worker_running", "still_stopping", "scheduled"
-          raise SessionManager::DeleteRefused.new(sid, reason, message: message)
+        when "worker_running", "still_stopping", "scheduled", "continuing", "delegate_unmovable", "chain_scheduled"
+          raise SessionManager::DeleteRefused.new(sid, reason || error.to_sym, message: message, ids: ids_of(json["ids"]),
+                                                                               schedule_id: json["schedule_id"])
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
         when "continued", "open_children", "folder_gone"

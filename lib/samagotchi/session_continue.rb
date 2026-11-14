@@ -15,6 +15,7 @@ require_relative "context_move"
 require_relative "note_move"
 require_relative "archive_store"
 require_relative "continue_intent"
+require_relative "continued_from"
 require_relative "recap_store"
 require_relative "bridge_client"
 require_relative "worker_link"
@@ -83,8 +84,12 @@ module Samagotchi
     CarryContext = Data.define(:previous, :to, :state_dir, :move)
     # What an undo works on: the previous link's id, the failed link (nil in
     # :moved_back, which looks it up itself), the delegates the plan moved,
-    # and what the forward carry kept (#run's +carried+, by step name).
-    UndoContext = Data.define(:from, :link, :state_dir, :moved, :carried)
+    # what the forward carry kept (#run's +carried+, by step name), and why
+    # (ChildMove.apply's undo: :failed_continue, or :deleted_link for
+    # #undo_deleted_link).
+    UndoContext = Data.define(:from, :link, :state_dir, :moved, :carried, :reason) do
+      def initialize(from:, link:, state_dir:, moved:, carried:, reason: :failed_continue) = super
+    end
 
     # When a failed continue undoes each step, in time order: :moved_back
     # while the failed link's worker may still run (before
@@ -240,7 +245,8 @@ module Samagotchi
       carried = {}
       begin
         link = spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                  move: plan.move, client_id: client_id, carried: carried, session_id: successor_id)
+                                  move: plan.move, archived: archived, client_id: client_id, carried: carried,
+                                  session_id: successor_id)
       rescue StandardError, Interrupt
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
@@ -345,13 +351,15 @@ module Samagotchi
     end
 
     # The delegates a failed #run moved, or began to (its
-    # intent names them), go back to the previous link.
+    # intent names them), go back to the previous link; a deleted link's
+    # (#undo_deleted_link) the ones its caller names.
     private_class_method def self.undo_move(ctx)
       id = ctx.from
       state_dir = ctx.state_dir
-      link = SessionChain.next_of(id, state_dir: state_dir) or return
-      ids = ChildMove.read_intent(link, state_dir: state_dir)&.ids || ctx.moved
-      ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: true)
+      link = ctx.link || SessionChain.next_of(id, state_dir: state_dir) or return
+      # A deleted link's caller names exactly the ones still under it.
+      ids = (ctx.reason == :failed_continue && ChildMove.read_intent(link, state_dir: state_dir)&.ids) || ctx.moved
+      ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: ctx.reason)
       ChildMove.clear_intent(link, state_dir: state_dir)
     rescue StandardError => e
       Log.warn(:worker, "continue_undo_move_failed", sid: id, error: e.class.name, msg: e.message)
@@ -388,15 +396,41 @@ module Samagotchi
       end
 
       ctx = UndoContext.new(from: id, link: orphan, state_dir: state_dir, moved: moved, carried: carried)
-      undo_carry(:link_stopped, ctx)
-      FileUtils.rm_f(Session.session_file(orphan, state_dir: state_dir))
-      undo_carry(:link_unlinked, ctx)
-      SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true)
-      undo_carry(:link_deleted, ctx)
+      unlink(ctx) { SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true) }
     rescue SessionManager::DeleteRefused
       raise
     rescue StandardError => e
       Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
+    # The undo's phases once the link's worker is stopped, shared by a
+    # failed continue (#discard_failed_link) and a deleted link
+    # (#undo_deleted_link): :link_stopped, its session file goes (out of the
+    # chain), :link_unlinked, the block removes the rest (neither caller
+    # recurses: each passes its own removal), :link_deleted.
+    private_class_method def self.unlink(ctx)
+      undo_carry(:link_stopped, ctx)
+      FileUtils.rm_f(Session.session_file(ctx.link, state_dir: ctx.state_dir))
+      undo_carry(:link_unlinked, ctx)
+      yield
+      undo_carry(:link_deleted, ctx)
+    end
+
+    # Deleting +link+, the chain's newest link, undoes the continue +from+ →
+    # +link+ (SessionChain::Delete, D5) once +link+'s worker is stopped:
+    # +moved+ go back to +from+ (:moved_back, their note says the link was
+    # deleted), then #unlink: the rings and every note waiting in +link+
+    # but the continue's own go to +from+ (NoteMove.give_back, moved: []),
+    # and the block removes +link+'s files. +from+ is not woken (unlike a
+    # failed continue): the reports wait for its next start. Unarchiving
+    # is the caller's.
+    # @yieldreturn the block's value is returned
+    def self.undo_deleted_link(from:, link:, moved:, state_dir:)
+      ctx = UndoContext.new(from: from, link: link, state_dir: state_dir, moved: moved, carried: {}, reason: :deleted_link)
+      undo_carry(:moved_back, ctx)
+      removed = nil
+      unlink(ctx) { removed = yield }
+      removed
     end
 
     # A failed link's folder an older chi's note brought back after its
@@ -425,12 +459,16 @@ module Samagotchi
     # it (spawn_session marks it starting before its file is saved:
     # StartingMarker.fresh?).
     # @param carried [Hash] gets what each CARRY step took to it, by name
+    # @param archived [Array<String>] what the archive of +previous+ hid
+    #   (ContinuedFrom's record, written first in before_spawn: no crash
+    #   window between the link's save and the record)
     private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, carried:,
-                                                     session_id:, client_id: nil)
+                                                     session_id:, archived: [], client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
       before_spawn = lambda do |link|
+        ContinuedFrom.write(link.id, previous_id: previous.id, archived_ids: archived, moved_ids: move, state_dir: state_dir)
         ctx = CarryContext.new(previous: previous, to: link.id, state_dir: state_dir, move: move)
         CARRY.each { |step| carried[step.name] = send(step.carry, ctx) }
       end

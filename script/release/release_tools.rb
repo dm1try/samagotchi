@@ -79,6 +79,7 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/participants"
     require_relative "../../lib/samagotchi/participant_uploads"
     require_relative "../../lib/samagotchi/participant_prompts"
+    require_relative "../../lib/samagotchi/continued_from"
     require_relative "../../lib/samagotchi/chi_home"
     require_relative "../../lib/samagotchi/session_stores"
     require_relative "../../lib/samagotchi/bridge/pending_card"
@@ -332,9 +333,13 @@ module ReleaseTools
     ].each { |event| tails.call(event) }
     tails_path = File.join(session_dir, Samagotchi::ThinkingTails::FILE)
 
+    Samagotchi::ContinuedFrom.write(session_id, previous_id: "compat-source", archived_ids: ["compat-source"],
+                                                moved_ids: ["compat-child"], state_dir: sessions_dir)
+    continued_from_path = Samagotchi::ContinuedFrom.path(session_id, state_dir: sessions_dir)
+
     [archive_path, pending_path, File.join(session_dir, Samagotchi::Objectives::CARDS_FILE),
      File.join(session_dir, Samagotchi::ObjectivesCheck::FILE), File.join(session_dir, Samagotchi::ObjectivesTrack::FILE),
-     reminders_path, recap_path, parent_path, delegates_path, tails_path]
+     reminders_path, recap_path, parent_path, delegates_path, tails_path, continued_from_path]
   end
   private_class_method :write_compat_session_stores!
 

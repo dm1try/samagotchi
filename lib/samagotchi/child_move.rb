@@ -102,8 +102,10 @@ module Samagotchi
     # noted, and a run finishing it (#adopt) notes only the rest. A crash
     # between a note and its record notes that child twice (better than
     # none).
-    # @param undo [Boolean] a failed continue moving them back: its note says so
-    def apply(ids, from:, to:, state_dir:, undo: false)
+    # @param undo [Symbol, nil] why they move back, which the note says:
+    #   :failed_continue (the continue failed) or :deleted_link (the link
+    #   they moved to was deleted: SessionChain::Delete); nil moves them on
+    def apply(ids, from:, to:, state_dir:, undo: nil)
       return if ids.empty?
 
       intent = Intent.new(from: from, ids: ids)
@@ -191,10 +193,15 @@ module Samagotchi
     # The child's system prompt names the parent it started with for its
     # whole life (a prompt-cache miss each time it changed): a note tells a
     # running one where its notes and reports go now.
-    def note_child(child_id, to:, state_dir:, undo: false)
-      text = if undo
+    # @param undo [Symbol, nil] #apply's
+    def note_child(child_id, to:, state_dir:, undo: nil)
+      text = case undo
+             when :failed_continue
                "Your parent session is #{to[0, 8]} (#{to}) again: the continue that moved you to its next link " \
                  "failed. Send notes there, and your reports reach it."
+             when :deleted_link
+               "Your parent session is #{to[0, 8]} (#{to}) again: the next link of its chain, which you had moved " \
+                 "to, was deleted. Send notes there, and your reports reach it."
              else
                "Your parent session is now #{to[0, 8]} (#{to}), the next link of its session chain: send notes " \
                  "there, and your reports reach it."

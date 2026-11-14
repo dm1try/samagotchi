@@ -17,6 +17,7 @@ require "samagotchi/objectives_track"
 require "samagotchi/participants"
 require "samagotchi/participant_uploads"
 require "samagotchi/participant_prompts"
+require "samagotchi/continued_from"
 require "samagotchi/recap_store"
 require "samagotchi/reminder_carry"
 require "samagotchi/reminder_store"
@@ -48,6 +49,9 @@ RSpec.describe "the recorded compatibility corpus" do
   # The last release whose corpus has no participant_prompts.json
   # (ParticipantPrompts): a later one must hold it.
   let(:participant_prompts_after) { Gem::Version.new("0.172.1") }
+  # The last release whose corpus has no continued_from.json (ContinuedFrom):
+  # a later one must hold it.
+  let(:continued_from_after) { Gem::Version.new("0.173.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -204,7 +208,8 @@ RSpec.describe "the recorded compatibility corpus" do
 
       path = File.join(root, store.corpus_dir, store.file)
       after = { Samagotchi::ParticipantUploads::FILE => participant_images_after,
-                Samagotchi::ParticipantPrompts::FILE => participant_prompts_after }.fetch(store.file, session_stores_after)
+                Samagotchi::ParticipantPrompts::FILE => participant_prompts_after,
+                Samagotchi::ContinuedFrom::FILE => continued_from_after }.fetch(store.file, session_stores_after)
       next unless recorded?(path, version, after)
 
       case store.file
@@ -246,6 +251,9 @@ RSpec.describe "the recorded compatibility corpus" do
         expect(Samagotchi::ParticipantPrompts.read(session_dir).broken).to be(false)
         expect(Samagotchi::ParticipantPrompts.entries(session_dir, ReleaseTools::COMPAT_GRANT_ID))
           .to eq([ReleaseTools::COMPAT_PARTICIPANT_PROMPT])
+      when "continued_from.json"
+        expect(Samagotchi::ContinuedFrom.read("compat-session", state_dir: sessions_dir))
+          .to have_attributes(previous_id: "compat-source", archived_ids: ["compat-source"], moved_ids: ["compat-child"])
       when "delegates.json"
         cursor = Samagotchi::Tools::DelegateCursors.get("compat-session", "compat-child", state_dir: sessions_dir)
         expect(cursor).to have_attributes(reply_file: "output/compat-child.json", question_id: "compat-question")

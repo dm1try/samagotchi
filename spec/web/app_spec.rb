@@ -4107,9 +4107,55 @@ RSpec.describe Samagotchi::Web::App do
         status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
 
         expect(status).to eq(200)
-        expect(JSON.parse(body.first)).to eq("status" => "deleted", "session_id" => session.id, "stopped" => false)
+        expect(JSON.parse(body.first)).to eq("status" => "deleted", "session_id" => session.id, "stopped" => false,
+                                             "unarchived" => [], "moved_back" => [], "deleted" => [session.id],
+                                             "left_running" => [])
         expect(File.exist?(session_file)).to be false
         expect(Dir.exist?(session_dir)).to be false
+      end
+
+      it "brings back the previous link of a chain it deletes the newest link of, and the hub hears both" do
+        Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+        link = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                               continues: session.id).tap { |s| s.save(state_dir: state_dir) }
+        allow(hub).to receive(:touch)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{link.id}?force=true", method: "DELETE"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include("session_id" => link.id, "unarchived" => [session.id])
+        expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be false
+        expect(hub).to have_received(:touch).with(link.id)
+        expect(hub).to have_received(:touch).with(session.id)
+      end
+
+      describe "…/chain" do
+        let!(:link) do
+          Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+          Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                          continues: session.id).tap { |s| s.save(state_dir: state_dir) }
+        end
+
+        it "deletes every link, matched before the plain /api/sessions/:id row" do
+          status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/chain?force=true", method: "DELETE"))
+
+          expect(status).to eq(200)
+          expect(JSON.parse(body.first)).to include("status" => "deleted", "deleted" => [link.id, session.id],
+                                                    "left" => [], "cut_off" => false)
+          expect(File.exist?(session_file)).to be false
+          expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be false
+        end
+
+        it "answers 409 chain_scheduled with the schedule, deleting nothing" do
+          entry = Samagotchi::Schedules.new(state_dir: state_dir).add(target: link.id, prompt: "Audit",
+                                                                      recurrence: { "every" => "1h" })
+
+          status, _headers, body = app.call(env_for("/api/sessions/#{link.id}/chain?force=true", method: "DELETE"))
+
+          expect(status).to eq(409)
+          expect(JSON.parse(body.first)).to include("error" => "chain_scheduled", "schedule_id" => entry.id)
+          expect(File.exist?(session_file)).to be true
+        end
       end
 
       it "stops a live worker first (bounded wait), then deletes" do
@@ -4125,7 +4171,8 @@ RSpec.describe Samagotchi::Web::App do
         expect(status).to eq(200)
         expect(JSON.parse(body.first)).to include("stopped" => true)
         expect(Samagotchi::SessionManager).to have_received(:delete_session)
-          .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
+          .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS,
+                            revive_previous: true, refuse_continuing: true)
         expect(File.exist?(session_file)).to be false
       end
 

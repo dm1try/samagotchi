@@ -347,6 +347,8 @@ module Samagotchi
         ["POST", %r{\A/api/push/presence\z}, :handle_push_presence, :owner],
         ["GET", %r{\A/api/block_renderers\z}, :handle_block_renderers, :owner],
         ["GET", %r{\A/api/block_renderers/([^/]+)/([^/]+)\z}, :handle_block_renderer_file, :owner],
+        # Before the plain /api/sessions/:id rows; query-only (force).
+        ["DELETE", %r{\A/api/sessions/([^/]+)/chain\z}, :handle_delete_chain, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
@@ -1098,8 +1100,11 @@ module Samagotchi
       # web without it would ignore one and issue an unbound grant, so chi
       # --remote share --identity asks for this first.
       BOUND_FEATURE = "bound_grants"
+      # DELETE …/chain, and the plain delete's revive and undo (D2/D5): chi
+      # --remote sessions delete --chain asks for this first.
+      CHAIN_DELETE_FEATURE = "chain_delete"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and
