@@ -57,14 +57,21 @@ module Samagotchi
     # meanwhile, never one the continue wrote itself (CONTINUE_SOURCES).
     # @return [Array<String>] the file names given back
     def give_back(from:, to:, moved:, state_dir:)
-      files = unclaimed(notes_dir(from, state_dir)).select do |file|
+      rename(returnable(from: from, moved: moved, state_dir: state_dir), notes_dir(to, state_dir)).tap do |back|
+        Log.info(:worker, "notes_given_back", from: from[0, 8], to: to[0, 8], count: back.size) unless back.empty?
+      end
+    end
+
+    # The note files #give_back takes from +from+: those in +moved+ and
+    # every other unclaimed one but an objectives list and the continue's
+    # own (CONTINUE_SOURCES). A chain delete's plan counts them.
+    # @return [Array<String>] paths, oldest first
+    def returnable(from:, moved:, state_dir:)
+      unclaimed(notes_dir(from, state_dir)).select do |file|
         next true if moved.include?(File.basename(file))
 
         data = read(file)
         data && !objectives?(data) && !CONTINUE_SOURCES.include?(data["source"])
-      end
-      rename(files, notes_dir(to, state_dir)).tap do |back|
-        Log.info(:worker, "notes_given_back", from: from[0, 8], to: to[0, 8], count: back.size) unless back.empty?
       end
     end
 

@@ -148,7 +148,7 @@ test("memoriesTooltip: the used memories always, preloaded and muted when there 
 // says so where the ← link would have been.
 test("a chain whose previous link was pruned: the bar says so, with no link to a deleted session", () => {
   const html = markupOf(infoBarHtml({ ...bare, chain: { prev: null, next: null, pruned: true } }));
-  assert.match(html, /class="model chain-pruned" title="The links before this one were pruned by a schedule">↩ earlier links pruned</);
+  assert.match(html, /class="model chain-pruned" title="The links before this one were deleted">↩ earlier links deleted</);
   assert.ok(!html.includes("chain-link"), "no ← link to a session that is gone");
 
   const kept = markupOf(infoBarHtml({ ...bare, chain: { prev: { id: "aaaaaaaa1", date: "10-09" }, next: null, pruned: false } }));

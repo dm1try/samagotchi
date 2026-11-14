@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ACTION_KEYS, createMoreSheet, moreActions, moreAttention, moreCount, moreRows, moreTelemetry, ROW_KEYS } from "../../../lib/samagotchi/web/public/more_sheet.js";
 import { infoButtons } from "../../../lib/samagotchi/web/public/info_bar_model.js";
+import { html } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 const ID = "0123456789abcdef";
 const bare = {
@@ -98,7 +99,7 @@ test("the actions follow the buttons' rules", () => {
 });
 
 // The sheet's order is BAR_ITEMS' menuOrder: today's rows, with the three a
-// fold adds (id, ⚙, earlier links pruned) in their places.
+// fold adds (id, ⚙, earlier links deleted) in their places.
 test("the rows' and the actions' order, from BAR_ITEMS", () => {
   assert.deepEqual(ROW_KEYS, ["id", "model", "settings", "toolkit", "workingSet", "memories", "participants", "pruned", "prev", "next", "parent", "delegates", "notes", "worker"]);
   assert.deepEqual(ROW_KEYS.filter((k) => !["id", "settings", "pruned"].includes(k)),
@@ -116,7 +117,7 @@ test("without a fold the id, ⚙ and pruned rows don't show; with one, only the 
   assert.deepEqual(folded("notes", "id", "settings", "pruned", "dir"), ["id", "settings", "pruned", "notes"]);
   const rows = moreRows(bar, new Set(["id", "settings", "pruned"]));
   assert.deepEqual(rows.map((r) => [r.label, r.value, r.go]), [
-    ["Session id", "01234567", "id"], ["Settings", "think low", "settings"], ["Earlier links pruned", "by a schedule", undefined]]);
+    ["Session id", "01234567", "id"], ["Settings", "think low", "settings"], ["Earlier links deleted", "", undefined]]);
   // A ← link there is no pruned row (the bar draws the link instead).
   assert.deepEqual(moreRows({ ...bar, chain: { prev: { id: "p".repeat(16), date: "" }, next: null, pruned: true } }, new Set(["pruned", "prev"])).map((r) => r.key), ["prev"]);
 });
@@ -130,18 +131,49 @@ test("with a fold, Continue and Stop only when folded; Archive and Delete always
   assert.equal(moreAttention(waiting, new Set(["delegates"])).kind, "warn");
 });
 
-function sheet() {
+function sheet({ onDelete = null } = {}) {
   const el = document.createElement("div");
   el.id = "infoBar";
   el.innerHTML = '<button id="infoMoreBtn">⋯<span class="more-count"></span></button><button id="infoContinueBtn"></button><button id="infoDeleteBtn"></button><div id="infoText"><button class="ws-chip"></button></div>';
   document.body.append(el);
   const button = el.querySelector("#infoMoreBtn");
   let sid = ID;
-  const ctl = createMoreSheet({ el, button, session: () => sid, hash: (id) => `#/s/${id}`,
+  const ctl = createMoreSheet({ el, button, session: () => sid, hash: (id) => `#/s/${id}`, onDelete,
                                 win: { innerWidth: 390, innerHeight: 800 } });
   return { ctl, el, button, setSession: (id) => { sid = id; }, done: () => { el.remove(); ctl.pop.remove(); } };
 }
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("Delete on a chained session turns the panel into the delete sheet; ‹ More draws the list again", async () => {
+  const acts = [];
+  let host = null;
+  const { ctl, button, done } = sheet({
+    onDelete: (id, given) => {
+      host = given;
+      given.wire({ act: (name) => acts.push(name) });
+      given.show(html`<div class="delete-sheet"><button type="button" data-act="del:back">‹ More</button><button type="button" class="ds-choice" data-act="del:this">Delete this link</button></div>`);
+      return true;
+    },
+  });
+  ctl.update({ bar: bare, buttons: buttonsFor() });
+  button.click();
+  ctl.pop.querySelector('[data-act="go:delete"]').click();
+  await tick();
+
+  assert.equal(ctl.isOpen(), true);
+  assert.equal(host.back, true);
+  assert.ok(ctl.pop.querySelector(".delete-sheet"));
+  ctl.pop.querySelector('[data-act="del:this"]').click();
+  assert.deepEqual(acts, ["this"]);
+  // A redraw keeps the sheet (update every second while a turn runs).
+  ctl.update({ bar: bare, buttons: buttonsFor() });
+  assert.ok(ctl.pop.querySelector(".delete-sheet"));
+
+  ctl.pop.querySelector('[data-act="del:back"]').click();
+  assert.ok(ctl.pop.querySelector(".delete-sheet") === null);
+  assert.ok(ctl.pop.querySelector(".more-act.delete"));
+  done();
+});
 
 test("⋯ opens it as a bottom sheet; a redraw keeps it open, its nodes and focus, with the new numbers", () => {
   const { ctl, button, done } = sheet();

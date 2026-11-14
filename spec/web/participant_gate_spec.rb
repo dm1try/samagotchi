@@ -268,6 +268,17 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       end
     end
 
+    it "never gets GET …/delete_plan, an :owner route: 403 for their own session, 404 for another's" do
+      row = described_class.const_get(:ROUTES).find { |route| route[2] == :handle_delete_plan }
+      expect(row[3..]).to eq(%i[owner session])
+      own = json("/api/sessions/#{session.id}/delete_plan")
+      expect([own.first, own.last["error"]]).to eq([403, "not_permitted"])
+      expect(own.last.keys).not_to include("chained", "link", "chain")
+      theirs = json("/api/sessions/#{other.id}/delete_plan")
+      expect([theirs.first, theirs.last["error"]]).to eq([404, "not_found"])
+      expect(theirs.last.keys).not_to include("chained", "link", "chain")
+    end
+
     it "audits a refused route once a minute, with the participant and the reason" do
       3.times { call("/api/sessions") }
       refused = audit.select { |line| line["event"] == "refused" }

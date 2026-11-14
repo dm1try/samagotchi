@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - `chi sessions delete --chain` deletes every link of a session chain, with their finished delegates (running ones are
   left running). A schedule on the chain refuses it.
+- chi web: Delete on a session of a chain asks first, in the ⋯ panel (or at a card's ✕): delete this link, or the
+  whole chain, each saying what comes back and what goes. A session in no chain keeps the plain confirm.
 
 ### Changed
 
@@ -19,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   lists (not started) with the delegates and notes that had moved on, and the CLI says so. Before, the earlier links
   stayed archived and dropped out of every list. A delete is refused while a continue of that session is under way,
   and a schedule's first or current link can't be deleted. Against an older chi web, `--remote` deletes plainly.
+- chi web: a chain whose earlier links were deleted says "earlier links deleted", whoever deleted them (it said "pruned
+  by a schedule").
 
 ### Fixed
 

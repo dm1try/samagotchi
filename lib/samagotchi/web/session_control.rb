@@ -550,6 +550,19 @@ module Samagotchi
         delete_refused(e)
       end
 
+      # GET /api/sessions/:id/delete_plan: what the delete sheet shows for a
+      # chained session (SessionChain::Delete::Preview: the plan and the
+      # refusals the delete itself runs), {chained: false} for one in no
+      # chain. One session listing walk per call; the page asks only for a
+      # chained session, as the sheet opens. No query or body read; no-store
+      # (json_response's).
+      def handle_delete_plan(_req, id)
+        return unknown_session(id) unless Session.exist?(id, state_dir: @state_dir || Session.default_state_dir)
+
+        require_relative "../session_chain/delete_preview"
+        json_response(200, SessionChain::Delete::Preview.call(id, state_dir: @state_dir))
+      end
+
       # The hub hears every session a delete changed: deleted, back in the
       # lists, moved back to the previous link, left running without a parent.
       def touch_deleted(id, result)
@@ -563,9 +576,15 @@ module Samagotchi
       # raises it again from (ids, the schedule).
       def delete_refused(error)
         detail = error.reason == :still_stopping ? "#{error.message}; try again in a moment" : error.message
+        # A moved delegate that can't go back: whether the page can stop it
+        # (its "Stop its worker, then delete"), as the refusal saw it.
+        if error.reason == :delegate_unmovable
+          require_relative "../session_chain/delete"
+          stoppable = SessionChain::Delete.stoppable?(error.ids, @state_dir || Session.default_state_dir)
+        end
         refusal_response(409, error.reason.to_s, error, detail: detail, session_id: error.session_id,
                                                         reason: error.reason.to_s, ids: error.ids.empty? ? nil : error.ids,
-                                                        schedule_id: error.schedule_id)
+                                                        schedule_id: error.schedule_id, stoppable: stoppable)
       end
 
       # 409 owned_by_tui in the words a refused archive, delete or continue

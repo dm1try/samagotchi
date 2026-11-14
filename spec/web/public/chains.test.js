@@ -50,7 +50,7 @@ test("chainNeighbours: the previous link (from the open session's own continues 
   // A new link the hub hasn't brought yet: its continues comes from the page.
   assert.deepEqual(chainNeighbours(list, "d4", { continues: "d3" }), { prev: { id: "d3", session: d3 }, next: null, pruned: false });
   // A deleted previous link: no ← link (it would open a not-found page), and the
-  // page knows the link is gone, so it can say "earlier links pruned" (chains.js).
+  // page knows the link is gone, so it can say "earlier links deleted" (chains.js).
   assert.deepEqual(chainNeighbours([d3], "d3"), { prev: null, next: null, pruned: true });
   assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: null, next: null, pruned: false });
   assert.deepEqual(chainNeighbours([d1], "d4", { continues: "gone" }), { prev: null, next: null, pruned: false });
@@ -151,7 +151,7 @@ const gone = link("g1", 7, { archived: true, recap: "Pruned by the schedule." })
 const g2 = link("g2", 8, { continues: "g1", archived: true, recap: "Day two fixed the specs." });
 const g3 = link("g3", 9, { continues: "g2" });
 
-test("a pruned chain: the walk stops at the missing link and the chip says earlier links pruned", () => {
+test("a pruned chain: the walk stops at the missing link and the chip says earlier links deleted", () => {
   assert.deepEqual(chainLinks([g3, g2], "g3").map((s) => s.id), ["g2", "g3"]);
   const byId = new Map([[gone, gone], [g2, g2], [g3, g3]]);
   assert.equal(linksPruned([g2, g3], new Map([[g2, g2], [g3, g3]])), true);
@@ -160,10 +160,10 @@ test("a pruned chain: the walk stops at the missing link and the chip says earli
   const head = foldChains(families([g3, g2]), [g3, g2]).find((f) => f.head.id === "g3");
   assert.equal(head.chain.pruned, true);
   assert.match(chainChipHtml(head), />#2</);
-  assert.match(chainChipHtml(head), /link 2 of 2 \(1 earlier link, earlier links pruned\)/);
+  assert.match(chainChipHtml(head), /link 2 of 2 \(1 earlier link, earlier links deleted\)/);
   const rows = chainRowsHtml(head);
   assert.match(rows, /chain-row chain-pruned/);
-  assert.match(rows, /earlier links pruned</);
+  assert.match(rows, /earlier links deleted</);
   assert.ok(!rows.includes("g1"), "no link to the pruned session");
 });
 
@@ -172,7 +172,7 @@ test("a chain pruned to its head alone is a chain still: its chip counts from th
   assert.equal(fams.length, 1);
   assert.deepEqual(fams[0].chain.links.map((s) => s.id), ["g3"]);
   assert.match(chainChipHtml(fams[0]), />#1</);
-  assert.match(chainChipHtml(fams[0]), /link 1 of 1 \(earlier links pruned\)/);
+  assert.match(chainChipHtml(fams[0]), /link 1 of 1 \(earlier links deleted\)/);
 });
 
 test("foldChains hands back the same array when no session continues another", () => {

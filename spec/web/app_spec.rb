@@ -4146,6 +4146,34 @@ RSpec.describe Samagotchi::Web::App do
           expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be false
         end
 
+        it "previews it for the sheet (GET …/delete_plan): the delete's plan, no-store, nothing deleted" do
+          status, headers, body = app.call(env_for("/api/sessions/#{link.id}/delete_plan"))
+
+          expect(status).to eq(200)
+          expect(headers["Cache-Control"]).to eq("no-store")
+          expect(JSON.parse(body.first)).to include("chained" => true, "position" => 2, "size" => 2,
+                                                    "link" => include("previous_id" => session.id, "refusal" => nil))
+          expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be true
+        end
+
+        it "answers the usual 404 for delete_plan of a well-formed id with no session" do
+          missing = "0123abcd-0000-4000-8000-000000000000"
+          status, _headers, body = app.call(env_for("/api/sessions/#{missing}/delete_plan"))
+
+          expect(status).to eq(404)
+          expect(JSON.parse(body.first)).not_to include("chained")
+        end
+
+        it "says in a delegate_unmovable 409 whether the page can stop the delegate" do
+          refusal = Samagotchi::SessionManager::DeleteRefused.new(link.id, :delegate_unmovable, ids: [session.id], detail: "older chi worker")
+          allow(Samagotchi::SessionManager).to receive(:delete_session).and_raise(refusal)
+
+          status, _headers, body = app.call(env_for("/api/sessions/#{link.id}?force=true", method: "DELETE"))
+
+          expect(status).to eq(409)
+          expect(JSON.parse(body.first)).to include("error" => "delegate_unmovable", "ids" => [session.id], "stoppable" => true)
+        end
+
         it "answers 409 chain_scheduled with the schedule, deleting nothing" do
           entry = Samagotchi::Schedules.new(state_dir: state_dir).add(target: link.id, prompt: "Audit",
                                                                       recurrence: { "every" => "1h" })
