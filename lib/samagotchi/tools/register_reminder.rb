@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../reminder_store"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -12,7 +13,7 @@ module Samagotchi
     # without blocking the main turn. The reminder fires when the agent is idle
     # and a new turn is about to start.
     class RegisterReminder
-      NAME        = "register_reminder"
+      NAME        = ToolNames::RegisterReminder::NAME
 
       def self.name        = NAME
 

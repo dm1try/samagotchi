@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../tool_response"
+require_relative "../tool_names"
 
 module Samagotchi
   # Read at a call only: the builtins' file list loads this, Session not with it.
@@ -15,9 +16,9 @@ module Samagotchi
     # action being the /objectives line; the model never changes the list by
     # itself. See docs/internals/objectives.md.
     class ObjectivesTool
-      NAME = "objectives"
+      NAME = ToolNames::ObjectivesTool::NAME
       MOVE = "move"
-      PROPOSE = "propose"
+      PROPOSE = ToolNames::ObjectivesTool::PROPOSE
       PROPOSED = "Proposed %s. The list is unchanged: the user sees a card and applies it or not."
       RECORDED = "Recorded a move on %s."
       EDITED_BY_USER = "The user edits the list with /objectives."
@@ -25,8 +26,8 @@ module Samagotchi
       # A move's state: where the objective stands in the agent's view. DONE is
       # its claim, never a status change (the user marks done).
       PROGRESS = "progress"
-      BLOCKED = "blocked"
-      DONE = "done"
+      BLOCKED = ToolNames::ObjectivesTool::BLOCKED
+      DONE = ToolNames::ObjectivesTool::DONE
       STATES = [PROGRESS, BLOCKED, DONE].freeze
 
       def self.name = NAME

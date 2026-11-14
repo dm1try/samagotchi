@@ -5,13 +5,14 @@ require_relative "../context_note"
 require_relative "../session_inbox"
 require_relative "../note_delivery"
 require_relative "peers"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     # Tell another chi session something: a context note it sees on its next
     # turn as background from this session. It never starts a turn there.
     class SendNote
-      NAME = "send_note"
+      NAME = ToolNames::SendNote::NAME
 
       def self.name = NAME
 

@@ -3,12 +3,13 @@
 require_relative "output_guardrails"
 require_relative "tool_path"
 require_relative "../image_store"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     # Reads a file from disk and returns its contents as a string.
     class Read
-      NAME        = "read"
+      NAME        = ToolNames::Read::NAME
 
       DEFAULT_HARD_MAX_BYTES = 2 * 1024 * 1024
 

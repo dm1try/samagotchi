@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -12,7 +13,7 @@ module Samagotchi
     # the handler's kctx). This reads the call: models write lists as JSON,
     # as a JSON string, or as words, so every id form is taken.
     class ForgetOutputs
-      NAME = "forget_outputs"
+      NAME = ToolNames::ForgetOutputs::NAME
 
       def self.name = NAME
 

@@ -11,6 +11,7 @@ require_relative "peers"
 require_relative "delegate_wait"
 require_relative "../child_reports"
 require_relative "../worker_link"
+require_relative "../tool_names"
 
 module Samagotchi
   # Loaded on first use (a delegate call): keeps the bundle test kit's load budget
@@ -35,7 +36,7 @@ module Samagotchi
     # follow-up to a child that exists. Only the child's final
     # reply comes back (DelegateWait), never its trace.
     class Delegate
-      NAME = "delegate"
+      NAME = ToolNames::Delegate::NAME
       MAX_CHILDREN_KEY = "session.max_children"
       MAX_CHILDREN_DEFAULT = 4
       # A path in a task: absolute, ~/ or ../, not glued to a word (a URL's

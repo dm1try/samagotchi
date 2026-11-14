@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -15,7 +16,7 @@ module Samagotchi
     #
     # Single tool covers single + multi + freeform via flags: multi_select, allow_freeform.
     class AskUserQuestion
-      NAME        = "ask_user_question"
+      NAME        = ToolNames::AskUserQuestion::NAME
 
       def self.name        = NAME
 

@@ -4,12 +4,13 @@ require "net/http"
 require "uri"
 require "ipaddr"
 require_relative "../version"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     # Fetches the content of a URL and returns cleaned text content.
     class WebFetch
-      NAME        = "web_fetch"
+      NAME        = ToolNames::WebFetch::NAME
       TIMEOUT_SEC = 15
       MAX_OUTPUT_BYTES = 32 * 1024
 

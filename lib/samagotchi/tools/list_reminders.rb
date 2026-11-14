@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../reminder_store"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     # Lists all active registered reminders.
     class ListReminders
-      NAME        = "list_reminders"
+      NAME        = ToolNames::ListReminders::NAME
 
       def self.name        = NAME
 
