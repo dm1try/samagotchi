@@ -1,5 +1,13 @@
 # frozen_string_literal: true
 
+require_relative "../image_store"
+require_relative "../llm/errors"
+require_relative "../llm/turn_settings"
+require_relative "../log"
+require_relative "../session"
+require_relative "../turn_stages/warmup"
+require_relative "../vision_context"
+
 module Samagotchi
   class Engine
     # What a turn's steps use before and around the model: its settings,

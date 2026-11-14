@@ -8,6 +8,8 @@ require_relative "../../script/load_check/check"
 # Each fixture tree is a tiny lib/samagotchi the checker runs over.
 RSpec.describe LoadCheck::Check do
   FIXTURES = File.expand_path("../fixtures/load_check", __dir__)
+  # An empty allow-list: the script-level examples see the tree's every finding.
+  NO_ALLOW = File.join(FIXTURES, "allow_list", "none.yml")
 
   def check(tree, allow: nil)
     described_class.new(root: File.join(FIXTURES, tree), allow: allow).run
@@ -109,16 +111,23 @@ RSpec.describe LoadCheck::Check do
 
   it "prints one line per finding and the counts, and exits 0 in report mode" do
     script = File.expand_path("../../script/load-check", __dir__)
-    out, status = Open3.capture2(RbConfig.ruby, script, "--limit", "3", stdin_data: "")
+    out, status = Open3.capture2(RbConfig.ruby, script, "--limit", "3", "--allow", NO_ALLOW, stdin_data: "")
 
     expect(status.exitstatus).to eq(0)
     expect(out).to match(/\A[123] \S+:\d+ \S+ — .+\n/)
     expect(out).to match(/findings: \d+ \(rule 1 \d+, rule 2 \d+, rule 3 \d+\) across \d+ references\nby area: .+\nfiles scanned: \d+ .*\nallow-list: \d+ entries matched, \d+ matched nothing\n\z/)
   end
 
+  it "reads script/load_check/allow.yml unless --allow names another" do
+    script = File.expand_path("../../script/load-check", __dir__)
+    out, _status = Open3.capture2(RbConfig.ruby, script, stdin_data: "")
+
+    expect(out).to match(/^allow-list: [1-9]\d* entries matched/)
+  end
+
   it "exits 1 with --strict when findings remain" do
     script = File.expand_path("../../script/load-check", __dir__)
-    _out, status = Open3.capture2(RbConfig.ruby, script, "--strict", stdin_data: "")
+    _out, status = Open3.capture2(RbConfig.ruby, script, "--strict", "--allow", NO_ALLOW, stdin_data: "")
 
     expect(status.exitstatus).to eq(1)
   end

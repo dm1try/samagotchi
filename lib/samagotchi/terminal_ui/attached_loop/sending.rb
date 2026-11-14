@@ -6,6 +6,8 @@ require_relative "../../prompt_history"
 require_relative "../../turn_origin"
 require_relative "../exit_lines"
 require_relative "../image_input"
+require_relative "../formatting"
+require_relative "queueing"
 
 module Samagotchi
   class TerminalUI

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../turn_stages/verify_anchors"
+
 module Samagotchi
   class Engine
     # Verify and Revise anchors (TurnStages::VerifyAnchors): #begin_turn

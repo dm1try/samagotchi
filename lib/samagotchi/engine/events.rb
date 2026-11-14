@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_relative "../memory_orphans"
+require_relative "../project_id_clash"
+require_relative "../working_set"
+
 module Samagotchi
   class Engine
     # The event log: persistent observers, #announce (ANNOUNCEABLE_EVENTS),

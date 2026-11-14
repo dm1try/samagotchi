@@ -5,6 +5,7 @@ require "json"
 require_relative "client_event"
 require_relative "event_id"
 require_relative "../llm/utf8_scrub"
+require_relative "bounded_queue"
 
 module Samagotchi
   class Bridge

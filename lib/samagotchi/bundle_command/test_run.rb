@@ -2,6 +2,7 @@
 
 require "rbconfig"
 require_relative "../cli/flags"
+require_relative "../cli/exit"
 
 module Samagotchi
   class BundleCommand

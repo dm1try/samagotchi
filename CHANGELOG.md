@@ -28,6 +28,10 @@ and commands may change between minor versions. How releases are made:
 - `chi share --agent`, `/share --agent` and the panel's person / agent choice: a participant is a participant. An invite link still works from the command line (its token as a Bearer header).
 - The plugin API's `ctx.review?` and `ctx.sessions.review`, with no stub: a bundle that still calls them gets an error (NoMethodError) there, and is flagged by `chi bundle check` and on `chi update`. The coordinator bundle's `/coordinate review` goes with them (coordinator 0.9.0; inline-widgets 0.1.2 and github-pr 0.6.5 treat every session alike).
 
+### Fixed
+
+- `chi -p` in a terminal: a turn that ends with an empty answer prints "chi: the model gave an empty answer" again, instead of an error (NameError) since 0.171.0.
+
 ## [0.171.0] - 2026-11-14
 
 ### Added

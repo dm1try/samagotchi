@@ -1,5 +1,14 @@
 # frozen_string_literal: true
 
+require_relative "../idle_client"
+require_relative "../idle_target"
+require_relative "../log"
+require_relative "../objectives_check"
+require_relative "../objectives_track"
+require_relative "../session"
+require_relative "../system_one/recorder"
+require_relative "../system_one/runs"
+
 module Samagotchi
   class Engine
     # Side requests: a plugin's ctx.ask_model and Check this on their own

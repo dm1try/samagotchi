@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../turn_stages/context_judge"
+
 module Samagotchi
   class Engine
     # The attached-context candidate judge (TurnStages::ContextJudge,

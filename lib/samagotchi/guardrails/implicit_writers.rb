@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "shell_lex"
+require_relative "pair_command"
 
 module Samagotchi
   module Guardrails

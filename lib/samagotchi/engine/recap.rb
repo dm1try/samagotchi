@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../recap_place"
+require_relative "../answer_display"
 
 module Samagotchi
   class Engine

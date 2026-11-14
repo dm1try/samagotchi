@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "../participant_turn_mode"
+require_relative "../guardrail_wiring"
+require_relative "../steer"
 
 module Samagotchi
   class Engine

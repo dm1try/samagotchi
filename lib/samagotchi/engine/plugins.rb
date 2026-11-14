@@ -1,5 +1,13 @@
 # frozen_string_literal: true
 
+require_relative "../answer_display"
+require_relative "../bundle_settings_check"
+require_relative "../cache_confirm"
+require_relative "../log"
+require_relative "../plugin/context"
+require_relative "../plugin/loader"
+require_relative "../session_setup"
+
 module Samagotchi
   class Engine
     # The Engine as the plugins' host: loading them (Plugin::Registries), their

@@ -7,6 +7,7 @@ require_relative "../bridge/turn_accumulator"
 require_relative "../worker_link"
 require_relative "../verify_anchor"
 require_relative "../verify_fresh"
+require_relative "capabilities"
 
 module Samagotchi
   module Web

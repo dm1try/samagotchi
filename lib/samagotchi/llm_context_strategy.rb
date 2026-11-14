@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "config"
+
 module Samagotchi
   # Which LLM context strategy a turn runs under (LLMContextView): none,
   # the default, or a list of layers (stale, forget). Set by
