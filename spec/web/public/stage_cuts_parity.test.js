@@ -71,8 +71,20 @@ export function stageShape(stageEl, historyEl, waiting) {
   };
 }
 
+// The registry against the slots after each event (the drift check the page
+// ran at each refresh until A1 phase 5): an entry whose card is gone from the
+// extras and the tail or waits no more, a card there that waits with no entry.
+function drift(page) {
+  const root = page.turnDom.root;
+  const slots = [...root.querySelector(".ts-extras").children, ...root.querySelector(".ts-tail").children];
+  const kinds = new Map(slots.map((el) => [waitingKey(el), waitingKind(el)]).filter(([key, kind]) => key && kind));
+  const keys = new Set(page.turnDom.waiting.list().map((e) => e.key));
+  return [...[...keys].filter((key) => !kinds.has(key)), ...[...kinds.keys()].filter((key) => !keys.has(key))];
+}
+
 // The registry against the slots: the same keys and kinds, in order.
 function crossCheck(page, label) {
+  assert.deepEqual(drift(page), [], `${label}: no entry without its card, no waiting card without its entry`);
   const shape = stageShape(page.turnDom.root, page.historyEl, page.turnDom.waiting);
   const fromDom = shape.cards.filter((c) => c.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.ok(shape.showing.length <= 1, `${label}: one docked card shows at a time`);
@@ -84,11 +96,12 @@ function crossCheck(page, label) {
 // The page that lived through +events+.
 async function livedTo(events) {
   const page = livePage({ questions: true });
-  for (const event of events) {
+  for (const [i, event] of events.entries()) {
     await page.handlers[event.type]?.({ ...event });
     // Events apart, as they come live: each one's microtasks (the stage's
     // refresh on a card's change) run before the next.
     await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(drift(page), [], `after event ${i} (${event.type}): the waiting cards as data agree with the slots`);
   }
   page.turnDom.flush();
   await settle();

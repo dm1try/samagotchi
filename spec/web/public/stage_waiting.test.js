@@ -1,6 +1,6 @@
 // The stage's waiting cards as data (stage_waiting.js): the registry, the
-// key and kind read off a card, and its feeds (stage_view.js place and its
-// reconcile, cards_place.js upsertCard), in happy-dom.
+// key and kind read off a card, and its feeds (stage_view.js place, the
+// settle hooks, cards_place.js upsertCard), in happy-dom.
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +18,6 @@ const {
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 const { drawCard } = await import("../../../lib/samagotchi/web/public/card.js");
-const { takeWaitingWarnings } = await import("./waiting_warnings.js");
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -234,12 +233,9 @@ test("place feeds it: a question docks with its lead-in, an approval with its ow
   }
 });
 
-test("the cross-check warns about a card answered by its classes alone (no hook), and settles nothing", async () => {
+test("a card answered by its classes alone (no hook) stays waiting as data: nothing reads the slots back", async () => {
   const { view, append } = holdingPage();
-  const was = document.body.dataset.stageCheck;
-  document.body.dataset.stageCheck = "1";
   try {
-    takeWaitingWarnings();
     asks(view, "Both matter. Which first?");
     const card = questionCard("q1");
     append(card);
@@ -247,15 +243,7 @@ test("the cross-check warns about a card answered by its classes alone (no hook)
     card.classList.add("answered");
     await tick();
     assert.deepEqual(view.waiting.list().map((e) => e.key), ["q:q1"], "still waiting as data: only a hook settles");
-    assert.ok(takeWaitingWarnings().some((w) => w.startsWith("stage: waiting drift q:q1")), "the drift is said");
-    delete document.body.dataset.stageCheck;
-    card.classList.remove("answered");
-    card.classList.add("cancelled");
-    await tick();
-    assert.deepEqual(takeWaitingWarnings(), [], "the check off: nothing said");
   } finally {
-    if (was === undefined) delete document.body.dataset.stageCheck;
-    else document.body.dataset.stageCheck = was;
     view.reset();
   }
 });

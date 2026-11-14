@@ -496,10 +496,11 @@ place that still waits (check-in's new title) patches its entry after those sett
 and summary, its order and docking kept; arrived again, not docked, as a warning or when its actions came back; with
 an older `stage_waiting.js` that has no `update`, an arrive in place), `turnEnded` the warn cards
 that leave, `session_view.js endTurnView`'s cancel of a question still pending goes through `onSettled`, and
-`emptySlots` resets it (a resync's and `workerGone`'s reset too). `stage_asking.js reconcileWaiting` settles nothing:
-a debug check at the end of `refresh`, on only with the perf probe or `<body data-stage-check="1">` (the e2e and the
-node tests), that warns "stage: waiting drift" for an entry whose card is gone or waits no more, or a waiting card
-with no entry.
+`emptySlots` resets it (a resync's and `workerGone`'s reset too). Nothing on the page reads the slots back against
+it: the tests do (`stage_cuts_parity.test.js`, after every event and at each cut: no entry without its waiting card in
+the extras or the tail, no waiting card there without its entry; the e2e's stage check at each test's end, reading the
+registry off the stage's node, `#turnStage.chiWaiting()`). `stage_asking.js reconcileWaiting` is a no-op kept one
+release for a stale `stage_view.js` that still calls it.
 The registry's order is the stage's: blocking cards before the asking ones, arrival order within each, and `place`
 puts a blocking card before check-in's in the slot, so a live page and a reload agree whatever the replay's order. The
 asking form's card is the shown docked entry, the fold is the folded key (`stageCollapsed` compares keys); `opener`'s

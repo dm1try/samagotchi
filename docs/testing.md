@@ -235,12 +235,14 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   its cards, the docked ones, the lead-in bubbles, the card in front, the one that shows and the pager, the fold) and
   the history compared; a known difference is listed in its `EXPECTED`, by scenario, cut and field (one gone fails
   too; none today), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
-  harnesses build their page with `spec/web/public/live_page.js`. The stage's drift check (`<body
-  data-stage-check="1">`, `stage_asking.js reconcileWaiting`) and the data-vs-node cross-check (`card_kinds.js
-  warnDiffers`) warn "stage: waiting …": `spec/web/public/waiting_warnings.js` (`failOnWaitingWarnings`, called by
-  `stage_view.test.js` and `stage_cuts_parity.test.js`; under `npm test`'s one process it covers the files loaded
-  after them too) turns the check on and fails a test that warned, and `stage.spec.js` does the same in the browser
-  (`test.use({ stageCheck: true })`, a fixture in `spec/e2e/support/fixtures.js`).
+  harnesses build their page with `spec/web/public/live_page.js`. The stage's drift check (the
+  registry against the slots: no entry without its waiting card, no waiting card without its entry) is the tests' own:
+  `stage_cuts_parity.test.js` runs it after every live event and at each cut, and `stage.spec.js` at each test's end
+  (`test.use({ stageCheck: true })`, a fixture in `spec/e2e/support/fixtures.js`, reading the registry off
+  `#turnStage.chiWaiting()`). The data-vs-node cross-check (`card_kinds.js warnDiffers`) warns "stage: waiting …":
+  `spec/web/public/waiting_warnings.js` (`failOnWaitingWarnings`, called by `stage_view.test.js` and
+  `stage_cuts_parity.test.js`; under `npm test`'s one process it covers the files loaded after them too) fails a test
+  that warned, and the e2e's stage check fails on such a console warning too.
   `spec/shared/turn_ranges.json` (`UPDATE_TURN_RANGES=1 bundle exec rspec spec/bridge/turn_ranges_spec.rb`) pins
   `Bridge::TurnRanges`' turns, their record pairing, the items as the show stamps them and each turn's drawing end;
   timing.test.js checks `turnGroups` (stamps only) against it. Each scenario's

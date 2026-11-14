@@ -154,34 +154,6 @@ test("onSettled: the continue card's answer is done, forgetContinue and the step
   assert.deepEqual(settled, [["continue", { done: true }], ["continue", undefined]]);
 });
 
-// Mixed cache, one release (phase 5 removes it): the old continue card's
-// fold goes in question_cards.js too, so a stale stage_waiting.js or app.js
-// (no done) can't leave it behind. A question's fold stays the stage's.
-test("the continue card's resolve removes the fold kept for the continue card, and only that", () => {
-  const map = new Map([["chi_asking_fold:s1", JSON.stringify({ key: "continue", with: 1 })]]);
-  const storage = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, String(v)), removeItem: (k) => map.delete(k) };
-  const before = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
-  Object.defineProperty(globalThis, "sessionStorage", { value: storage, configurable: true, writable: true });
-  try {
-    const { cards } = setup();
-    map.set("chi_asking_fold:s1", JSON.stringify({ key: "q:q1", with: 1 }));
-    cards.renderQuestion(PQ);
-    cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
-    assert.ok(map.get("chi_asking_fold:s1"), "a question's fold: the stage's to remove");
-    map.set("chi_asking_fold:s1", JSON.stringify({ key: "q:other", with: 1 }));
-    cards.renderContinue({ id: "c1", iterations: 10 });
-    cards.resolveContinue({ decision: "abort", client_id: "web-me" });
-    assert.ok(map.get("chi_asking_fold:s1"), "another card's fold stays");
-    map.set("chi_asking_fold:s1", JSON.stringify({ key: "continue", with: 1 }));
-    cards.renderContinue({ id: "c2", iterations: 10 });
-    cards.resolveContinue({ decision: "abort", client_id: "web-me" });
-    assert.equal(map.get("chi_asking_fold:s1"), undefined, "the continue card's own fold goes");
-  } finally {
-    if (before) Object.defineProperty(globalThis, "sessionStorage", before);
-    else delete globalThis.sessionStorage;
-  }
-});
-
 test("a question: an open card with its options, a freeform box, Submit and Dismiss", () => {
   const { cards, history, scrolled, hintDrops } = setup();
   cards.renderQuestion(PQ);
