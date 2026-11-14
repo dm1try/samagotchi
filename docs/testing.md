@@ -64,8 +64,8 @@ The whole-turn goldens (`spec/engine_turn_golden_spec.rb`, `spec/fixtures/turn_g
 `Engine#run_turn` (its own KernelLoop, ChatLoop, ToolRunner, Gate and GuardrailWiring) over `FakeProviderServer` on
 the native (llama.cpp `/completion`, Qwen tool calls), `api: openai` and `api: anthropic` wires: a turn of two tool
 iterations (a muted `memory_read` and a `read`, then a `write` a config rule asks about, allowed through the question
-flow), a `before_turn` hook switching the model (the request names the new model with the old one's sampling), and a
-review participant's turn whose `write` the review boundary refuses. Each golden pins every request (the chi-set
+flow), a `before_turn` hook switching the model (the request names the new model with the old one's sampling), and an
+older chi's read-only participant's turn whose `read` and `write` the participant seat refuses (`ParticipantRefusal`). Each golden pins every request (the chi-set
 headers, the body in its key order, the native prompt as text), the turn's events (keys sorted; the context-status
 estimates and clock values masked), each `before_tool_call` payload, the approval asked and the session's messages.
 System 1, the toolkit suggestion, the context judge, the recap and the warm-up are off by config, so the order is the
@@ -88,7 +88,7 @@ The session file goldens (`spec/session_file_goldens_spec.rb`, `spec/fixtures/se
 writes: every field away from its default, a new session, a newer chi's file, an old chi's file in a git repo, every key
 present as `null`, the plain writers' raw values, a running turn's checkpoint and the scrub (the `*_in.json` files are
 hand-written inputs, never regenerated); and the file each path that makes or rewrites a session writes (a fork, a
-continue, a delegate child, a plain spawn, a review, a Verify fresh child, a respawn; a resume and an archive leave the bytes as they were), with
+continue, a delegate child, a plain spawn, a Verify fresh child, a respawn; a resume and an archive leave the bytes as they were), with
 `carry_matrix.json`, what each keeps of its source. They are pinned before Session's fields became one table and are kept
 as the file format's pins, not retired: a diff is a change to every session file on disk, so only a commit that means to
 change the format regenerates them (`UPDATE_GOLDENS=1 bundle exec rspec spec/session_file_goldens_spec.rb`).
@@ -242,7 +242,7 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   its items into turns and gives each a minimal drawing (not the synthesizer: what a real drawing holds is the
   fixtures'). The
   `lan` project's chi web is on the LAN only
-  when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
+  when the machine has a private IPv4: without one its LAN tests skip and the participant journey runs on
   loopback.
 
 ## Waiting and time

@@ -6,6 +6,6 @@ description: "Teaches the model the chi-ui blocks chi web draws: picks (rows of 
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:7f5b9f603f293e4d441b80c15021affcbee41f983b903c568186838e1c362a34
+  sha256: sha256:b68599ba9e61004b8090ec0d317f6b4a5ba0042ca54a9b35fbe1a39539e1f03f
 # chi.prompt_section is 0.132.0's; the web draws chi-ui blocks only from the next release
 requires_chi: ">= 0.155.0"

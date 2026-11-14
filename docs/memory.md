@@ -456,7 +456,7 @@ description: Inspect browser behavior and verify web changes
 
 `base`, `add`, `remove` and `groups` are optional; without a base the kit uses
 `full`. A kit can build on a config or bundle kit. `prompt:` is refused, and
-the built-in names (`full`, `lean`, `child`, `review`) cannot be redefined.
+the built-in names (`full`, `lean`, `child`) cannot be redefined.
 Only registered tools can be declared.
 
 Chi reads project-scope kits before system-scope kits; a project kit with a

@@ -40,18 +40,18 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
   `--thinking` and `--llm-context*` are the session's own, saved. Saved means a respawn, a fork and a continue keep
   them (a toolkit is never re-resolved from config).
 - `--remote NAME` / `CHI_REMOTE` (the flag wins) runs the session commands (`send`, `answer`, `note`, a session's
-  `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`, `review`) and, with `--attach`,
+  `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`) and, with `--attach`,
   `--resume` or `-p`, the TUI against another machine's chi web (`SessionAccess::Remote`/`Dispatch`,
   `RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse`); what `SessionAccess::Contract` lists as
   local-only (`Contract::RUN` for the run flags) exits 2; `--dir` is remote-only. See docs/cli.md (Remote sessions),
   docs/internals/remote-sessions.md.
 - `chi share` (the owner inviting participants) makes `Grants` grants (`chp_` tokens, one session, digest-only) that reach only that
-  session's `:participant` routes through chi web; `ParticipantMode.of` decides what their turn is: a read-only
-  review turn (`Guardrails::ReviewBoundary`) or, for a grant stamped `mode: pair` at invite, a pair turn under the
-  owner's guardrails (`Guardrails::PairBoundary`). `chi review` starts a review session (`ReviewStart`; subjects checked
-  by `Guardrails::ReviewPaths`; the owner's Apply is `ReviewApply`). **Code and docs say "participants" / "review" /
-  "pair", never "shared"**. See docs/cli.md (Participants),
-  docs/sessions.md (Review sessions), docs/internals/participants.md.
+  session's `:participant` routes through chi web. One kind of invite: every grant is stamped `mode: pair` and a
+  participant's turn acts under the owner's guardrails (`Guardrails::PairBoundary`); there are no read-only turns and
+  no review sessions. A grant or `participants.json` entry without `pair` (an older chi's read-only invite) is ended
+  (`Grant#state :outdated`) and the worker refuses its turns (`Worker#participant_refusal`); `Guardrails::ParticipantRefusal`
+  is the gate's fail-closed seat. **Code and docs say "participants" / "pair", never "shared"**. See docs/cli.md
+  (Participants), docs/internals/participants.md.
 - `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`) never uses Funnel and never writes config.yml. Specs reach
   no real `tailscale`: `spec_helper` points `SAMAGOTCHI_TAILSCALE_CLI` at a missing file (docs/testing.md); the
   command is in docs/configuration.md (Tailscale Serve).
@@ -102,13 +102,13 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Writing a bundle (the walkthrough, `chi bundle new`/`check`/`test`/`try`) → `docs/bundle-authoring.md`
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
-- Session files, context notes, sending, chains, delegating → `docs/sessions.md`; review sessions (`chi review`, `ReviewStart`, Apply) → `docs/sessions.md` (Review sessions), `docs/internals/participants.md`
+- Session files, context notes, sending, chains, delegating → `docs/sessions.md`
 - Durable schedules (`chi schedule`, `Schedules`, the tick's busy check, `schedule.*`) → `docs/scheduling.md`; the CLI section → `docs/cli.md` (Durable schedules)
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy
   traces) → `docs/configuration.md` (Behind an auth proxy); the gate → `docs/internals/participants.md` (The gate)
 - Web Push (`Web::Push`, the Notifier, the service worker, the Home Screen app's bell) → `docs/internals/web-push.md`; the user side → `docs/configuration.md` (Phone notifications)
-- Participants (`chi share`, `Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
+- Participants (`chi share`, `Grants`, the participant gate and routes, their turns, `participants.json`) → `docs/internals/participants.md`; their boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`

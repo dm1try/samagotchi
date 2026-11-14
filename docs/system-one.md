@@ -26,7 +26,7 @@ one warn and never changes the answer. A use that needs the run's id at once pas
 
 Not saved: a toolkit warm-up (it goes straight to the backend), `chi guardrails replay`,
 chi web's availability check, a scratch session's asks or anything about them, and a participant's turn (never judged by core; a bundle's ask there still goes, unsaved).
-An owner's turn in a review session is judged, so it is saved. Test runs are saved with `test_run: true`.
+Test runs are saved with `test_run: true`.
 
 ## Bundles' judgments
 
@@ -54,7 +54,7 @@ per-message judge on an objective didn't work as a gate on the pod (AUC about .5
   into the conversation (not the list's own, nor a continue's carry note: `Objectives.outside_note?`). A steer isn't asked about.
 - `objectives.outgoing`: a finished answer of the owner's turn of 400 characters or more, not a cancelled or exhausted one.
 - The state: `objective` (its text and done-when, no id or status) and `message` (2000 characters: a message's head, an answer's tail).
-  **That text goes to the System 1 host**, a hosted one too, and into the run. A participant's turn, a review session and a scratch session are never asked about.
+  **That text goes to the System 1 host**, a hosted one too, and into the run. A participant's turn and a scratch session are never asked about.
 - At most 6 objectives per message. Each direction has one ask running: what comes meanwhile is a run with `asked: false`, `skipped: busy`.
 - The asks run on `SideJudgments`' threads beside the turn, so a turn doesn't wait; on a one-slot server shared with the session's model, a request can still queue behind or ahead of them. They share `/v1/systemone` with approvals: on a slow one-slot host an approval can wait behind up to 2 in-flight asks and time out to the user. A failed ask is a run with its `failure` and one log line (`system_one_failed`).
 

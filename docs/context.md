@@ -361,7 +361,7 @@ text. The source itself stays with its old link; forks do not carry this text.
 `chi send --new --continues` and the web's Continue toast say the same in a
 few words, and `chi context ls` marks a session's source that stays
 (`· stays`; `--format json` has the derived `movable`). Project sources are
-shared already, and a review fork (`chi review --from`) and a delegate take none.
+shared already, and a delegate takes none.
 
 A push into a continued session is refused, nothing written, with the next
 link's id (`chi context push` exits 1; chi web answers 410
@@ -413,7 +413,7 @@ How a mention counts:
 - nothing inside a fenced code block: a pasted log's `#412` isn't you asking.
 
 Only the session's owner counts: a participant's message, a steer, a note or
-a reminder never attaches anything, and a review session gets no candidates.
+a reminder never attaches anything.
 A bundle usually proposes from an init task that finishes while your first
 turn runs; when it does, the prompts you already wrote count too, and a hit
 is attached at once (its note comes with your next turn).
@@ -433,8 +433,7 @@ candidates (attached when the session's owner mentions one):
 
 You can also choose yourself: `/context attach NAME` attaches a proposed
 candidate (its why: "you attached it"), `/context decline NAME` declines it.
-Both are the session owner's (a participant can't send a `/` line, and a
-review session refuses them); an unknown name, or one attached or declined
+Both are the session owner's (a participant can't send a `/` line); an unknown name, or one attached or declined
 already, is an error that says so. They are what the judge's card's buttons
 run (see [On mode](#on-mode)).
 
@@ -465,7 +464,7 @@ context:
 What it asks, and when:
 
 - **One ask per candidate**, at the start of each of your own turns (never a
-  participant's, never in a review session or on a Continue), after the
+  participant's, never on a Continue), after the
   toolkit suggestion. A candidate proposed while your turn runs (github-pr's
   usual case) is asked about right then, on your prompts so far.
 - **What it sees:** the candidate's title (and description, when the bundle
@@ -556,7 +555,7 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
   "#42 <the PR's title>": nothing reaches the agent until you mention it
   in a prompt (`#42`, the branch's name, or the PR's URL). Then it is
   attached in that same turn ("Why: you mentioned #42"). Not in a `chi
-  scratch` session or a review session, and quietly nothing without `gh`, a
+  scratch` session, and quietly nothing without `gh`, a
   login, a repository or an open PR. A delegate child gets the proposal too
   (its task may name the PR). At a turn's start more than 5 minutes after
   its last look, the bundle looks again, beside the turn (a branch switched

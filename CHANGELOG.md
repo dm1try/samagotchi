@@ -8,6 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Participants: one kind of invite. An invited person's turns act in the session under your guardrails (asks come to you, Allow once only); there are no read-only turns any more. `chi share` and the panel's Invite always say so, and refuse to invite anyone to a session whose worker is older ("restart the session first").
+- Participants: a link an older chi issued for read-only review turns has ended: opening it says "This link is from an older chi: ask the session's owner for a new one", the panel lists it as "ended (older link)", and its queued turns are refused. Invite them again. Restart `chi web` after updating: an older chi web still running keeps such a link opening (and its conversation readable) until then; restarted sessions refuse its turns either way.
+- A session an older chi started as a review is an ordinary session now: it stays in the list, its participants' turns act like anyone's, and a continue carries its last answer and objectives.
+- `toolkit.kits.review` is an ordinary config kit name now (there is no built-in review kit).
+- Participants' words: links are "this link …" rather than "this review link …", a participant's prompt is labelled `invited`, their badge reads `· pair` (an older chi's read-only turn `· read-only`), and `chi send` says "queued as turn T".
+
+### Removed
+
+- Review sessions: `chi review` (and `chi --remote … review`), the web's Start review and the start page's review files.
+- Apply: the owner's turn quoting a review turn's proposal, on the web.
+- `chi share --agent`, `/share --agent` and the panel's person / agent choice: a participant is a participant. An invite link still works from the command line (its token as a Bearer header).
+- The plugin API's `ctx.review?` and `ctx.sessions.review`, with no stub: a bundle that still calls them gets an error (NoMethodError) there, and is flagged by `chi bundle check` and on `chi update`. The coordinator bundle's `/coordinate review` goes with them (coordinator 0.9.0; inline-widgets 0.1.2 and github-pr 0.6.5 treat every session alike).
+
 ## [0.171.0] - 2026-11-14
 
 ### Added

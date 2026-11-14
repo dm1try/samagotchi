@@ -27,7 +27,7 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 **Empty sessions:** a session nothing happened in is deleted when it is left, so `chi` → `/exit` leaves no trace. Empty means: no messages, no turn tried (a failed turn leaves a `last_prompt` and keeps it), no memory used, no pending question, nothing in `input/`, `notes/` or `images/`, nothing in its dir beyond the worker's skeleton, mode `assist`, and the default model. A session on another model (`/model`, `--model`) counts as prepared and stays (`SessionManager.discardable?`). The worker checks as it idle-exits or leaves on a client's request and deletes it once its lock is free, checking again first. The attached `/exit` then says `Detached; the session is empty: it will be discarded if nothing arrives before its worker stops.` (a note or prompt landing first keeps it). The retention sweep catches those killed first: empty sessions over an hour old with no live owner, whatever `DAYS`/`MAX`, and skeleton-only dirs with no `*.json` (removed as a delete removes, every session store, under the session's lock: a worker or a start that took the session since the check keeps it, and so does one whose file or content was written meanwhile, read again under that lock). `session.keep_empty: true` (env `SAMAGOTCHI_SESSION_KEEP_EMPTY`) turns all of it off.
 
-**Participants:** a session its owner invited participants to review (`chi share`, see [CLI: Participants](cli.md#participants)) has two more files in its dir, neither in the session JSON: `participants.json` (0600), who is or was invited (`{participants: [{id, kind, name, role, added_at, expires_at, removed_at}]}`, never a token), which chi web and `chi share` write and the worker reads (`Participants.read`); and `participants.jsonl` (0600, append-only), the audit trail (grants issued, revoked and expired, each new peer, refused routes). A session nobody was invited to has neither. A continue, a fork or a delegate starts with no participants. Archiving or deleting the session revokes its links. See [internals/participants.md](internals/participants.md).
+**Participants:** a session its owner invited participants into (`chi share`, see [CLI: Participants](cli.md#participants)) has two more files in its dir, neither in the session JSON: `participants.json` (0600), who is or was invited (`{participants: [{id, kind, name, role, added_at, expires_at, removed_at}]}`, never a token), which chi web and `chi share` write and the worker reads (`Participants.read`); and `participants.jsonl` (0600, append-only), the audit trail (grants issued, revoked and expired, each new peer, refused routes). A session nobody was invited to has neither. A continue, a fork or a delegate starts with no participants. Archiving or deleting the session revokes its links. See [internals/participants.md](internals/participants.md).
 
 **Always attached:** every interactive `chi` (plain, `-p`, `--resume ID`, `--attach ID`, `chi scratch`) runs its session in a background worker and attaches to it; there is no setting for it. The worker runs in the session's `working_directory`, so `!commands` and tools see the directory the session was started in. Only `chi -p TEXT --non-interactive` runs its one turn in this process; while it does, the session can't be attached ("in use by a one-turn chi --non-interactive run or an older chi's terminal"). See [CLI: Sharing a session](cli.md#sharing-a-session).
 
@@ -157,7 +157,7 @@ chi sessions clean --dry-run --days 7            # test sessions older than 7 da
 | `interrupted_turn` | The mark of a turn a worker checkpointed and never finished (`InterruptedTurn`); the next worker settles it and sets it to `null`. | the worker |
 | `parent_answers` | Its own `guardrails.parent_answers` (it may only tighten config.yml's). | creation (`--parent-answers`), `/parent-answers` |
 | `working_set_pins` | The working-set items the user pinned (`/working-set pin`); kept by a respawn, a continue and a fork. | the Engine's command |
-| `review` | A review session's subjects and source (`SessionReview`), see [Review sessions](#review-sessions). | `ReviewStart` |
+| `review` | An older chi's review session's subjects and source (`SessionReview`), kept as written, never read: see [Older review sessions](#older-review-sessions). | an older chi |
 | `first_turn_id` | The id the creating prompt's turn gets, so a wait can name it (`chi send --new --wait`, `--wait --turn T ID`); `null` for a session created idle. | `SessionManager.spawn_session` |
 | `first_turn_client_id` | Who sent the creating prompt when no person did (`delegate:<parent8>` for a delegate's task, `system:schedule:<id>` for a chain schedule's link): that first turn's origin, so its line is no command of the owner's (docs/guardrails.md, Who may run a session command) and `last_turn` names the sender. Written only when set; not carried by a fork, a continue or a delegate. An older chi keeps it but runs the first prompt as a person's. | `SessionManager.spawn_session` (its `client_id:`) |
 | `verify_fresh` | A Verify fresh child's requester, rules and claim (`VerifyFreshOrigin`). | `VerifyFresh.start`, once |
@@ -208,7 +208,7 @@ optionally a done-when hint, which nothing enforces.
 
 An edit waits for a moment between turns: it lands within seconds in an idle session, and at the turn's end during one.
 Several edits made during a turn go in as one list. A continue copies the list to the next link, as a second note after
-the carry note; a review link doesn't. `!rollback` keeps it. A session a one-turn `chi --non-interactive` run has refuses an edit, as it
+the carry note. `!rollback` keeps it. A session a one-turn `chi --non-interactive` run has refuses an edit, as it
 refuses a note. See [cli.md](cli.md#session-objectives) for the commands and
 [internals/objectives.md](internals/objectives.md) for the mechanism.
 
@@ -372,7 +372,7 @@ A session can **continue** an earlier one: "the next run of the same routine" (a
 `SessionContinue.run` makes the next link:
 
 - **What it copies:** the previous link's folder, its model (the name it was typed as, so an alias holds) unless the continue names one (`--model`, the web's `model`), its own LLM context values, and its `--memory` and `--mute` lists. It does not carry the reserved `system/delegated` memory when the previous link is a delegate child: a continuation has no parent and is no longer a delegate. A model given is checked like a new session's (a host config.yml doesn't have refuses the continue, nothing archived). An inherited model whose host can't run it any more (gone from config.yml, `enabled: false`, an alias naming another host) **falls back to the default model** with a warning, `gone:org/model can't run (unknown host 'gone' in model …); started on <default>`, decided before the archive; with no default model configured the continue is refused. The carry note doesn't mention the model. The new link carries no transcript beyond the note's last answer, so a different model, or another provider, starts clean there. Its preview is the previous link's (until its first message is saved), unless it starts with a message. Its title (`/title`) is the previous link's, with or without a first message.
-- **The carry note:** the new link starts with a context note from `session chain` (shown in its transcript as `note from session chain`), queued before its worker spawns, so its first turn sees it: `This session continues 3fa2c1d0 (2026-10-08 09:12), the previous link of its chain. Its recap, as of 2026-10-08 18:02:` and the previous link's recap (`recap.json`; cut at 8000 characters). No recap (fewer user turns than a recap needs, recaps off, none written in time): `… It left no recap.` Then `Its last answer:` and the previous link's last answer, read after the recap wait, so its exact shas, paths and next steps survive: a longer one keeps its last 4000 characters, after a `…` (a wrap-up closes on what comes next). There is none when the newest bubble was a step that asked for tools, when a later turn failed or was cut before it answered, and on a review link (a continue doesn't copy the grants, so the next link's participants could differ); `session.carry_last_answer: false` leaves it out of every note. No other transcript. The note never makes a continue fail: it stays within the 16 KiB a note may hold, the answer taking what the head and recap leave, and a session file that can't be read gives no answer. An idle new link holding only the note is kept, not discarded as empty.
+- **The carry note:** the new link starts with a context note from `session chain` (shown in its transcript as `note from session chain`), queued before its worker spawns, so its first turn sees it: `This session continues 3fa2c1d0 (2026-10-08 09:12), the previous link of its chain. Its recap, as of 2026-10-08 18:02:` and the previous link's recap (`recap.json`; cut at 8000 characters). No recap (fewer user turns than a recap needs, recaps off, none written in time): `… It left no recap.` Then `Its last answer:` and the previous link's last answer, read after the recap wait, so its exact shas, paths and next steps survive: a longer one keeps its last 4000 characters, after a `…` (a wrap-up closes on what comes next). There is none when the newest bubble was a step that asked for tools, when a later turn failed or was cut before it answered; `session.carry_last_answer: false` leaves it out of every note. No other transcript. The note never makes a continue fail: it stays within the 16 KiB a note may hold, the answer taking what the head and recap leave, and a session file that can't be read gives no answer. An idle new link holding only the note is kept, not discarded as empty.
 - **Its attached context:** the previous link's movable sources (a command source by default; a pushed one stays) are copied to the new link before its worker starts, with their last text and the removed and muted markers, and a second note (`attached context`, after the carry note) names what moved and what stayed. A push into the archived link is then refused with the new link's id. See [Movable context](context.md#movable-context).
 - **Its waiting notes:** the previous link's unabsorbed context notes move to the new link (`NoteMove.move`, the continue's last step before the worker starts, after the objectives' carry, which reads a pending `/objectives` edit from them first), file names kept, so they keep their ids and order and come ahead of the carry note. An `/objectives` note stays (the carry took its list), and so do the notes an earlier continue wrote into the previous link itself (a link continued before it ever started: its own carry note is replaced by the new one). A note an old worker had claimed and not deleted (`*.json.processing`) moves too, un-claimed (logged `notes_moved_claimed`): the previous link is archived, so left there it would be lost; if that worker had already added it to its conversation, the new link sees it once more, a rare duplicate rather than a loss. A note sent to the previous link after that goes to the new one (*Context notes*). One that still lands in an earlier link (sent just as the continue saved the new link, or by an older chi that knows no chain) is adopted by the new link's worker on its next pass: it looks back along the chain, one listing at its start, through up to 8 archived links, each one whose next link is the one after it, stopping at a link back in the lists or gone, and takes from each only the notes from the creation of the link that continued it on, never an `/objectives` note; older ones (left by a continue before notes moved) stay with the archived link, logged once (`notes_left_old`). An earlier link that is brought back (input un-archives it) keeps its notes while it is back; archived again, the newest link's running worker adopts from it again, so a note it got meanwhile and never absorbed comes to the newest link.
 - **The recap first:** a previous link with a live worker is asked for a recap (the Bridge's `POST /recap`) and given up to 30 s to write it; one with none wrote its recap when its worker left.
@@ -409,48 +409,14 @@ running. A schedule turn carries `client_id: "system:schedule:<id>`, so both UIs
 label it `schedule`. Full details, the busy check and the DST caveat:
 [Scheduling](scheduling.md).
 
-## Review sessions
+## Older review sessions
 
-A **review session** is one made to be shared with participants (the shared-sessions plan's D2: a review is its own
-session, so a participant's review turn can't quote a working session's tool outputs, and only reads). Sharing a
-working session itself is pairing: a participant's turns there act with its tools under the owner's guardrails
-([CLI: Participants](cli.md#participants), [guardrails](guardrails.md#a-participants-pair-boundary)). `chi review FILE…` starts one
-in a project, `chi review --from ID` as a review fork of a working session (see [CLI: Review
-sessions](cli.md#review-sessions)); both start idle and print the `chi share` line to invite someone.
-
-- **The field:** `review: {subjects: ["docs/plan.md", …], from: "<id>"}` in the session JSON: the subjects relative
-  to the project root (the work tree top of its folder, its folder outside git), and for a fork the session it
-  started from. A session without one has no `review` key at all, so other session files save as they were. A
-  continue keeps it; a fork (`ctx.sessions.fork`) and a delegate child don't.
-- **The subjects** are checked where the session starts (`ReviewStart.check_subjects`), by the same check a review
-  turn's `read` goes through (`Guardrails::ReviewPaths`): an existing file under the project root, as given and as it
-  resolves, never a secret file or chi's own. They are what participants read beside the thread, and may quote into
-  a comment (Annotate: [participants.md](internals/participants.md#what-a-participant-sees)).
-- **The note:** it starts with a context note from `review` naming the subjects and what a review turn does; a fork's
-  starts with `This review session starts from 3f9a1c2e (2026-10-23 09:12), a working session: it brings that
-  session's recap, not its transcript.` and the recap (as a continue's carry note), so nothing of the source's
-  history comes along. Its preview is `review: docs/plan.md`, or a fork's `review of <the source's title>`.
-- **A fork isn't a continue:** the source is neither archived nor continued (no `continues`), and its delegates stay
-  its own; a coordinator can open a review of its own session and keep working (`/coordinate review`).
-- **Its setup:** a review fork carries the source's `--mute` list, but not its `--memory` preloads.
-- **Web:** `POST /api/sessions` takes `review: {subjects: [...], from: "<id>"}` instead of a `prompt` (a review
-  session starts idle: `prompt`, `preview`, `idle` and `continues` beside it are 400 `invalid_review`). Without
-  `from`, the subjects are relative to `dir` and the setup fields work as for any create; with `from`, the source's
-  folder and setup are taken (`dir` and the setup fields beside it are 400 `invalid_review`) and `model` is the
-  only choice. A subject refused, or the source's folder gone, is 400 `invalid_review` with the one message; an
-  unknown source 404 `not_found`.
-- **The page:** the start page's ⚙ panel, **Review files…**, takes the files (comma- or
-  space-separated, relative to the page's folder; a path with a space in double quotes, `"docs/my plan.md"`): the
-  row then shows a `review: plan.md +1` chip, and Start makes a review session (the message typed, if any, is its first
-  turn; with none it starts idle). A refused file shows the server's one message in the panel's review view, opened again. On a session that isn't a review session the participants panel (the session bar's
-  participants chip) says so before its Invite, with the share warning (that a participant's turns act there, writes
-  included and asks to the owner, or only read while an older worker holds it; how many tool outputs its history holds)
-  and **Start a review of it**: a review fork of it, opened, with a toast (`Review 4b7e9a01 started from 3f9a1c2e's
-  recap; 3f9a1c2e keeps running.`) whose **Invite** opens the new session's panel. Every summary carries `review`
-  (null for other sessions).
-- **A participant's side:** their link opens the main page on the review session as a plain conversation: their
-  turns stay read-only review turns ("Alex · review"), its subjects are not shown (no file view: they ask chi to
-  quote what they need), and **Apply** is on the owner's page only.
+An older chi could start a **review session** (`chi review`, the web's Start review), shared with participants
+whose turns only read. This chi starts none and runs no read-only turn: such a session is an ordinary one. Its
+`review: {subjects, from}` key loads and is written back as it was (a continue copies it), and nothing reads it:
+its participants' turns act under the owner's guardrails like anyone's, a continue carries its last answer and
+objectives, and context candidates are proposed in it. Its old read-only invites have ended ("this link is from an
+older chi"); invite them again ([CLI: Participants](cli.md#participants)).
 
 ## Toolkits
 

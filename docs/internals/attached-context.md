@@ -125,8 +125,7 @@ name (or whose hint is its URL) is attached, *declined* while the declined marke
 
 - **Mention.** `mention_in` / `pattern_for` implement the user-facing rules (whole tokens, `#N` ≥ 10 or after
   "PR", branch names ≥ 6 chars with `/ - _`, exact URLs, fenced code blanked). Only `OwnerPrompt` texts count
-  (`owner_texts`), so a participant's message, a steer, a note or a reminder never attaches anything; a review
-  session skips all of it.
+  (`owner_texts`), so a participant's message, a steer, a note or a reminder never attaches anything.
 - **Where it runs.** `before_turn` (from `Worker#run_prompt` before the absorb, and a `--non-interactive` one-shot's turn start, `TerminalUI`): attach
   each proposed candidate the owner's prompts so far mention (`attach` writes a session `Source` through
   `source_for`: a URL resolves through `ContextProviders`, else the candidate's own `cmd`), then `first_fetch` them
@@ -148,9 +147,9 @@ nothing, so the next owner prompt asks again.
 
 The driver is the turn stage `TurnStages::ContextJudge` (`turn_stages/context_judge.rb`), not the judge:
 `Engine#prepare_turn` calls its `start(turn, recorder:)` after the toolkit suggestion settled and before `apply_toolkit!` (an owner
-turn's start; skipped for participants, review sessions and a Continue), and `Engine#judge_late_candidates` (a proposal
+turn's start; skipped for participants and a Continue), and `Engine#judge_late_candidates` (a proposal
 after the prompts) gives its `late_candidates` the session, the owner's messages, the recorder and the sessions dir
-(none of it read with no session or in a review session); both make one pass (docs/internals/engine.md, "Turn stages").
+(none of it read with no session); both make one pass (docs/internals/engine.md, "Turn stages").
 It first logs status changes (`ContextCandidatesLog.look`), returns at `mode: off`, builds the due `Job`s, and hands
 them to `SideJudgments` (`:context` kind: one thread, one batch per session at a time), asked at once on any host,
 the model's own server too.
@@ -161,7 +160,7 @@ session source with `JUDGE_WHY`, no probability in the model-visible why), *offe
 is still proposed, since the user may have chosen while it was asked. Cards are shown through the stage's choice
 lambda, which holds them while a turn runs; `run_turn`'s ensure shows them after `release_turn`
 (`show_cards_after_turn`). `choose` is the `/context attach|decline` command's body (`SessionCommands`), shared by the
-card's buttons; it refuses in a review session. An attach only writes the session folder: its note comes with the next between-turn delivery, never into a
+card's buttons. An attach only writes the session folder: its note comes with the next between-turn delivery, never into a
 running turn.
 
 `ContextCandidatesLog` is `context_candidates.jsonl` beside the sessions folder (a `SideJudgments.log`: 0600, one
@@ -209,8 +208,8 @@ The refusal side: a push into a session that has been continued is refused with 
 |---|---|
 | Absorb at all | the conversation has started (`conversation_started?`), or `before_turn: true`; the session isn't stopped on disk |
 | A wake turn | `context.wake`; `WorkerWakes#context_open?`; `CONTEXT_WAKE_WINDOW`; nothing queued and no exit requested; peer: `context.peer_turns`, `peer_open?` |
-| Mention attach | `OwnerPrompt.turn?` (owner author, not a review session) |
-| Judge | `context.candidates.mode` `audit`/`on` (default `off`); a System 1 client configured; not a participant's turn, review session, scratch session or Continue |
+| Mention attach | `OwnerPrompt.turn?` (owner author) |
+| Judge | `context.candidates.mode` `audit`/`on` (default `off`); a System 1 client configured; not a participant's turn, scratch session or Continue |
 | Command source defined by the agent | `chi-context-cmd` guardrails rule asks, always; a parent agent can't approve it for a child |
 | Writes to the store | `ProtectedPaths` denies the file tools |
 

@@ -1546,14 +1546,13 @@ toolkit:
 | `child` | `lean` plus `send_note`, without `memory_write`, `delegate`, `delegate_result` |
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions`, `objectives` (declared by the coordinator bundle) |
 | `coding` | `child`, with the prompt text `- Be concise in your responses` / `- Show file paths clearly when working with files` (declared by the coordinator bundle, for build and fix children) |
-| `review` | `read`, `memory_read` (not `forget_outputs`, even under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
 
 - **Plugin tools** (a bundle's `chi.tool`, such as web-search's `web_search`) follow a kit's list as built-ins do:
   `full` (and every kit on `base: full`, the `kits:` default) declares them, another kit leaves them **reachable**
   (below) unless its `remove:` names them, and `add:` declares one (`search: { base: lean, add: [web_search] }`).
   `forget_outputs` is declared in every toolkit under the `forget` layer, unless removed. A `kits:` entry takes
   `base:` (default `full`), `add:`, `remove:`, `prompt:`, `groups:` and `description:` (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
-  (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
+  (`full`, `lean`, `child`; `review` is an ordinary name since there is no review kit). A bundle declares its own with `chi.toolkit`
   ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil-description-nil)).
   `description:` is optional classifier input, up to 300 characters; it is not included in the session prompt.
 - **Memory kits.** A memory named `toolkit_<name>.md` defines kit `<name>` with one fenced YAML block containing
@@ -1566,7 +1565,7 @@ toolkit:
 - **Audit suggestions.** `toolkit.suggest.mode: audit` asks System 1 which described kit fits an eligible new session's
   prompt, without changing its toolkit or delaying the turn. It offers the configured default as the fallback and
   `undecided` for greetings or check-ins. Only a default-origin session with at least two described candidates is
-  asked; chosen or inherited toolkits, delegate children, review sessions and participant turns are skipped. After
+  asked; chosen or inherited toolkits, delegate children and participant turns are skipped. After
   `undecided`, later owner prompts may be asked again within both defer limits. The default is `off`. System 1's
   host, model and timeout come from `system_one.*`; the suggestion threshold and defer limits are its own
   settings below. Suggestions are
@@ -1602,7 +1601,7 @@ toolkit:
   names or globs; fix config.yml to start a session on toolkit KIT`. A session already saved on it keeps running,
   its kit reaching no group (with a `toolkit>` warning) until config.yml is fixed. Selectors are sorted and deduplicated and match the groups declared when plugins load.
   An omitted key inherits the base's selectors; `full` and `lean` (and `child`, which is on `lean`) reach all
-  groups, `review` (the participants' kit) reaches none, `groups: ["*"]` matches every group, and `groups: []`
+  groups, `groups: ["*"]` matches every group, and `groups: []`
   reaches none. A kit whose base doesn't resolve (an unknown name, a cycle) falls back to `full`, which reaches
   every group.
   A selector that matches no group in that load-time snapshot warns once. `find_tools` and `call_tool` are
@@ -1635,11 +1634,10 @@ toolkit:
   and memory kits can add candidates it doesn't see. A kit picked is sent as `POST /api/sessions`'s `toolkit` and
   saved as `chosen`: no suggestion, the default kit included (its row says `default`); without Auto, the default's
   row is the one checked and sends nothing. The list holds the built-ins and config kits a new session can start
-  on: not `review`, `child` or a kit named `undecided`, not a kit whose `groups:` refuses a new session, and not one
+  on: not `child` or a kit named `undecided`, not a kit whose `groups:` refuses a new session, and not one
   that doesn't resolve in chi web (a base that is a bundle kit); bundle and memory kits load in the worker, so pick
   them with `/toolkit`. The configured default is always listed. A pick closes the list and shows a `tools: lean`
-  chip on the row (a dot on 🧰 on a phone); it is for that create only, never remembered. A review session is
-  always `chosen`: with review files set the list says it starts on the default unless you pick a kit.
+  chip on the row (a dot on 🧰 on a phone); it is for that create only, never remembered.
 - **Left out: reachable or removed.** A built-in or plugin tool missing from a kit's base list (`lean` has no
   `delegate` and no `web_search`; a `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it
   is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, `chi/web_search`, with its
@@ -1781,9 +1779,9 @@ its own). The first target is a long session such as a day-long coordinator, whe
 - **A new web chat:** the start page's ⚙ panel (beside the model picker; a bottom sheet on a phone) holds the new
   session's rarely used settings, each a row of segments that applies at once: **Thinking** and **Context** (the
   strategy; **Apply and budget ▸** opens the other two fields, with their own Set), the first segment following the
-  picked model (`default (high)`), and **Review files…** (docs/sessions.md, Review sessions). A row the picked model
-  has no values for is hidden. What is set shows on the row as an accent chip (`think high`, `ctx stale`,
-  `review: README.md`) that opens the panel; on a phone ⚙ carries a dot and its label names them. The create sends
+  picked model (`default (high)`). A row the picked model
+  has no values for is hidden. What is set shows on the row as an accent chip (`think high`, `ctx stale`)
+  that opens the panel; on a phone ⚙ carries a dot and its label names them. The create sends
   the context choice as `POST /api/sessions`'s `llm_context` (`{"strategy": "stale,forget", "apply": "turn_end",
   "budget": "64k"}`, each a word as `/llm-context` takes it, `default` for unset; anything else answers
   `400 invalid_llm_context` and starts nothing), so the session file holds it before the first turn runs. Nothing
@@ -1981,17 +1979,17 @@ Keep the state dir (`web-token`, the grants) out of any folder others can read, 
 ### Inviting colleagues
 
 Behind a proxy whose sign-in lets colleagues in (a work pod behind Okta and oauth2-proxy, a tailnet you share), give
-each reviewer a link bound to their account:
+each participant a link bound to their account:
 
 ```sh
 chi share 3f9a1c2e --name Alex --identity alex@corp.example
-# p_7c01d2aa  Alex (human, reviewer) · session 3f9a1c2e · expires … · cap $2.00 · bound to alex@corp.example
+# p_7c01d2aa  Alex (reviewer) · session 3f9a1c2e · expires … · cap $2.00 · bound to alex@corp.example
 # https://4567.pod.example.com/#code=chc_…&s=3f9a1c2e-…
 ```
 
 - It needs `web.proxy.identity_header` (or `chi web --tunnel tailscale`): the link opens only through the proxy,
   signed in as that email (any case). Opened by someone else (forwarded, pasted in the wrong chat), on the LAN or on
-  this machine, it says "This review link is for another account …", and its one-time code stays: Alex can still open
+  this machine, it says "This link is for another account …", and its one-time code stays: Alex can still open
   it. The refusal is in the session's participants audit with the identity that tried. Without an identity header
   `--identity` is refused: the link could never open.
 - Run only chi 0.109 or newer on the same state dir: an older chi rewriting the grants store drops the binding and
