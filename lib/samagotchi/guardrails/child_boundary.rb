@@ -2,6 +2,7 @@
 
 require_relative "outside"
 require_relative "path_resolve"
+require_relative "targets"
 require_relative "shell_lex"
 require_relative "shell_paths"
 require_relative "shared_git"

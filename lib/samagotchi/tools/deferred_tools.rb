@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../tool_declarations"
+require_relative "tool_index"
 
 module Samagotchi
   module Tools
