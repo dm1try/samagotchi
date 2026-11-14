@@ -24,7 +24,9 @@ rescue Samagotchi::ConfigFile::RemovedApi => e
   warn "Error: #{e.message}"
   exit 1
 end
-require "samagotchi"
+# No `require "samagotchi"` (the engine, everything a turn needs): each branch
+# below requires what it uses, so `chi --version` or `chi home` loads no
+# engine and no Reline (docs/architecture.md, What each process loads).
 
 # A web self-restart re-enters through the installed wrapper: its marker and
 # the worker starters to adopt leave ENV before anything spawns with it
@@ -275,6 +277,7 @@ if options[:web]
 end
 
 # --resume and --attach take a unique id prefix too, like git.
+require "samagotchi/session"
 begin
   %i[resume attach].each { |key| options[key] &&= Samagotchi::Session.resolve_id(options[key]) }
 rescue Samagotchi::Session::AmbiguousId => e
@@ -442,6 +445,7 @@ end
 # --non-interactive: the -p prompt's one turn in this process (TerminalUI,
 # the one-shot host); bare, a no-op that creates no session.
 require "samagotchi/cli/exit"
+require "samagotchi/terminal_ui"
 begin
   ended = Samagotchi::TerminalUI.new(
     prompt: options[:prompt],
