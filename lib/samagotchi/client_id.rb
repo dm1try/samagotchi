@@ -48,9 +48,9 @@ module Samagotchi
     # their author (Steer::PARTICIPANT_PREFIX, "p:<id>"), which says who
     # wrote a turn: this says which sender delivered it.
     PARTICIPANT_PREFIX = "participant:"
-    # Compatibility with the legacy review:<id> participant client id used
-    # before 0.172: read it as a participant's, never the owner's, and send
-    # it to a worker without Delivery::PARTICIPANT_ID_FEATURE.
+    # compat shim review_client_id: the legacy review:<id> participant id
+    # used before 0.172; read it as a participant's, never the owner's, and
+    # send it to a worker without Delivery::PARTICIPANT_ID_FEATURE.
     LEGACY_REVIEW_PREFIX = "review:"
 
     # A worker's own first prompt (spawn_session's) when no sender was
