@@ -82,7 +82,7 @@ module Samagotchi
       end
 
       # The show's session: who it is (id, the participant title), its status
-      # as handle_review shows it (idle when a worker says running with no
+      # as a participant reads it (idle when a worker says running with no
       # turn), whether a worker runs it and what it can do (the page's
       # delivery line, the stale-worker badge), its verdicts (filtered) and whether Verify fresh can run.
       def participant_session_json(reads, features, viewer)
@@ -103,13 +103,12 @@ module Samagotchi
       end
 
       # The show's viewer: Viewer's (kind, id, name, can, client_id) with what
-      # the participant page's viewer says (#review_viewer: their mode, cap,
+      # #review_viewer says (their mode, cap,
       # usage) and whether the session is stopped (only the owner's message
       # starts it again).
       def participant_main_viewer(req, reads, queued:, viewer:)
         session = reads.session
-        mode = ParticipantMode.of(session, features: ParticipantMode.live_features(session, default_state_dir)).to_s
-        review = review_viewer(req, reads.id, session: session, state: reads.state, queued: queued, viewer: viewer, mode: mode)
+        review = review_viewer(req, reads.id, session: session, state: reads.state, queued: queued, viewer: viewer)
         Viewer.for(principal(req)).to_h.merge(
           review.slice(:participant_kind, :mode, :cap_reached, :usage),
           session_stopped: session.status == Session::STATUS_STOPPED,
@@ -119,7 +118,7 @@ module Samagotchi
 
       # What the session waits for the owner on (ParticipantView.waiting_kind),
       # nil when it doesn't: the running turn's question or approval, a
-      # Continue offer, or a question between turns (#handle_review's rule).
+      # Continue offer, or a question between turns.
       def participant_waiting(turn_snapshot)
         return nil unless turn_snapshot.is_a?(Hash)
 

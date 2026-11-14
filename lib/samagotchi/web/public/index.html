@@ -1359,8 +1359,8 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pp-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin:2px 0}
 .pp-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 8px;border-radius:8px;background:var(--bg-inset);border-left:3px solid var(--author-color)}
 .pp-row.ended{opacity:.7}
-.pp-who{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text)}
-.pp-who b{color:var(--author-color);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pb-who{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text)}
+.pb-who b{color:var(--author-color);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pp-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
 .pp-dot.present{background:var(--ok)}
 .pp-tag{font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-3)}
@@ -1439,8 +1439,6 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 /* On a phone the panel is a sheet: the link goes out by Share or Copy, not by scanning this screen. */
 .participants-popover.sheet .pp-qr{display:none}
 .pp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:4px}
-.pp-view{font-size:12px;color:var(--accent);text-decoration:none}
-@media(hover:hover){.pp-view:hover{text-decoration:underline}}
 /* The Home Screen app's notifications sheet (push_devices.js): the bell opens it; a bottom sheet on a phone. */
 .push-devices .ctx-pop-head strong{font-family:inherit}
 .push-devices.sheet{border-radius:14px;padding:14px 16px;font-size:14px}
@@ -2021,6 +2019,38 @@ a{color:var(--accent)}
   #composer textarea,.question-freeform,.continue-reason,.participants-popover input,.participants-popover select,
   .rs-form textarea,.pp-link input,.llmctx-field select,.llmctx-field input,.ws-add-in,.rename-input,
   #modelSearch,.project-create input{font-size:16px}
+}
+/* A participant's page (participant_main.js): a plain logo, their name and the link's end in the top row; the bottom row in
+   the info line's place; the composer given way to one line (their limit, a stopped session, an ended link); the stage's
+   look while their turn waits for the owner (stage_owner_wait.js). */
+.plain-brand{font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--accent);padding:1px 4px 2px}
+#participantWho{display:flex;align-items:baseline;gap:12px;flex:1 1 auto;min-width:0;white-space:nowrap}
+body.participant-view #sessionTitleRow{flex:0 1 auto}
+#participantWho .pb-ends{margin-left:auto}
+.pb-who{display:inline-flex;align-items:center;gap:5px;padding:1px 9px;border-radius:999px;border:1px solid var(--border-strong);background:var(--bg-panel);font-size:12px;color:var(--text-2)}
+.pb-who b{color:var(--author-5);font-weight:600}
+.pb-ends{color:var(--text-faint);font-size:12px}
+#participantBar{flex:1 1 100%;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-3);padding:2px 0}
+.pb-pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--bg-raised);color:var(--text-3);white-space:nowrap}
+.pb-status[data-key]{color:var(--text-2)}
+.pb-gap{flex:1}
+.pb-rules{color:var(--text-faint);white-space:nowrap}
+#participantClosed{padding:12px 14px;color:var(--text-2);font-size:13px;line-height:1.45}
+#participantClosed b{display:block;color:var(--text);font-weight:600}
+body.participant-closed :is(#composeGrip,#deliveryLine){display:none}
+body.participant-view .bubble.user:not(.by-participant)>.origin-label{color:var(--author-owner);text-transform:none;letter-spacing:0;font-weight:600}
+.ts-owner-wait{margin:4px 0 6px;padding:6px 9px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);font-size:12.5px;line-height:1.4}
+.ts-owner-wait[hidden]{display:none}
+.turn-stage.owner-wait{border-left-color:var(--warn)}
+.turn-stage.owner-wait :is(.ts-now,.ts-trail){display:none}
+.turn-stage.owner-wait .ts-phase{color:var(--warn-text)}
+.turn-stage.owner-wait .ts-mark{background:var(--warn);animation:none}
+@media(max-width:600px){
+  body.participant-view .plain-brand,body.participant-view .pb-ends,body.participant-view .pb-rules{display:none}
+  body.participant-view #sessionTitleRow{flex-basis:auto;order:0}
+  body.participant-view #topBar{flex-wrap:nowrap;align-items:center}
+  /* Their delivery line is its own row over the text field (no session bar's left to lie over). */
+  body.participant-view #deliveryLine.running:not([hidden]){display:flex!important;position:static!important;height:auto!important;padding:6px 2px 0!important}
 }
 </style>
 </head>

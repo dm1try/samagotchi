@@ -1,10 +1,10 @@
 // Where Verify is offered (verify_target.js): only in an ended turn's final
 // answer, TurnStages::VerifyAnchors#verified's rule, over the owner's real history
-// markup (turnHistoryNodes) and the participant page's thread shape.
+// markup (turnHistoryNodes).
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OWNER_FINAL, PARTICIPANT_FINAL, verifyTurnOf } from "../../../lib/samagotchi/web/public/verify_target.js";
+import { OWNER_FINAL, verifyTurnOf } from "../../../lib/samagotchi/web/public/verify_target.js";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { drawnHistory } from "./drawn_history.js";
@@ -81,40 +81,3 @@ test("owner's page: before any turn, or outside the history, no Verify", () => {
   assert.equal(verifyTurnOf(null, history, OWNER_FINAL), null);
 });
 
-// The participant thread's shape (participant.js messageNode): .p-msg.user
-// (data-turn-id on a turn's prompt), .p-msg.reply holding its tools and a
-// .p-bubble.
-function thread(rows) {
-  const root = document.createElement("div");
-  for (const [kind, text, turnId] of rows) {
-    const msg = document.createElement("div");
-    msg.className = `p-msg ${kind}`;
-    if (turnId) msg.dataset.turnId = turnId;
-    if (text) {
-      const bubble = document.createElement("div");
-      bubble.className = "p-bubble";
-      bubble.textContent = text;
-      msg.append(bubble);
-    }
-    root.append(msg);
-  }
-  return root;
-}
-
-test("participant page: Verify only in a turn's last reply bubble", () => {
-  const root = thread([
-    ["user", "First", "T1"], ["reply", "Old answer"],
-    ["user", "Is it keyed?", "T2"], ["reply", "Looking."], ["user", "also the TTL"], ["reply", ""], ["reply", "Keyed by path."],
-  ]);
-  const bubble = (text) => {
-    const found = [...root.querySelectorAll(".p-bubble")].find((el) => el.textContent === text);
-    assert.ok(found, text);
-    return found;
-  };
-  assert.equal(verifyTurnOf(root, bubble("Keyed by path."), PARTICIPANT_FINAL), "T2");
-  assert.equal(verifyTurnOf(root, bubble("Old answer"), PARTICIPANT_FINAL), "T1");
-  assert.equal(verifyTurnOf(root, bubble("Looking."), PARTICIPANT_FINAL), null);
-  assert.equal(verifyTurnOf(root, bubble("also the TTL"), PARTICIPANT_FINAL), null);
-  assert.equal(verifyTurnOf(root, bubble("Is it keyed?"), PARTICIPANT_FINAL), null);
-  assert.equal(verifyTurnOf(root, bubble("Keyed by path."), PARTICIPANT_FINAL, { running: { turnId: "T2" } }), null);
-});

@@ -32,7 +32,6 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
   let(:public_dir) do
     Dir.mktmpdir("web-proxy-public").tap do |dir|
       File.write(File.join(dir, "index.html"), "<html><body>owner page</body></html>")
-      File.write(File.join(dir, "participant.html"), "<html><body>participant page</body></html>")
       File.write(File.join(dir, "token_fragment.js"), "export function tradeFragmentToken() {}")
       File.write(File.join(dir, "app.js"), "// app")
     end
@@ -372,7 +371,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(trade_code(expired).first).to eq(401)
     end
 
-    it "replaces an expired cookie with a newly issued grant, then opens the participant page" do
+    it "replaces an expired cookie with a newly issued grant, then opens the main page as theirs" do
       dead = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", ttl: 3600, state_dir: state_dir)
       now[0] += 3601
       fresh = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
@@ -385,7 +384,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
 
       status, _, body = call("/", headers: proxied("alex@pod.test", [["Cookie", "__Host-chi_token=#{fresh.token}"]]))
       expect(status).to eq(200)
-      expect(body).to include("participant page")
+      expect(body).to include(%(data-viewer-kind="participant"), %(data-session="#{session.id}"))
     end
 
     # Decision C, the red team's forwarded link: Alex's bound link reaches
@@ -526,7 +525,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
   describe "participants" do
     it "is the participant with a grant through the proxy, whatever their identity" do
       grant_token = issued.token
-      expect(call("/api/sessions/#{session.id}/review", headers: proxied("alex@pod.test", [bearer(grant_token)])).first)
+      expect(call("/api/sessions/#{session.id}", headers: proxied("alex@pod.test", [bearer(grant_token)])).first)
         .to eq(200)
       expect(call("/api/sessions", headers: proxied("alex@pod.test", [bearer(grant_token)])).first).to eq(403)
       expect(call("/api/sessions", headers: proxied("alex@pod.test")).first).to eq(401)
@@ -560,7 +559,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       end
 
       it "gets a bound grant's token refused (token_bound), the identity header forged or not" do
-        path = "/api/sessions/#{session.id}/review"
+        path = "/api/sessions/#{session.id}"
         [lan, { peer: "192.168.1.77" }].each do |where|
           status, _, body = call(path, headers: forged("alex@pod.test") + [bearer(bound.token)], **where)
           expect([status, JSON.parse(body)["error"]]).to eq([401, "token_bound"]), where.inspect
@@ -598,7 +597,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
         Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
                                                 public_url: public_url, state_dir: state_dir)
       end
-      let(:path) { "/api/sessions/#{session.id}/review" }
+      let(:path) { "/api/sessions/#{session.id}" }
       let(:refused) { [401, "token_bound", Samagotchi::ParticipantMessages::TOKEN_BOUND] }
 
       def answer(path, **) = call(path, **).then { |status, _, body| [status, *JSON.parse(body).values_at("error", "detail")] }
@@ -647,8 +646,8 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     # Every proxied request comes from 127.0.0.1: a new peer is a new
     # identity there, and the audit line names it.
     it "audits each identity that uses a grant once, behind the proxy" do
-      2.times { call("/api/sessions/#{session.id}/review", headers: proxied("alex@pod.test", [bearer(issued.token)])) }
-      call("/api/sessions/#{session.id}/review", headers: proxied("sam@pod.test", [bearer(issued.token)]))
+      2.times { call("/api/sessions/#{session.id}", headers: proxied("alex@pod.test", [bearer(issued.token)])) }
+      call("/api/sessions/#{session.id}", headers: proxied("sam@pod.test", [bearer(issued.token)]))
       peers = File.readlines(File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
                                        Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
                   .select { |line| line["event"] == "peer" }

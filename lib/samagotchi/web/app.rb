@@ -286,7 +286,6 @@ module Samagotchi
         ["POST", %r{\A/api/update/restart_web\z}, :handle_restart_web, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
-        ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop, :owner, :session],
@@ -1694,9 +1693,8 @@ module Samagotchi
       end
 
       # What a request's stream goes through on its way from the Bridge:
-      # nil, the raw bytes unchanged, for the owner; a participant's (and
-      # the owner's ?as=participant, the participant view) goes through
-      # ParticipantStreamFilter. A filter is anything with #call(chunk) ->
+      # nil, the raw bytes unchanged, for the owner; a participant's goes
+      # through ParticipantStreamFilter. A filter is anything with #call(chunk) ->
       # String (nil or "" sends nothing); see ProxyStreamBody.
       def stream_filter(req, id)
         return nil unless participant_view?(req)
@@ -1854,8 +1852,6 @@ module Samagotchi
       end
 
       def serve_index(req)
-        return participant_shell(req) if participant_view?(req)
-
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
           # A block: a preset's \& or \' is text, never a backreference.
@@ -2008,15 +2004,16 @@ module Samagotchi
         body_data(attrs)
       end
 
-      # A participant's <body> data for index.html (served to them from the
-      # participant main page's Phase C on): who they are (Viewer), their
+      # A participant's <body> data for index.html: who they are (Viewer), their
       # grant's session and its participant title (the tab's), the version
-      # and the Annotate presets. Nothing of the owner's machine: no home,
-      # folders, project or way back (sessions-dir, server-dir, home,
-      # scope-dir, project-*, back-*).
+      # and the Annotate presets, and whether the working set is on
+      # (web.working_set: their stage's file column, as the owner's).
+      # Nothing of the owner's machine: no home, folders, project or way
+      # back (sessions-dir, server-dir, home, scope-dir, project-*, back-*).
       def participant_index_data(req)
         grant = principal(req).grant
         attrs = { "version" => Samagotchi::VERSION, "session" => grant.session_id }
+        attrs["working-set"] = "1" if working_set?(req.params["working_set"])
         title = Degrade.call(:web, "participant_title_unreadable", fallback: nil) do
           participant_title(@session_class.load(grant.session_id, state_dir: default_state_dir))
         end

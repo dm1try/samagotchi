@@ -5,127 +5,40 @@ require_relative "token"
 require_relative "participant_stream_filter"
 require_relative "../participant_exposure"
 require_relative "../session_metrics"
-require_relative "../review_start"
-require_relative "../guardrails/review_paths"
 require_relative "../participant_mode"
 require_relative "../verify_fresh"
 
 module Samagotchi
   module Web
-    # What a participant reads, mixed into App (P4a): their page, its data
-    # (GET /api/sessions/:id/review) and their stream, each through
-    # ParticipantView. The owner reaches the same reads as "the participant
-    # view": the page at /?as=participant, the review route, and the stream
-    # with ?as=participant, through the same filter with no participant of
-    # their own (nothing is "mine", no composer). See
-    # docs/internals/participants.md (What a participant sees).
+    # What a participant reads, mixed into App: the reads their main page's
+    # show is made of (ParticipantShow: the viewer, their usage, the
+    # messages as they may read them) and their stream, each through
+    # ParticipantView. See docs/internals/participants.md (What a
+    # participant sees).
     module ParticipantReview
-      PARTICIPANT_VIEW = "participant"
       # The stream's query keys a filtered stream passes to the Bridge: its
       # cursor and its join. Not client_id (a stream named as a TUI's would
       # count as one), not raw.
       STREAM_KEYS = %w[from_seq snapshot].freeze
-      # How much of each review subject the page gets; the rest is cut
-      # (+truncated+).
-      SUBJECT_BYTES = 256 * 1024
-      MARKDOWN_EXT = %w[.md .markdown .mdown .mkd].freeze
 
       private
 
-      # Whether this request reads as a participant: a participant's, or
-      # the owner's with ?as=participant.
+      # Whether this request reads as a participant (their show, their
+      # filtered stream).
       def participant_view?(req)
-        !principal(req).owner? || req.params["as"] == PARTICIPANT_VIEW
+        !principal(req).owner?
       end
 
-      # Who reads: the participant (their author), or the owner through the
-      # participant view (nobody's own). The session's folder places tool
-      # paths; the owner's token is never shown, nor (LAN) its loopback
-      # cookie value.
+      # Who reads: the participant (their author). The session's folder
+      # places tool paths; the owner's token is never shown, nor (LAN) its
+      # loopback cookie value.
       def participant_viewer(req, session)
-        author = principal(req).owner? ? nil : principal(req).grant.author
-        Redact::Viewer.new(author: author, cwd: session.working_directory, secrets: owner_secrets)
+        Redact::Viewer.new(author: principal(req).grant.author, cwd: session.working_directory, secrets: owner_secrets)
       end
 
       def owner_secrets
         token = (@lan || @public_url) && current_token
         [token, @lan && Token.loopback_cookie(token)].compact
-      end
-
-      # GET /api/sessions/:id/review: the participant page's data, always
-      # filtered (the owner gets the participant view of it).
-      # @return {viewer, session, subjects, participants, messages,
-      #   current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}
-      def handle_review(req, id)
-        session = @session_class.load(id, state_dir: default_state_dir)
-        features = ParticipantMode.live_features(session, default_state_dir)
-        mode = ParticipantMode.of(session, features: features).to_s
-        viewer = participant_viewer(req, session)
-        live = bridge_get_json(id, "snapshot")
-        turn_snapshot = live && live["snapshot"]
-        state = live && live["session_state_snapshot"]
-        raw = live_or_saved(turn_snapshot, "messages") { session.messages }
-        # No html here: ParticipantView drops a report and the owner's html; with_reply_html renders the redacted replies.
-        shown = messages_for_display(visible_replies(raw), parts: true, cwd: session.working_directory, markdown: false)
-        current = turn_snapshot && ParticipantView.current_turn(turn_snapshot["current_turn"], viewer)
-        automatic = automatic_turn_ids(id, session, shown, current, state)
-        waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||
-                     (turn_snapshot && !turn_snapshot["current_turn"] && turn_snapshot["pending_question"]))
-        queued = turn_snapshot && snapshot_list(turn_snapshot, "queued")
-        status = displayed_status(session, state)
-        status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && current.nil?
-        json_response(200, {
-          viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer, mode: mode),
-          session: { id: session.id, title: participant_title(session), status: status,
-                     verify_unavailable: VerifyAnchor.worker_unavailable?(features) },
-          subjects: review_subjects(session, viewer),
-          participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
-          messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),
-          current_turn: current,
-          waiting_for_owner: waiting,
-          queued: review_queue(queued || [], viewer),
-          verdicts: ParticipantView.verdicts(VerifyFresh.verdicts_of(session, Session.session_dir(id, state_dir: default_state_dir)), viewer),
-          # The verdicts a fresh check runs for now (their check_turn_id;
-          # never the child's id: a participant can't open it).
-          fresh_running: VerifyFresh.running(id, state_dir: default_state_dir).map { |row| row[:of] }.uniq,
-          last_event_id: turn_snapshot && turn_snapshot["event_id"]
-        })
-      end
-
-      # A review session's subjects as the page shows them (the Plan view):
-      # each {path, text, html (markdown only), truncated}, or {path,
-      # missing: true} for one that is gone or that ReviewPaths refuses now
-      # (it became a symlink out of the project, say): checked at every
-      # read, as a review turn's read is. The text is cut at SUBJECT_BYTES
-      # and redacted like everything else a participant gets; [] for a
-      # session that isn't a review session.
-      def review_subjects(session, viewer)
-        review = session.review or return []
-        root = ReviewStart.root_for(session.working_directory)
-        check = Guardrails::ReviewPaths.new(root: root)
-        review.subjects.map do |path|
-          # The real path is checked and read, the file with O_NOFOLLOW: a
-          # symlink swapped in for it after the check isn't followed. Only
-          # the last component: a folder swapped for a symlink in between
-          # still is, which takes write access to the project (the owner's).
-          real = File.realpath(File.expand_path(path, root))
-          next { path: path, missing: true } unless File.file?(real) && check.refusal([real]).nil?
-
-          review_subject(path, real, viewer)
-        rescue SystemCallError
-          { path: path, missing: true }
-        end
-      end
-
-      def review_subject(path, full, viewer)
-        raw = File.open(full, File::RDONLY | File::NOFOLLOW | File::BINARY) { |file| file.read(SUBJECT_BYTES + 1) }.to_s
-        text = Redact.text(raw.byteslice(0, SUBJECT_BYTES).force_encoding(Encoding::UTF_8).scrub, viewer)
-        entry = { path: path, text: text, truncated: raw.bytesize > SUBJECT_BYTES }
-        markdown = MARKDOWN_EXT.include?(File.extname(path).downcase)
-        entry[:html] = @markdown_renderer.render(text) if markdown && @markdown_renderer.available?
-        entry
-      rescue SystemCallError
-        { path: path, missing: true }
       end
 
       # The saved messages with each model message's content as a
@@ -161,14 +74,10 @@ module Samagotchi
       def delegate_child?(session) = !session.parent_id.to_s.empty?
 
       # Who is reading: a participant (their id, name, whether they may
-      # comment: not once their cap is reached, and their +usage+ as their
-      # grant's exposure shows it), or the owner looking through the
-      # participant view (no composer, no usage: the owner has /stats).
-      # +state+ the live worker's session state (nil without one), +queued+
-      # its queue.
-      def review_viewer(req, id, session:, state:, queued:, viewer:, mode:)
-        return { kind: "owner", can_comment: false, mode: mode } if principal(req).owner?
-
+      # comment: not once their cap is reached, their grant's mode, and
+      # their +usage+ as their grant's exposure shows it). +state+ the live
+      # worker's session state (nil without one), +queued+ its queue.
+      def review_viewer(req, id, session:, state:, queued:, viewer:)
         grant = principal(req).grant
         capped = !participant_cap_refusal(grant).nil?
         # Theirs: pair only when their grant was issued to act (ParticipantMode.live_for).
@@ -231,14 +140,6 @@ module Samagotchi
         nil
       end
 
-      # The queue as a participant sees it: their own queued turns (the
-      # enqueued id, for dequeue, and the text), and how many others wait.
-      def review_queue(queued, viewer)
-        mine, others = queued.partition { |entry| entry.is_a?(Hash) && viewer.own?(entry["author"]) }
-        { mine: mine.map { |entry| Redact.deep({ "enqueued_id" => entry["enqueued_id"].to_s, "prompt" => entry["prompt"].to_s }, viewer) },
-          others: others.size }
-      end
-
       # Each reply's rendered markdown, from its filtered (redacted) text.
       def with_reply_html(messages)
         return messages unless @markdown_renderer.available?
@@ -250,34 +151,12 @@ module Samagotchi
         end
       end
 
-      # The page a participant's link opens, and the owner's participant
-      # view (/?as=participant#s=<id>): the participant page's shell; its
-      # script reads everything through the review route and the filtered
-      # stream.
-      def participant_shell(req)
-        path = File.join(@public_dir, "participant.html")
-        return error_response(500, "missing_page", "participant.html is missing") unless File.file?(path)
-
-        attrs = { "version" => Samagotchi::VERSION }
-        if principal(req).owner?
-          attrs["viewer"] = "owner"
-        else
-          grant = principal(req).grant
-          attrs.merge!("viewer" => "participant", "session" => grant.session_id, "name" => grant.name)
-        end
-        # The owner's participant view has no composer; a participant's
-        # selection quotes with the same presets as the owner's page.
-        attrs.merge!(annotate_presets_data) unless principal(req).owner?
-        # A block: a name's \& or \' is text, never a backreference.
-        html_response(200, File.read(path).sub("<body>") { "<body #{body_data(attrs)}>" })
-      end
-
       # A filtered stream's frame filter (App#stream_filter), for the
       # session +id+.
       def participant_stream_filter(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        grant = principal(req).grant unless principal(req).owner?
-        own = grant && ->(enqueued_id) { own_turn?(grant, id, enqueued_id) }
+        grant = principal(req).grant
+        own = ->(enqueued_id) { own_turn?(grant, id, enqueued_id) }
         ParticipantStreamFilter.new(participant_viewer(req, session), own_enqueued: own)
       end
 

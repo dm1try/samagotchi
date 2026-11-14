@@ -10,10 +10,11 @@ require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
 
-# GET /api/sessions/:id/review, the participant page's data, with a live
-# worker's snapshot: the turn in progress, the queue as a participant sees
-# it, waiting for the owner; and the owner's participant view of the same.
-RSpec.describe Samagotchi::Web::App, "participant review" do
+# A participant's GET /api/sessions/:id (the main page's show) with a live
+# worker's snapshot: the turn in progress, their own queue, waiting for the
+# owner, their usage. The leak cases of the read the participant page had
+# (GET …/review, gone with that page), on the show.
+RSpec.describe Samagotchi::Web::App, "participant reads" do
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { File.realpath(Dir.mktmpdir("web-review")) }
@@ -49,13 +50,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
 
   after { FileUtils.remove_entry(root) }
 
-  def review(bearer) = read("/api/sessions/#{session.id}/review", bearer)
-
-  # The main page's show (GET /api/sessions/:id), the other read a
-  # participant's page makes: every leak case runs on both while both exist.
   def show(bearer, query = "") = read("/api/sessions/#{session.id}#{query}", bearer)
-
-  def both(bearer) = { review: review(bearer), show: show(bearer) }
 
   def read(path, bearer)
     env = Rack::MockRequest.env_for(path)
@@ -67,25 +62,20 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
   end
 
   it "gives a participant the turn so far, their own queued turns and how many others wait, and that the owner is asked" do
-    status, body = review(issued.token)
+    status, body = show(issued.token)
     expect(status).to eq(200)
-    expect(body.keys).to contain_exactly("viewer", "session", "participants", "messages", "current_turn", "waiting_for_owner",
-                                         "queued", "last_event_id", "subjects", "verdicts", "fresh_running")
-    expect(body["subjects"]).to eq([])
     # Invited without the pair stamp: their turns are review turns.
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
-                                      "mode" => "review", "can_comment" => true)
-    expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running",
-                                  "verify_unavailable" => false)
-    expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
+                                      "mode" => "review", "cap_reached" => false, "waiting_for_owner" => "question")
+    expect(body["session"]).to include("id" => session.id, "title" => "plan review", "status" => "running",
+                                       "verify_unavailable" => false, "verdicts" => [])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
-    expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
-                                       "tools" => [{ "tool" => "execute", "status" => "running" }], "waiting_for_owner" => true,
-                                       "kind" => "question")
-    expect(body["waiting_for_owner"]).to be(true)
-    expect(body["queued"]).to eq("mine" => [{ "enqueued_id" => "e1", "prompt" => "mine" }], "others" => 1)
+    expect(body["current_turn"]).to include("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",
+                                            "tools" => [{ "tool" => "execute", "status" => "running" }],
+                                            "waiting_for_owner" => true, "kind" => "question")
+    expect(body["queued"]).to eq([{ "enqueued_id" => "e1", "client_id" => "review:#{issued.grant.id}", "prompt" => "mine",
+                                    "author" => author }])
     expect(body["last_event_id"]).to eq("12-ep")
-    expect(body["verdicts"]).to eq([])
     expect(JSON.generate(body)).not_to include("env?", "CARD", "owner's next", "metrics")
   end
 
@@ -105,7 +95,8 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       "turn_records" => [{ "id" => "t0", "cost" => 4.32, "model" => "RECORD-MODEL" }],
       "tool_records" => [{ "id" => "r1", "guardrail" => { "judgment_id" => "JUDGMENT-ID" } }]
     }
-    both(issued.token).each do |read, (status, body)|
+    show(issued.token).then do |status, body|
+      read = :show
       expect(status).to eq(200), read.to_s
       ["env?", "CARD", "owner's next", "RECAP-TEXT", "OFFER-CONTEXT", "SECRET-COMMAND", "GUARD-WARN", "PLUGIN-WARN", "INIT-TASK", "OBJECTIVE-TEXT", "MEMORY-NAME", "THINKING-TEXT", "TOOL-PARAMS", "TOOL-OUT", "/etc/passwd", "9.87", "6.54", "SEGMENT-MODEL", "INDEX-MEMORY", "3.21", "4.32", "RECORD-MODEL", "JUDGMENT-ID"].each do |leak|
         expect(JSON.generate(body)).not_to include(leak), "#{read}: #{leak}"
@@ -121,20 +112,20 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     }]
     session.save(state_dir: state_dir)
 
-    body = review(issued.token).last
+    body = show(issued.token).last
 
-    expect(body["verdicts"]).to eq([{
+    expect(body.dig("session", "verdicts")).to eq([{
       "anchor" => { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "claim" },
       "verdict" => "confirmed", "reason" => "supported", "by" => author,
       "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
     }])
-    both(issued.token).each_value { |_status, read| expect(JSON.generate(read)).not_to include("private", "secret", '"at":"now"') }
+    expect(JSON.generate(body)).not_to include("private", "secret", '"at":"now"')
   end
 
   it "hides an automatic turn's prompt by the live worker's record, before analytics.json has it" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["session_state_snapshot"]["metrics"] = { "turn_records" => [{ "id" => "t0", "automatic" => true }] }
-    body = review(issued.token).last
+    body = show(issued.token).last
     expect(body["messages"].first).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "t0")
   end
 
@@ -149,7 +140,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
                                       turn_id: "t2").transform_keys(&:to_s),
       { "role" => "model", "content" => "noted" }
     ]
-    body = review(issued.token).last
+    body = show(issued.token).last
     expect(body["messages"].map { |m| m.slice("role", "content", "automatic", "turn_id") }).to eq([
       { "role" => "user", "content" => "earlier", "turn_id" => "t0" }, { "role" => "assistant", "content" => "ok" },
       { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t1" },
@@ -157,7 +148,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t2" },
       { "role" => "assistant", "content" => "noted" }
     ])
-    both(issued.token).each { |read, (_status, out)| expect(JSON.generate(out)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack"), read.to_s }
+    expect(JSON.generate(body)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack")
   end
 
   it "renders markdown only for the replies it sends, from their redacted text: never the dropped report's" do
@@ -170,27 +161,28 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
         "content" => "## CHILD REPORT" },
       { "role" => "model", "content" => "child done" }
     ]
-    body = review(issued.token).last
-    expect(renderer).to have_received(:render).once.with("child done")
+    body = show(issued.token).last
+    expect(renderer).to have_received(:render).with("child done").at_least(:once)
+    expect(renderer).not_to have_received(:render).with(include("CHILD REPORT"))
     expect(body["messages"].map { |m| m["html"] }).to eq([nil, "<p>child done</p>"])
   end
 
   it "is waiting for the owner while a Continue offer stands between turns" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["snapshot"]["continue_offer"] = { "context" => "step limit" }
-    body = review(issued.token).last
-    expect([body["current_turn"], body["waiting_for_owner"]]).to eq([nil, true])
+    body = show(issued.token).last
+    expect([body["current_turn"], body.dig("viewer", "waiting_for_owner")]).to eq([nil, "continue"])
   end
 
   it "shows idle when the worker says running but no turn is active" do
     snapshot["snapshot"]["current_turn"] = nil
-    expect(review(issued.token).last.dig("session", "status")).to eq("idle")
+    expect(show(issued.token).last.dig("session", "status")).to eq("idle")
   end
 
-  it "says a participant at their cap may not comment" do
+  it "says a participant is at their cap" do
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [{ "id" => "t1", "author" => author, "cost" => 5.0 }] }))
-    expect(review(issued.token).last["viewer"]).to include("can_comment" => false, "cap_reached" => true)
+    expect(show(issued.token).last["viewer"]).to include("cap_reached" => true)
   end
 
   describe "a participant's usage (the exposure policy's own level)" do
@@ -207,7 +199,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     end
 
     it "is their own spend, cap, queued turns, queue limit, link expiry and the model: nobody else's" do
-      usage = review(issued.token).last.dig("viewer", "usage")
+      usage = show(issued.token).last.dig("viewer", "usage")
       expect(usage).to eq("spent" => 0.5, "cap" => 2.0, "queued" => 1, "queue_limit" => 3,
                           "expires_at" => issued.grant.expires_at, "model" => "m")
     end
@@ -217,16 +209,16 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
         author => { "turns" => 1, "cost" => 0.875 }, other.author => { "turns" => 1, "cost" => 4.0 }
       } }
       snapshot["session_state_snapshot"]["model_name"] = "live-model"
-      usage = review(issued.token).last.dig("viewer", "usage")
+      usage = show(issued.token).last.dig("viewer", "usage")
       expect(usage).to include("spent" => 0.875, "model" => "live-model")
     end
 
     it "keeps the saved spend when the worker counts less (no turn of theirs in it yet), and reads it without a worker" do
       snapshot["session_state_snapshot"]["metrics"] = { "spend_by_author" => { other.author => { "cost" => 4.0 } } }
-      expect(review(issued.token).last.dig("viewer", "usage", "spent")).to eq(0.5)
+      expect(show(issued.token).last.dig("viewer", "usage", "spent")).to eq(0.5)
 
       allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(nil)
-      usage = review(issued.token).last.dig("viewer", "usage")
+      usage = show(issued.token).last.dig("viewer", "usage")
       expect(usage).to include("spent" => 0.5, "queue_limit" => 3, "model" => "m")
       expect(usage).not_to have_key("queued")
     end
@@ -236,19 +228,9 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
       store["grants"].find { |row| row["id"] == issued.grant.id }["exposure"] = "session"
       File.write(grants.path, JSON.generate(store))
       expect(grants.find(issued.grant.id).exposure).to eq("session")
-      usage = review(issued.token).last.dig("viewer", "usage")
+      usage = show(issued.token).last.dig("viewer", "usage")
       expect(usage.keys).to eq(%w[spent cap queued queue_limit expires_at model])
     end
-  end
-
-  it "gives the owner the same filtered data as the participant view: nothing theirs, no composer" do
-    issued
-    status, body = review(owner_token)
-    expect(status).to eq(200)
-    expect(body["viewer"]).to eq("kind" => "owner", "can_comment" => false, "mode" => "pair")
-    expect(body["queued"]).to eq("mine" => [], "others" => 2)
-    expect(body["current_turn"]).to include("prompt" => "owner's question", "text" => "Let me check")
-    expect(JSON.generate(body)).not_to include("env?", "CARD")
   end
 
   # A dev server that logs request headers may print the owner's
@@ -256,26 +238,18 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
   it "never shows the owner's token or its loopback cookie value to a participant" do
     loopback = Samagotchi::Web::Token.loopback_cookie(owner_token)
     snapshot["snapshot"]["current_turn"]["parts"] << { "kind" => "text", "text" => "seen #{loopback} and #{owner_token}" }
-    _status, body = review(issued.token)
+    _status, body = show(issued.token)
     expect(body.dig("current_turn", "text")).to include("seen")
-    both(issued.token).each { |read, (_status, out)| expect(JSON.generate(out)).not_to include(loopback, owner_token), read.to_s }
+    expect(JSON.generate(body)).not_to include(loopback, owner_token)
   end
 
   it "names a participant invited to act pair, and review again while an older worker holds the session" do
     pair = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", mode: "pair", state_dir: state_dir)
-    _status, body = review(pair.token)
+    _status, body = show(pair.token)
     expect(body["viewer"]).to include("mode" => "pair")
     sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
     allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
-    _status, body = review(pair.token)
-    expect(body["viewer"]).to include("mode" => "review")
-  end
-
-  it "names the mode review for a working session whose live worker predates pair turns" do
-    issued
-    sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
-    allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
-    _status, body = review(owner_token)
+    _status, body = show(pair.token)
     expect(body["viewer"]).to include("mode" => "review")
   end
 end

@@ -26,22 +26,18 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       found - NOT_EVENTS
     end
 
-    # The types only the main page reads (its numbers and working set): the
-    # participant page doesn't listen for them, so its EventSource never
-    # fires them. Phase C points this at the main page's handlers.
-    let(:main_page_only) { %w[context_status generation_completed working_set_updated] }
-
     it "names every emitted type as shown or dropped, never both" do
       known = described_class::EVENTS.keys + described_class::DROPPED
       expect(emitted.to_a.sort - known).to eq([])
       expect(described_class::EVENTS.keys & described_class::DROPPED).to eq([])
     end
 
-    it "is the list the participant page listens for, no more, no fewer, and the main page's numbers" do
-      page = File.read(File.expand_path("../../lib/samagotchi/web/public/participant.js", __dir__))
-      list = page[/^const STREAM_EVENTS = \[(.*?)\];/m, 1]
-      expect(list).not_to be_nil
-      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq((described_class::EVENTS.keys - main_page_only).sort)
+    it "is what the main page's stream handlers draw (stream_handlers.js, participant_main.js's own), no more" do
+      public_dir = File.expand_path("../../lib/samagotchi/web/public", __dir__)
+      handlers = File.read(File.join(public_dir, "stream_handlers.js")).scan(/^ {4}([a-z_]+):/).flatten
+      wrapped = File.read(File.join(public_dir, "participant_main.js")).scan(/"([a-z_]+)"/).flatten
+      # snapshot: a join's marker (?snapshot=1), which the main page's stream never asks for.
+      expect(described_class::EVENTS.keys - handlers - wrapped).to eq(["snapshot"])
     end
 
     it "drops every DROPPED type and an unknown one, whatever they carry" do

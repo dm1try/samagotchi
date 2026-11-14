@@ -581,9 +581,8 @@ RSpec.describe "a participant red-teaming a session" do
                  JSON.generate({ "turn_records" => [{ "id" => "tt", "automatic" => true }] }))
     end
 
-    # Both reads a participant's page may make (the old page's review data,
-    # the main page's show) are guarded while both exist.
-    def reads = { review: get("/api/sessions/#{session.id}/review"), show: get("/api/sessions/#{session.id}") }
+    # The read a participant's page makes: the main page's show.
+    def reads = { show: get("/api/sessions/#{session.id}") }
 
     it "reads its own usage only: never the owner's, another participant's or the session's spend" do
       other = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir).grant
@@ -598,11 +597,11 @@ RSpec.describe "a participant red-teaming a session" do
         expect(status).to eq(200), read.to_s
         %w[7.77 3.33 1.11 8.02].each { |leak| expect(body).not_to include(leak), "#{read}: #{leak}" }
       end
-      expect(JSON.parse(reads[:review].last).dig("viewer", "usage")).to include("spent" => 0.25)
+      expect(JSON.parse(reads[:show].last).dig("viewer", "usage")).to include("spent" => 0.25)
     end
 
     it "reads the conversation without an approval, a tool's call or output, thinking, a memory, a steer, a report, the owner's ! output, an automatic prompt or a host path" do
-      status, body = get("/api/sessions/#{session.id}/review")
+      status, body = get("/api/sessions/#{session.id}")
       expect(status).to eq(200)
       review = JSON.parse(body)
       expect(review["messages"].map { |m| [m["role"], m["content"]] }).to eq([
@@ -614,8 +613,8 @@ RSpec.describe "a participant red-teaming a session" do
                                                     { "tool" => "read", "path" => ".env", "ref" => { "kind" => "file", "path" => ".env" } },
                                                     { "tool" => "memory_read" }])
       # The wake turn's report: its turn's start only, no text.
-      expect(review["messages"][3]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")
-      expect(review["messages"][5]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
+      expect(review["messages"][3].except("drawn")).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")
+      expect(review["messages"][5].except("drawn")).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
       expect(review["messages"][7]).to include("author_name" => "Mallory", "mine" => true)
       reads.each do |read, (read_status, read_body)|
         expect(read_status).to eq(200), read.to_s
@@ -624,25 +623,18 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
-    it "reads the review's subjects redacted, and never a secret, a file outside the project or a symlink out of it, whatever the session file names" do
+    it "reads a review session's title from its subjects, and never a subject's text, a secret or a file outside the project" do
       outside = File.join(root, "outside.txt")
       File.write(outside, "OUTSIDE-SECRET\n")
-      File.write(File.join(project, "key.pem"), "PEM-SECRET\n")
-      File.symlink(outside, File.join(project, "docs", "link.md"))
       File.write(plan, "# The plan\n\nDeploy with token=PLAN-TOKEN-VALUE and key sk-ant-abcdefghijklmnopqrstuvwx\n")
-      session.review = { "subjects" => ["docs/plan.md", ".env", "key.pem", "../outside.txt", outside, "docs/link.md",
-                                        "#{Samagotchi::Paths.state_dir}/web-token"] }
+      session.review = { "subjects" => ["docs/plan.md", ".env", "../outside.txt", outside] }
       session.save(state_dir: state_dir)
 
-      status, body = get("/api/sessions/#{session.id}/review")
+      status, body = get("/api/sessions/#{session.id}")
       expect(status).to eq(200)
-      subjects = JSON.parse(body)["subjects"]
-      expect(JSON.parse(body).dig("session", "title")).to eq("review of docs/plan.md +6")
-      expect(subjects.first).to include("path" => "docs/plan.md", "truncated" => false)
-      expect(subjects.first["text"]).to include("token=[redacted]").and include("key [redacted]")
-      expect(subjects.drop(1)).to all(include("missing" => true))
-      expect(subjects.drop(1).map(&:keys)).to all(eq(%w[path missing]))
-      %w[PLAN-TOKEN-VALUE sk-ant- sk-secret PEM-SECRET OUTSIDE-SECRET owner-token].each { |secret| expect(body).not_to include(secret) }
+      expect(JSON.parse(body).dig("session", "title")).to eq("review of docs/plan.md +3")
+      expect(JSON.parse(body)).not_to have_key("subjects")
+      ["The plan", "PLAN-TOKEN-VALUE", "sk-ant-", "sk-secret", "OUTSIDE-SECRET", "owner-token"].each { |secret| expect(body).not_to include(secret) }
     end
 
     it "can't reach Apply, and Apply quotes a review turn's proposal, never runs it as the owner's instruction" do
@@ -679,7 +671,7 @@ RSpec.describe "a participant red-teaming a session" do
                             { role: "model", content: "THINKING-TAIL</think>\n\nAnswer." })
       session.parent_id = "0badc0de-0000-4000-8000-000000000000"
       session.save(state_dir: state_dir)
-      body = get("/api/sessions/#{session.id}/review").last
+      body = get("/api/sessions/#{session.id}").last
       expect(JSON.parse(body)["messages"].map { |m| [m["role"], m["content"], m["automatic"]] })
         .to eq([["user", "", true], ["assistant", "Let me look.", nil], ["user", "q", nil], ["assistant", "Answer.", nil]])
       reads.each do |read, (_status, read_body)|

@@ -225,37 +225,3 @@ test("a context note ends the source turn: a wake turn's answer after it never t
   assert.ok(card.nextElementSibling === note);
   win.happyDOM.abort();
 });
-
-test("participant page: after the reply that quotes it, not the prompt that says the same, and again after a redraw", () => {
-  const win = new Window();
-  const doc = win.document;
-  const thread = doc.createElement("section");
-  const message = (cls, text, turnId = null) => {
-    const node = doc.createElement("div");
-    node.className = `p-msg ${cls}`;
-    if (turnId) node.dataset.turnId = turnId;
-    const bubble = doc.createElement("div");
-    bubble.className = "p-bubble";
-    bubble.textContent = text;
-    node.append(bubble);
-    return node;
-  };
-  const nodes = [
-    message("user", "Check: the claim holds", "source-turn"),
-    message("reply", "Yes, the claim holds."),
-    message("user", "Thanks", "next-turn"),
-  ];
-  thread.append(...nodes);
-  const roots = ".p-msg > .p-bubble";
-
-  const card = placeVerdict(thread, verdictOn("the claim holds"), { roots });
-  assert.equal(nodes[1].nextElementSibling, card);
-
-  // A redraw (participant.js syncChildren) drops the card; placed again, it
-  // lands in the same place, once.
-  thread.replaceChildren(...nodes);
-  const again = placeVerdict(thread, verdictOn("the claim holds"), { roots });
-  assert.equal(nodes[1].nextElementSibling, again);
-  assert.equal(thread.querySelectorAll(".verify-verdict").length, 1);
-  win.happyDOM.abort();
-});

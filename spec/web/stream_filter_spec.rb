@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
 
     after { FileUtils.remove_entry(state_dir) }
 
-    it "is none for the owner; the participant view's and a participant's filter the frames, nothing theirs for the owner" do
+    it "is none for the owner (with ?as=participant too: that view is gone); a participant's filters the frames" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: state_dir)
       session.save(state_dir: state_dir)
       grant = Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: session.id, digest: "d", kind: "human", name: "Alex",
@@ -78,15 +78,14 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
       expect(app.send(:stream_filter, request.call(owner), session.id)).to be_nil
 
       frame = %(id: 1\r\ndata: {"type":"turn_started","prompt":"hi","author":"p:p_0123abcd","origin":{"client_id":"review:p_0123abcd"}}\r\n\r\n)
-      viewed = app.send(:stream_filter, request.call(owner, "?as=participant"), session.id)
-      expect(viewed).to be_a(Samagotchi::Web::ParticipantStreamFilter)
-      expect(viewed.call(frame)).not_to include("mine")
+      expect(app.send(:stream_filter, request.call(owner, "?as=participant"), session.id)).to be_nil
       theirs = app.send(:stream_filter, request.call(Samagotchi::Web::Principal.new(kind: :participant, grant: grant)), session.id)
+      expect(theirs).to be_a(Samagotchi::Web::ParticipantStreamFilter)
       expect(theirs.call(frame)).to include(%("mine":true))
     end
 
     it "passes a filtered stream only its cursor and join, never client_id or raw" do
-      env = Rack::MockRequest.env_for("/x?from_seq=4&client_id=tui:1&raw=1&snapshot=1&as=participant")
+      env = Rack::MockRequest.env_for("/x?from_seq=4&client_id=tui:1&raw=1&snapshot=1&as=x")
       expect(app.send(:participant_stream_query, Rack::Request.new(env))).to eq("?from_seq=4&snapshot=1")
     end
   end

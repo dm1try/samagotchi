@@ -1,15 +1,13 @@
 /* The composer (composer_mount.js): the message box, its image chips, grip and fold, its key hint and its toolbar row
-   (the image button, Send). Shared by the owner's page (index.html) and the participant page (participant.html);
-   linked after tokens.css and before a page's own <style>, so a page's rules of the same weight win. The owner's
+   (the image button, Send). Linked by index.html after tokens.css and before a page's own <style>, so a page's rules of the same weight win. The owner's
    own parts stay in index.html: the card's placing (#dock), the delivery line's links, the start page's picker and chips,
    the / list, and the 16px text fields for iOS. */
 /* The image button's icon mask (the stroke only shapes the mask; the icon takes currentColor); index.html's phone info
    bar and all view's cards use it too. */
 :root{--icon-toolkit:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='5.25' width='12.5' height='8' rx='1.5'/%3E%3Cpath d='M5.75 5.25v-1.5a1 1 0 0 1 1-1h2.5a1 1 0 0 1 1 1v1.5M1.75 8.75h12.5M7 8.75v1.5h2v-1.5'/%3E%3C/svg%3E");--icon-settings:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linejoin='round'%3E%3Cpath d='M12.75 6.14L14.45 6.59L14.45 9.41L12.75 9.86L12.67 10.04L13.56 11.56L11.56 13.56L10.04 12.67L9.86 12.75L9.41 14.45L6.59 14.45L6.14 12.75L5.96 12.67L4.44 13.56L2.44 11.56L3.33 10.04L3.25 9.86L1.55 9.41L1.55 6.59L3.25 6.14L3.33 5.96L2.44 4.44L4.44 2.44L5.96 3.33L6.14 3.25L6.59 1.55L9.41 1.55L9.86 3.25L10.04 3.33L11.56 2.44L13.56 4.44L12.67 5.96Z'/%3E%3Ccircle cx='8' cy='8' r='2.1'/%3E%3C/svg%3E");--icon-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.75' cy='6.25' r='1.1'/%3E%3Cpath d='m2.5 12.5 3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
-/* The composer card: the glass card both pages' composers sit in (the owner's #dock, the stage view's .dock-card, the
-   participant page's .p-card), with its focus ring; its footer (the owner's info bar, the participant's usage) under
-   a hairline; and the composer's line, the quiet row above the text field (the owner's delivery line, the
-   participant's key hint). A page's own rules only place the card. */
+/* The composer card: the glass card the composer sits in (#dock, the stage view's .dock-card), with its focus ring;
+   its footer (the info bar, a participant's bottom row) under a hairline; and the composer's line, the quiet row above
+   the text field (the delivery line). A page's own rules only place the card. */
 .composer-card{display:flex;flex-direction:column;border-radius:16px;position:relative;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow);transition:border-color .12s ease,box-shadow .12s ease}
 .composer-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.composer-card{background:var(--bg-panel)}}

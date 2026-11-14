@@ -5,14 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The web UI's colours live in two token blocks in tokens.css, which the
-// owner's page (index.html) and the participant page (participant.html)
-// link: the dark :root (the default) and the light set under
+// page (index.html) links: the dark :root (the default) and the light set under
 // prefers-color-scheme: light. Everything else reads them through var().
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../lib/samagotchi/web/public");
 const TOKENS = fs.readFileSync(path.join(PUBLIC, "tokens.css"), "utf8");
-const PAGES = ["index.html", "participant.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
+const PAGES = ["index.html"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const HTML = PAGES[0][1];
-// The stylesheets both pages share besides tokens.css (composer.css: the composer; forms.css: the select box).
+// The stylesheets the page links besides tokens.css (composer.css: the composer; forms.css: the select box).
 const SHARED_CSS = ["annotate_bar.css", "composer.css", "forms.css"].map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), "utf8")]);
 const LIGHT_OPEN = '@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){';
 
@@ -98,14 +97,14 @@ test("theme: the owner page's theme-color metas are each theme's --bg-top on a p
   assert.match(HTML, /@media\(max-width:600px\)\{body\{background:linear-gradient\(var\(--bg-top\),var\(--bg\) 420px\),var\(--bg-top\)\}\}/);
 });
 
-test("theme: both pages link tokens.css, then the shared stylesheets", () => {
+test("theme: the page links tokens.css, then the shared stylesheets", () => {
   for (const [name, text] of PAGES) {
     assert.match(text, /<link rel="stylesheet" href="\/assets\/tokens\.css">/, name);
     for (const [css] of SHARED_CSS) assert.ok(text.includes(`<link rel="stylesheet" href="/assets/${css}">`), `${name} links ${css}`);
   }
 });
 
-test("theme: both pages link composer.css after tokens.css and before their own <style>", () => {
+test("theme: the page links composer.css after tokens.css and before its own <style>", () => {
   for (const [name, text] of PAGES) {
     const tokens = text.indexOf('<link rel="stylesheet" href="/assets/tokens.css">');
     const composer = text.indexOf('<link rel="stylesheet" href="/assets/composer.css">');

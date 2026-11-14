@@ -11,9 +11,8 @@ require "samagotchi/participants"
 require "samagotchi/analytics_file"
 
 # A participant's GET /api/sessions/:id (Web::ParticipantShow): the main
-# page's read in the owner's shape, every value filtered. The leaks of
-# both reads (this and /review) are participant_review_spec's and
-# participant_red_team_spec's.
+# page's read in the owner's shape, every value filtered. Its leak cases
+# are participant_review_spec's and participant_red_team_spec's.
 RSpec.describe Samagotchi::Web::App, "a participant's show" do
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
@@ -199,8 +198,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     }])
   end
 
-  # Phase C serves index.html to a participant with these; today their
-  # link still opens the participant page (participant_shell).
+  # A participant's link opens index.html stamped with these.
   it "stamps the main page's <body> for a participant with nothing of the owner's machine" do
     session.working_directory = File.join(root, "secret-project")
     session.save(state_dir: state_dir)
@@ -208,7 +206,9 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     env[described_class::PRINCIPAL_ENV] = Samagotchi::Web::Principal.new(kind: :participant, grant: issued.grant)
     attrs = app.send(:index_data_attributes, Rack::Request.new(env))
     keys = attrs.scan(/data-([a-z-]+)=/).flatten
-    expect(keys).to contain_exactly("version", "session", "session-title", "annotate-presets", "viewer-kind", "viewer-can")
+    # working-set: web.working_set (on by default), the owner's setting, not theirs to read.
+    expect(keys).to contain_exactly("version", "session", "session-title", "annotate-presets", "viewer-kind", "viewer-can",
+                                    "working-set")
     expect(attrs).to include(%(data-session="#{session.id}"), %(data-session-title="plan review"), %(data-viewer-kind="participant"))
     expect(attrs).not_to include(root, Dir.home, "secret-project")
   end
