@@ -15,6 +15,7 @@ require_relative "session"
 require_relative "redacted_inspect"
 require_relative "private_files"
 require_relative "participant_exposure"
+require_relative "participant_turn_mode"
 
 module Samagotchi
   # Participants' access to one session each (the shared-sessions plan,
@@ -58,7 +59,7 @@ module Samagotchi
     # (a participant's turns act under the owner's rules). A grant without
     # it was issued by an older chi for read-only turns, which this chi
     # doesn't run: it reads as ended (Grant#state :outdated).
-    PAIR_MODE = "pair"
+    PAIR_MODE = ParticipantTurnMode::PAIR_MODE
     NAME_MAX = ParticipantName::MAX
     ID_RE = /\Ap_[0-9a-f]{8}\z/
     # D7: what a participant's turns (and the side calls they cause) may
@@ -181,7 +182,7 @@ module Samagotchi
       def state(now)
         return :revoked if revoked_at
         return :expired if Time.iso8601(expires_at) <= now
-        return :outdated unless mode.to_s == Grants::PAIR_MODE
+        return :outdated unless ParticipantTurnMode.invite_mode?(mode)
 
         :active
       end

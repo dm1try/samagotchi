@@ -900,7 +900,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by the turn's mode" do
   let(:working) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: project) }
   let(:review) { Struct.new(:id, :working_directory) { def review? = true; def delegate? = false }.new("s1", project) }
   # A participant invited to act (their grant's mode), or one from before pair (none).
-  let(:pair_entry) { Struct.new(:name, :mode).new("Sam", "pair") }
+  let(:pair_entry) { participant_entry("Sam") }
   # The wiring and its participant turn's TurnContext (#begin_turn's mode).
   let(:turn_of) { Data.define(:wiring, :context) }
 
@@ -937,7 +937,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by the turn's mode" do
   # rights here. The worker refuses such a turn first; this is the gate's
   # fail-closed seat should one start anyway.
   it "denies every call of a turn with no current invite (an older chi's, none), or no session; nobody is asked" do
-    [[working, Struct.new(:name, :mode).new("Old", nil)], [working, nil], [nil, pair_entry]].each do |session, entry|
+    [[working, participant_entry("Old", mode: nil)], [working, nil], [nil, pair_entry]].each do |session, entry|
       w = wiring(session, entry: entry)
       expect(w.context.participant_mode).to eq(:refused)
       expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ParticipantRefusal)
@@ -1003,7 +1003,7 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   # (nil), or someone the parent invited to act (a pair entry).
   # The wiring and the child's turn's TurnContext (#begin_turn's mode).
   let(:turn_of) { Data.define(:wiring, :context) }
-  let(:pair_entry) { Struct.new(:name, :mode).new("Alex", "pair") }
+  let(:pair_entry) { participant_entry("Alex") }
 
   before do
     FileUtils.mkdir_p(File.join(project, "docs"))
@@ -1044,13 +1044,38 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
     expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
     expect(evaluate(w, { name: "delegate", content: "x" })).to be_deny
     older = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }),
-                   entry: Struct.new(:name, :mode).new("Alex", nil))
+                   entry: participant_entry("Alex", mode: nil))
     expect(older.context.participant_mode).to eq(:refused)
+  end
+
+  # The wiring's clock, not the wall's: the participants line and a turn's
+  # mode agree under a moved clock.
+  it "checks the invite at the wiring's clock" do
+    entry = participant_entry("Alex")
+    session = child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor })
+    turn_at = lambda do |time|
+      w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session }, cancelled: -> { false },
+                                          ask: ->(_) {}, participant: ->(_author) { entry }, clock: -> { time })
+      w.state_dir = File.join(base, "state")
+      origin = session.verify_fresh.origin_for(Samagotchi::TurnOrigin.new(client_id: "web:x"))
+      wiring_turn_context(w, origin, session: session).participant_mode
+    end
+    expect(turn_at.call(Time.now)).to eq(:pair)
+    expect(turn_at.call(Time.now + (2 * 86_400))).to eq(:refused)
   end
 
   it "fails closed for a field that doesn't read" do
     w = wiring(child({ "author" => "p:alex", "mode" => "root", "of" => "c1", "anchor" => anchor }), entry: pair_entry, author: nil)
     expect(w.context.participant_mode).to eq(:refused)
+    expect(write(w).rule).to eq("participant-refused")
+  end
+
+  # The parent's participants are the parent's: a participant's turn that
+  # reaches the owner's own child (an input file; chi web refuses it) is
+  # refused, with a current pair invite in the parent too.
+  it "refuses a participant's turn in the owner's child, whatever their invite in the parent says" do
+    w = wiring(child({ "of" => "c1", "anchor" => anchor }), entry: pair_entry)
+    expect([w.context.author, w.context.participant_mode]).to eq(["p:alex", :refused])
     expect(write(w).rule).to eq("participant-refused")
   end
 

@@ -388,7 +388,9 @@ ordinary sessions don't get it. Like the rules it reads command text: a
 
 chi runs no read-only turn: no turn an older chi ran read-only may run with tool rights here. The worker refuses a
 participant's turn whose invite is an older chi's (a grant or `participants.json` entry without `mode: pair`), a Verify
-fresh child saved for a read-only turn, and a participant with no invite at all, before it starts
+fresh child saved for a read-only turn, a participant with no invite at all, and a participant's turn in the owner's
+own Verify fresh child (the parent's participants are the parent's), before it starts; one function decides it for the
+worker and the guardrails alike (`ParticipantTurnMode`)
 ([participants](internals/participants.md#turns)). Should such a turn start anyway, its seat in
 `GuardrailWiring#checks` is `Guardrails::ParticipantRefusal` (rule `participant-refused`, source `core`): every call
 is denied, nobody is asked, in every mode and with `guardrails.enabled: false`.
@@ -402,7 +404,7 @@ session's own ("Allow … for the session") answer its asks
 (`Guardrails::ApprovalUse`): a call the owner allowed in this repo or for a
 rule asks the owner again, on a card.
 Every invite is stamped `mode: pair`; the turn's mode is decided once at its
-start (`GuardrailWiring#participant_turn_mode`, into the turn's
+start (`ParticipantTurnMode` via `GuardrailWiring#participant_turn_mode`, into the turn's
 `TurnContext#participant_mode`), and it runs only on a worker that names the
 `pair_turns` feature.
 

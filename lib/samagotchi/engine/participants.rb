@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../participant_turn_mode"
+
 module Samagotchi
   class Engine
     # The session's participants: the running turn's author, a pair turn's
@@ -84,7 +86,7 @@ module Samagotchi
       # review, whose header says the turn may only read.
       # @param context [TurnContext] the turn's
       def participant_mode_fields(context)
-        context.participant? && context.participant_mode == GuardrailWiring::PAIR ? { participant_mode: "pair" } : {}
+        context.participant? && context.participant_mode == GuardrailWiring::PAIR ? { participant_mode: ParticipantTurnMode::PAIR_MODE } : {}
       end
     end
   end

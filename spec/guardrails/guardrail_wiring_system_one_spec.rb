@@ -172,7 +172,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
                                         },
                                         system_one: -> { on }, cancel_controller: -> {},
                                         participant: lambda { |author|
-                                          Struct.new(:name, :mode).new("Sam", "pair") if author == "p:p_0123abcd"
+                                          participant_entry("Sam") if author == "p:p_0123abcd"
                                         })
     w.state_dir = state_dir
     w.interface = :worker

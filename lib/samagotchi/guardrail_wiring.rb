@@ -16,6 +16,7 @@ require_relative "system_one"
 require_relative "tool_activity"
 require_relative "turn_origin"
 require_relative "grants"
+require_relative "participant_turn_mode"
 
 module Samagotchi
   # An Engine's tool guardrails: who can approve (the interface), the YAML
@@ -58,8 +59,10 @@ module Samagotchi
     # @param participant [#call] (author) → the participant's
     #   Participants::Entry (participants.json: their name, their grant's
     #   mode), nil for none
+    # @param clock [#call] → Time a participant's invite is checked at
+    #   (ParticipantTurnMode), the Engine's SessionParticipants#now
     def initialize(scratch:, tools:, session:, cancelled:, ask:, notify: ->(_message) {}, system_one: -> {},
-                   system_one_runs: -> {}, cancel_controller: -> {}, participant: ->(_author) {})
+                   system_one_runs: -> {}, cancel_controller: -> {}, participant: ->(_author) {}, clock: -> { Time.now })
       @scratch = scratch
       @tools_lookup = tools
       @session_lookup = session
@@ -70,6 +73,9 @@ module Samagotchi
       @system_one_runs = system_one_runs
       @cancel_controller = cancel_controller
       @participant = participant
+      # → Time: what a participant's invite is current at (the Engine's
+      # SessionParticipants clock).
+      @clock = clock
       # Bundle name → the rules last loaded from it whole, kept while the
       # installed version needs a newer chi; [name, version] said so once.
       @loaded_bundle_rules = {}
@@ -119,15 +125,12 @@ module Samagotchi
     end
 
     # A participant's turn's mode: PAIR (it acts under the owner's
-    # guardrails, PairBoundary) for a current invite (their entry's mode is
-    # Grants::PAIR_MODE) in a session, and in a Verify fresh child only when
-    # it was saved for one (VerifyFreshOrigin#pair?); else REFUSED (an older
-    # chi's read-only invite, none at all, no session: ParticipantRefusal).
+    # guardrails, PairBoundary) when ParticipantTurnMode says :pair, else
+    # REFUSED (no current invite, an older chi's read-only one, no session,
+    # the owner's own Verify fresh child: ParticipantRefusal). Never nil
+    # for a participant's turn: the tools scrub the owner's env on any mode.
     def participant_turn_mode(session, entry)
-      return REFUSED if session.nil? || !entry.respond_to?(:mode) || entry.mode.to_s != Grants::PAIR_MODE
-
-      fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
-      fresh && !fresh.pair? ? REFUSED : PAIR
+      ParticipantTurnMode.of(entry: entry, session: session, now: @clock.call) == :pair ? PAIR : REFUSED
     end
 
     # A participant's turn's modes (TurnContext#participant_mode).

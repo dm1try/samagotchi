@@ -203,15 +203,23 @@ a link and before a write that may land outside the project, failing closed (a g
 that names no path, `Guardrails::ImplicitWriters`, and a script read from stdin count; a session at or above home has
 none: every write asks) ([guardrails](../guardrails.md#a-participants-pair-boundary)).
 
-**One kind of invite, and the safety rule.** Every grant is stamped `mode: "pair"` (`Grants#issue`), and that stamp is
-the one mark of a grant this chi honours: no turn that an older chi ran read-only may run with tool rights here.
+**One kind of invite, and the safety rule.** Every grant is stamped `mode: "pair"` (`Grants#issue`,
+`ParticipantTurnMode::PAIR_MODE`), and that stamp is the one mark of a grant this chi honours: no turn that an older chi
+ran read-only may run with tool rights here. Whether a participant's turn runs is one function,
+`ParticipantTurnMode.of(entry:, session:, now:)`: `:pair` (it runs), `:revoked` (no current entry: none, revoked,
+expired, or anything that isn't an entry), `:outdated` (an older chi's read-only invite, or a participant's Verify fresh
+child saved read-only) or `:not_invited` (no session, or the owner's own Verify fresh child). The worker
+(`#participant_refusal`: `:outdated` → `outdated`, the other two → `revoked`, no new reason on the wire) and the
+guardrails (`GuardrailWiring#participant_turn_mode`: `:pair` → `PAIR`, else `REFUSED`) both read it; `Grant#state`
+and `Entry#outdated?` use its `invite_mode?`.
 - A grant without it (an older chi's read-only invite) is ended at the gate (`token_outdated`, above), and its
   `participants.json` entry is not active (`Participants::Entry#outdated?`): the worker's `#participant_refusal`
   refuses its turns with `outdated` (every Bridge and inbox-file turn, and every line the own-turn drain would merge,
   passes there: an older chi web still running and files queued before the upgrade are covered), and the system
   prompt's line and the terminal's count leave it out.
 - A Verify fresh child saved with `verify_fresh.mode` other than `pair` (`VerifyFreshOrigin#pair?`) is refused at the
-  same place.
+  same place. So is a participant's turn in the owner's own Verify fresh child (`revoked`): chi web never sends one
+  there (a participant reaches only their grant's session), but an input file or a Bridge-secret holder could.
 - `GuardrailWiring#participant_turn_mode` decides the turn's mode once at its start (`TurnStart#mode`, into
   `TurnContext#participant_mode`): `GuardrailWiring::PAIR` for a current entry in a session (and a fresh child saved
   pair), else `REFUSED`, whose seat in `#checks` is `Guardrails::ParticipantRefusal`: every call denied, nobody asked

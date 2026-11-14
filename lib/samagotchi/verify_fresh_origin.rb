@@ -3,6 +3,7 @@
 require_relative "steer"
 require_relative "turn_origin"
 require_relative "verify_anchor"
+require_relative "participant_turn_mode"
 
 module Samagotchi
   # A Verify fresh child's own field (Session#verify_fresh; VerifyFresh
@@ -42,9 +43,8 @@ module Samagotchi
     def participant? = Steer.participant_author?(author)
 
     # Whether a participant's turns run here, under the owner's rules: only
-    # when saved so (fail closed: GuardrailWiring#participant_turn_mode,
-    # Worker#participant_refusal).
-    def pair? = mode == "pair"
+    # when saved so (fail closed: ParticipantTurnMode).
+    def pair? = mode == ParticipantTurnMode::PAIR_MODE
 
     # +origin+ with this child's requester as its author: every turn of a
     # participant's child is theirs, whoever typed it; the owner's child

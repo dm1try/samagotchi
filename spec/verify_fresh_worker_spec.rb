@@ -140,6 +140,25 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
     expect(engine).not_to have_received(:run_turn)
   end
 
+  # The owner's own Verify fresh child: the parent's participants are the
+  # parent's, so a participant's turn here (an input file: chi web refuses
+  # every session but the grant's) is refused before it starts, as not
+  # invited ("revoked"), never with the older-chi reason.
+  it "refuses a participant's turn in the owner's own child before it starts (revoked)" do
+    child.verify_fresh = child.verify_fresh.with(author: nil, mode: nil)
+    child.last_prompt = ""
+    child.status = Samagotchi::Session::STATUS_IDLE
+    child.save(state_dir: tmpdir)
+    allow(engine).to receive(:run_turn).and_return(result)
+    start_worker(child)
+    Samagotchi::SessionInbox.write_input(dir_of(child.id), prompt: "try it", client_id: "review:#{grant.id}",
+                                                           author: grant.author, enqueued_id: "e1")
+
+    wait_for("the refusal") { parent_audit.any? { |line| line["event"] == "turn" && line["reason"] == "revoked" } }
+    expect(parent_audit.map { |line| line["reason"] }).not_to include("outdated")
+    expect(engine).not_to have_received(:run_turn)
+  end
+
   it "takes a forwarded verdict into the parent's verdicts between turns, announced, its conversation untouched" do
     record = { anchor: anchor, verdict: "refuted", reason: "no such key", by: grant.author,
                check_turn_id: "44444444-3333-4444-5555-666666666666" }

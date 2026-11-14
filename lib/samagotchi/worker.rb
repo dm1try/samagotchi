@@ -848,36 +848,28 @@ module Samagotchi
     end
 
     # Why the participant +author+ ("p:<id>") may run no more turns, nil
-    # while they may (and for the owner): "outdated" for an older chi's
-    # read-only invite (an entry, or a Verify fresh child saved, without
-    # "pair": this chi runs no read-only turn), "revoked" when
-    # participants.json has no active entry for them (revoked, expired,
-    # never invited), "cap_reached" once they spent their cap (its own,
+    # while they may (and for the owner): by ParticipantTurnMode, "outdated"
+    # for an older chi's read-only invite (an entry, or a Verify fresh child
+    # saved, without "pair": this chi runs no read-only turn), "revoked" when
+    # participants.json has no current entry for them (revoked, expired,
+    # never invited) or they aren't invited to this (the owner's own Verify
+    # fresh child), "cap_reached" once they spent their cap (its own,
     # else the config's; their turns and the side requests they caused,
     # Engine#metrics). The owner hears the cap once per cap (#cap_notice).
     def participant_refusal(author)
       author = Steer.sender_author(author) or return nil
 
       entry = participant_entry(author)
-      return "outdated" if outdated_participant?(entry)
-      return "revoked" unless entry&.active?(Time.now)
+      case ParticipantTurnMode.of(entry: entry, session: @session, now: Time.now)
+      when :outdated then return "outdated"
+      when :revoked, :not_invited then return "revoked"
+      end
 
       cap = participant_cap(entry)
       return nil if participant_spend(author) < cap
 
       cap_notice(author, entry, cap)
       "cap_reached"
-    end
-
-    # An older chi's read-only participant: their entry has no "pair"
-    # mode, or this Verify fresh child was saved for a read-only turn.
-    # Only while their link would otherwise work (a revoked or expired one
-    # is told so).
-    def outdated_participant?(entry)
-      return false unless entry&.current?(Time.now)
-
-      fresh = @session&.verify_fresh
-      entry.outdated? || (fresh&.participant? && !fresh.pair?) || false
     end
 
     # Why a participant's running pair turn stops (Engine#participant_stop,
