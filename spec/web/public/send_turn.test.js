@@ -166,6 +166,19 @@ test("a refused Revise (409 revise_unavailable): its words in the history, the t
   assert.equal(h.toasts.length, 0);
 });
 
+test("a participant's refused Revise (403 revise_not_own, 409 revise_overtaken): the server's words, the text and the chip kept", async () => {
+  for (const code of ["revise_not_own", "revise_overtaken"]) {
+    const detail = `the server's words for ${code}`;
+    const h = harness({ revise: { turn_id: "t-v1", label: "x" },
+                        sendTurn: async () => { throw failure(code, "refused", { error: code, detail }); } });
+    await h.send();
+    assert.deepEqual(h.log.find((entry) => entry[0] === "commandBubble"), ["commandBubble", { label: null, line: "hello", text: detail, failed: true }]);
+    assert.equal(h.promptEl.value, "hello");
+    assert.deepEqual(h.revise(), { turn_id: "t-v1", label: "x" });
+    assert.equal(h.toasts.length, 0);
+  }
+});
+
 test("a Revise turn restored before its ack: its draft is armed again with its line", async () => {
   const h = harness({ revise: { turn_id: "t-v1", label: "x" } });
   h.earlyRestores.set("e1", { origin: { client_id: "web:t1", enqueued_id: "e1" }, prompt: "hello", revises: { turn_id: "t-v1" } });

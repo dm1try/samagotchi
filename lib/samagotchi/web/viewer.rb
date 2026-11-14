@@ -56,12 +56,14 @@ module Samagotchi
     # composer (POST …/turn); +stop_own_turn+: the stage's Stop turn on a
     # turn they started (POST …/cancel with its turn_id); +steer_own_turn+:
     # a message sent while their own turn runs goes in at its next step
-    # (a worker with Delivery::OWN_TURN_STEER_FEATURE). And of the owner's,
+    # (a worker with Delivery::OWN_TURN_STEER_FEATURE); +revise_own_turn+:
+    # Revise on the answer to their own message with only their own turns
+    # after it (POST …/turn with revises, ParticipantRevise). And of the owner's,
     # those a participant's route serves filtered: +working_set+ (GET
     # …/working_set, the project's files only) and +images+ (POST …/images
     # within their cap and quota; GET …/images/<name> only for an image
     # they uploaded; their turn takes only those: ParticipantImages).
-    Viewer::PARTICIPANT_CAPABILITIES = %w[send stop_own_turn steer_own_turn working_set images].freeze
+    Viewer::PARTICIPANT_CAPABILITIES = %w[send stop_own_turn steer_own_turn revise_own_turn working_set images].freeze
 
     Viewer::OWNER = Viewer.new(kind: "owner", id: nil, name: nil, can: Viewer::CAPABILITIES)
   end

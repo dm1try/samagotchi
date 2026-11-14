@@ -786,13 +786,16 @@ module Samagotchi
     # cancel_turn_id: POST cancel with a turn_id cancels that turn only
     # (Delivery::CANCEL_TURN_ID_FEATURE), what chi web needs to relay a
     # participant's cancel.
+    # participant_revise: a participant's Revise draft is kept, and the
+    # Engine checks it at the stamp (ParticipantRevise): what chi web needs
+    # to pass one on (ReviseAnchor::PARTICIPANT_FEATURE).
     # activity: GET /activity answers with Worker#activity_snapshot, so
     # `chi schedule tick` can ask a live worker what it is busy with.
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
-                Delivery::CANCEL_TURN_ID_FEATURE].freeze
+                Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -1257,10 +1260,10 @@ module Samagotchi
       # request's principal; the Bridge is loopback and trusts its caller).
       author = fetched(parsed, "author")
       author = nil unless author.is_a?(String) && !author.empty?
-      # A Verify turn's claim, a Revise turn's draft; a participant can't
-      # Revise (chi web drops it first, this is the worker's own layer).
+      # A Verify turn's claim, a Revise turn's draft. A participant's draft
+      # is checked by chi web at the send and by the Engine at the stamp
+      # (TurnStages::VerifyAnchors#revision_target, ParticipantRevise).
       anchors = TurnAnchors.from(parsed)
-      anchors = anchors.without_revises if Steer.participant_author?(author)
       if sid.to_s.strip.empty? || prompt.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]

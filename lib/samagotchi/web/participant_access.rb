@@ -12,6 +12,7 @@ require_relative "../session_metrics"
 require_relative "../parent_report"
 require_relative "../participant_messages"
 require_relative "../participant_mode"
+require_relative "../participant_revise"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../turn_checkpoint"
@@ -326,22 +327,24 @@ module Samagotchi
         prompt = body["prompt"].to_s
         return error_response(400, "missing_fields", "prompt is required") if prompt.strip.empty?
 
-        reason = participant_turn_refusal(grant, prompt, body)
-        return participant_turn_refused(grant, prompt, *reason) if reason
+        anchors = TurnAnchors.from(body)
+        revises = anchors.revises&.turn_id
+        reason = participant_turn_refusal(grant, prompt, body) || participant_revise_refusal(grant, id, anchors)
+        return participant_turn_refused(grant, prompt, *reason, revises: revises) if reason
 
         reason, images = participant_images_refusal(grant, id, body["images"])
-        return participant_turn_refused(grant, prompt, *reason) if reason
+        return participant_turn_refused(grant, prompt, *reason, revises: revises) if reason
 
-        # A Verify turn's claim; never a Revise (the owner's stacks).
+        # A Verify turn's claim, a Revise turn's draft of their own answer.
         delivery = Delivery.queue?(body["delivery"]) ? Delivery::QUEUE : Delivery::NEXT_STEP
         result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
                                                  delivery: delivery, author: grant.author,
                                                  **(images.empty? ? {} : { images: images }),
-                                                 anchors: TurnAnchors.from(body).without_revises,
+                                                 anchors: anchors,
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
-        participant_turn_result(grant, prompt, result, images: images.empty? ? nil : images.size)
+        participant_turn_result(grant, prompt, result, images: images.empty? ? nil : images.size, revises: revises)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
@@ -352,6 +355,30 @@ module Samagotchi
         return [403, "not_permitted", NOT_PERMITTED] if Delivery.cut?(body["delivery"])
 
         participant_cap_refusal(grant)
+      end
+
+      # [status, code, detail] for a Revise draft (+anchors+' revises) they
+      # may not send, nil without one or when they may: a live worker
+      # without ReviseAnchor::PARTICIPANT_FEATURE (409 revise_unavailable:
+      # it wouldn't check it at the stamp), then ParticipantRevise over the
+      # messages a live worker's snapshot has (the session file lags it
+      # mid-turn and just after a turn's end), the file's only with no
+      # live worker: 403 revise_not_own (a missing turn answers the same),
+      # 409 revise_overtaken. The worker checks again at the stamp.
+      def participant_revise_refusal(grant, id, anchors)
+        return nil unless anchors.revises
+
+        session = @session_class.load(id, state_dir: default_state_dir)
+        features = ParticipantMode.live_features(session, default_state_dir)
+        if features && !features.include?(ReviseAnchor::PARTICIPANT_FEATURE)
+          return [409, "revise_unavailable", ParticipantMessages::REVISE_UNAVAILABLE]
+        end
+
+        messages = show_reads(id, session).raw_messages
+        case ParticipantRevise.refusal(messages, turn_id: anchors.revises.turn_id, author: grant.author)
+        when :not_own then [403, "revise_not_own", ParticipantMessages::REVISE_NOT_OWN]
+        when :overtaken then [409, "revise_overtaken", ParticipantMessages::REVISE_OVERTAKEN]
+        end
       end
 
       # [429, cap_reached, …] once the grant spent its cap (D7: their turns
@@ -373,28 +400,36 @@ module Samagotchi
           VerifyFresh.children_spend(grant.session_id, grant.author, state_dir: default_state_dir)
       end
 
-      # +audit_detail+: what only the audit line says (no_vision's full words).
-      def participant_turn_refused(grant, prompt, status, code, detail, audit_detail = nil)
-        audit_turn(grant, prompt, status: "refused", reason: code, detail: audit_detail)
+      # +audit_detail+: what only the audit line says (no_vision's full
+      # words); +revises+: the turn id a Revise draft named (nil: none).
+      def participant_turn_refused(grant, prompt, status, code, detail, audit_detail = nil, revises: nil)
+        audit_turn(grant, prompt, status: "refused", reason: code, detail: audit_detail, revises: revises)
         error_response(status, code, detail)
       end
 
-      # +images+: how many the turn carried (nil: none), for the audit line.
-      def participant_turn_result(grant, prompt, result, images: nil)
+      # +images+: how many the turn carried (nil: none), +revises+ the turn
+      # id its Revise draft named, for the audit line.
+      def participant_turn_result(grant, prompt, result, images: nil, revises: nil)
         case result.status
         when :accepted
           enqueued_id = result.ack["enqueued_id"]
           remember_participant_turn(enqueued_id, grant.id)
-          audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id, images: images)
+          audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id, images: images, revises: revises)
           # What the worker says will happen (a turn of its own, or into
           # their running turn at its next step); a file (no worker yet)
           # runs as the next turn, which reads as a queue.
           json_response(202, result.ack.merge("via" => result.via.to_s, "delivery" => result.ack["delivery"] || Delivery::QUEUE))
         when :refused
-          audit_turn(grant, prompt, status: "refused", reason: result.ack["error"], images: images)
+          audit_turn(grant, prompt, status: "refused", reason: result.ack["error"], images: images, revises: revises)
+          # A worker without Revise at all: the participant's words, never
+          # the owner's "restart this session".
+          if result.ack["error"] == ReviseAnchor::UNAVAILABLE["error"]
+            return error_response(409, "revise_unavailable", ParticipantMessages::REVISE_UNAVAILABLE)
+          end
+
           json_response(result.code, result.ack)
         when :timeout
-          audit_turn(grant, prompt, status: "refused", reason: "worker_timeout", images: images)
+          audit_turn(grant, prompt, status: "refused", reason: "worker_timeout", images: images, revises: revises)
           error_response(504, "worker_timeout", result.detail)
         else error_response(500, "enqueue_failed", "could not write turn input")
         end

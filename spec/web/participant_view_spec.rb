@@ -282,6 +282,13 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .to eq("type" => "turn_completed", "turn_id" => "t3")
     end
 
+    it "passes a Verify turn's verify: true on its end, a boolean only" do
+      expect(shown({ type: "turn_completed", turn_id: "t2", verify: true }))
+        .to eq("type" => "turn_completed", "turn_id" => "t2", "verify" => true)
+      expect(shown({ type: "turn_completed", turn_id: "t3", verify: { quote: "secret" } }))
+        .to eq("type" => "turn_completed", "turn_id" => "t3")
+    end
+
     it "filters persisted verdict cards through the same narrow allowlist" do
       records = [{
         anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },
@@ -354,6 +361,21 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       ]
       expect(described_class.messages(list, viewer).map { |message| message["revises"] })
         .to eq([nil, { "turn_id" => v1 }, nil])
+    end
+  end
+
+  describe ".messages, a Verify turn's opening" do
+    it "says verify: true (no Revise on its answer), never the quote" do
+      claim = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the secret claim" }
+      list = [
+        { role: "user", content: "check", turn_id: "t1", verify: true },
+        { role: "user", content: "check raw", turn_id: "t2", verify: claim },
+        { role: "user", content: "plain", turn_id: "t3" },
+        { role: "user", content: "bad", turn_id: "t4", verify: { quote: "x" } }
+      ]
+      shown = described_class.messages(list, viewer)
+      expect(shown.map { |message| message["verify"] }).to eq([true, true, nil, nil])
+      expect(JSON.generate(shown)).not_to include("the secret claim")
     end
   end
 

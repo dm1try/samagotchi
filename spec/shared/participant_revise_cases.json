@@ -1,0 +1,16 @@
+{
+  "description": "Whether a participant (\"me\") may Revise the turn at \"target\" in a history of \"turns\": one table for the server's rule (ParticipantRevise.refusal, spec/participant_revise_spec.rb) and the page's mirror (participant_revise.js mayReviseOwn, spec/web/public/participant_revise.test.js). A turn is {\"by\": me | owner | other | wake | shell, \"answered\" (default true), \"verify\"}: owner is the owner's prompt, other another participant's, wake a wake turn's note (no author), shell the owner's stored `!` line (no turn; ParticipantView drops it, so the page never has it). \"expected\": revisable; \"reason\": the server's refusal when it isn't.",
+  "cases": [
+    { "name": "their latest answer", "turns": [{ "by": "owner" }, { "by": "me" }], "target": 1, "expected": true },
+    { "name": "an older own answer with only their own turns after it (D1)", "turns": [{ "by": "me" }, { "by": "me" }], "target": 0, "expected": true },
+    { "name": "an owner `!` line after it counts for nothing", "turns": [{ "by": "me" }, { "by": "shell" }], "target": 0, "expected": true },
+    { "name": "the owner's turn after it", "turns": [{ "by": "me" }, { "by": "owner" }], "target": 0, "expected": false, "reason": "overtaken" },
+    { "name": "another participant's turn after it", "turns": [{ "by": "me" }, { "by": "other" }], "target": 0, "expected": false, "reason": "overtaken" },
+    { "name": "a wake turn after it", "turns": [{ "by": "me" }, { "by": "wake" }], "target": 0, "expected": false, "reason": "overtaken" },
+    { "name": "their own, then someone else's later", "turns": [{ "by": "me" }, { "by": "me" }, { "by": "owner" }], "target": 0, "expected": false, "reason": "overtaken" },
+    { "name": "the owner's turn", "turns": [{ "by": "owner" }], "target": 0, "expected": false, "reason": "not_own" },
+    { "name": "another participant's turn", "turns": [{ "by": "other" }], "target": 0, "expected": false, "reason": "not_own" },
+    { "name": "their Verify turn", "turns": [{ "by": "me", "verify": true }], "target": 0, "expected": false, "reason": "not_own" },
+    { "name": "their unanswered turn", "turns": [{ "by": "me", "answered": false }], "target": 0, "expected": false, "reason": "not_own" }
+  ]
+}

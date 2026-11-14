@@ -33,7 +33,6 @@ RSpec.describe Samagotchi::TurnAnchors do
     expect(anchors.to_h).to eq(verify: { turn_id: v1, quote: "the claim" }, revises: { turn_id: v1 })
     expect(anchors.kwargs).to eq(verify: anchors.verify, revises: anchors.revises)
     expect(anchors.present.map { |anchor| anchor.class::FEATURE }).to eq(%w[verify revise])
-    expect(anchors.without_revises).to eq(described_class.new(verify: verify))
   end
 
   it "names an anchor in an input file by a Hash under its key, well-formed or not (held for the turn's end)" do

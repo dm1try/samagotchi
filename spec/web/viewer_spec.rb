@@ -49,6 +49,11 @@ RSpec.describe Samagotchi::Web::Viewer do
                                               "viewer-can" => described_class::PARTICIPANT_CAPABILITIES.join(" "))
   end
 
+  it "gives a participant Revise on their own answers only: revise_own_turn, never the owner's revise" do
+    expect(described_class::PARTICIPANT_CAPABILITIES).to include("revise_own_turn")
+    expect(described_class::PARTICIPANT_CAPABILITIES).not_to include("revise")
+  end
+
   it "names each capability once, in the page's words (lower snake case); a participant's are none of the owner's" do
     all = described_class::CAPABILITIES | described_class::PARTICIPANT_CAPABILITIES
     expect(described_class::PARTICIPANT_CAPABILITIES).to eq(described_class::PARTICIPANT_CAPABILITIES.uniq)

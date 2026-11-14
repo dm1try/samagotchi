@@ -42,8 +42,5 @@ module Samagotchi
 
     # Engine#run_turn's keywords.
     def kwargs = { verify:, revises: }.compact
-
-    # A participant's: they can't Revise (participant_access.rb, the Bridge).
-    def without_revises = with(revises: nil)
   end
 end

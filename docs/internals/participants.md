@@ -240,6 +240,19 @@ Refused before delivery, each audited:
   plugin command (v1);
 - a cut (`delivery: cut`): 403 `not_permitted`: a participant's message never cuts a generation;
 - the grant's cap: 429 `cap_reached`, from the session's saved analytics (`SessionMetrics.saved_spend`);
+- a Revise draft (`revises: {turn_id}`, `ParticipantAccess#participant_revise_refusal`): a live worker without
+  `participant_revise` (`ReviseAnchor::PARTICIPANT_FEATURE`): 409 `revise_unavailable` in
+  `ParticipantMessages::REVISE_UNAVAILABLE` (never `ReviseAnchor::UNAVAILABLE`'s owner words, which
+  `#participant_turn_result` also maps for a worker without Revise at all); then `ParticipantRevise.refusal` over the
+  messages a live worker's snapshot has (`show_reads(...).raw_messages`: the file lags it mid-turn and just after a
+  turn's end), the file's only with no live worker. The turn must open with their prompt (the author chi web
+  stamped), have an answer and not be a Verify turn, else 403 `revise_not_own` (a missing turn id answers the same:
+  no existence oracle); every turn opening after it (`ParticipantRevise.opening?`: not the owner's `!` lines, which
+  they never see) must be theirs too, else 409 `revise_overtaken`. The audit line names the turn id (`revises`),
+  accepted or refused. The worker checks the same rule again at the stamp (`TurnStages::VerifyAnchors#revision_target`,
+  up to the Revise turn itself): one overtaken after the send silently becomes a plain turn (it runs and answers, no
+  stack, no notice to them or the owner), logged only as `revise_anchor_rejected`. `SessionManager::Delivery` also
+  refuses a participant's Revise to a live worker without `participant_revise` (`ReviseAnchor::PARTICIPANT_UNAVAILABLE`);
 - images (`ParticipantImages#participant_images_refusal`, D10 lifted), in this order so nothing tells them which
   files exist: not a list of at most 20 `{file, name}` refs (no `path`): 400 `bad_images` (`IMAGES_SHAPE`); any
   ref they didn't upload (`ParticipantUploads`, read once), whether its file is there or not: 403 `not_permitted`;
@@ -489,7 +502,8 @@ in the owner's shape (`SessionShow#owner_show`'s keys, from the same `show_reads
 `spec/web/participant_show_spec.rb` holds its parity: no key the owner's lacks but the
 verdicts' (`fresh_running`, `session.verify_unavailable`).
 
-- `messages` as the review read's, stamped `drawn` (the turn whose drawing draws them); `turn_drawings` each
+- `messages` as the review read's (a turn's opening with its Revise stamp, `revises: {turn_id}`, and a Verify
+  turn's `verify: true`, a boolean, never the quote; `turn_completed` carries both too), stamped `drawn` (the turn whose drawing draws them); `turn_drawings` each
   finished turn's drawing replayed event by event through `.event` (no cards), its start's prompt the filtered
   messages' prompt of that turn, else none (an automatic turn, a wake, a delegate child's task: a made drawing's
   start has no origin to say so), its end `.drawing_end` (type, turn id, duration, kept steps; never a failure's
@@ -500,7 +514,7 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
 - `session`: id, participant title, status (idle when a worker says running with no turn), `bridge_up`,
   `worker_features`, `verdicts` (filtered, as the review's) and `verify_unavailable`.
 - `viewer`: `Web::Viewer`'s kind, id, name, `can` (`Viewer::PARTICIPANT_CAPABILITIES`: `send`, `stop_own_turn`,
-  `steer_own_turn`, and of the owner's `working_set`), `client_id` (`review:<grant id>`, which chi web gives their
+  `steer_own_turn`, `revise_own_turn`, and of the owner's `working_set` and `images`), `client_id` (`review:<grant id>`, which chi web gives their
   turns), their `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
   `waiting_for_owner` (the kind the session waits on, the review read's rule: the running turn's question, a
   Continue offer, a question between turns; nil when nothing).
@@ -875,4 +889,6 @@ participant TUI in v1.
 - The owner's input is never merged into a participant's running turn (the Bridge queues it, the drain takes only
   the participant's own lines): it runs as the owner's own turn after it.
 - A participant stops only a turn they started, named by its id, which the worker compares under its lock.
+- A participant revises only their own answer with only their own turns after it, checked by chi web at the send and
+  by the worker at the stamp (`ParticipantRevise`); their Revise never folds anyone else's turn.
 - A participant's turn never answers or drops the owner's Continue offer: it waits until the owner has.

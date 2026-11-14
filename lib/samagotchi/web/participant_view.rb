@@ -189,10 +189,12 @@ module Samagotchi
         out = { "type" => field(event, :type).to_s, **id_fields(event) }
         verdict = verdict_record(field(event, :verdict), viewer)
         out["verdict"] = verdict if verdict
-        # The turn a completed Revise turn revised (as on its prompt; the
-        # page doesn't draw stacks yet).
+        # The turn a completed Revise turn revised (as on its prompt), and
+        # whether it was a Verify turn (no Revise on its answer): a boolean,
+        # never the quote.
         revises = ReviseAnchor.from(field(event, :revises))
         out["revises"] = revises.to_file if revises
+        out["verify"] = true if field(event, :verify) == true
         out
       end
 
@@ -412,9 +414,12 @@ module Samagotchi
         out["content"] = field(message, :content).to_s
         out["turn_id"] = turn_id.to_s if turn_id
         out["merged"] = true if merged
-        # The turn it revised (a Revise stack; the page doesn't draw it yet).
+        # The turn it revised (a Revise stack), and whether it was a Verify
+        # turn (VerifyAnchor.marks?, ParticipantRevise's test too): a
+        # boolean only, never the quote.
         revises = ReviseAnchor.from(field(message, :revises))
         out["revises"] = revises.to_file if revises && turn_id && !merged
+        out["verify"] = true if turn_id && !merged && VerifyAnchor.marks?(field(message, :verify))
         out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer,
                                  field(message, :participant_mode)))
         images = image_refs(field(message, :images), field(message, :author), viewer)

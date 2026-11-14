@@ -150,7 +150,7 @@ ptest("the stage's waiting look: the status and one line per kind; none puts it 
   assert.ok(!stage.classList.contains("owner-wait"));
 });
 
-function page({ running = false, read = async () => ({ viewer: ALEX }), probe } = {}) {
+function page({ running = false, read = async () => ({ viewer: ALEX }), probe, onClosed } = {}) {
   document.body.innerHTML = '<div id="topBar"><span id="sessionTitleRow"></span></div><div id="infoBar"><div id="infoText"></div></div><div id="composer"></div>';
   document.body.dataset.session = "s1";
   document.body.dataset.sessionTitle = "Fix the install notes";
@@ -161,7 +161,7 @@ function page({ running = false, read = async () => ({ viewer: ALEX }), probe } 
     touch: (name) => touched.push(name) };
   const main = createParticipantMain({
     body: document.body, topBar: document.querySelector("#topBar"), infoBar: document.querySelector("#infoBar"),
-    composer: document.querySelector("#composer"), store, running: () => state.running, stage, read, probe,
+    composer: document.querySelector("#composer"), store, running: () => state.running, stage, read, probe, onClosed,
   });
   return { main, state, stage, touched };
 }
@@ -224,6 +224,21 @@ ptest("participant_main: their limit closes the composer; a stopped session's re
   assert.equal(composer.hidden, false);
   assert.equal(main.refused({ code: "cap_reached" }), true);
   assert.match(closed.textContent, /You have used the \$2\.00 the owner set for you\./);
+});
+
+ptest("participant_main: closed() follows the closed line, and onClosed runs on each flip only (the Revise buttons follow)", () => {
+  let flips = 0;
+  const { main } = page({ onClosed: () => { flips += 1; } });
+  main.shown(ALEX);
+  assert.equal(main.closed(), false);
+  assert.equal(flips, 0);
+  main.refused({ code: "session_stopped", body: { detail: "stopped" } });
+  assert.equal(main.closed(), true);
+  main.shown({ ...ALEX, session_stopped: true });
+  assert.equal(flips, 1, "drawn again closed: no flip");
+  main.wrapHandlers({}).turn_started({ turn_id: "t9" });
+  assert.equal(main.closed(), false);
+  assert.equal(flips, 2);
 });
 
 ptest("participant_main: an ended link shows the 401's words from a brief read, or a refused send's own", async () => {

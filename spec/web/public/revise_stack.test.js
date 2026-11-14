@@ -92,6 +92,7 @@ function page(turns, deps = {}) {
       opening.title = `time of ${id}`;
       if (opts.revises) opening.dataset.revises = opts.revises;
       if (opts.verify) opening.dataset.verify = "1";
+      if (opts.author) opening.dataset.author = opts.author;
     }
     // A delegate report's fold row heads its opening (answer_fold.js).
     if (opts.head) {
@@ -171,6 +172,23 @@ test("the page: superseded turns fold to one stub each, in place; the top answer
   assert.ok(picks[2].disabled, "the version on view isn't picked");
   // Superseded answers have no Revise; the top and an unstacked one do.
   assert.deepEqual([...history.querySelectorAll("[data-revise]")].map((b) => b.dataset.revise), ["v3", "x"]);
+  history.remove();
+});
+
+test("the page: a mayRevise false draws no Revise button, but the stubs, the version chip and the switcher stay", () => {
+  clearFolds();
+  const asked = [];
+  const { history } = page([["v1", "first"], ["v2", "second", { revises: "v1" }], ["x", "plain"], ["y", "mine", { author: "p:a" }]], {
+    mayRevise: (turn, turns) => { asked.push([turn.id, turns.length]); return turn.prompt?.dataset.author === "p:a"; },
+  });
+  assert.equal(history.querySelectorAll(".stack-stub").length, 1);
+  const top = answer(history, "v2").nextElementSibling;
+  assert.ok(top.matches(".revise-row.stacked"));
+  assert.equal(top.querySelector("summary").textContent, "v2 · 1 earlier");
+  assert.ok(top.querySelector("[data-stack-step]"), "the switcher is drawn");
+  assert.ok(answer(history, "x").nextElementSibling?.matches(".revise-row") !== true, "no empty row under a plain answer");
+  assert.deepEqual([...history.querySelectorAll("[data-revise]")].map((b) => b.dataset.revise), ["y"]);
+  assert.ok(asked.every(([, n]) => n === 4), "it is asked with historyTurns' list");
   history.remove();
 });
 

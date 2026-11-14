@@ -109,12 +109,99 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(delivered.last[:anchors]).to be_empty
   end
 
-  it "drops a Revise draft from a participant's body (only the owner stacks), keeping their Verify claim" do
-    verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
-    revises = { turn_id: "123e4567-e89b-12d3-a456-426614174001" }
+  describe "a Revise draft (ParticipantRevise)" do
+    let(:own) { "123e4567-e89b-12d3-a456-426614174001" }
+    let(:owners) { "123e4567-e89b-12d3-a456-426614174002" }
+    let(:history) do
+      [{ role: "user", content: "Say pong", turn_id: owners }, { role: "assistant", content: "pong" },
+       { role: "user", content: "Is step 3 safe?", turn_id: own, author: grant.author }, { role: "assistant", content: "Yes, long" }]
+    end
+    let(:messages) { Samagotchi::ParticipantMessages }
 
-    expect(turn({ prompt: "shorter", verify: verify, revises: revises }).first).to eq(202)
-    expect(delivered.last[:anchors]).to eq(Samagotchi::TurnAnchors.new(verify: verify))
+    def save(list)
+      session.messages = list
+      session.save(state_dir: state_dir)
+    end
+
+    # A live worker: its features, and the snapshot's messages (string keys).
+    def live(features, snapshot_messages = nil)
+      allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(features)
+      return unless snapshot_messages
+
+      snapshot = { "snapshot" => { "messages" => JSON.parse(JSON.generate(snapshot_messages)) } }
+      allow(app).to receive(:bridge_get_json).and_call_original
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
+    end
+
+    it "delivers a Revise of their own answer with its draft, keeping their Verify claim; the audit line names it" do
+      save(history)
+      verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+
+      expect(turn({ prompt: "shorter", verify: verify, revises: { turn_id: own } }).first).to eq(202)
+      expect(delivered.last[:anchors]).to eq(Samagotchi::TurnAnchors.new(verify: verify, revises: { turn_id: own }))
+      expect(audit.last.values_at("status", "revises")).to eq(["accepted", own])
+    end
+
+    it "refuses one of the owner's answer and one of no turn with the same 403 revise_not_own, audited" do
+      save(history)
+      [owners, "123e4567-e89b-12d3-a456-426614174999"].each do |turn_id|
+        expect(turn({ prompt: "shorter", revises: { turn_id: turn_id } }))
+          .to eq([403, { "error" => "revise_not_own", "detail" => messages::REVISE_NOT_OWN }])
+      end
+      expect(delivered).to eq([])
+      expect(audit.map { |line| line.values_at("reason", "revises") })
+        .to eq([["revise_not_own", owners], %w[revise_not_own 123e4567-e89b-12d3-a456-426614174999]])
+    end
+
+    it "refuses one someone else's turn came after (409 revise_overtaken)" do
+      save(history + [{ role: "user", content: "next", turn_id: "o2" }, { role: "assistant", content: "ok" }])
+      expect(turn({ prompt: "shorter", revises: { turn_id: own } }))
+        .to eq([409, { "error" => "revise_overtaken", "detail" => messages::REVISE_OVERTAKEN }])
+      expect(delivered).to eq([])
+    end
+
+    it "refuses one to a live worker without participant_revise in the participant's words (409 revise_unavailable)" do
+      save(history)
+      live([Samagotchi::ReviseAnchor::FEATURE])
+      expect(turn({ prompt: "shorter", revises: { turn_id: own } }))
+        .to eq([409, { "error" => "revise_unavailable", "detail" => messages::REVISE_UNAVAILABLE }])
+      expect(delivered).to eq([])
+    end
+
+    it "reads a live worker's snapshot, not the file: an answer not saved yet is theirs to revise" do
+      save(history.first(3))
+      live([Samagotchi::ReviseAnchor::FEATURE, Samagotchi::ReviseAnchor::PARTICIPANT_FEATURE], history)
+      expect(turn({ prompt: "shorter", revises: { turn_id: own } }).first).to eq(202)
+      expect(delivered.last[:anchors].revises).to eq(Samagotchi::ReviseAnchor.new(turn_id: own))
+    end
+
+    it "gives a worker without Revise at all the participant's words, never ReviseAnchor::UNAVAILABLE's" do
+      save(history)
+      refused = Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, code: 409,
+                                                              ack: Samagotchi::ReviseAnchor::UNAVAILABLE)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(refused)
+      status, body = turn({ prompt: "shorter", revises: { turn_id: own } })
+      expect([status, body]).to eq([409, { "error" => "revise_unavailable", "detail" => messages::REVISE_UNAVAILABLE }])
+      expect(body["detail"]).not_to eq(Samagotchi::ReviseAnchor::UNAVAILABLE["detail"])
+    end
+
+    it "checks the cap first (429 cap_reached), before any Revise check" do
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      record = { "id" => "t1", "author" => grant.author, "cost" => 9.0 }
+      File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [record] }))
+      expect(turn({ prompt: "shorter", revises: { turn_id: owners } }).first).to eq(429)
+      expect(audit.last.values_at("reason", "revises")).to eq(["cap_reached", owners])
+    end
+
+    it "keeps the images' ownership on a Revise (403 not_permitted for an image not theirs)" do
+      save(history)
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m")
+      ref = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "owner.png")
+      expect(turn({ prompt: "shorter", revises: { turn_id: own }, images: [{ file: ref[:file], name: "owner.png" }] }))
+        .to eq([403, { "error" => "not_permitted", "detail" => messages::NOT_PERMITTED }])
+      expect(delivered).to eq([])
+    end
   end
 
   it "refuses a shell line and a command (403 not_permitted), audited, never delivered" do

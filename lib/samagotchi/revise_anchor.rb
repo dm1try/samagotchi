@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "participant_messages"
 require_relative "verify_anchor"
 
 module Samagotchi
@@ -26,6 +27,14 @@ module Samagotchi
   end
 
   ReviseAnchor::FEATURE = "revise"
+  # A worker that checks a participant's Revise (ParticipantRevise, at the
+  # stamp) and keeps their draft: what chi web needs to pass one on.
+  ReviseAnchor::PARTICIPANT_FEATURE = "participant_revise"
+  # A participant's Revise to a live worker without PARTICIPANT_FEATURE
+  # (SessionManager::Delivery), in their words, never UNAVAILABLE's owner ones.
+  ReviseAnchor::PARTICIPANT_UNAVAILABLE = {
+    "error" => "revise_unavailable", "detail" => ParticipantMessages::REVISE_UNAVAILABLE
+  }.freeze
   ReviseAnchor::UNAVAILABLE = {
     "error" => "revise_unavailable",
     "detail" => "this session's worker predates Revise turns; restart this session to use Revise"

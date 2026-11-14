@@ -31,6 +31,18 @@ module Samagotchi
     # A participant's Stop on a worker that can't stop only the turn named
     # (Delivery::CANCEL_TURN_ID_FEATURE): it might stop the owner's next turn.
     CANCEL_UNAVAILABLE = "this session's worker is too old to stop only your turn: ask the session's owner to restart it"
+    # 403 revise_not_own: a Revise of a turn that isn't theirs, unanswered
+    # or a Verify turn, or no turn at all (ParticipantRevise: one answer,
+    # no existence oracle).
+    REVISE_NOT_OWN = "you can revise only an answer to your own message"
+    # 409 revise_overtaken: someone else's turn came after the answer they revise.
+    REVISE_OVERTAKEN = "someone else's turn came after this answer: send a new message instead"
+    # 409 revise_unavailable: a live worker without
+    # ReviseAnchor::PARTICIPANT_FEATURE (it doesn't check their Revise), or
+    # without Revise at all; never ReviseAnchor::UNAVAILABLE's owner words.
+    # The page's chip has the one copy (participant_revise.js).
+    REVISE_UNAVAILABLE = "this session's worker is too old for you to revise an answer: ask the session's owner to " \
+                         "restart it"
     # 429 too_many_images: their grant uploaded Grants::MAX_IMAGES distinct images.
     TOO_MANY_IMAGES = "this participant's image allowance is used up: describe what the image shows"
     # 429 too_many_image_attempts: Grants::MAX_IMAGE_ATTEMPTS uploads tried, refused ones counted.

@@ -810,7 +810,8 @@ RSpec.describe Samagotchi::Bridge do
     it "writes a discoverable port sidecar on start, with the chi version it runs, its features and its epoch" do
       start_bridge
       expect(@bridge_port).to be > 0
-      expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::VerifyAnchor::FEATURE, Samagotchi::ReviseAnchor::FEATURE, "objectives_track")
+      expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::VerifyAnchor::FEATURE, Samagotchi::ReviseAnchor::FEATURE, "objectives_track",
+                                                      "participant_revise")
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
       expect(JSON.parse(File.read(sidecar)))
         .to include("version" => Samagotchi::VERSION, "features" => Samagotchi::Bridge::FEATURES, "epoch" => @bridge.epoch)

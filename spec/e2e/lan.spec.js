@@ -107,7 +107,7 @@ test.describe("on the LAN", () => {
   });
 });
 
-test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control but the image button, a message with an image (a double Enter) is queued once, starts and gets its answer, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel; the link opens the main page (over the LAN when there is one) with the history and no owner control but the image button, a message with an image (a double Enter) is queued once, starts and gets its answer, the owner applies it, a claim link opens in Alex's browser, and Alex revises their own answer (a stack on both pages)", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -243,6 +243,23 @@ test("a review: the owner starts one for a file and invites from the panel; the 
   const thumb = page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" }).locator("img.thumb");
   await expect(thumb).toHaveAttribute("src", /\/images\/[0-9a-f]{16}\.png$/);
   await expect.poll(() => thumb.evaluate((img) => img.complete && img.naturalWidth)).toBe(1);
+  // Revise (participant_revise.js): on the answer to Alex's own message
+  // only, none under the owner's "Say pong"; the next message rewrites it,
+  // and the first version folds into a stub on Alex's page and the owner's.
+  const mineId = await page.locator("#history .bubble.user", { hasText: "Is step 3 safe?" }).getAttribute("data-turn-id");
+  await expect(page.locator("#history .revise-btn")).toHaveCount(1);
+  await expect(page.locator("#history .revise-btn")).toHaveAttribute("data-revise", mineId);
+  await page.locator("#history .bubble.output").last().hover();
+  await page.locator("#history .revise-btn").click();
+  await expect(page.locator("#reviseChip .revise-chip")).toContainText("Revising:");
+  await page.locator("#prompt").fill("shorter");
+  await page.locator("#prompt").press("Enter");
+  await expect(page.locator("#reviseChip")).toBeHidden();
+  // The ended turn leaves the stage for the history once the pointer is away.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("#history .stack-stub")).toHaveCount(1);
+  await expect(page.locator("#history .stack-versions > summary")).toHaveText("v2 · 1 earlier");
+  await expect(owner.locator("#history .stack-stub")).toHaveCount(1);
   expect(refused, "requests answered 403").toEqual([]);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
