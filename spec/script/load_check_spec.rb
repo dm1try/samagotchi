@@ -131,4 +131,22 @@ RSpec.describe LoadCheck::Check do
 
     expect(status.exitstatus).to eq(1)
   end
+
+  it "exits 1 with --strict and names an unmatched allow-list entry" do
+    script = File.expand_path("../../script/load-check", __dir__)
+    default_allow = File.expand_path("../../script/load_check/allow.yml", __dir__)
+    Dir.mktmpdir("load-check-allow-") do |dir|
+      allow = File.join(dir, "allow.yml")
+      File.write(allow, File.read(default_allow) + <<~YAML)
+        - rule: 2
+          file: lib/samagotchi/nowhere.rb
+          constant: Samagotchi::Nothing
+          reason: fixture entry that matches nothing
+      YAML
+      _out, err, status = Open3.capture3(RbConfig.ruby, script, "--strict", "--allow", allow, stdin_data: "")
+
+      expect(status.exitstatus).to eq(1)
+      expect(err).to include("stale allow-list entry: rule 2 file lib/samagotchi/nowhere.rb constant Samagotchi::Nothing")
+    end
+  end
 end
