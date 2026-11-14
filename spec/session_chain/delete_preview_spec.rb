@@ -56,6 +56,14 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
 
   def preview(id) = described_class.call(id, state_dir: tmpdir)
 
+  it "takes a nil state dir as the default one, as chi web passes it" do
+    a = make
+    b = continue(a.id)
+    allow(Samagotchi::Session).to receive(:default_state_dir).and_return(tmpdir)
+
+    expect(described_class.call(b.id, state_dir: nil)).to include(chained: true, position: 2)
+  end
+
   it "says a session in no chain is not chained" do
     plain = make
     expect(preview(plain.id)).to eq(chained: false, session_id: plain.id)
@@ -164,6 +172,10 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     c = continue(b.id)
     manager.delete_session(b.id, state_dir: tmpdir, allow_scheduled: true)
 
-    expect(preview(c.id)).to include(cut_off: true, position: 1, size: 1)
+    d = continue(c.id)
+
+    expect(preview(d.id)).to include(cut_off: true, position: 2, size: 2)
+    # A link alone past the gap is no chain: today's confirm.
+    expect(preview(a.id)).to eq(chained: false, session_id: a.id)
   end
 end

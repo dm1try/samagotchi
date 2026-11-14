@@ -20,7 +20,10 @@ module Samagotchi
         #   {chained: true, session_id, position, size, cut_off, link: {...},
         #   chain: {...}}; each refusal {reason, message, schedule_id, ids,
         #   stoppable} or nil
+        # @param state_dir [String, nil] nil: Session.default_state_dir (chi
+        #   web's, as SessionManager's methods take it)
         def call(id, state_dir:)
+          state_dir ||= Session.default_state_dir
           links = Links.new(state_dir: state_dir)
           return { chained: false, session_id: id } unless Delete.chained?(id, links)
 
