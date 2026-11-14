@@ -13,6 +13,9 @@
 // cross-check here only).
 import test from "node:test";
 import assert from "node:assert/strict";
+import { failOnWaitingWarnings } from "./waiting_warnings.js";
+
+failOnWaitingWarnings();
 import { readdirSync, readFileSync } from "node:fs";
 
 const { livePage, clearSession } = await import("./live_page.js");

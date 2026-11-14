@@ -59,6 +59,7 @@ export function livePage({ questions = false } = {}) {
       sessionId: () => "s1", clientId: "web:me", place: (card) => appendToHistory(card), isNearBottom: () => false,
       scrollToEnd() {}, removeHintIfEmpty() {}, askingText: (pq) => turnDom.askingText(pq),
       api: { sendAnswer: async () => ({}), dismissQuestion: async () => ({}), sendCommand: async () => ({}) },
+      onArrive: (key, info) => turnDom.expectWaiting?.(key, info),
       onSettled: (key) => turnDom.settleWaiting?.(key),
     })
     : new Proxy({}, { get: () => () => null });

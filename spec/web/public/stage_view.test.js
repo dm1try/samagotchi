@@ -3,6 +3,9 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { failOnWaitingWarnings } from "./waiting_warnings.js";
+
+failOnWaitingWarnings();
 
 for (const k of ["MutationObserver", "CustomEvent", "localStorage", "getSelection"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
