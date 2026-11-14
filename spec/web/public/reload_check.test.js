@@ -130,3 +130,61 @@ test("a read or a post that fails is dropped", async () => {
   });
   await check.handedOff({ pieces: pieces() });
 });
+
+// A drawn turn already renders its own cards (turn_block.js drawnTurnNodes),
+// so they compare; a card of another turn, or a between-turn one, does not.
+const DRAWN = '<div class="bubble user" data-turn-id="T1" data-drawn="T1"><div class="user-message">hi</div></div>'
+  + '<details class="turn-work" data-drawn="T1"><summary><span class="turn-steps">1 step</span></summary>'
+  + '<div class="gen"><summary>ask</summary><div class="activity-body">'
+  + '<div class="plugin-card" data-card-id="c1"><span class="card-title">Check-in</span></div>'
+  + '</div></div></details>'
+  + '<div class="bubble output">hello</div><div class="turn-timing">turn 1 · 5ms</div>';
+const CARD = (id, title) => `<div class="plugin-card" data-card-id="${id}"><span class="card-title">${title}</span></div>`;
+const IN_TURN = { id: "c1", type: "card", in_turn: true, of_turn: "T1", title: "Check-in" };
+
+test("a drawn turn's own card is compared: the reload that loses it is a finding of kind card", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN.replace(CARD("c1", "Check-in"), ""), data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["card"]);
+  assert.equal(posts[0][1].drawn, true);
+});
+
+test("a drawn turn's own card, live and reloaded the same, is no finding", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("another turn's card, or a between-turn one, on one side only is no finding", async () => {
+  const foreign = `<div class="bubble plugin-card" data-card-id="c9"><span class="card-title">Elsewhere</span></div>`;
+  const { check, posts } = setup({
+    reloaded: DRAWN,
+    data: { turn_drawings: { T1: {} }, cards: [IN_TURN, { id: "c9", opening_id: "T2", title: "Elsewhere" }] },
+  });
+  await check.handedOff({ pieces: pieces(DRAWN + foreign) });
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("a live card the snapshot doesn't know at all is a finding: the reload lost it", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN.replace(CARD("c1", "Check-in"), CARD("c1", "Check-in") + CARD("c7", "Late"))) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["card"]);
+});
+
+test("a card's title updated after the turn reads the same on both sides (CardStore's latest)", async () => {
+  const both = DRAWN.replace("Check-in", "Check-in, again");
+  const { check, posts } = setup({ reloaded: both, data: { turn_drawings: { T1: {} }, cards: [{ ...IN_TURN, title: "Check-in, again" }] } });
+  await check.handedOff({ pieces: pieces(both) });
+  assert.equal(posts[0][1].same, true);
+});
+
+test("an undrawn turn's cards are still left out (the placer comes in the next step)", async () => {
+  const live = DRAWN.replace(' data-drawn="T1"', "");
+  const { check, posts } = setup({ reloaded: live, data: { cards: [{ id: "c1", type: "card", in_turn: true, title: "Check-in" }] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true);
+});
