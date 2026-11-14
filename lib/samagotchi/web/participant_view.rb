@@ -3,7 +3,6 @@
 require_relative "../output_formatter"
 require_relative "../steer"
 require_relative "../turn_origin"
-require_relative "../participant_mode"
 require_relative "../revise_anchor"
 require_relative "../verify_anchor"
 require_relative "../redact"
@@ -33,8 +32,9 @@ module Samagotchi
     # home folder), defence in depth only: the allowlist is the control.
     # Pure: no I/O; keys of what comes in may be strings (JSON) or symbols.
     module ParticipantView
-      # A turn's participant_mode values the view passes on (ParticipantMode).
-      PARTICIPANT_MODES = [ParticipantMode::REVIEW.to_s, ParticipantMode::PAIR.to_s].freeze
+      # A turn's participant_mode values the view passes on: "pair", and an
+      # older chi's "review" (its saved turns keep their stamp).
+      PARTICIPANT_MODES = %w[review pair].freeze
 
       # The stream's event types a participant gets, each rebuilt by the
       # method named. Every other type is dropped.

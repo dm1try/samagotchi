@@ -20,7 +20,6 @@ require_relative "config"
 require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
 require_relative "memory_bundle/entry_size"
-require_relative "participant_mode"
 
 module Samagotchi
   # One call's result from ToolRunner#run, read by ToolResponse (the loops'
@@ -507,9 +506,6 @@ module Samagotchi
     end
 
     def unreached_group_refusal(call, context)
-      # A review turn's boundary denies it first (and words why); a pair
-      # turn gets the owner's refusal.
-      return if context.participant? && context.participant_mode != ParticipantMode::PAIR
       return if tools.nil?
 
       surface = surface(context)

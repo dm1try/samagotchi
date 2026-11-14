@@ -168,14 +168,14 @@ RSpec.describe Samagotchi::Web::App, "Verify fresh" do
 
   it "refuses a participant's while the session's live worker predates their turns (no pair_turns)" do
     [%w[delivery verify], %w[delivery review_turns verify]].each do |features|
-      allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(features)
+      allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(features)
       expect(call.first(2).last).to include("error" => "pair_unavailable")
     end
     expect(spawned).to eq([])
   end
 
   it "refuses Verify fresh for the owner and participant when the live worker lacks Verify" do
-    allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(%w[delivery review_turns])
+    allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(%w[delivery review_turns])
 
     [nil, issued.token].each do |token|
       expect(call(token: token)).to eq([409, Samagotchi::VerifyAnchor::UNAVAILABLE])

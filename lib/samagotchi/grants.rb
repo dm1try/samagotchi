@@ -5,7 +5,6 @@ require "fileutils"
 require "json"
 require "openssl"
 require_relative "steer"
-require_relative "participant_mode"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
@@ -60,7 +59,7 @@ module Samagotchi
     # (a participant's turns act under the owner's rules). A grant without
     # it was issued by an older chi for read-only turns, which this chi
     # doesn't run: it reads as ended (Grant#state :outdated).
-    PAIR_MODE = ParticipantMode::PAIR.to_s
+    PAIR_MODE = "pair"
     NAME_MAX = ParticipantName::MAX
     ID_RE = /\Ap_[0-9a-f]{8}\z/
     # D7: what a participant's turns (and the side calls they cause) may

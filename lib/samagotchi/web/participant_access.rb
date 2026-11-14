@@ -11,7 +11,7 @@ require_relative "../session_inbox"
 require_relative "../session_metrics"
 require_relative "../parent_report"
 require_relative "../participant_messages"
-require_relative "../participant_mode"
+require_relative "../worker_link"
 require_relative "../participant_revise"
 require_relative "../participants"
 require_relative "../session"
@@ -288,7 +288,7 @@ module Samagotchi
       # would stop whatever runs, the owner's next turn too.
       def cancels_by_turn_id?(id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        Array(ParticipantMode.live_features(session, default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
+        Array(WorkerLink.live_features(session.id, state_dir: default_state_dir)).include?(Delivery::CANCEL_TURN_ID_FEATURE)
       end
 
       # 409 cancel_unavailable, audited; nothing is relayed.
@@ -370,7 +370,7 @@ module Samagotchi
         return nil unless anchors.revises
 
         session = @session_class.load(id, state_dir: default_state_dir)
-        features = ParticipantMode.live_features(session, default_state_dir)
+        features = WorkerLink.live_features(session.id, state_dir: default_state_dir)
         if features && !features.include?(ReviseAnchor::PARTICIPANT_FEATURE)
           return [409, "revise_unavailable", ParticipantMessages::REVISE_UNAVAILABLE]
         end

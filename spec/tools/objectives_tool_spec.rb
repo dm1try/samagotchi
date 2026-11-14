@@ -227,7 +227,7 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
       kits = Samagotchi::Toolkit::BUILTIN_KITS
 
       expect(Samagotchi::Toolkit.new(name: "full").resolve(kits).declares?(entry)).to be(true)
-      %w[lean child review].each do |kit|
+      %w[lean child].each do |kit|
         expect(Samagotchi::Toolkit.new(name: kit).resolve(kits).declares?(entry)).to be(false)
       end
       expect(Samagotchi::Toolkit.new(name: "lean", add: ["objectives"]).resolve(kits).declares?(entry)).to be(true)

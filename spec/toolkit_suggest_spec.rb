@@ -12,8 +12,7 @@ RSpec.describe Samagotchi::ToolkitSuggest do
       "web" => { "base" => "lean", "description" => "Browser work" },
       "coding" => { "base" => "child", "description" => "Code changes" },
       "undecided" => { "base" => "lean", "description" => "Must not be offered" },
-      "empty" => { "base" => "lean" },
-      "review" => { "base" => "lean", "description" => "Must not be offered" }
+      "empty" => { "base" => "lean" }
     })
   end
 

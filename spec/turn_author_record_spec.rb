@@ -78,11 +78,11 @@ RSpec.describe "a turn's author on the record" do
 
     def analytics = Samagotchi::AnalyticsFile.read(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
 
-    it "stamps an older chi's read-only participant (no grant mode) review: the worker refuses their turn first" do
+    it "stamps no mode for an older chi's read-only participant (no grant mode): the worker refuses their turn first" do
       grant = make_outdated!(grants, invite("Alex"), state_dir: state_dir)
       engine.run_turn(session, "go", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
-      expect(session.messages.find { |m| m[:role] == "user" }).to include(participant_mode: "review")
+      expect(session.messages.find { |m| m[:role] == "user" }).not_to have_key(:participant_mode)
     end
 
     it "stamps a participant's opening message in an older chi's review session pair, with its header" do
@@ -120,8 +120,8 @@ RSpec.describe "a turn's author on the record" do
       opening = session.messages.find { |m| m[:role] == "user" }
       expect(opening).to include(author: "p:p_0000abcd")
       expect(opening).not_to have_key(:author_name)
-      # Not in participants.json: no grant to act, so a review turn.
-      expect(opening).to include(participant_mode: "review")
+      # Not in participants.json: no grant to act, so no mode (a refused turn).
+      expect(opening).not_to have_key(:participant_mode)
       expect(Samagotchi::Steer.header(opening)).to start_with("[Review contribution from p_0000abcd (participant")
     end
 

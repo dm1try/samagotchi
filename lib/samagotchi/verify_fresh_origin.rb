@@ -3,14 +3,14 @@
 require_relative "steer"
 require_relative "turn_origin"
 require_relative "verify_anchor"
-require_relative "participant_mode"
 
 module Samagotchi
   # A Verify fresh child's own field (Session#verify_fresh; VerifyFresh
   # starts one): who asked for it (+author+, a participant's "p:<id>", nil
   # for the owner), the rules a participant's turns run under in it
-  # (+mode+, "review" or "pair": their grant's mode in the parent when it
-  # started, ParticipantMode.live_for), the parent's verdict it checks again
+  # (+mode+, "pair": their grant's when it started; "review" in a child an
+  # older chi saved for a read-only turn, whose turns are refused), the
+  # parent's verdict it checks again
   # (+of+, that verdict's check_turn_id) and the claim (+anchor+, a
   # VerifyAnchor). Every turn of a participant's child is theirs
   # (#origin_for): their author, their boundary, their cap. A field that is
@@ -41,9 +41,10 @@ module Samagotchi
     # delegate child).
     def participant? = Steer.participant_author?(author)
 
-    # The boundary a participant's turn runs under here: :pair only when
-    # saved so, else :review (fail closed).
-    def turn_mode = mode == ParticipantMode::PAIR.to_s ? ParticipantMode::PAIR : ParticipantMode::REVIEW
+    # Whether a participant's turns run here, under the owner's rules: only
+    # when saved so (fail closed: GuardrailWiring#participant_turn_mode,
+    # Worker#participant_refusal).
+    def pair? = mode == "pair"
 
     # +origin+ with this child's requester as its author: every turn of a
     # participant's child is theirs, whoever typed it; the owner's child
@@ -59,12 +60,13 @@ module Samagotchi
     def to_file = { "author" => author, "mode" => mode, "of" => of, "anchor" => anchor&.to_file }.compact
   end
 
-  # A verify_fresh field that doesn't read: a participant author nobody
-  # has, so the worker refuses its turns ("revoked"), under the review
-  # boundary.
-  # The modes a participant's child may be saved with (a constant of
+  # The modes a participant's child may be saved with: "pair", and "review"
+  # (an older chi's, read so it is refused, never run) (a constant of
   # VerifyFreshOrigin: one inside the Data.define block would be Samagotchi's).
-  VerifyFreshOrigin::MODES = [ParticipantMode::REVIEW.to_s, ParticipantMode::PAIR.to_s].freeze
+  VerifyFreshOrigin::MODES = %w[review pair].freeze
+
+  # A verify_fresh field that doesn't read: a participant author nobody
+  # has, so the worker refuses its turns ("revoked").
 
   VerifyFreshOrigin::INVALID = VerifyFreshOrigin.new(author: "#{Steer::PARTICIPANT_PREFIX}invalid", mode: "review",
                                                      of: nil, anchor: nil)

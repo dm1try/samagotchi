@@ -45,12 +45,12 @@ module Samagotchi
     Judged = Data.define(:suggestion, :would, :fields)
 
     # The candidates with classifier descriptions, excluding the configured
-    # default, the participants' review boundary, the defer sentinel, and a
+    # default, the defer sentinel, and a
     # kit that doesn't resolve (a missing base, a cycle): it is left out,
     # not the whole ask, and the ≥ 2 clause counts what is left.
     def self.candidates(kits, default_name:)
       kits.values.filter_map do |kit|
-        next if [default_name.to_s, Toolkit::REVIEW, UNDECIDED].include?(kit.name)
+        next if [default_name.to_s, UNDECIDED].include?(kit.name)
         next if kit.description.to_s.empty?
         next unless resolves?(kit.name, kits)
 

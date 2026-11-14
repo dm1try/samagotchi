@@ -105,7 +105,6 @@ RSpec.describe Samagotchi::Toolkit do
     expect(described_class.new(name: "web-child").resolve(kits).groups).to eq(%w[chrome db*])
     expect(described_class.new(name: "all").resolve(kits).groups).to eq(["all"])
     expect(described_class::BUILTIN_KITS.fetch("full").groups).to eq(:all)
-    expect(described_class::BUILTIN_KITS.fetch("review").groups).to eq([])
   end
 
   it "keeps the built-in child and coordinator bundle's child toolkits on all source groups" do
@@ -145,14 +144,13 @@ RSpec.describe Samagotchi::Toolkit do
                           "toolkit.kits.odd: expected {base:, add:, remove:, prompt:, groups:, description:}"])
   end
 
-  it "has a frozen review kit of reads whose name config can't take" do
-    review = described_class::BUILTIN_KITS.fetch("review")
-    expect(review.tools).to eq(%w[read memory_read])
+  it "has no review kit: toolkit.kits.review is a config kit like any" do
+    expect(described_class::BUILTIN_KITS.keys).to eq(%w[full lean child])
     expect(described_class::BUILTIN_KITS).to be_frozen
     errors = []
-    kits = described_class.kits(config: { "review" => { "base" => "full" } }, errors: errors)
-    expect(kits["review"]).to eq(review)
-    expect(errors).to eq([described_class::RESERVED_REVIEW])
+    kits = described_class.kits(config: { "review" => { "base" => "lean", "description" => "Reading code" } }, errors: errors)
+    expect(kits["review"]).to have_attributes(base: "lean", source: "config")
+    expect(errors).to eq([])
   end
 
   it "loads a config kit with an unknown key and warns about the key (a typo, not a broken kit)" do

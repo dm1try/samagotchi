@@ -1152,9 +1152,9 @@ module Samagotchi
         json_response(200, payload)
       end
 
-      # Kits the web never offers: the participants' boundary, a delegate
-      # child's, and ToolkitSuggest's defer sentinel.
-      PICKER_HIDDEN_KITS = [Toolkit::REVIEW, Toolkit::CHILD, ToolkitSuggest::UNDECIDED].freeze
+      # Kits the web never offers: a delegate child's, and ToolkitSuggest's
+      # defer sentinel.
+      PICKER_HIDDEN_KITS = [Toolkit::CHILD, ToolkitSuggest::UNDECIDED].freeze
 
       # The start page's toolkit picker: {default:, suggest:, kits: [{name,
       # description?}]}. Built-in and config kits only (a bundle's load in

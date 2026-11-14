@@ -877,7 +877,7 @@ module Samagotchi
       return false unless entry&.current?(Time.now)
 
       fresh = @session&.verify_fresh
-      entry.outdated? || (fresh&.participant? && fresh.mode.to_s != Grants::PAIR_MODE) || false
+      entry.outdated? || (fresh&.participant? && !fresh.pair?) || false
     end
 
     # Why a participant's running pair turn stops (Engine#participant_stop,
@@ -922,23 +922,19 @@ module Samagotchi
 
     # The owner's notice that a participant reached their cap: once per
     # participant and cap (a raised cap that is reached again says so again).
-    # A pair participant's says turns (their turns act), a review one's
-    # comments.
     def cap_notice(author, entry, cap)
       key = [author, cap]
       return if (@cap_noticed ||= Set.new).include?(key)
 
       @cap_noticed << key
       id = Steer.participant_id(author)
-      text = ParticipantMode.for_turn(@session, entry) == ParticipantMode::PAIR ? PAIR_CAP_NOTICE : CAP_NOTICE
       @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
-                       text: format(text, name: participant_label(author, entry.name), cap: cap, session: participants_id[0, 8], id: id))
+                       text: format(CAP_NOTICE, name: participant_label(author, entry.name), cap: cap,
+                                                session: participants_id[0, 8], id: id))
     end
 
-    CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \
+    CAP_NOTICE = "%<name>s reached their $%<cap>.2f cap: their turns stop and are refused until you raise it " \
                  "(chi share cap %<session>s %<id>s AMOUNT)."
-    PAIR_CAP_NOTICE = "%<name>s reached their $%<cap>.2f cap: their turns stop and are refused until you raise it " \
-                      "(chi share cap %<session>s %<id>s AMOUNT)."
     # The reason a pair turn stopped at its participant's cap (the turn's
     # "stopped the turn: …" notice).
     CAP_STOP = "%<name>s reached their $%<cap>.2f cap"

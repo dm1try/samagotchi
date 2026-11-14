@@ -15,7 +15,7 @@ require_relative "edit_preview"
 require_relative "system_one"
 require_relative "tool_activity"
 require_relative "turn_origin"
-require_relative "participant_mode"
+require_relative "grants"
 
 module Samagotchi
   # An Engine's tool guardrails: who can approve (the interface), the YAML
@@ -118,14 +118,21 @@ module Samagotchi
                     mode: author && participant_turn_mode(session, entry))
     end
 
-    # A participant's turn's mode: in a Verify fresh child the one saved
-    # on it at spawn (VerifyFreshOrigin#turn_mode: :review unless saved
-    # :pair), never looked up again; elsewhere ParticipantMode.for_turn
-    # (:pair only in a working session for a participant invited to act).
+    # A participant's turn's mode: PAIR (it acts under the owner's
+    # guardrails, PairBoundary) for a current invite (their entry's mode is
+    # Grants::PAIR_MODE) in a session, and in a Verify fresh child only when
+    # it was saved for one (VerifyFreshOrigin#pair?); else REFUSED (an older
+    # chi's read-only invite, none at all, no session: ParticipantRefusal).
     def participant_turn_mode(session, entry)
+      return REFUSED if session.nil? || !entry.respond_to?(:mode) || entry.mode.to_s != Grants::PAIR_MODE
+
       fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
-      fresh ? fresh.turn_mode : ParticipantMode.for_turn(session, entry)
+      fresh && !fresh.pair? ? REFUSED : PAIR
     end
+
+    # A participant's turn's modes (TurnContext#participant_mode).
+    PAIR = :pair
+    REFUSED = :refused
     private :participant_turn_mode
 
     # The gate every tool call asks first, given the call's TurnContext
@@ -149,10 +156,9 @@ module Samagotchi
     # The gate's core checks, in order. A delegate child's boundary comes
     # before the rules, so its ask keeps the child-boundary rule id (and
     # its once/session scopes) when a strict rule asks too. The
-    # participant's boundary comes before both, by the session's
-    # ParticipantMode: a review turn's (ReviewBoundary) or a pair turn's
-    # (PairBoundary). Either denies what a participant's turn may not do,
-    # never asks about it; both are no-ops for the owner's turns.
+    # participant's boundary comes before both, by the turn's mode: a pair
+    # turn's (PairBoundary), else every call denied (ParticipantRefusal).
+    # Either is a no-op for the owner's turns.
     # @param turn [TurnContext] the call's turn
     def checks(turn)
       rules = self.rules
@@ -163,13 +169,9 @@ module Samagotchi
     # The boundary for a participant's turn in this session (#checks), by
     # the turn's mode.
     def participant_boundary(turn)
-      turn.participant_mode == ParticipantMode::PAIR ? pair_boundary(turn) : review_boundary(turn)
-    end
+      return pair_boundary(turn) if turn.participant_mode == PAIR
 
-    # A participant's review turn's boundary (Guardrails::ReviewBoundary): a
-    # no-op unless +turn+'s author is a participant's.
-    def review_boundary(turn)
-      Guardrails::ReviewBoundary.new(author: -> { turn.author }, root: -> { boundary_root(turn.git) })
+      Guardrails::ParticipantRefusal.new(author: -> { turn.author })
     end
 
     # A participant's pair turn's boundary (Guardrails::PairBoundary): a

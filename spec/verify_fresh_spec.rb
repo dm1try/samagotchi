@@ -221,7 +221,8 @@ RSpec.describe Samagotchi::VerifyFreshOrigin do
 
   it "reads a participant's field and runs their turns as theirs under the saved mode" do
     origin = described_class.of({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor })
-    expect(origin.turn_mode).to eq(:pair)
+    expect(origin.pair?).to be(true)
+    expect(described_class.of({ "author" => "p:alex", "mode" => "review", "of" => "c1", "anchor" => anchor }).pair?).to be(false)
     turn = origin.origin_for(Samagotchi::TurnOrigin.new(client_id: "web:x"))
     expect([turn.author, turn.client_id]).to eq(["p:alex", "web:x"])
     expect(described_class.of(origin.to_file)).to eq(origin)
@@ -233,14 +234,14 @@ RSpec.describe Samagotchi::VerifyFreshOrigin do
     expect(origin.origin_for(Samagotchi::TurnOrigin::NONE).author).to be_nil
   end
 
-  it "fails closed: a field that doesn't read is a participant nobody has, under review" do
+  it "fails closed: a field that doesn't read is a participant nobody has, never pair" do
     [{ "author" => "p:alex", "mode" => "admin", "of" => "c1", "anchor" => anchor },
      { "author" => "p:alex", "mode" => "pair", "of" => "c1" },
      { "author" => "owner", "mode" => "pair", "of" => "c1", "anchor" => anchor },
      "pair"].each do |value|
       origin = described_class.of(value)
       expect(origin).to eq(described_class::INVALID)
-      expect(origin.turn_mode).to eq(:review)
+      expect(origin.pair?).to be(false)
       expect(origin.origin_for(Samagotchi::TurnOrigin::NONE).participant?).to be(true)
     end
     expect(described_class.of(nil)).to be_nil

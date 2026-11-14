@@ -5,7 +5,6 @@ require_relative "token"
 require_relative "participant_stream_filter"
 require_relative "../participant_exposure"
 require_relative "../session_metrics"
-require_relative "../participant_mode"
 require_relative "../verify_fresh"
 
 module Samagotchi
@@ -80,8 +79,8 @@ module Samagotchi
       def review_viewer(req, id, session:, state:, queued:, viewer:)
         grant = principal(req).grant
         capped = !participant_cap_refusal(grant).nil?
-        # Theirs: pair only when their grant was issued to act (ParticipantMode.live_for).
-        mode = ParticipantMode.live_for(session, grant, state_dir: default_state_dir).to_s
+        # Their turns act under the owner's rules (every active grant is pair).
+        mode = Grants::PAIR_MODE
         { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, mode: mode, can_comment: !capped,
           cap_reached: capped, session_id: id,
           usage: review_usage(grant, session: session, state: state, queued: queued, viewer: viewer) }

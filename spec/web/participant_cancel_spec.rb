@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::Web::App, "a participant stopping a turn" do
   before do
     allow(app).to receive(:bridge_get_json).with(session.id, "snapshot") { { "snapshot" => { "current_turn" => running } } }
     allow(app).to receive(:bridge_client).with(session.id).and_return(client)
-    allow(Samagotchi::ParticipantMode).to receive(:live_features).and_return(features)
+    allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(features)
   end
 
   after { FileUtils.remove_entry(root) }

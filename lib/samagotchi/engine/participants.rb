@@ -77,13 +77,14 @@ module Samagotchi
         Steer.author_fields(author, @participants.name_for(author, session: session))
       end
 
-      # A participant's opening message keeps the rules it was delivered under
-      # (ParticipantMode), stamped before any request carries it, so its header
-      # never changes when the session's mode does.
+      # A participant's opening message keeps the rules it was delivered under,
+      # stamped before any request carries it, so its header never changes
+      # afterwards: "pair" for a pair turn (GuardrailWiring::PAIR). A turn this
+      # chi refuses (GuardrailWiring::REFUSED) gets no stamp: it reads as a
+      # review, whose header says the turn may only read.
       # @param context [TurnContext] the turn's
       def participant_mode_fields(context)
-        mode = context.participant? && context.participant_mode
-        mode ? { participant_mode: mode.to_s } : {}
+        context.participant? && context.participant_mode == GuardrailWiring::PAIR ? { participant_mode: "pair" } : {}
       end
     end
   end

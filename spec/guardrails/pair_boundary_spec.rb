@@ -893,7 +893,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 end
 
-RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
+RSpec.describe "GuardrailWiring: a participant's boundary by the turn's mode" do
   let(:base) { File.realpath(Dir.mktmpdir("pair-wiring")) }
   let(:project) { File.join(base, "proj") }
   let(:author) { "p:p_0123abcd" }
@@ -928,24 +928,25 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   it "seats PairBoundary for a working session and for an older chi's review session alike" do
     [working, review].each do |session|
       pair = wiring(session)
+      expect(pair.context.participant_mode).to eq(:pair)
       expect(checks(pair)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
-      expect(checks(pair)).not_to include(be_a(Samagotchi::Guardrails::ReviewBoundary))
     end
   end
 
-  it "keeps a participant's turn with no session in the review boundary, never unbounded" do
-    w = wiring(nil)
-    expect(w.context.participant_mode).to eq(:review)
-    expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
-  end
-
-  it "keeps an older chi's read-only participant (no grant mode, or unknown) in the review boundary (the worker refuses their turn first)" do
-    [Struct.new(:name, :mode).new("Old", nil), nil].each do |entry|
-      w = wiring(working, entry: entry)
-      expect(w.context.participant_mode).to eq(:review)
-      expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
-      write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
-      expect(write.rule).to eq("review-boundary")
+  # The safety rule: what an older chi ran read-only never runs with tool
+  # rights here. The worker refuses such a turn first; this is the gate's
+  # fail-closed seat should one start anyway.
+  it "denies every call of a turn with no current invite (an older chi's, none), or no session; nobody is asked" do
+    [[working, Struct.new(:name, :mode).new("Old", nil)], [working, nil], [nil, pair_entry]].each do |session, entry|
+      w = wiring(session, entry: entry)
+      expect(w.context.participant_mode).to eq(:refused)
+      expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ParticipantRefusal)
+      [{ name: "read", content: File.join(project, "docs", "plan.md") },
+       { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" }].each do |call|
+        verdict = evaluate(w, call)
+        expect(verdict).to be_deny
+        expect([verdict.rule, verdict.reason]).to eq(["participant-refused", Samagotchi::Guardrails::ParticipantRefusal::REASON])
+      end
     end
   end
 
@@ -1002,6 +1003,7 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   # (nil), or someone the parent invited to act (a pair entry).
   # The wiring and the child's turn's TurnContext (#begin_turn's mode).
   let(:turn_of) { Data.define(:wiring, :context) }
+  let(:pair_entry) { Struct.new(:name, :mode).new("Alex", "pair") }
 
   before do
     FileUtils.mkdir_p(File.join(project, "docs"))
@@ -1029,25 +1031,27 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   def write(turn) = evaluate(turn, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
   def checks(turn) = turn.wiring.checks(turn.context)
 
-  it "keeps a review requester's child read-only though the child's own lookup finds nobody" do
-    w = wiring(child({ "author" => "p:alex", "mode" => "review", "of" => "c1", "anchor" => anchor }), author: nil)
+  it "refuses every call of a child an older chi saved read-only, whatever the requester's entry says" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "review", "of" => "c1", "anchor" => anchor }), entry: pair_entry, author: nil)
     expect(w.context.author).to eq("p:alex")
-    expect(w.context.participant_mode).to eq(:review)
-    expect(write(w).rule).to eq("review-boundary")
+    expect(w.context.participant_mode).to eq(:refused)
+    expect(write(w).rule).to eq("participant-refused")
   end
 
-  it "runs a pair requester's child under PairBoundary from the saved mode, not the lookup" do
-    w = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }),
-               entry: Struct.new(:name, :mode).new("Alex", nil))
+  it "runs a pair requester's child under PairBoundary: the saved mode and a current invite both" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }), entry: pair_entry)
     expect(w.context.participant_mode).to eq(:pair)
     expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
     expect(evaluate(w, { name: "delegate", content: "x" })).to be_deny
+    older = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }),
+                   entry: Struct.new(:name, :mode).new("Alex", nil))
+    expect(older.context.participant_mode).to eq(:refused)
   end
 
-  it "fails closed to review for a field that doesn't read" do
-    w = wiring(child({ "author" => "p:alex", "mode" => "root", "of" => "c1", "anchor" => anchor }), author: nil)
-    expect(w.context.participant_mode).to eq(:review)
-    expect(write(w).rule).to eq("review-boundary")
+  it "fails closed for a field that doesn't read" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "root", "of" => "c1", "anchor" => anchor }), entry: pair_entry, author: nil)
+    expect(w.context.participant_mode).to eq(:refused)
+    expect(write(w).rule).to eq("participant-refused")
   end
 
   it "leaves the owner's child as any delegate child (the owner's turns, ChildBoundary)" do

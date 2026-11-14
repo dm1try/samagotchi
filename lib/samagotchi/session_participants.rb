@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "steer"
-require_relative "participant_mode"
 
 module Samagotchi
   # Loaded only when a session is read: it brings Grants.
@@ -52,12 +51,12 @@ module Samagotchi
     end
 
     # The system prompt's participants line while anyone is in it (#active?
-    # as of the last #refresh!): ParticipantMode::PAIR when +session+ is a
-    # working session and an active participant was invited to act, else
-    # ParticipantMode::REVIEW; nil with nobody active. A Verify fresh
+    # as of the last #refresh!): :pair with an active participant (an older
+    # chi's read-only invite is not active), nil with nobody. A Verify fresh
     # child reads its parent's sidecar but has one participant at most, its
-    # requester: their saved mode while their grant is active, nil for the
-    # owner's child (no participant ever writes in it).
+    # requester: :pair while their grant is active and the child was saved
+    # for their turns to act, nil for the owner's child (no participant ever
+    # writes in it).
     def prompt_mode(session)
       active = @entries.select { |entry| entry.active?(@clock.call) }
       return nil if active.empty?
@@ -65,7 +64,7 @@ module Samagotchi
       fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
       return fresh_prompt_mode(fresh, active) if fresh
 
-      active.any? { |entry| ParticipantMode.for_turn(session, entry) == ParticipantMode::PAIR } ? ParticipantMode::PAIR : ParticipantMode::REVIEW
+      :pair
     end
 
     private
@@ -74,7 +73,7 @@ module Samagotchi
       return nil unless fresh.participant?
 
       id = Steer.participant_id(fresh.author)
-      active.any? { |entry| entry.id == id } ? fresh.turn_mode : nil
+      active.any? { |entry| entry.id == id } && fresh.pair? ? :pair : nil
     end
 
     def source_id(session)
