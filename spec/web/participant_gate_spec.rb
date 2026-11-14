@@ -238,6 +238,12 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(json("/api/sessions/#{session.id}/images/0123456789abcdef.png").first).to eq(404)
     end
 
+    it "reaches GET …/prompt_history as their own list, a :participant :session route (spec/web/participant_history_spec.rb)" do
+      row = described_class.const_get(:ROUTES).find { |route| route[2] == :handle_prompt_history }
+      expect(row.values_at(0, 3, 4)).to eq(["GET", :participant, :session])
+      expect(json("/api/sessions/#{session.id}/prompt_history")).to eq([200, { "entries" => [] }])
+    end
+
     it "reaches POST …/images as their own upload (spec/web/participant_images_spec.rb)" do
       expect(json("/api/sessions/#{session.id}/images", method: "POST")).to eq([422, { "error" => "bad_image",
                                                                                        "detail" => Samagotchi::ParticipantMessages::BAD_IMAGE }])

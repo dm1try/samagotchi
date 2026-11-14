@@ -54,6 +54,12 @@ RSpec.describe Samagotchi::Web::Viewer do
     expect(described_class::PARTICIPANT_CAPABILITIES).not_to include("revise")
   end
 
+  it "gives a participant ↑ over their own prompts: own_prompt_history, never the owner's machine-wide prompt_history" do
+    expect(described_class::PARTICIPANT_CAPABILITIES).to include("own_prompt_history")
+    expect(described_class::PARTICIPANT_CAPABILITIES).not_to include("prompt_history")
+    expect(described_class::CAPABILITIES).not_to include("own_prompt_history")
+  end
+
   it "names each capability once, in the page's words (lower snake case); a participant's are none of the owner's" do
     all = described_class::CAPABILITIES | described_class::PARTICIPANT_CAPABILITIES
     expect(described_class::PARTICIPANT_CAPABILITIES).to eq(described_class::PARTICIPANT_CAPABILITIES.uniq)

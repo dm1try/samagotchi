@@ -329,6 +329,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :participant, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/prompt_history\z}, :handle_prompt_history, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/working_set/item\z}, :handle_working_set_item, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_list, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/participants\z}, :handle_participants_invite, :owner, :session],

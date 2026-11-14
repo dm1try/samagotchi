@@ -58,12 +58,17 @@ module Samagotchi
     # a message sent while their own turn runs goes in at its next step
     # (a worker with Delivery::OWN_TURN_STEER_FEATURE); +revise_own_turn+:
     # Revise on the answer to their own message with only their own turns
-    # after it (POST …/turn with revises, ParticipantRevise). And of the owner's,
+    # after it (POST …/turn with revises, ParticipantRevise);
+    # +own_prompt_history+: ↑/↓ over their own accepted messages in this
+    # session, redacted (GET …/prompt_history, ParticipantHistory; never the
+    # owner's prompt_history, the machine-wide file). And of the owner's,
     # those a participant's route serves filtered: +working_set+ (GET
     # …/working_set, the project's files only) and +images+ (POST …/images
     # within their cap and quota; GET …/images/<name> only for an image
     # they uploaded; their turn takes only those: ParticipantImages).
-    Viewer::PARTICIPANT_CAPABILITIES = %w[send stop_own_turn steer_own_turn revise_own_turn working_set images].freeze
+    Viewer::PARTICIPANT_CAPABILITIES = %w[
+      send stop_own_turn steer_own_turn revise_own_turn own_prompt_history working_set images
+    ].freeze
 
     Viewer::OWNER = Viewer.new(kind: "owner", id: nil, name: nil, can: Viewer::CAPABILITIES)
   end
