@@ -218,7 +218,7 @@ function infoBarEl() {
 
 const allButtons = () => infoButtons({ id: ID, state: { owner: "worker" }, chain: { next: null }, archived: false, continuing: false, streaming: false });
 // Every chip a bar can have; the working set stands in the memories' place,
-// "earlier links pruned" in ←'s, so the second bar has those.
+// "earlier links deleted" in ←'s, so the second bar has those.
 const fullBar = {
   id: ID, status: "running", model: { text: "qwen", title: "qwen", mismatch: false },
   chain: { prev: { id: "aaaaaaaa1", date: "10-09" }, next: { id: "bbbbbbbb2", date: "" } },

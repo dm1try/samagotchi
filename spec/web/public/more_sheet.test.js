@@ -98,7 +98,7 @@ test("the actions follow the buttons' rules", () => {
 });
 
 // The sheet's order is BAR_ITEMS' menuOrder: today's rows, with the three a
-// fold adds (id, ⚙, earlier links pruned) in their places.
+// fold adds (id, ⚙, earlier links deleted) in their places.
 test("the rows' and the actions' order, from BAR_ITEMS", () => {
   assert.deepEqual(ROW_KEYS, ["id", "model", "settings", "toolkit", "workingSet", "memories", "participants", "pruned", "prev", "next", "parent", "delegates", "notes", "worker"]);
   assert.deepEqual(ROW_KEYS.filter((k) => !["id", "settings", "pruned"].includes(k)),
@@ -116,7 +116,7 @@ test("without a fold the id, ⚙ and pruned rows don't show; with one, only the 
   assert.deepEqual(folded("notes", "id", "settings", "pruned", "dir"), ["id", "settings", "pruned", "notes"]);
   const rows = moreRows(bar, new Set(["id", "settings", "pruned"]));
   assert.deepEqual(rows.map((r) => [r.label, r.value, r.go]), [
-    ["Session id", "01234567", "id"], ["Settings", "think low", "settings"], ["Earlier links pruned", "by a schedule", undefined]]);
+    ["Session id", "01234567", "id"], ["Settings", "think low", "settings"], ["Earlier links deleted", "", undefined]]);
   // A ← link there is no pruned row (the bar draws the link instead).
   assert.deepEqual(moreRows({ ...bar, chain: { prev: { id: "p".repeat(16), date: "" }, next: null, pruned: true } }, new Set(["pruned", "prev"])).map((r) => r.key), ["prev"]);
 });
