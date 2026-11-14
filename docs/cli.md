@@ -1748,8 +1748,9 @@ chi share revoke --all          # every link to every session
 - **Their turns (experimental).** A participant sends messages through chi web's `POST …/turn`: each message is a
   turn of its own, queued behind the running one, that **acts** in the session with its tools, writes included,
   under your guardrails: what your rules allow runs, what they ask about comes to you as "Sam's turn asks: approve
-  tool call?" with **Allow once** only (nothing session-wide or repo-wide is approved from their calls), and System 1
-  never answers for you. A write outside the project always asks you, whatever you approved before. It can't read or
+  tool call?" with **Allow once** only (nothing session-wide or repo-wide is approved from their calls), of your stored
+  approvals only those for this session ("Allow … for the session") answer their asks (a call you allowed in this repo
+  or for a rule asks you again), and System 1 never answers for you. A write outside the project always asks you, whatever you approved before. It can't read or
   write secrets or chi's own files (keys, shell startup files, histories, credential files; by a file tool, a
   command, a glob or a variable), run chi, leave a command running in the background, read the environment or the
   keychain, sweep your home with find/tar/cp/grep, delegate, set or cancel reminders, send notes, start or stop

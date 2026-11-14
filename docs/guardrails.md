@@ -114,6 +114,11 @@ answers it, since it is keyed on the whole command you saw: `git branch -D x && 
 once, session and repo, while `git merge y && git push` offers once, as `git-merge` offers only once and its rule.
 Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
 [child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
+
+Which stored approvals an ask may use is decided in one place, `Guardrails::ApprovalUse` (before `Gate#settle_ask`
+looks in the store): an owner's ask uses every scope; a [participant's turn](#a-participants-pair-boundary) and a
+[delegate child's boundary](#a-delegate-childs-boundary) use only this session's own `session` entries; a fresh ask
+(`Verdict#fresh_ask`) uses none.
 The file is a versioned store (`{"version": 1, "approvals": [...]}`, `Approvals::FORMAT`); a write keeps its version,
 the keys this chi doesn't know and an entry with no `scope`. A bare list of entries, as chi 0.166 and before wrote it,
 is read and converted to a versioned store on the next write. Chi 0.165 and before set a versioned store aside, so restart their sessions
@@ -373,7 +378,7 @@ under its own `env:` (its `$TMPDIR`, `$HOME`, `GIT_DIR`, …): either one naming
 redefines the shell (`BASH_ENV`, `BASH_FUNC_cat%%`, `CDPATH`, …, as under `skip_read_only` below) always asks, even
 for `cat a.txt` in the child's own folder: what it runs is in no word of the command. The answer is once or for the child's
 session only: a repo or rule answer would hold in every worktree, for every
-child, so a stored repo or rule approval doesn't let it through either. Its
+child, so a stored repo or rule approval doesn't let it through either (`ApprovalUse::SESSION_ONLY_RULES`). Its
 ask goes before the rules, so with the guardrails bundle in strict mode the
 card still names `child-boundary`. The parent (never a delegate), forks and
 ordinary sessions don't get it. Like the rules it reads command text: a
@@ -391,8 +396,11 @@ is denied, nobody is asked, in every mode and with `guardrails.enabled: false`.
 ## A participant's pair boundary
 
 A participant's turn acts with the session's tools under the owner's
-guardrails, as the owner's own turns do: the rules, the protected paths and
-every approval the owner already granted apply, and an ask goes to the owner.
+guardrails, as the owner's own turns do: the rules and the protected paths
+apply, and an ask goes to the owner. Of the owner's stored approvals only this
+session's own ("Allow … for the session") answer its asks
+(`Guardrails::ApprovalUse`): a call the owner allowed in this repo or for a
+rule asks the owner again, on a card.
 Every invite is stamped `mode: pair`; the turn's mode is decided once at its
 start (`GuardrailWiring#participant_turn_mode`, into the turn's
 `TurnContext#participant_mode`), and it runs only on a worker that names the

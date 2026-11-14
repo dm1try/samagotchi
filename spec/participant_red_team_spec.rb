@@ -230,6 +230,58 @@ RSpec.describe "a participant red-teaming a session" do
       expect(asked.first[:approval]).to include(rule: "pair-boundary")
       expect(results[0]).not_to include("denied by guardrail")
     end
+
+    # The owner's "Allow this call in this repo" is the owner's: a pair
+    # turn's same call asks the owner again (Guardrails::ApprovalUse), with
+    # guardrails on (off, a hook's ask would be dropped to an allow first).
+    # Only an "Allow for the session" answers it.
+    describe "with the owner's stored approval of a hook's ask" do
+      let(:ls) { ["execute", { "command" => "ls docs", "cwd" => project }] }
+      let(:store) { Samagotchi::Guardrails::Approvals.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir)) }
+
+      # Its own approvals store (beside its own sessions dir).
+      around do |example|
+        Dir.mktmpdir("red-team-state") { |dir| with_env("XDG_STATE_HOME" => dir) { example.run } }
+      end
+
+      # A turn hook: it holds for one turn, so each turn registers it.
+      def turn(calls, origin:)
+        engine.register_hook(:before_tool_call) do |event|
+          event[:guardrail].ask!("listing docs?", rule: "probe-ls", source: "hook") if event.dig(:call, :content).to_s.include?("ls docs")
+        end
+        super
+      end
+
+      def owner_allows(pick)
+        engine.set_question_sync_handler do |pending|
+          asked << pending
+          option = pending[:options].find(&pick) || pending[:options].first
+          { selected: [option], selected_indices: [pending[:options].index(option)] }
+        end
+        turn([ls], origin: { client_id: "web:owner" })
+      end
+
+      it "asks the owner on a card despite a repo approval, which still answers the owner's turn" do
+        owner_allows(->(o) { o.start_with?("Allow this call in") })
+        expect(store.entries.map { |e| e["scope"] }).to eq(["repo"])
+        turn([ls], origin: { client_id: "web:owner" })
+        expect(asked.size).to eq(1)
+
+        results = participant_turn([ls])
+        expect(asked.size).to eq(2)
+        expect(asked.last[:approval]).to include(author: grant.author, scopes: ["once"], rule: "probe-ls")
+        expect(results[0]).to include("plan.md")
+      end
+
+      it "runs on the owner's approval for this session, without a card" do
+        owner_allows(->(o) { o.end_with?("for the session") })
+        expect(store.entries.map { |e| e["scope"] }).to eq(["session"])
+        before = asked.size
+        results = participant_turn([ls])
+        expect(asked.size).to eq(before)
+        expect(results[0]).to include("plan.md")
+      end
+    end
   end
 
   describe "the participant at chi web" do

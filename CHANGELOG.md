@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
 - `toolkit.kits.review` is an ordinary config kit name now (there is no built-in review kit).
 - `chi` commands that run no turn start faster: `bin/chi` no longer loads the engine for every command (`chi --version` 203 → 63 ms, `chi home` 204 → 69 ms, `chi sessions list` 206 → 149 ms on a Mac Studio).
 - Participants' words: links are "this link …" rather than "this review link …", a participant's prompt is labelled `invited`, their badge reads `· pair` (an older chi's read-only turn `· read-only`), and `chi send` says "queued as turn T".
+- Participants: a participant's turn uses only your approvals for this session ("Allow … for the session"); a call your repo or rule approval would allow asks you on a card.
 
 ### Removed
 
