@@ -4,8 +4,9 @@
 // one turn that asks a question and an approval (the e2e fake model), a
 // reload while the question waits, both answered. It prints the numbers:
 // stage:refresh n/p50/p95/max, the session's open, tap→settled per card,
-// reload→card drawn, and the JS heap (after a GC) before the open, after
-// it and after the turn.
+// reload→card drawn, the JS heap (after a GC) before the open, after
+// it and after the turn, and the cards as data (card_registry.js): each
+// event's apply, each read's seed, the registry's entries and bytes.
 //
 // Isolated: HOME and XDG_* under tmp/stage-probe-<stamp>/ in the checkout,
 // removed after (--keep leaves it). Time-bounded: the generation must finish
@@ -133,7 +134,7 @@ function stats(list) {
   if (!list.length) return { n: 0 };
   const sorted = [...list].sort((a, b) => a - b);
   const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
-  const r = (ms) => Math.round(ms * 100) / 100;
+  const r = (ms) => Math.round(ms * 1000) / 1000;
   return { n: sorted.length, p50: r(at(0.5)), p95: r(at(0.95)), max: r(sorted[sorted.length - 1]) };
 }
 
@@ -143,7 +144,17 @@ async function heap(cdp) {
   return Math.round(usedSize / 1024);
 }
 
-const refreshes = (page) => page.evaluate(() => performance.getEntriesByName("stage:refresh").map((m) => m.duration));
+const measures = (page, name) => page.evaluate((name) => performance.getEntriesByName(name).map((m) => m.duration), name);
+const refreshes = (page) => measures(page, "stage:refresh");
+// The cards as data (card_registry.js, globalThis.chiCardRegistry while
+// probing): its entries and their JSON bytes.
+const registrySize = (page) => page.evaluate(() => {
+  const r = globalThis.chiCardRegistry;
+  if (!r) return null;
+  const entries = r.size();
+  const bytes = r.bytes();
+  return { entries, bytes, bytes_per_entry: entries ? Math.round(bytes / entries) : null };
+});
 
 // Picks +option+ (none: the first) and taps Submit on the stage's waiting
 // card; the time until the card is answered (the server's event back).
@@ -226,12 +237,15 @@ async function main() {
     questions: document.querySelectorAll("#history .bubble.question").length,
   }));
   const heapOpen = await heap(cdp);
+  const registryOpen = await registrySize(page);
+  const seedOpen = await measures(page, "cards:seed");
 
   await page.locator("#prompt").fill("Probe: read a file of my choice");
   await page.locator("#actionBtn").click();
   const waitingQuestion = page.locator("#turnStage .ts-extras .bubble.question:not(.answered)");
   await waitingQuestion.waitFor();
   const beforeReload = await refreshes(page);
+  const appliesBefore = await measures(page, "cards:apply");
 
   // A reload while the question waits: until its card is drawn again.
   const reloadAt = Date.now();
@@ -247,6 +261,9 @@ async function main() {
   await page.locator("#turnStage").waitFor({ state: "hidden" });
   const heapTurn = await heap(cdp);
   const afterReload = await refreshes(page);
+  const appliesAfter = await measures(page, "cards:apply");
+  const seedReload = await measures(page, "cards:seed");
+  const registryTurn = await registrySize(page);
   const report = await page.evaluate(() => globalThis.chiStageProbe?.report() || null);
   clearTimeout(runTimer);
   const runMs = Date.now() - runAt;
@@ -263,6 +280,9 @@ async function main() {
     tap_settled_ms: { question: Math.round(questionMs), approval: Math.round(approvalMs) },
     reload_card_ms: reloadMs,
     heap_kb: { before_open: heapBefore, after_open: heapOpen, after_turn: heapTurn },
+    "cards:apply": stats([...appliesBefore, ...appliesAfter]),
+    "cards:seed": stats([...seedOpen, ...seedReload]),
+    registry: { after_open: registryOpen, after_turn: registryTurn },
   };
   console.log(JSON.stringify(out, null, 2));
   if (generateMs > GENERATE_MS || runMs > RUN_MS) {

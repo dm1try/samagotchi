@@ -10,7 +10,8 @@
 // a difference not listed fails, and so does one listed that is gone (the
 // build that removes it flips it here). On both pages the stage's waiting
 // cards as data (stage_waiting.js) agree with the slots (the DOM read is a
-// cross-check here only).
+// cross-check here only), and so does the page's card registry
+// (card_registry.js): what it says waits is what the stage holds.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { failOnWaitingWarnings } from "./waiting_warnings.js";
@@ -91,6 +92,13 @@ function crossCheck(page, label) {
   const fromData = page.turnDom.waiting.list().filter((e) => e.kind !== "warn").map(({ key, kind }) => ({ key, kind }));
   assert.deepEqual(fromData, fromDom, `${label}: the waiting cards as data agree with the slots`);
   assert.deepEqual(page.turnDom.waiting.docked(), shape.docked, `${label}: docked as data agrees with the asking form`);
+  // The cards as data (card_registry.js, an observer) against the stage's:
+  // what waits of the running turn, warnings apart (the step limit's question
+  // is of no turn: it goes under its ended turn, never into the stage).
+  const sorted = (list) => list.map(({ key, kind }) => ({ key, kind })).sort((a, b) => a.key.localeCompare(b.key));
+  const turn = page.cardRegistry.turn();
+  const registryWaits = turn ? page.cardRegistry.forTurn(turn).filter((e) => ["pending", "asks"].includes(e.status) && e.kind !== "warn") : [];
+  assert.deepEqual(sorted(registryWaits), sorted(fromData), `${label}: the cards as data wait as the stage's do`);
 }
 
 // The page that lived through +events+.
@@ -119,6 +127,7 @@ async function drawShow(page, show) {
   }));
   const snapshotCards = splitSnapshotCards(show.cards, {});
   page.cards.placeSnapshotCards(snapshotCards.placed);
+  page.cardRegistry.seed(show);
   for (const event of show.replay || []) await page.handlers[event.type]?.({ ...event, replayed: true });
   page.turnDom.flush();
   snapshotCards.current.forEach((card) => page.cards.upsertCard(card));

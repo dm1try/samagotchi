@@ -562,7 +562,9 @@ turns with 60 plugin cards and 40 answered questions through chi's own writers (
 the flag is kept for the tab in sessionStorage, `chi_stage_probe`, so a reload or a hash jump keeps it;
 `?stage_probe=0` drops it; `<body data-stage-probe="1">` works too, for that page only), runs one turn that asks a question and an approval, reloads while the question waits and answers
 both. It prints JSON: `stage:refresh` n/p50/p95/max (ms), the session's open (the hash to the last answer drawn),
-tap→settled per card, reload→card drawn and the JS heap after a GC before the open, after it and after the turn. Its
+tap→settled per card, reload→card drawn, the JS heap after a GC before the open, after it and after the turn, and the
+cards as data (`card_registry.js`): `cards:apply` per card event, `cards:seed` per read, and the registry's entries and
+JSON bytes after the open and after the turn (`globalThis.chiCardRegistry`, only while probing). Its
 `session.drawn` counts what the open drew: all 300 answers and 60 cards, but only the answered questions CardStore
 still lists (8: its cap keeps the newest 20 cards and questions together, and a finished turn's question is drawn from
 that list alone). Bounded:

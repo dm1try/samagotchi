@@ -18,6 +18,7 @@ const { createSessionStore } = await import("../../../lib/samagotchi/web/public/
 const { createShownTexts } = await import("../../../lib/samagotchi/web/public/shown_texts.js");
 const { createQuestionCards } = await import("../../../lib/samagotchi/web/public/question_cards.js");
 const { elementOf, emptyAnswerTemplate } = await import("../../../lib/samagotchi/web/public/turn_html.js");
+const { createCardRegistry, observeCards } = await import("../../../lib/samagotchi/web/public/card_registry.js");
 
 // What this tab kept in sessionStorage. `npm test` runs every file in one
 // process (no isolation), so a test that folds clears it first: one test's
@@ -27,7 +28,8 @@ export function clearSession() {
 }
 
 // The live page, its pieces as app.js wires them (the stage view, the
-// bubbles, the cards' placement, the stream handlers), the rest stubbed:
+// bubbles, the cards' placement, the stream handlers and the cards as data
+// around them), the rest stubbed:
 // no timing line (the reload has no records here either). No question
 // cards (a question's card is placed from CardStore on both sides), unless
 // +questions+: question_cards.js wired as app.js wires it (the stage cuts).
@@ -76,8 +78,10 @@ export function livePage({ questions = false } = {}) {
     if (endText) bubbles.addEndBubble(endText, { stopped });
     kept.forEach((el) => appendToHistory(el));
   }
+  // The cards as data, around the stream handlers as app.js wires it.
+  const cardRegistry = createCardRegistry();
   const store = createSessionStore({ initial: { model: "m", ctxWindow: 1000, llmContext: null, timing: { tokens: null, turnRecords: [] } } });
-  const handlers = createStreamHandlers({
+  const handlers = observeCards(cardRegistry, createStreamHandlers({
     selected: () => "s1", store, clientId: "web:me", capabilities: () => ({}), historyEl, liveTurn, turnDom, shownTexts,
     questionCards, contextChips: { refresh() {} }, sentIds: new Set(), earlyRestores: new Map(),
     stream: { takeGuess: () => false, restart() {} },
@@ -91,6 +95,6 @@ export function livePage({ questions = false } = {}) {
     addCommandBubble: bubbles.addCommandBubble, addNoteBubble: bubbles.addNoteBubble, showRecap() {}, showGuardrailWarning() {},
     showHookNotice: bubbles.showHookNotice, addTimeGap() {},
     upsertCard: cards.upsertCard, refreshCardBodies() {},
-  });
-  return { historyEl, turnDom, handlers, cards, questionCards };
+  }));
+  return { historyEl, turnDom, handlers, cards, questionCards, cardRegistry };
 }
