@@ -29,6 +29,8 @@ module Samagotchi
                 continue: "a continue ends the previous link's participants", corpus_dir: SIDE_CAR),
       Store.new(file: "participant_images.json", owner: "ParticipantUploads", removal: :session_files, cross_version: true,
                 continue: "a continue ends the previous link's participants", corpus_dir: SIDE_CAR),
+      Store.new(file: "participant_prompts.json", owner: "ParticipantPrompts", removal: :session_files, cross_version: true,
+                continue: "a continue ends the previous link's participants", corpus_dir: SIDE_CAR),
       Store.new(file: "judgments.jsonl", owner: "SystemOne::RunsStore", removal: :system_one_runs, cross_version: false,
                 continue: "saved judgments belong to the previous link", corpus_dir: nil),
       Store.new(file: "context_candidates.jsonl", owner: "ContextCandidatesLog", removal: :context_candidates_log,
