@@ -257,7 +257,11 @@ and what it holds:
   the appended overlay's text (`overlay`, taken off `text`); nil for a session saved before memory stamps;
 - a memory_write: the text it wrote (its `content` argument); a fetch: the output.
 
-Merging overlapping reads, the newest-first order and the step tags are the page's (presentation).
+Merging overlapping reads, the newest-first order and the step tags are the page's (presentation): the page keeps
+each row's `tool_id` with its place (`working_set.js` items' `runs`), so an event's tag is its row's (`t3·s14`) and
+"go to the call" is the step tags' jump; a legacy row (no id) falls back to the server's global `step`. The file
+strip's length is the largest last line any read knows (a whole read's is the file's then), not a stat. The page:
+[web-frontend.md](web-frontend.md#the-working-sets-reader).
 
 **Now.** `WorkingSet.memory_now(conversation, key:, …)` answers what the memory's latest `memory_read` would answer
 now (`WorkingSet::Now`: `text`, `diff`, `gone`): each name that read read, from the file its stamp names, with the

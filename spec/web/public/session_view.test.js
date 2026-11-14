@@ -68,6 +68,7 @@ function fakePage({ read = async () => ({}) } = {}) {
     featureGates: { prime: rec("featureGates.prime") },
     markdownTip: { show: rec("markdownTip.show") },
     workingSet: null,
+    wsPreview: { reset: rec("wsPreview.reset") },
     gapClock: createGapClock(),
     bubbles: {
       makeUserBubble, addEndBubble: rec("addEndBubble"), showGuardrailWarning: rec("showGuardrailWarning"),
@@ -159,7 +160,10 @@ test("forgetSession starts the page over; keepVerify (the same session again) ke
   }
   assert.deepEqual(page.calls.find((c) => c[0] === "setCapabilities"), ["setCapabilities", null, null]);
 
+  // The same session again keeps the reader; another one (or the start page) resets it.
+  assert.equal(count(page, "wsPreview.reset"), 0);
   view.forgetSession();
+  assert.equal(count(page, "wsPreview.reset"), 1);
   assert.equal(count(page, "ownerVerify.clear"), 1);
   assert.deepEqual(page.calls.find((c) => c[0] === "setReviseAnchor"), ["setReviseAnchor", null]);
 });

@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const BOOT = fileURLToPath(new URL("./page_boot.js", import.meta.url));
 const SID = "11111111-1111-4111-8111-111111111111";
 // Web::Viewer::CAPABILITIES (spec/web/viewer_spec.rb pins the server's list).
-const ALL = ["sessions", "models", "prompt_history", "push", "context", "working_set", "participants_admin", "rename", "images",
+const ALL = ["sessions", "models", "prompt_history", "push", "context", "working_set", "working_set_items", "participants_admin", "rename", "images",
   "session_controls", "revise", "apply", "answer_cards", "render", "block_renderers", "stop_any_turn", "steer_any_turn"];
 
 function boot(viewer) {

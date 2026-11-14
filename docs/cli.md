@@ -1402,6 +1402,12 @@ session bar shows the `mem N` chip again.
   forgotten row offers `refresh`, the same add of it. While a turn runs the
   stage's rail shows an add queued for its end as a dashed `+ name · next turn`
   line.
+- **What chi has of an item**: a row's `▸` in the list peeks at it (its latest edit's diff, else its newest
+  read's first lines); `Open the timeline` (also a tool row's `timeline` and a file ref's ▾ `What chi has`) puts
+  the item's timeline over the stage, newest first: reads merged into line slices over a strip of the file, edits
+  as diffs, what chi no longer has greyed (with `undrop` for your drop), a changed memory's `Now · diff`. `← Stage`
+  or Esc goes back to the same place, ↑↓ step through the set; on a phone it is full screen (`‹ Set`, `‹ ›`).
+  Yours only: a participant's list has no `▸`.
 
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.
