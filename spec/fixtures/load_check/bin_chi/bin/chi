@@ -1,0 +1,3 @@
+#!/usr/bin/env ruby
+def go = Samagotchi::Session.new
+go

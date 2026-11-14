@@ -1,0 +1,4 @@
+- rule: 2
+  file: lib/samagotchi/nowhere.rb
+  constant: Samagotchi::Nothing
+  reason: an entry that matches nothing

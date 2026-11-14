@@ -1,0 +1,11 @@
+# script/load-check's allow-list: every finding the checker reports that a
+# human proved to be a false positive, with the reason. Match is on rule,
+# file and constant ("*" allowed in any of them). An entry that matches nothing
+# shows up as "matched nothing" in the summary; delete it.
+#
+# Format:
+#   - rule: 2
+#     file: lib/samagotchi/engine.rb
+#     constant: Samagotchi::Engine
+#     reason: why this is not a real gap
+[]

@@ -588,3 +588,23 @@ The code is `script/deps/deps_check.rb`; its spec stubs every request and comman
 names (Prism; `be_foo`/`have_foo` count for `foo?`/`has_foo?`), as `path:line name [notes]` with a count; a note says
 what may explain a row (a doc, a name built at run time, a framework hook). Advisory: it always exits 0, CI doesn't
 run it. Its spec is `spec/script/dead_code_spec.rb`.
+
+## The load check
+
+`script/load-check` reads every file under `lib/samagotchi/` (the shipped bundles under
+`lib/samagotchi/bundles/` apart) and `bin/chi` with Prism and **never loads them**, then checks three rules:
+
+1. **call-time reference** — a constant a method body names is defined in the file or reached by its
+   `require`/`require_relative`/`autoload` lines, transitively (a `require` inside a method counts here only);
+2. **load-time reference** — a constant evaluated while the file loads (a superclass, `include`/`extend`/
+   `prepend`, a class body) comes from a file required above that line, and a require cycle does not
+   guarantee it;
+3. **autoload** — an `autoload` may name a constant defined in one file; one that names a namespace
+   reopened in several files is a finding.
+
+A name that resolves to nothing of chi's (a stdlib or gem constant) is out of scope, and lexical scope is
+mimicked: a bare `Log` inside `module Samagotchi` is `Samagotchi::Log`. Each line is
+`RULE file:line Constant — why`; the summary counts findings per rule, per `lib/samagotchi/<dir or file>`,
+and the files scanned. Proven false positives go in `script/load_check/allow.yml` with a reason; the
+summary says which entries match nothing. Report mode exits 0; `--strict` exits 1 when findings remain, and
+the check joins `rake lint` once it reports none. Its spec is `spec/script/load_check_spec.rb`.
