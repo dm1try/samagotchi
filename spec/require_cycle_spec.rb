@@ -53,9 +53,9 @@ RSpec.describe "loading session_manager and terminal_ui" do
   end
 
   describe "thin client load budgets" do
-    def loaded_by(*files)
+    def loaded_by(*files, pattern: %r{/samagotchi/(kernel_loop|memory_bundle/shipped_update)\.rb\z})
       requires = ['require "samagotchi/update_hint"', *files.map { |file| "require #{file.dump}" }]
-      script = (requires + ['puts $LOADED_FEATURES.grep(%r{/samagotchi/(kernel_loop|memory_bundle/shipped_update)\.rb\z})']).join("; ")
+      script = (requires + ["puts $LOADED_FEATURES.grep(#{pattern.inspect})"]).join("; ")
       out, err, status = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script)
 
       expect(status).to be_success, err
@@ -70,6 +70,14 @@ RSpec.describe "loading session_manager and terminal_ui" do
         heavy = loaded_by(*files)
 
         expect(heavy).to be_empty, "loaded #{heavy.join(", ")}"
+      end
+
+      it "loads no tools/execute, tools/builtins or tools/task_runtime for #{client}" do
+        # A client names tools (ToolNames) and reads the session commands'
+        # catalogue (SessionCommandCatalog), never a class that runs one.
+        runners = loaded_by(*files, pattern: %r{/samagotchi/tools/(execute|builtins|task_runtime)\.rb\z})
+
+        expect(runners).to be_empty, "loaded #{runners.join(", ")}"
       end
     end
   end
