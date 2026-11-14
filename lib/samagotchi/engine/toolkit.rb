@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../log"
+require_relative "../tool_loads"
+require_relative "../tools/tool_surface"
+require_relative "../turn_stages/toolkit_suggestion"
+
 module Samagotchi
   class Engine
     # The session's toolkit: the kits and what a turn declares

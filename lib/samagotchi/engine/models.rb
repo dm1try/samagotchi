@@ -1,5 +1,15 @@
 # frozen_string_literal: true
 
+require_relative "../config"
+require_relative "../effective_model"
+require_relative "../llm/backend"
+require_relative "../llm/errors"
+require_relative "../log"
+require_relative "../model_notes"
+require_relative "../model_profile"
+require_relative "../prompt_note"
+require_relative "../system_prompt"
+
 module Samagotchi
   class Engine
     # The model: its names and refs, identity and notes, /model's switch (and

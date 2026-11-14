@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "../answer_display"
+require_relative "../hooks/registry"
+
 module Samagotchi
   class Engine
     # Hooks and reminders: turn-scoped hooks (register, clear), the hook

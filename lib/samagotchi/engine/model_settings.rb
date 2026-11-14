@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../session_setting"
+
 module Samagotchi
   class Engine
     # The session's settings on its effective model (SessionModelSettings) and

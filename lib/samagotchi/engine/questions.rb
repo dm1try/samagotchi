@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "../output_formatter"
+require_relative "../question_asked"
+
 module Samagotchi
   class Engine
     # Ask-user-question: the model's question (its :question_asked hooks),

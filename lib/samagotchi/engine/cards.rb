@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "../event_routes"
+require_relative "../plugin/card"
+
 module Samagotchi
   class Engine
     # Cards and anytime commands: #show_card (routed by EventRoutes), the

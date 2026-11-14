@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../answer_tail"
+require_relative "../context_note"
+require_relative "../llm_context_view"
+require_relative "../objectives"
+
 module Samagotchi
   class Engine
     # The session messages API: out-of-turn edits to the current session's

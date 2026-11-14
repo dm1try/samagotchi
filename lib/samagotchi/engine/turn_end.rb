@@ -1,5 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "../answer_display"
+require_relative "../answer_refs"
+require_relative "../client"
+require_relative "../last_turn"
+require_relative "../llm/model_result"
+require_relative "../log"
+
 module Samagotchi
   class Engine
     # How a turn ends after #end_turn's step: the normal ending and its

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../log"
+
 module Samagotchi
   class Engine
     # The running turn as other threads see it: steering into it (now or

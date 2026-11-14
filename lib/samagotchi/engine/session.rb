@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_relative "../engine_peers"
+require_relative "../log"
+require_relative "../session"
+
 module Samagotchi
   class Engine
     # The bound session and its prompt: #session= (its recap, metrics and

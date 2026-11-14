@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "../log"
+require_relative "../objectives"
+require_relative "../objectives_check"
+require_relative "../objectives_track"
+require_relative "../turn_stages/objectives"
+
 module Samagotchi
   class Engine
     # The session's objectives (TurnStages::Objectives, forwarded): the view
