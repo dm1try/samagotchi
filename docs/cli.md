@@ -1742,7 +1742,9 @@ chi share revoke --all          # every link to every session
   message is a turn of its own, queued behind the running one, that the model answers **read-only**. It may read the
   project (never its secret files or chi's own), and proposes changes as text or a diff for you to apply; it can't
   write, run, fetch, send notes or set reminders, and any approval or question is yours. A line starting `!` or `/`
-  and images are refused. One running and 3 waiting turns per participant (`web.participants.queue`). You pay: each
+  is refused. A participant can attach images to their own messages (paste, drop or the image button; png, jpeg, gif
+  or webp), up to 40 per invite and within their cap, when the session's model takes images; they see only their own
+  images, anyone else's as "N images". One running and 3 waiting turns per participant (`web.participants.queue`). You pay: each
   participant has a spending cap (`--cap DOLLARS`, default $2, `web.participants.cap`), counted from their turns'
   cost and the side requests they cause; at the cap their next comment is refused and you get a notice, and `chi
   share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review

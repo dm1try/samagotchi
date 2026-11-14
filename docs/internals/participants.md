@@ -183,10 +183,12 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `GET /` | participant | the main page (`index.html`) stamped for them (`App#participant_index_data`: their viewer, the grant's session and its title; [web-frontend.md](web-frontend.md#the-participants-page)); the page reads the rest through the show and the stream below |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
 | `GET /api/sessions/:id/working_set` | participant | the working set's project files only (`ParticipantView.working_set`), with `running` |
+| `POST /api/sessions/:id/images` | participant | their upload ([Participant images](#participant-images)): refused at their cap, past their attempts or quota, a bmp/tiff/heic; the reply `{file, name, width, height}` |
+| `GET /api/sessions/:id/images/<name>` | participant | only an image they uploaded, `Cache-Control: no-store`; any other the 404 a missing file gets |
 | `GET /api/info` | participant | `{app, version, features}` (what `SessionAccess::Remote`'s check needs); not `pid`, `cwd`, `lan`, `installed` |
 | `GET /api/sessions/:id` | participant | the main page's show in the owner's shape, every part filtered (`Web::ParticipantShow`, [The main page's show](#the-main-pages-show)); `?tail=1` and `?timing=1` filtered, `?cards=1` `{cards: []}`; `?brief=1` (what `SessionAccess::Remote#show` reads) `{session: {id, title, status, participants: [{id, name, kind, role}]}}` (the active ones). `title` is the session's own title, or "an untitled session": never `display_title`'s fallback, the first prompt's opening words |
 
-Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt carried is "[image]" on their page),
+Everything else is `:owner`: `/answer`, `/command`,
 `/output` (the raw replies), the hub's `/api/events`, the cap route. Static assets (`/app.js`, …) are served to any principal past the gate: they are the public frontend.
 
 ## Turns
@@ -224,20 +226,29 @@ stamped pair (`SessionParticipants#prompt_mode`); their show's `viewer.mode` is 
 (`ParticipantMode.live_for`).
 
 A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
-`prompt` and `delivery`. Three layers keep it out of anyone else's turn, inside its mode's boundary: it goes into a
+`prompt`, `delivery` and `images` (refs to their own uploads). Three layers keep it out of anyone else's turn, inside its mode's boundary: it goes into a
 running turn only when that turn is theirs (at its next step, as the owner's message does), else it runs as a turn
 of its own after it.
 
 **chi web.** The author is the grant's (`p:<id>`) and the client id `review:<id>` (`ClientId.review`: a human's
-input, origin `review`, source `participant`, labelled `review`); the body's `client_id`, `author`,
-`no_interrupt` and `images` never count, and its `delivery` only as `queue` or next step (none: next step).
+input, origin `review`, source `participant`, labelled `review`); the body's `client_id`, `author` and
+`no_interrupt` never count, its `images` only as refs to their own uploads, and its `delivery` only as `queue` or
+next step (none: next step).
 Refused before delivery, each audited:
 
 - a line starting `!` or `/` (after leading spaces): 403 `not_permitted`, so no shell line, session command or
   plugin command (v1);
-- images: 403 `not_permitted` (D10);
 - a cut (`delivery: cut`): 403 `not_permitted`: a participant's message never cuts a generation;
-- the grant's cap: 429 `cap_reached`, from the session's saved analytics (`SessionMetrics.saved_spend`).
+- the grant's cap: 429 `cap_reached`, from the session's saved analytics (`SessionMetrics.saved_spend`);
+- images (`ParticipantImages#participant_images_refusal`, D10 lifted), in this order so nothing tells them which
+  files exist: not a list of at most 20 `{file, name}` refs (no `path`): 400 `bad_images` (`IMAGES_SHAPE`); any
+  ref they didn't upload (`ParticipantUploads`, read once), whether its file is there or not: 403 `not_permitted`;
+  only then the files (`ImageStore.check_refs`; one of theirs gone: 400 `bad_images`, `IMAGE_GONE`, the file named
+  only in the audit line); then the model: 422 `no_vision` in `ParticipantMessages::NO_VISION` when chi send's
+  check (`SendCommand.vision_answer`) says it takes no images (its full words, which name the model and `/model`,
+  only in the audit line's `detail`). The check reads the session's saved model, which can lag a live `/model`;
+  the Engine's own no-vision failure stays the backstop (their turn then fails, `TURN_FAILED`). Their refs go to
+  `deliver_turn` as `images:`; the turn's audit line counts them (`images`), accepted or refused by the worker.
 
 It goes out with that delivery and `pending_limit` = the grant's queue limit + 1 (the running one), never
 into the owner's prompt history. The Bridge counts the author's running and queued turns under its event lock and
@@ -363,6 +374,45 @@ and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
 participant once the grant is revoked or expired, so their stream closes within a poll of a revoke, including one
 made by `chi share revoke` in another process; the page then reads a 401 and shows the ended-link page.
 
+## Participant images
+
+A participant attaches images to their own turns, as the owner does (`Viewer::PARTICIPANT_CAPABILITIES`' `images`:
+the composer's paste, drop and image button). Review and pair grants alike: an image is input, not tool power; their
+cap and the quota bound the cost (their turn's image tokens count to their cap by author, `SessionMetrics.saved_spend`;
+later turns that re-send it in history are the owner's). `ImageStore` is content-addressed and keeps no metadata, so
+who uploaded what is chi web's own record, `ParticipantUploads` (`participant_images.json`, [Files in the session
+dir](#files-in-the-session-dir)), keyed by (file, grant): an owner's or another grant's identical image never
+changes hands, and nothing else (a ref's `source` or `name`, the body's `author`, a message) grants a file.
+
+**Upload** (`POST …/images`, `ParticipantImages#participant_image_upload`). Every upload counts as an attempt first,
+before the cap check (a cap-refused one too). Refused, in order: their cap (429
+`cap_reached`); past `Grants::MAX_IMAGE_ATTEMPTS` (80) uploads tried, refused ones counted (429
+`too_many_image_attempts`); the owner's size cap (413 `too_large`); not an image chi stores (422 `bad_image`, in
+`ParticipantMessages::BAD_IMAGE`, never `ImageStore`'s words: an image tool's output may name a host path); a
+bmp, tiff or heic (422 `unsupported_image`, `IMAGE_TYPE`: sniffed with `ImageHeader.read` before `ingest`, so sips
+or magick never converts their bytes from those formats); a header with no size, or over 40 megapixels or 12000 px
+on a side (422 `image_too_big`, `IMAGE_TOO_BIG`; a phone's 4032×3024 passes); at `Grants::MAX_IMAGES` (40)
+distinct files (429 `too_many_images`), unless the bytes are a file they own already (as stored unchanged,
+`ImageStore.file_name_for`: a downscaled or re-encoded one is refused). A png/jpeg/gif/webp over the store's limits
+is still downscaled by `ImageStore.fit`, so the tool does read their bytes: their conversions run one at a time
+(`@participant_conversion_mutex`), and every conversion (anyone's) is killed past `ImageResizer::TIMEOUT` (60 s),
+magick reading the sniffed format's coder under `-limit memory 256MiB -limit disk 1GiB -limit area 64MP`. An
+upload that raises is audited (`internal_error`) before chi web's 500. The quota is checked under `@participant_images_mutex`, the
+image ingested, then checked again and recorded under it (a race past it is refused there; the stored file may stay
+in `images/`, unreachable to them). Each answer is an `image` audit line. The reply is the ref without `source`,
+`mime` or `bytes`.
+
+**Read back** (`GET …/images/<name>`, `SessionControl#handle_image`): a participant gets the file only when
+`ParticipantUploads.owned?` says they uploaded it (the record proves they had the bytes), with `Cache-Control:
+no-store`; anything else (the owner's, another grant's, a guess) is the same 404 a missing file gets, body and
+headers alike. A revoked or expired grant is refused by the gate (401) as on every route.
+
+**Their turn** takes only refs they uploaded ([Turns](#turns)); **what they see** is their own images as thumbnails
+and anyone else's as "N images" ([What a participant sees](#what-a-participant-sees)). A corrupt or unreadable
+record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. Not covered:
+a participant's `chi --remote … --image`; a failed turn of theirs gives the text back without its chips; Apply
+doesn't mention a proposal's images.
+
 ## What a participant sees
 
 D5 (a): prompts and replies with their authors, one-line tool rows, turn boundaries, the queue and waiting states
@@ -384,7 +434,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   the session's folder when it is inside it, as the owner's `ref`
   `{kind: "file", path, line, end_line}`; never when that folder is home or `/`),
   `tool_call_completed` (its status word); the viewer's **own** queue events in the owner's shape (`turn_enqueued`:
-  `enqueued_id`, `client_id`, `prompt`, `delivery`, `author`, never images; `turn_dequeued`: its `enqueued_id`, never
+  `enqueued_id`, `client_id`, `prompt`, `delivery`, `author`, their image refs; `turn_dequeued`: its `enqueued_id`, never
   the client that took it back, the filter knowing their ids from the `turn_enqueued` it sent them and from
   `ParticipantAccess#own_turn?`; `input_merged`: the count and origins of their own lines only), anyone else's bare;
   `question_requested` and `continue_offered` with one derived `kind` (`.waiting_kind`: `approval` for a guardrail's
@@ -417,10 +467,15 @@ fields: a field added to an event later reaches nobody until it is named there.
   links group by `[data-turn-id]`). A raw loop's saved
   reply is cut before the display reads it (`.visible_raw`): what came before a bare `</think>` and everything from
   an unclosed thought or tool call on, which the display would only untag. Each
-  prompt carries its author and an image count; replies their text and their step's tool rows. Notes, steers and
+  prompt carries its author and its images: the viewer's own as refs, anyone else's as a count
+  (`.image_refs`, below); replies their text and their step's tool rows. Notes, steers and
   empty-answer markers are dropped. The reply's
   `html` is rendered from the filtered text. The turn in progress (`.current_turn`, over the Bridge snapshot's) gives
   its start's fields, the text so far, its tool rows (with `running`) and `waiting_for_owner`.
+- **Images** (`.image_refs`, on a message, a `turn_started` (so the running turn and the drawings) and a queued
+  entry): the viewer's own as `[{file, name, width, height}]`, only refs to a stored image (`ImageStore::REF_RE`;
+  any other dropped), never `source`, `bytes` or `mime`; anyone else's (the owner's, another participant's) as a
+  count, which the page draws as a muted "N images" line (`images.js thumbsTemplate`).
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
 - **The working set** (`.working_set`: the event and `GET …/working_set`): the file items inside the project, the
   key made relative, with `state`, `tokens`, `ops`, `count`, `pinned`, and the set's `at`. Never a memory or URL
@@ -584,8 +639,9 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
     participant can't open it). No push
     for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
 - **The composer** is the owner's, with what is theirs (`participant_main.js`; [web-frontend.md](web-frontend.md#the-participants-page)):
-  no `/` list or plugin pills, no ↑/↓ prompt history (the owner's `GET /api/history`), no images yet (`imagesOff`:
-  one line, the button hidden), no model picker. While their own turn runs, a message goes in at its next step on a
+  no `/` list or plugin pills, no ↑/↓ prompt history (the owner's `GET /api/history`), no model picker. Images go
+  in as the owner's do (paste, drop, the image button), within their quota ([Participant images](#participant-images));
+  a refused upload or send keeps the chips and toasts the server's words. While their own turn runs, a message goes in at its next step on a
   worker with `participant_steer` (Alt+Enter queues it); while anyone else's runs, it goes in as their own turn after
   it, and the delivery line says so. Stop turn shows on their own turn only. At their cap, in a stopped session, or
   once their link ended, the composer gives way to one line (the cap's own words; the server's for the others) and
@@ -601,8 +657,9 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
   (2026-11-13: every read on the main page would need the flag threaded through, and one missed read would show
   unfiltered data in a view that claims to be the participant's).
 
-The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, every show variant, `/output` and an image
-as a participant, with an approval, a question, a tool's call and output, thinking, a memory, a steer, a delegate
+The red-team spec (`spec/participant_red_team_spec.rb`) reads the stream, every show variant, `/output` and images
+they didn't upload (a guessed name, the owner's by its hash: 404) as a participant, sends another's image refs
+(the owner's, another participant's, a guessed hash, a forged `source`: 403), with an approval, a question, a tool's call and output, thinking, a memory, a steer, a delegate
 report, an unknown event and host paths in the session, and finds none of them. It also names a secret and a file
 outside the project as subjects in a review session's file and reads none of them in the show, and has `chi review`
 refuse each as a subject.
@@ -695,9 +752,15 @@ invited to has none: its files stay byte for byte as they were.
   it, or `(none)`, once a minute per grant and identity whatever the path; at most 256 refusals a minute are
   remembered and audited; or `what: command`, a participant's `/word` or
   `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
-  the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
+  the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `bad_images`, `no_vision` with its `detail`,
+  `review_unavailable`, `worker_timeout`; `images`: how many it carried), `image` (an upload: `status` accepted with
+  its `file` and `bytes`, or refused with the `reason`; never its name), `cap` (a new
   cap), `verify_fresh` (`of`, `status`, the child and mode or the reason). A Verify fresh child's participants' lines
   are its parent's. It goes with the session (retention, delete).
+- **`participant_images.json`** (0600, `ParticipantUploads`, chi web only, beside `participants.json`, not under
+  `images/`: no route serves it): `{images: [{file, grant_id, at}], attempts: {<grant id>: n}}`, which image files
+  each grant uploaded and how many uploads each tried. Written whole (`AtomicFile`) under chi web's
+  `@participant_images_mutex`. It goes with the session.
 - **`participants.lock`** (0600, empty): the lock a participant's turn file is counted and written under when no
   worker runs ([Turns](#turns)).
 
@@ -798,7 +861,7 @@ participant TUI in v1.
 - A participant reaches one session, through the `:participant` rows only; another session is a 404.
 - No token is written anywhere: the grants store has digests, the sidecar and the audit trail have neither.
 - Owner sessions are unchanged: no sidecar, no audit file, no key in the session JSON until a grant exists.
-- No participant reaches `/command`, `/answer`, `/output` or an image. Their turn's author and client id are stamped
+- No participant reaches `/command`, `/answer`, `/output` or an image they didn't upload. Their turn's author and client id are stamped
   from the principal, never the body.
 - Everything a participant reads (their stream, the show) is built by `ParticipantView` from named fields;
   an event type it doesn't name is dropped.

@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - chi web: see what chi has of a working-set item: a row's ▸ in the working set list peeks at its latest edit or read, and "Open the timeline" (also a tool row's "timeline" and a file ref's "What chi has") shows every read as merged line slices over a strip of the file, every edit as its diff, slices chi no longer has greyed, and for a memory that changed since chi read it, the diff to what it says now.
+- chi web: a participant can attach images to their own turn (paste, drop or the image button); they see their own thumbnails only, up to 40 images per invite, within their cap.
 
 ### Changed
 
