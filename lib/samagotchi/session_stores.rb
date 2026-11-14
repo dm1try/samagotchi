@@ -45,6 +45,8 @@ module Samagotchi
                 continue: "drawings describe turns in the previous link", corpus_dir: "sessions/compat-drawn"),
       Store.new(file: "move.json", owner: "ChildMove", removal: :session_files, cross_version: true,
                 continue: "an interrupted move belongs to the previous continue", corpus_dir: SIDE_CAR),
+      Store.new(file: "continued_from.json", owner: "ContinuedFrom", removal: :session_files, cross_version: true,
+                continue: "the record names the continue that made this link", corpus_dir: SIDE_CAR),
       Store.new(file: "continue.json", owner: "ContinueIntent", removal: :session_files, cross_version: true,
                 continue: "the intent records the previous link's continue", corpus_dir: SIDE_CAR),
       Store.new(file: "objectives.lock", owner: "Objectives", removal: :session_files, cross_version: false,

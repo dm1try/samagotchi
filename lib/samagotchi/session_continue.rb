@@ -15,6 +15,7 @@ require_relative "context_move"
 require_relative "note_move"
 require_relative "archive_store"
 require_relative "continue_intent"
+require_relative "continued_from"
 require_relative "recap_store"
 require_relative "bridge_client"
 require_relative "worker_link"
@@ -244,7 +245,8 @@ module Samagotchi
       carried = {}
       begin
         link = spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
-                                  move: plan.move, client_id: client_id, carried: carried, session_id: successor_id)
+                                  move: plan.move, archived: archived, client_id: client_id, carried: carried,
+                                  session_id: successor_id)
       rescue StandardError, Interrupt
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
@@ -457,12 +459,16 @@ module Samagotchi
     # it (spawn_session marks it starting before its file is saved:
     # StartingMarker.fresh?).
     # @param carried [Hash] gets what each CARRY step took to it, by name
+    # @param archived [Array<String>] what the archive of +previous+ hid
+    #   (ContinuedFrom's record, written first in before_spawn: no crash
+    #   window between the link's save and the record)
     private_class_method def self.spawn_continuation(previous, prompt:, preview:, choice:, state_dir:, move:, carried:,
-                                                     session_id:, client_id: nil)
+                                                     session_id:, archived: [], client_id: nil)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
       before_spawn = lambda do |link|
+        ContinuedFrom.write(link.id, previous_id: previous.id, archived_ids: archived, moved_ids: move, state_dir: state_dir)
         ctx = CarryContext.new(previous: previous, to: link.id, state_dir: state_dir, move: move)
         CARRY.each { |step| carried[step.name] = send(step.carry, ctx) }
       end
