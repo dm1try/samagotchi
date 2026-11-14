@@ -1,6 +1,18 @@
 # frozen_string_literal: true
 
 require_relative "../turn_anchors"
+require_relative "../archive_store"
+require_relative "../client_id"
+require_relative "../continue_intent"
+require_relative "../degrade"
+require_relative "../delivery"
+require_relative "../log"
+require_relative "../session"
+require_relative "../session_chain/links"
+require_relative "../session_inbox"
+require_relative "../steer"
+require_relative "../worker_link"
+require_relative "../worker_presence"
 
 module Samagotchi
   class SessionManager

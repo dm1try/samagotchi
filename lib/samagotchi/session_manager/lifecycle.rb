@@ -1,6 +1,18 @@
 # frozen_string_literal: true
 
 require_relative "../worker_idle_exit"
+require_relative "../bridge_client"
+require_relative "../chi_invocation"
+require_relative "../client_id"
+require_relative "../log"
+require_relative "../owner_lock"
+require_relative "../process_group"
+require_relative "../reminder_carry"
+require_relative "../session"
+require_relative "../session_inbox"
+require_relative "../tools/task_record"
+require_relative "../tools/task_runtime"
+require_relative "../worker_link"
 
 module Samagotchi
   class SessionManager

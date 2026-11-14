@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../session"
+require_relative "../session_inbox"
+require_relative "../session_row"
+require_relative "../worker_link"
+
 module Samagotchi
   class SessionManager
     # Listing: read-only queries over the saved sessions (the lists, their

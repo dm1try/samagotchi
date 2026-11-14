@@ -1,5 +1,14 @@
 # frozen_string_literal: true
 
+require_relative "../chi_home"
+require_relative "../child_env"
+require_relative "../config"
+require_relative "../installed_gem"
+require_relative "../log"
+require_relative "../log_path"
+require_relative "../model_profile"
+require_relative "../paths"
+
 module Samagotchi
   class SessionManager
     # CROSS-VERSION CONTRACT: this boot string, the entry it names
