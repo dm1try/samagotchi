@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../turn_anchors"
+
 module Samagotchi
   class SessionManager
     # How long a turn waits for the Bridge of a worker a resume just spawned.
@@ -221,6 +223,11 @@ module Samagotchi
           return queue_unavailable if Delivery.queue?(delivery) && !worker_has?(client, Delivery::QUEUE_FEATURE)
           # A participant's turn only to a worker with the review boundary.
           return review_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::REVIEW_FEATURE)
+          # A participant's Revise only to a worker that checks it at the
+          # stamp (ParticipantRevise): an older one would stamp it unchecked.
+          if Steer.participant_author?(author) && anchors.revises && !worker_has?(client, ReviseAnchor::PARTICIPANT_FEATURE)
+            return DeliverResult.new(status: :refused, code: 409, ack: ReviseAnchor::PARTICIPANT_UNAVAILABLE)
+          end
 
           begin
             options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }

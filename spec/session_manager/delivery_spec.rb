@@ -294,6 +294,23 @@ RSpec.describe Samagotchi::SessionManager do
         expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
       end
 
+      it "refuses a participant's Revise to a worker without participant_revise in their words; the owner's goes" do
+        own("worker")
+        revises = { revises: { turn_id: "123e4567-e89b-12d3-a456-426614174001" } }
+        bridge = client_naming(%w[delivery review_turns revise])
+        expect(bridge).not_to receive(:post_turn)
+        result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1",
+                                                          anchors: revises, state_dir: tmpdir, bridge: -> { bridge })
+        expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::ReviseAnchor::PARTICIPANT_UNAVAILABLE)
+        expect(result.ack["detail"]).to eq(Samagotchi::ParticipantMessages::REVISE_UNAVAILABLE)
+        expect(input_files).to be_empty
+
+        posting = client_naming(%w[delivery review_turns revise])
+        allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+        expect(described_class.deliver_turn(session.id, client_id: "web:o", prompt: "q", delivery: "queue", anchors: revises,
+                                            state_dir: tmpdir, bridge: -> { posting }).status).to eq(:accepted)
+      end
+
       it "refuses a Verify turn to a worker without the verify feature" do
         own("worker")
         bridge = client_naming(%w[delivery review_turns])
