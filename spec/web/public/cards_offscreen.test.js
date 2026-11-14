@@ -118,3 +118,23 @@ test("the placer touches nothing but the holder: no fold storage, no api call", 
     else delete globalThis.sessionStorage;
   }
 });
+
+test("the placer draws its own question cards: a page-level instance is never called", () => {
+  // The page's question cards (question_cards.js) live in app.js; if the
+  // placer reached for one, the live page's card and fold state would change.
+  const calls = [];
+  const stub = {
+    renderQuestion: (pq) => { calls.push("renderQuestion"); },
+    questionCard: () => { calls.push("questionCard"); return null; },
+    resolveQuestion: (id) => { calls.push("resolveQuestion"); },
+  };
+  globalThis.pageQuestionCards = stub;
+  try {
+    const holder = withMarkup(TURN);
+    placeCardsOffscreen(holder, [QUESTION], { capabilities: null, answers: true });
+    assert.equal(calls.length, 0, `the page's questionCards was called: ${calls.join(", ")}`);
+    assert.ok(holder.querySelector(".bubble.question"), "the holder drew its own card");
+  } finally {
+    delete globalThis.pageQuestionCards;
+  }
+});
