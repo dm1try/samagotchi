@@ -195,13 +195,16 @@ test("a read seeded then its replay applied is the read seeded, at every cut", (
 });
 
 // The R3 class (seed against replay order) as a table: what the page that
-// lived to the cut holds is what a reload there seeds and replays.
+// lived to the cut holds is what a reload there seeds and replays. All but
+// opening_id: a read's place stamp (CardStore's, once the turn's opening is
+// in the messages: the turn-end cuts), which no live event carries.
+const unstamped = (registry) => Object.fromEntries(Object.entries(byKey(registry)).map(([key, { opening_id: _, ...e }]) => [key, e]));
 for (const s of scenarios) {
   for (const cut of s.cuts) {
     test(`${s.name}/${cut.label}: the events to the cut equal the cut's show seeded, its replay applied`, () => {
       const live = lived(s.events.slice(0, cut.at));
       assert.ok(live.size() > 0, "a card at the cut");
-      assert.deepEqual(byKey(seededReplayed(cut.show)), byKey(live));
+      assert.deepEqual(unstamped(seededReplayed(cut.show)), unstamped(live));
     });
   }
 }

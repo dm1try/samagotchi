@@ -162,7 +162,9 @@
       "duration_ms": 2400,
       "turn_summary": {
         "output": "Done."
-      }
+      },
+      "kept_from": 1,
+      "kept_to": 6
     }
   ],
   "cuts": [
@@ -1061,6 +1063,270 @@
             },
             "turns_since": 0,
             "current": true,
+            "of_turn": "turn-2a"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 16,
+      "label": "turn end",
+      "show": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "do it",
+            "at": "2026-11-12T10:00:00.000+01:00",
+            "turn_id": "turn-2a",
+            "drawn": "turn-2a"
+          },
+          {
+            "role": "assistant",
+            "content": "Running both commands.",
+            "drawn": "turn-2a"
+          },
+          {
+            "role": "assistant",
+            "content": "Done.",
+            "drawn": "turn-2a"
+          }
+        ],
+        "turn_drawings": {
+          "turn-2a": {
+            "events": [
+              {
+                "type": "turn_started",
+                "prompt": "do it",
+                "origin": {
+                  "client_id": "web:me"
+                },
+                "continue": false,
+                "turn_id": "turn-2a"
+              },
+              {
+                "type": "generation_started",
+                "iteration": 1
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Running both commands.",
+                "thinking": "",
+                "iteration": 1
+              },
+              {
+                "type": "generation_completed"
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "execute",
+                "tool_id": "t1",
+                "params": "command=\"echo ok\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "execute",
+                "tool_id": "t1",
+                "output": "[execute]\nok",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "execute",
+                  "status": "ok",
+                  "params": "command=\"echo ok\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "a1",
+                  "kind": "approval",
+                  "header": "Approve tool call?",
+                  "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+                  "options": [
+                    "Allow once",
+                    "Deny"
+                  ],
+                  "approval": {
+                    "tool": "execute",
+                    "command": "echo ok",
+                    "cwd": "/work",
+                    "rule": "e2e-ask",
+                    "source": "config",
+                    "reason": "asks",
+                    "scopes": [
+                      "once"
+                    ]
+                  },
+                  "status": "pending"
+                }
+              },
+              {
+                "type": "question_answered",
+                "id": "a1",
+                "answer": {
+                  "selected": [
+                    "Allow once"
+                  ]
+                }
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 1,
+                "call_index": 2,
+                "tool": "execute",
+                "tool_id": "t2",
+                "params": "command=\"echo ok\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 1,
+                "call_index": 2,
+                "tool": "execute",
+                "tool_id": "t2",
+                "output": "[execute]\nok",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "execute",
+                  "status": "ok",
+                  "params": "command=\"echo ok\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "a2",
+                  "kind": "approval",
+                  "header": "Approve tool call?",
+                  "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+                  "options": [
+                    "Allow once",
+                    "Deny"
+                  ],
+                  "approval": {
+                    "tool": "execute",
+                    "command": "echo ok",
+                    "cwd": "/work",
+                    "rule": "e2e-ask",
+                    "source": "config",
+                    "reason": "asks",
+                    "scopes": [
+                      "once"
+                    ]
+                  },
+                  "status": "pending"
+                }
+              },
+              {
+                "type": "question_answered",
+                "id": "a2",
+                "answer": {
+                  "selected": [
+                    "Allow once"
+                  ]
+                }
+              },
+              {
+                "type": "generation_started",
+                "iteration": 2
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Done.",
+                "thinking": "",
+                "iteration": 2
+              }
+            ],
+            "end": {
+              "type": "turn_completed",
+              "turn_id": "turn-2a",
+              "duration_ms": 2400
+            }
+          }
+        },
+        "current_turn": null,
+        "replay": [],
+        "cards": [
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "Allow once"
+              ]
+            },
+            "turns_since": 0,
+            "opening_id": "turn-2a",
+            "current": false,
+            "of_turn": "turn-2a"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "a2",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 2,
+            "answer": {
+              "selected": [
+                "Allow once"
+              ]
+            },
+            "turns_since": 0,
+            "opening_id": "turn-2a",
+            "current": false,
             "of_turn": "turn-2a"
           }
         ],

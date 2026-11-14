@@ -101,6 +101,8 @@ function crossCheck(page, label) {
   assert.deepEqual(sorted(registryWaits), sorted(fromData), `${label}: the cards as data wait as the stage's do`);
 }
 
+const TURN_ENDS = ["turn_completed", "turn_canceled", "turn_failed"];
+
 // The page that lived through +events+.
 async function livedTo(events) {
   const page = livePage({ questions: true });
@@ -113,6 +115,10 @@ async function livedTo(events) {
   }
   page.turnDom.flush();
   await settle();
+  // A cut at the turn's end: the page as it reads once the stage handed the
+  // turn off (live, a moment after the end; turn_drawing_parity.test.js
+  // does the same).
+  if (TURN_ENDS.includes(events.at(-1)?.type)) page.turnDom.handOff({ immediate: true });
   // A turn handed off meanwhile has landed (its fold's end).
   page.turnDom.settleFold();
   return page;
@@ -159,9 +165,18 @@ async function resyncTo(page, show) {
 }
 
 // The live-vs-reload differences still known at a cut, "<scenario>/<cut>":
-// the stageShape fields (and "history") that differ. None today: a build
+// the stageShape fields (and "history") that differ. A build
 // that brings one back lists it here with its reason.
-const EXPECTED = {};
+const EXPECTED = {
+  // Live, the answered approval went into the history under its lead-in
+  // while check-in's card still waited in the stage (handed off at the end);
+  // a reload puts the question before the answer, after the drawn turn's
+  // check-in card. The reload can't tell when a card stopped asking (a card
+  // tapped Keep going/Nudge leaves the stage earlier; TurnAccumulator's
+  // fold_card keeps only its first arrival). Follow-up: a server-side record
+  // of where a card stopped asking, or questions as drawing parts.
+  "checkin_approval/turn end": ["history"],
+};
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));
 

@@ -231,10 +231,11 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   A turn cut mid-way while a card waits is `stage_cuts_parity.test.js`'s: the scenarios in `spec/shared/stage_cuts/`
   (written from `spec/support/stage_cut_scenarios.rb` by `spec/web/session_show_cuts_spec.rb`, which folds the events
   to each cut into a worker's snapshot and sends it through `Web::SessionShow`; `UPDATE_STAGE_CUTS=1` rewrites them)
-  are drawn live to the cut (question cards included) and reloaded from the cut's show, and the stage (`stageShape`:
+  are drawn live to the cut (question cards included; a turn-end cut, which each scenario has, after the stage's
+  hand-off: where a finished turn's questions land and the reply they keep) and reloaded from the cut's show, and the stage (`stageShape`:
   its cards, the docked ones, the lead-in bubbles, the card in front, the one that shows and the pager, the fold) and
   the history compared; a known difference is listed in its `EXPECTED`, by scenario, cut and field (one gone fails
-  too; none today), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
+  too; one today: `checkin_approval/turn end`, where a reload can't tell when a card stopped asking), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
   harnesses build their page with `spec/web/public/live_page.js`. The stage's drift check (the
   registry against the slots: no entry without its waiting card, no waiting card without its entry) is the tests' own:
   `stage_cuts_parity.test.js` runs it after every live event and at each cut, and `stage.spec.js` at each test's end
