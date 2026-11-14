@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::WorkerInbound do
     it "queues a first prompt that is a command and saves the session idle, unless it was stopped" do
       session.status = Samagotchi::Session::STATUS_RUNNING
       expect(inbound.initial_command?("/model x")).to be(true)
-      expect(queued).to eq([["/model x", nil, nil]])
+      expect(queued).to eq([["/model x", Samagotchi::ClientId::FIRST_PROMPT, nil]])
       expect(saved.status).to eq(Samagotchi::Session::STATUS_IDLE)
 
       expect(inbound.initial_command?("hello")).to be(false)
@@ -238,8 +238,12 @@ RSpec.describe Samagotchi::WorkerInbound do
       expect(queued).to eq([["!touch x", "delegate:1234abcd", "first-1"]])
     end
 
-    it "names no sender for a session created by a person, or before the field" do
-      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin::NONE)
+    it "names the owner's first prompt for a session created by a person, or before the field; its /word runs" do
+      session.first_turn_id = "first-1"
+      expect(inbound.initial_origin).to eq(Samagotchi::TurnOrigin.new(client_id: Samagotchi::ClientId::FIRST_PROMPT,
+                                                                      enqueued_id: "first-1"))
+      expect(inbound.initial_command?("/model x")).to be(true)
+      expect(queued).to eq([["/model x", Samagotchi::ClientId::FIRST_PROMPT, "first-1"]])
     end
 
     it "names the parent for a delegate child's task without the field (an older chi spawned it)" do

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/client_id"
 
 RSpec.describe Samagotchi::ClientId do
@@ -7,6 +8,8 @@ RSpec.describe Samagotchi::ClientId do
   let(:known) do
     {
       nil => true,
+      "spawn:first" => true,
+      "card:answer" => true,
       "web:ab12cd34" => true,
       "web:restart" => true,
       "tui:4242" => true,
@@ -32,6 +35,39 @@ RSpec.describe Samagotchi::ClientId do
             described_class::RELAY_PREFIX, described_class::REVIEW_PREFIX])
       .to eq(%w[web: web:restart tui: cli:send cli:answer cli:restart delegate: child: context: task: system:
                 system:reminder plugin relay: review:])
+  end
+
+  describe "the sender rows" do
+    it "has a row for every id ClientId names, and every row is one of them" do
+      constants = described_class.constants.map { |name| described_class.const_get(name) }.grep(String)
+      expect(described_class::ROWS.map(&:match)).to match_array(constants)
+    end
+
+    it "finds the whole id first, then the longest prefix; NONE for nil, UNKNOWN for anything else" do
+      expect(described_class.sender("system:reminder").origin).to eq("reminder")
+      expect(described_class.sender("system:schedule:s1").wake).to eq(:schedule)
+      expect(described_class.sender("system:other").wake).to eq(:automatic)
+      expect(described_class.sender(nil)).to equal(described_class::NONE)
+      expect(["", "webby", "plugin:x", "spawn:other"].map { |id| described_class.sender(id) }).to all(equal(described_class::UNKNOWN))
+    end
+
+    it "takes no sender as a human's, never the owner's" do
+      expect([described_class.human?(nil), described_class.owner?(nil)]).to eq([true, false])
+    end
+
+    it "takes a worker's own first prompt and a person's card answer as the owner's, not interactive" do
+      [described_class::FIRST_PROMPT, described_class::CARD_ANSWER].each do |id|
+        expect([described_class.human?(id), described_class.owner?(id), described_class.interactive?(id)]).to eq([true, true, false])
+      end
+    end
+
+    it "names a client case in the shared labels matrix for every row" do
+      matrix = JSON.parse(File.read(File.expand_path("shared/labels_matrix.json", __dir__)))
+      ids = matrix.dig("client_labels", "cases").map { |entry| entry["client_id"] }.compact
+      described_class::ROWS.each do |row|
+        expect(ids.any? { |id| row.prefix? ? id.start_with?(row.match) : id == row.match }).to be(true), row.match
+      end
+    end
   end
 
   describe ".interactive?" do

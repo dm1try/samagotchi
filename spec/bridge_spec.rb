@@ -2367,6 +2367,17 @@ RSpec.describe Samagotchi::Bridge do
         expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
       end
 
+      # Every sender names itself: a turn from none is prose (ClientId::NONE
+      # is never the owner's), its shell line refused.
+      it "keeps a session command sent as a turn naming no sender a prompt, and refuses its shell line" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+
+        status, body = post_turn(JSON.generate(session_id: @session.id, prompt: "/model x"))
+        expect([status, body.keys]).to eq([202, %w[status enqueued_id session_id delivery]])
+        status, body = post_turn(JSON.generate(session_id: @session.id, prompt: "!ls"))
+        expect([status, body["error"]]).to eq([403, Samagotchi::CommandIntake::REFUSED_ERROR])
+      end
+
       # As the TUIs send them: an unknown /word goes to the model.
       it "keeps a turn that only looks like a command a prompt: an unknown /word, a path" do
         start_bridge(on_command: ->(_) { raise "must not be called" })
@@ -2382,7 +2393,7 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge(on_command: ->(command) { queued << command })
         @engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
 
-        expect(post_command(JSON.generate(line: "/hello again")).first).to eq(202)
+        expect(post_command(JSON.generate(line: "/hello again", client_id: "web:1")).first).to eq(202)
         expect(queued.map(&:line)).to eq(["/hello again"])
       end
 
@@ -2464,16 +2475,47 @@ RSpec.describe Samagotchi::Bridge do
         queued = []
         start_bridge(on_command: ->(command) { queued << command })
 
-        status, = post_command(JSON.generate(line: "/model", deadline: Time.now.to_f + 25))
+        status, = post_command(JSON.generate(line: "/model", client_id: "web:1", deadline: Time.now.to_f + 25))
 
         expect(status).to eq(202)
         expect(queued.size).to eq(1)
       end
 
+      # The explicit command route takes the owner's senders and chi
+      # answer's only (CommandIntake.allowed?), as a command sent as a message.
+      it "refuses a command from a named sender that may not send one (403, one text each), runs the owner's" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+
+        %w[participant:p_1 review:p_1 delegate:abcd1234 plugin system:schedule:s1 other:1].each do |client_id|
+          status, resp = post_command(JSON.generate(line: "/model", client_id: client_id))
+          expect([status, resp]).to eq([403, { "error" => Samagotchi::CommandIntake::REFUSED_ERROR,
+                                               "detail" => Samagotchi::CommandIntake::COMMAND_REFUSED }]), client_id
+          _, shell = post_command(JSON.generate(line: "!ls", client_id: client_id))
+          expect(shell["detail"]).to eq(Samagotchi::CommandIntake::REFUSED), client_id
+        end
+        expect(queued).to be_empty
+
+        %w[web:1 tui:9 tui:9@host cli:send cli:answer].each do |client_id|
+          expect(post_command(JSON.generate(line: "/model", client_id: client_id)).first).to eq(202), client_id
+        end
+        expect(queued.map(&:client_id)).to eq(%w[web:1 tui:9 tui:9@host cli:send cli:answer])
+      end
+
+      # Every sender names itself: a command from none runs nothing.
+      it "answers 400 to a command that names no sender, and queues nothing" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+
+        [JSON.generate(line: "/model"), JSON.generate(line: "/model", client_id: ""), JSON.generate(line: "!ls", client_id: nil)].each do |body|
+          status, resp = post_command(body)
+          expect([status, resp]).to eq([400, { "error" => "missing_client_id", "detail" => described_class::UNNAMED_COMMAND }])
+        end
+      end
+
       it "answers 400 for a deadline that is not a number" do
         start_bridge(on_command: ->(_) { raise "must not be called" })
 
-        status, resp = post_command(JSON.generate(line: "/model", deadline: "soon"))
+        status, resp = post_command(JSON.generate(line: "/model", client_id: "web:1", deadline: "soon"))
 
         expect(status).to eq(400)
         expect(resp["error"]).to eq("bad_deadline")

@@ -118,6 +118,11 @@ module Samagotchi
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
+    # A POST /command that names no sender: every sender names itself
+    # (ClientId::NONE is never the owner's), so it runs nothing.
+    UNNAMED_COMMAND = "a session command must name its sender: send client_id (a web tab's web:<id>, a chi TUI's " \
+                      "tui:<pid>, chi send's cli:send)"
+    UNNAMED_COMMAND_REPLY = [{ "Allow" => "POST" }, 400, { error: "missing_client_id", detail: UNNAMED_COMMAND }].freeze
     # The request header that names the Bridge's secret, lowercased as #read_request keeps it.
     SECRET_HEADER = BridgeSecret::HEADER.downcase
     # Bytes of randomness in a Bridge's secret (hex in bridge.json: twice as many characters).
@@ -1073,11 +1078,20 @@ module Samagotchi
         return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: detail }]
       end
 
+      client_id = fetched(parsed, "client_id")
+      return UNNAMED_COMMAND_REPLY if client_id.to_s.strip.empty?
+
+      # Only the owner's senders and chi answer's (CommandIntake.allowed?),
+      # as for a command sent as a message.
+      unless CommandIntake.allowed?(client_id)
+        Log.warn(:bridge, "command_refused", client_id: client_id)
+        return [{}, 403, { error: CommandIntake::REFUSED_ERROR, detail: CommandIntake.refusal(line) }]
+      end
+
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
-      queue_command_request(session_id, line, client_id: fetched(parsed, "client_id"), deadline: deadline,
-                                              card: fetched(parsed, "card") == true)
+      queue_command_request(session_id, line, client_id: client_id, deadline: deadline, card: fetched(parsed, "card") == true)
     end
 
     # Queues +line+ (a session command) for the worker and announces its

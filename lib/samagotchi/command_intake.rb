@@ -25,8 +25,15 @@ module Samagotchi
               "(a web tab, a chi TUI, chi send); from a delegate, a schedule or another automatic sender it is not run. " \
               "Say what to run in words instead (\"run `ls`\"), or leave out the leading !"
 
-    # The Bridge's error code for it (403).
+    # The Bridge's error code for it (403), and for COMMAND_REFUSED.
     REFUSED_ERROR = "command_not_permitted"
+
+    # The one text a session command line gets on the Bridge's explicit
+    # command route (POST /command) from a sender that may not send one
+    # (#allowed?): a participant, a delegate, a plugin, an id chi doesn't
+    # know. Its shell lines get REFUSED.
+    COMMAND_REFUSED = "a session command runs only when you send it (a web tab, a chi TUI, chi send) or chi answer does; " \
+                      "from a participant, a delegate, a plugin or another automatic sender it is not run"
 
     # chi answer's marker (a parent agent's /continue yes and
     # /parent-answers; Worker#as_parent? holds those to its own rules): any
@@ -36,8 +43,10 @@ module Samagotchi
     module_function
 
     # Whether a message from +client_id+ may run as a session command: the
-    # owner's input (ClientId.owner?: a web tab, a chi TUI, chi send, no
-    # client) and chi answer's. A participant (review:) is refused on its own.
+    # owner's input (ClientId.owner?: a web tab, a chi TUI, chi send, a
+    # worker's own first prompt, a person's card answer) and chi answer's.
+    # No client id is no one's: refused (every sender names itself). A
+    # participant (review:) is refused on its own.
     # A delegate, a child's report, a context or task wake, a schedule, a
     # reminder, a relay and a plugin may not (the bundles that send,
     # coordinator and skills, send prose).
@@ -52,5 +61,8 @@ module Samagotchi
     # Whether the command line +line+ from +client_id+ is a shell line that
     # must not run.
     def refused?(line, client_id) = shell_line?(line) && !allowed?(client_id)
+
+    # The refusal text for +line+ from a sender that may not send commands.
+    def refusal(line) = shell_line?(line) ? REFUSED : COMMAND_REFUSED
   end
 end

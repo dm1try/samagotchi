@@ -310,16 +310,20 @@ sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 A message that is a session command (`/model x`, `!cmd`, `!rollback`) runs as the command only when a person sends
 it: a web tab, an attached chi TUI, `chi send` (yours, or one a model runs from `execute`: the trust model above), a
-message with no sender named, and `chi answer`'s lines (`cli:answer`: a parent agent's `/continue yes` and
+session's own first prompt, and `chi answer`'s lines (`cli:answer`: a parent agent's `/continue yes` and
 `/parent-answers`), which may send any session command, with the same trust as `chi send`.
 `!cmd` runs its shell line with no rule or ask (it is yours), so from anyone else it is refused: a delegating parent's
 task or follow-up, a schedule's firing (both modes), a plugin's message, a context or task wake. Chi web's Bridge answers
 `403 command_not_permitted` with one message, an input file's line shows as the command's error, and nothing runs.
 Their `/word` line is plain text: the model reads it. `delegate`, `schedule_task` and `chi schedule add` refuse a task
 or prompt that starts with `!` with the same message, so the model can rewrite it. A participant's command is refused
-as before ([their boundary](#a-participants-pair-boundary)). The rule is `CommandIntake`
-(`lib/samagotchi/command_intake.rb`), asked by `Bridge#handle_post_turn` and `WorkerInbound#queue_as_command`;
-`POST /command` (a UI's or a card's explicit command line) is not a message and is not covered.
+as before ([their boundary](#a-participants-pair-boundary)). A message that names no sender (an input file from an
+older chi, a Bridge `POST /turn` without `client_id`) is nobody's: its `/word` line is text, its `!` line refused
+(`ClientId::NONE` is never the owner's). The rule is `CommandIntake` (`lib/samagotchi/command_intake.rb`, on
+`ClientId.owner?`), asked by `Bridge#handle_post_turn`, `WorkerInbound#queue_as_command` and `Bridge#handle_command`
+(`POST /command`, a UI's or a card's explicit command line): that route must name its sender (without `client_id` 400
+`missing_client_id`), and from any other sender (a participant, a delegate, a plugin, an unknown id) it answers 403
+`command_not_permitted` (`CommandIntake::COMMAND_REFUSED`; a `!` line's is `REFUSED`) and runs nothing.
 
 ## Protected paths
 
