@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A reply that is only a tool call written as text, closing with `</tool_call>`, is asked again instead of taken as the answer.
 - chi web: a memory in the working set is marked stale when its file, or the model overlay read with it, changed since chi read it.
 - chi web: a page opened while a turn runs shows the context percent at once, not `ctx ?`.
 - chi web: in the iPhone Home Screen app, the top bar no longer sits in iOS's blurred band under the clock.

@@ -30,6 +30,17 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "a reply that is only a tool call" do
     </tool_call>
   TEXT
 
+  # A reply of the same shape with no wrapper block: `<parameter=` opened,
+  # `</tool_call>` closed (the local Qwen build, api: openai, 2026-11-14).
+  STRAY_PARAMETER = <<~TEXT
+    <parameter=execute>
+    <parameter=command>
+    cd /some/worktree && sed -n '1,60p' lib/samagotchi.rb
+    </parameter>
+    </function>
+    </tool_call>
+  TEXT
+
   let(:nudge) { Samagotchi::TurnNote.malformed_retry }
   let(:fake_kernel) do
     kernel = test_kernel
@@ -201,6 +212,30 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "a reply that is only a tool call" do
       expect(adapter.requests.length).to eq(3)
       expect(types.count(:tool_call_started)).to eq(1)
     end
+
+    # The same block without the outer <tool_call> wrapper: it opens with
+    # `<parameter=` and ends with `</tool_call>` (a local Qwen build, api: openai,
+    # 2026-11-14). The close of the block is the wrapper's own tag.
+    it "asks again when a <parameter= block closes with </tool_call>" do
+      backend.adapter = FakeChatAdapter.new(text(STRAY_PARAMETER), text("PONG"))
+
+      result = run
+
+      expect(result.text).to eq("PONG")
+      expect(types.count(:generation_retrying)).to eq(1)
+      expect(events.find { |event| event[:type] == :generation_retrying }).to include(iteration: 1, shape: "parameter")
+      expect(contents(result.conversation)).not_to include("<parameter=execute>")
+    end
+
+    it "asks again when a <function= block closes with </tool_call>" do
+      backend.adapter = FakeChatAdapter.new(text("<function=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>"), text("PONG"))
+
+      result = run
+
+      expect(result.text).to eq("PONG")
+      expect(types.count(:generation_retrying)).to eq(1)
+      expect(events.find { |event| event[:type] == :generation_retrying }).to include(iteration: 1, shape: "function")
+    end
   end
 
   describe "answers that stay answers" do
@@ -236,6 +271,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "a reply that is only a tool call" do
         "```\n<tool_call>\n<parameter=execute>\n</parameter>\n</tool_call>\n```",
         "The tag is `<parameter=execute>`, not `<function=execute>`.",
         "Now the commit:\n<tool_call>\n<function=execute>\n</function>\n</tool_call>",
+        "Now the commit:\n<parameter=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>",
         "<tool_call>\n<parameter=execute>",
         "<function=task_list></parameter>"
       ]
@@ -286,16 +322,29 @@ RSpec.describe Samagotchi::LLM::StrayToolCall do
     expect(described_class.shape("<parameter=execute>ls</function>")).to eq("parameter")
   end
 
+  # The flavour that mixes the tags also closes a block with the wrapper's own
+  # `</tool_call>` instead of the tag of what it opened (2026-11-14, a local Qwen
+  # build on api: openai).
+  it "names a block that closes with </tool_call> the same way" do
+    expect(described_class.shape("<parameter=execute>\n<parameter=command>\ncd /some/worktree && sed -n '1,60p' lib/samagotchi.rb\n</parameter>\n</function>\n</tool_call>")).to eq("parameter")
+    expect(described_class.shape("<parameter=execute>ls</function>\n</tool_call>")).to eq("parameter")
+    expect(described_class.shape("<function=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>")).to eq("function")
+    expect(described_class.shape("<function=task_list></function>\n</tool_call>")).to eq("function")
+  end
+
   it "reads an answer as an answer" do
     [nil, "", "  ", "hello", "I ran <tool_call> and it worked.",
      "The tag is `<parameter=execute>`.",
      "```\n<tool_call>\n<function=execute>\n</function>\n</tool_call>\n```",
      "Now the commit:\n<tool_call>\n<function=execute>\n</function>\n</tool_call>",
+     # Prose first, the block after it: still the answer.
+     "Now the commit:\n<parameter=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>",
      "<tool_call>\n<function=execute>\n</function>\n</tool_call>\nand then I committed",
      "<tool_call>", "<tool_call>\n<function=execute>", "\"<tool_call>\n<function=x>\n</function>\n</tool_call>\"",
      # A close that is not the opener's own, or no close at all.
      "<function=task_list></parameter>", "<tool_call>\n<parameter=execute>ls</parameter>",
-     "<function=execute>ls"].each do |text|
+     "<function=execute>ls", "<function=execute>ls</parameter>",
+     "<function=execute>ls\n</tool_call>\nand then I committed"].each do |text|
       expect(described_class.shape(text)).to be_nil
     end
   end

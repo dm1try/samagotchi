@@ -11,7 +11,8 @@ module Samagotchi
     # the reply once more, and a second one fails the turn.
     #
     # The rule: the whole reply is one closed block that opens with the call
-    # and ends with that call's own close. It needs no model profile (ChatLoop
+    # and ends with a close of that block, its own tag or the wrapper's
+    # `</tool_call>`. It needs no model profile (ChatLoop
     # has no ToolCallParser). A reply opening with prose, a fence or a quote is
     # an answer, and so is one that mentions, quotes or fences the syntax, or
     # says anything after the close. The block carries no inner tags: an empty
@@ -27,11 +28,13 @@ module Samagotchi
       OPENS = ["<tool_call>", "<function=", "<parameter="].freeze
       # ... and end with the close of that same block: nothing else in the
       # reply. A `<parameter=` call often closes with `</function>` (the
-      # flavour that mixes the two tags does it mid-block too).
+      # flavour that mixes the two tags does it mid-block too), and a block
+      # opened by `<function=` or `<parameter=` can also end with the
+      # wrapper's own `</tool_call>` instead of its tag.
       CLOSES = {
         "<tool_call>" => ["</tool_call>"],
-        "<function=" => ["</function>"],
-        "<parameter=" => ["</parameter>", "</function>"]
+        "<function=" => ["</function>", "</tool_call>"],
+        "<parameter=" => ["</parameter>", "</function>", "</tool_call>"]
       }.freeze
       # How much of the reply the warning keeps (KernelLoop's own cap).
       TAIL_CHARS = 400
