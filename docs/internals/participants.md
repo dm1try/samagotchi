@@ -203,6 +203,7 @@ row answers another session's id 404, so a new route is covered without a new ex
 | `GET /` | participant | the main page (`index.html`) stamped for them (`App#participant_index_data`: their viewer, the grant's session and its title; [web-frontend.md](web-frontend.md#the-participants-page)); the page reads the rest through the show and the stream below |
 | `POST /api/token` | participant | trade a link's one-time code or a pasted token for the `chi_token` cookie (the token is not left in the page URL) |
 | `GET /api/sessions/:id/stream` | participant | the session's stream through `ParticipantStreamFilter` (only `from_seq` and `snapshot` reach the Bridge); it ends within a poll of a revoke or the expiry |
+| `GET /api/sessions/:id/prompt_history` | participant | their own accepted messages in this session for ↑/↓, oldest first, redacted, `{entries}` ([A participant's prompt history](#a-participants-prompt-history)); the owner calling it: a plain 403 (their list is `GET /api/history`, `:owner`) |
 | `GET /api/sessions/:id/working_set` | participant | the working set's project files only (`ParticipantView.working_set`), with `running` |
 | `POST /api/sessions/:id/images` | participant | their upload ([Participant images](#participant-images)): refused at their cap, past their attempts or quota, a bmp/tiff/heic; the reply `{file, name, width, height}` |
 | `GET /api/sessions/:id/images/<name>` | participant | only an image they uploaded, `Cache-Control: no-store`; any other the 404 a missing file gets |
@@ -298,7 +299,8 @@ Refused before delivery, each audited:
   `deliver_turn` as `images:`; the turn's audit line counts them (`images`), accepted or refused by the worker.
 
 It goes out with that delivery and `pending_limit` = the grant's queue limit + 1 (the running one), never
-into the owner's prompt history. The Bridge counts the author's running and queued turns under its event lock and
+into the owner's prompt history: an accepted one goes into their own ([A participant's prompt
+history](#a-participants-prompt-history)). The Bridge counts the author's running and queued turns under its event lock and
 answers 429 `too_many_turns` past it; with no worker, their waiting input files are counted, and the new one
 written, under the session dir's `participants.lock` (`SessionManager.deliver_turn`), so two at once can't both
 pass. The ack is 202 with the worker's
@@ -469,7 +471,8 @@ context's fill, the speed, each turn's time and the working set's file names.
 Not tool output or arguments, thinking, approvals' and questions' content, memories (text or names), context notes,
 plugin steers, automatic and delegate input, cards, command output, the working set's memories and URLs, cost
 (but their own usage, as their grant's exposure shows it), tokens and cost per model, guardrail judgments,
-host paths or the owner's prompt history. Every read a participant reaches goes through one module,
+host paths or the owner's prompt history (their own messages for ↑ come from their own list, redacted:
+[A participant's prompt history](#a-participants-prompt-history)). Every read a participant reaches goes through one module,
 `Web::ParticipantView` (`lib/samagotchi/web/participant_view.rb`), whose every answer is a new hash built from named
 fields: a field added to an event later reaches nobody until it is named there.
 
@@ -683,7 +686,8 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
     participant can't open it). No push
     for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
 - **The composer** is the owner's, with what is theirs (`participant_main.js`; [web-frontend.md](web-frontend.md#the-participants-page)):
-  no `/` list or plugin pills, no ↑/↓ prompt history (the owner's `GET /api/history`), no model picker. Images go
+  no `/` list or plugin pills, no model picker; ↑/↓ walks their own messages in this session, never the owner's
+  `GET /api/history` ([A participant's prompt history](#a-participants-prompt-history)). Images go
   in as the owner's do (paste, drop, the image button), within their quota ([Participant images](#participant-images));
   a refused upload or send keeps the chips and toasts the server's words. While their own turn runs, a message goes in at its next step on a
   worker with `participant_steer` (Alt+Enter queues it); while anyone else's runs, it goes in as their own turn after
@@ -740,6 +744,31 @@ the token or its digest.
 the local chi web's LAN address when one runs (its `GET /api/info`), else `127.0.0.1` with a line saying it opens on
 this machine only.
 
+## A participant's prompt history
+
+A participant's ↑/↓ in the composer walks their own messages in this session, as the owner's walks the owner's.
+
+- **Recorded at accept.** `ParticipantAccess#participant_turn_result`'s accepted branch (beside its audit line) calls
+  `Web::ParticipantHistory#record_participant_prompt`: `ParticipantPrompts.append` under the principal's grant id
+  (never a body field: `author` and `client_id` are ignored, `history` counts only as the boolean `false`, an
+  image-only send), with the session's grants `Grants` still knows as the live ones. A send chi web refuses (a `!`/`/`
+  line, a cut, the cap, too many turns, bad images, a Revise of another's turn), times out on or fails to enqueue
+  records nothing. Recorded by design, because chi web accepted them (202), as the owner's `record_history`: a queued
+  turn the worker refuses at its start (the cap re-check, an outdated invite), a Revise overtaken at the stamp and a
+  queued turn they take back. A failed write never fails the send (`Log.warn`). The owner's `PromptHistory` is never
+  read or written for a participant.
+- **Served to its grant only.** `GET /api/sessions/:id/prompt_history` (`:participant`, `:session`: another
+  session's id is the router's unknown session first) answers `{entries}` with `Cache-Control: no-store`:
+  `ParticipantPrompts.entries` for `principal(req).grant.id`, each through `Redact.text` with their viewer (the
+  grant's author, the session folder from `SessionHub#working_directory`, else the saved session's, and
+  `owner_secrets`), so a recalled message reads as their conversation shows it (`[redacted]`, a relative path,
+  `~`). No query or body is read; entries only (no grant id, name or time). The owner gets a plain 403
+  `not_permitted` with no audit line. The page asks for it with `own_prompt_history`
+  (`participant_history.js`; [web-frontend.md](web-frontend.md#the-viewer)).
+- **Per invite, from now.** Lists are per grant: a new invite for the same person starts empty, and messages sent
+  before this landed aren't in it (no backfill). A swept grant's id reissued in the same session (about 1 in 2³²)
+  could inherit a list no append has pruned yet, as `participant_images.json` and `participants.json` today.
+
 ## Files in the session dir
 
 None is in the session JSON (chi web never saves that, and a worker would overwrite a field it added), and
@@ -769,6 +798,11 @@ invited to has none: its files stay byte for byte as they were.
   `images/`: no route serves it): `{images: [{file, grant_id, at}], attempts: {<grant id>: n}}`, which image files
   each grant uploaded and how many uploads each tried. Written whole (`AtomicFile`) under chi web's
   `@participant_images_mutex`. It goes with the session.
+- **`participant_prompts.json`** (0600, `ParticipantPrompts`, chi web only, beside `participants.json`; served only
+  through `GET …/prompt_history`, to its grant, redacted): `{prompts: {<grant id>: [text, …]}}`, each grant's accepted
+  messages, oldest first, at most 100 of at most 16 KB each (a longer one isn't recorded); the lists of grants the
+  grants store no longer knows are pruned on an append; a file that doesn't read is never written over and reads as
+  none. Written whole (`AtomicFile`) under chi web's `@participant_prompts_mutex`. It goes with the session.
 - **`participants.lock`** (0600, empty): the lock a participant's turn file is counted and written under when no
   worker runs ([Turns](#turns)).
 
@@ -885,6 +919,8 @@ participant TUI in v1.
   older chi's unstamped or read-only message), and never merged into the owner's message.
 - The owner's input is never merged into a participant's running turn (the Bridge queues it, the drain takes only
   the participant's own lines): it runs as the owner's own turn after it.
+- A participant's ↑ list is built from their grant's accepted sends only, keyed by the principal, and served only
+  to that grant, redacted; never the owner's prompt history or another participant's messages.
 - A participant stops only a turn they started, named by its id, which the worker compares under its lock.
 - A participant revises only their own answer with only their own turns after it, checked by chi web at the send and
   by the worker at the stamp (`ParticipantRevise`); their Revise never folds anyone else's turn.
