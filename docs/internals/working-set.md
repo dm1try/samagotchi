@@ -13,6 +13,16 @@ after the call: `ToolRun#stamp`, `{path:, mtime_ns:, size:}`. The path is the on
 path against the session's folder, `File.expand_path`, no realpath). A stat that fails, or that isn't a file's (a
 directory), gives no stamp; nor does any other tool.
 
+An ok `memory_read` is stamped differently: `Tools::MemoryRead.call` returns a `Tools::MemoryRead::Result`, a String
+with `reads` besides it - per name read, the file that answered and the model overlay appended to it, if any (KernelLoop
+hands those to the runner as `result[:memory_reads]`). Its stamp is
+`{memories: {name => {path:, mtime_ns:, size:, overlay: {…}}}}`, one entry per name, with no `mtime_ns` at its top.
+That is compat N-1 in both directions: a reader that only knows file stamps (`WorkingSet.stamp_of` needs a top-level
+`mtime_ns`) sees nothing in it, and a session saved before memory stamps has no stamp at all - either way its memories
+are never stale. The name it read from, and its overlay, are what "changed since" is measured against, so a system
+memory the model read is stale when its file or the overlay read with it moved, even if a project memory of the same
+name exists.
+
 Both `ToolResponse` shapes save the stamps as `tool_stamps`, one per run, read by the run's place
 (`ToolIds::Ref#run`):
 - `ToolResponse.joined` (the native loop's batch entry): `runs.map(&:stamp)`, only when one is non-nil, like
@@ -84,7 +94,8 @@ saved the build doesn't pair the sent conversation at all (the view returns the 
 dropped` and the page offers its undrop.
 
 **Stale** is a file item whose latest run left a stamp, and whose file now differs from that stamp in mtime or size,
-or is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
+or is gone. A memory item goes the same way: the entry's file differs from the stamped one, or the model overlay
+stamped with it does, or either is gone. No stamp, live. A forgotten item stays forgotten whatever its file did.
 
 **An item's outputs.** `WorkingSet.outputs_of(conversation, kind:, key:, strategy:, cwd:)` answers an item's
 content outputs (`WorkingSet::Output`: `id`, the tool_response entry's `index`, `derived` for a legacy entry's id,
@@ -93,8 +104,8 @@ content outputs (`WorkingSet::Output`: `id`, the tool_response entry's `index`, 
 when it has outputs and none is `sent`. An edit-only item, a failed run's file or an unknown key has none; a
 `memory_read` of several names is an output of each name.
 
-**Cost.** Two `paired_runs` walks, one view build and one stat per file item. A 500-message session builds in about
-10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
+**Cost.** Two `paired_runs` walks, one view build, a stat per file item and one per memory stamp. A 500-message
+session builds in about 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
 
 ## Delivery
 

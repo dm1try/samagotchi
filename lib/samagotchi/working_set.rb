@@ -7,6 +7,8 @@ require_relative "file_ref"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
 require_relative "llm_context_view"
+require_relative "memory_paths"
+require_relative "degrade"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -210,6 +212,8 @@ module Samagotchi
       base = { run: run, sent: sent, content: CONTENT.include?(name), share: 1 }
       if FILE_OPS.key?(name)
         path = FileRef.for(name, run.call, cwd: cwd)&.path
+        return [] unless path
+
         path ? [Touch.new(kind: FILE, key: path, op: FILE_OPS[name], **base)] : []
       elsif name == MEMORY_READ
         names = found_names(run)
@@ -252,6 +256,8 @@ module Samagotchi
                 contents.all? { |touch| dropped?(touch, conversation) } ? DROPPED : FORGOTTEN
               elsif kind == FILE && changed?(key, group.last.run, conversation, stat)
                 STALE
+              elsif kind == MEMORY && memory_changed?(key, group.last.run, conversation, stat)
+                STALE
               else
                 LIVE
               end
@@ -291,24 +297,62 @@ module Samagotchi
       stamp = stamp_of(conversation[run.index], run.ref.run)
       return false unless stamp
 
+      differs?(path, stamp, stat)
+    end
+
+    # Whether the memory +key+ has changed since +run+'s stamp (the item's
+    # latest run): a memory_read's stamp has one entry per name it read, each
+    # with the file that answered and the model overlay read with it; a run
+    # on the memory's own file (a `read` or `edit` of it) carries a plain file
+    # stamp of that file instead. No stamp - a session saved before memory
+    # stamps, or a reader that only knows file stamps - means not changed.
+    # The memory is gone, or its overlay is, as well: changed.
+    def memory_changed?(key, run, conversation, stat)
+      stamp = stamp_hash(conversation[run.index], run.ref.run)
+      return false unless stamp
+
+      entries = field(stamp, :memories)
+      return differs?(field(stamp, :path), stamp, stat) unless entries.is_a?(Hash)
+
+      entry = field(entries, key)
+      return false unless entry.is_a?(Hash)
+
+      overlay = field(entry, :overlay)
+      differs?(field(entry, :path), entry, stat) ||
+        (overlay.is_a?(Hash) && differs?(field(overlay, :path), overlay, stat))
+    end
+
+    # Whether the file at +path+ is not what +entry+ ({mtime_ns:, size:}) says
+    # it was, in mtime or size.
+    def differs?(path, entry, stat)
       now = stat.call(path)
       mtime_ns = (now.mtime.to_i * 1_000_000_000) + now.mtime.nsec
-      mtime_ns != field(stamp, :mtime_ns) || now.size != field(stamp, :size)
+      mtime_ns != field(entry, :mtime_ns) || now.size != field(entry, :size)
     rescue SystemCallError
       # Gone (or unreadable): not what the model saw.
       true
     end
 
-    # +entry+'s tool_stamps at the run's place, a Hash with symbol keys
-    # (live) or string keys (after a reload); nil when none.
-    def stamp_of(entry, place)
+    # +entry+'s tool_stamps at the run's place, whatever its shape (live has
+    # symbol keys, a reloaded session string keys); nil when there is none.
+    def stamp_hash(entry, place)
       stamps = entry[:tool_stamps]
       stamp = stamps.is_a?(Array) ? stamps[place] : nil
-      stamp.is_a?(Hash) && field(stamp, :mtime_ns) ? stamp : nil
+      stamp.is_a?(Hash) ? stamp : nil
+    end
+
+    # A file run's stamp: {path:, mtime_ns:, size:}. A memory_read's stamp
+    # has no mtime_ns at its top ({memories: {name => ...}}), so a reader
+    # that knows only file stamps - one from before memory stamps, any
+    # strategy's - sees none there and never calls a memory stale.
+    def stamp_of(entry, place)
+      stamp = stamp_hash(entry, place)
+      stamp && field(stamp, :mtime_ns) ? stamp : nil
     end
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
+    private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id,
+                         :changed?, :memory_changed?, :differs?, :stamp_hash, :stamp_of, :field
   end
 end
