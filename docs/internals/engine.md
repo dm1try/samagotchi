@@ -558,7 +558,7 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`) goes (the
   `ClientId::UNKNOWN`: automatic.
 - **Delivery**: a participant's input always waits for a turn of its own (`SessionInbox.waits_for_turn_end?`), so
   the drain never merges it; their turns count against chi web's `pending_limit` (429 `too_many_turns`).
-  `Worker#run_prompt` checks their link (`ParticipantTurnMode`: an older chi's read-only one is `outdated`) and cap (`participant_refusal`) before the turn and after it.
+  `Worker#run_prompt` checks their link (`ParticipantTurnMode`: an older chi's read-only one is `outdated`) and cap (`WorkerParticipantGate#refusal`) before the turn and after it.
 - **The gate**: `GuardrailWiring#participant_boundary` picks `Guardrails::PairBoundary` for a pair turn, else
   `Guardrails::ParticipantRefusal` (every call denied), by `TurnContext#participant_mode` (guardrails.md). Both are
   no-ops for the owner.

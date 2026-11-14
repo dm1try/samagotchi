@@ -44,8 +44,7 @@ require_relative "context_candidates"
 require_relative "context_poller"
 require_relative "task_watch"
 require_relative "tools/task_runtime"
-require_relative "participants"
-require_relative "participant_name"
+require_relative "worker_participant_gate"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -291,9 +290,14 @@ module Samagotchi
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
       @engine.session = @session
+      # May this participant act (loop thread only): a turn as it starts,
+      # the drain, the mid-turn stop, the Continue.
+      @participant_gate = WorkerParticipantGate.new(engine: @engine, session: @session, session_id: @session_id,
+                                                    state_dir: @state_dir, session_dir: @session_dir,
+                                                    hook: Engine::PARTICIPANTS_HOOK)
       # Who is in the review as the worker starts: no notice for them
-      # (#watch_participants announces the changes from here on).
-      watch_participants
+      # (WorkerParticipantGate#watch announces the changes from here on).
+      @participant_gate.watch
       # Input already waiting in the inbox starts the next turn at once, and
       # a command queued mid-turn (/thinking, /model, /llm-context) changes
       # what it starts with: no turn-end warm-up then.
@@ -305,7 +309,7 @@ module Samagotchi
       # Bridge exists by the time anyone answers).
       @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
-                                          participant_refused: method(:participant_refusal),
+                                          participant_refused: @participant_gate.method(:refusal),
                                           save: -> { save_or_log(:command) { save_session } },
                                           queue_command: lambda { |line, client_id:|
                                             @bridge.queue_command(line, client_id: client_id, card: true)
@@ -558,18 +562,9 @@ module Samagotchi
       leaving = @exit_requested && leave_on_request
       return left(leaving) if leaving
 
-      watch_participants
+      @participant_gate.watch
       @waker.wait(idle_wait)
       nil
-    end
-
-    # A participant invited, revoked or expired since the last look: the
-    # UIs hear it (Engine#announce_participants: :participants_changed).
-    # Between turns, at most once a fallback tick; a failure only logs.
-    def watch_participants
-      @engine.announce_participants
-    rescue StandardError => e
-      Log.warn(:worker, "participants_watch_failed", error: e.class.name)
     end
 
     # A participant's input file is held (left in the inbox, still queued
@@ -681,7 +676,7 @@ module Samagotchi
       # one waits, like ask_user_question.
       engine.interface = :worker
       # A pair turn stops mid-turn at its participant's cap.
-      engine.participant_stop = ->(author) { participant_turn_stop(author) }
+      engine.participant_stop = ->(author) { @participant_gate.turn_stop(author) }
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
@@ -813,8 +808,8 @@ module Samagotchi
       # A participant's turn queued before their link ended or their cap was
       # reached doesn't start (chi web refuses new ones; this is the
       # worker's check).
-      if (reason = participant_refusal(origin.author))
-        return refuse_participant_turn(origin, reason)
+      if (reason = @participant_gate.refusal(origin.author))
+        return @participant_gate.refuse(origin, reason)
       end
 
       # A candidate the prompt mentions is attached and fetched first, so
@@ -837,7 +832,7 @@ module Samagotchi
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
-      participant_refusal(origin.author)
+      @participant_gate.refusal(origin.author)
     end
 
     # +origin+ as this session's turns run it: a participant's Verify fresh
@@ -845,106 +840,6 @@ module Samagotchi
     def fresh_origin(origin)
       fresh = @session&.verify_fresh
       fresh ? fresh.origin_for(origin) : TurnOrigin.of(origin)
-    end
-
-    # Why the participant +author+ ("p:<id>") may run no more turns, nil
-    # while they may (and for the owner): by ParticipantTurnMode, "outdated"
-    # for an older chi's read-only invite (an entry, or a Verify fresh child
-    # saved, without "pair": this chi runs no read-only turn), "revoked" when
-    # participants.json has no current entry for them (revoked, expired,
-    # never invited) or they aren't invited to this (the owner's own Verify
-    # fresh child), "cap_reached" once they spent their cap (its own,
-    # else the config's; their turns and the side requests they caused,
-    # Engine#metrics). The owner hears the cap once per cap (#cap_notice).
-    def participant_refusal(author)
-      author = Steer.sender_author(author) or return nil
-
-      entry = participant_entry(author)
-      case ParticipantTurnMode.of(entry: entry, session: @session, now: Time.now)
-      when :outdated then return "outdated"
-      when :revoked, :not_invited then return "revoked"
-      end
-
-      cap = participant_cap(entry)
-      return nil if participant_spend(author) < cap
-
-      cap_notice(author, entry, cap)
-      "cap_reached"
-    end
-
-    # Why a participant's running pair turn stops (Engine#participant_stop,
-    # asked before each of its generations): their link ended (revoked,
-    # expired, the session archived) or their cap reached
-    # (#participant_refusal, which gives the owner the cap notice), else nil.
-    def participant_turn_stop(author)
-      reason = participant_refusal(author) or return nil
-
-      entry = participant_entry(author)
-      name = participant_label(author, entry&.name)
-      return format(REVOKED_STOP, name: name) if %w[revoked outdated].include?(reason)
-
-      format(CAP_STOP, name: name, cap: participant_cap(entry))
-    end
-
-    # +author+'s participants.json entry: this session's, a Verify fresh
-    # child's parent's (Session#participants_source_id); nil for none.
-    def participant_entry(author)
-      Participants.read(participants_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
-    end
-
-    # The session whose participants.json and audit trail this session's
-    # participants are in.
-    def participants_id = @session&.participants_source_id || @session_id
-
-    # What +author+ spent against their cap: this session's metrics (live)
-    # and, through Verify fresh, the parent's or the children's saved ones
-    # (VerifyFresh.related_spend).
-    def participant_spend(author)
-      @engine.metrics.spend(author) + VerifyFresh.related_spend(@session, author, state_dir: @state_dir)
-    end
-
-    # A participant's cap in dollars: their own, else the config's.
-    def participant_cap(entry) = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Grants.default_cap
-
-    # A participant's cleaned name, else their id.
-    def participant_label(author, name)
-      who = ParticipantName.clean(name)
-      who.empty? ? Steer.participant_id(author) : who
-    end
-
-    # The owner's notice that a participant reached their cap: once per
-    # participant and cap (a raised cap that is reached again says so again).
-    def cap_notice(author, entry, cap)
-      key = [author, cap]
-      return if (@cap_noticed ||= Set.new).include?(key)
-
-      @cap_noticed << key
-      id = Steer.participant_id(author)
-      @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
-                       text: format(CAP_NOTICE, name: participant_label(author, entry.name), cap: cap,
-                                                session: participants_id[0, 8], id: id))
-    end
-
-    CAP_NOTICE = "%<name>s reached their $%<cap>.2f cap: their turns stop and are refused until you raise it " \
-                 "(chi share cap %<session>s %<id>s AMOUNT)."
-    # The reason a pair turn stopped at its participant's cap (the turn's
-    # "stopped the turn: …" notice).
-    CAP_STOP = "%<name>s reached their $%<cap>.2f cap"
-    # The reason a pair turn stopped because its participant's link ended
-    # (revoked, expired, or the session archived).
-    REVOKED_STOP = "%<name>s's link was revoked or expired"
-
-    # A participant's queued turn that may not start (#participant_refusal):
-    # taken off the queue (:turn_dequeued, so every UI drops its bubble)
-    # and audited; it never runs. Its settled record (canceled, the reason)
-    # ends the sender's wait on it (chi send --wait, chi web's /wait).
-    # @param origin [TurnOrigin] a participant's
-    def refuse_participant_turn(origin, reason)
-      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
-      Participants.log(participants_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
-                                           enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
-      @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
-      nil
     end
 
     # A due reminder runs as a continue turn: Engine#run_turn
@@ -1625,10 +1520,10 @@ module Samagotchi
             end
             begin
               # A participant's line gets the checks their queued turn gets at
-              # its start (#participant_refusal: the link, the cap): refused,
+              # its start (WorkerParticipantGate#refusal: the link, the cap): refused,
               # it is taken off as that turn would be, and never merged.
-              if (author = input.origin.participant_author) && (reason = participant_refusal(author))
-                refuse_participant_turn(input.origin, reason)
+              if (author = input.origin.participant_author) && (reason = @participant_gate.refusal(author))
+                @participant_gate.refuse(input.origin, reason)
                 next
               end
               prompt = input.prompt.to_s.strip

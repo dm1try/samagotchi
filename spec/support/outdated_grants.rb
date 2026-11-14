@@ -8,7 +8,7 @@ require "samagotchi/session"
 # A grant as an older chi issued it for read-only (review) turns: no
 # "mode" in grants.json nor in its session's participants.json. This chi
 # reads it as ended (Grants::Grant#state :outdated) and refuses the
-# participant's turns (Worker#participant_refusal "outdated").
+# participant's turns (WorkerParticipantGate#refusal "outdated").
 module OutdatedGrants
   # @param grants [Samagotchi::Grants]
   # @param grant [Samagotchi::Grants::Grant]

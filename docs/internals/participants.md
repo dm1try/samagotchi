@@ -228,11 +228,11 @@ ran read-only may run with tool rights here. Whether a participant's turn runs i
 `ParticipantTurnMode.of(entry:, session:, now:)`: `:pair` (it runs), `:revoked` (no current entry: none, revoked,
 expired, or anything that isn't an entry), `:outdated` (an older chi's read-only invite, or a participant's Verify fresh
 child saved read-only) or `:not_invited` (no session, or the owner's own Verify fresh child). The worker
-(`#participant_refusal`: `:outdated` → `outdated`, the other two → `revoked`, no new reason on the wire) and the
+(`WorkerParticipantGate#refusal`: `:outdated` → `outdated`, the other two → `revoked`, no new reason on the wire) and the
 guardrails (`GuardrailWiring#participant_turn_mode`: `:pair` → `PAIR`, else `REFUSED`) both read it; `Grant#state`
 and `Entry#outdated?` use its `invite_mode?`.
 - A grant without it (an older chi's read-only invite) is ended at the gate (`token_outdated`, above), and its
-  `participants.json` entry is not active (`Participants::Entry#outdated?`): the worker's `#participant_refusal`
+  `participants.json` entry is not active (`Participants::Entry#outdated?`): the worker's `WorkerParticipantGate#refusal`
   refuses its turns with `outdated` (every Bridge and inbox-file turn, and every line the own-turn drain would merge,
   passes there: an older chi web still running and files queued before the upgrade are covered), and the system
   prompt's line and the terminal's count leave it out.
@@ -405,12 +405,12 @@ and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
   their $2.00 cap: their turns stop and are refused until you raise it (chi share cap ID p_… AMOUNT)." A turn stops
   mid-turn: before each
   generation (`KernelLoop::Services#generation_guard`, both loops) `Engine#guard_participant_spend` asks the worker's check
-  (`Worker#participant_turn_stop`: `metrics.spend(author)` counts the running turn's finished generations) and, past
+  (`WorkerParticipantGate#turn_stop`: `metrics.spend(author)` counts the running turn's finished generations) and, past
   the cap, stops the turn on the plugins' stop path (`HookRoutes#stop_turn`: "stopped the turn: Alex reached their
   $2.00 cap"), with the owner's notice once per cap. A generation's cost is known only when it ends, so a pair turn
   can overshoot the cap by its last generation (and the side requests it caused); there is no projection of the
   next one. The same check stops a pair turn whose link ended mid-turn (revoked, expired, the session archived):
-  "stopped the turn: Alex's link was revoked or expired" (`Worker::REVOKED_STOP`). The session-wide `cost-cap` bundle still applies, and its
+  "stopped the turn: Alex's link was revoked or expired" (`WorkerParticipantGate::REVOKED_STOP`). The session-wide `cost-cap` bundle still applies, and its
   question in a participant's turn goes to the owner.
 
 **Streams.** A participant's stream is filtered ([below](#what-a-participant-sees)), and it ends with their link:
@@ -644,7 +644,7 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
   - **The child is its requester's.** Its session file carries `verify_fresh: {author, mode, of, anchor}`
     (`VerifyFreshOrigin`), saved before its worker starts. `author` is the participant's (`p:<id>`), none for the
     owner. `mode` is `pair` (`Grants::PAIR_MODE`: every live grant's); a child an older chi saved with `review` is refused,
-    never run (`VerifyFreshOrigin#pair?`, `Worker#participant_refusal` `outdated`). Every
+    never run (`VerifyFreshOrigin#pair?`, `WorkerParticipantGate#refusal` `outdated`). Every
     turn of a participant's child is theirs, whoever starts it (the owner typing into it, a continue, a reminder):
     `VerifyFreshOrigin#origin_for` sets the author in `Engine#begin_turn` and in the worker, so their boundary
     (`GuardrailWiring#begin_turn` reads the saved mode, never a lookup), their System 1 skip, their once-only asks to
@@ -663,7 +663,7 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
     card: fails closed.
   - **Spend.** The parent's `verify_fresh.jsonl` (one line per child: `child_id`, `of`, `author`, `at`) is the
     rollup's index: a participant's cap check in chi web (`#participant_saved_spend`), their usage line, and the
-    worker's (`Worker#participant_spend`) add their fresh children's saved spend (`VerifyFresh.children_spend`); a
+    worker's cap check (`WorkerParticipantGate#refusal`, its spend) add their fresh children's saved spend (`VerifyFresh.children_spend`); a
     child's worker adds the parent's saved spend and its siblings'. A child's spend counts from its turns' ends, as
     a turn's does.
   - **The verdict lands on the card**, never in the parent's conversation: the child's worker writes each verdict

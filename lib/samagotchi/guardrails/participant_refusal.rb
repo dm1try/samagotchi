@@ -8,7 +8,7 @@ module Samagotchi
     # participant's turn this chi doesn't run under the owner's rules: no
     # current invite (an older chi's read-only one, no grant at all), a
     # Verify fresh child saved for a read-only turn, or no session. The
-    # worker refuses such a turn before it starts (Worker#participant_refusal);
+    # worker refuses such a turn before it starts (WorkerParticipantGate#refusal);
     # this is the fail-closed fallback should one start anyway: every call is
     # denied, nobody is asked. A no-op for the owner's turns.
     class ParticipantRefusal
