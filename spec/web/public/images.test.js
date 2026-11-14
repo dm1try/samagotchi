@@ -87,6 +87,13 @@ test("thumbsTemplate points at the session's image route and escapes names", () 
   assert.equal(markupOf(thumbsTemplate("s-1", [])), "");
 });
 
+test("thumbsTemplate takes a count (another participant's images, no refs): a muted line, no image", () => {
+  assert.match(markupOf(thumbsTemplate("s-1", 1)), /<div class="thumbs-hidden">1 image<\/div>/);
+  assert.match(markupOf(thumbsTemplate("s-1", 3)), />3 images</);
+  assert.doesNotMatch(markupOf(thumbsTemplate("s-1", 2)), /<img/);
+  assert.equal(markupOf(thumbsTemplate("s-1", 0)), "");
+});
+
 test("sendTurn names the images; uploadImage posts the raw file; createIdleSession asks for idle", async () => {
   const r = recorder({ enqueued_id: "e1" });
   await sendTurn("s1", "look", { clientId: ME, images: [{ file: REF.file, name: "shot.png" }], fetchImpl: r.fetchImpl });
