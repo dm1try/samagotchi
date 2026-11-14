@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   let(:grant) do
     FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
-    Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: state_dir).grant
+    Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir).grant
   end
   let(:author) { grant.author }
   let(:asked) { [] }
@@ -68,22 +68,14 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
     expect(notice).to include(hook: "participants", level: :warn, text: "stopped the turn: Alex reached their $2.00 cap")
   end
 
-  it "never checks a working session's participant invited before pair (a review turn)" do
-    grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
-    FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-    old = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", state_dir: state_dir).grant
-    run({ client_id: "review:#{old.id}", author: old.author })
-
+  it "checks a participant's turn in an older chi's review session too, never the owner's" do
+    run({ client_id: "web:tab" })
     expect(asked).to be_empty
     expect(generations).to eq(%i[ran ran])
-  end
 
-  it "never checks the owner's turns or a review session's participant turn mid-turn" do
-    run({ client_id: "web:tab" })
     session.review = { subjects: ["README.md"] }
     run({ client_id: "review:#{grant.id}", author: author })
-
-    expect(asked).to be_empty
-    expect(generations).to eq(%i[ran ran ran ran])
+    expect(asked).to eq([author])
+    expect(generations).to eq(%i[ran ran])
   end
 end

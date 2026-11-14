@@ -925,16 +925,21 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
 
   def checks(turn) = turn.wiring.checks(turn.context)
 
-  it "seats PairBoundary for a working session and ReviewBoundary for a review session" do
-    pair = wiring(working)
-    expect(checks(pair)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
-    expect(checks(pair)).not_to include(be_a(Samagotchi::Guardrails::ReviewBoundary))
-    reviewing = wiring(review)
-    expect(checks(reviewing)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
-    expect(checks(reviewing)).not_to include(be_a(Samagotchi::Guardrails::PairBoundary))
+  it "seats PairBoundary for a working session and for an older chi's review session alike" do
+    [working, review].each do |session|
+      pair = wiring(session)
+      expect(checks(pair)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
+      expect(checks(pair)).not_to include(be_a(Samagotchi::Guardrails::ReviewBoundary))
+    end
   end
 
-  it "keeps a working session's participant invited before pair (no grant mode, or unknown) in the review boundary" do
+  it "keeps a participant's turn with no session in the review boundary, never unbounded" do
+    w = wiring(nil)
+    expect(w.context.participant_mode).to eq(:review)
+    expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
+  end
+
+  it "keeps an older chi's read-only participant (no grant mode, or unknown) in the review boundary (the worker refuses their turn first)" do
     [Struct.new(:name, :mode).new("Old", nil), nil].each do |entry|
       w = wiring(working, entry: entry)
       expect(w.context.participant_mode).to eq(:review)
@@ -986,13 +991,6 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     expect(asked.size).to eq(1)
     expect(asked.first[:approval]).to include(rule: "pair-boundary", scopes: ["once"], author: author)
     expect(verdict).to be_deny
-  end
-
-  it "keeps a review session's participant turn read-only" do
-    w = wiring(review)
-    write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
-    expect(write).to be_deny
-    expect(write.rule).to eq("review-boundary")
   end
 end
 

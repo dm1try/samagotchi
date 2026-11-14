@@ -429,6 +429,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       {
         [401, "token_expired"] => [Samagotchi::SessionAccess::TokenExpired, messages::TOKEN_EXPIRED],
         [401, "token_revoked"] => [Samagotchi::SessionAccess::TokenRevoked, messages::TOKEN_REVOKED],
+        [401, "token_outdated"] => [Samagotchi::SessionAccess::TokenOutdated, messages::TOKEN_OUTDATED],
         [401, "token_bound"] => [Samagotchi::SessionAccess::TokenBound, messages::TOKEN_BOUND],
         [403, "not_permitted"] => [Samagotchi::SessionAccess::NotPermitted, messages::NOT_PERMITTED],
         [429, "too_many_turns"] => [Samagotchi::SessionAccess::TooManyTurns, messages::TOO_MANY_TURNS],
@@ -440,7 +441,8 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       end
       expect(Samagotchi::SessionAccess::TokenExpired.ancestors).to include(Samagotchi::SessionAccess::AuthRefused)
       expect(Samagotchi::Web::ParticipantAccess::ENDED)
-        .to eq(revoked: ["token_revoked", messages::TOKEN_REVOKED], expired: ["token_expired", messages::TOKEN_EXPIRED])
+        .to eq(revoked: ["token_revoked", messages::TOKEN_REVOKED], expired: ["token_expired", messages::TOKEN_EXPIRED],
+               outdated: ["token_outdated", messages::TOKEN_OUTDATED])
     end
   end
 

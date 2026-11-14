@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
     expect(status).to eq(200)
     # Invited without the pair stamp: their turns are review turns.
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
-                                      "mode" => "review", "cap_reached" => false, "waiting_for_owner" => "question")
+                                      "mode" => "pair", "cap_reached" => false, "waiting_for_owner" => "question")
     expect(body["session"]).to include("id" => session.id, "title" => "plan review", "status" => "running",
                                        "verify_unavailable" => false, "verdicts" => [])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
@@ -244,7 +244,7 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
   end
 
   it "names a participant invited to act pair, and review again while an older worker holds the session" do
-    pair = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", mode: "pair", state_dir: state_dir)
+    pair = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir)
     _status, body = show(pair.token)
     expect(body["viewer"]).to include("mode" => "pair")
     sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])

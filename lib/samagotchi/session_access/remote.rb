@@ -104,7 +104,7 @@ module Samagotchi
 
       # The errors any route of +entry+'s chi web can answer, each its one
       # message: the token refused (401 unauthorized) or ended (401
-      # token_revoked / token_expired), the LAN IP only (403 forbidden), a
+      # token_revoked / token_expired / token_outdated), the LAN IP only (403 forbidden), a
       # participant's token on an owner's route (403 not_permitted) or over
       # its limits (429 too_many_turns / cap_reached). nil for any other
       # answer (chi remote add says the same).
@@ -125,7 +125,7 @@ module Samagotchi
         end
       end
 
-      ACCESS_ERRORS = [TokenRevoked, TokenExpired, TokenBound, NotPermitted, TooManyTurns, CapReached].freeze
+      ACCESS_ERRORS = [TokenRevoked, TokenExpired, TokenOutdated, TokenBound, NotPermitted, TooManyTurns, CapReached].freeze
 
       # --- ids and sessions
 
@@ -781,8 +781,10 @@ module Samagotchi
         when "toolkit_refused" then raise Toolkit::Refused, message.to_s
         # The grants store doesn't read there: chi share says what it says here.
         when "grants_unwritable" then raise Grants::Unwritable, message.to_s
-        when /\Ainvalid_/, "missing_fields", "bad_images"
-          # invalid_participant: chi share's name, kind or ttl, an archived session
+        when /\Ainvalid_/, "missing_fields", "bad_images", "worker_too_old"
+          # invalid_participant: chi share's name, kind or ttl, an archived
+          # session; worker_too_old: an invite to a session whose worker
+          # must restart first
           raise BadRequest.new(message.to_s, code: error)
         end
         raise RemoteFailed, "#{@entry.label} answered #{reply.status}#{" #{error}" unless error.empty?}" \

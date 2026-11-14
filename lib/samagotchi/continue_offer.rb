@@ -37,7 +37,7 @@ module Samagotchi
     # @param queue_command [#call] (line, client_id:) queues a session
     #   command as a card's (Bridge#queue_command, card: true)
     # +participant_refused+ (author → reason or nil): why a participant's
-    # turn may no longer run ("revoked", "cap_reached": Worker's check).
+    # turn may no longer run ("revoked", "outdated", "cap_reached": Worker's check).
     # @param save [#call] saves the session (a refused Continue's Stop)
     def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
                    save: -> {})
@@ -222,6 +222,7 @@ module Samagotchi
 
     REFUSED_NOTICE = "Not continued: participant %<who>s's turn %<reason>s."
     REFUSED_WHY = { "revoked" => "is refused (their link was revoked or expired)",
+                    "outdated" => "is refused (their link is from an older chi: invite them again)",
                     "cap_reached" => "is refused (they reached their review cap)" }.freeze
 
     # The enqueued_id of the turn the offer stands for: the exhausted

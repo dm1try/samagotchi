@@ -29,14 +29,18 @@ RSpec.describe Samagotchi::ShareCommand do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  # A review session (chi review), what one shares; a working session
-  # sets review: nil (chi share warns).
+  # A session to share (an older chi's review session by default: it is
+  # shared as any session, warning included).
   def new_session(review: { "subjects" => ["plan.md"] })
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, review: review).tap do |session|
       session.save(state_dir: state_dir)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     end
   end
+
+  # What chi share printed on stderr besides the share warning every
+  # invite prints (ReviewStart::PAIR_WARNING).
+  def other_err = err.string.lines.grep_v(/\Achi share: warning: \h{8} is a working session: /).join
 
   it "prints the usage for no arguments and --help" do
     expect(described_class.new([], stdout: out, stderr: err).run).to eq(0)
@@ -61,7 +65,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(grant.identity).to eq("alex@corp.test")
         expect(out.string.lines[0]).to end_with("· cap $2.00 · bound to alex@corp.test\n")
         expect(out.string.lines[1]).to match(%r{\Ahttps://4567\.pod\.test/#code=chc_\S+&s=#{session.id}$})
-        expect(err.string).to eq("")
+        expect(other_err).to eq("")
 
         out.truncate(0)
         out.rewind
@@ -77,7 +81,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(run_with(access, session.id, "--name", "Alex")).to eq(0), err.string
         expect(grants.list.first.identity).to be_nil
         warning = format(described_class::UNBOUND_WARNING, header: header)
-        expect(err.string).to eq("chi share: warning: #{warning}\n")
+        expect(other_err).to eq("chi share: warning: #{warning}\n")
         expect(warning).to include("--identity EMAIL")
       end
     end
@@ -158,7 +162,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(File.read(grants.path)).not_to include(token)
       end
 
-      it "warns, naming its tool outputs, when the session isn't a review session; not for a review session" do
+      it "warns, naming its tool outputs, that a participant's turns act; an older chi's review session alike" do
         session.review = nil
         session.messages = [{ role: "user", content: "go" }, { role: "tool_response", content: "out" },
                             { role: "tool", content: "out2" }]
@@ -168,7 +172,6 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(err.string).to eq("chi share: warning: #{Samagotchi::ReviewStart.share_warning(session)} " \
                                  "(#{via.command("review --from #{short}")} starts one)\n")
         expect(err.string).to include("#{short} is a working session").and include("(2 tool outputs so far)")
-        # The warning said their turns act: the grant is stamped pair.
         expect(grants.list(session_id: session.id).last.mode).to eq("pair")
 
         err.truncate(0)
@@ -176,7 +179,8 @@ RSpec.describe Samagotchi::ShareCommand do
         session.review = { "subjects" => ["plan.md"] }
         session.save(state_dir: state_dir)
         expect(run(session.id, "--name", "Kim")).to eq(0), err.string
-        expect(err.string).to eq("")
+        expect(err.string).to include("#{short} is a working session")
+        expect(grants.list(session_id: session.id).last.mode).to eq("pair")
       end
 
       it "names the remote's LAN address in a remote's link" do
@@ -288,7 +292,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(out.string.lines[0]).to end_with("· cap $5.50\n")
         expect(run(session.id, "--name", "Kim", "--cap", "1001")).to eq(2)
         expect(run(session.id, "--name", "Kim", "--cap", "lots")).to eq(2)
-        expect(err.string.lines.map(&:chomp).uniq).to eq(["chi share: #{described_class::CAP_USAGE} (see chi share --help)"])
+        expect(other_err.lines.map(&:chomp).uniq).to eq(["chi share: #{described_class::CAP_USAGE} (see chi share --help)"])
         expect(grants.list.size).to eq(1)
       end
 

@@ -278,16 +278,18 @@ RSpec.describe Samagotchi::SessionManager do
         expect(input_files).to be_empty
       end
 
-      it "refuses a participant's turn to a worker without the review boundary (review_turns), and posts it to one with" do
+      it "refuses a participant's turn to a worker that would run it read-only or unbounded (no pair_turns), and posts it to one with" do
         own("worker")
-        bridge = client_naming(%w[delivery])
-        expect(bridge).not_to receive(:post_turn)
-        result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
-                                                          bridge: -> { bridge })
-        expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::REVIEW_UNAVAILABLE)
+        [%w[delivery], %w[delivery review_turns]].each do |features|
+          bridge = client_naming(features)
+          expect(bridge).not_to receive(:post_turn)
+          result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+                                                            bridge: -> { bridge })
+          expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::PAIR_UNAVAILABLE)
+        end
         expect(input_files).to be_empty
 
-        posting = client_naming(%w[delivery review_turns])
+        posting = client_naming(%w[delivery review_turns pair_turns])
         allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
         expect(described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                         bridge: -> { posting }).status).to eq(:accepted)
@@ -297,7 +299,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "refuses a participant's Revise to a worker without participant_revise in their words; the owner's goes" do
         own("worker")
         revises = { revises: { turn_id: "123e4567-e89b-12d3-a456-426614174001" } }
-        bridge = client_naming(%w[delivery review_turns revise])
+        bridge = client_naming(%w[delivery review_turns pair_turns revise])
         expect(bridge).not_to receive(:post_turn)
         result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1",
                                                           anchors: revises, state_dir: tmpdir, bridge: -> { bridge })

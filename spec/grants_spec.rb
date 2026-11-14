@@ -68,14 +68,26 @@ RSpec.describe Samagotchi::Grants do
   end
 
   describe "#issue for pair turns" do
-    it "stores the pair mode only when given, reads it back, and refuses another" do
-      pair = issue(mode: "pair").grant
-      plain = issue.grant
-      stored = JSON.parse(File.read(path))["grants"]
-      expect(stored.find { |g| g["id"] == pair.id }).to include("mode" => "pair")
-      expect(stored.find { |g| g["id"] == plain.id }).not_to have_key("mode")
-      expect(grants.list(session_id: session_id).map(&:mode)).to contain_exactly("pair", nil)
-      expect { issue(mode: "owner") }.to raise_error(described_class::Invalid, /mode is pair or none/)
+    it "stamps every grant pair; a stored grant without it (an older chi's) reads as ended, outdated" do
+      grant = issue.grant
+      stored = JSON.parse(File.read(path))
+      expect(stored["grants"].first).to include("mode" => "pair")
+      expect(grant.state(now.first)).to eq(:active)
+
+      stored["grants"].first.delete("mode")
+      File.write(path, JSON.generate(stored))
+      older = grants.find(grant.id)
+      expect(older.mode).to be_nil
+      expect(older.state(now.first)).to eq(:outdated)
+      expect(older.active?(now.first)).to be(false)
+      expect(older.ended_at(now.first)).to be_nil
+      expect(older.public_h(now.first)).to include(state: "outdated")
+      expect(grants.active?(grant.id)).to be(false)
+      # Revoked and expired say so first.
+      expect(older.with(revoked_at: now.first.utc.iso8601).state(now.first)).to eq(:revoked)
+      expect(older.state(now.first + (8 * 86_400))).to eq(:expired)
+      # Nothing to revoke: no write.
+      expect(grants.revoke(session_id: session_id)).to eq([])
     end
   end
 
@@ -326,7 +338,7 @@ RSpec.describe Samagotchi::Grants do
         end
         row = stored["grants"].first
         read = older.from_h(row)
-        expect(read.extra).to eq("exposure" => "session")
+        expect(read.extra).to eq("exposure" => "session", "mode" => "pair")
         expect(read.to_store).to eq(row)
       end
     end

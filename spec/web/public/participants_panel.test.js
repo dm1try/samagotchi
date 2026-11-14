@@ -43,6 +43,8 @@ test("participants: a row says here now, spend of cap, turns, expiry; a reached 
   const ended = rowModel(grant({ state: "revoked", revoked_by: "owner" }), NOW);
   assert.deepEqual([ended.active, ended.state, ended.expires, ended.present], [false, "revoked (owner)", "", false]);
   assert.equal(rowModel(grant({ state: "expired" }), NOW).state, "expired");
+  const outdated = rowModel(grant({ state: "outdated" }), NOW);
+  assert.deepEqual([outdated.active, outdated.state, outdated.expires], [false, "ended (older link)", ""]);
 });
 
 test("participants: the chip invites with nobody, else counts the active ones with a dot while one is here", () => {

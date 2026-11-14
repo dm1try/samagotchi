@@ -153,37 +153,28 @@ RSpec.describe Samagotchi::ReviewStart do
     end
   end
 
-  it "warns that a working session's participant turns act in it, and says so while an older worker reads only" do
+  it "warns that a participant's turns act in it, and refuses an invite while an older worker would refuse their turns" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
     id = session.id[0, 8]
-    expect(Samagotchi::ParticipantMode).to receive(:live).with(session, state_dir: state_dir).at_least(:once).and_call_original
     expect(described_class.share_warning(session, state_dir: state_dir))
       .to eq("#{id} is a working session: a participant's turns act in it with this session's tools (writes " \
              "included; asks come to you) and read what its history holds (0 tool outputs so far). A review session " \
              "only reads.")
+    expect(described_class.share_terms(session, state_dir: state_dir)).to have_attributes(mode: :pair, refusal: nil)
 
     sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
     allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
-    expect(described_class.share_warning(session, state_dir: state_dir))
-      .to eq(format(described_class::OLDER_WORKER_WARNING, id: id, outputs: "0 tool outputs so far"))
     terms = described_class.share_terms(session, state_dir: state_dir)
-    expect(terms.warning).to include("a participant invited now only reads").and include("invite them again")
-    expect([terms.grant_mode, terms.mode]).to eq([nil, :review])
+    expect(terms.refusal).to eq(format(described_class::OLDER_WORKER_REFUSAL, id: id))
+    expect(terms.refusal).to include("restart the session first")
+    expect(terms.warning).to eq(terms.refusal)
   end
 
-  it "stamps an invite pair only with the warning that their turns act" do
+  it "gives an older chi's review session the same terms as any session" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
-    terms = described_class.share_terms(session, state_dir: state_dir)
-    expect([terms.grant_mode, terms.mode]).to eq(["pair", :pair])
-    expect(terms.warning).to start_with("#{session.id[0, 8]} is a working session: a participant's turns act")
+    plain = described_class.share_terms(session, state_dir: state_dir)
     session.review = { subjects: ["docs/plan.md"] }
-    expect(described_class.share_terms(session, state_dir: state_dir).to_h).to eq(grant_mode: nil, mode: :review, warning: nil)
-  end
-
-  it "has no warning for a review session" do
-    session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
-    session.review = { subjects: ["docs/plan.md"] }
-    expect(described_class.share_warning(session, state_dir: state_dir)).to be_nil
+    expect(described_class.share_terms(session, state_dir: state_dir)).to eq(plain)
   end
 
   it "keeps a review session's field across a continue" do

@@ -51,6 +51,12 @@ module Samagotchi
       def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_EXPIRED}")
     end
 
+    # 401 token_outdated: a link an older chi issued for read-only turns.
+    class TokenOutdated < AuthRefused
+      CODE = "token_outdated"
+      def initialize(label) = super("#{label}: #{ParticipantMessages::TOKEN_OUTDATED}")
+    end
+
     # 401 token_bound: a link bound to one account, used without that
     # account's sign-in (chi --remote doesn't go through the proxy).
     class TokenBound < AuthRefused

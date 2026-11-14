@@ -123,28 +123,30 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       expect(grants.lookup(body["token"]).id).to eq(body["participant"]["id"])
     end
 
-    it "stamps the grant pair only when the warning it answers says their turns act" do
+    it "stamps every grant pair, an older chi's review session's too, and issues none while the live worker would refuse their turns" do
       _status, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
       expect(body["warning"]).to include("a participant's turns act in it")
       expect(grants.lookup(body["token"]).mode).to eq("pair")
       entry = Samagotchi::Participants.read(session.id, state_dir: state_dir).first
       expect(entry.mode).to eq("pair")
 
-      sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
-      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
-      _status, older = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Bo" })
-      expect(older["warning"]).to include("a participant invited now only reads")
-      expect(grants.lookup(older["token"]).mode).to be_nil
-
       review = new_session.tap do |s|
         s.review = { subjects: ["x.md"] }
         s.save(state_dir: state_dir)
       end
       _status, reviewing = call("/api/sessions/#{review.id}/participants", method: "POST", body: { name: "Kim" })
-      expect(reviewing["warning"]).to be_nil
-      expect(grants.lookup(reviewing["token"]).mode).to be_nil
-      expect(File.read(File.join(Samagotchi::Session.session_dir(review.id, state_dir: state_dir), "participants.json")))
-        .not_to include("mode")
+      expect(reviewing["warning"]).to include("a participant's turns act in it")
+      expect(grants.lookup(reviewing["token"]).mode).to eq("pair")
+
+      sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+      count = grants.list.size
+      status, older = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Bo" })
+      expect([status, older["error"]]).to eq([409, "worker_too_old"])
+      expect(older["detail"]).to include("restart the session first")
+      expect(grants.list.size).to eq(count)
+      _status, listed = call("/api/sessions/#{session.id}/participants")
+      expect(listed["warning"]).to eq(older["detail"])
     end
 
     it "refuses a bad name, kind or ttl (400 invalid_participant) and an unknown session (404)" do

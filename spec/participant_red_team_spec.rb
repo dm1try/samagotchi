@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "support/worker_fixtures"
+require "support/outdated_grants"
 require "tmpdir"
 require "json"
 require "rack/mock"
@@ -30,6 +31,8 @@ require "samagotchi/review_apply"
 # participant's turn calling tools (the review boundary); part two is the
 # participant at chi web with their token (routes, delivery, limits).
 RSpec.describe "a participant red-teaming a session" do
+  include OutdatedGrants
+
   let(:root) { File.realpath(Dir.mktmpdir("red-team")) }
   let(:project) { File.join(root, "proj") }
   let(:state_dir) { File.join(Samagotchi::Paths.state_dir, "sessions") }
@@ -58,9 +61,10 @@ RSpec.describe "a participant red-teaming a session" do
   describe "the model of a participant's turn (ReviewBoundary)" do
     around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-    # A review session: its participant's turns are review turns (ParticipantMode).
+    # An older chi's read-only grant: the Engine seats the review boundary
+    # (ParticipantMode); the worker refuses such a turn before it starts.
     before do
-      session.review = { subjects: ["docs/plan.md"] }
+      make_outdated!(grants, grant, state_dir: state_dir)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       engine.set_question_sync_handler do |pending|
         asked << pending
@@ -173,7 +177,7 @@ RSpec.describe "a participant red-teaming a session" do
   # owner-voiced tools and the model's own question.
   describe "the model of a participant's pair turn (PairBoundary)" do
     # Invited to act (the owner was shown that their turns act).
-    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Mallory", mode: "pair", state_dir: state_dir) }
+    let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Mallory", state_dir: state_dir) }
     let(:client) { test_client }
     let(:kernel) { test_kernel(client: client) }
     let(:engine) do

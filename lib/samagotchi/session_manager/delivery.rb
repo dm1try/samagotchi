@@ -221,8 +221,9 @@ module Samagotchi
           # A worker from before queueing (no "delivery" feature) ignores the
           # field or refuses it; either way a file would steer the running turn.
           return queue_unavailable if Delivery.queue?(delivery) && !worker_has?(client, Delivery::QUEUE_FEATURE)
-          # A participant's turn only to a worker with the review boundary.
-          return review_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::REVIEW_FEATURE)
+          # A participant's turn only to a worker that runs it under the
+          # owner's rules: an older one would run it read-only.
+          return pair_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::PAIR_FEATURE)
           # A participant's Revise only to a worker that checks it at the
           # stamp (ParticipantRevise): an older one would stamp it unchecked.
           if Steer.participant_author?(author) && anchors.revises && !worker_has?(client, ReviseAnchor::PARTICIPANT_FEATURE)
@@ -262,7 +263,7 @@ module Samagotchi
         end
         # A participant's file only for a worker started after it: a worker
         # still holding the session with its Bridge gone (exiting) may be an
-        # older one, which would run it without the review boundary.
+        # older one, which would run it without the pair boundary.
         # (A one-turn chi run holding it is refused as for anyone, below.)
         if Steer.participant_author?(author) && (holder = delivery_presence(manager, session_id, state_dir)).owned? &&
            !holder.tui_owned?
@@ -380,8 +381,8 @@ module Samagotchi
         DeliverResult.new(status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE)
       end
 
-      private def review_unavailable
-        DeliverResult.new(status: :refused, code: 409, ack: Delivery::REVIEW_UNAVAILABLE)
+      private def pair_unavailable
+        DeliverResult.new(status: :refused, code: 409, ack: Delivery::PAIR_UNAVAILABLE)
       end
 
       private def turn_timeout

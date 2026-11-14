@@ -5,12 +5,14 @@ require_relative "session_paths"
 
 module Samagotchi
   # The rules for a participant's turn: the one place that decides them.
-  # - :review — a review session (its review: key, chi review): the turn
-  #   only reads (Guardrails::ReviewBoundary);
-  # - :pair — a working session: the turn acts with the session's tools
-  #   under the owner's guardrails, asks go to the owner
-  #   (Guardrails::PairBoundary keeps secrets and owner-voiced tools out).
-  # No session (nil) is :review. A worker that doesn't name
+  # - :pair — the turn acts with the session's tools under the owner's
+  #   guardrails, asks go to the owner (Guardrails::PairBoundary keeps
+  #   secrets and owner-voiced tools out); a session with a review: key
+  #   (an older chi's review session) is an ordinary one;
+  # - :review — what an older chi ran read-only (Guardrails::ReviewBoundary).
+  #   The worker refuses such a turn before it starts
+  #   (Worker#participant_refusal "outdated"); the boundary stays the
+  #   fallback. No session (nil) is :review. A worker that doesn't name
   # Delivery::PAIR_FEATURE runs every participant's turn as :review, so
   # chi web and chi share ask .live, which reads the session's live worker,
   # before they say what a participant's turn may do.
@@ -32,7 +34,7 @@ module Samagotchi
     #   worker itself, or the one a delivery will start)
     # @return [Symbol] :review or :pair
     def of(session, features: nil)
-      return REVIEW if session.nil? || !session.respond_to?(:review?) || session.review?
+      return REVIEW if session.nil?
       return REVIEW if features && !features.include?(Delivery::PAIR_FEATURE)
 
       PAIR

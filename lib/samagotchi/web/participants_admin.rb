@@ -71,12 +71,14 @@ module Samagotchi
         cap = body["cap"]
         return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
 
-        # The grant is stamped pair only when the warning that comes back says
-        # their turns act (one read: ReviewStart.share_terms).
+        # No link while the live worker would refuse every turn of theirs
+        # (one read: ReviewStart.share_terms, the warning that comes back).
         terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        return error_response(409, "worker_too_old", terms.refusal) if terms.refusal
+
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,
                                               ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
-                                              mode: terms.grant_mode, state_dir: default_state_dir)
+                                              state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
                              link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: terms.warning })

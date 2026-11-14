@@ -24,7 +24,7 @@ module Samagotchi
   module Web
     # What a participant (a Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
-    # (token_revoked, token_expired with its ended page, token_bound for a
+    # (token_revoked, token_expired, token_outdated with its ended page, token_bound for a
     # link bound to another account, another session's
     # 404, not_permitted by role), the trimmed answers of their own routes
     # (info, the session, resolve, a wait on their turn), their turns, and
@@ -44,7 +44,8 @@ module Samagotchi
 
       ENDED = {
         revoked: ["token_revoked", ParticipantMessages::TOKEN_REVOKED],
-        expired: ["token_expired", ParticipantMessages::TOKEN_EXPIRED]
+        expired: ["token_expired", ParticipantMessages::TOKEN_EXPIRED],
+        outdated: ["token_outdated", ParticipantMessages::TOKEN_OUTDATED]
       }.freeze
       NOT_PERMITTED = ParticipantMessages::NOT_PERMITTED
 
@@ -139,7 +140,7 @@ module Samagotchi
         grant.with(revoked_at: @grants.now.utc.iso8601, revoked_by: by)
       end
 
-      # 401 token_revoked / token_expired for an ended grant's token (the
+      # 401 token_revoked / token_expired / token_outdated for an ended grant's token (the
       # page's HTML says the same words), nil when none was presented.
       def grant_ended_response(req)
         grant, state = req.env[ENDED_GRANT_ENV]

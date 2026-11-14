@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/outdated_grants"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -14,6 +15,8 @@ require "samagotchi/participants"
 # turn's analytics record carry the author. The owner's turns are unchanged;
 # an old session file reads with the safe toolkit origin.
 RSpec.describe "a turn's author on the record" do
+  include OutdatedGrants
+
   let(:state_dir) { Dir.mktmpdir("turn-author-record") }
 
   after { FileUtils.rm_rf(state_dir) }
@@ -66,33 +69,34 @@ RSpec.describe "a turn's author on the record" do
     end
 
     # A worker's session has its dir (the owner lock, inputs); the sidecar goes there.
-    def invite(name, mode: nil)
+    def invite(name)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
-      Samagotchi::Participants.invite(grants, session_id: session.id, name: name, mode: mode, state_dir: state_dir).grant
+      Samagotchi::Participants.invite(grants, session_id: session.id, name: name, state_dir: state_dir).grant
     end
+
+    def grants = (@grants ||= Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)))
 
     def analytics = Samagotchi::AnalyticsFile.read(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
 
-    it "stamps a working session's participant invited before pair (no grant mode) review" do
-      grant = invite("Alex")
+    it "stamps an older chi's read-only participant (no grant mode) review: the worker refuses their turn first" do
+      grant = make_outdated!(grants, invite("Alex"), state_dir: state_dir)
       engine.run_turn(session, "go", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
       expect(session.messages.find { |m| m[:role] == "user" }).to include(participant_mode: "review")
     end
 
-    it "stamps a participant's opening message in a review session review, with its header" do
+    it "stamps a participant's opening message in an older chi's review session pair, with its header" do
       session.review = { subjects: ["docs/plan.md"] }
-      grant = invite("Alex", mode: "pair")
+      grant = invite("Alex")
       engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author })
 
       opening = session.messages.find { |m| m[:role] == "user" }
-      expect(opening).to include(participant_mode: "review")
-      expect(Samagotchi::Steer.header(opening)).to eq(format(Samagotchi::Steer::REVIEW_HEADER, "Alex"))
+      expect(opening).to include(participant_mode: "pair")
+      expect(Samagotchi::Steer.header(opening)).to eq(format(Samagotchi::Steer::PAIR_HEADER, "Alex"))
     end
 
     it "saves a participant's opening message with author and name, and puts the author in last_turn and analytics" do
-      grant = invite("Alex", mode: "pair")
+      grant = invite("Alex")
       events = []
       engine.run_turn(session, "Is step 3 safe?", origin: { client_id: "review:#{grant.id}", enqueued_id: "e1", author: grant.author },
                                                   on_event: ->(e) { events << e })

@@ -247,6 +247,10 @@ ptest("participant_main: an ended link shows the 401's words from a brief read, 
   await main.linkEnded();
   assert.equal(document.querySelector("#participantClosed").dataset.kind, "token_expired");
   assert.match(document.querySelector("#participantClosed").textContent, /^This review link expired/);
+  const older = page({ probe: async () => ({ status: 401, json: async () => ({ error: "token_outdated", detail: "this link is from an older chi: ask the session's owner for a new one" }) }) });
+  await older.main.linkEnded();
+  assert.equal(document.querySelector("#participantClosed").dataset.kind, "token_outdated");
+  assert.match(document.querySelector("#participantClosed").textContent, /^This link is from an older chi: ask the session's owner for a new one\./);
   const unreadable = page({ probe: async () => { throw new Error("down"); } });
   await unreadable.main.linkEnded();
   assert.match(document.querySelector("#participantClosed").textContent, new RegExp(`^${LINK_ENDED[0].toUpperCase()}`));

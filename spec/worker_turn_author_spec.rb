@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::Worker, "a turn's author" do
     # the sidecar doesn't list as active).
     active = %w[p_1 p_2].map do |id|
       { "id" => id, "kind" => "human", "name" => id, "role" => "reviewer", "added_at" => "2026-10-23T10:00:00Z",
-        "expires_at" => (Time.now + 3600).utc.iso8601, "removed_at" => nil, "cap" => 2.0 }
+        "expires_at" => (Time.now + 3600).utc.iso8601, "removed_at" => nil, "cap" => 2.0, "mode" => "pair" }
     end
     File.write(File.join(session_dir, "participants.json"), JSON.generate({ "participants" => active }))
     allow(Samagotchi::Engine).to receive(:new).and_return(engine)

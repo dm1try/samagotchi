@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions with review" do
     expect(Dir.glob(File.join(state_dir, "*.json"))).to be_empty
   end
 
-  it "answers a session's participants with the share warning, null for a review session" do
+  it "answers a session's participants with the share warning, a review session's as any session's" do
     plain = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
     plain.messages = [{ role: "tool_response", content: "x" }]
     plain.save(state_dir: state_dir)
@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions with review" do
     base = "http://127.0.0.1:80/"
     expect(list.call(plain.id)).to eq("participants" => [], "warning" => Samagotchi::ReviewStart.share_warning(plain),
                                       "mode" => "pair", "identity_header" => nil, "link_base" => base)
-    expect(list.call(review["id"])).to eq("participants" => [], "warning" => nil, "mode" => "review", "identity_header" => nil,
-                                          "link_base" => base)
+    expect(list.call(review["id"])).to include("participants" => [], "mode" => "pair", "identity_header" => nil, "link_base" => base)
+    expect(list.call(review["id"])["warning"]).to include("a participant's turns act in it")
   end
 end

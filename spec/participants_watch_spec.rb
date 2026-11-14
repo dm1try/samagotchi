@@ -26,7 +26,8 @@ RSpec.describe Samagotchi::ParticipantsWatch do
 
   def entry(id, name, expires_in: 3600, removed: false)
     { "id" => id, "kind" => "human", "name" => name, "role" => "reviewer", "added_at" => now.first.iso8601,
-      "expires_at" => (now.first + expires_in).iso8601, "removed_at" => removed ? now.first.iso8601 : nil, "cap" => 2.0 }
+      "expires_at" => (now.first + expires_in).iso8601, "removed_at" => removed ? now.first.iso8601 : nil, "cap" => 2.0,
+      "mode" => "pair" }
   end
 
   # The sidecar as Participants.write leaves it, with a new mtime.
@@ -61,6 +62,11 @@ RSpec.describe Samagotchi::ParticipantsWatch do
     expect(change.left).to eq([{ id: "p_aaaaaaaa", name: "Alex", kind: "human", reason: "revoked" }])
     expect(change.participants).to eq([])
     expect(change.to_event).to include(type: :participants_changed, participants: [])
+  end
+
+  it "counts no older chi's read-only participant (no mode): they are not in the session" do
+    write(entry("p_aaaaaaaa", "Alex"), entry("p_bbbbbbbb", "Bo").except("mode"))
+    expect(watch.active).to eq([{ id: "p_aaaaaaaa", name: "Alex", kind: "human" }])
   end
 
   it "reads the sidecar again only when its mtime moves" do
