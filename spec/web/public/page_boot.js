@@ -96,6 +96,7 @@ const ANSWERS = [
   [/\/context$/, () => ({ items: [] })],
   [/\/participants$/, () => ({ participants: [] })],
   [/\/working_set$/, () => ({ items: [] })],
+  [/\/prompt_history$/, () => ({ entries: ["mine"] })],
 ];
 function answer(path) {
   const found = ANSWERS.find(([pattern]) => pattern.test(path));
