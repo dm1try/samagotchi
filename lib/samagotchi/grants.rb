@@ -53,7 +53,7 @@ module Samagotchi
     KEEP_ENDED = 30 * DAY
     # last_used_at is written at most this often per grant.
     TOUCH_INTERVAL = 60
-    # The only role in v1: a reviewer reads and (P3) comments.
+    # Grants retain the stored "reviewer" role; its user-facing label is participant.
     ROLES = %w[reviewer].freeze
     # The mark of a grant this chi honours: every grant is issued with it
     # (a participant's turns act under the owner's rules). A grant without
@@ -141,7 +141,7 @@ module Samagotchi
     # +cap+ (dollars) and +queue+ (turns waiting) as issued; nil in a
     # grant from before them, which takes the config's (#spend_cap,
     # #queue_limit).
-    # +exposure+: what the participant learns of the review's usage
+    # +exposure+: what the participant learns of the session's usage
     # (ParticipantExposure; "own" for every grant today, and for one from
     # before it). Kept as stored: a level this chi doesn't know reads as
     # the narrowest, and is written back as it was.

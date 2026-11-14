@@ -450,8 +450,8 @@ module Samagotchi
     # /guardrails: the rules (by source), what failed to load, the stored
     # approvals, numbered; /guardrails revoke N removes approval N.
     # /context, /context attach NAME, /context decline NAME
-    # (ContextCandidateChoice.choose: the owner's own; a participant can't
-    # send a / line, and a review session refuses them).
+    # (ContextCandidateChoice.choose is the owner's only; a participant
+    # cannot send a / line).
     def context_command(args)
       return reply(context_listing) if args.empty?
 

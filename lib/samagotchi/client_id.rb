@@ -48,10 +48,9 @@ module Samagotchi
     # their author (Steer::PARTICIPANT_PREFIX, "p:<id>"), which says who
     # wrote a turn: this says which sender delivered it.
     PARTICIPANT_PREFIX = "participant:"
-    # compat shim review_client_id: chi before 0.172 gave a participant's
-    # turns review:<id> (in turn_drawings.jsonl, input files, an older chi
-    # web still running): read as a participant's, never the owner's, and
-    # sent to a worker without Delivery::PARTICIPANT_ID_FEATURE.
+    # Compatibility with the legacy review:<id> participant client id used
+    # before 0.172: read it as a participant's, never the owner's, and send
+    # it to a worker without Delivery::PARTICIPANT_ID_FEATURE.
     LEGACY_REVIEW_PREFIX = "review:"
 
     # A worker's own first prompt (spawn_session's) when no sender was
@@ -120,7 +119,7 @@ module Samagotchi
       Sender.new(match: PLUGIN, **unattended, wake: :plugin, source: "plugin_send", label: "plugin"),
       Sender.new(match: RELAY_PREFIX, **unattended),
       participant,
-      # compat shim review_client_id: the same row for the old prefix.
+      # The legacy review:<id> id uses the participant sender row too.
       participant.with(match: LEGACY_REVIEW_PREFIX)
     ].freeze
 
@@ -181,12 +180,11 @@ module Samagotchi
     # grant): participant:<participant id>.
     def participant(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"
 
-    # Whether +client_id+ is a participant's (participant:, or an older
-    # chi's review:).
+    # Whether +client_id+ is a participant's (participant:, or legacy
+    # review:).
     def participant?(client_id) = sender(client_id).wake == :participant
 
-    # compat shim review_client_id: +client_id+ as a worker from before
-    # participant: reads a participant's (review:<id>); any other as it is.
+    # Translate participant:<id> for a worker that still expects review:<id>.
     def legacy_participant(client_id)
       id = client_id.to_s
       id.start_with?(PARTICIPANT_PREFIX) ? "#{LEGACY_REVIEW_PREFIX}#{id.delete_prefix(PARTICIPANT_PREFIX)}" : client_id

@@ -6,7 +6,7 @@ require_relative "steer"
 module Samagotchi
   # The session owner's own words: the one rule for what may act on a
   # session's conversation by itself (toolkit suggest, attached context's
-  # candidates). A participant's turn and a review session never do.
+  # candidates). A participant's turn never does.
   module OwnerPrompt
     module_function
 
