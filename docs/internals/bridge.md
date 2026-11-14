@@ -415,7 +415,7 @@ The Bridge exposes:
 - `POST /session/:id/tasks/stop` — `{task_id}`: stop a background task as the user
   (`TaskRuntime.stop_task by: "user"`, the web's stop-task button on a running `task_wait`;
   web route `POST /api/sessions/:id/tasks/:task_id/stop`). Only a task this conversation's
-  `task_create` started, or an `execute` handed over as a task at its limit (`TaskRuntime.created_ids_in` on the
+  `task_create` started, or an `execute` handed over as a task at its limit (`TaskTranscript.created_ids_in` on the
   saved messages, or the running turn's accumulator); answers once the
   task is gone: `200 {status, stop_reason, task_id}`, `404 task_not_found`, `409 not_running`.
   The worker names it in its sidecar features (`task_stop`).
