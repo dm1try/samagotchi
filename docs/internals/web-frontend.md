@@ -390,6 +390,8 @@ from `emptySlots`.** `npm run lint` holds it (`samagotchi/stage-size`: every `st
   (`settleAnsweredCard`), the prompt's first words (`promptWords`).
 - `stage_pager.js`: one docked card at a time, the others behind it, the status row's "‹ 1 of 2 ›" (`drawDocked`, the
   focus moved to the card in front, the pager's buttons).
+- `stage_cloud.js`: the cloud, the turn block's steps above the chip (`setCloud`, `openStep`, the headline's peek, the
+  chip's and a ref's `ref:reveal` opening it).
 
 ## The stage's height
 
