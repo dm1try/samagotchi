@@ -334,6 +334,12 @@ One lib cop sits beside them: `Samagotchi/SilentRescue` (a `rescue` of StandardE
 `nil`, `[]`…: use `Degrade`, or tag a right silence `# degrade-ok: why`; docs/internals/engine.md, Degrading). The
 files that had such rescues when it came are excluded in `.rubocop.yml`: that list only shrinks.
 
+### File size
+
+`Samagotchi/FileSize` counts lines as `wc -l` does, including blank and comment lines. Ruby files have a `Max` of
+1000; `.rubocop.yml`'s `Caps` list gives existing larger files their measured size plus 50 when the cap came. Split
+instead of raising a cap, and ratchet it down when its file shrinks. Specs are not covered yet.
+
 ### Flakes
 
 When `parallel_rspec` fails in CI's `rspec` or `rspec-macos` job, the next step (`script/rerun_failures.rb`) reruns

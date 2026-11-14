@@ -18,7 +18,7 @@ about 10% over the largest, `turn_block.js`), so a module near it splits rather 
 `session_view.js`; ratcheted down from 2000, itself down from 2250 when the versions, the owner's claim links and
 Verify, the composer's mode and the strip's hide went into modules of their own. A new feature goes into a module of
 its own, wired from `app.js` in a few lines; a refactor that shrinks `app.js` ratchets its cap down with it. Never
-raise either: extract instead.
+raise either: extract instead. Ruby's twin is `Samagotchi/FileSize` (docs/testing.md, File size).
 
 **New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
 (app.rb `serve_static` sends `Cache-Control: no-cache` with a content ETag, and `sw.js` has no fetch handler), but an
