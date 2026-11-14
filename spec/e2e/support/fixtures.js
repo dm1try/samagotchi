@@ -20,6 +20,10 @@ export const test = base.extend({
   installed: [null, { option: true, scope: "worker" }],
   // The proxy project: chi web behind support/pod_proxy.rb (proxy.spec.js).
   authProxy: [false, { option: true, scope: "worker" }],
+  // The stage's drift check (<body data-stage-check="1">, stage_asking.js
+  // reconcileWaiting) on in every page load, and a "stage: waiting …"
+  // console warning fails the test (stage.spec.js).
+  stageCheck: [false, { option: true }],
 
   chi: [async ({ lan, installed, authProxy }, use) => {
     const env = await startEnv({ lan, installed, proxy: authProxy });
@@ -85,12 +89,22 @@ export const test = base.extend({
     }
   },
 
-  page: async ({ page, chi, workingSet }, use) => {
+  page: async ({ page, chi, workingSet, stageCheck }, use) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    const waitingWarnings = [];
+    if (stageCheck) {
+      await page.addInitScript(() => {
+        const on = () => { document.body.dataset.stageCheck = "1"; };
+        if (document.body) on();
+        else document.addEventListener("DOMContentLoaded", on, { once: true });
+      });
+      page.on("console", (m) => { if (m.type() === "warning" && m.text().startsWith("stage: waiting")) waitingWarnings.push(m.text()); });
+    }
     await page.goto(chi.baseURL + (workingSet ? "/" : "/?working_set=0"));
     await use(page);
     expect(errors, "page errors").toEqual([]);
+    expect(waitingWarnings, "the stage's waiting cards as data agree with the cards drawn").toEqual([]);
   },
 });
 

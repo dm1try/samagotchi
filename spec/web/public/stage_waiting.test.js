@@ -18,6 +18,7 @@ const {
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 const { drawCard } = await import("../../../lib/samagotchi/web/public/card.js");
+const { takeWaitingWarnings } = await import("./waiting_warnings.js");
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -233,18 +234,28 @@ test("place feeds it: a question docks with its lead-in, an approval with its ow
   }
 });
 
-test("the second feed: a card answered by its classes alone (no hook) settles at the refresh", async () => {
+test("the cross-check warns about a card answered by its classes alone (no hook), and settles nothing", async () => {
   const { view, append } = holdingPage();
+  const was = document.body.dataset.stageCheck;
+  document.body.dataset.stageCheck = "1";
   try {
+    takeWaitingWarnings();
     asks(view, "Both matter. Which first?");
     const card = questionCard("q1");
     append(card);
     assert.equal(view.waiting.count(), 1);
     card.classList.add("answered");
     await tick();
-    assert.deepEqual(view.waiting.list(), []);
-    assert.ok(!view.root.classList.contains("asking-form"));
+    assert.deepEqual(view.waiting.list().map((e) => e.key), ["q:q1"], "still waiting as data: only a hook settles");
+    assert.ok(takeWaitingWarnings().some((w) => w.startsWith("stage: waiting drift q:q1")), "the drift is said");
+    delete document.body.dataset.stageCheck;
+    card.classList.remove("answered");
+    card.classList.add("cancelled");
+    await tick();
+    assert.deepEqual(takeWaitingWarnings(), [], "the check off: nothing said");
   } finally {
+    if (was === undefined) delete document.body.dataset.stageCheck;
+    else document.body.dataset.stageCheck = was;
     view.reset();
   }
 });
@@ -280,6 +291,44 @@ test("cards_place: a plugin card redrawn without its actions settles its asking 
   assert.deepEqual(settled, [["c:ci", { only: "asks" }]]);
 });
 
+test("cards_place: a warn card redrawn as no warning settles its warn entry; one still warning keeps it", () => {
+  const historyEl = document.createElement("div");
+  document.body.append(historyEl);
+  const settled = [];
+  const cards = createCardsPlace({
+    historyEl, turnDom: { card: () => false, settleWaiting: (key, opts) => settled.push([key, opts]) },
+    findInTurnRoots: (sel) => [...historyEl.querySelectorAll(sel)], selected: () => "s1", clientId: "me", questionCards: null,
+    bubbles: { removeHintIfEmpty() {}, placeFollowing: (node) => historyEl.appendChild(node) },
+    followWokenWorker() {}, api: { getSession: async () => ({}), sendCommand: async () => ({}) },
+  });
+  cards.upsertCard({ id: "w", in_turn: true, level: "warn", title: "Careful", body: "a\nb" });
+  cards.upsertCard({ id: "w", in_turn: true, level: "warn", title: "Careful", body: "a\nc" });
+  assert.deepEqual(settled.filter(([, o]) => o.only === "warn"), [], "still a warning");
+  cards.upsertCard({ id: "w", in_turn: true, level: "info", title: "Fine now", body: "all\nclear" });
+  assert.deepEqual(settled.filter(([, o]) => o.only === "warn"), [["c:w", { only: "warn" }]]);
+});
+
+// Every way a card stops waiting settles through a hook (the drift check
+// only warns): the stage's view of each route.
+test("settle routes: a warn card redrawn as no warning leaves the registry at once", async () => {
+  const { view, append } = holdingPage();
+  const historyEl = document.querySelector("#history");
+  const cards = createCardsPlace({
+    historyEl, turnDom: view, findInTurnRoots: (sel) => [...historyEl.querySelectorAll(sel), ...view.root.querySelectorAll(sel)],
+    selected: () => "s1", clientId: "me", questionCards: null,
+    bubbles: { removeHintIfEmpty() {}, placeFollowing: (node) => append(node) },
+    followWokenWorker() {}, api: { getSession: async () => ({}), sendCommand: async () => ({}) },
+  });
+  try {
+    cards.upsertCard({ id: "w", in_turn: true, level: "warn", title: "Careful", body: "a\nb" });
+    assert.deepEqual(view.waiting.list().map((e) => [e.key, e.kind]), [["c:w", "warn"]]);
+    cards.upsertCard({ id: "w", in_turn: true, level: "info", title: "Fine now", body: "all\nclear" });
+    assert.deepEqual(view.waiting.list(), []);
+  } finally {
+    view.reset();
+  }
+});
+
 test("the stage's order: blocking cards before the asking ones, arrival within each; one shown, the pager moves it, a new card resets it", () => {
   const w = createStageWaiting();
   w.arrive("c:check-in", { kind: "asks", docked: true });
@@ -309,4 +358,205 @@ test("the stage's order: blocking cards before the asking ones, arrival within e
   w.reset();
   assert.equal(w.shown(), null);
   assert.equal(w.page(1), null);
+});
+
+// The fold's storage (stage_waiting.js FOLD_PREFIX): settle with done removes
+// the fold this tab kept only when it names that card, also with no entry for
+// it (a replay's earlier card, a history question); without done never.
+test("settle with done drops its own stored fold only, entry or not; a plain settle keeps it", () => {
+  const map = new Map();
+  const storage = { read: (k) => map.get(k) ?? null, write: (k, v) => map.set(k, v), remove: (k) => map.delete(k) };
+  const w = createStageWaiting({ sessionId: () => "s1", storage });
+  const key = foldKey("s1");
+  w.arrive("c:ci", { kind: "asks", docked: true });
+  w.arrive("q:a1", { kind: "approval", docked: true });
+  w.fold("c:ci");
+  assert.equal(JSON.parse(map.get(key)).key, "c:ci");
+  assert.equal(w.settle("q:a1", { done: true }), true, "the approval answered");
+  assert.equal(JSON.parse(map.get(key)).key, "c:ci", "another card's answer keeps the fold");
+  assert.equal(w.settle("q:old", { done: true }), false, "a card the stage never held");
+  assert.ok(map.get(key), "still kept");
+  w.settle("c:ci");
+  assert.ok(map.get(key), "a plain settle (a redraw, a resync) keeps it");
+  w.reset();
+  assert.equal(w.settle("c:ci", { done: true }), false, "no entry after a reset");
+  assert.equal(map.get(key), undefined, "its own answer drops it all the same");
+});
+
+test("settle with done and no session stores nothing and removes nothing", () => {
+  const removed = [];
+  const storage = { read: () => JSON.stringify({ key: "q:1", with: 1 }), write() {}, remove: (k) => removed.push(k) };
+  const w = createStageWaiting({ sessionId: () => null, storage });
+  w.settle("q:1", { done: true });
+  assert.deepEqual(removed, []);
+});
+
+// The other routes, each with the registry empty right after it (no refresh,
+// no drift check needed): the turn's end (its warn cards leave with the
+// block; a pending question is cancelled, session_view.js endTurnView), the
+// continue card resolved, a resync (removeQuestion, forgetContinue and the
+// stage's reset, session_sync.js resetTurnView, as workerGone does).
+test("settle routes: the turn's end, the turn-end cancel, the continue card, a resync", async () => {
+  const { createQuestionCards } = await import("../../../lib/samagotchi/web/public/question_cards.js");
+  const setup = () => {
+    const page = holdingPage();
+    const cards = createQuestionCards({
+      sessionId: () => "s1", clientId: "web:me", place: (card) => page.append(card), isNearBottom: () => false,
+      scrollToEnd() {}, removeHintIfEmpty() {}, askingText: (pq) => page.view.askingText(pq),
+      api: { sendAnswer: async () => ({}), dismissQuestion: async () => ({}), sendCommand: async () => ({}) },
+      onArrive: (key, info) => page.view.expectWaiting(key, info),
+      onSettled: (key, opts) => page.view.settleWaiting(key, opts),
+    });
+    return { ...page, cards };
+  };
+  const keys = (view) => view.waiting.list().map((e) => e.key);
+
+  let { view, append, cards } = setup();
+  asks(view, "Which?");
+  append(el('<div class="bubble plugin-card warn" data-card-id="w" data-in-turn="1"><div class="card-head"><span class="card-title">Careful</span></div></div>'));
+  cards.renderQuestion({ id: "q1", kind: "question", question: "Which?", options: ["a"] });
+  assert.deepEqual(keys(view), ["q:q1", "c:w"]);
+  view.turnEnded({ kind: "canceled" });
+  assert.deepEqual(keys(view), ["q:q1"], "the warn card left with the block");
+  cards.resolveQuestion("q1", { cancelled: true, reason: "turn ended" });
+  assert.deepEqual(keys(view), [], "the turn-end cancel settles the question");
+  view.reset();
+
+  ({ view, append, cards } = setup());
+  view.turnEnded({ kind: "completed" });
+  cards.renderContinue({ context: { original_prompt: "do it" } });
+  assert.deepEqual(keys(view), ["continue"]);
+  cards.resolveContinue({ decision: "resume", client_id: "web:me" });
+  assert.deepEqual(keys(view), [], "the continue card resolved");
+  view.reset();
+
+  ({ view, append, cards } = setup());
+  asks(view, "Which?");
+  cards.renderQuestion({ id: "q2", kind: "approval", question: "x", options: ["Allow once", "Deny"], approval: { tool: "execute", command: "ls" } });
+  assert.deepEqual(keys(view), ["q:q2"]);
+  cards.removeQuestion();
+  cards.forgetContinue();
+  assert.deepEqual(keys(view), [], "a resync's remove settles it");
+  cards.renderQuestion({ id: "q3", kind: "question", question: "y", options: ["a"] });
+  view.reset();
+  assert.deepEqual(keys(view), [], "the stage's reset (a resync, workerGone) empties it");
+});
+
+// A plugin card redrawn in place (check-in re-posts its id with a new title)
+// keeps its entry's place and docking, with its data now: the folded row
+// says the new title; one that gets its actions back waits again.
+function placedCards() {
+  const page = holdingPage();
+  const historyEl = document.querySelector("#history");
+  const cards = createCardsPlace({
+    historyEl, turnDom: page.view, findInTurnRoots: (sel) => [...historyEl.querySelectorAll(sel), ...page.view.root.querySelectorAll(sel)],
+    selected: () => "s1", clientId: "me", questionCards: null,
+    bubbles: { removeHintIfEmpty() {}, placeFollowing: (node) => page.append(node) },
+    followWokenWorker() {}, api: { getSession: async () => ({}), sendCommand: async () => ({}) },
+  });
+  return { ...page, cards };
+}
+const CHECK_IN = (title, actions = [{ label: "Nudge", command: "/check-in nudge" }]) => ({ id: "check-in", in_turn: true, title, body: "Still on it?", actions });
+
+test("upsertCard: a docked check-in card redrawn with a new title, folded, says the new title; order and docking stay", async () => {
+  const { view, cards } = placedCards();
+  try {
+    view.generationStarted({ iteration: 1 });
+    cards.upsertCard(CHECK_IN("20 tool calls, no answer yet"));
+    await tick();
+    view.root.querySelector(".ts-fold").click();
+    await tick();
+    assert.equal(view.root.querySelector(".ts-mini").textContent, "20 tool calls, no answer yet");
+    const before = view.waiting.list().map(({ key, kind, docked, order }) => ({ key, kind, docked, order }));
+    cards.upsertCard(CHECK_IN("40 tool calls, no answer yet"));
+    await tick();
+    assert.equal(view.root.querySelector(".ts-mini").textContent, "40 tool calls, no answer yet");
+    assert.deepEqual(view.waiting.list().map(({ key, kind, docked, order }) => ({ key, kind, docked, order })), before);
+    assert.equal(view.waiting.folded(), "c:check-in", "still folded");
+  } finally {
+    view.reset();
+  }
+});
+
+test("upsertCard: a check-in card that loses its actions and gets them back waits again", async () => {
+  const { view, cards } = placedCards();
+  try {
+    view.generationStarted({ iteration: 1 });
+    cards.upsertCard(CHECK_IN("20 tool calls"));
+    cards.upsertCard(CHECK_IN("paused", []));
+    assert.deepEqual(view.waiting.list(), []);
+    cards.upsertCard(CHECK_IN("40 tool calls"));
+    assert.deepEqual(view.waiting.list().map(({ key, kind, summary }) => ({ key, kind, summary })),
+      [{ key: "c:check-in", kind: "asks", summary: "40 tool calls" }]);
+  } finally {
+    view.reset();
+  }
+});
+
+test("upsertCard: an asking warn card redrawn as an asking info card keeps waiting (asks first)", () => {
+  const historyEl = document.createElement("div");
+  document.body.append(historyEl);
+  const settled = [];
+  const cards = createCardsPlace({
+    historyEl, turnDom: { card: () => false, settleWaiting: (key, opts) => settled.push([key, opts]) },
+    findInTurnRoots: (sel) => [...historyEl.querySelectorAll(sel)], selected: () => "s1", clientId: "me", questionCards: null,
+    bubbles: { removeHintIfEmpty() {}, placeFollowing: (node) => historyEl.appendChild(node) },
+    followWokenWorker() {}, api: { getSession: async () => ({}), sendCommand: async () => ({}) },
+  });
+  cards.upsertCard({ ...CHECK_IN("Stop?"), id: "wa", level: "warn" });
+  cards.upsertCard({ ...CHECK_IN("Stop?"), id: "wa", level: "info" });
+  assert.deepEqual(settled, [], "it still asks: nothing settles");
+});
+
+// Mixed cache: a stage_waiting.js cached from before update() (a stub that
+// lacks it): a card redrawn in place still updates, and the settles after it
+// still run.
+test("updateWaiting with an older stage_waiting.js (no update): no throw, the entry re-arrives in place, the settles still run", async () => {
+  document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
+  const historyEl = document.getElementById("history");
+  const view = createStageView({
+    historyEl, isNearBottom: () => false, sawText: () => false, sessionId: () => "s1",
+    dockEl: document.getElementById("dock"), centerEl: document.getElementById("center"),
+    createWaiting: (opts) => {
+      const w = createStageWaiting(opts);
+      delete w.update;
+      return w;
+    },
+  });
+  const append = (node) => { if (!view.place(node)) historyEl.appendChild(node); };
+  const prompt = document.createElement("div");
+  prompt.className = "bubble user";
+  view.turnStarted({ promptBubble: prompt });
+  const cards = createCardsPlace({
+    historyEl, turnDom: view, findInTurnRoots: (sel) => [...historyEl.querySelectorAll(sel), ...view.root.querySelectorAll(sel)],
+    selected: () => "s1", clientId: "me", questionCards: null,
+    bubbles: { removeHintIfEmpty() {}, placeFollowing: (node) => append(node) },
+    followWokenWorker() {}, api: { getSession: async () => ({}), sendCommand: async () => ({}) },
+  });
+  try {
+    view.generationStarted({ iteration: 1 });
+    cards.upsertCard(CHECK_IN("20 tool calls"));
+    const before = view.waiting.list().map(({ key, docked, order }) => ({ key, docked, order }));
+    cards.upsertCard(CHECK_IN("40 tool calls"));
+    assert.deepEqual(view.waiting.list().map(({ key, docked, order, summary }) => ({ key, docked, order, summary })),
+      [{ ...before[0], summary: "40 tool calls" }]);
+    cards.upsertCard(CHECK_IN("closed", []));
+    assert.deepEqual(view.waiting.list(), [], "the closed card settles");
+  } finally {
+    view.reset();
+  }
+});
+
+test("upsertCard: a docked asking card redrawn as a warning with no actions stays in sight, docked no more", async () => {
+  const { view, cards } = placedCards();
+  try {
+    view.generationStarted({ iteration: 1 });
+    cards.upsertCard(CHECK_IN("20 tool calls"));
+    assert.deepEqual(view.waiting.docked(), ["c:check-in"]);
+    cards.upsertCard({ ...CHECK_IN("Careful now", []), level: "warn", body: "a\nb" });
+    assert.deepEqual(view.waiting.list().map(({ key, kind, docked }) => ({ key, kind, docked })), [{ key: "c:check-in", kind: "warn", docked: false }]);
+    assert.deepEqual(view.waiting.docked(), []);
+  } finally {
+    view.reset();
+  }
 });

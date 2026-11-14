@@ -3,6 +3,9 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { failOnWaitingWarnings } from "./waiting_warnings.js";
+
+failOnWaitingWarnings();
 
 for (const k of ["MutationObserver", "CustomEvent", "localStorage", "getSelection"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
@@ -24,6 +27,17 @@ if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate 
 
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
 const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
+const { waitingKey } = await import("../../../lib/samagotchi/web/public/stage_waiting.js");
+
+// The views the pages made, to find a card's (answeredBy).
+const views = new Set();
+// A card answered (+cls+: or cancelled) as question_cards.js answers it: its
+// class, then the stage's settle hook for it, done for good.
+function answeredBy(card, cls = "answered") {
+  card.classList.add(cls);
+  const view = [...views].find((v) => v.root.contains(card));
+  view?.settleWaiting(waitingKey(card), { done: true });
+}
 
 function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null, isNearBottom = () => false } = {}) {
   foldStore.clear();
@@ -43,6 +57,7 @@ function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamL
     streamLive,
     onHandedOff,
   });
+  views.add(view);
   // app.js's appendToHistory: the stage first, else the history's end.
   const append = (el) => { if (!view.place(el)) historyEl.appendChild(el); };
   return { historyEl, view, append };
@@ -578,7 +593,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const resize = () => window.dispatchEvent(new window.Event("resize"));
 
 async function answer(card) {
-  card.classList.add("answered");
+  answeredBy(card);
   card.querySelector("button")?.remove();
   await tick();
 }
@@ -589,7 +604,7 @@ async function answer(card) {
 // with a lead-in goes under it, also then: a hook's question has none).
 async function cancelAtEnd(view, card) {
   view.turnEnded({ kind: "canceled" });
-  card.classList.add("cancelled");
+  answeredBy(card, "cancelled");
   card.querySelector("button")?.remove();
   await tick();
 }
@@ -936,7 +951,7 @@ function openedPage(opts = {}) {
   return { ...p, prompt };
 }
 async function resolve(card, cls = "answered") {
-  card.classList.add(cls);
+  answeredBy(card, cls);
   card.querySelector(":scope > button")?.remove();
   card.querySelector(":scope > summary").textContent = "Question → README.md";
   await tick();
@@ -1011,7 +1026,7 @@ test("opened: a card answered and a row placed in one task (a replay) keep their
     asks(view, { text: "" });
     const card = questionCard();
     append(card);
-    card.classList.add("answered");
+    answeredBy(card);
     card.querySelector(":scope > button").remove();
     append(row("bubble user steered", "mind the typos"));
     assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble question", "bubble user"]);
@@ -1281,7 +1296,7 @@ test("opened, replayed (a reload, a resync): the asking call completed before it
     append(card);
     assert.deepEqual(kinds(historyEl), ["bubble user", "turn-work", "bubble said"]);
     assert.ok(view.root.classList.contains("held-wait"));
-    card.classList.add("answered");
+    answeredBy(card);
     card.querySelector(":scope > button").remove();
     view.generationStarted({ iteration: 2 });
     assert.ok(!view.root.classList.contains("held-wait"));
@@ -1340,7 +1355,7 @@ test("a card that waits in the stage has no toggle of its own, a question and an
       assert.equal(card.dataset.toggled, undefined);
       assert.equal(summaryOf(card).getAttribute("tabindex"), "-1");
       // "Waits" is read at the click: an answered card still in the stage toggles.
-      card.classList.add("answered");
+      answeredBy(card);
       await tick();
       // The answered card settles under its lead-in in the history, and
       // toggles there.
@@ -1597,15 +1612,15 @@ test("the folded row says what each docked card asks: a question its text, an ap
   }
 });
 
-test("the fold reads the waiting cards checked against the slots: a card answered in this task no longer holds a click", async (t) => {
+test("the fold reads the waiting cards: a card answered in this task no longer holds a click", async (t) => {
   const { view, append } = savedPage(t, false);
   try {
     asks(view);
     const card = askingCard();
     append(card);
-    // Answered by its classes alone (no hook), and the ▾ clicked before any
-    // refresh: the click is the user's own fold now, kept.
-    card.classList.add("answered");
+    // Answered (its settle) and the ▾ clicked before any refresh: the click
+    // is the user's own fold now, kept.
+    answeredBy(card);
     card.querySelector(":scope > button").remove();
     $(view, ".ts-fold").click();
     assert.equal(localStorage.getItem(COLLAPSE_KEY), "1");
@@ -1722,8 +1737,10 @@ test("check-in still open at the turn's end: the streamed text and the answer sw
     assert.equal(text.hidden, true, "in the end's own task");
     assert.equal(text.textContent, "");
     assert.match($(view, ".ts-answer").textContent, /All 20 pass now\./);
-    // The bundle turns its card into a notice row: still one copy.
+    // The bundle turns its card into a notice row (cards_place.js upsertCard
+    // settles it): still one copy.
     card.querySelector(".card-action").remove();
+    view.settleWaiting(waitingKey(card), { only: "asks" });
     await frame();
     // (The live slots' headline, hidden in the asking form, aside.)
     const shown = [".ts-extras", ".ts-asks-text", ".ts-answer", ".ts-tail"].map((sel) => $(view, sel).textContent).join("|");
