@@ -524,14 +524,48 @@ module Samagotchi
       # session is always refused.
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
-                                             wait: STOP_WAIT_SECONDS)
-        @hub&.touch(result[:id])
-        json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
+                                             wait: STOP_WAIT_SECONDS, revive_previous: true, refuse_continuing: true)
+        touch_deleted(result[:id], result)
+        json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped],
+                             unarchived: Array(result[:unarchived]), moved_back: Array(result[:moved_back]),
+                             deleted: Array(result[:deleted] || [result[:id]]), left_running: Array(result[:left_running]) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_one_shot(id, e)
       rescue SessionManager::DeleteRefused => e
-        detail = e.reason == :still_stopping ? "#{e.message}; try again in a moment" : e.message
-        refusal_response(409, e.reason.to_s, e, detail: detail, session_id: e.session_id, reason: e.reason.to_s)
+        delete_refused(e)
+      end
+
+      # DELETE /api/sessions/:id/chain?force=: every link of the chain with
+      # their delegates (SessionManager.delete_chain). Query-only.
+      def handle_delete_chain(req, id)
+        result = @manager.delete_chain(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
+                                           wait: STOP_WAIT_SECONDS)
+        touch_deleted(id, result)
+        json_response(200, { status: "deleted", session_id: id, deleted: result[:deleted], left: result[:left],
+                             left_running: result[:left_running], unarchived: result[:unarchived],
+                             stopped: result[:stopped], cut_off: result[:cut_off], refusal: result[:refusal] })
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_one_shot(e.session_id, e)
+      rescue SessionManager::DeleteRefused => e
+        delete_refused(e)
+      end
+
+      # The hub hears every session a delete changed: deleted, back in the
+      # lists, moved back to the previous link, left running without a parent.
+      def touch_deleted(id, result)
+        return unless @hub
+
+        ids = [id, *result[:deleted], *result[:unarchived], *result[:moved_back], *result[:left_running]]
+        ids.compact.uniq.each { |sid| @hub.touch(sid) }
+      end
+
+      # 409 with the refusal's reason as its code, and what a remote client
+      # raises it again from (ids, the schedule).
+      def delete_refused(error)
+        detail = error.reason == :still_stopping ? "#{error.message}; try again in a moment" : error.message
+        refusal_response(409, error.reason.to_s, error, detail: detail, session_id: error.session_id,
+                                                        reason: error.reason.to_s, ids: error.ids.empty? ? nil : error.ids,
+                                                        schedule_id: error.schedule_id)
       end
 
       # 409 owned_by_tui in the words a refused archive, delete or continue
