@@ -349,6 +349,7 @@ module Samagotchi
         ["GET", %r{\A/api/block_renderers/([^/]+)/([^/]+)\z}, :handle_block_renderer_file, :owner],
         # Before the plain /api/sessions/:id rows; query-only (force).
         ["DELETE", %r{\A/api/sessions/([^/]+)/chain\z}, :handle_delete_chain, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/delete_plan\z}, :handle_delete_plan, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
