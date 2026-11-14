@@ -4,6 +4,10 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createReloadCheck } from "../../../lib/samagotchi/web/public/reload_check.js";
+import { splitSnapshotCards } from "../../../lib/samagotchi/web/public/card.js";
+import { placeCardsOffscreen } from "../../../lib/samagotchi/web/public/cards_offscreen.js";
+import { historyShape } from "../../../lib/samagotchi/web/public/history_shape.js";
+import { livePage } from "./live_page.js";
 
 function nodes(markup) {
   const holder = document.createElement("div");
@@ -14,16 +18,22 @@ function nodes(markup) {
 const PROMPT = '<div class="bubble user" data-turn-id="T1"><div class="user-message">hi</div></div>';
 const ANSWER = '<div class="bubble output">hello</div><div class="turn-timing">turn 1 · 5ms</div>';
 
-function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {} } = {}) {
+function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {}, capabilities = null, answers = true, place = null } = {}) {
   const posts = [];
   const reads = [];
+  const placed = [];
   let session = "s1";
   let running = false;
   const check = createReloadCheck({
     enabled: () => enabled,
     sessionId: () => session,
     running: () => running,
+    capabilities: () => capabilities,
     read: async (id) => { reads.push(id); return { ...data, html: reloaded }; },
+    place: place ?? ((holder, entries) => {
+      placed.push(entries);
+      placeCardsOffscreen(holder, entries, { capabilities, answers });
+    }),
     render: (d) => {
       const frag = document.createDocumentFragment();
       frag.append(...nodes(d.html).childNodes);
@@ -32,7 +42,7 @@ function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {} } = {}) {
     post: async (id, body) => { posts.push([id, body]); },
   });
   return {
-    check, posts, reads,
+    check, posts, reads, placed,
     switchTo: (id) => { session = id; },
     startTurn: () => { running = true; },
   };
@@ -60,20 +70,11 @@ test("it is strict: a known divergence is a mismatch, posted with the ACCEPTED e
   assert.deepEqual(posts, [["s1", { turn_id: "T1", same: false, kinds: ["command"], excused: ["command-bubble"], explained: true, drawn: false, undrawn: 0 }]]);
 });
 
-test("a card is no finding (a reload places it after the render); the queued lines after the turn aren't the turn's", async () => {
-  const live = `${PROMPT}<div class="bubble plugin-card" data-card-id="c1"><span class="card-title">x</span></div>${ANSWER}`
-    + '<div class="bubble command queued"><div class="command-line">/model x</div></div>';
+test("the lines queued after the turn are not the turn's", async () => {
+  const queued = '<div class="bubble command queued"><div class="command-line">/model x</div></div>';
   const { check, posts } = setup();
-  await check.handedOff({ pieces: pieces(live) });
+  await check.handedOff({ pieces: pieces(PROMPT + queued + ANSWER) });
   assert.equal(posts[0][1].same, true);
-});
-
-test("an answered question card is no finding either (a reload places it after the render, cards_place.js)", async () => {
-  const card = '<details class="bubble question answered"><summary>Which file? → README.md</summary></details>';
-  const { check, posts } = setup();
-  await check.handedOff({ pieces: pieces(PROMPT + card + ANSWER) });
-  assert.equal(posts[0][1].same, true);
-  assert.deepEqual(posts[0][1].kinds, []);
 });
 
 test("a reload's rows that came without their turn's drawing (the plain fallback) are counted", async () => {
@@ -129,4 +130,243 @@ test("a read or a post that fails is dropped", async () => {
     read: async () => { throw new Error("gone"); }, render: () => document.createDocumentFragment(), post: async () => {},
   });
   await check.handedOff({ pieces: pieces() });
+});
+
+// A drawn turn already renders its own cards (turn_block.js drawnTurnNodes),
+// so they compare; a card of another turn, or a between-turn one, does not.
+const DRAWN = '<div class="bubble user" data-turn-id="T1" data-drawn="T1"><div class="user-message">hi</div></div>'
+  + '<details class="turn-work" data-drawn="T1"><summary><span class="turn-steps">1 step</span></summary>'
+  + '<div class="gen"><summary>ask</summary><div class="activity-body">'
+  + '<div class="plugin-card" data-card-id="c1"><span class="card-title">Check-in</span></div>'
+  + '</div></div></details>'
+  + '<div class="bubble output">hello</div><div class="turn-timing">turn 1 · 5ms</div>';
+const CARD = (id, title) => `<div class="plugin-card" data-card-id="${id}"><span class="card-title">${title}</span></div>`;
+const IN_TURN = { id: "c1", type: "card", in_turn: true, of_turn: "T1", title: "Check-in" };
+
+test("a drawn turn's own card is compared: the reload that loses it is a finding of kind card", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN.replace(CARD("c1", "Check-in"), ""), data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["card"]);
+  assert.equal(posts[0][1].drawn, true);
+});
+
+test("a drawn turn's own card, live and reloaded the same, is no finding", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("another turn's card, or a between-turn one, on one side only is no finding", async () => {
+  const foreign = `<div class="bubble plugin-card" data-card-id="c9"><span class="card-title">Elsewhere</span></div>`;
+  const { check, posts } = setup({
+    reloaded: DRAWN,
+    data: { turn_drawings: { T1: {} }, cards: [IN_TURN, { id: "c9", opening_id: "T2", title: "Elsewhere" }] },
+  });
+  await check.handedOff({ pieces: pieces(DRAWN + foreign) });
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("a live card the snapshot doesn't know at all is a finding: the reload lost it", async () => {
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards: [IN_TURN] } });
+  await check.handedOff({ pieces: pieces(DRAWN.replace(CARD("c1", "Check-in"), CARD("c1", "Check-in") + CARD("c7", "Late"))) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["card"]);
+});
+
+test("a card's title updated after the turn reads the same on both sides (CardStore's latest)", async () => {
+  const both = DRAWN.replace("Check-in", "Check-in, again");
+  const { check, posts } = setup({ reloaded: both, data: { turn_drawings: { T1: {} }, cards: [{ ...IN_TURN, title: "Check-in, again" }] } });
+  await check.handedOff({ pieces: pieces(both) });
+  assert.equal(posts[0][1].same, true);
+});
+
+test("a card entry with no of_turn counts as foreign: its item is dropped on both sides", async () => {
+  const live = DRAWN.replace(' data-drawn="T1"', "");
+  const { check, posts } = setup({ reloaded: live, data: { cards: [{ id: "c1", type: "card", in_turn: true, title: "Check-in" }] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true);
+});
+
+// The turn's own questions and, for an undrawn turn, its other entries, are
+// placed offscreen (cards_offscreen.js) before the compare. The live side is
+// the page's own placement (live_page.js, as session_view.js does it).
+function livePieces(markup, cards, capabilities = null) {
+  const page = livePage({ questions: true });
+  page.historyEl.innerHTML = markup;
+  page.cards.placeSnapshotCards(splitSnapshotCards(cards, capabilities).placed, { before: null });
+  return [...page.historyEl.children];
+}
+
+test("only a card entry's id drops a card item: a notice with the same id doesn't", async () => {
+  const cards = [IN_TURN, { id: "c1", type: "hook_notice", message: "a notice of another turn" }];
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, true);
+});
+
+const ASKED = { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+  pending_question: { id: "q1", question: "Which one?", options: [{ label: "A" }, { label: "B" }] }, answer: { selected: ["A"] } };
+const QCARD = (summary, said = "") => `<details class="bubble question answered"><summary>${summary}`
+  + (said ? `<div class="question-said" aria-hidden="true">${said}</div>` : "") + `</summary></details>`;
+// The same holder, placed offscreen, read alone: what the compare saw on the reload side.
+function offscreenShape(markup, cards, capabilities = null) {
+  const holder = document.createElement("div");
+  holder.innerHTML = markup;
+  placeCardsOffscreen(holder, cards, { capabilities, answers: true });
+  return historyShape([...holder.children]);
+}
+
+// A drawn turn's asking line, as a reload renders it: the placer takes the
+// question card's kept reply from its step's text.
+const ASK_BLOCK = '<details class="turn-work" data-drawn="T1"><summary><span class="turn-steps">1 step</span></summary>'
+  + '<div class="gen"><summary>ask</summary><div class="gen-text">rm tmp is in the way</div></div></details>';
+const APPROVAL = { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+  pending_question: { id: "q2", kind: "approval", approval: { tool: "execute", label: "rm tmp" }, options: ["Allow", "Deny"] },
+  answer: { selected: ["Deny"], freeform: "keep it" } };
+
+// Hand-written live markup, so these compare the placer against the page's
+// order rather than against itself (c4da0b424: an answered approval's lead-in
+// came after its verdict after a reload).
+test("an answered approval's card reads the asking line, then the verdict, on both sides", async () => {
+  const live = `${PROMPT}${ASK_BLOCK}<details class="bubble question approval answered denied"><summary class="approval-said">`
+    + '<div class="question-said" aria-hidden="true">rm tmp is in the way</div>'
+    + '<span class="question-summary-text">rm tmp → Denied</span></summary></details>'
+    + '<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>';
+  const reloaded = `${PROMPT}${ASK_BLOCK}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const { check, posts } = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [APPROVAL] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+  assert.ok(posts[0][1].kinds.length === 0);
+});
+
+// placeResolvedQuestion puts a turn's question before the steered lines that
+// came after it was asked, not after the answer.
+test("a question sits before the steered line that followed it, live and reloaded", async () => {
+  const steered = '<div class="bubble user steered" data-step="2"><div class="user-message">also this</div></div>';
+  const asked = QCARD("Which one? → A", "rm tmp is in the way");
+  const live = `${PROMPT}${ASK_BLOCK}${asked}${steered}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const reloaded = `${PROMPT}${ASK_BLOCK}${steered}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`;
+  const { check, posts } = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [ASKED] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+
+  // The live card after the steered line instead: the reload's order is a
+  // finding (compareShapes pairs the two question items and names the steered
+  // line that moved).
+  const after = setup({ reloaded, data: { turn_drawings: { T1: {} }, cards: [ASKED] } });
+  await after.check.handedOff({ pieces: pieces(`${PROMPT}${ASK_BLOCK}${steered}${asked}<div class="bubble output">done</div><div class="turn-timing">turn 1 · 5ms</div>`) });
+  assert.equal(after.posts[0][1].same, false);
+  assert.deepEqual(after.posts[0][1].kinds, ["steered"]);
+});
+
+test("the page's own question card, placed offscreen the same way, is no finding", async () => {
+  const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED] } });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [ASKED]) });
+  assert.deepEqual(placed[0], [ASKED]);
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("a question the live page put after the answer is a finding of kind question", async () => {
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED] } });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${ANSWER}${QCARD("Which one? → A")}`) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["question"]);
+  assert.ok(offscreenShape(`${PROMPT}${ANSWER}`, [ASKED]).some((item) => item.kind === "question"),
+    "the reload did place the card: the finding is its place, not its absence");
+});
+
+test("a deny with a reason, a cancelled question and a step-limit one read the same on both sides", async () => {
+  const cases = [
+    ["a denied approval", { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+      pending_question: { id: "q2", kind: "approval", approval: { tool: "execute", label: "rm tmp" }, options: ["Allow", "Deny"] },
+      answer: { selected: ["Deny"], freeform: "no, keep it" } }],
+    ["a cancelled question", { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+      pending_question: { id: "q3", question: "Keep going?", options: [{ label: "Yes" }] }, cancelled: true, reason: "turn ended" }],
+    ["a step limit", { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
+      pending_question: { id: "q4", kind: "continue", header: "Step limit", options: [{ label: "Continue" }, { label: "Stop" }] },
+      answer: { selected: ["Stop"] } }],
+  ];
+  for (const [name, entry] of cases) {
+    const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [entry] } });
+    await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [entry]) });
+    assert.equal(posts[0][1].same, true, `${name}: ${JSON.stringify(posts[0][1])}`);
+  }
+});
+
+test("a question entry with no of_turn (an older worker) is dropped on both sides", async () => {
+  const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [{ ...ASKED, of_turn: undefined }] } });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [{ ...ASKED, of_turn: undefined }]) });
+  assert.deepEqual(placed[0], []);
+  assert.equal(posts[0][1].same, true);
+  assert.deepEqual(posts[0][1].kinds, []);
+});
+
+test("a question stamped to another turn does not silence this turn's questions", async () => {
+  const other = { type: "question", opening_id: "T2", pending_question: { id: "q9", question: "Elsewhere?" }, answer: { selected: ["yes"] } };
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED, other] } });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${QCARD("Which one? → wrong")}${ANSWER}`) });
+  assert.equal(posts[0][1].same, false, JSON.stringify(posts[0][1]));
+  assert.deepEqual(posts[0][1].kinds, ["question"]);
+});
+
+test("a question with no of_turn but this turn's opening stamp is still left out", async () => {
+  const stale = { type: "question", opening_id: "T1", pending_question: { id: "q1", question: "Which one?" }, answer: { selected: ["A"] } };
+  const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [stale] } });
+  await check.handedOff({ pieces: pieces(`${PROMPT}${QCARD("Which one? → A")}${ANSWER}`) });
+  assert.deepEqual(placed[0], []);
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+});
+
+test("an undrawn turn's own card and notice are placed and compared", async () => {
+  const cards = [
+    { type: "card", id: "c1", in_turn: true, of_turn: "T1", iteration: 1, title: "Note", body: "here" },
+    { type: "hook_notice", in_turn: true, of_turn: "T1", iteration: 1, calls: 0, hook: "loop", text: "asking again" },
+  ];
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards } });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, cards) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+});
+
+test("a notice that is a fallback for a capability the page has is placed nowhere", async () => {
+  const fallback = { type: "hook_notice", in_turn: true, of_turn: "T1", iteration: 1, hook: "loop", text: "cut", fallback_for: "loop_guard" };
+  const caps = { loop_guard: true };
+  const { check, posts, placed } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [fallback] }, capabilities: caps });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [fallback], caps) });
+  assert.deepEqual(placed[0], []);
+  assert.equal(posts[0][1].same, true);
+});
+
+test("the kept reply's line differing between live and reload is a finding of kind question", async () => {
+  const BLOCK = '<details class="turn-work"><summary><span class="turn-steps">1 step</span></summary>'
+    + '<div class="gen"><summary>ask</summary><div class="gen-text">a different line</div></div></details>';
+  const live = `${PROMPT}${BLOCK}<details class="bubble question answered"><summary>Which one? → A<div class="question-said" aria-hidden="true">asking now</div></summary></details>${ANSWER}`;
+  const reloaded = `${PROMPT}${BLOCK}${ANSWER}`;
+  const { check, posts } = setup({ reloaded, data: { cards: [ASKED] } });
+  await check.handedOff({ pieces: pieces(live) });
+  assert.equal(posts[0][1].same, false);
+  assert.deepEqual(posts[0][1].kinds, ["question"]);
+  assert.ok(offscreenShape(reloaded, [ASKED]).some((item) => item.kind === "question"),
+    "the reload placed its own card: only the kept line differs");
+});
+
+test("two questions of one turn are compared in their order", async () => {
+  const second = { ...ASKED, iteration: 2, pending_question: { id: "q2", question: "And then?", options: [{ label: "A" }, { label: "B" }] }, answer: { selected: ["B"] } };
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED, second] } });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [ASKED, second]) });
+  assert.equal(posts[0][1].same, true, JSON.stringify(posts[0][1]));
+
+  const swapped = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED, second] } });
+  await swapped.check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [second, ASKED]) });
+  assert.equal(swapped.posts[0][1].same, false);
+  assert.deepEqual(swapped.posts[0][1].kinds, ["question"]);
+});
+
+test("a place that throws drops the check: no post, no error out", async () => {
+  const { check, posts } = setup({ reloaded: `${PROMPT}${ANSWER}`, data: { cards: [ASKED] }, place: () => { throw new Error("no holder"); } });
+  await check.handedOff({ pieces: livePieces(`${PROMPT}${ANSWER}`, [ASKED]) });
+  assert.deepEqual(posts, []);
 });

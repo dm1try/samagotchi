@@ -69,7 +69,7 @@ test("historyShape reads each other kind, and leaves out the copy button, the ti
     { kind: "cancel", cls: "", text: "■ stopped" },
     { kind: "failed", cls: "", text: "✕ turn failed" },
     { kind: "question", cls: "", text: "Which? → A" },
-    { kind: "card", cls: "", text: "c-1 Check-in" },
+    { kind: "card", cls: "", text: "c-1 Check-in", id: "c-1" },
     { kind: "steer", cls: "", text: "check-in nudged the model" },
     { kind: "other", cls: "revise-row", text: "" },
   ]);
@@ -96,8 +96,21 @@ test("historyShape reads a step's steers, rows, notices and cards in order", () 
     { kind: "steer", cls: "", text: "check-in nudged the model" },
     { kind: "row", cls: "error", text: "read · a.rb · error · 12ms", output: "[read] boom", edit: "✂ stubbed: stale" },
     { kind: "notice", cls: "", text: "↻ empty answer, asking again (1/1)" },
-    { kind: "card", cls: "", text: "c-2 Warn" },
+    { kind: "card", cls: "", text: "c-2 Warn", id: "c-2" },
   ]);
+});
+
+// The id is on its own as well as in the text: the reload check keeps only a
+// turn's own cards by it (reload_check.js).
+test("a card item carries its card id; another id at the same place is a difference", () => {
+  const one = historyShape(historyOf('<div class="plugin-card" data-card-id="c-1"><span class="card-title">Warn</span></div>'));
+  const other = historyShape(historyOf('<div class="plugin-card" data-card-id="c-2"><span class="card-title">Warn</span></div>'));
+  const cardless = historyShape(historyOf('<div class="plugin-card"><span class="card-title">Warn</span></div>'));
+  assert.equal(one[0].id, "c-1");
+  assert.equal(other[0].id, "c-2");
+  assert.equal(cardless[0].id, "");
+  assert.equal(compareShapes(one, other).same, false);
+  assert.deepEqual(compareShapes(one, other).kinds, ["card"]);
 });
 
 const item = (kind, text = "", extra = {}) => ({ kind, cls: "", text, ...extra });

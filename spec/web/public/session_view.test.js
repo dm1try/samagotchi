@@ -6,6 +6,7 @@ import { createSessionStore } from "../../../lib/samagotchi/web/public/session_s
 import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
 import { createGapClock } from "../../../lib/samagotchi/web/public/time_gaps.js";
 import { drawnHistory } from "./drawn_history.js";
+import { historyShape } from "../../../lib/samagotchi/web/public/history_shape.js";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -219,4 +220,24 @@ test("historyOpts reads the page's capabilities at the call", () => {
   assert.deepEqual(view.historyOpts({ current_turn: { turn_id: "t9" } }).capabilities, { editor: true });
   assert.equal(view.historyOpts().runningTurnId, null);
   assert.equal(view.historyOpts({ current_turn: { turn_id: "t9" } }).runningTurnId, "t9");
+});
+
+test("reloadRender draws a read as a reload draws it: the same shape the page renders", () => {
+  const { store, historyEl, view } = fakePage();
+  store.update({ selected: "s1" });
+  const { items, drawings } = drawnHistory([
+    { role: "user", content: "first", turn_id: "t1" },
+    { role: "assistant", content: "one", turn_id: "t1" },
+    { role: "user", content: "second", turn_id: "t2" },
+    { role: "assistant", content: "two", turn_id: "t2" },
+  ]);
+  const data = {
+    session, messages: items, turn_drawings: drawings,
+    timing: { started_at: "2026-11-14T10:00:00+01:00", turn_records: [{ turn_id: "t1", duration_ms: 1200 }, { turn_id: "t2", duration_ms: 800 }] },
+  };
+  view.renderSessionView(data);
+  const holder = document.createElement("div");
+  holder.append(view.reloadRender(data));
+  assert.deepEqual(historyShape(holder), historyShape(historyEl));
+  assert.ok(historyShape(historyEl).length > 0);
 });
