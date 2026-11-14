@@ -80,12 +80,12 @@ module Samagotchi
       # where input for it goes (SessionAccess::Local#head): 200 {id, asked,
       # via}, id the chain's newest link of a continued one.
       def handle_resolve(req)
-        given = req.params["id"].to_s
+        given = req.GET["id"].to_s
         return session_not_found(given) unless Session.valid_id?(given)
         return participant_resolve(principal(req).grant, given) unless principal(req).owner?
 
         id = session_access.resolve(given)
-        return json_response(200, { id: id }) unless truthy_param?(req.params["head"])
+        return json_response(200, { id: id }) unless truthy_param?(req.GET["head"])
 
         head = session_access.head(id)
         json_response(200, { id: head.id, asked: head.asked, via: head.via.to_s })
@@ -122,18 +122,18 @@ module Samagotchi
       # folder or below), live=1, archived=1, tests=0 (leave test runs out),
       # sort, order, limit. An array, newest first by default.
       def handle_summaries(req)
-        dir, error = scope_dir(req.params["dir"])
+        dir, error = scope_dir(req.GET["dir"])
         return error if error
 
-        cwd = req.params["cwd"].to_s
+        cwd = req.GET["cwd"].to_s
         cwd = nil if cwd.strip.empty?
         return error_response(400, "invalid_cwd", "cwd is an absolute path: #{cwd[0, 200]}") if cwd && !cwd.start_with?("/")
 
         rows = session_access.summaries(
-          live: truthy_param?(req.params["live"]), cwd: cwd, limit: sanitize_limit(req.params["limit"]),
-          include_tests: !%w[0 false no].include?(req.params["tests"].to_s.strip.downcase),
-          project_root: dir && ProjectScope.root_for(dir), include_archived: truthy_param?(req.params["archived"]),
-          sort: sanitize_sort(req.params["sort"]), order: sanitize_order(req.params["order"])
+          live: truthy_param?(req.GET["live"]), cwd: cwd, limit: sanitize_limit(req.GET["limit"]),
+          include_tests: !%w[0 false no].include?(req.GET["tests"].to_s.strip.downcase),
+          project_root: dir && ProjectScope.root_for(dir), include_archived: truthy_param?(req.GET["archived"]),
+          sort: sanitize_sort(req.GET["sort"]), order: sanitize_order(req.GET["order"])
         )
         json_response(200, rows.map(&:to_summary_h))
       end

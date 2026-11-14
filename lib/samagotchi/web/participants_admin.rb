@@ -90,7 +90,7 @@ module Samagotchi
       # /api/participants: revokes one participant, a session's or every
       # one's; their open streams end within a poll.
       def handle_participants_revoke(req, id = nil)
-        grant_id = req.params["id"]
+        grant_id = req.GET["id"]
         if grant_id && !Grants::ID_RE.match?(grant_id.to_s)
           return error_response(400, "invalid_participant", "not a participant id: #{grant_id.to_s[0, 40]}")
         end

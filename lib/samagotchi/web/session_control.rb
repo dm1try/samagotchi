@@ -301,7 +301,7 @@ module Samagotchi
       # An upload's ?name=, a base name without control characters; "image"
       # without one.
       def upload_name(req)
-        name = File.basename(req.params["name"].to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
+        name = File.basename(req.GET["name"].to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
         name.empty? ? "image" : name
       end
 
@@ -517,7 +517,7 @@ module Samagotchi
       # worker_running, as chi sessions delete without --force. A one-turn chi run's
       # session is always refused.
       def handle_delete(req, id)
-        result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.params["force"]),
+        result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
                                              wait: STOP_WAIT_SECONDS)
         @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
