@@ -19,6 +19,16 @@ import { composerMode } from "../../../lib/samagotchi/web/public/composer_mode.j
 import { createOwnerWait, OWNER_WAIT_STATUS, OWNER_WAIT_TEXT } from "../../../lib/samagotchi/web/public/stage_owner_wait.js";
 import { createParticipantMain, LINK_ENDED } from "../../../lib/samagotchi/web/public/participant_main.js";
 
+// npm test runs every file in one process: who the viewer is (module
+// state) is put back after each test, so no other file sees a participant.
+const ptest = (name, fn) => test(name, async (t) => {
+  try {
+    await fn(t);
+  } finally {
+    setViewerSelf(null);
+  }
+});
+
 const ALEX = { kind: "participant", id: "p_0123abcd", name: "Alex", client_id: "review:p_0123abcd", mode: "pair",
   can: ["send", "stop_own_turn", "steer_own_turn", "working_set"], usage: { spent: 0.42, cap: 2, expires_at: "2026-11-20T12:00:00Z" } };
 
@@ -28,7 +38,7 @@ function html(template) {
   return el;
 }
 
-test("viewer_self: a participant's show names them; the owner's (or none) clears it", () => {
+ptest("viewer_self: a participant's show names them; the owner's (or none) clears it", () => {
   setViewerSelf(ALEX);
   assert.equal(viewerSelf().author, "p:p_0123abcd");
   assert.equal(isViewerClient("review:p_0123abcd"), true);
@@ -41,7 +51,7 @@ test("viewer_self: a participant's show names them; the owner's (or none) clears
   assert.equal(isViewerClient("review:p_0123abcd"), false);
 });
 
-test("their own turns: any tab's send is theirs by the client id; a turn_started they own starts their queued bubble", () => {
+ptest("their own turns: any tab's send is theirs by the client id; a turn_started they own starts their queued bubble", () => {
   setViewerSelf(ALEX);
   assert.equal(isOwn("review:p_0123abcd", "web:this-tab"), true);
   assert.equal(isOwn("web:other", "web:this-tab"), false);
@@ -51,13 +61,15 @@ test("their own turns: any tab's send is theirs by the client id; a turn_started
   const started = promptOps({ type: "turn_started", turn_id: "t1", prompt: "hi", author: "p:p_0123abcd", mine: true },
     { myId: "web:this-tab", known: () => false });
   assert.deepEqual(started, [{ op: "start", enqueuedId: null, prompt: "hi", mine: true }]);
+  // Someone else's queued turn arrives bare: no empty bubble.
+  assert.deepEqual(promptOps({ type: "turn_enqueued" }, { myId: "web:this-tab", known: () => false }), []);
   setViewerSelf(null);
   // The owner's page as before: a participant's start is someone else's prompt.
   assert.equal(promptOps({ type: "turn_started", turn_id: "t1", prompt: "hi", author: "p:p_0123abcd" },
     { myId: "web:this-tab", known: () => false })[0].op, "add");
 });
 
-test("labels: the owner's prompt reads \"owner\" to a participant, their echo carries their name; a pair turn is the name alone", () => {
+ptest("labels: the owner's prompt reads \"owner\" to a participant, their echo carries their name; a pair turn is the name alone", () => {
   setViewerSelf(ALEX);
   const owners = html(userBubbleTemplate({ content: "Check the shell" }));
   assert.equal(owners.querySelector(".origin-label").textContent, "owner");
@@ -70,7 +82,7 @@ test("labels: the owner's prompt reads \"owner\" to a participant, their echo ca
   assert.equal(authorBadgeText("Alex", "pair"), "Alex · pair");
 });
 
-test("the bottom row: status, ctx, speed idle or the turn's time running, their spend of the cap, what their turns may do", () => {
+ptest("the bottom row: status, ctx, speed idle or the turn's time running, their spend of the cap, what their turns may do", () => {
   const idle = barItems({ status: "idle", ctxPct: 18, speed: { decode_tps: 42 }, usage: ALEX.usage, mode: "pair" });
   assert.deepEqual(idle.items.map((i) => i.text), ["idle", "ctx 18%", "42 tok/s", "$0.42 of $2.00 used"]);
   assert.equal(idle.rules, "chi acts under the owner's rules");
@@ -87,7 +99,7 @@ test("the bottom row: status, ctx, speed idle or the turn's time running, their 
   assert.match(who.querySelector(".pb-ends").textContent, /^link ends /);
 });
 
-test("the closed line: their limit (the mock-up's words), else a refusal or an ended link in the server's words; none while they may send", () => {
+ptest("the closed line: their limit (the mock-up's words), else a refusal or an ended link in the server's words; none while they may send", () => {
   assert.equal(closedLine({ capReached: false }), null);
   assert.deepEqual(closedLine({ capReached: true, usage: { cap: 2 } }), {
     kind: "cap_reached", title: "You have used the $2.00 the owner set for you.",
@@ -98,7 +110,7 @@ test("the closed line: their limit (the mock-up's words), else a refusal or an e
   assert.equal(closedLine({ refusal: { code: "token_revoked", text: "this review link was revoked by the session's owner" } }).kind, "token_revoked");
 });
 
-test("the delivery line: their own turn takes the message at its next step (Alt+Enter queues); another's queues it as their own turn", () => {
+ptest("the delivery line: their own turn takes the message at its next step (Alt+Enter queues); another's queues it as their own turn", () => {
   const own = deliveryLine({ phase: "thinking", viewerTurn: { own: true, steer: true, by: null } });
   assert.equal(own.text, `↳ ${OWN_TURN_STEERS}`);
   assert.equal(own.enter, null);
@@ -112,7 +124,7 @@ test("the delivery line: their own turn takes the message at its next step (Alt+
   assert.match(deliveryLine({ phase: "thinking" }).text, /goes in after this step/);
 });
 
-test("the composer's placeholder: a message that won't steer reads plain; the button keeps its in-flight state", () => {
+ptest("the composer's placeholder: a message that won't steer reads plain; the button keeps its in-flight state", () => {
   const plain = composerMode({ selected: "s", owner: "worker", running: true, narrow: false, steers: false });
   assert.equal(plain.placeholder, "Message chi…");
   assert.equal(plain.disabled, undefined);
@@ -120,7 +132,7 @@ test("the composer's placeholder: a message that won't steer reads plain; the bu
   assert.match(composerMode({ selected: "s", owner: "worker", running: true, narrow: false }).placeholder, /^Running…/);
 });
 
-test("the stage's waiting look: the status and one line per kind; none puts it back", () => {
+ptest("the stage's waiting look: the status and one line per kind; none puts it back", () => {
   const stage = document.createElement("section");
   const line = document.createElement("div");
   const phaseEl = document.createElement("span");
@@ -154,7 +166,7 @@ function page({ running = false, read = async () => ({ viewer: ALEX }), probe } 
   return { main, state, stage, touched };
 }
 
-test("participant_main: their turn's start shows Stop turn and steers; the owner's doesn't; a wait names its kind, no card", () => {
+ptest("participant_main: their turn's start shows Stop turn and steers; the owner's doesn't; a wait names its kind, no card", () => {
   const { main, state, stage } = page();
   const calls = [];
   const handlers = main.wrapHandlers({
@@ -187,7 +199,7 @@ test("participant_main: their turn's start shows Stop turn and steers; the owner
   assert.deepEqual(calls, [["started", "t1"], ["completed"], ["started", "t2"]]);
 });
 
-test("participant_main: the top row, the bottom row in the info line's place, the title chi web gave", () => {
+ptest("participant_main: the top row, the bottom row in the info line's place, the title chi web gave", () => {
   const { main } = page();
   main.shown(ALEX);
   main.drawBar();
@@ -198,7 +210,7 @@ test("participant_main: the top row, the bottom row in the info line's place, th
   assert.equal(main.title(), "Fix the install notes");
 });
 
-test("participant_main: their limit closes the composer; a stopped session's refusal shows the server's words until a turn starts", async () => {
+ptest("participant_main: their limit closes the composer; a stopped session's refusal shows the server's words until a turn starts", async () => {
   const { main } = page({ read: async () => ({ viewer: { ...ALEX, cap_reached: true } }) });
   main.shown(ALEX);
   const composer = document.querySelector("#composer");
@@ -214,7 +226,7 @@ test("participant_main: their limit closes the composer; a stopped session's ref
   assert.match(closed.textContent, /You have used the \$2\.00 the owner set for you\./);
 });
 
-test("participant_main: an ended link shows the 401's words from a brief read, or a refused send's own", async () => {
+ptest("participant_main: an ended link shows the 401's words from a brief read, or a refused send's own", async () => {
   const probe = async () => ({ status: 401, json: async () => ({ error: "token_expired", detail: "this review link expired: ask the session's owner for a new one" }) });
   const { main } = page({ probe });
   await main.linkEnded();
