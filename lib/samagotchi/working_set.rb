@@ -7,8 +7,6 @@ require_relative "file_ref"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
 require_relative "llm_context_view"
-require_relative "memory_paths"
-require_relative "degrade"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -213,8 +211,6 @@ module Samagotchi
       base = { run: run, sent: sent, content: CONTENT.include?(name), share: 1 }
       if FILE_OPS.key?(name)
         path = FileRef.for(name, run.call, cwd: cwd)&.path
-        return [] unless path
-
         path ? [Touch.new(kind: FILE, key: path, op: FILE_OPS[name], **base)] : []
       elsif name == MEMORY_READ
         names = found_names(run)
@@ -303,19 +299,16 @@ module Samagotchi
 
     # Whether the memory +key+ has changed since +run+'s stamp (the item's
     # latest run): a memory_read's stamp has one entry per name it read, each
-    # with the file that answered and the model overlay read with it; a run
-    # on the memory's own file (a `read` or `edit` of it) carries a plain file
-    # stamp of that file instead. No stamp - a session saved before memory
-    # stamps, or a reader that only knows file stamps - means not changed.
-    # The memory is gone, or its overlay is, as well: changed.
+    # with the file that answered and the model overlay read with it. No stamp
+    # - a session saved before memory stamps, or a reader that only knows file
+    # stamps - means not changed. The memory is gone, or its overlay is, as
+    # well: changed.
     def memory_changed?(key, run, conversation, stat)
       stamp = stamp_hash(conversation[run.index], run.ref.run)
       return false unless stamp
 
       entries = field(stamp, :memories)
-      return differs?(field(stamp, :path), stamp, stat) unless entries.is_a?(Hash)
-
-      entry = field(entries, key)
+      entry = entries.is_a?(Hash) ? field(entries, key) : nil
       return false unless entry.is_a?(Hash)
 
       overlay = field(entry, :overlay)

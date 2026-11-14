@@ -21,7 +21,8 @@ That is compat N-1 in both directions: a reader that only knows file stamps (`Wo
 `mtime_ns`) sees nothing in it, and a session saved before memory stamps has no stamp at all - either way its memories
 are never stale. The name it read from, and its overlay, are what "changed since" is measured against, so a system
 memory the model read is stale when its file or the overlay read with it moved, even if a project memory of the same
-name exists.
+name exists. A `read`, `edit` or `write` of a memory's file is still a file item: the page has no memory row for
+that path, so counting it as the memory comes with the page builds that map it too.
 
 Both `ToolResponse` shapes save the stamps as `tool_stamps`, one per run, read by the run's place
 (`ToolIds::Ref#run`):
@@ -105,7 +106,8 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 `memory_read` of several names is an output of each name.
 
 **Cost.** Two `paired_runs` walks, one view build, a stat per file item and one per memory stamp. A 500-message
-session builds in about 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
+session builds in about 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards
+against a blow-up (< 400 ms).
 
 ## Delivery
 
