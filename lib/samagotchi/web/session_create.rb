@@ -300,7 +300,7 @@ module Samagotchi
       # default) is known not to take images; nil when it does or is
       # unknown (the worker decides when the turn runs).
       def vision_refused(name, typed)
-        refusal = SendCommand.vision_refusal(name, SendCommand.vision_answer(name, typed: typed))
+        refusal = SendCommand.vision_refusal_for(name, typed: typed)
         refusal && error_response(422, "no_vision", refusal)
       end
 

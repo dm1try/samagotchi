@@ -14,6 +14,8 @@ require "samagotchi/llm/chat_loop"
 require "samagotchi/bridge"
 require "samagotchi/bridge_client"
 require "samagotchi/participants"
+require "samagotchi/participant_uploads"
+require "samagotchi/image_store"
 require "samagotchi/prompt_history"
 require "samagotchi/analytics_file"
 require "samagotchi/toolkit"
@@ -419,8 +421,18 @@ RSpec.describe "a participant red-teaming a session" do
       expect(JSON.generate(body)).not_to include("owner")
     end
 
-    it "can't send images" do
-      expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] })).to eq(not_permitted)
+    it "can't send someone else's image: the owner's, another participant's, a guessed hash, a forged source" do
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m")
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "owner.png")
+      bos = Samagotchi::ImageStore.ingest(dir, bytes: "#{png}bo", name: "bo.png")
+      Samagotchi::ParticipantUploads.add(dir, file: bos[:file], grant_id: "p_bbbbbbbb")
+      [[{ file: owners[:file], name: "a" }], [{ file: bos[:file], name: "a" }],
+       [{ file: "images/0000000000000000.png", name: "guess" }], [{ file: "a.png", name: "a" }],
+       [{ file: owners[:file], name: "a", source: "participant" }]].each do |images|
+        expect(turn({ prompt: "look", images: images })).to eq(not_permitted)
+      end
+      expect(inputs).to eq([])
     end
 
     it "can't queue past its turn limit" do
@@ -691,10 +703,16 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
-    it "can't read the raw output or an image" do
-      [get("/api/sessions/#{session.id}/output"), get("/api/sessions/#{session.id}/images/0"),
-       get("/api/sessions/#{session.id}/images/shot.png")].each do |status, body|
-        expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"])
+    it "can't read the raw output or an image it didn't upload (the owner's: by its hash too)" do
+      status, body = get("/api/sessions/#{session.id}/output")
+      expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"])
+      expect(body).not_to include("deploy", "KEYBYTES")
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+      png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m")
+      owners = Samagotchi::ImageStore.ingest(dir, bytes: png, name: "owner.png")
+      [get("/api/sessions/#{session.id}/images/0"), get("/api/sessions/#{session.id}/images/shot.png"),
+       get("/api/sessions/#{session.id}/#{owners[:file]}")].each do |status, body|
+        expect([status, JSON.parse(body)["error"]]).to eq([404, "not_found"])
         expect(body).not_to include("deploy", "KEYBYTES")
       end
     end
@@ -710,7 +728,8 @@ RSpec.describe "a participant red-teaming a session" do
           status, _headers, chunks = web.call(env)
           [status, chunks.join]
         end
-        reads.first(2).each { |status, body| expect([status, JSON.parse(body)["error"]]).to eq([403, "not_permitted"]), peer }
+        expect([reads[0][0], JSON.parse(reads[0][1])["error"]]).to eq([403, "not_permitted"]), peer
+        expect([reads[1][0], JSON.parse(reads[1][1])["error"]]).to eq([404, "not_found"]), peer
         reads.last(2).each do |status, body|
           expect(status).to eq(200), peer
           expect(JSON.parse(body).dig("viewer", "kind")).to eq("participant"), peer

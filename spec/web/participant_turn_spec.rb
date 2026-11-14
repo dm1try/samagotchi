@@ -11,6 +11,9 @@ require "samagotchi/participants"
 require "samagotchi/prompt_history"
 require "samagotchi/session_manager"
 require "samagotchi/analytics_file"
+require "samagotchi/participant_uploads"
+require "samagotchi/image_store"
+require "samagotchi/vision_support"
 
 # POST /api/sessions/:id/turn and …/turn/:eid/dequeue from a participant:
 # a turn whose author and client id are the grant's, queued or at the next
@@ -114,14 +117,88 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(delivered.last[:anchors]).to eq(Samagotchi::TurnAnchors.new(verify: verify))
   end
 
-  it "refuses a shell line, a command and images (403 not_permitted), audited, never delivered" do
+  it "refuses a shell line and a command (403 not_permitted), audited, never delivered" do
     ["!ls", "  /toolkit full", "/title mine"].each do |line|
       expect(turn({ prompt: line })).to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])
     end
-    expect(turn({ prompt: "look", images: [{ file: "a.png", name: "a" }] }).first).to eq(403)
     expect(delivered).to eq([])
     expect(audit.map { |line| line.values_at("status", "reason") }).to all(eq(%w[refused not_permitted]))
-    expect(audit.size).to eq(4)
+    expect(audit.size).to eq(3)
+  end
+
+  describe "with images" do
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
+    let(:png) { "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".unpack1("m") }
+    let(:yes) { Samagotchi::VisionSupport::Answer.new(value: true, reason: "the model card says so") }
+    let(:no) { Samagotchi::VisionSupport::Answer.new(value: false, reason: "models: sets vision: false") }
+
+    before { allow(Samagotchi::SendCommand).to receive(:vision_answer).and_return(yes) }
+
+    # An image in the session's store (+name+ its bytes' tag), +grant_id+'s when given.
+    def stored(tag, grant_id: nil)
+      ref = Samagotchi::ImageStore.ingest(dir, bytes: png + tag, name: "#{tag}.png")
+      Samagotchi::ParticipantUploads.add(dir, file: ref[:file], grant_id: grant_id) if grant_id
+      { file: ref[:file], name: "#{tag}.png" }
+    end
+
+    it "delivers their own uploads with the turn; the audit line counts them" do
+      mine = stored("mine", grant_id: grant.id)
+      expect(turn({ prompt: "look", images: [mine] }).first).to eq(202)
+      expect(delivered.last[:images]).to eq([mine])
+      expect(audit.last.values_at("status", "images")).to eq(["accepted", 1])
+    end
+
+    it "refuses an image they didn't upload with the same 403, whether its file is there or not, before any file check" do
+      owners = stored("owner")
+      theirs = stored("bo", grant_id: "p_bbbbbbbb")
+      missing = { file: "images/0123456789abcdef.png", name: "x.png" }
+      mine = stored("mine", grant_id: grant.id)
+      [[owners], [theirs], [missing], [mine, owners], [{ file: owners[:file], name: "x", source: "participant" }]].each do |images|
+        expect(turn({ prompt: "look", images: images }))
+          .to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::ParticipantMessages::NOT_PERMITTED }])
+      end
+      expect(delivered).to eq([])
+    end
+
+    it "refuses a body that isn't a list of at most 20 {file, name} refs (400 bad_images), a path too" do
+      mine = stored("mine", grant_id: grant.id)
+      ["x", [1], [{ name: "a" }], [mine.merge(path: "/etc/passwd")], Array.new(21) { mine }].each do |images|
+        expect(turn({ prompt: "look", images: images }).first(1)).to eq([400]), images.to_s[0, 40]
+      end
+      expect(delivered).to eq([])
+    end
+
+    it "refuses an owned image whose file is gone in their own words (400 bad_images), the file named only in the audit" do
+      mine = stored("mine", grant_id: grant.id)
+      File.delete(File.join(dir, mine[:file]))
+      expect(turn({ prompt: "look", images: [mine] }))
+        .to eq([400, { "error" => "bad_images", "detail" => Samagotchi::ParticipantMessages::IMAGE_GONE }])
+      expect(audit.last["detail"]).to include(mine[:file])
+    end
+
+    it "says the shape in its own words, as many refs as ImageStore takes" do
+      expect(Samagotchi::ParticipantMessages::IMAGES_SHAPE).to include("at most #{Samagotchi::ImageStore::MAX_TURN_REFS} ")
+      expect(turn({ prompt: "look", images: "x" }))
+        .to eq([400, { "error" => "bad_images", "detail" => Samagotchi::ParticipantMessages::IMAGES_SHAPE }])
+    end
+
+    it "counts the images in a refused delivery's audit line too" do
+      refused = Samagotchi::SessionManager::DeliverResult.new(status: :refused, via: :bridge, code: 429,
+                                                              ack: { "error" => "too_many_turns" })
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(refused)
+      expect(turn({ prompt: "look", images: [stored("mine", grant_id: grant.id)] }).first).to eq(429)
+      expect(audit.last.values_at("status", "reason", "images")).to eq(["refused", "too_many_turns", 1])
+    end
+
+    it "refuses images to a model that can't take them in their own words (422 no_vision); the full refusal only in the audit" do
+      allow(Samagotchi::SendCommand).to receive(:vision_answer).and_return(no)
+      mine = stored("mine", grant_id: grant.id)
+      expect(turn({ prompt: "look", images: [mine] }))
+        .to eq([422, { "error" => "no_vision", "detail" => Samagotchi::ParticipantMessages::NO_VISION }])
+      expect(audit.last.values_at("status", "reason")).to eq(%w[refused no_vision])
+      expect(audit.last["detail"]).to eq("m can't take images (models: sets vision: false); send text only or switch the model (/model)")
+      expect(turn({ prompt: "text only" }).first).to eq(202)
+    end
   end
 
   it "refuses a turn once the grant spent its cap (429 cap_reached), from the saved analytics" do

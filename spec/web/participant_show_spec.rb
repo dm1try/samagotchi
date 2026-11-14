@@ -32,6 +32,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
   let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir) }
   let(:author) { issued.grant.author }
   let(:client_id) { "review:#{issued.grant.id}" }
+  let(:own_image) { { "file" => "images/0123456789abcdef.png", "name" => "s.png", "width" => 3, "height" => 2 } }
   let(:snapshot) do
     { "snapshot" => {
         "messages" => [{ "role" => "user", "content" => "earlier", "turn_id" => "t0" },
@@ -43,7 +44,10 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
                                           "iteration" => 1, "call_index" => 0,
                                           "ref" => { "kind" => "file", "path" => File.join(root, "docs", "plan.md"), "line" => 3 } }] },
         "queued" => [{ "enqueued_id" => "e1", "client_id" => client_id, "prompt" => "mine", "author" => author,
-                       "delivery" => "queue", "images" => [{ "file" => "IMAGE-FILE" }] },
+                       "delivery" => "queue",
+                       "images" => [{ "file" => "images/0123456789abcdef.png", "name" => "s.png", "width" => 3, "height" => 2,
+                                      "source" => "SOURCE-OF-IMAGE", "bytes" => 77, "mime" => "image/png" },
+                                    { "file" => "IMAGE-FILE" }] },
                      { "enqueued_id" => "e2", "client_id" => "web:1", "prompt" => "owner's next" }],
         "event_id" => "12-ep"
       },
@@ -103,18 +107,18 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(body["replay"][3]).to include("tool" => "read", "ref" => { "kind" => "file", "path" => "docs/plan.md", "line" => 3 })
     # The viewer's own queued turn as the owner's replay has it; the owner's next one bare.
     expect(body["replay"][4]).to eq("type" => "turn_enqueued", "enqueued_id" => "e1", "client_id" => client_id,
-                                    "prompt" => "mine", "author" => author, "delivery" => "queue")
+                                    "prompt" => "mine", "author" => author, "delivery" => "queue", "images" => [own_image])
     expect(body["replay"][5]).to eq("type" => "turn_enqueued")
     expect(body["last_event_id"]).to eq("12-ep")
     expect(body["last_event_seq"]).to eq(12)
     expect(JSON.generate(body)).not_to include("TOOL-PARAMS", "SECRET-GEN", root)
   end
 
-  it "lists the viewer's own queued turns in the owner's shape, never another's prompt or an image" do
+  it "lists the viewer's own queued turns in the owner's shape with their stored image refs, never another's prompt" do
     body = read(issued.token).last
     expect(body["queued"]).to eq([{ "enqueued_id" => "e1", "client_id" => client_id, "prompt" => "mine", "author" => author,
-                                    "delivery" => "queue" }])
-    expect(JSON.generate(body)).not_to include("owner's next", "IMAGE-FILE")
+                                    "delivery" => "queue", "images" => [own_image] }])
+    expect(JSON.generate(body)).not_to include("owner's next", "IMAGE-FILE", "SOURCE-OF-IMAGE", "image/png")
   end
 
   it "names the viewer: kind, id, name, can, client id, mode, cap and usage, and whether the session is stopped" do
@@ -123,7 +127,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
                               "can" => Samagotchi::Web::Viewer::PARTICIPANT_CAPABILITIES, "mode" => "review",
                               "cap_reached" => false, "session_stopped" => false, "participant_kind" => "human")
     expect(viewer["usage"]).to include("spent" => 0.0, "cap" => 2.0, "queued" => 1, "queue_limit" => 3)
-    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set])
+    expect(viewer["can"] & Samagotchi::Web::Viewer::CAPABILITIES).to eq(%w[working_set images])
   end
 
   it "says what the session waits for the owner on: the running turn's approval, a Continue offer, a question between turns" do

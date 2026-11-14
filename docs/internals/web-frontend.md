@@ -247,8 +247,11 @@ gates are boot-time: a show's narrower `viewer` changes what `viewer.can` answer
 A participant's `can` (`Viewer::PARTICIPANT_CAPABILITIES`, in their show's `viewer` and on `<body>`) names
 capabilities of their own, not the owner's: `send` (the composer), `stop_own_turn` (Stop turn on a turn they
 started, `POST …/cancel` with its `turn_id`), `steer_own_turn` (a message during their own turn goes in at its next
-step, on a worker with `participant_steer`); and of the owner's only `working_set`, which their route serves
-filtered ([participants.md](participants.md#the-main-pages-show)). `stop_any_turn` / `stop_own_turn` both make the
+step, on a worker with `participant_steer`); and of the owner's only `working_set` and `images`, which their routes
+serve filtered: the working set's project files ([participants.md](participants.md#the-main-pages-show)); their own
+uploads within their cap and quota, read back only by them ([participants.md](participants.md#participant-images)).
+Their messages carry their own images as refs (thumbnails) and anyone else's as a count, which `images.js
+thumbsTemplate` draws as a muted "N images" line (`.thumbs-hidden`). `stop_any_turn` / `stop_own_turn` both make the
 stage's Stop turn (`onCancel`); a participant's shows on their own turn only (`stage_view.js canCancel`).
 
 The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls without one of the above:
@@ -257,7 +260,7 @@ The owner routes (`App::ROUTES` rows marked `:owner`) the page never calls witho
 `sessions`); `POST /api/sessions` from the start page (a participant's page opens the grant's session and never the start
 page) and the
 participants panel's review start (`participants_admin`); `GET …/images/:file` (a message's image refs; a
-participant's messages carry a count); the objectives strip's posts and the plugin cards' actions (`…/command`:
+participant's messages carry refs only for their own uploads, the one image a participant's route serves them); the objectives strip's posts and the plugin cards' actions (`…/command`:
 drawn only from the show's `objectives` / `cards` and their stream events, which `ParticipantView` drops). Not called
 by the page at all: `/api/sessions/summaries`, `…/output`, `…/notes`, `…/wake`, `…/worker`, `…/exit`, `…/recap`,
 `…/stats`, `…/children/counts`, `…/turns/:id/records`, `/api/participants`. `viewer_boot.test.js` pins the table:

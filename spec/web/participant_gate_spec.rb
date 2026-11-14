@@ -231,6 +231,15 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end
 
+    it "reaches GET …/images/<name> as their own uploads only: 404 for one they didn't upload" do
+      expect(json("/api/sessions/#{session.id}/images/0123456789abcdef.png").first).to eq(404)
+    end
+
+    it "reaches POST …/images as their own upload (spec/web/participant_images_spec.rb)" do
+      expect(json("/api/sessions/#{session.id}/images", method: "POST")).to eq([422, { "error" => "bad_image",
+                                                                                       "detail" => Samagotchi::ParticipantMessages::BAD_IMAGE }])
+    end
+
     it "cannot flag a System 1 auto-allow through the owner's route" do
       status, body = json("/api/sessions/#{session.id}/guardrails/wrong", method: "POST")
 

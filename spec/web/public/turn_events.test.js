@@ -656,3 +656,11 @@ test("a turn_enqueued queued for after the running turn (delivery queue) carries
   const mine = { ...theirs, client_id: ME };
   assert.deepEqual(promptOps(mine, none), [{ op: "tag", enqueuedId: "q1", prompt: "later", delivery: "queue" }]);
 });
+
+import { withImages } from "../../../lib/samagotchi/web/public/turn_events.js";
+test("another participant's image count (no refs on the wire) reaches the bubble op", () => {
+  const ev = { type: "turn_started", prompt: "theirs", images: 2, author: "participant:p2", origin: { client_id: "web:other" } };
+  assert.equal(promptOps(ev, none)[0].images, 2);
+  assert.deepEqual(withImages({ op: "add" }, 0), { op: "add" });
+  assert.deepEqual(withImages({ op: "add" }, []), { op: "add" });
+});

@@ -272,39 +272,57 @@ module Samagotchi
       # POST /api/sessions/:id/images: the raw image as the body (a paste or
       # a drop), ?name= for its file name. Stored like any other image
       # (converted, downscaled); answers the ref the turn then names.
+      # A participant's upload is theirs (ParticipantImages).
       def handle_image_upload(req, id)
         session_dir = image_session_dir(id)
         return session_not_found(id) unless session_dir
+        return participant_image_upload(req, id, session_dir) unless principal(req).owner?
 
-        length = req.content_length.to_i
-        if length > MAX_IMAGE_UPLOAD_BYTES
-          return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
-        end
+        bytes = image_upload_bytes(req)
+        return error_response(413, "too_large", image_too_large_detail) unless bytes
 
-        bytes = request_body(req, MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
-        if bytes.bytesize > MAX_IMAGE_UPLOAD_BYTES
-          return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
-        end
-
-        name = File.basename(req.params["name"].to_s)[0, 120]
-        ref = ImageStore.ingest(session_dir, bytes: bytes, name: name.empty? ? "image" : name, source: "user")
+        ref = ImageStore.ingest(session_dir, bytes: bytes, name: upload_name(req), source: "user")
         json_response(201, ref)
       rescue ImageStore::Error => e
         error_response(422, "bad_image", e.message)
       end
 
+      # An upload's body, or nil when it is over MAX_IMAGE_UPLOAD_BYTES (by
+      # its Content-Length or what came).
+      def image_upload_bytes(req)
+        return nil if req.content_length.to_i > MAX_IMAGE_UPLOAD_BYTES
+
+        bytes = request_body(req, MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
+        bytes.bytesize > MAX_IMAGE_UPLOAD_BYTES ? nil : bytes
+      end
+
+      def image_too_large_detail = "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB"
+
+      # An upload's ?name=, a base name without control characters; "image"
+      # without one.
+      def upload_name(req)
+        name = File.basename(req.params["name"].to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
+        name.empty? ? "image" : name
+      end
+
       # GET /api/sessions/:id/images/<hash>.<ext>: a stored image (only
-      # raster types; never svg), for the page's thumbnails.
-      def handle_image(_req, id, name)
+      # raster types; never svg), for the page's thumbnails. A participant
+      # reads only an image they uploaded (ParticipantImages), never
+      # cached; any other is the 404 an unknown file gets.
+      def handle_image(req, id, name)
         session_dir = image_session_dir(id)
         return not_found(path: "images/#{name}") unless session_dir && IMAGE_NAME_RE.match?(name.to_s)
+
+        participant = !principal(req).owner?
+        return not_found(path: "images/#{name}") if participant && !participant_owns_image?(req, session_dir, name)
 
         path = File.join(session_dir, ImageStore::DIR, name)
         return not_found(path: "images/#{name}") unless File.file?(path) && !File.symlink?(path)
 
         body = File.binread(path)
         [200, { "Content-Type" => IMAGE_TYPES.fetch(File.extname(name).delete(".")), "Content-Length" => body.bytesize.to_s,
-                "X-Content-Type-Options" => "nosniff", "Cache-Control" => "private, max-age=86400" }, [body]]
+                "X-Content-Type-Options" => "nosniff", "Cache-Control" => participant ? "no-store" : "private, max-age=86400" },
+         [body]]
       end
 
       # The Bridge decides the reason (Bridge::CANCEL_REASONS; anything

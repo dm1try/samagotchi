@@ -71,6 +71,7 @@ require_relative "session_access_routes"
 require_relative "principal"
 require_relative "viewer"
 require_relative "participant_access"
+require_relative "participant_images"
 require_relative "participants_admin"
 require_relative "participant_review"
 require_relative "participant_show"
@@ -108,6 +109,7 @@ module Samagotchi
       include RedactedInspect
       include SessionAccessRoutes
       include ParticipantAccess
+      include ParticipantImages
       include ParticipantsAdmin
       include ParticipantReview
       include ParticipantShow
@@ -228,6 +230,7 @@ module Samagotchi
         @update_ops = update_ops || UpdateOps.new(hub: hub, manager: @manager, state_dir: state_dir,
                                                   runner: update_runner, blocked: update_blocked)
         init_participant_access(grants, state_dir)
+        init_participant_images
         init_proxy_gate(public_url, public_token)
       end
 
@@ -315,8 +318,8 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer, :owner],
         ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss, :owner],
         ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command, :owner, :session],
-        ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :owner],
-        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :owner],
+        ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :participant, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],

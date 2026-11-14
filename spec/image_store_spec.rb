@@ -95,7 +95,7 @@ RSpec.describe Samagotchi::ImageStore do
     it "downscales through the resizer and reads the new size" do
       small = png_bytes(1568, 980)
       resizer = instance_double(Samagotchi::ImageResizer, available?: true)
-      expect(resizer).to receive(:convert).with(anything, end_with("out.png"), format: :png, max_side: 1568) do |_in, out, **|
+      expect(resizer).to receive(:convert).with(anything, end_with("out.png"), format: :png, max_side: 1568, from: :png) do |_in, out, **|
         File.binwrite(out, small)
         out
       end
@@ -113,6 +113,29 @@ RSpec.describe Samagotchi::ImageStore do
       tight = described_class::Limits.new(max_side: 1568, max_bytes: 1000, max_per_request: 20)
       ref = described_class.ingest(dir, bytes: png_bytes(50, 50) + ("x" * 5000), name: "big.png", resizer: resizer, limits: tight)
       expect(ref).to include(mime: "image/jpeg", width: 5, height: 4)
+    end
+
+    it "check_refs keeps a ref's base name without control characters" do
+      ref = described_class.ingest(dir, bytes: png_bytes(4, 4), name: "a.png", resizer: none, limits: limits)
+      expect(described_class.check_refs(dir, [{ "file" => ref[:file], "name" => "x/ev\e[2Jil\n.png" }]))
+        .to eq([{ file: ref[:file], name: "ev[2Jil.png" }])
+    end
+
+    describe Samagotchi::ImageResizer do
+      it "kills a tool that runs past the timeout (its own pid), an Error" do
+        resizer = described_class.new(:sips)
+        allow(resizer).to receive(:sips_command).and_return(["sh", "-c", "sleep 30"])
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect { resizer.convert("in", File.join(dir, "out.png"), format: :png, timeout: 0.3) }
+          .to raise_error(Samagotchi::ImageResizer::Error, "sips took over 0.3 s")
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      end
+
+      it "reads magick's input with the sniffed format's coder, under resource limits" do
+        command = described_class.new(:magick).send(:magick_command, "in", "out.png", :png, 1568, 85, :jpeg)
+        expect(command).to eq(["magick", "-limit", "memory", "256MiB", "-limit", "disk", "1GiB", "-limit", "area", "64MP",
+                               "JPEG:in[0]", "-resize", "1568x1568>", "png:out.png"])
+      end
     end
 
     context "with the real tools" do

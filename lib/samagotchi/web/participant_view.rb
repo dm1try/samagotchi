@@ -8,6 +8,7 @@ require_relative "../revise_anchor"
 require_relative "../verify_anchor"
 require_relative "../redact"
 require_relative "../file_ref"
+require_relative "../image_store"
 
 module Samagotchi
   module Web
@@ -113,7 +114,7 @@ module Samagotchi
       end
 
       # A turn queued: the viewer's own with its enqueued id, client id,
-      # prompt, delivery and author (never its images); anyone else's bare.
+      # prompt, delivery, author and image refs; anyone else's bare.
       def turn_enqueued(event, viewer)
         entry = queued_entry(event, viewer) or return bare(event, viewer)
 
@@ -157,6 +158,8 @@ module Samagotchi
         author = field(event, :author) || origin.author
         out = { "type" => "turn_started", **id_fields(event), **time_field(event) }
         out.merge!(author_fields(author, field(event, :author_name), viewer, field(event, :participant_mode)))
+        images = image_refs(field(event, :images), author, viewer)
+        out["images"] = images if images
         prompt = field(event, :prompt)
         if field(event, :continue)
           out["continue"] = true
@@ -414,8 +417,8 @@ module Samagotchi
         out["revises"] = revises.to_file if revises && turn_id && !merged
         out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer,
                                  field(message, :participant_mode)))
-        images = field(message, :images)
-        out["images"] = images.size if images.is_a?(Array) && !images.empty?
+        images = image_refs(field(message, :images), field(message, :author), viewer)
+        out["images"] = images if images
         out.merge!(drawn_field(message))
       end
 
@@ -511,8 +514,8 @@ module Samagotchi
 
       # A queued entry (a Bridge snapshot's +queued+ row) when it is the
       # viewer's own, in the owner's shape: its enqueued id, client id,
-      # prompt, delivery and author. Never its images. nil for another
-      # person's (their prompt).
+      # prompt, delivery, author and image refs (#image_refs). nil for
+      # another person's (their prompt).
       def queued_entry(entry, viewer)
         return nil unless entry.is_a?(Hash) && viewer.own?(field(entry, :author))
 
@@ -520,7 +523,29 @@ module Samagotchi
                 "prompt" => field(entry, :prompt).to_s, "author" => field(entry, :author).to_s }
         delivery = field(entry, :delivery).to_s
         out["delivery"] = delivery if DELIVERIES.include?(delivery)
+        images = image_refs(field(entry, :images), field(entry, :author), viewer)
+        out["images"] = images if images
         Redact.deep(out, viewer)
+      end
+
+      # A message's or a turn's images as a participant sees them: the
+      # viewer's own as refs ({file, name, width, height}: what the page's
+      # thumbnails load, the files they uploaded), only refs to a stored
+      # image (ImageStore::REF_RE); anyone else's as a count. Never source,
+      # bytes or mime. nil for none.
+      def image_refs(images, author, viewer)
+        return nil unless images.is_a?(Array) && !images.empty?
+        return images.size unless viewer.own?(author)
+
+        refs = images.filter_map do |ref|
+          file = field(ref, :file)
+          next unless file.is_a?(String) && ImageStore::REF_RE.match?(file)
+
+          out = { "file" => file, "name" => File.basename(field(ref, :name).to_s) }
+          %i[width height].each { |key| out[key.to_s] = field(ref, key) if field(ref, key).is_a?(Integer) }
+          out
+        end
+        refs.empty? ? nil : refs
       end
 
       DELIVERIES = %w[queue next_step].freeze
