@@ -239,9 +239,6 @@ module Samagotchi
             MEMORY_WRITE => "memory_write", WEB_FETCH => "fetch" }.freeze
     # A range read past the file's end says so after its lines (Tools::Read).
     CLAMP_NOTE = /\n\[read: end_line \d+ exceeds \d+ lines; returning lines \d+-\d+\]\z/
-    # How memory_read appends a model overlay (Tools::MemoryRead.call).
-    OVERLAY_HEAD = "#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (".freeze
-
     # The timeline of the item +kind+/+key+ (#build's identity): every run
     # that touched it, edits and writes too, by the same walk #build and
     # #outputs_of use (one all_touches), so the projection, the steer and
@@ -321,7 +318,10 @@ module Samagotchi
         diff = saved_diff(conversation[run.index], run.ref.run)
       when MEMORY_READ
         memory = memory_part(touch, conversation)
-        text = text.delete_suffix(overlay_tail(text)) if memory&.overlay
+        if memory&.overlay
+          overlay_key = Tools::MemoryRead.overlay_key(touch.key, memory.overlay_path)
+          text = text.delete_suffix(overlay_tail(text, overlay_key)) if overlay_key
+        end
       when MEMORY_WRITE
         text = run.call[:content].to_s
       end
@@ -372,17 +372,15 @@ module Samagotchi
       path = field(entry, :path).to_s
       overlay = field(entry, :overlay)
       overlay_path = overlay.is_a?(Hash) ? field(overlay, :path).to_s : nil
-      tail = touch.share == 1 && overlay_path ? overlay_tail(body_of(touch.run.text)) : ""
+      overlay_key = overlay_path && Tools::MemoryRead.overlay_key(touch.key, overlay_path)
+      tail = touch.share == 1 && overlay_key ? overlay_tail(body_of(touch.run.text), overlay_key) : ""
       MemoryPart.new(scope: memory_scope(path), path: path, overlay_path: overlay_path,
-                     overlay: tail.empty? ? nil : tail.sub(/\A#{Regexp.escape(OVERLAY_HEAD)}[^\n]*\n/o, ""))
+                     overlay: tail.empty? ? nil : tail.sub(Tools::MemoryRead.overlay_prefix(overlay_key), ""))
     end
 
     # The overlay memory_read appended to +text+ (its separator and head
     # line included), or "".
-    def overlay_tail(text)
-      at = text.rindex(OVERLAY_HEAD)
-      at ? text[at..] : ""
-    end
+    def overlay_tail(text, key) = Tools::MemoryRead.overlay_tail(text, key)
 
     # A memory's scope by where its file is: a project's under
     # memories/projects/<key>/, a system one's in memories/.
@@ -397,8 +395,8 @@ module Samagotchi
       return body unless overlay.is_a?(Hash)
 
       overlay_path = field(overlay, :path).to_s
-      model_key = File.basename(overlay_path, ".md").delete_prefix("#{name}.")
-      "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{model_key}):\n#{read.call(overlay_path)}"
+      model_key = Tools::MemoryRead.overlay_key(name, overlay_path)
+      model_key ? Tools::MemoryRead.append_overlay(body, read.call(overlay_path), model_key) : body
     rescue SystemCallError
       nil
     end

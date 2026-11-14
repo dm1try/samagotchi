@@ -167,6 +167,39 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
     end
 
     describe "which file answered each name" do
+      it "resolves the project entry and the most specific existing overlay from explicit roots" do
+        File.write(File.join(project_memories_dir, "notes.md"), "project body")
+        File.write(File.join(system_memories_dir, "notes.md"), "system body")
+        File.write(File.join(project_memories_dir, "notes.fallback.md"), "fallback overlay")
+        File.write(File.join(project_memories_dir, "notes.model.md"), "model overlay")
+
+        resolved = described_class.resolve("notes", model_key: "model", fallback_model_key: "fallback",
+                                           project_dir: project_memories_dir, system_dir: system_memories_dir)
+
+        expect(resolved.to_h).to eq(scope: "project", path: File.join(project_memories_dir, "notes.md"),
+                                    overlay_path: File.join(project_memories_dir, "notes.model.md"),
+                                    overlay_key: "model")
+      end
+
+      it "resolves the fallback overlay when the model overlay is absent" do
+        File.write(File.join(system_memories_dir, "notes.md"), "system body")
+        File.write(File.join(system_memories_dir, "notes.fallback.md"), "fallback overlay")
+
+        resolved = described_class.resolve("notes", model_key: "model", fallback_model_key: "fallback",
+                                           project_dir: project_memories_dir, system_dir: system_memories_dir)
+
+        expect(resolved.to_h).to eq(scope: "system", path: File.join(system_memories_dir, "notes.md"),
+                                    overlay_path: File.join(system_memories_dir, "notes.fallback.md"),
+                                    overlay_key: "fallback")
+      end
+
+      it "builds and finds the overlay tail from the same heading" do
+        text = described_class.append_overlay("body", "guidance", "model")
+
+        expect(text).to eq("body#{described_class::SEPARATOR}Model-specific guidance (model):\nguidance")
+        expect(described_class.overlay_tail(text, "model")).to eq("#{described_class::SEPARATOR}Model-specific guidance (model):\nguidance")
+      end
+
       it "is the entry's path, and the overlay read with it" do
         File.write(File.join(project_memories_dir, "notes.md"), "the body")
         File.write(File.join(project_memories_dir, "notes.deepseek.md"), "for deepseek")
