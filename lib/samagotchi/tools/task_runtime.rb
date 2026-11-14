@@ -719,6 +719,16 @@ module Samagotchi
       def timestamp
         Time.now.utc.iso8601
       end
+
+      # No caller outside this file. A function a spec calls by name stays
+      # public (refresh_record, waiter_for, task_dir_for, load_record,
+      # write_record, handed_over_id, quiesce!…): no spec sends a private one.
+      private_class_method :remember_waiter, :forget_waiter, :leftovers_after_exit, :settle, :log_paths,
+                           :status_code, :correct_finished_record, :record_at, :handed_over_pattern,
+                           :leftover_group?, :settle_from_refresh, :chis_group?, :mark_not_chis, :not_found,
+                           :record_json, :ensure_tasks_dir, :normalize_cwd, :sanitized_key_error, :spawn_env_for,
+                           :sanitized_rubyopt, :mark_finished_without_exit_code, :finished_with, :current_record,
+                           :mark_stopped, :read_exit_code, :timestamp
     end
   end
 end
