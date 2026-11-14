@@ -148,5 +148,32 @@ module Samagotchi
     module ForgetOutputs
       NAME = "forget_outputs"
     end
+
+    # Every built-in's name, in the order above.
+    NAMES = constants.map { |tool| const_get(tool)::NAME }.freeze
+
+    # A built-in as a reader with no Engine sees it in a registry: chi's
+    # own (core), with no label and no preview, as Tools::Builtins
+    # registers each.
+    Entry = Data.define(:name) do
+      def core? = true
+      def source = "core"
+      def label = nil
+      def preview = nil
+      def preview_of(*) = nil
+    end
+
+    # The built-ins as the registry a display reads when it is given none
+    # (MessageParts.for_message's default, which chi web and the bridge's
+    # drawings use): [name] is a built-in's Entry, nil for any other name.
+    # ToolActivity asks a registry's entry only whether it is core and its
+    # label and preview, so this answers as Tools::Builtins.default does
+    # without loading a tool (spec/tool_names_spec.rb compares the two).
+    module BuiltinRegistry
+      ENTRIES = NAMES.to_h { |name| [name, Entry.new(name: name)] }.freeze
+
+      def self.[](name) = ENTRIES[name.to_s]
+      def self.key?(name) = ENTRIES.key?(name.to_s)
+    end
   end
 end

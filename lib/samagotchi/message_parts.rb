@@ -5,7 +5,8 @@ require_relative "tool_call_parser"
 require_relative "tool_activity"
 require_relative "tool_row_fields"
 require_relative "llm/native_tool_normalizer"
-require_relative "tools/builtins"
+require_relative "tool_names"
+require_relative "tools/builtin_calls"
 require_relative "image_store"
 require_relative "llm_context_edit"
 require_relative "token_usage"
@@ -65,14 +66,15 @@ module Samagotchi
 
     # @param message [Hash] a saved model message (symbol or string keys)
     # @param responses [Array<Hash>] the tool_response messages after it
-    # @param registry [Tools::Registry] the session's tools
+    # @param registry [Tools::Registry, #[]] the session's tools; the
+    #   built-ins' names alone by default (ToolNames::BuiltinRegistry)
     # @param cwd [String, nil] the session's working directory (a file
     #   tool's title is relative to it)
     # @param marks [Hash{String => Hash}] the session's edit marks by
     #   output id (.edit_marks)
     # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, title:,
     #   output:, output_truncated:, images:, tool_id:, edit: }] } with only what it found; nil for nothing
-    def for_message(message, responses, registry: Tools::Builtins.default, cwd: nil, marks: {})
+    def for_message(message, responses, registry: ToolNames::BuiltinRegistry, cwd: nil, marks: {})
       return nil unless something?(message)
 
       content = field(message, :content).to_s

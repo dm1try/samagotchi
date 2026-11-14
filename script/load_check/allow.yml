@@ -67,6 +67,14 @@
   constant: Samagotchi::MemoryCommand::LINE
   reason: memory_command.rb requires memory_usage.rb.
 - rule: 1
+  file: lib/samagotchi/guardrails/pair_command.rb
+  constant: Samagotchi::Guardrails::PairBoundary::[A-Z][A-Z_]*
+  reason: >-
+    pair_boundary.rb requires pair_command.rb and is the only maker of a
+    PairCommand, whose #refusal returns PairBoundary's refusal words; a
+    require back is a cycle. (message_parts reached pair_boundary.rb through
+    tools/builtins until its default registry became ToolNames::BuiltinRegistry.)
+- rule: 1
   file: lib/samagotchi/testing/bundle.rb
   constant: Samagotchi::Testing::Install
   reason: testing/install.rb requires testing/bundle.rb.
