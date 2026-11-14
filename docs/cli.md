@@ -1246,8 +1246,13 @@ version on view, and the chip names it, "v1 of 3"); › back to the newest. Swit
 page shows, and a reload shows the newest again. Revise
 again on the newest version adds to the stack. Stacks are session data (the
 stamp is on the Revise prompt, see [sessions.md](sessions.md), Revise
-stacks): the owner's page shows them, live and after a reload; a participant's
-page has no Revise yet. A session whose worker predates
+stacks): every page shows them, live and after a reload, a participant's too.
+A participant (`chi share`) gets Revise on the answer to their own message
+only, while no one else's turn (the owner's, another participant's, a wake
+turn's) came after it; the owner's answers have no button on their page, and
+a closed composer shows none. A send that came too late is refused with
+"someone else's turn came after this answer: send a new message instead",
+the text and the chip kept. A session whose worker predates
 Revise (started by an older chi) disables the button and shows the chip as
 "Revise: restart this session to use Revise"; a message sent then is a plain
 one. A Revise turn that fails comes back into the composer with its chip.
