@@ -23,6 +23,8 @@ module Samagotchi
     # - #latest: the chain's end (SessionChain.latest, `last:<id>`, Schedules)
     # - #first_live: the first link not archived, or the end (Head: send, note)
     # - #root: back to the first link (Schedules' one firing per chain)
+    # - #chain / #live_links: every link of +id+'s branch, root to end
+    #   (Schedules#chain_of, the chain delete)
     #
     # The listing is a snapshot: one Links per question, or per tick.
     class Links
@@ -79,6 +81,24 @@ module Samagotchi
         end
         seen.last
       end
+
+      # Every link of +id+'s chain, root to end: from #latest(id) back
+      # through `continues`, reversed, so the walk stays on +id+'s own branch
+      # of a fork. A gone predecessor ends it on its id (as #root does: a
+      # schedule's anchor or head may name a deleted root); a loop ends where
+      # it would repeat.
+      # @return [Array<String>]
+      def chain(id)
+        ids = [latest(id)]
+        while (previous = continues(ids.last)) && !ids.include?(previous)
+          ids << previous
+        end
+        ids.reverse
+      end
+
+      # #chain without the gone ids: the links that still have a file.
+      # @return [Array<String>]
+      def live_links(id) = chain(id).reject { |link| gone?(link) }
 
       private
 

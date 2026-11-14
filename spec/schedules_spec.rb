@@ -861,7 +861,7 @@ RSpec.describe Samagotchi::Schedules do
       Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
       # The child's delete is refused (its worker is still there).
       allow(Samagotchi::SessionManager).to receive(:delete_session).and_call_original
-      allow(Samagotchi::SessionManager).to receive(:delete_session).with(child.id, state_dir: dir) do
+      allow(Samagotchi::SessionManager).to receive(:delete_session).with(child.id, hash_including(state_dir: dir)) do
         raise Samagotchi::SessionManager::DeleteRefused.new(child.id, :worker_running)
       end
 
