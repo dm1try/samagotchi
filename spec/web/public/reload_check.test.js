@@ -199,6 +199,13 @@ function livePieces(markup, cards, capabilities = null) {
   return [...page.historyEl.children];
 }
 
+test("only a card entry's id drops a card item: a notice with the same id doesn't", async () => {
+  const cards = [IN_TURN, { id: "c1", type: "hook_notice", message: "a notice of another turn" }];
+  const { check, posts } = setup({ reloaded: DRAWN, data: { turn_drawings: { T1: {} }, cards } });
+  await check.handedOff({ pieces: pieces(DRAWN) });
+  assert.equal(posts[0][1].same, true);
+});
+
 const ASKED = { type: "question", in_turn: true, of_turn: "T1", iteration: 1,
   pending_question: { id: "q1", question: "Which one?", options: [{ label: "A" }, { label: "B" }] }, answer: { selected: ["A"] } };
 
