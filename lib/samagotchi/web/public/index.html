@@ -1469,6 +1469,33 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ss-cancel{background:transparent}
 .stop-sheet.sheet .ss-acts button{flex:1 1 auto;font-size:14px;padding:10px 12px}
 .ss-foot{font-size:11.5px;color:var(--text-muted);margin-top:6px}
+.delete-sheet{display:flex;flex-direction:column;gap:10px}
+.ds-head{display:flex;align-items:center;justify-content:space-between;min-height:24px}
+.ds-back{background:none;border:none;padding:0;color:var(--accent);font:inherit;cursor:pointer}
+.ds-title{font-size:14px;font-weight:600;color:var(--text-bright)}
+.ds-sub{color:var(--text-2)}
+.ds-banner{padding:8px 10px;border-radius:8px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text)}
+.ds-choices{display:flex;flex-direction:column;gap:10px}
+.ds-choice{display:flex;flex-direction:column;gap:4px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border-strong);background:none;color:var(--text);font:inherit;cursor:pointer}
+.ds-choice:hover:not([disabled]){background:var(--bg-hover)}
+.ds-choice.primary{background:var(--bg-raised);border-color:var(--danger)}
+.ds-choice.primary .ds-label{color:var(--danger-text)}
+.ds-choice[disabled]{cursor:default;color:var(--text-muted);border-color:var(--border);background:none}
+.ds-choice[disabled] .ds-label{color:var(--text-muted)}
+.ds-label{font-weight:600}
+.ds-line{color:var(--text-2)}
+.ds-line.dim{color:var(--text-muted)}
+.ds-line.warn{color:var(--warn-bright)}
+.ds-foot{display:flex;align-items:center;gap:8px}
+.ds-note{flex-grow:1;color:var(--text-muted);font-size:12px}
+.ds-foot>span:first-child{flex-grow:1}
+.ds-cancel{padding:6px 14px;border-radius:8px;border:1px solid var(--border-strong);background:none;color:var(--text-2);font:inherit;cursor:pointer}
+.delete-sheet.busy .ds-choice{opacity:.6}
+.sheet .ds-choice{min-height:44px;padding:12px 14px;border-radius:12px}
+.sheet .ds-title{font-size:17px}
+.sheet .ds-back{min-height:44px}
+.sheet .ds-foot{flex-wrap:wrap}
+.sheet .ds-cancel{flex-basis:100%;min-height:48px;border:none;border-radius:12px;background:var(--bg-raised);font-weight:600}
 .ctx-pop-head{display:flex;align-items:baseline;gap:8px}
 .ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
 #updateSheet{width:calc(100vw - 32px);max-width:560px;max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:14px 16px;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-panel);color:var(--text);box-shadow:var(--toast-shadow)}

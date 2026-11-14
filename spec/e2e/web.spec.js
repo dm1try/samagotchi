@@ -1643,6 +1643,44 @@ test("the info bar: a click on the id copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
+test("delete on a chain's newest link asks in the ⋯ panel; Delete this link brings the previous link back to the lists, not started", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Chain day one");
+  await turnEnded(page, 1);
+  const first = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  await page.locator("#infoContinueBtn").click();
+  await expect(page).not.toHaveURL(new RegExp(`#/s/${first}$`));
+  const second = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  await expect(page.locator(`#topStrip .card[data-id="${first}"]`)).toHaveCount(0);
+
+  // No browser confirm: the panel itself turns into the choices.
+  page.on("dialog", (dialog) => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
+  await clickBarItem(page, "delete");
+  const sheet = page.locator("#moreSheet .delete-sheet");
+  await expect(sheet.locator(".ds-title")).toContainText(`Delete ${second.slice(0, 8)}`);
+  await expect(sheet.locator(".ds-sub")).toHaveText("It is link 2 of 2 of its chain. This can't be undone.");
+  const mine = sheet.locator('[data-act="del:this"]');
+  await expect(mine).toContainText(`Undoes the continue: ${first.slice(0, 8)} comes back to the lists (not started)`);
+  await expect(sheet.locator('[data-act="del:chain"]')).toContainText("Delete the whole chain · 2 sessions");
+  // ‹ More goes back to the panel's list, Delete asks again.
+  await sheet.locator('[data-act="del:back"]').click();
+  await expect(page.locator("#moreSheet .more-act.delete")).toBeVisible();
+  await page.locator("#moreSheet .more-act.delete").click();
+
+  const deleted = page.waitForResponse((res) => res.url().includes(second) && res.request().method() === "DELETE");
+  await page.locator('#moreSheet [data-act="del:this"]').click();
+  const answer = await (await deleted).json();
+  expect(answer.unarchived).toEqual([first]);
+  await expect(page.locator("#toast")).toContainText(`Deleted ${second.slice(0, 8)}. ${first.slice(0, 8)} is back`);
+  // The previous link is in the strip again, and the deleted one is gone.
+  await expect(page.locator(`#topStrip .card[data-id="${first}"]`)).toBeVisible();
+  await expect(page.locator(`#topStrip .card[data-id="${second}"]`)).toHaveCount(0);
+  await expect(page).not.toHaveURL(new RegExp(second));
+  await page.locator("#toast").getByRole("button", { name: `Open ${first.slice(0, 8)}` }).click();
+  await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
+  await expect(page.locator("#infoArchiveBtn")).not.toHaveText(/unarchive/i);
+});
+
 test("the start page's ⚙ panel and 🧰 list start the new session under the thinking, strategy and kit picked; they are not kept for the next one", async ({ page, script }) => {
   script("plain");
   const gear = page.locator("#settingsNew");
