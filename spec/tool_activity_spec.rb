@@ -161,14 +161,14 @@ RSpec.describe Samagotchi::ToolActivity do
     it "calls a command the user's Stop killed or kept from starting stopped, not an error" do
       killed = "Error: command stopped by the user after 3s (killed; rerun it if still needed)\nstdout:\nhalf\n"
       expect(described_class.tool_activity_status(killed, "execute")).to eq("stopped")
-      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "execute")).to eq("stopped")
-      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "task_create")).to eq("stopped")
-      signalled = "#{Samagotchi::Tools::Execute::STOPPED_BY_SIGNAL} after 3s (killed; rerun it if still needed)"
+      expect(described_class.tool_activity_status(Samagotchi::ToolNames::Execute::NOT_RUN_ON_STOP, "execute")).to eq("stopped")
+      expect(described_class.tool_activity_status(Samagotchi::ToolNames::Execute::NOT_RUN_ON_STOP, "task_create")).to eq("stopped")
+      signalled = "#{Samagotchi::ToolNames::Execute::STOPPED_BY_SIGNAL} after 3s (killed; rerun it if still needed)"
       expect(described_class.tool_activity_status(signalled, "execute")).to eq("stopped")
-      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_SIGNAL, "task_create")).to eq("stopped")
-      session_stop = "#{Samagotchi::Tools::Execute::STOPPED_BY_SESSION_STOP} after 3s (killed; rerun it if still needed)"
+      expect(described_class.tool_activity_status(Samagotchi::ToolNames::Execute::NOT_RUN_ON_SIGNAL, "task_create")).to eq("stopped")
+      session_stop = "#{Samagotchi::ToolNames::Execute::STOPPED_BY_SESSION_STOP} after 3s (killed; rerun it if still needed)"
       expect(described_class.tool_activity_status(session_stop, "execute")).to eq("stopped")
-      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_SESSION_STOP, "execute")).to eq("stopped")
+      expect(described_class.tool_activity_status(Samagotchi::ToolNames::Execute::NOT_RUN_ON_SESSION_STOP, "execute")).to eq("stopped")
       expect(described_class.tool_activity_status("Error: command timed out after 120s", "execute")).to eq("error")
       expect(described_class.tool_activity_status(killed, "read")).to eq("error")
     end

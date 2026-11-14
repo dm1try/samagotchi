@@ -2,6 +2,7 @@
 
 require_relative "output_guardrails"
 require_relative "tool_path"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -12,7 +13,7 @@ module Samagotchi
     # if the text is not found or appears more than once. new_text is
     # required in both modes; "" deletes.
     class Edit
-      NAME        = "edit"
+      NAME        = ToolNames::Edit::NAME
 
       def self.name        = NAME
 

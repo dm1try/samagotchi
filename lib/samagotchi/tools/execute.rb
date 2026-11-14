@@ -9,6 +9,7 @@ require_relative "leftovers"
 require_relative "output_guardrails"
 require_relative "shell"
 require_relative "task_runtime"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -21,22 +22,19 @@ module Samagotchi
     #   <tool name="execute">bundle exec rspec spec/some_spec.rb --no-color</tool>
     #   <tool name="execute">ruby path/to/script.rb</tool>
     class Execute
-      NAME        = "execute"
+      NAME        = ToolNames::Execute::NAME
       TIMEOUT_SEC = 120
       STOP_GRACE_SEC = 1.0
       STOP_POLL_INTERVAL_SEC = 0.05
       WAIT_SLICE_SEC = 0.2
-      NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
-      # The first words of a command the user's Stop killed.
-      STOPPED_BY_USER = "Error: command stopped by the user"
-      # The same two when a signal to chi (a worker's TERM, HUP or INT)
-      # stopped the turn: its cancel reason is :signal.
-      NOT_RUN_ON_SIGNAL = "Error: not run, a signal to chi stopped the turn"
-      STOPPED_BY_SIGNAL = "Error: command stopped by a signal to chi"
-      # The same two when a session stop (chi sessions stop, the web's stop,
-      # a parent stopping its delegate) canceled the turn: :session_stopped.
-      NOT_RUN_ON_SESSION_STOP = "Error: not run, the session was stopped"
-      STOPPED_BY_SESSION_STOP = "Error: command stopped as the session was stopped"
+      # What a stopped turn's command returns (ToolNames::Execute says which
+      # stop each is for). slow-commands looks them up here by reflection.
+      NOT_RUN_ON_STOP = ToolNames::Execute::NOT_RUN_ON_STOP
+      STOPPED_BY_USER = ToolNames::Execute::STOPPED_BY_USER
+      NOT_RUN_ON_SIGNAL = ToolNames::Execute::NOT_RUN_ON_SIGNAL
+      STOPPED_BY_SIGNAL = ToolNames::Execute::STOPPED_BY_SIGNAL
+      NOT_RUN_ON_SESSION_STOP = ToolNames::Execute::NOT_RUN_ON_SESSION_STOP
+      STOPPED_BY_SESSION_STOP = ToolNames::Execute::STOPPED_BY_SESSION_STOP
       # The first words of a command killed at the limit in kill mode (hooks
       # match on it).
       TIMEOUT_PREFIX = "Error: command timed out after"
@@ -67,16 +65,10 @@ module Samagotchi
       # record is gone or is older than RETENTION_DAYS.
       ORPHAN_AGE_SEC = 24 * 3600
       RETENTION_DAYS = 14
-      # The first words of a command still running and handed over as a
-      # task (handed_over_line at the limit, early_handed_over_line for a
-      # message). TaskRuntime.handed_over_id, the web's task_stop.js and the
-      # slow-commands bundle match on them; the bundle reads only the limit's
-      # form, "at the 120s limit".
-      HANDED_OVER = "Still running at the"
-      # What follows HANDED_OVER on the first line, as regexp source: "120s
-      # limit:" (the limit) or "4s mark:" (a message from the user ended the
-      # wait early). Every matcher of the line builds on it.
-      HANDED_OVER_AFTER = "(?:\\d+s limit|\\d+s mark):"
+      # The first words of a command handed over as a task, and what follows
+      # them on that line as regexp source (ToolNames::Execute says more).
+      HANDED_OVER = ToolNames::Execute::HANDED_OVER
+      HANDED_OVER_AFTER = ToolNames::Execute::HANDED_OVER_AFTER
       # A message from the user waiting for the turn hands a command over
       # early, but never before it has run this long: a short command ends
       # on its own first, and its result is the better answer.
@@ -158,8 +150,8 @@ module Samagotchi
       def self.not_run(stop_reason) = NOT_RUN.fetch(stop_reason.call, NOT_RUN_ON_STOP)
 
       # The texts above by the stop's reason; any other is the user's Stop.
-      NOT_RUN = { signal: NOT_RUN_ON_SIGNAL, session_stopped: NOT_RUN_ON_SESSION_STOP }.freeze
-      STOPPED_BY = { signal: STOPPED_BY_SIGNAL, session_stopped: STOPPED_BY_SESSION_STOP }.freeze
+      NOT_RUN = ToolNames::Execute::NOT_RUN
+      STOPPED_BY = ToolNames::Execute::STOPPED_BY
 
       # execute.on_timeout, or the caller's: :task (the default) or :kill.
       def self.on_timeout_mode(value)

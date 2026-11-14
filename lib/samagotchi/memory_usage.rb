@@ -11,6 +11,7 @@ require_relative "working_set"
 require_relative "file_ref"
 require_relative "tool_response"
 require_relative "tool_output_cut"
+require_relative "tool_names"
 require_relative "model_overlay"
 require_relative "tools/memory"
 
@@ -38,7 +39,7 @@ module Samagotchi
     # The memory scopes, project first, as `chi memory ls` reports them.
     SCOPES = Tools::VALID_SCOPES
     MEMORY_READ = Tools::MemoryRead::NAME
-    FILE_READ = Tools::Read::NAME
+    FILE_READ = ToolNames::Read::NAME
 
     # One memory read at least once in the sessions counted: its tokens (the
     # results' size) and reads, +cut_reads+ of them returned a cut result,

@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "tools/read"
-require_relative "tools/write"
-require_relative "tools/edit"
+require_relative "tool_names"
 
 module Samagotchi
   # A ref to the file a read/write/edit call touched, for a UI to trace it
@@ -20,7 +18,7 @@ module Samagotchi
   class FileRef
     KIND = "file"
 
-    TOOLS = [Tools::Read::NAME, Tools::Write::NAME, Tools::Edit::NAME].freeze
+    TOOLS = [ToolNames::Read::NAME, ToolNames::Write::NAME, ToolNames::Edit::NAME].freeze
 
     # @param cwd [String, nil] the session's working directory; without one
     #   a relative path gets no ref (an absolute or ~ path still does)
@@ -30,7 +28,7 @@ module Samagotchi
     def self.for(tool_name, call, cwd:)
       return nil unless TOOLS.include?(tool_name) && call.is_a?(Hash)
 
-      path = absolute((tool_name == Tools::Read::NAME ? call[:content] : call[:path]).to_s.strip, cwd)
+      path = absolute((tool_name == ToolNames::Read::NAME ? call[:content] : call[:path]).to_s.strip, cwd)
       return nil unless path
 
       line = positive(call[:start_line])

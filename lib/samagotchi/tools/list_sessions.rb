@@ -4,6 +4,7 @@ require_relative "../paths"
 require_relative "../project_scope"
 require_relative "../session"
 require_relative "peers"
+require_relative "../tool_names"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -18,7 +19,7 @@ module Samagotchi
     # they are cut short and labelled as such. A session this one delegated
     # is marked child, the one that delegated this one parent.
     class ListSessions
-      NAME = "list_sessions"
+      NAME = ToolNames::ListSessions::NAME
       LIMIT = 20
 
       def self.name = NAME

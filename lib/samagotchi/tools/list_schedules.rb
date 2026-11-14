@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tool_names"
+
 module Samagotchi
   module Tools
     # The durable schedules of this session's chain (docs/scheduling.md): id,
@@ -8,7 +10,7 @@ module Samagotchi
     # machine-wide view. Schedules is required inside the call, so the testing
     # kit does not pay for the session lifecycle at load time.
     class ListSchedules
-      NAME = "list_schedules"
+      NAME = ToolNames::ListSchedules::NAME
 
       def self.name = NAME
 

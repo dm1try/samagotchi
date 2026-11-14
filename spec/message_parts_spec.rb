@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "json"
 require "samagotchi/message_parts"
+require "samagotchi/tools/builtins"
 
 RSpec.describe Samagotchi::MessageParts do
   def qwen_call(name, params)
@@ -234,6 +235,25 @@ RSpec.describe Samagotchi::MessageParts do
     it "gives nothing for an older message without the key, or a blank one" do
       expect(described_class.for_message({ role: "model", content: "Done." }, [])).to be_nil
       expect(described_class.for_message({ role: "model", content: "Done.", thinking: " \n" }, [])).to be_nil
+    end
+  end
+
+  describe "with no registry given" do
+    # The default is ToolNames::BuiltinRegistry, the built-ins' names alone:
+    # each row reads as with the built-ins' own registry, a built-in without
+    # words of its own (the reminder tools) and a tool no registry knows too.
+    it "draws every row as Tools::Builtins.default does" do
+      calls = Samagotchi::ToolNames::NAMES.map { |name| { id: "c-#{name}", name: name, arguments: { "content" => "x", "when" => "5m" } } }
+      calls << { id: "c-echo", name: "echo_args", arguments: { "text" => "BANANA42" } }
+      chat = { content: "", tool_calls: calls }
+      responses = calls.map { |call| { content: "[#{call[:name]}]\nok", tool_call_id: call[:id] } }
+      qwen = { content: calls.map { |call| qwen_call(call[:name], content: "x", when: "5m") }.join("\n") }
+
+      [[chat, responses], [qwen, [{ content: "ok" }]]].each do |message, after|
+        light = described_class.for_message(message, after)
+        expect(light).to eq(described_class.for_message(message, after, registry: Samagotchi::Tools::Builtins.default))
+        expect(light[:tools].length).to eq(calls.length)
+      end
     end
   end
 

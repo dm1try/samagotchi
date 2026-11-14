@@ -7,6 +7,7 @@ require_relative "../atomic_file"
 require_relative "../memory_orphans"
 require_relative "../memory_paths"
 require_relative "../model_match"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -19,7 +20,7 @@ module Samagotchi
     # When scope is omitted, reads from project first and falls back to system.
     # Usage: call("entry_name", scope: "project"|"system"|nil)
     class MemoryRead
-      NAME        = "memory_read"
+      NAME        = ToolNames::MemoryRead::NAME
 
       def self.name        = NAME
 
@@ -223,7 +224,7 @@ module Samagotchi
     # Passing path: "index" writes index.md verbatim (no index maintenance).
     # Usage: call(content, path: "entry_name", scope: "project"|"system", description: "…")
     class MemoryWrite
-      NAME        = "memory_write"
+      NAME        = ToolNames::MemoryWrite::NAME
 
       def self.name        = NAME
 

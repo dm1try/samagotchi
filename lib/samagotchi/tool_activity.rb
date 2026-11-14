@@ -4,25 +4,9 @@ require "json"
 require_relative "log"
 require_relative "command_steps"
 require_relative "tool_view"
-require_relative "tools/execute"
+require_relative "tool_names"
 require_relative "tools/registry"
-require_relative "tools/read"
-require_relative "tools/write"
-require_relative "tools/memory"
-require_relative "tools/edit"
-require_relative "tools/task_create"
-require_relative "tools/task_get"
-require_relative "tools/task_list"
 require_relative "tools/task_runtime"
-require_relative "tools/task_stop"
-require_relative "tools/task_wait"
-require_relative "tools/web_fetch"
-require_relative "tools/ask_user_question"
-require_relative "tools/list_sessions"
-require_relative "tools/send_note"
-require_relative "tools/context_read"
-require_relative "tools/delegate"
-require_relative "tools/delegate_result"
 require_relative "tools/forget_outputs"
 require_relative "tools/objectives_tool"
 
@@ -68,7 +52,7 @@ module Samagotchi
       }
       # A grep that found nothing: ok, and the web row says "no match".
       # Not a hand-over: an "exit: 1" in its output tail is the command's.
-      if event[:status] == "ok" && tool_name == Tools::Execute::NAME && !handed_over?(tool_name, result) &&
+      if event[:status] == "ok" && tool_name == ToolNames::Execute::NAME && !handed_over?(tool_name, result) &&
          execute_failed?(result.to_s)
         event[:no_match] = true
       end
@@ -87,7 +71,7 @@ module Samagotchi
       event
     end
 
-    def objectives_proposal?(call) = call[:action].to_s.strip.downcase == Tools::ObjectivesTool::PROPOSE
+    def objectives_proposal?(call) = call[:action].to_s.strip.downcase == ToolNames::ObjectivesTool::PROPOSE
 
     # A move's state=, before note= so a cut can't drop it: the page reads it from
     # the params (the title stays as an older page reads it). None for a
@@ -96,12 +80,12 @@ module Samagotchi
       return [] if objectives_proposal?(call)
 
       state = Tools::ObjectivesTool.state_of(call)
-      [Tools::ObjectivesTool::BLOCKED, Tools::ObjectivesTool::DONE].include?(state) ? ["state=#{preview_tool_param(state)}"] : []
+      [ToolNames::ObjectivesTool::BLOCKED, ToolNames::ObjectivesTool::DONE].include?(state) ? ["state=#{preview_tool_param(state)}"] : []
     end
 
     # An objectives row's words: "O2 note · evidence", or "propose done O2 note".
     def objectives_title(call)
-      return "#{Tools::ObjectivesTool::PROPOSE} #{call[:change]} #{call[:id]} #{call[:text]} · #{call[:note]}".squeeze(" ") if objectives_proposal?(call)
+      return "#{ToolNames::ObjectivesTool::PROPOSE} #{call[:change]} #{call[:id]} #{call[:text]} · #{call[:note]}".squeeze(" ") if objectives_proposal?(call)
 
       "#{call[:id]} #{call[:note]}#{" · #{call[:evidence]}" unless call[:evidence].to_s.strip.empty?}"
     end
@@ -124,22 +108,22 @@ module Samagotchi
     def tool_title(tool_name, call, cwd: nil)
       return task_title(tool_name, call, cwd) if TASK_TOOLS.include?(tool_name)
 
-      if [Tools::Execute::NAME, Tools::TaskCreate::NAME].include?(tool_name)
+      if [ToolNames::Execute::NAME, ToolNames::TaskCreate::NAME].include?(tool_name)
         title = command_description(tool_name, call) || steps_title(call[:content])
         return title if title
       end
 
       text = case tool_name
-             when Tools::Read::NAME, Tools::MemoryRead::NAME then call[:content]
-             when Tools::Write::NAME, Tools::Edit::NAME, Tools::MemoryWrite::NAME then call[:path]
-             when Tools::Execute::NAME, Tools::TaskCreate::NAME then command_title(call[:content])
-             when Tools::ObjectivesTool::NAME then objectives_title(call)
+             when ToolNames::Read::NAME, ToolNames::MemoryRead::NAME then call[:content]
+             when ToolNames::Write::NAME, ToolNames::Edit::NAME, ToolNames::MemoryWrite::NAME then call[:path]
+             when ToolNames::Execute::NAME, ToolNames::TaskCreate::NAME then command_title(call[:content])
+             when ToolNames::ObjectivesTool::NAME then objectives_title(call)
              end
       text = text.to_s.strip
       return nil if text.empty?
 
       case tool_name
-      when Tools::Read::NAME, Tools::Write::NAME, Tools::Edit::NAME
+      when ToolNames::Read::NAME, ToolNames::Write::NAME, ToolNames::Edit::NAME
         path = relative_path(text, cwd)
         path.length > TOOL_ACTIVITY_PREVIEW_LIMIT ? "…#{path[-(TOOL_ACTIVITY_PREVIEW_LIMIT - 1)..]}" : path
       else
@@ -148,7 +132,7 @@ module Samagotchi
       end
     end
 
-    TASK_TOOLS = [Tools::TaskWait::NAME, Tools::TaskGet::NAME, Tools::TaskStop::NAME].freeze
+    TASK_TOOLS = [ToolNames::TaskWait::NAME, ToolNames::TaskGet::NAME, ToolNames::TaskStop::NAME].freeze
 
     # A task_wait / task_get / task_stop row's title: the task's command
     # (its record under +cwd+, the process's directory when nil) as a
@@ -159,9 +143,9 @@ module Samagotchi
       return nil unless command
 
       suffix = ""
-      if tool_name == Tools::TaskWait::NAME
+      if tool_name == ToolNames::TaskWait::NAME
         timeout = call[:timeout].to_s.strip
-        suffix = " · up to #{timeout.empty? ? Tools::TaskWait::TIMEOUT_DEFAULT : timeout.to_i}s"
+        suffix = " · up to #{timeout.empty? ? ToolNames::TaskWait::TIMEOUT_DEFAULT : timeout.to_i}s"
       end
       room = TOOL_ACTIVITY_PREVIEW_LIMIT - suffix.length
       text = steps_title(command, room) || command_title(command).gsub(/\s+/, " ")
@@ -208,26 +192,26 @@ module Samagotchi
     # @param call [Hash, nil] the call, for a label that depends on its form
     def tool_activity_action(tool_name, registry: nil, call: nil)
       case tool_name
-      when Tools::Execute::NAME then "running command"
-      when Tools::Read::NAME then "reading file"
-      when Tools::Write::NAME then "writing file"
-      when Tools::Edit::NAME then "editing file"
-      when Tools::MemoryRead::NAME then "reading memory"
-      when Tools::MemoryWrite::NAME then memory_write_action(call)
-      when Tools::TaskCreate::NAME then "starting background task"
-      when Tools::TaskGet::NAME then "checking task"
-      when Tools::TaskList::NAME then "listing tasks"
-      when Tools::TaskStop::NAME then "stopping task"
-      when Tools::TaskWait::NAME then "waiting for task"
-      when Tools::WebFetch::NAME then "fetching URL"
-      when Tools::AskUserQuestion::NAME then "asking user"
-      when Tools::ListSessions::NAME then "listing sessions"
-      when Tools::SendNote::NAME then "sending a note"
-      when Tools::ContextRead::NAME then "reading attached context"
-      when Tools::Delegate::NAME then "delegating"
-      when Tools::DelegateResult::NAME then "waiting for a delegate"
-      when Tools::ForgetOutputs::NAME then forget_outputs_action(call)
-      when Tools::ObjectivesTool::NAME then objectives_proposal?(call) ? "proposing a change" : "recording a move"
+      when ToolNames::Execute::NAME then "running command"
+      when ToolNames::Read::NAME then "reading file"
+      when ToolNames::Write::NAME then "writing file"
+      when ToolNames::Edit::NAME then "editing file"
+      when ToolNames::MemoryRead::NAME then "reading memory"
+      when ToolNames::MemoryWrite::NAME then memory_write_action(call)
+      when ToolNames::TaskCreate::NAME then "starting background task"
+      when ToolNames::TaskGet::NAME then "checking task"
+      when ToolNames::TaskList::NAME then "listing tasks"
+      when ToolNames::TaskStop::NAME then "stopping task"
+      when ToolNames::TaskWait::NAME then "waiting for task"
+      when ToolNames::WebFetch::NAME then "fetching URL"
+      when ToolNames::AskUserQuestion::NAME then "asking user"
+      when ToolNames::ListSessions::NAME then "listing sessions"
+      when ToolNames::SendNote::NAME then "sending a note"
+      when ToolNames::ContextRead::NAME then "reading attached context"
+      when ToolNames::Delegate::NAME then "delegating"
+      when ToolNames::DelegateResult::NAME then "waiting for a delegate"
+      when ToolNames::ForgetOutputs::NAME then forget_outputs_action(call)
+      when ToolNames::ObjectivesTool::NAME then objectives_proposal?(call) ? "proposing a change" : "recording a move"
       else registry_entry(registry, tool_name)&.label || "calling tool"
       end
     end
@@ -265,19 +249,19 @@ module Samagotchi
     # can print any line, "status: stopped" included.
     def tool_activity_status(result, tool_name = nil, command: nil)
       text = result.to_s
-      return "stopped" if [Tools::Execute::NOT_RUN_ON_STOP, *Tools::Execute::NOT_RUN.values].include?(text)
-      if tool_name == Tools::Execute::NAME &&
-         text.start_with?(Tools::Execute::STOPPED_BY_USER, *Tools::Execute::STOPPED_BY.values)
+      return "stopped" if [ToolNames::Execute::NOT_RUN_ON_STOP, *ToolNames::Execute::NOT_RUN.values].include?(text)
+      if tool_name == ToolNames::Execute::NAME &&
+         text.start_with?(ToolNames::Execute::STOPPED_BY_USER, *ToolNames::Execute::STOPPED_BY.values)
         return "stopped"
       end
       return "error" if text.start_with?("Error:")
       # Still running, as a task: its output tail may hold any "exit: N".
       return "ok" if handed_over?(tool_name, text)
-      if tool_name == Tools::Execute::NAME && execute_failed?(text)
+      if tool_name == ToolNames::Execute::NAME && execute_failed?(text)
         return no_match?(text, command) ? "ok" : "error"
       end
 
-      if tool_name == Tools::TaskWait::NAME
+      if tool_name == ToolNames::TaskWait::NAME
         # The header: every line before the log's tail (output_tail:), which can print any line.
         header = text.split(/^output_tail:$/, 2).first.to_s
         return "stopped" if header.match?(/^(wait_result: canceled|status: stopped)$/)
@@ -288,15 +272,15 @@ module Samagotchi
     end
 
     # An execute still running at its limit (or when a message from the user
-    # waited), handed over as a task (Tools::Execute::HANDED_OVER).
+    # waited), handed over as a task (ToolNames::Execute::HANDED_OVER).
     def handed_over?(tool_name, text)
-      return false unless tool_name == Tools::Execute::NAME && text.to_s.start_with?(Tools::Execute::HANDED_OVER)
+      return false unless tool_name == ToolNames::Execute::NAME && text.to_s.start_with?(ToolNames::Execute::HANDED_OVER)
 
       # The first line only, scrubbed: a regexp raises on bytes that aren't UTF-8.
       text.to_s.each_line.first.to_s.scrub.match?(HANDED_OVER_START)
     end
 
-    HANDED_OVER_START = /\A#{Regexp.escape(Tools::Execute::HANDED_OVER)} #{Tools::Execute::HANDED_OVER_AFTER}/
+    HANDED_OVER_START = /\A#{Regexp.escape(ToolNames::Execute::HANDED_OVER)} #{ToolNames::Execute::HANDED_OVER_AFTER}/
 
     def execute_failed?(text)
       code = execute_exit_code(text)
@@ -375,28 +359,28 @@ module Samagotchi
     # turn (+registry+'s entry then).
     def tool_activity_params(tool_name, call, registry: nil, surface: nil)
       case tool_name
-      when Tools::Execute::NAME
+      when ToolNames::Execute::NAME
         "command=#{preview_tool_param(call[:content])}"
-      when Tools::Read::NAME
+      when ToolNames::Read::NAME
         parts = ["path=#{preview_tool_param(call[:content])}"]
         range = format_line_range(call)
         parts << "lines=#{range}" if range
         parts.join(" ")
-      when Tools::Write::NAME
+      when ToolNames::Write::NAME
         "path=#{preview_tool_param(call[:path])}"
-      when Tools::Edit::NAME
+      when ToolNames::Edit::NAME
         parts = ["path=#{preview_tool_param(call[:path])}"]
         range = format_line_range(call)
         parts << "lines=#{range}" if range
         parts.join(" ")
-      when Tools::MemoryRead::NAME
+      when ToolNames::MemoryRead::NAME
         parts = []
         name = call[:content].to_s.strip
         parts << "name=#{preview_tool_param(name)}" unless name.empty?
         scope = call[:scope].to_s.strip
         parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
         parts.join(" ")
-      when Tools::MemoryWrite::NAME
+      when ToolNames::MemoryWrite::NAME
         parts = []
         path = call[:path].to_s.strip
         parts << "name=#{preview_tool_param(path)}" unless path.empty?
@@ -406,16 +390,16 @@ module Samagotchi
         parts << "description=#{preview_tool_param(desc)}" unless desc.empty?
         parts << "remove=true" if call[:remove].to_s.strip.downcase == "true"
         parts.join(" ")
-      when Tools::TaskCreate::NAME
+      when ToolNames::TaskCreate::NAME
         parts = ["command=#{preview_tool_param(call[:content])}"]
         cwd = call[:cwd].to_s.strip
         parts << "cwd=#{preview_tool_param(cwd)}" unless cwd.empty?
         env = call[:env].to_s.strip
         parts << "env=#{preview_tool_param(env)}" unless env.empty?
         parts.join(" ")
-      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+      when ToolNames::TaskGet::NAME, ToolNames::TaskStop::NAME
         "id=#{preview_tool_param(call[:content])}"
-      when Tools::TaskWait::NAME
+      when ToolNames::TaskWait::NAME
         parts = ["id=#{preview_tool_param(call[:content])}"]
         timeout = call[:timeout].to_s.strip
         tail_lines = call[:tail_lines].to_s.strip
@@ -424,21 +408,21 @@ module Samagotchi
         parts << "tail_lines=#{preview_tool_param(tail_lines)}" unless tail_lines.empty?
         parts << "done_pattern=#{preview_tool_param(done_pattern)}" unless done_pattern.empty?
         parts.join(" ")
-      when Tools::TaskList::NAME
+      when ToolNames::TaskList::NAME
         nil
-      when Tools::WebFetch::NAME
+      when ToolNames::WebFetch::NAME
         "url=#{preview_tool_param(call[:content])}"
-      when Tools::ListSessions::NAME
+      when ToolNames::ListSessions::NAME
         call[:cwd].to_s.strip.empty? ? nil : "cwd=#{preview_tool_param(call[:cwd])}"
-      when Tools::SendNote::NAME
+      when ToolNames::SendNote::NAME
         "session=#{preview_tool_param(call[:session])} text=#{preview_tool_param(call[:content])}"
-      when Tools::ContextRead::NAME
+      when ToolNames::ContextRead::NAME
         parts = []
         parts << "name=#{preview_tool_param(call[:content])}" unless call[:content].to_s.strip.empty?
         parts << "offset=#{preview_tool_param(call[:offset])}" unless call[:offset].to_s.strip.empty?
         parts << "limit=#{preview_tool_param(call[:limit])}" unless call[:limit].to_s.strip.empty?
         parts.empty? ? nil : parts.join(" ")
-      when Tools::Delegate::NAME
+      when ToolNames::Delegate::NAME
         parts = []
         parts << "session=#{preview_tool_param(call[:session])}" unless call[:session].to_s.strip.empty?
         parts << "model=#{preview_tool_param(call[:model])}" unless call[:model].to_s.strip.empty?
@@ -446,9 +430,9 @@ module Samagotchi
         parts << "task=#{preview_tool_param(call[:content])}"
         parts << "wait=#{preview_tool_param(call[:wait])}" unless call[:wait].nil? || call[:wait].to_s.strip.empty?
         parts.join(" ")
-      when Tools::DelegateResult::NAME
+      when ToolNames::DelegateResult::NAME
         call[:session].to_s.strip.empty? ? nil : "session=#{preview_tool_param(call[:session])}"
-      when Tools::ForgetOutputs::NAME
+      when ToolNames::ForgetOutputs::NAME
         request = Tools::ForgetOutputs.parse(call)
         parts = []
         parts << "ids=#{preview_tool_param(request.ids.join(","))}" unless request.ids.empty?
@@ -456,12 +440,12 @@ module Samagotchi
         parts << "restore=#{preview_tool_param(request.restore.join(","))}" if request.restore?
         parts << "note=#{preview_tool_param(request.note)}" unless request.note.empty?
         parts.empty? ? nil : parts.join(" ")
-      when Tools::ObjectivesTool::NAME
+      when ToolNames::ObjectivesTool::NAME
         parts = ["id=#{preview_tool_param(call[:id])}", *objectives_state_param(call), "note=#{preview_tool_param(call[:note])}"]
         parts.unshift("change=#{preview_tool_param(call[:change])}") if objectives_proposal?(call)
         parts << "evidence=#{preview_tool_param(call[:evidence])}" unless call[:evidence].to_s.strip.empty?
         parts.join(" ")
-      when Tools::AskUserQuestion::NAME
+      when ToolNames::AskUserQuestion::NAME
         parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
         opts = call[:options]
         parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?

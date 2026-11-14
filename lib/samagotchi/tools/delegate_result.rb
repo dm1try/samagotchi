@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "peers"
 require_relative "delegate"
 require_relative "delegate_wait"
+require_relative "../tool_names"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -14,7 +15,7 @@ module Samagotchi
     # Wait for a delegated session's next reply: the one named, or this
     # session's newest running child.
     class DelegateResult
-      NAME = "delegate_result"
+      NAME = ToolNames::DelegateResult::NAME
 
       def self.name = NAME
 

@@ -2,12 +2,13 @@
 
 require_relative "task_runtime"
 require_relative "ref_text"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     class TaskWait
-      NAME = "task_wait"
-      TIMEOUT_DEFAULT = 600
+      NAME = ToolNames::TaskWait::NAME
+      TIMEOUT_DEFAULT = ToolNames::TaskWait::TIMEOUT_DEFAULT
       TAIL_LINES_DEFAULT = 10
       TAIL_LINES_MAX = 100
       POLL_INTERVAL = 0.5

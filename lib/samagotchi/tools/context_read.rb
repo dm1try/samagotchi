@@ -4,6 +4,7 @@ require "time"
 require_relative "../config"
 require_relative "../context_sources"
 require_relative "../project_scope"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -13,7 +14,7 @@ module Samagotchi
     # runs a source's command) and records what was read, so the web can
     # show a change the agent hasn't read.
     class ContextRead
-      NAME = "context_read"
+      NAME = ToolNames::ContextRead::NAME
       DEFAULT_MAX_CHARS = 10_000
       # The smallest cap it pages to (a smaller one is taken as this).
       MIN_CHARS = 2_000

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tool_names"
+
 module Samagotchi
   module Tools
     # Register a durable schedule for this session (docs/scheduling.md): a
@@ -9,7 +11,7 @@ module Samagotchi
     # Unlike register_reminder, a schedule needs no live worker — a tick run by
     # cron (or chi web's hub) wakes one — and it never holds an idle worker up.
     class ScheduleTask
-      NAME = "schedule_task"
+      NAME = ToolNames::ScheduleTask::NAME
 
       def self.name = NAME
 

@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require_relative "task_runtime"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     class TaskCreate
-      NAME = "task_create"
+      NAME = ToolNames::TaskCreate::NAME
 
       def self.name = NAME
 

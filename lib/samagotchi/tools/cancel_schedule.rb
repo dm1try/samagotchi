@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../tool_names"
+
 module Samagotchi
   module Tools
     # Cancel a durable schedule of this session's chain by its id, a unique
@@ -7,7 +9,7 @@ module Samagotchi
     # session's chain is refused unless the call says `all: true`: `chi
     # schedule cancel` is the machine-wide way.
     class CancelSchedule
-      NAME = "cancel_schedule"
+      NAME = ToolNames::CancelSchedule::NAME
 
       def self.name = NAME
 

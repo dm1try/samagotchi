@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../reminder_store"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
     # Cancels a previously registered reminder by name.
     class CancelReminder
-      NAME        = "cancel_reminder"
+      NAME        = ToolNames::CancelReminder::NAME
 
       def self.name        = NAME
 

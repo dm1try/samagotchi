@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "tool_path"
+require_relative "../tool_names"
 
 module Samagotchi
   module Tools
@@ -9,7 +10,7 @@ module Samagotchi
     # The path is passed as an XML attribute:
     #   <tool name="write" path="lib/samagotchi/tools/new_tool.rb">content</tool>
     class Write
-      NAME        = "write"
+      NAME        = ToolNames::Write::NAME
 
       def self.name        = NAME
 
