@@ -135,10 +135,11 @@ a canceled continue's restore, a failed turn's) announces the set at once (`anno
 smaller set reaches the page then, not at the next request. It goes out whatever the web's flag;
 the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI ignores it.
 
-**The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
+**The route.** `GET /api/sessions/:id/working_set` (`Web::WorkingSetRoutes#handle_working_set`, mixed into App) answers the snapshot's `to_h`
 and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` (`Web::SessionShow`) reads them, keys
 symbolized) and the worker's `llm_context` summary. Without one it builds from the session file and its saved chip
-(`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
+(`SessionSetting::LLM_CONTEXT`); both through `working_set_source` (a `WorkingSetRoutes::Source`), which the item's
+timeline route builds from too (Timeline, below). The folder is the session's `working_directory`. `running` is true when the
 snapshot has a turn in progress (`current_turn`). Between turns, a newer worker's `idle_working_set` is used directly;
 an older worker without that key still gets the file-build fallback.
 
@@ -150,6 +151,11 @@ answers it as is (no build, no stat): a page opened mid-turn gets the running tu
 event's, so the page takes it (below). Before the turn's first event the turn's set is still the session's (the
 Engine emits only a set that differs from the last one), and the GET builds from the messages as between turns; so
 does one from an older worker without the field, its answer then behind the turn's events, which the page keeps.
+
+**An item's timeline while a turn runs** (`GET …/working_set/item`, [Timeline](#timeline-what-the-model-has-of-one-item))
+has no such event to answer: it always builds from the snapshot's messages, so mid-turn it lags the turn's runs
+(the running turn's reads of the item are not in it yet). Accepted for v1: the page asks again on each
+`:working_set_updated` while its reader or a peek is open, and the turn's end brings the messages up to date.
 
 ## Steering: drop and undrop
 
@@ -226,6 +232,51 @@ projection), on both loops. It costs one model step; a model may skip it (the no
   emits again, which clears the page's pending add.
   A running turn's set has none (the note was sent when it started), so the Bridge snapshot's `working_set` and the
   GET's `running` answer leave it out.
+
+## Timeline: what the model has of one item
+
+**The projection.** `WorkingSet.timeline_of(conversation, kind:, key:, strategy:, cwd:)` answers a
+`WorkingSet::Timeline` (`kind`, `key`, `events`): every run of the item in conversation order, edits and writes too,
+from the same `all_touches` walk `build` and `outputs_of` use, so the set, the steer and the timeline never disagree
+on which runs are an item's. Each `WorkingSet::Event` is `tool_id` (ToolIds; `derived` for a legacy entry's), the
+tool_response entry's `index`, the global `step` (`LLMContextStale::PairedRun#step`: the page's step tags are its own,
+see below), `op` (`read`, `edit`, `write`, `memory_read`, `memory_write`, `fetch`), `sent` (the projection's
+`still_sent?`; an edit or a write always), `dropped` (the user's applied drop), `forgotten` (not sent, not by a drop),
+and what it holds:
+- a read: `lines` (`WorkingSet::Lines`: `first`, `last`, `whole`, `partial`) from `LLMContextStale.file_run`, never
+  re-parsed from the arguments: `last` is counted off the text, so an `end_line` past the file is clamped (its
+  `[read: end_line …]` note is taken off the `text`); a whole read over `read.truncate_at_bytes` (the head/tail
+  preview) and a ToolRunner-cut output are `partial`, shown as stored, kept out of the file strip and the merging.
+  `text`: the stored output without its `[read]` lead;
+- an edit or a write: `diff`, the saved `tool_diffs` (never re-diffed): `ToolResponse.joined` saves an array (one per
+  run, nil for none), `.single` the bare Hash, read as `MessageParts` does. nil for a no-op or a failed snapshot, maybe
+  `truncated`, `{skipped}` or `{error}`; `diff_view.js diffTemplate` draws them all;
+- a memory_read: the whole output (a read of several names is not split: `shared_with` names the others, as
+  `Output#shared_with` does), and `memory` (`WorkingSet::MemoryPart`, from the stamp): `scope` (a file under
+  `memories/projects/<key>/` is the project's, else the system's), `path`, `overlay_path`, and for a read of one name
+  the appended overlay's text (`overlay`, taken off `text`); nil for a session saved before memory stamps;
+- a memory_write: the text it wrote (its `content` argument); a fetch: the output.
+
+Merging overlapping reads, the newest-first order and the step tags are the page's (presentation): the page keeps
+each row's `tool_id` with its place (`working_set.js` items' `runs`), so an event's tag is its row's (`t3·s14`) and
+"go to the call" is the step tags' jump; a legacy row (no id) falls back to the server's global `step`. The file
+strip's length is the largest last line any read knows (a whole read's is the file's then), not a stat. The page:
+[web-frontend.md](web-frontend.md#the-working-sets-reader).
+
+**Now.** `WorkingSet.memory_now(conversation, key:, …)` answers what the memory's latest `memory_read` would answer
+now (`WorkingSet::Now`: `text`, `diff`, `gone`): each name that read read, from the file its stamp names, with the
+overlay stamped with it appended as `Tools::MemoryRead.call` appends it (`Model-specific guidance (<key>):`, the key
+off the overlay's file name), and a missing name's `Error:` tail kept; `diff` is `TextDiff.unified` of what the read
+sent against that (`EditPreview`'s shape, so `diff_view.js` draws it; an empty `text` is "no change"). `gone` when a
+file is; nil without a stamp.
+
+**The route.** `GET /api/sessions/:id/working_set/item?kind=&key=` (`WorkingSetRoutes#handle_working_set_item`,
+`:owner, :session`: a participant gets 403 from `not_permitted_for`) answers `timeline.to_h`, and with `&now=1` for a
+memory `now:` too. Unlike the set's route it never answers a worker's precomputed set: it builds from
+`working_set_source` (the worker's snapshot messages, else the file's; the session's strategy and folder). Its texts
+are whole (about 1.7k lines at the most seen in real sessions): the tool limits bound them (`read.truncate_at_bytes`,
+the ToolRunner cap), so the page asks this route, never a row's `output` (a 2000-char `ToolOutputCut::WEB_PREVIEW_CHARS`
+preview for a long one). 400 without a known `kind` and a `key`.
 
 ## The page's overlay
 

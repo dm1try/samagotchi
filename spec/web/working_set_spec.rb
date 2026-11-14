@@ -170,4 +170,63 @@ RSpec.describe Samagotchi::Web::App, "working set" do
     expect(call("/api/sessions/#{session.id}/working_set")).to eq([200, { "items" => [], "at" => 1, "running" => false }])
     expect(call("/api/sessions/00000000-0000-4000-8000-000000000000/working_set").first).to eq(404)
   end
+
+  describe "GET …/working_set/item (an item's timeline)" do
+    require "cgi"
+
+    def item(session, kind, key, extra = "")
+      call("/api/sessions/#{session.id}/working_set/item?kind=#{kind}&key=#{CGI.escape(key)}#{extra}")
+    end
+
+    it "answers the item's runs from the session file, under the saved strategy" do
+      session = saved_session(read_messages)
+
+      status, body = item(session, "file", path)
+
+      expect(status).to eq(200)
+      expect(body).to include("kind" => "file", "key" => path)
+      expect(body["events"]).to match([include("tool_id" => "t1", "op" => "read", "sent" => true, "text" => "one",
+                                               "lines" => { "first" => 1, "last" => 1, "whole" => true, "partial" => false })])
+    end
+
+    it "builds from a live worker's messages even when it holds a precomputed set" do
+      session = saved_session([])
+      drop = { "t1" => { "kind" => "drop", "note" => "", "by" => "user", "staged_at" => "x", "applied_at" => "x" } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages(edits: drop))), "current_turn" => nil,
+                        "idle_working_set" => { "items" => [], "at" => 3 } },
+        "session_state_snapshot" => {}
+      )
+
+      expect(item(session, "file", path).last["events"]).to match([include("sent" => false, "dropped" => true)])
+    end
+
+    it "adds a memory's text now on ?now=1" do
+      memory = File.join(Samagotchi::MemoryPaths.system_dir, "ws-spec-style.md")
+      FileUtils.mkdir_p(File.dirname(memory))
+      File.write(memory, "be brief\n")
+      stat = File.stat(memory)
+      stamp = { memories: { "style" => { path: memory, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec,
+                                         size: stat.size } } }
+      session = saved_session([{ role: "model", content: "", tool_calls: [{ id: "c1", name: "memory_read", arguments: { "name" => "style" } }] },
+                               { role: "tool_response", content: "[memory_read]\nbe brief\n", tool_call_id: "c1",
+                                 tool_ids: ["t1"], tool_stamps: [stamp] }])
+      File.write(memory, "be very brief\n")
+
+      expect(item(session, "memory", "style").last).not_to have_key("now")
+      now = item(session, "memory", "style", "&now=1").last["now"]
+      expect(now).to include("text" => "be very brief\n", "gone" => false)
+      expect(now["diff"]["text"]).to include("+be very brief")
+    ensure
+      FileUtils.rm_f(memory) if memory
+    end
+
+    it "is 400 without a known kind or a key, 404 for an unknown session" do
+      session = saved_session(read_messages)
+
+      expect(item(session, "dir", path).first).to eq(400)
+      expect(item(session, "file", " ").first).to eq(400)
+      expect(call("/api/sessions/00000000-0000-4000-8000-000000000000/working_set/item?kind=file&key=x").first).to eq(404)
+    end
+  end
 end

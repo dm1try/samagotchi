@@ -209,6 +209,9 @@ module Samagotchi
       refs.zip(calls, texts.map(&:text))
     end
 
+    # One run as a FileRun (nil for a call that isn't a read, edit or
+    # write, or names no path). Public: WorkingSet.timeline_of reads a
+    # read's range and partial mark off it, never off the arguments again.
     def file_run(index, ref, call, text, root, step)
       name = call[:name].to_s
       return nil unless name == READ || CHANGES.include?(name)
@@ -272,6 +275,6 @@ module Samagotchi
       end
     end
 
-    private_class_method :file_runs, :results, :file_run, :lines, :line, :field, :arguments, :native_parser
+    private_class_method :file_runs, :results, :lines, :line, :field, :arguments, :native_parser
   end
 end

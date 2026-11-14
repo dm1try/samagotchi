@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: see what chi has of a working-set item: a row's ▸ in the working set list peeks at its latest edit or read, and "Open the timeline" (also a tool row's "timeline" and a file ref's "What chi has") shows every read as merged line slices over a strip of the file, every edit as its diff, slices chi no longer has greyed, and for a memory that changed since chi read it, the diff to what it says now.
+
 ### Changed
 
 - chi web: a participant's message sent while their own turn runs now goes into that turn at its next step, as the owner's does; during someone else's turn it still waits and runs as their own turn after it.

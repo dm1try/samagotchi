@@ -749,7 +749,8 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     expect(await editRow().evaluate((el) => el.checkVisibility())).toBe(false);
     await answer(page).locator(".ref").hover();
     await page.locator(".ref-more").click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Open in editor", "Show in turn", "Copy path"]);
+    // The file is in the working set: the menu offers what chi has of it too (ws_reader.js).
+    await expect(page.getByRole("menuitem")).toHaveText(["Open in editor", "Show in turn", "What chi has", "Copy path"]);
     await page.getByRole("menuitem", { name: "Show in turn" }).click();
     await expect(page.locator(".ref-menu")).toHaveCount(0);
     await expect(page.locator("#history .turn-work")).toHaveJSProperty("open", true);

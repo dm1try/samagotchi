@@ -874,11 +874,11 @@ test.describe("the working set", () => {
     }
   });
 
-  // Steering (P3a): a drop from the list between turns runs at once (the
+  // What chi has (the peek and the reader), then steering (P3a): a drop from the list between turns runs at once (the
   // session's /working-set command): the row is struck `dropped`, and the next
   // turn's first request sends the stub and the turn-start note instead of the
   // README's text (the fake host's recorded request).
-  test("a drop from the list between turns: struck dropped, and the next request sends the stub", async ({ page, script, chi }) => {
+  test("peek, the timeline and back; a drop from the list between turns: struck dropped, and the next request sends the stub", async ({ page, script, chi }) => {
     test.setTimeout(60_000);
     script("working_set");
     await send(page, "Read the README and the style note.");
@@ -888,6 +888,23 @@ test.describe("the working set", () => {
     await clickBarItem(page, "workingSet");
     const pop = page.locator("#workingSetPopover");
     const row = pop.locator(".ws-row.file", { hasText: "README.md" });
+    // What chi has of it: the row's ▸ peeks (the read's first lines), the
+    // peek's link opens the reader over the stage, ← Stage brings it back.
+    await row.locator(".ws-peek-toggle").click();
+    const peek = pop.locator(".ws-peek");
+    await expect(peek.locator(".ws-peek-t")).toHaveText(/latest · read/);
+    await expect(peek.locator(".read-line").first()).toBeVisible();
+    await peek.locator(".ws-peek-open").click();
+    const reader = page.locator("#wsReader");
+    await expect(reader).toBeVisible();
+    await expect(pop).toBeHidden();
+    await expect(reader.locator(".wsr-name")).toHaveText("README.md");
+    await expect(reader.locator(".wsr-card.slice .wsr-card-h")).toContainText("1 read");
+    await expect(reader.locator(".wsr-item.on")).toContainText("README.md");
+    await reader.locator(".wsr-back").click();
+    await expect(reader).toBeHidden();
+    await expect(page.locator("#history .turn-work")).toBeVisible();
+    await clickBarItem(page, "workingSet");
     await row.hover();
     await row.locator('[data-ws="steer"][data-op="drop"]').click();
     await expect(pop.locator(".ws-row.file.dropped", { hasText: "README.md" })).toBeVisible();

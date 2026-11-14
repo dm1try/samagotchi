@@ -213,6 +213,15 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(attrs).not_to include(root, Dir.home, "secret-project")
   end
 
+  it "is refused an item's timeline (GET …/working_set/item: owner only, no peek or reader)" do
+    env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/working_set/item?kind=file&key=#{File.join(root, "a.rb")}")
+    env["HTTP_HOST"] = "#{lan_ip}:4567"
+    env["REMOTE_ADDR"] = "192.168.1.20"
+    env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+    status, _headers, _chunks = app.call(env)
+    expect(status).to eq(403)
+  end
+
   it "redacts the working set's file names as the stream does (GET …/working_set)" do
     leaky = "notes-sk-ant-abcdefghijklmnopqrstuvwx.md"
     snapshot["snapshot"]["working_set"] = {

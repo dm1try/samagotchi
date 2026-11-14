@@ -47,8 +47,8 @@ module Samagotchi
     # owner does with it (the page's controls and calls behind each one:
     # docs/internals/web-frontend.md, The viewer).
     Viewer::CAPABILITIES = %w[
-      sessions models prompt_history push context working_set participants_admin rename images session_controls
-      revise apply answer_cards render block_renderers stop_any_turn steer_any_turn
+      sessions models prompt_history push context working_set working_set_items participants_admin rename images
+      session_controls revise apply answer_cards render block_renderers stop_any_turn steer_any_turn
     ].freeze
 
     # A participant's capabilities: names of their own (the owner's are
