@@ -35,6 +35,7 @@ module LoadCheck
       @requires = []
       @autoloads = []
       @local_paths = {}
+      @loop_autoload_names = {}
       parse
     end
 
@@ -125,9 +126,10 @@ module LoadCheck
         return
       end
       if node.receiver.nil? && name == :autoload
-        add_autoload(arguments, scope, node.location.start_line)
+        add_autoload(node, scope)
         return
       end
+      register_loop_autoload(node) if name == :each
       if node.receiver.nil? && MIXINS.include?(name) && !call
         arguments.each { |arg| note(parts(arg), scope, node.location.start_line, false, name.to_s) }
         return
@@ -149,16 +151,49 @@ module LoadCheck
       @requires << Require.new(target, line, load_time) if target
     end
 
-    def add_autoload(arguments, scope, line)
+    def add_autoload(node, scope)
+      arguments = node.arguments&.arguments || []
       name, target = arguments
-      parts = name.class.name.end_with?("SymbolNode") ? [name.value] : nil
-      target_path = case target
-                    when nil then nil
-                    when Prism::StringNode then target.unescaped
-                    when Prism::CallNode then expand_path(target)
-                    else @local_paths[target.respond_to?(:name) ? target.name.to_s : ""]
-                    end
-      @autoloads << Autoload.new(parts && (scope + parts).join("::"), target_path, line)
+      target_path = autoload_target_path(target)
+      names = @loop_autoload_names[node.location.start_offset]
+      if names
+        @autoloads.concat(names.map { |part| Autoload.new((scope + [part]).join("::"), target_path, node.location.start_line) })
+      else
+        parts = name.class.name.end_with?("SymbolNode") ? [name.value] : nil
+        @autoloads << Autoload.new(parts && (scope + parts).join("::"), target_path, node.location.start_line)
+      end
+    end
+
+    def autoload_target_path(target)
+      case target
+      when nil then nil
+      when Prism::StringNode then target.unescaped
+      when Prism::CallNode then expand_path(target)
+      else @local_paths[target.respond_to?(:name) ? target.name.to_s : ""]
+      end
+    end
+
+    def register_loop_autoload(node)
+      return unless node.receiver&.class&.name == "Prism::ArrayNode" && node.block
+
+      names = node.receiver.elements
+      return unless names.any? && names.all? { _1.class.name.end_with?("SymbolNode") }
+
+      parameters = node.block.parameters&.parameters&.requireds
+      return unless parameters&.size == 1
+
+      parameter = parameters.first.name
+      calls = node.block.body&.compact_child_nodes&.select do |child|
+        child.instance_of?(Prism::CallNode) && child.receiver.nil? && child.name == :autoload
+      end
+      return unless calls&.size == 1
+
+      autoload = calls.first
+      arguments = autoload.arguments&.arguments || []
+      return unless arguments.first&.class&.name == "Prism::LocalVariableReadNode"
+      return unless arguments.first.name == parameter
+
+      @loop_autoload_names[autoload.location.start_offset] = names.map(&:value)
     end
 
     # require File.expand_path("engine/log", __dir__) and the autoload form.

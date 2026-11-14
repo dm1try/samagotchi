@@ -12,7 +12,7 @@ module LoadCheck
   # 3 (autoload naming a namespace). refs is how many places name it.
   Finding = Data.define(:rule, :path, :line, :constant, :why, :refs)
 
-  Result = Data.define(:findings, :files, :allow_used, :allow_stale) do
+  Result = Data.define(:findings, :files, :allow_used, :allow_stale, :allow_stale_entries) do
     def references
       findings.sum(&:refs)
     end
@@ -72,8 +72,9 @@ module LoadCheck
       scan
       findings = merge(rule1 + rule2 + rule3)
       kept = findings.reject { |finding| @allow.any? { |entry| entry.match?(finding) } }
-      used = @allow.count { |entry| findings.any? { |finding| entry.match?(finding) } }
-      Result.new(findings: kept, files: @units.size, allow_used: used, allow_stale: @allow.size - used)
+      stale = @allow.reject { |entry| findings.any? { |finding| entry.match?(finding) } }
+      Result.new(findings: kept, files: @units.size, allow_used: @allow.size - stale.size, allow_stale: stale.size,
+                 allow_stale_entries: stale)
     end
 
     # One line per (rule, file, constant): the first reference's line and how
@@ -254,7 +255,7 @@ module LoadCheck
       @units.flat_map do |_path, unit|
         unit.autoloads.filter_map do |autoload|
           name = autoload.name
-          next if name.nil? # a loop-built autoload: the name is not a literal to check
+          next finding(3, unit.path, autoload.line, "(dynamic autoload)", "autoload name is dynamic and cannot be checked") if name.nil?
 
           definers = definers(name)
           target = autoload_target(autoload)

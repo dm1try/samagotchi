@@ -607,7 +607,8 @@ run it. Its spec is `spec/script/dead_code_spec.rb`.
    `prepend`, a class body) comes from a file required above that line, and a require cycle does not
    guarantee it;
 3. **autoload** — an `autoload` may name a constant defined in one file; one that names a namespace
-   reopened in several files is a finding.
+   reopened in several files is a finding. A dynamically named autoload is reported unread, since its name
+   cannot be checked.
 
 A name that resolves to nothing of chi's (a stdlib or gem constant) is out of scope, and lexical scope is
 mimicked: a bare `Log` inside `module Samagotchi` is `Samagotchi::Log`. Each line is

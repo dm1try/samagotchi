@@ -585,6 +585,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".report_ended" do
 
     expect(err.string).to eq("chi: the model gave an empty answer\nchi: the prompt was removed before it ran\n")
   end
+
+  it "reports an empty answer without loading the terminal or engine" do
+    script = <<~RUBY
+      require "samagotchi/terminal_ui/attach_launcher"
+      Samagotchi::TerminalUI::AttachLauncher.report_ended(:empty_answer)
+      loaded = $LOADED_FEATURES.grep(%r{/samagotchi/(terminal_ui|engine)\\.rb\\z})
+      abort loaded.inspect unless loaded.empty? && !defined?(Samagotchi::Engine)
+    RUBY
+    out, err, status = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-e", script)
+
+    expect(status).to be_success, err
+    expect(out).to eq("")
+    expect(err).to eq("chi: the model gave an empty answer\n")
+  end
 end
 
 # Attached `chi -p` from a script, exit 3: the question in full on stderr,

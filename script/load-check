@@ -23,7 +23,8 @@ HELP = <<~TEXT
        comes from a file required above that line, with no require cycle.
        A require inside a method satisfies 1 only.
     3  autoload: an autoload names a constant defined in exactly one file; one
-       that names a namespace reopened in several files is a finding.
+       that names a namespace reopened in several files is a finding. A
+       dynamically named autoload is reported unread.
 
   A name that resolves to nothing of chi's (a stdlib or gem constant) is out
   of scope. Each line is
@@ -74,9 +75,15 @@ findings = result.findings
 findings = findings.select { _1.rule.to_s == rule } if rule
 findings = findings.first(limit) if limit
 
+if strict
+  result.allow_stale_entries.each do |entry|
+    warn "stale allow-list entry: rule #{entry.rule} file #{entry.file} constant #{entry.constant}"
+  end
+end
+
 if json
   puts JSON.pretty_generate(findings.map { |f| f.to_h })
-  exit(strict && findings.any? ? 1 : 0)
+  exit(strict && (findings.any? || result.allow_stale.positive?) ? 1 : 0)
 end
 
 findings.each { |f| puts "#{f.rule} #{f.path}:#{f.line} #{f.constant} — #{f.why}" }
@@ -86,4 +93,4 @@ puts format("findings: %d (rule 1 %d, rule 2 %d, rule 3 %d) across %d references
 puts "by area: #{result.area_counts.sort_by { |area, count| [-count, area] }.map { |area, count| "#{area} #{count}" }.join(", ")}"
 puts "files scanned: #{result.files} (lib/samagotchi + bin/chi, shipped bundles excluded)"
 puts "allow-list: #{result.allow_used} entries matched, #{result.allow_stale} matched nothing"
-exit(strict && result.findings.any? ? 1 : 0)
+exit(strict && (result.findings.any? || result.allow_stale.positive?) ? 1 : 0)
