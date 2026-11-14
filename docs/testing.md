@@ -235,7 +235,12 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   its cards, the docked ones, the lead-in bubbles, the card in front, the one that shows and the pager, the fold) and
   the history compared; a known difference is listed in its `EXPECTED`, by scenario, cut and field (one gone fails
   too; none today), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
-  harnesses build their page with `spec/web/public/live_page.js`.
+  harnesses build their page with `spec/web/public/live_page.js`. The stage's drift check (`<body
+  data-stage-check="1">`, `stage_asking.js reconcileWaiting`) and the data-vs-node cross-check (`card_kinds.js
+  warnDiffers`) warn "stage: waiting …": `spec/web/public/waiting_warnings.js` (`failOnWaitingWarnings`, called by
+  `stage_view.test.js` and `stage_cuts_parity.test.js`; under `npm test`'s one process it covers the files loaded
+  after them too) turns the check on and fails a test that warned, and `stage.spec.js` does the same in the browser
+  (`test.use({ stageCheck: true })`, a fixture in `spec/e2e/support/fixtures.js`).
   `spec/shared/turn_ranges.json` (`UPDATE_TURN_RANGES=1 bundle exec rspec spec/bridge/turn_ranges_spec.rb`) pins
   `Bridge::TurnRanges`' turns, their record pairing, the items as the show stamps them and each turn's drawing end;
   timing.test.js checks `turnGroups` (stamps only) against it. Each scenario's
@@ -544,6 +549,25 @@ model's answers to chi's offer, with its call rate and notes). It is opt-in: the
 runs its code only on small synthetic sessions, never on yours. See
 [internals/llm-context-bench.md](internals/llm-context-bench.md). `script/llm_context_live.rb` runs chi itself on
 real tasks under each strategy (needs a model; costs tokens): [internals/llm-context-live.md](internals/llm-context-live.md).
+
+## The stage perf probe
+
+`script/stage-perf-probe` (`PROBE_MACHINE=<label>` names the machine; `--keep` leaves its folder, `--headed` shows
+the browser) times the web page's stage on a big session: `script/stage_perf_probe/session.rb` writes 300 finished
+turns with 60 plugin cards and 40 answered questions through chi's own writers (TurnAccumulator's drawings, CardStore,
+`Session#save`; CardStore keeps its cap of 20, the rest are in the drawings), then `probe.js` opens it in chi web
+(the e2e fake model, isolated `HOME` and `XDG_*` under `tmp/stage-probe-*`) at `/?stage_probe=1` (`stage_probe.js`:
+the flag is kept for the tab in sessionStorage, `chi_stage_probe`, so a reload or a hash jump keeps it;
+`?stage_probe=0` drops it; `<body data-stage-probe="1">` works too, for that page only), runs one turn that asks a question and an approval, reloads while the question waits and answers
+both. It prints JSON: `stage:refresh` n/p50/p95/max (ms), the session's open (the hash to the last answer drawn),
+tap→settled per card, reload→card drawn and the JS heap after a GC before the open, after it and after the turn. Its
+`session.drawn` counts what the open drew: all 300 answers and 60 cards, but only the answered questions CardStore
+still lists (8: its cap keeps the newest 20 cards and questions together, and a finished turn's question is drawn from
+that list alone). Bounded:
+the session within 60 s, the browser run within 180 s, cut at 300 s; it stops only what it started (chi web and the
+fake by their handles, the worker through chi web's stop route) and says when anything still names its folder. Not
+part of any suite. On an iPhone: open the page once with `?stage_probe=1` (the Home Screen app: in Safari Web
+Inspector's console, `location.search = "?stage_probe=1"`), run a turn, then `chiStageProbe.report()` there.
 
 ## The model notes report
 

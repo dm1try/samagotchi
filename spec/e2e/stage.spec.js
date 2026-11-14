@@ -7,6 +7,9 @@ import { barItemOnRow, clickBarItem, expectNoHorizontalOverflow } from "./suppor
 import { expectSameAfterReload } from "./support/history_shape.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
+// The stage's drift check on: a "stage: waiting …" warning fails the test.
+test.use({ stageCheck: true });
+
 const stageEl = (page) => page.locator("#turnStage");
 // A shift's source in the top bar, or the session panel it pushes down.
 const TOP_BAR = /#topBar|#sessionTitle|#stripStatus|#stripGrip|#notifyBtn|section#center$/;
