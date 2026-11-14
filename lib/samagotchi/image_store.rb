@@ -127,19 +127,53 @@ module Samagotchi
       !@tool.nil?
     end
 
+    # How long one conversion may run before its process is killed.
+    TIMEOUT = 60
+    # ImageMagick's coder for each sniffed format (ImageHeader.format_of):
+    # the input is read as that format, never as whatever its bytes claim.
+    CODERS = { png: "PNG", jpeg: "JPEG", gif: "GIF", webp: "WEBP", bmp: "BMP", tiff: "TIFF", heic: "HEIC" }.freeze
+    # ImageMagick's resource limits for one conversion.
+    MAGICK_LIMITS = ["-limit", "memory", "256MiB", "-limit", "disk", "1GiB", "-limit", "area", "64MP"].freeze
+
     # Writes +input+ to +output+ as +format+ (:png or :jpeg), no bigger than
     # +max_side+ on its long side (never upscaled; nil keeps the size).
-    def convert(input, output, format:, max_side: nil, quality: 85)
+    # +from+: the input's sniffed format (magick reads it with that coder).
+    # A tool still running after +timeout+ seconds is killed (Error).
+    def convert(input, output, format:, max_side: nil, quality: 85, from: nil, timeout: TIMEOUT)
       raise Error, "no image tool (install ImageMagick)" unless available?
 
-      command = @tool == :sips ? sips_command(input, output, format, max_side, quality) : magick_command(input, output, format, max_side, quality)
-      out, status = Open3.capture2e(*command)
-      raise Error, "#{@tool} failed: #{out.strip[0, 200]}" unless status.success? && File.size?(output)
+      command = if @tool == :sips
+                  sips_command(input, output, format, max_side, quality)
+                else
+                  magick_command(input, output, format, max_side, quality, from)
+                end
+      out, ok = run_command(command, timeout)
+      raise Error, "#{@tool} failed: #{out.strip[0, 200]}" unless ok && File.size?(output)
 
       output
     end
 
     private
+
+    # Runs +command+, its output and whether it succeeded; kills it (its own
+    # pid only) past +timeout+.
+    def run_command(command, timeout)
+      Open3.popen2e(*command) do |stdin, out, wait|
+        stdin.close
+        reader = Thread.new { out.read.to_s }
+        unless wait.join(timeout)
+          begin
+            Process.kill("KILL", wait.pid)
+          rescue Errno::ESRCH
+            nil
+          end
+          wait.join
+          reader.kill unless reader.join(1)
+          raise Error, "#{@tool} took over #{timeout} s"
+        end
+        [reader.value, wait.value.success?]
+      end
+    end
 
     def sips_command(input, output, format, max_side, quality)
       command = ["sips", "-s", "format", format.to_s]
@@ -148,8 +182,9 @@ module Samagotchi
       command + [input, "--out", output]
     end
 
-    def magick_command(input, output, format, max_side, quality)
-      command = ["magick", "#{input}[0]"]
+    def magick_command(input, output, format, max_side, quality, from = nil)
+      coder = CODERS[from]
+      command = ["magick", *MAGICK_LIMITS, "#{"#{coder}:" if coder}#{input}[0]"]
       command += ["-resize", "#{max_side}x#{max_side}>"] if max_side
       command += ["-quality", quality.to_s] if format == :jpeg
       command + ["#{format}:#{output}"]
@@ -402,8 +437,8 @@ module Samagotchi
         File.binwrite(input, bytes)
         # sips upscales to --resampleHeightWidthMax, so pass it only to shrink.
         side = too_wide ? limits.max_side : nil
-        out = run(resizer, input, File.join(dir, "out.png"), :png, side)
-        out = run(resizer, input, File.join(dir, "out.jpg"), :jpeg, side) if File.size(out) > limits.max_bytes
+        out = run(resizer, input, File.join(dir, "out.png"), :png, side, info.format)
+        out = run(resizer, input, File.join(dir, "out.jpg"), :jpeg, side, info.format) if File.size(out) > limits.max_bytes
         result = File.binread(out)
         raise Error, "#{name} is still over #{limits.max_bytes} bytes after downscaling" if result.bytesize > limits.max_bytes
 
@@ -411,8 +446,8 @@ module Samagotchi
       end
     end
 
-    def self.run(resizer, input, output, format, max_side)
-      resizer.convert(input, output, format: format, max_side: max_side)
+    def self.run(resizer, input, output, format, max_side, from)
+      resizer.convert(input, output, format: format, max_side: max_side, from: from)
     rescue ImageResizer::Error => e
       raise Error, e.message
     end
