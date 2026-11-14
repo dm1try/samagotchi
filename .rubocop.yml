@@ -443,6 +443,40 @@ RSpec/BeEq:
 
 # -- samagotchi's own cops ---------------------------------------------------
 
+# Ruby files cap at 1000 lines; existing larger files got their current size
+# plus 50 when the cap came. Ratchet caps down on shrink; never raise one,
+# split instead.
+Samagotchi/FileSize:
+  Enabled: true
+  Max: 1000
+  Include:
+    - lib/**/*.rb
+    - bin/*
+    - script/**/*.rb
+    - rubocop/**/*.rb
+    - Rakefile
+  Exclude:
+    - spec/**/*
+    - lib/samagotchi/bundles/*/spec/**/*
+    - vendor/**/*
+    - node_modules/**/*
+  Caps:
+    lib/samagotchi/bridge.rb: 1871
+    lib/samagotchi/bundle_command.rb: 1189
+    lib/samagotchi/bundles/mcp/plugin.rb: 1066
+    lib/samagotchi/config.rb: 1496
+    lib/samagotchi/engine.rb: 1355
+    lib/samagotchi/guardrails/pair_command.rb: 1452
+    lib/samagotchi/kernel_loop.rb: 1265
+    lib/samagotchi/llm/chat_loop.rb: 1252
+    lib/samagotchi/schedules.rb: 1303
+    lib/samagotchi/send_command.rb: 1106
+    lib/samagotchi/session.rb: 1077
+    lib/samagotchi/session_metrics.rb: 1434
+    lib/samagotchi/web/app.rb: 2187
+    lib/samagotchi/worker.rb: 2057
+    script/release/release_tools.rb: 1162
+
 # A sleep that waits for something, a wait that names nothing when it times
 # out: docs/testing.md, "Waiting and time", for the tags that allow one.
 Samagotchi/SpecSleep:
