@@ -32,7 +32,7 @@ const freshLinkState = (model = "fake") => ({ continues: "prev", model, timing: 
 
 // +t+: the test, whose end takes the page away (the chips' popovers are on
 // the shared document's body: the files after this one look theirs up by id).
-function page(t, { listModels = async () => PAYLOAD, stored = null, run = async () => true, review = true } = {}) {
+function page(t, { listModels = async () => PAYLOAD, stored = null, run = async () => true } = {}) {
   t.after(() => {
     document.body.innerHTML = "";
     document.body.className = "";
@@ -44,7 +44,7 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   document.body.innerHTML = `<div id="center"><div id="composer"><div id="modelPanel" hidden><input id="modelSearch"
     ><div id="modelList"></div></div><button id="modelPick" hidden><span class="model-pick-name"></span></button
     ><button id="thinkingNew" hidden></button><button id="llmContextNew" hidden></button
-    >${review ? `<button id="reviewNew" hidden></button>` : ""}<button id="toolkitNew" hidden></button><button id="settingsNew" hidden></button
+    ><button id="toolkitNew" hidden></button><button id="settingsNew" hidden></button
     ><button id="toolkitBtn" hidden></button></div></div>`;
   const $ = (sel) => document.querySelector(sel);
   const world = { selected: null, state: {}, running: false, sessions: [] };
@@ -55,7 +55,7 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   const startPage = createStartPage({
     pickEl: $("#modelPick"), panelEl: $("#modelPanel"), searchEl: $("#modelSearch"), listEl: $("#modelList"),
     composerEl: $("#composer"), centerEl: $("#center"), settingsEl: $("#settingsNew"), llmContextEl: $("#llmContextNew"),
-    thinkingEl: $("#thinkingNew"), reviewEl: $("#reviewNew"), toolkitBtnEl: $("#toolkitBtn"), toolkitEl: $("#toolkitNew"),
+    thinkingEl: $("#thinkingNew"), toolkitBtnEl: $("#toolkitBtn"), toolkitEl: $("#toolkitNew"),
     selected: () => world.selected,
     state: () => world.state,
     running: () => world.running,
@@ -75,7 +75,7 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   return {
     startPage, world, toasts, ran, win, pick, focused: () => focused,
     button: $("#modelPick"), name: () => $(".model-pick-name").textContent,
-    llmChip: $("#llmContextNew"), thinkChip: $("#thinkingNew"), reviewChip: $("#reviewNew"), gear: $("#settingsNew"),
+    llmChip: $("#llmContextNew"), thinkChip: $("#thinkingNew"), gear: $("#settingsNew"),
     panel: () => document.getElementById("startSettingsPopover"),
     kitBtn: $("#toolkitBtn"), kitChip: $("#toolkitNew"),
     kitList: () => document.getElementById("startToolkitPopover"),
@@ -104,13 +104,11 @@ test("loadModels: the button shows with the stored choice; ⚙'s rows follow the
   p.gear.click();
   const pressed = () => [...p.panel().querySelectorAll("[aria-pressed=true]")].map((b) => b.textContent);
   assert.deepEqual(pressed(), ["default (off)", "default (stale)"]);
-  // A model without values hides the rows (the picker's click closed the panel).
+  // A model without values has no rows: ⚙ goes (the picker's click closed the panel).
   p.pick("fake");
   assert.equal(p.startPage.chosenModel(), "fake");
   assert.equal(p.panel().hidden, true);
-  p.gear.click();
-  assert.deepEqual(pressed(), []);
-  assert.ok(p.panel().querySelector("[data-act=review]"));
+  assert.equal(p.gear.hidden, true);
   assert.deepEqual(p.ran, []);
   assert.equal(p.focused(), 1);
 });
@@ -238,8 +236,7 @@ test("a command_ran while the pick is in flight: its ack syncs the button then",
 test("the new session's choices: sent with the create, then cleared; opening a session drops them", async (t) => {
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
-  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, review: undefined,
-                                               toolkit: undefined });
+  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, toolkit: undefined });
   p.gear.click();
   p.act("think:high");
   // A pick applies at once, the panel stays open, the focus stays in it.
@@ -267,7 +264,7 @@ test("the new session's choices: sent with the create, then cleared; opening a s
   assert.equal(p.thinkChip.hidden, true);
 });
 
-test("an override chip opens the panel (the review chip on its view), expanded; focus goes back to the chip on Esc", async (t) => {
+test("an override chip opens the panel, expanded; focus goes back to the chip on Esc", async (t) => {
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
   p.gear.click();
@@ -288,36 +285,6 @@ test("an override chip opens the panel (the review chip on its view), expanded; 
   assert.equal(p.thinkChip.hidden, true);
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.ok(document.activeElement === p.gear);
-  // The review row: its view, Set returns to the settings with the files chosen.
-  p.gear.click();
-  p.act("review");
-  const form = p.panel().querySelector("form.rs-form");
-  form.elements.subjects.value = "docs/plan.md, README.md";
-  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  assert.deepEqual(p.startPage.reviewSubjects(), ["docs/plan.md", "README.md"]);
-  assert.ok(p.panel().querySelector("form.rs-form") === null);
-  assert.equal(p.reviewChip.hidden, false);
-  assert.equal(p.reviewChip.textContent, "review: plan.md +1");
-  p.act("close");
-  p.reviewChip.click();
-  assert.ok(p.panel().querySelector("form.rs-form"));
-  assert.ok(document.activeElement === p.panel().querySelector("textarea"));
-});
-
-test("Start's refusal of the review files opens the panel's review view with the server's words", async (t) => {
-  const p = page(t);
-  await p.startPage.loadModels();
-  assert.equal(p.startPage.reviewRefused("nope"), false); // no files set: the caller's alert
-  p.gear.click();
-  p.act("review");
-  const form = p.panel().querySelector("form.rs-form");
-  form.elements.subjects.value = ".env";
-  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  p.act("close");
-  assert.equal(p.startPage.reviewRefused(".env can't be a review subject: it may hold secrets"), true);
-  assert.equal(p.panel().hidden, false);
-  assert.equal(p.panel().querySelector(".ctx-pop-error").textContent, ".env can't be a review subject: it may hold secrets");
-  assert.equal(p.panel().querySelector("textarea").value, ".env");
 });
 
 test("a choice the picked model can't show stays: its chip says it is sent anyway, and it is sent", async (t) => {
@@ -338,17 +305,11 @@ test("a choice the picked model can't show stays: its chip says it is sent anywa
   assert.equal(p.thinkChip.hidden, true);
 });
 
-test("without the models list ⚙ holds the review files only; without those either it is hidden", async (t) => {
+test("without the models list ⚙ is hidden: it has no rows", async (t) => {
   const failing = async () => { throw Object.assign(new Error("boom"), { status: 500 }); };
   const p = page(t, { listModels: failing });
   await p.startPage.loadModels();
-  assert.equal(p.gear.hidden, false);
-  p.gear.click();
-  assert.ok(p.panel().querySelector(".sset-row") === null);
-  assert.ok(p.panel().querySelector("[data-act=review]"));
-  const bare = page(t, { listModels: failing, review: false });
-  await bare.startPage.loadModels();
-  assert.equal(bare.gear.hidden, true);
+  assert.equal(p.gear.hidden, true);
 });
 
 test("🧰: a kit picked is sent with the create, its chip and dot show; cleared after, dropped on opening a session", async (t) => {

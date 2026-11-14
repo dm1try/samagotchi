@@ -55,14 +55,10 @@ test("the override chip and 🧰's label name the kit picked", () => {
   assert.deepEqual(toolkitLabel("lean"), { set: true, label: "Toolkit: lean" });
 });
 
-test("the list: the review note only with suggest on and review files set; the error; the /toolkit note", () => {
+test("the list: the error; the /toolkit note", () => {
   const plain = markupOf(listTemplate({ toolkits: ON, choice: null }));
   assert.match(plain, /Change it later with \/toolkit\./);
   assert.doesNotMatch(plain, /review session/);
-  assert.match(markupOf(listTemplate({ toolkits: ON, choice: null, review: true })),
-               /A review session gets no suggestion: it starts on full unless you pick a kit\./);
-  assert.doesNotMatch(markupOf(listTemplate({ toolkits: OFF, choice: null, review: true })), /review session/);
-  assert.doesNotMatch(markupOf(listTemplate({ toolkits: ON, choice: "web", review: true })), /review session/);
   assert.match(markupOf(listTemplate({ toolkits: ON, choice: "web", error: "bad groups" })), /bad groups/);
 });
 

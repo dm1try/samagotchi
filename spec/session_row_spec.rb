@@ -161,11 +161,11 @@ RSpec.describe Samagotchi::SessionRow do
       expect(described_class.from_summary_h(wire)).to eq(original)
     end
 
-    it "keeps the web summary's 38 keys in their order (Web::SessionSummary::WEB_KEYS)" do
+    it "keeps the web summary's 37 keys in their order (Web::SessionSummary::WEB_KEYS)" do
       require "samagotchi/web/session_summary"
       expect(Samagotchi::Web::SessionSummary::WEB_KEYS).to eq(
         %i[id status mode model_name working_directory created_at updated_at last_prompt short_id test_run
-           used_memory_names preloaded_memory_names muted_memory_names prompt_notes parent_id delegate continues review
+           used_memory_names preloaded_memory_names muted_memory_names prompt_notes parent_id delegate continues
            first_preview title owner recap auto_title ctx_pct tokens memory_index side archived project_root bridge_up
            worker_version worker_features worker_compat pending_question pending_card last_turn verdicts verify_fresh last_verdict]
       )

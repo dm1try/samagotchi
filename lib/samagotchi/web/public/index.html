@@ -1380,7 +1380,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pp-working button{font:inherit;font-size:12px;padding:3px 10px;border-radius:6px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
 .pp-working button:disabled{opacity:.7;cursor:progress}
 .pp-link{display:flex;gap:4px}
-/* The start page's ⚙ panel (start_settings.js): rows of segments (a label, then pill buttons with aria-pressed), the context's Apply and budget disclosure, the review row; a bottom sheet on a phone. Its classes are sset- (the Stop sheet's are ss-). */
+/* The start page's ⚙ panel (start_settings.js): rows of segments (a label, then pill buttons with aria-pressed), the context's Apply and budget disclosure; a bottom sheet on a phone. Its classes are sset- (the Stop sheet's are ss-). */
 .start-settings{gap:10px}
 .start-settings .ctx-pop-head strong{font-family:inherit}
 .sset-row{display:flex;align-items:flex-start;gap:10px}
@@ -1389,24 +1389,19 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .sset-seg button{height:26px;min-height:26px;padding:0 9px;border:1px solid var(--border-strong);border-radius:7px;background:transparent;color:var(--text-2);font-size:12px;line-height:24px;white-space:nowrap}
 .sset-seg button:hover{filter:none}
 .sset-seg button[aria-pressed="true"]{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
-.sset-seg button:focus-visible,.sset-link:focus-visible,.sset-back:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sset-seg button:focus-visible,.sset-link:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .sset-ctx-more{margin:-4px 0 0 74px}
 .sset-link{padding:2px 4px;border:0;border-radius:5px;background:transparent;color:var(--accent);font-size:12px}
 .sset-link:hover{filter:none}
 .sset-ctx-form{display:flex;flex-direction:column;gap:8px;margin:0 0 0 74px}
 .sset-anyway{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px}
 .sset-rule{width:100%;margin:0;border:0;border-top:1px solid var(--border)}
-.sset-review{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px}
-.sset-review>.sset-link:first-child{margin-left:-4px}
-.sset-review-set{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12.5px}
-.sset-back{margin:0 2px 0 -6px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:18px;line-height:1}
-.sset-back:hover{filter:none}
 .start-settings.sheet{border-radius:14px;padding:14px 16px}
 /* Tints only where a pointer hovers: on a touch screen a tapped control would keep it. Every popover's (chip_popover.js)
    controls and its opener's :hover tint sit in @media(hover:hover); an open opener shows it by aria-expanded instead. */
-@media(hover:hover){.sset-seg button:hover{color:var(--text);border-color:var(--accent-border)}.sset-link:hover{background:var(--accent-bg)}.sset-back:hover{color:var(--text);background:var(--bg-hover)}.st-row:hover{color:var(--text);background:var(--bg-hover)}}
+@media(hover:hover){.sset-seg button:hover{color:var(--text);border-color:var(--accent-border)}.sset-link:hover{background:var(--accent-bg)}.st-row:hover{color:var(--text);background:var(--bg-hover)}}
 @media(max-width:400px){.sset-row{flex-direction:column;gap:4px}.sset-label{flex:none;line-height:1.4}.sset-ctx-more,.sset-ctx-form{margin-left:0}}
-@media(pointer:coarse){.sset-seg button{height:36px;min-height:36px;line-height:34px;padding:0 12px;font-size:13px}.sset-link,.sset-back{min-height:36px}.sset-label{line-height:36px}}
+@media(pointer:coarse){.sset-seg button{height:36px;min-height:36px;line-height:34px;padding:0 12px;font-size:13px}.sset-link{min-height:36px}.sset-label{line-height:36px}}
 /* The start page's 🧰 list (start_toolkit.js): a row per kit (a check, its name, a muted detail), the checked one accent; a bottom sheet on a phone. */
 .start-toolkit{gap:8px}
 .start-toolkit .ctx-pop-head strong{font-family:inherit}
@@ -1421,9 +1416,6 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .start-toolkit.sheet{border-radius:14px;padding:14px 16px}
 .start-toolkit.sheet .st-detail{white-space:normal}
 @media(pointer:coarse){.st-row{min-height:40px;align-items:center}}
-.rs-form{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-.rs-form textarea{width:100%;resize:vertical;min-height:52px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text);background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px}
-.rs-form textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
 .pp-link input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px}
 .pp-qr{align-self:center;width:164px;height:164px;padding:6px;border-radius:8px;background:var(--on-solid)}
 .pp-qr svg{display:block;width:100%;height:100%}
@@ -2008,7 +2000,7 @@ a{color:var(--accent)}
    fields in this list (stage.spec.js's phone step checks the visible ones). */
 @media (max-width:600px),(pointer:coarse){
   #composer textarea,.question-freeform,.continue-reason,.participants-popover input,.participants-popover select,
-  .rs-form textarea,.pp-link input,.llmctx-field select,.llmctx-field input,.ws-add-in,.rename-input,
+  .pp-link input,.llmctx-field select,.llmctx-field input,.ws-add-in,.rename-input,
   #modelSearch,.project-create input{font-size:16px}
 }
 /* A participant's page (participant_main.js): a plain logo, their name and the link's end in the top row; the bottom row in
@@ -2099,7 +2091,6 @@ body.participant-view .bubble.user:not(.by-participant)>.origin-label{color:var(
           <button type="button" id="modelPick" class="model-pick" title="The model the new session starts on" aria-label="Model for the new session" aria-haspopup="listbox" aria-expanded="false" hidden><span class="model-pick-name"></span></button>
           <button type="button" id="thinkingNew" class="llmctx-new think-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="llmContextNew" class="llmctx-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
-          <button type="button" id="reviewNew" class="llmctx-new review-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="toolkitNew" class="llmctx-new toolkit-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="settingsNew" class="icon-btn settings-btn" title="Session settings" aria-label="Session settings" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="toolkitBtn" class="icon-btn toolkit-btn" title="Toolkit" aria-label="Toolkit" aria-haspopup="dialog" aria-expanded="false" hidden></button>

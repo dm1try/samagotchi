@@ -226,19 +226,17 @@ test("participants: a badge drawn while its turn was queued takes the pair mode 
   setParticipantNames([]);
 });
 
-test("participants: the empty list says what a participant's turn does, by the session's mode", () => {
-  const review = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
-  assert.match(review, /their comments become read-only review turns/);
-  const pair = markupOf(panelTemplate([], { now: NOW, sessionId: "s", pair: true }));
-  assert.match(pair, /their turns act with this session's tools under your guardrails, and their asks come to you/);
-  assert.doesNotMatch(pair, /read-only/);
+test("participants: the empty list says what a participant's turn does", () => {
+  const empty = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
+  assert.match(empty, /their turns act with this session's tools under your guardrails, and their asks come to you/);
+  assert.doesNotMatch(empty, /read-only|review/);
 });
 
-test("participants: a working session's warning comes before the Invite, with Start a review of it; none for a review session", () => {
-  const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e is a working session" }));
-  assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e is a working session<button[^>]*data-act="start-review"[^>]*>Start a review of it<\/button>/);
+test("participants: the server's warning comes before the Invite, and goes with the invite's link", () => {
+  const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e: a participant's turns act" }));
+  assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e: a participant's turns act<\/div>/);
+  assert.doesNotMatch(working, /start-review|Start a review/);
   assert.ok(working.indexOf("pp-working") < working.indexOf('class="pp-invite"'));
-  assert.match(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", reviewing: true })), /disabled[^>]*>Starting…</);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s" })), /pp-working/);
   assert.doesNotMatch(markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "w", invite: { name: "A", link: "x", lan: true } })), /pp-working/);
 });
@@ -351,7 +349,7 @@ test("participants panel: a failed list for another session drops the previous s
   const c = panelControl({ api: { list: async () => {
     if (fail) throw new Error("down");
     return { participants: [grant()], warning: "s1 is a working session" };
-  } }, startReview: async () => null });
+  } } });
   await c.ctl.load();
   fail = true;
   c.switchTo("s2");
@@ -364,59 +362,6 @@ test("participants panel: a failed list for another session drops the previous s
   assert.doesNotMatch(c.pop.innerHTML, /s1 is a working session/);
   assert.doesNotMatch(c.pop.innerHTML, /pp-row/);
   c.done();
-});
-
-// Start a review of it: closed once the review is made; a refusal stays in
-// the open panel, said there. "Starting…" while one is under way.
-test("participants panel: Start a review closes the panel when made, and keeps it open with the refusal when not", async () => {
-  const under = new Set();
-  let answer = deferred();
-  const c = panelControl({
-    api: { list: async () => ({ participants: [], warning: "s1 is a working session" }) },
-    reviewing: () => under.has("s1"),
-    startReview: ({ onError }) => {
-      under.add("s1");
-      return answer.promise.then((made) => {
-        under.delete("s1");
-        if (!made && !onError("Can't start a review of s1: the folder is gone")) throw new Error("not shown");
-        return made;
-      });
-    },
-  });
-  await c.ctl.load();
-  c.chip.click();
-  await tick();
-  c.pop.querySelector('[data-act="start-review"]').click();
-  assert.match(c.pop.innerHTML, /Starting…/);
-  answer.resolve(null);
-  await tick();
-  assert.ok(c.ctl.isOpen(), "a refused review leaves the panel open");
-  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, "Can't start a review of s1: the folder is gone");
-  assert.match(c.pop.innerHTML, /Start a review of it</);
-  answer = deferred();
-  c.pop.querySelector('[data-act="start-review"]').click();
-  answer.resolve({ id: "s3" });
-  await tick();
-  assert.ok(!c.ctl.isOpen());
-  c.done();
-});
-
-// The empty list's words follow the server's mode, never the warning: an
-// older worker's warning still means review turns.
-test("participants panel: the empty list says pair only when the server's mode is pair", async () => {
-  const words = async (body) => {
-    const c = panelControl({ api: { list: async () => body } });
-    await c.ctl.load();
-    c.chip.click();
-    await tick();
-    const text = c.pop.querySelector(".ctx-pop-meta").textContent;
-    c.done();
-    return text;
-  };
-  assert.match(await words({ participants: [], warning: "s1 is a working session", mode: "pair" }), /their turns act/);
-  assert.match(await words({ participants: [], warning: "s1 is a working session, but its worker predates pair turns",
-    mode: "review" }), /read-only review turns/);
-  assert.match(await words({ participants: [], warning: null, mode: "review" }), /read-only review turns/);
 });
 
 // Revoke can't be undone: it asks first, as a delete does.

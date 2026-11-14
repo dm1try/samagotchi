@@ -36,7 +36,7 @@ export default defineConfig({
     { name: "chromium", testIgnore: ["lan.spec.js", "proxy.spec.js"] },
     // chi web --web-host lan, reached at the LAN address: the access token.
     // On a machine without a private IPv4, chi web on loopback only: the
-    // LAN tests skip and the review journey runs on loopback (lan.spec.js).
+    // LAN tests skip and the participant journey runs on loopback (lan.spec.js).
     { name: "lan", testMatch: "lan.spec.js", use: { lan: !!privateIPv4() } },
     // chi web behind an auth proxy (support/pod_proxy.rb, web.public_url).
     { name: "proxy", testMatch: "proxy.spec.js", use: { authProxy: true, ignoreHTTPSErrors: true } },

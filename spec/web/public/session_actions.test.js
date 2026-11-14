@@ -30,7 +30,7 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     return (api[name] || fallback)(...args);
   };
   // The bar's redraw, registered as app.js registers it (a touch for the
-  // continue and review in-flight sets).
+  // continue in-flight set).
   store.on("infoBar", () => log.push(`infoBar ${[...actions.continuing].join(",")}`));
   const actions = createSessionActions({
     selected: () => world.selected,
@@ -43,7 +43,6 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
       continueSession: wrap("continueSession", async () => ({ id: "s2bbbbbbbb", continues: "s1aaaaaaaa" })),
       archiveSession: wrap("archiveSession", async (id) => ({ archived: [id], stopped: [] })),
       unarchiveSession: wrap("unarchiveSession", async (id) => ({ unarchived: [id] })),
-      startReview: wrap("startReview", async () => ({ id: "s3cccccccc", review: { from: "s1aaaaaaaa" } })),
       sessionHolds: wrap("sessionHolds", async () => ({ holds })),
       stopSessionHolds: wrap("stopSessionHolds", async () => ({ status: "stopped", stopped: {} })),
     },
@@ -284,18 +283,3 @@ test("toggleArchiveSelected: archives the open session, or unarchives an archive
   assert.deepEqual(none.calls, []);
 });
 
-test("reviewSelected: the created review session, opened; a refusal goes to onError when it says it, else a sticky toast", async () => {
-  const h = harness();
-  const created = await h.actions.reviewSelected();
-  assert.equal(created.id, "s3cccccccc");
-  assert.equal(h.world.selected, "s3cccccccc");
-  const refused = harness({ api: { startReview: async () => { throw failure(400, "invalid_review", "the folder is gone"); } } });
-  const said = [];
-  assert.equal(await refused.actions.reviewSelected({ onError: (text) => said.push(text) }), null);
-  assert.deepEqual(said, ["Can't start a review of s1aaaaaa: the folder is gone"]);
-  assert.deepEqual(refused.toasts, []);
-  assert.equal(await refused.actions.reviewSelected({ onError: () => false }), null);
-  assert.equal(refused.toasts.length, 1);
-  assert.equal(refused.toasts[0].options.sticky, true);
-  assert.equal(refused.actions.reviewing.size, 0);
-});
