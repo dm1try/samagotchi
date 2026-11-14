@@ -207,6 +207,25 @@ module Samagotchi
       )
     end
 
+    # A read of a memory's file: [scope, name], nil for any other file. The
+    # session's own project folder (MemoryPaths.key_for_root), since
+    # IndexSync.memory_scope knows only the folder chi is running in. Public:
+    # the working set uses it too, so a `read` or `edit` of a memory's file
+    # counts as that memory (docs/internals/working-set.md).
+    def memory_file(path, project_dir)
+      return nil if path.nil? || !path.end_with?(".md")
+
+      dir = expand(File.dirname(path))
+      stem = File.basename(path, ".md")
+      return nil if stem.empty? || stem.casecmp?(Tools::MEMORY_INDEX) || stem.start_with?(".")
+
+      if dir == expand(MemoryPaths.system_dir(env: @env))
+        ["system", base_memory("system", stem)]
+      elsif project_dir && dir == expand(project_dir)
+        ["project", base_memory("project", stem)]
+      end
+    end
+
     private
 
     def entries_by_scope
@@ -293,23 +312,6 @@ module Samagotchi
       return given if SCOPES.include?(given)
 
       project_dir && File.file?(File.join(project_dir, "#{name}.md")) ? "project" : "system"
-    end
-
-    # A read of a memory's file: [scope, name], nil for any other file. The
-    # session's own project folder (MemoryPaths.key_for_root), since
-    # IndexSync.memory_scope knows only the folder chi is running in.
-    def memory_file(path, project_dir)
-      return nil if path.nil? || !path.end_with?(".md")
-
-      dir = expand(File.dirname(path))
-      stem = File.basename(path, ".md")
-      return nil if stem.empty? || stem.casecmp?(Tools::MEMORY_INDEX) || stem.start_with?(".")
-
-      if dir == expand(MemoryPaths.system_dir(env: @env))
-        ["system", base_memory("system", stem)]
-      elsif project_dir && dir == expand(project_dir)
-        ["project", base_memory("project", stem)]
-      end
     end
 
     # The memory a file's stem names. A model overlay's file (<base>.<key>.md,

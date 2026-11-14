@@ -201,11 +201,27 @@ module Samagotchi
              else
                LLMContextStale.paired_runs(messages).to_h { |run| [run.ref.id, run.text] }
              end
-      stored.flat_map { |run| touches(run, sent.fetch(run.ref.id, run.text), cwd) }
+      # A read/edit/write of a file inside a memories dir is a touch of that
+      # memory, not of the file: MemoryUsage#memory_file, the mapping `chi
+      # memory usage` uses (an overlay's file counts as its base entry). Built
+      # once per projection, and only when a run's path is a .md.
+      usage = nil
+      project_dir = nil
+      memory_of = lambda do |path|
+        Degrade.call(:memory, "working_set_memory_lookup_failed", fallback: nil) do
+          # Loaded here, not at the top of the file: memory_usage requires
+          # working_set, so requiring it up front is a circular require.
+          require_relative "memory_command"
+          usage ||= MemoryUsage.new(sessions: [], entries: MemoryCommand.entries, root: cwd)
+          project_dir ||= MemoryPaths.project_dir(cwd: cwd)
+          usage.memory_file(path, project_dir)
+        end
+      end
+      stored.flat_map { |run| touches(run, sent.fetch(run.ref.id, run.text), cwd, memory_of) }
     end
 
     # The items +run+ touched (none when it failed or was interrupted).
-    def touches(run, sent, cwd)
+    def touches(run, sent, cwd, memory_of)
       name = run.call[:name].to_s
       return [] if failed?(run.text)
 
@@ -214,7 +230,12 @@ module Samagotchi
         path = FileRef.for(name, run.call, cwd: cwd)&.path
         return [] unless path
 
-        path ? [Touch.new(kind: FILE, key: path, op: FILE_OPS[name], **base)] : []
+        memory = path.end_with?(".md") ? memory_of.call(path) : nil
+        if memory
+          Touch.new(kind: MEMORY, key: memory[1], op: name == "read" ? "read" : "write", **base)
+        else
+          Touch.new(kind: FILE, key: path, op: FILE_OPS[name], **base)
+        end
       elsif name == MEMORY_READ
         names = found_names(run)
         names.map { |memory| Touch.new(kind: MEMORY, key: memory, op: "read", **base.merge(share: names.size)) }
