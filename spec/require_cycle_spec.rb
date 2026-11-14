@@ -52,6 +52,28 @@ RSpec.describe "loading session_manager and terminal_ui" do
     expect(status).to be_success, err
   end
 
+  describe "thin client load budgets" do
+    def loaded_by(*files)
+      requires = ['require "samagotchi/update_hint"', *files.map { |file| "require #{file.dump}" }]
+      script = (requires + ['puts $LOADED_FEATURES.grep(%r{/samagotchi/(kernel_loop|memory_bundle/shipped_update)\.rb\z})']).join("; ")
+      out, err, status = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script)
+
+      expect(status).to be_success, err
+      out.lines.map(&:chomp)
+    end
+
+    {
+      "the attached TUI" => %w[samagotchi/terminal_ui/attach_launcher samagotchi/terminal_ui/attached_loop],
+      "chi web" => %w[samagotchi/web/app]
+    }.each do |client, files|
+      it "does not load the turn loop or bundle updater for #{client}" do
+        heavy = loaded_by(*files)
+
+        expect(heavy).to be_empty, "loaded #{heavy.join(", ")}"
+      end
+    end
+  end
+
   # bin/chi requires what each branch uses, not the umbrella samagotchi.rb:
   # a command that runs no turn loads no engine and no Reline. The prelude
   # writes $LOADED_FEATURES as bin/chi exits.
