@@ -384,6 +384,8 @@ calls. **A new stage feature goes into its own `stage_<feature>.js`, wired in a 
 from `emptySlots`.** `npm run lint` holds it (`samagotchi/stage-size`: every `stage_*.js` at 500 lines;
 `samagotchi/stage-view-size`: `stage_view.js` ratcheted down with each move, never raised). The modules:
 - `stage_dom.js`: the nodes (the status row, the pager, the slots, the chip, the queued slot), plain, no behaviour.
+- `stage_quiet_clock.js`: the quiet signal's clocks (the last event, the stream down, the grace after the page shows
+  again; `tick`, `alive`), drawn by `stage_stall.js`, whose factory keeps its signature (the mixed-cache rule).
 
 ## The stage's height
 
