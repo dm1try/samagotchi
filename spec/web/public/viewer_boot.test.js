@@ -63,6 +63,12 @@ test("a participant: their show and the working set, their stream, the image but
   for (const [name, state] of Object.entries(controls)) if (name !== "attachBtn") assert.notEqual(state, "shown", `${name} is drawn`);
 });
 
+test("a participant with own_prompt_history: ↑ reads their own list for the session, never the owner's /api/history", () => {
+  const { requests } = boot({ kind: "participant", can: ["send", "own_prompt_history"] });
+  assert.deepEqual(requests, [`GET /api/sessions/${SID}`, `GET /api/sessions/${SID}/prompt_history`]);
+  assert.ok(!requests.includes("GET /api/history"));
+});
+
 // What each capability gates on this page (docs/internals/web-frontend.md,
 // The viewer): without it alone, those calls and controls go, and the rest
 // of today's page stays.

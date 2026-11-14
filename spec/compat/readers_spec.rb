@@ -16,6 +16,7 @@ require "samagotchi/objectives_check"
 require "samagotchi/objectives_track"
 require "samagotchi/participants"
 require "samagotchi/participant_uploads"
+require "samagotchi/participant_prompts"
 require "samagotchi/recap_store"
 require "samagotchi/reminder_carry"
 require "samagotchi/reminder_store"
@@ -44,6 +45,9 @@ RSpec.describe "the recorded compatibility corpus" do
   # The last release whose corpus has no participant_images.json
   # (ParticipantUploads): a later one must hold it.
   let(:participant_images_after) { Gem::Version.new("0.171.0") }
+  # The last release whose corpus has no participant_prompts.json
+  # (ParticipantPrompts): a later one must hold it.
+  let(:participant_prompts_after) { Gem::Version.new("0.172.1") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -199,7 +203,8 @@ RSpec.describe "the recorded compatibility corpus" do
       next if store.corpus_exception?
 
       path = File.join(root, store.corpus_dir, store.file)
-      after = store.file == Samagotchi::ParticipantUploads::FILE ? participant_images_after : session_stores_after
+      after = { Samagotchi::ParticipantUploads::FILE => participant_images_after,
+                Samagotchi::ParticipantPrompts::FILE => participant_prompts_after }.fetch(store.file, session_stores_after)
       next unless recorded?(path, version, after)
 
       case store.file
@@ -237,6 +242,10 @@ RSpec.describe "the recorded compatibility corpus" do
         expect(state.owned?(ReleaseTools::COMPAT_PARTICIPANT_IMAGE, ReleaseTools::COMPAT_GRANT_ID)).to be(true)
         expect([state.count(ReleaseTools::COMPAT_GRANT_ID), state.attempts_of(ReleaseTools::COMPAT_GRANT_ID)]).to eq([1, 2])
         expect(state.entries.map(&:at)).to eq(["2026-01-01T00:00:00Z"])
+      when "participant_prompts.json"
+        expect(Samagotchi::ParticipantPrompts.read(session_dir).broken).to be(false)
+        expect(Samagotchi::ParticipantPrompts.entries(session_dir, ReleaseTools::COMPAT_GRANT_ID))
+          .to eq([ReleaseTools::COMPAT_PARTICIPANT_PROMPT])
       when "delegates.json"
         cursor = Samagotchi::Tools::DelegateCursors.get("compat-session", "compat-child", state_dir: sessions_dir)
         expect(cursor).to have_attributes(reply_file: "output/compat-child.json", question_id: "compat-question")

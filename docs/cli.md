@@ -1781,7 +1781,8 @@ chi share revoke --all          # every link to every session
   While their own turn runs they can **Stop turn**, and a message goes in at its next step (Alt+Enter keeps it for
   after the turn); while yours or another participant's runs, it goes in as their own turn afterwards. When their
   turn waits for you (an approval, a question, your Continue) they see that it waits and for what kind of thing,
-  never its content. At their cap, in a stopped session, or once their link ended the composer gives way to one line
+  never its content. ↑ in their composer recalls their own earlier messages in that session (as the conversation
+  shows them; never yours or another participant's). At their cap, in a stopped session, or once their link ended the composer gives way to one line
   and the conversation stays readable. They get none of your controls: no new session, list, rename, model, images
   (yet), session menu, participants panel, cards or approvals, and no file panel (they ask chi to quote what they
   need). They never see tool output or arguments, thinking, approvals or questions, memories, context notes,

@@ -365,6 +365,26 @@ RSpec.describe "a participant red-teaming a session" do
       expect(Samagotchi::PromptHistory).not_to have_received(:append)
     end
 
+    it "can't read the owner's or another participant's prompt history" do
+      other = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Eve", state_dir: state_dir)
+      allow(Samagotchi::PromptHistory).to receive(:entries).and_return(["OWNER-GLOBAL"])
+      expect(turn({ prompt: "MALLORY-1" }).first).to eq(202)
+      expect(post("/api/sessions/#{session.id}/turn", { prompt: "EVE-1" }, token: other.token).first).to eq(202)
+
+      get = lambda do |path|
+        env = Rack::MockRequest.env_for(path)
+        env["HTTP_HOST"] = "#{lan_ip}:4567"
+        env["REMOTE_ADDR"] = "192.168.1.20"
+        env["HTTP_AUTHORIZATION"] = "Bearer #{issued.token}"
+        status, _headers, chunks = app.call(env)
+        [status, chunks.join]
+      end
+      expect(get.call("/api/history")).to eq([403, JSON.generate(error: "not_permitted", detail: Samagotchi::Participants::NOT_PERMITTED)])
+      status, raw = get.call("/api/sessions/#{session.id}/prompt_history?grant=#{other.grant.id}")
+      expect([status, JSON.parse(raw)]).to eq([200, { "entries" => ["MALLORY-1"] }])
+      expect(Samagotchi::PromptHistory).not_to have_received(:append)
+    end
+
     it "can't read a secret, thinking or a host path through /wait, in its reply or its turn's crash" do
       enqueued_id = turn({ prompt: "is step 3 safe?" }).last["enqueued_id"]
       reply = "<think>THINKING-SECRET</think>See #{project}/docs/plan.md and #{Dir.home}/x: key sk-ant-abcdefghijklmnopqrstuvwx"

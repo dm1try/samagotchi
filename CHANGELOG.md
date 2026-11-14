@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: a participant's ↑ in the composer recalls their own earlier messages in that session (never the owner's or
+  another participant's). Messages they sent before this update aren't recalled, and a new invite starts empty.
+
 ### Fixed
 
 - Web: after a reload, a second question or approval from the same step of a finished turn no longer repeats the step's
