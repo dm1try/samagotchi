@@ -276,7 +276,9 @@ test("no Apply row under a participant's turn; the badge says the mode", () => {
   ];
   const review = historyHtml(turn("rev-1", "review"));
   assert.doesNotMatch(review, /data-apply-turn|review-apply/);
-  assert.match(review, />Sam · review</);
+  assert.match(review, />Sam · read-only</);
+  // A saved turn with no stamp is an older chi's read-only one (as Steer reads it).
+  assert.match(historyHtml(turn("old-1", null)), />Sam · read-only</);
   const pair = historyHtml(turn("pair-1", "pair"));
   assert.doesNotMatch(pair, /review-apply/);
   assert.match(pair, />Sam · pair</);

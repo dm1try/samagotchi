@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     it "gives each participant's spend and turns from the saved analytics; the invite gives the link's QR once" do
       status, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
       expect(status).to eq(201)
-      expect(invited["qr_svg"]).to start_with("<svg").and include("QR code of the review link")
+      expect(invited["qr_svg"]).to start_with("<svg").and include("QR code of the invite link")
       id = invited["participant"]["id"]
       dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
       File.write(Samagotchi::AnalyticsFile.path(dir), JSON.generate({ "turn_records" => [

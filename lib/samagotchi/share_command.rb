@@ -12,9 +12,9 @@ require_relative "grants"
 require_relative "web/qr"
 
 module Samagotchi
-  # `chi share`: invite a participant to review a session (the
-  # shared-sessions plan: a Grants grant, one session, one person or
-  # agent, 7 days unless --expires says otherwise), list the participants,
+  # `chi share`: invite a participant into a session (a Grants grant, one
+  # session, one participant, 7 days unless --expires says otherwise; their
+  # turns act under the owner's rules), list the participants,
   # revoke them. Local or through chi --remote NAME (SessionAccess). The
   # token is printed once, in the link; chi keeps only its digest. See
   # docs/internals/participants.md.
@@ -26,7 +26,7 @@ module Samagotchi
              chi share ls [ID] [--format text|json]
              chi share cap ID PARTICIPANT DOLLARS
              chi share revoke ID [PARTICIPANT] | --all
-        ID --name NAME   invite NAME to review session ID: prints the link they open (chi web on
+        ID --name NAME   invite NAME into session ID: prints the link they open (chi web on
                          the LAN, web.host: lan) and its QR code at a terminal. The link is shown
                          once; chi keeps only a digest of its token.
           --identity EMAIL  bind the link to that account: it opens only through chi web's auth proxy

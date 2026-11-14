@@ -584,7 +584,7 @@ module Samagotchi
         <!doctype html>
         <html lang="en"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>chi: review link ended</title>
+        <title>chi: link ended</title>
         <style>#{PAGE_STYLE}</style></head>
         <body>
         <h1>chi</h1>
@@ -606,7 +606,7 @@ module Samagotchi
         </script>
         </body></html>
       HTML
-      BOUND_PAGE = ENDED_PAGE.sub("<title>chi: review link ended</title>", "<title>chi: review link for another account</title>")
+      BOUND_PAGE = ENDED_PAGE.sub("<title>chi: link ended</title>", "<title>chi: link for another account</title>")
     end
   end
 end

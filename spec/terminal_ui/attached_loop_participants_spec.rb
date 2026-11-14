@@ -34,9 +34,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
          { type: :turn_started, prompt: "unseen", turn_id: "t1",
            origin: { client_id: "review:p_bbbb2222", enqueued_id: "e3", author: "p:p_bbbb2222" } })
 
-    expect(screen.lines).to include("Alex ▸ review> is step 3 right? (queued: runs after this turn)",
+    expect(screen.lines).to include("Alex ▸ invited> is step 3 right? (queued: runs after this turn)",
                                     "web> mine (queued: runs after this turn)",
-                                    "p_bbbb2222 ▸ review> unseen")
+                                    "p_bbbb2222 ▸ invited> unseen")
   end
 
   it "names the participant in the join's last exchange, its queued rows and its running turn" do
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
                   current_turn: { prompt: "now", origin: { client_id: "review:p_aaaa1111", author: "p:p_aaaa1111" },
                                   events: [] }))
 
-    expect(screen.lines).to include("Alex ▸ review> older", "Alex ▸ review> now", "queued Alex ▸ review> next")
+    expect(screen.lines).to include("Alex ▸ invited> older", "Alex ▸ invited> now", "queued Alex ▸ invited> next")
   end
 
   it "says who joined and who left, and why, and counts them on the status row" do
@@ -65,13 +65,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "participants" do
     expect(screen.slots[:status]).to be_nil
     # One who left is still named on a line of theirs.
     feed({ type: :turn_enqueued, enqueued_id: "e1", client_id: "review:p_cccc3333", prompt: "late", author: "p:p_cccc3333" })
-    expect(screen.lines.last).to eq("Bot ▸ review> late")
+    expect(screen.lines.last).to eq("Bot ▸ invited> late")
   end
 
   it "cleans a name before it reaches the terminal" do
     feed(snapshot(participants: [{ id: "p_aaaa1111", name: "Al\e[31mex\n[x]" }]),
          { type: :turn_enqueued, enqueued_id: "e1", client_id: "review:p_aaaa1111", prompt: "hi", author: "p:p_aaaa1111" })
-    expect(screen.lines.last).to eq("Al 31mex x ▸ review> hi")
+    expect(screen.lines.last).to eq("Al 31mex x ▸ invited> hi")
   end
 end
 

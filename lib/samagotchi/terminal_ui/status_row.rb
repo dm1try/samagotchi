@@ -25,7 +25,7 @@ module Samagotchi
       #   parent_id             the session that delegated this one
       #   children              its delegates' ChildrenStatus::Counts, or
       #                         nil (the segment shows running and waiting)
-      #   participants          how many are in the review now (shown from 1)
+      #   participants          how many are in the session now (shown from 1)
       #   context               the kernel's estimate {est_pct:, bucket:}
       #   used_memories         the memories the session read
       #   preloaded             its --memory list (shown until a turn
@@ -164,7 +164,7 @@ module Samagotchi
         max > 1 ? "#{title[0, max - 1]}…" : ""
       end
 
-      # "2 participants": who is in the review; "" for nobody.
+      # "2 participants": who is in the session; "" for nobody.
       def participants_text(count)
         count.to_i.positive? ? "#{count} participant#{"s" unless count == 1}" : ""
       end

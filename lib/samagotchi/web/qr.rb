@@ -42,7 +42,7 @@ module Samagotchi
           row.each_index.select { |x| row[x] }.map { |x| "M#{x} #{y}h1v1h-1z" }
         end
         %(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 #{size} #{size}" shape-rendering="crispEdges" role="img" ) +
-          %(aria-label="QR code of the review link"><rect width="#{size}" height="#{size}" fill="#fff"/>) +
+          %(aria-label="QR code of the invite link"><rect width="#{size}" height="#{size}" fill="#fff"/>) +
           %(<path d="#{dark.join}" fill="#000"/></svg>)
       end
 

@@ -3,6 +3,7 @@
 require "time"
 require_relative "last_turn"
 require_relative "log"
+require_relative "participant_messages"
 require_relative "steer"
 require_relative "turn_origin"
 
@@ -222,8 +223,8 @@ module Samagotchi
 
     REFUSED_NOTICE = "Not continued: participant %<who>s's turn %<reason>s."
     REFUSED_WHY = { "revoked" => "is refused (their link was revoked or expired)",
-                    "outdated" => "is refused (their link is from an older chi: invite them again)",
-                    "cap_reached" => "is refused (they reached their review cap)" }.freeze
+                    "outdated" => "is refused (#{ParticipantMessages::TOKEN_OUTDATED})",
+                    "cap_reached" => "is refused (they reached their cap)" }.freeze
 
     # The enqueued_id of the turn the offer stands for: the exhausted
     # turn's last_turn (a canceled continue turn's carries the same id);

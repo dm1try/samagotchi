@@ -648,7 +648,7 @@ module Samagotchi
 
       turn = @delivered.enqueued_id.to_s
       if turn.empty?
-        error_line("chi send: #{target.label}: the review turn's id didn't come back; chi --remote … send --wait --turn T waits once you have it")
+        error_line("chi send: #{target.label}: the turn's id didn't come back; chi --remote … send --wait --turn T waits once you have it")
         return 1
       end
       start = @access.prepare_wait(id, turn: turn)
@@ -888,10 +888,10 @@ module Samagotchi
     # web's), its id the one their wait takes.
     def participant_note(id, result)
       turn = result.enqueued_id.to_s
-      return " (queued as a review turn)" if turn.empty?
-      return " (queued as review turn #{turn})" if @waiting
+      return " (queued as their own turn)" if turn.empty?
+      return " (queued as turn #{turn})" if @waiting
 
-      " (queued as review turn #{turn}; #{@access.invocation.command("send --wait --turn #{turn} #{id}")} waits for its reply)"
+      " (queued as turn #{turn}; #{@access.invocation.command("send --wait --turn #{turn} #{id}")} waits for its reply)"
     end
 
     # A --queue, worded from the Bridge's ack: queue when a turn ran as it

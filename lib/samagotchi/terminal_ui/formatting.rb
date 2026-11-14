@@ -222,7 +222,7 @@ module Samagotchi
       CLIENT_LABELS = { ClientId::WEB_PREFIX => "web", ClientId::TUI_PREFIX => "tui", ClientId::SYSTEM_PREFIX => "reminder",
                         ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report",
                         ClientId::CLI_SEND => "chi send", ClientId::CLI_ANSWER => "chi answer",
-                        ClientId::PLUGIN => "plugin", ClientId::REVIEW_PREFIX => "review" }.freeze
+                        ClientId::PLUGIN => "plugin", ClientId::REVIEW_PREFIX => "invited" }.freeze
       # A client id chi doesn't know: not the user (ClientId.human?).
       AUTOMATIC_LABEL = "automatic"
 
@@ -252,7 +252,7 @@ module Samagotchi
 
       # "web> <prompt>": a prompt, labelled by who sent it; nil: the label
       # alone. A participant's (+author+ "p:<id>") is led by their name in
-      # their colour: "Alex ▸ review> <prompt>" (#participant_prefix).
+      # their colour: "Alex ▸ invited> <prompt>" (#participant_prefix).
       def prompt_line(client_id, prompt, author: nil, author_name: nil)
         prefix = participant_prefix(author, author_name)
         "#{prefix}#{paint("#{client_label(client_id)}>", 35)}#{" #{prompt}" unless prompt.nil?}"
@@ -649,7 +649,7 @@ module Samagotchi
 
       public
 
-      # What each participant's review turns and the side requests they
+      # What each participant's turns and the side requests they
       # caused cost the owner: "Alex $0.42 (3 turns), Kim $0.10 (1 turn)";
       # nil when none spent any.
       def participants_spend_text(rows)

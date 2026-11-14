@@ -284,10 +284,10 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       token
       Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state_dir)
       status, body = json("/api/info")
-      expect([status, body["error"], body["detail"]]).to eq([401, "token_revoked", "this review link was revoked by the session's owner"])
+      expect([status, body["error"], body["detail"]]).to eq([401, "token_revoked", "this link was revoked by the session's owner"])
       status, _h, page = call("/")
       expect(status).to eq(401)
-      expect(page).to include("This review link was revoked by the session's owner.")
+      expect(page).to include("This link was revoked by the session's owner.")
     end
 
     it "answers 401 token_expired after its expiry (an injected clock), and audits it once" do
@@ -296,10 +296,10 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       2.times do
         status, body = json("/api/sessions/#{session.id}")
         expect([status, body["error"], body["detail"]])
-          .to eq([401, "token_expired", "this review link expired: ask the session's owner for a new one"])
+          .to eq([401, "token_expired", "this link expired: ask the session's owner for a new one"])
       end
       expect(audit.count { |line| line["event"] == "expired" }).to eq(1)
-      expect(call("/")[2]).to include("This review link expired: ask the session's owner for a new one.")
+      expect(call("/")[2]).to include("This link expired: ask the session's owner for a new one.")
     end
 
     it "answers 401 token_outdated for an older chi's read-only link, on the API and as the ended page; nothing written" do

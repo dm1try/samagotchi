@@ -367,7 +367,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       token = issued.token
       Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state)
       expect { as_participant(token).show(session.id) }
-        .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this review link was revoked by the session's owner")
+        .to raise_error(Samagotchi::SessionAccess::TokenRevoked, "#{label}: this link was revoked by the session's owner")
     end
 
     # The participant routes chi send --wait reaches (resolve, wait/prepare
@@ -394,15 +394,15 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                             "detail" => "waiting for the session's owner: #{wait_again}")
     end
 
-    it "sends a review turn with chi send -m and names its id and the wait for it" do
+    it "sends a participant's turn with chi send -m and names its id and the wait for it" do
       access = as_participant
       code = Samagotchi::SendCommand.new(["-m", "is step 3 right?", session.id[0, 8]], stdout: out, stderr: err,
                                                                                       state_dir: state, access: access).run
 
       expect(code).to eq(0), err.string
-      turn = out.string[/review turn (\S+);/, 1]
+      turn = out.string[/queued as turn (\S+);/, 1]
       expect(turn).not_to be_nil
-      expect(out.string).to eq("#{session.id[0, 8]}  sent (queued as review turn #{turn}; " \
+      expect(out.string).to eq("#{session.id[0, 8]}  sent (queued as turn #{turn}; " \
                                "chi --remote studio send --wait --turn #{turn} #{session.id} waits for its reply)\n")
     end
 
@@ -418,7 +418,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                                                                           state_dir: state, access: access).run
 
       expect([code, out.string]).to eq([0, "yes\n"]), err.string
-      turn = err.string[/queued as review turn (\S+)\)/, 1]
+      turn = err.string[/queued as turn (\S+)\)/, 1]
       expect(turn).not_to be_nil
       expect(app.send(:session_access)).to have_received(:wait_reply).with(session.id, hash_including(turn: turn, queued: false))
     end

@@ -164,16 +164,16 @@ test("participants: a badge drawn before the names came is named when they come"
   root.append(elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") })),
               elementOf(userBubbleTemplate({ content: "r" }, { author: authorBadge("p:p_0001abcd", "Alex B") })));
   const [early, own] = root.querySelectorAll(".author-badge");
-  assert.equal(early.textContent, `${UNNAMED} · review`);
+  assert.equal(early.textContent, `${UNNAMED} · pair`);
   assert.equal(early.dataset.unnamed, "1");
   assert.equal(own.dataset.unnamed, undefined);
   assert.equal(nameUnnamedBadges(root), 0, "no names yet: left as it is");
   setParticipantNames([grant()]);
   assert.equal(nameUnnamedBadges(root), 1);
-  assert.equal(early.textContent, "Alex · review");
-  assert.match(early.title, /^A review comment from Alex, /);
+  assert.equal(early.textContent, "Alex · pair");
+  assert.match(early.title, /^A turn from Alex, a participant: /);
   assert.equal(early.dataset.unnamed, undefined);
-  assert.equal(own.textContent, "Alex B · review");
+  assert.equal(own.textContent, "Alex B · pair");
   setParticipantNames([]);
 });
 
@@ -205,23 +205,28 @@ test("participants: a participant's queued or started prompt carries their badge
   const bubble = markupOf(userBubbleTemplate({ content: "q" }, { author: started.author, label: "review" }));
   assert.match(bubble, /class="bubble user by-participant"/);
   assert.match(bubble, /style="--author-color:var\(--author-[1-6]\)"/);
-  assert.match(bubble, /<span class="origin-label author-badge"[^>]*>Alex B · review<\/span>/);
+  assert.match(bubble, /<span class="origin-label author-badge"[^>]*>Alex B · pair<\/span>/);
   setParticipantNames([]);
 });
 
-test("participants: a badge drawn while its turn was queued takes the pair mode at turn_started", async () => {
+test("participants: a badge drawn while its turn was queued reads pair; an older chi's review stamp reads read-only", async () => {
   const { userBubbleTemplate, elementOf } = await import("../../../lib/samagotchi/web/public/turn_html.js");
   const { setBadgeMode } = await import("../../../lib/samagotchi/web/public/participant_names.js");
   setParticipantNames([grant()]);
   const bubble = elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") }));
   const badge = bubble.querySelector(".author-badge");
-  assert.equal(badge.textContent, "Alex · review", "a queued prompt's mode isn't known yet: the review words");
+  assert.equal(badge.textContent, "Alex · pair", "a queued prompt's mode isn't known yet: a participant's turn acts");
   setBadgeMode(bubble, "pair");
   assert.equal(badge.textContent, "Alex · pair");
   assert.match(badge.title, /^A turn from Alex, a participant: it acted with this session's tools/);
   assert.equal(bubble.dataset.participantMode, "pair");
   setBadgeMode(bubble, "review");
-  assert.equal(badge.textContent, "Alex · review");
+  assert.equal(badge.textContent, "Alex · read-only");
+  assert.match(badge.title, /under an older chi: it could only read/);
+  // Unnamed in the list now: the name is read back from the badge, its " · read-only" stripped.
+  setParticipantNames([]);
+  setBadgeMode(bubble, "pair");
+  assert.equal(badge.textContent, "Alex · pair");
   setParticipantNames([]);
 });
 
@@ -322,7 +327,7 @@ test("participants panel: a late invite's Copy link that fails shows the link it
   c.pending[0].resolve({ participant: { name: "Kim" }, link: "http://x/?token=chp_late", lan: true });
   await tick();
   await toasts[0].action.run();
-  assert.deepEqual(toasts.slice(1).map((t) => [t.text, t.options.sticky]), [["Kim's review link: http://x/?token=chp_late", true]]);
+  assert.deepEqual(toasts.slice(1).map((t) => [t.text, t.options.sticky]), [["Kim's link: http://x/?token=chp_late", true]]);
   c.done();
 });
 
