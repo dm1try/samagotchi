@@ -5,6 +5,7 @@ require_relative "../config"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../process_group"
+require_relative "leftovers"
 require_relative "output_guardrails"
 require_relative "shell"
 require_relative "task_runtime"
@@ -43,13 +44,12 @@ module Samagotchi
       # mode a command at the limit is handed over (HANDED_OVER).
       TIMEOUT_HINT = "(killed at the limit; for a long command use task_create, then task_wait)"
       # How long the output may stay open once the shell has exited: a
-      # `server &` child keeps the pipes, and the read would never end.
-      BACKGROUND_GRACE_SEC = 1.5
-      BACKGROUND_HINT = "(a background process kept the output open and was stopped; " \
-                        "to keep a server or long job running, start it with task_create)"
+      # `server &` child keeps the logs (Leftovers).
+      BACKGROUND_GRACE_SEC = Leftovers::GRACE_SEC
+      BACKGROUND_ADVICE = "to keep a server or long job running, start it with task_create"
+      BACKGROUND_HINT = Leftovers.hint(:stopped, held: "the output", advice: BACKGROUND_ADVICE)
       # It had left the process group (setsid), so it is still running.
-      BACKGROUND_DETACHED_HINT = "(a background process kept the output open and was left running; " \
-                                 "to keep a server or long job running, start it with task_create)"
+      BACKGROUND_DETACHED_HINT = Leftovers.hint(:detached, held: "the output", advice: BACKGROUND_ADVICE)
       # What a command still running at the limit gets (execute.on_timeout):
       # :task hands it over as a task (HANDED_OVER), :kill stops it.
       ON_TIMEOUT = %i[task kill].freeze
@@ -321,51 +321,18 @@ module Samagotchi
       # (`cmd &`) gets BACKGROUND_GRACE_SEC, then its group is stopped
       # (BACKGROUND_HINT), unless it left the group (setsid) and holds them
       # still (BACKGROUND_DETACHED_HINT, left running). One that holds none
-      # (`nohup cmd >f 2>&1 &`) is left alone, with no note.
+      # (`nohup cmd >f 2>&1 &`) is left alone, with no note (Leftovers.check).
       # @return [Array(Symbol, Symbol|false)] the outcome (:done, :grace,
       #   :timeout, :cancelled) and the hint (:stopped, :detached or false)
       def self.background_check(pgid, logs, deadline:, cancelled:)
-        return [:done, false] unless held?(logs)
-
-        outcome = await_release(logs, until_time: monotonic_time + BACKGROUND_GRACE_SEC, deadline: deadline, cancelled: cancelled)
-        return [outcome, false] if outcome == :done
-
-        # Only the group: the leader's pid is reaped, so it may name another process.
-        ProcessGroup.stop(pgid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, stopped: -> { !held?(logs) })
-        return [outcome, false] unless outcome == :grace
-
-        [outcome, held?(logs) ? :detached : :stopped]
+        outcome = Leftovers.check(pgid, logs, grace: BACKGROUND_GRACE_SEC, stop_grace: STOP_GRACE_SEC,
+                                              poll: STOP_POLL_INTERVAL_SEC, deadline: deadline, cancelled: cancelled)
+        [outcome.wait, outcome.leftovers || false]
       end
       private_class_method :background_check
 
-      # Whether some process still has one of +paths+ open from the spawn:
-      # a flock belongs to the open file description, so an exclusive try
-      # fails while any inherited copy is open (~0.2 ms; no lsof, no /proc).
-      def self.held?(paths)
-        paths.any? do |path|
-          File.open(path, "r") do |file|
-            got = file.flock(File::LOCK_EX | File::LOCK_NB)
-            file.flock(File::LOCK_UN) if got
-            !got
-          end
-        rescue Errno::ENOENT
-          false
-        end
-      end
-
-      # Polls the logs until no one holds them (+until_time+), the overall
-      # +deadline+ or a Stop. Returns :done, :grace, :timeout or :cancelled.
-      def self.await_release(paths, until_time:, deadline:, cancelled:)
-        loop do
-          return :done unless held?(paths)
-          return :cancelled if cancelled.call
-          return :timeout if deadline && monotonic_time > deadline
-          return :grace if monotonic_time > until_time
-
-          sleep(STOP_POLL_INTERVAL_SEC)
-        end
-      end
-      private_class_method :await_release
+      # Whether some process still has one of +paths+ open from the spawn (Leftovers.held?).
+      def self.held?(paths) = Leftovers.held?(paths)
 
       # The whole log when it is under execute.truncate_at_bytes, else its
       # head and tail only, read by seek (never the whole 100 MB).
