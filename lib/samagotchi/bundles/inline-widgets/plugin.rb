@@ -76,5 +76,5 @@ class Plugin
 
   # Whether the session's answers reach a web page that draws them. Decided by
   # the session's kind, so the same at every build.
-  def drawn?(ctx) = ctx.frontend != :one_shot && !ctx.delegate? && !ctx.review?
+  def drawn?(ctx) = ctx.frontend != :one_shot && !ctx.delegate?
 end

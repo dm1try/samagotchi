@@ -158,18 +158,6 @@ RSpec.describe "The github-pr bundle", :bundle do
       end
     end
 
-    context "in a review session" do
-      let(:session) do
-        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
-                           .tap { |s| s.review = { "subjects" => ["a.md"] } }.tap { |s| s.save(state_dir: state_dir) }
-      end
-
-      it "proposes nothing" do
-        expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a review session")
-        expect(ctx.context.candidates).to eq([])
-      end
-    end
-
     describe "looking again at a turn's start" do
       it "looks again on a thread of its own once the last look is over 5 minutes old, never on the turn's" do
         expect(bundle.run_inits).to eq(["proposed pr-42"])

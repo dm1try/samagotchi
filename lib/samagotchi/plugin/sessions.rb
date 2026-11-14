@@ -10,7 +10,6 @@ require_relative "../degrade"
 require_relative "../tools/delegate"
 require_relative "../children_status"
 require_relative "../context_move"
-require_relative "../review_start"
 require_relative "../model_profile"
 
 module Samagotchi
@@ -32,7 +31,7 @@ module Samagotchi
 
       # What starting a session can be refused by, answered as Error with
       # chi's own message: a model that is gone, a toolkit the config refuses,
-      # a bad argument. #review adds its own: a subject it won't take.
+      # a bad argument.
       REFUSED = [ModelProfile::MissingModel, Toolkit::Refused, ArgumentError].freeze
 
       # @param host [Host] session_id, cwd, model_name and state_dir
@@ -85,29 +84,6 @@ module Samagotchi
         )
         child.id
       rescue *REFUSED => e
-        raise Error, e.message
-      end
-
-      # A review of this session (ReviewStart.fork, chi review --from): a new
-      # session in its folder, on its model and setup, seeded with its recap
-      # (never its transcript) and +seed+ (more context: the coordinator's
-      # handoff, say), idle, to share with participants (chi share). This
-      # session keeps running, unarchived. Not a child: it has no parent.
-      # The recap is the one saved (the worker is asked for a fresh one, not
-      # waited on unless +recap_wait+ seconds are given: this runs in this
-      # session's own worker).
-      # @param subjects [Array<String>] files under review, relative to its
-      #   folder (ReviewStart.check_subjects)
-      # @return [String] the review session's id
-      # @raise [Error] no session yet, a scratch session, a subject refused
-      #   (its one message), or it could not start
-      def review(subjects: [], seed: nil, recap_wait: 0)
-        source = @host.session_id.call or raise Error, "this session has no id yet"
-        raise Error, "a scratch session starts no other sessions: they would outlive it" if @host.scratch&.call
-
-        ReviewStart.fork(from: source, subjects: Array(subjects), seed: seed, state_dir: state_dir,
-                         recap_wait: recap_wait).id
-      rescue *REFUSED, ReviewStart::Refused => e
         raise Error, e.message
       end
 
