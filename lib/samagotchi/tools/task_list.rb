@@ -26,8 +26,9 @@ module Samagotchi
           "pid: #{record.pid}",
           "created_at: #{record.created_at}",
           "command: #{preview(record.command)}",
-          "output_path: #{record.output_path}"
-        ].join("\n")
+          "output_path: #{record.output_path}",
+          TaskRuntime.leftovers_note(record)
+        ].compact.join("\n")
       end
       private_class_method :format_entry
 

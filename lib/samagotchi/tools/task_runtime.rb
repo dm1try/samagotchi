@@ -10,6 +10,7 @@ require_relative "../bundler_env"
 require_relative "../child_env"
 require_relative "../log"
 require_relative "../process_group"
+require_relative "leftovers"
 require_relative "shell"
 require_relative "task_record"
 
@@ -38,6 +39,29 @@ module Samagotchi
       # not a number, or a pid another process reuses): nothing is signalled.
       NOT_CHIS_PROCESS = "the task's process is gone or isn't the one chi started"
       USER_STOP_NOTE = "note: the user stopped this task; don't restart it unless they ask."
+      # What a shell leaves holding the task's log when it exits (`cmd &`
+      # with no `wait`): the waiter of the chi that started it gives it
+      # LEFTOVER_GRACE_SEC, then stops the group (TERM,
+      # LEFTOVER_STOP_GRACE_SEC, KILL), as execute does (Leftovers). A
+      # refresh that finds one no waiter here watches (that chi is gone)
+      # stops it at once, with a shorter TERM grace and KILL wait: it blocks
+      # that read. HELD_RECHECK_SEC: the refresh looks twice before it
+      # signals, since two held? probes at once read each other as holders.
+      LEFTOVER_GRACE_SEC = Leftovers::GRACE_SEC
+      LEFTOVER_STOP_GRACE_SEC = 1.0
+      REFRESH_STOP_GRACE_SEC = 0.5
+      REFRESH_KILL_WAIT_SEC = 0.5
+      HELD_RECHECK_SEC = 0.05
+      # Set on a waiter thread (record_exit_status) while it settles the
+      # task's leftovers: a refresh in this process then only reads.
+      SETTLING = :samagotchi_task_settling
+
+      # This process's live waiters by task id (record_exit_status), and the
+      # lock a waiter's last write and task_stop's flag take, so neither
+      # writes over the other in this process.
+      @waiters = {}
+      @waiters_lock = Mutex.new
+      @settle_lock = Mutex.new
 
       module_function
 
@@ -66,6 +90,10 @@ module Samagotchi
         # The child writes to it; the ensure below closes the parent's copy.
         output_io = File.open(output_path, "a") # rubocop:disable Style/FileOpen
         output_io.sync = true
+        # Shared across the spawn, as Execute.spawn_logged holds its logs:
+        # the shell and every process it starts inherit it, so a holder left
+        # when the shell exits shows (Leftovers.held?).
+        output_io.flock(File::LOCK_SH)
 
         wrapped_command = wrapped_shell_command(normalized_command, exit_code_path)
         # Non-login, the shell Execute uses too (Shell).
@@ -100,6 +128,11 @@ module Samagotchi
       # status. Only while this chi runs. A record a refresh finished in
       # between (failed, no exit code) is corrected; a stopped task (its
       # stop flag on disk) is left as task_stop records it.
+      # Then the task's leftovers (leftovers_after_exit): a process the
+      # shell left holding the log gets the grace and is stopped, and the
+      # record is finished in one write with its +leftovers+. While this
+      # thread lives, it is the task's one settler in this process
+      # (waiter_for): a refresh here leaves a held record running.
       # The thread is named EXIT_STATUS_THREAD (a spec joins them with
       # #quiesce! before it removes the tasks' folder) here, before it
       # returns: named from inside, a thread not yet scheduled was missed by
@@ -109,18 +142,94 @@ module Samagotchi
         # Absolute now: safe against a later chdir.
         record_path = File.expand_path(metadata_path(task_id))
         path = File.expand_path(path)
+        started = record_at(record_path)
+        logs = log_paths(started).map { |log| File.expand_path(log) }
         thread = Thread.new do
           Thread.current.report_on_exception = false
           code = status_code(waiter.value)
           next if code.nil? || record_at(record_path)&.stop_requested_by
 
           File.write(path, code.to_s) if !File.exist?(path) && Dir.exist?(File.dirname(path))
-          correct_finished_record(record_path, read_exit_code(path))
+          found = leftovers_after_exit(record_path, logs, started&.pid)
+          settle(record_path, read_exit_code(path) || code, found)
         rescue StandardError => e
           Log.debug(:turn, "task_exit_code_failed", id: task_id, error: e.class.name, msg: e.message)
+        ensure
+          forget_waiter(task_id, Thread.current)
         end
         thread.name = EXIT_STATUS_THREAD
+        remember_waiter(task_id, thread, started&.pid)
         thread
+      end
+
+      # This process's waiter of +task_id+ while it lives, else nil (none
+      # started here, done, killed, or a fork's copy of the table). With
+      # +pid+, only a waiter of that pid (a record whose pid changed since
+      # isn't the process it waits on).
+      # @return [Thread, nil]
+      def waiter_for(task_id, pid: nil)
+        @waiters_lock.synchronize do
+          thread, waited = @waiters[task_id]
+          next (pid.nil? || pid == waited ? thread : nil) if thread&.alive?
+
+          @waiters.delete(task_id)
+          nil
+        end
+      end
+
+      def remember_waiter(task_id, thread, pid)
+        @waiters_lock.synchronize { @waiters[task_id] = [thread, pid] if thread.alive? }
+      end
+
+      def forget_waiter(task_id, thread)
+        @waiters_lock.synchronize { @waiters.delete(task_id) if @waiters[task_id]&.first == thread }
+      end
+
+      # The waiter's look once the shell is reaped: a process still holding
+      # +logs+ gets LEFTOVER_GRACE_SEC, then its group is stopped
+      # (Leftovers.check), unless a task_stop flags the record first.
+      # @return [Symbol, nil] :stopped, :detached, or nil (nothing held)
+      # +pgid+ is the pid this waiter waited on (read as it started), never
+      # the record's pid read now: an edited task.json can't steer a signal.
+      def leftovers_after_exit(record_path, logs, pgid)
+        return nil if logs.empty? || !ProcessGroup.signalable?(pgid)
+
+        Thread.current[SETTLING] = true
+        outcome = Leftovers.check(pgid, logs, grace: LEFTOVER_GRACE_SEC, stop_grace: LEFTOVER_STOP_GRACE_SEC,
+                                              poll: Leftovers::POLL_SEC, deadline: nil,
+                                              cancelled: -> { record_at(record_path)&.stop_requested_by })
+        Thread.current[SETTLING] = false unless outcome.leftovers
+        outcome.leftovers
+      end
+
+      # The waiter's one write: a record still running (held through the
+      # grace) is finished with the shell's code and +found+; one a refresh
+      # finished meanwhile is corrected. A stop's flag wins.
+      def settle(record_path, code, found)
+        @settle_lock.synchronize do
+          record = record_at(record_path)
+          next if record.nil? || record.stop_requested_by
+          next correct_finished_record(record_path, code, leftovers: found) unless record.running?
+          next unless found && code
+
+          AtomicFile.write(record_path, record_json(finished_with(record, code).with(leftovers: found.to_s,
+                                                                                     finished_at: timestamp)))
+        end
+      end
+
+      # The task's logs as its record names them: output_path, and a
+      # handed-over execute's stderr_path.
+      def log_paths(record)
+        return [] unless record
+
+        [record.output_path, record.stderr_path].filter_map { |log| log.to_s unless log.to_s.empty? }
+      end
+
+      # The one line task_get, task_wait (and the finish note) and task_list
+      # add for a record with +leftovers+; nil without.
+      def leftovers_note(record)
+        kind = record.leftovers.to_s.to_sym
+        Leftovers::TASK_ADVICE.key?(kind) ? Leftovers.task_hint(kind) : nil
       end
 
       # A Process::Status as a shell reports one: its exit status, or
@@ -151,14 +260,20 @@ module Samagotchi
       MISSING_CODE_REASONS = ["process_ended_without_exit_code", NOT_CHIS_PROCESS].freeze
 
       # A record a refresh finished before the exit code was there (failed,
-      # exit_code nil, no stop) gets +code+; finished_at is kept.
-      def correct_finished_record(record_path, code)
+      # exit_code nil, no stop) gets +code+; finished_at is kept. With
+      # +leftovers+, a finished record without the key gets it too.
+      def correct_finished_record(record_path, code, leftovers: nil)
         record = record_at(record_path)
-        return unless code && record && !record.running? && record.exit_code.nil? && !record.stop_requested_by
-        return unless MISSING_CODE_REASONS.include?(record.stop_reason)
+        return unless record && !record.running? && !record.stop_requested_by
 
-        status = code.zero? ? "completed" : "failed"
-        AtomicFile.write(record_path, record_json(record.with(status: status, exit_code: code, stop_reason: nil)))
+        updates = {}
+        if code && record.exit_code.nil? && MISSING_CODE_REASONS.include?(record.stop_reason)
+          updates.merge!(status: code.zero? ? "completed" : "failed", exit_code: code, stop_reason: nil)
+        end
+        updates[:leftovers] = leftovers.to_s if leftovers && record.leftovers.nil?
+        return if updates.empty?
+
+        AtomicFile.write(record_path, record_json(record.with(**updates)))
       end
 
       def record_at(path)
@@ -327,14 +442,26 @@ module Samagotchi
         refreshed = refresh_record(record)
         return [refreshed, nil] unless refreshed.running?
 
-        # Checked again just before the signal: never a group chi didn't start.
-        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed, started: refreshed.pid_started)
+        # Checked again just before the signal: never a group chi didn't
+        # start. A shell already gone whose leftovers still hold the log
+        # (a waiter's grace) is stopped by its group.
+        leftover = !chis_group?(refreshed, started: refreshed.pid_started)
+        return [mark_not_chis(refreshed), nil] if leftover && !leftover_group?(refreshed)
 
-        flagged = refreshed.with(stop_requested_by: by.to_s)
-        write_record(flagged)
+        flagged = @settle_lock.synchronize do
+          current = current_record(refreshed)
+          next current unless current.running?
 
-        # A group that isn't ours (EPERM) is an error, not a stop.
-        ProcessGroup.stop(flagged.pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
+          current.with(stop_requested_by: by.to_s).tap { |with_flag| write_record(with_flag) }
+        end
+        return [flagged, nil] unless flagged.running?
+
+        if leftover
+          Leftovers.stop_group(flagged.pid, log_paths(flagged), grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC)
+        else
+          # A group that isn't ours (EPERM) is an error, not a stop.
+          ProcessGroup.stop(flagged.pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
+        end
 
         updated = mark_stopped(refresh_record(flagged))
         write_record(updated)
@@ -344,15 +471,62 @@ module Samagotchi
         [nil, "Error: #{e.message}"]
       end
 
+      # A running record whose shell is dead and reaped while processes of
+      # its group still hold its logs: the group is the task's (a pgid isn't
+      # reused while it has members).
+      def leftover_group?(record)
+        pid = record.pid
+        ProcessGroup.signalable?(pid) && (waiter_for(record.id, pid: pid) || !ProcessGroup.alive?(pid)) &&
+          ProcessGroup.group_alive?(pid) &&
+          Leftovers.held?(log_paths(record))
+      end
+
       def refresh_record(record)
         return record unless record.running?
 
         pid = record.pid
         return record if chis_group?(record, started: record.pid_started)
-        # Gone: its exit code says how it ended.
-        return mark_finished_without_exit_code(record) if ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid)
 
-        mark_not_chis(record)
+        # This process's waiter of this pid not done yet: the pid was its
+        # shell. A zombie keeps the pid until the waiter reaps it; after
+        # that (the waiter's grace) the pid can't be reused while the group
+        # still has members (POSIX), and with the group empty a reused pid
+        # is only read here: every signal below first checks the group.
+        waiter = waiter_for(record.id, pid: pid)
+        return mark_not_chis(record) unless ProcessGroup.signalable?(pid) && (waiter || !ProcessGroup.alive?(pid))
+
+        # Gone: its exit code says how it ended, once nothing it left holds
+        # the log. This process's waiter settles a held one (a refresh only
+        # reads it); with none here, the refresh does.
+        logs = log_paths(record)
+        return current_record(record) if waiter && (waiter[SETTLING] || Leftovers.held?(logs))
+        return settle_from_refresh(record, logs) if !waiter && Leftovers.held?(logs)
+
+        mark_finished_without_exit_code(record)
+      end
+
+      # A record whose shell is gone, its log still held, and no waiter here
+      # (the chi that started it is gone, or another process reads): a
+      # second look after HELD_RECHECK_SEC, then the group is stopped
+      # without the waiter's grace (the shell may be long gone) and the
+      # record finished with what was found. A group already empty at the
+      # first look is never signalled: a log still held then is a holder
+      # outside it (detached). Blocks this read up to
+      # REFRESH_STOP_GRACE_SEC + REFRESH_KILL_WAIT_SEC and a ps.
+      def settle_from_refresh(record, logs)
+        return mark_finished_without_exit_code(record) if current_record(record).stop_requested_by
+
+        group = ProcessGroup.group_alive?(record.pid)
+        sleep(HELD_RECHECK_SEC)
+        return mark_finished_without_exit_code(record) unless Leftovers.held?(logs)
+
+        found = if group
+                  Leftovers.stop_group(record.pid, logs, grace: REFRESH_STOP_GRACE_SEC, poll: Leftovers::POLL_SEC,
+                                                         kill_wait: REFRESH_KILL_WAIT_SEC)
+                else
+                  :detached
+                end
+        mark_finished_without_exit_code(record, leftovers: found)
       end
 
       # Whether the record's pid still leads its own group. With +started+
@@ -494,7 +668,8 @@ module Samagotchi
         filtered.join(" ")
       end
 
-      def mark_finished_without_exit_code(record, missing_reason: "process_ended_without_exit_code")
+      # @param leftovers [Symbol, nil] what a refresh found left holding the log
+      def mark_finished_without_exit_code(record, missing_reason: "process_ended_without_exit_code", leftovers: nil)
         record = current_record(record)
         return record unless record.running?
 
@@ -504,14 +679,18 @@ module Samagotchi
             mark_stopped(record.with(exit_code: exit_code))
           elsif exit_code.nil?
             record.with(status: "failed", exit_code: nil, stop_reason: record.stop_reason || missing_reason)
-          elsif exit_code.zero?
-            record.with(status: "completed", exit_code: 0)
           else
-            record.with(status: "failed", exit_code: exit_code)
+            finished_with(record, exit_code)
           end
+        record = record.with(leftovers: leftovers.to_s) if leftovers && !record.stop_requested_by
         record = record.with(finished_at: record.finished_at || timestamp)
         write_record(record)
         record
+      end
+
+      # +record+ ended with the shell's +code+: completed on 0, else failed.
+      def finished_with(record, code)
+        code.zero? ? record.with(status: "completed", exit_code: 0) : record.with(status: "failed", exit_code: code)
       end
 
       # The disk copy when it is newer than +record+: already finished, or

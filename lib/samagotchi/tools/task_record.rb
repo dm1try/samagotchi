@@ -11,14 +11,16 @@ module Samagotchi
     # The file keeps its key order (the members' order) and leaves out the
     # optional keys while unset: +stderr_path+ and +handed_over_by+ (only a
     # handed-over execute has them) and +stop_requested_by+ (only once a
-    # stop started). bundles/slow-commands reads these files on its own.
+    # stop started) and +leftovers+ ("stopped" or "detached": what its
+    # shell left holding the log when it exited, Leftovers). bundles/slow-commands
+    # reads these files on its own.
     TaskRecord = Data.define(
       :metadata_version, :id, :command, :cwd, :workspace_root, :status, :pid, :pid_started,
       :created_at, :started_at, :finished_at, :exit_code, :stop_reason,
-      :output_path, :stderr_path, :exit_code_path, :handed_over_by, :stop_requested_by
+      :output_path, :stderr_path, :exit_code_path, :handed_over_by, :stop_requested_by, :leftovers
     ) do
       self::METADATA_VERSION = 1
-      self::OPTIONAL = %i[stderr_path handed_over_by stop_requested_by].freeze
+      self::OPTIONAL = %i[stderr_path handed_over_by stop_requested_by leftovers].freeze
 
       # A record for a task that just started (task_create), or that an
       # execute hands over (TaskRuntime.adopt fills in +pid_started+ then).
@@ -28,7 +30,7 @@ module Samagotchi
         new(metadata_version: self::METADATA_VERSION, id: id, command: command, cwd: cwd, workspace_root: Dir.pwd,
             status: "running", pid: pid, pid_started: pid_started, created_at: started_at, started_at: started_at,
             finished_at: nil, exit_code: nil, stop_reason: nil, output_path: output_path, stderr_path: stderr_path,
-            exit_code_path: exit_code_path, handed_over_by: handed_over_by, stop_requested_by: nil)
+            exit_code_path: exit_code_path, handed_over_by: handed_over_by, stop_requested_by: nil, leftovers: nil)
       end
 
       # @param data [Hash] the parsed task.json; a key it lacks reads nil
