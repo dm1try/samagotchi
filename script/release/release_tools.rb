@@ -39,6 +39,9 @@ module ReleaseTools
   COMPAT_CHILD_IDS = %w[compat-child compat-child-2].freeze
   COMPAT_GRANT_ID = "p_c0ffee00"
   COMPAT_GRANT_TOKEN = "chp_compatibility-corpus"
+  # The image the corpus's participant uploaded (ParticipantUploads), an
+  # ImageStore ref.
+  COMPAT_PARTICIPANT_IMAGE = "images/c0ffee00c0ffee00.png"
 
   class Error < StandardError; end
 
@@ -73,6 +76,7 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/guardrails"
     require_relative "../../lib/samagotchi/grants"
     require_relative "../../lib/samagotchi/participants"
+    require_relative "../../lib/samagotchi/participant_uploads"
     require_relative "../../lib/samagotchi/chi_home"
     require_relative "../../lib/samagotchi/session_stores"
     require_relative "../../lib/samagotchi/bridge/pending_card"
@@ -240,7 +244,8 @@ module ReleaseTools
   # with the previous link (ContextSources' left.json), stored approvals
   # (Guardrails::Approvals#add: a session's and a rule's) and a
   # participant's grant with its sidecar (Grants#issue, Participants'
-  # participants.json). Random ids and times are pinned afterwards.
+  # participants.json) and the images it uploaded (ParticipantUploads'
+  # participant_images.json). Random ids and times are pinned afterwards.
   # @return [Array<String>] the files
   def write_compat_store_files!(sessions_dir, at)
     move = Samagotchi::ChildMove::Intent.new(from: COMPAT_DRAWN_ID, ids: COMPAT_CHILD_IDS, noted: COMPAT_CHILD_IDS.first(1))
@@ -369,7 +374,9 @@ module ReleaseTools
   # A pair participant's grant bound to an identity (the store's
   # BOUND_VERSION) and its sidecar, both naming COMPAT_GRANT_ID, the store
   # keeping COMPAT_GRANT_TOKEN's digest.
-  # @return [Array<String>] grants.json and participants.json
+  # The participant uploaded one image (ParticipantUploads#add) after a
+  # refused try and the accepted one (#attempt! twice).
+  # @return [Array<String>] grants.json, participants.json and participant_images.json
   def write_compat_grant!(sessions_dir, at)
     grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: sessions_dir), clock: -> { at })
     grants.issue(session_id: COMPAT_SESSION_ID, name: "Compat", ttl: Samagotchi::Grants::DEFAULT_TTL,
@@ -387,7 +394,10 @@ module ReleaseTools
     participants = JSON.parse(File.read(sidecar))
     participants["participants"].each { |entry| entry["id"] = COMPAT_GRANT_ID }
     File.write(sidecar, "#{JSON.pretty_generate(participants)}\n")
-    [grants.path, sidecar]
+    session_dir = File.dirname(sidecar)
+    2.times { Samagotchi::ParticipantUploads.attempt!(session_dir, COMPAT_GRANT_ID) }
+    Samagotchi::ParticipantUploads.add(session_dir, file: COMPAT_PARTICIPANT_IMAGE, grant_id: COMPAT_GRANT_ID, at: at)
+    [grants.path, sidecar, File.join(session_dir, Samagotchi::ParticipantUploads::FILE)]
   end
   private_class_method :write_compat_grant!
 
