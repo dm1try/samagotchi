@@ -165,6 +165,49 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
         expect(described_class.call("single")).to eq("single-content")
       end
     end
+
+    describe "which file answered each name" do
+      it "is the entry's path, and the overlay read with it" do
+        File.write(File.join(project_memories_dir, "notes.md"), "the body")
+        File.write(File.join(project_memories_dir, "notes.deepseek.md"), "for deepseek")
+
+        result = described_class.call("notes", model_key: "deepseek")
+        expect(result.to_s).to eq("the body" + described_class::SEPARATOR + "Model-specific guidance (deepseek):\nfor deepseek")
+        expect(result.reads).to eq({ "notes" => { path: File.join(project_memories_dir, "notes.md"),
+                                                  overlay_path: File.join(project_memories_dir, "notes.deepseek.md") } })
+      end
+
+      it "has no overlay path when none was read" do
+        File.write(File.join(project_memories_dir, "notes.md"), "the body")
+
+        expect(described_class.call("notes").reads["notes"]).to eq({ path: File.join(project_memories_dir, "notes.md"),
+                                                                     overlay_path: nil })
+      end
+
+      it "is per name, in the scope that answered it" do
+        File.write(File.join(project_memories_dir, "a.md"), "project-a")
+        File.write(File.join(system_memories_dir, "b.md"), "system-b")
+
+        reads = described_class.call("a, b").reads
+        expect(reads.keys).to eq(%w[a b])
+        expect(reads["a"][:path]).to eq(File.join(project_memories_dir, "a.md"))
+        expect(reads["b"][:path]).to eq(File.join(system_memories_dir, "b.md"))
+      end
+
+      it "is empty for the index listing, a miss and a bad name" do
+        expect(described_class.call("").reads).to eq({})
+        expect(described_class.call("nope").reads).to eq({})
+        expect(described_class.call("a/b").reads).to eq({})
+      end
+
+      it "still reads as the text the model gets, byte for byte" do
+        File.write(File.join(project_memories_dir, "notes.md"), "# a memory\nwith a line")
+        result = described_class.call("notes")
+
+        expect(result).to be_a(String)
+        expect(result.to_s).to eq(File.read(File.join(project_memories_dir, "notes.md")))
+      end
+    end
   end
 
   describe "the hint for an orphaned project memory folder (MemoryOrphans)" do

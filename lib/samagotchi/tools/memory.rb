@@ -25,37 +25,53 @@ module Samagotchi
 
       SEPARATOR = "\n\n---\n\n"
 
+      # A memory_read's text, and which file answered each name it read
+      # (+reads+: name => {path:, overlay_path:}, absolute paths, the overlay
+      # only when one was read with the entry). A String, so every reader of
+      # the result reads the same bytes the model does; ToolRunner turns
+      # +reads+ into the run's stamp (ToolRunner#memory_stamp), which is what
+      # later tells a memory the model read from one whose file changed after.
+      class Result < String
+        attr_reader :reads
+
+        def initialize(text, reads = {})
+          super(text)
+          @reads = reads
+        end
+      end
+
       # @param fallback_model_key [String, nil] read when +model_key+ has no overlay
       def self.call(entry_name, scope: nil, model_key: nil, fallback_model_key: nil)
         entry_name = entry_name.to_s.strip
         scope = normalize_scope(scope)
 
         if entry_name.empty?
-          return scoped_index(scope) + (scope == "project" ? orphan_hint : "") if scope
+          return Result.new(scoped_index(scope) + (scope == "project" ? orphan_hint : "")) if scope
 
           project = scoped_index("project") + orphan_hint
           system = scoped_index("system")
-          return [
+          return Result.new([
             "Project memories:",
             project,
             "",
             "System memories:",
             system
-          ].join("\n")
+          ].join("\n"))
         end
 
         names = parse_names(entry_name)
 
         if names.empty?
-          return "Error: no memory names provided"
+          return Result.new("Error: no memory names provided")
         end
 
         bad = names.find { |name| invalid_name?(name) }
-        return invalid_name_error(bad) if bad
+        return Result.new(invalid_name_error(bad)) if bad
 
         resolved_scopes = scope ? [scope] : %w[project system]
 
         results = []
+        reads = {}
         missing = []
 
         names.each do |name|
@@ -65,27 +81,30 @@ module Samagotchi
             next unless File.exist?(path)
 
             body = File.read(path, encoding: "UTF-8")
+            overlay = nil
             # Append model-specific overlay if key is provided and overlay exists.
             [model_key, fallback_model_key].compact.each do |key|
               overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
               next unless overlay_path && File.exist?(overlay_path)
 
               body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path, encoding: "UTF-8")
+              overlay = overlay_path
               break
             end
             results << body
+            reads[name] = { path: path, overlay_path: overlay }
             found = true
             break
           end
           missing << name unless found
         end
 
-        return results.join(SEPARATOR) if missing.empty?
+        return Result.new(results.join(SEPARATOR), reads) if missing.empty?
 
         # The hint goes after the first line: WorkingSet reads the missing
         # names off it (WorkingSet::MISSING) and a failure off its "Error".
         miss = "Error: memory not found: #{missing.join(", ")}#{orphan_hint if resolved_scopes.include?("project")}"
-        results.empty? ? miss : results.join(SEPARATOR) + SEPARATOR + miss
+        results.empty? ? Result.new(miss) : Result.new(results.join(SEPARATOR) + SEPARATOR + miss, reads)
       rescue Errno::ENOENT => e
         "Error: #{e.message}"
       rescue StandardError => e
