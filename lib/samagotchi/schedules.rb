@@ -303,17 +303,7 @@ module Samagotchi
     # chain and each link back to its root. A schedule belongs to a chain when
     # its anchor or its head is one of them.
     # @return [Array<String>]
-    def chain_of(session_id)
-      links = links_now
-      head = links.latest(session_id)
-      ids = [head]
-      id = head
-      while (previous = links.continues(id)) && !ids.include?(previous)
-        ids << previous
-        id = previous
-      end
-      ids
-    end
+    def chain_of(session_id) = links_now.chain(session_id).reverse
 
     # The schedules of this session's chain — the ones the tools may touch
     # without `all: true`.
