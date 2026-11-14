@@ -26,6 +26,9 @@ module Samagotchi
   end
 
   ReviseAnchor::FEATURE = "revise"
+  # A worker that checks a participant's Revise (ParticipantRevise, at the
+  # stamp) and keeps their draft: what chi web needs to pass one on.
+  ReviseAnchor::PARTICIPANT_FEATURE = "participant_revise"
   ReviseAnchor::UNAVAILABLE = {
     "error" => "revise_unavailable",
     "detail" => "this session's worker predates Revise turns; restart this session to use Revise"

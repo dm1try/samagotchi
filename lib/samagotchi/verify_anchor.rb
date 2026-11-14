@@ -32,5 +32,11 @@ module Samagotchi
     "detail" => "this session's worker predates Verify turns; restart this session to use Verify"
   }.freeze
 
+  # Whether a turn opening's +verify+ marks a Verify turn: a well-formed
+  # claim (#from), or the display's `verify: true` (MessageDisplay). One
+  # test for ParticipantRevise and the participant's view, so a malformed
+  # one reads the same to both (not a Verify turn).
+  def VerifyAnchor.marks?(value) = value == true || !VerifyAnchor.from(value).nil?
+
   def VerifyAnchor.worker_unavailable?(features) = !features.nil? && !features.include?(VerifyAnchor::FEATURE)
 end
