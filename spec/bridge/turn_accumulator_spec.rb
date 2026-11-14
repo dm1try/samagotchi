@@ -2,7 +2,7 @@
 
 require "json"
 require "samagotchi/bridge/turn_accumulator"
-require "samagotchi/tools/task_runtime"
+require "samagotchi/task_transcript"
 
 RSpec.describe Samagotchi::Bridge::TurnAccumulator do
   # Monotonic seconds, moved by the examples that time a tool call.
@@ -347,7 +347,7 @@ exit: 0"
 
     tool = acc.current_turn[:parts].last
     expect(tool[:output_truncated]).to be(true)
-    expect(Samagotchi::Tools::TaskRuntime.created_id("execute", tool[:output])).to eq("t-hand")
+    expect(Samagotchi::TaskTranscript.created_id("execute", tool[:output])).to eq("t-hand")
   end
 
   it "tracks the pending question until it is answered or cancelled" do

@@ -442,7 +442,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     start_worker(idle_exit_minutes: 0.002)
     run_prompt("build")
     allow(Samagotchi::Log).to receive(:warn).and_call_original
-    allow(Samagotchi::Tools::TaskRuntime).to receive(:created_ids_in).and_raise(IOError, "unreadable")
+    allow(Samagotchi::TaskTranscript).to receive(:created_ids_in).and_raise(IOError, "unreadable")
     finish("t1")
 
     expect(join!(@thread, "the worker").value).to eq(:idle_exit)

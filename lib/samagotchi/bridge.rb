@@ -42,6 +42,7 @@ require_relative "worker_link"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
 require_relative "reply_wait"
+require_relative "task_transcript"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -929,9 +930,9 @@ module Samagotchi
     # "task_id:" line of its own).
     def own_task_ids
       running = Array(@accumulator.current_turn&.dig(:parts)).filter_map do |part|
-        Tools::TaskRuntime.created_id(part[:tool], part[:output]) if part[:kind] == "tool"
+        TaskTranscript.created_id(part[:tool], part[:output]) if part[:kind] == "tool"
       end
-      Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint) | running
+      TaskTranscript.created_ids_in(@engine.messages_checkpoint) | running
     end
 
     # Answer the pending question. A past +deadline+ (see #handle_post_turn):

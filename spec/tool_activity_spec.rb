@@ -5,6 +5,7 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 require "json"
+require "samagotchi/task_transcript"
 require "samagotchi/tool_activity"
 require "samagotchi/tools/builtins"
 require "samagotchi/kernel_loop"
@@ -213,7 +214,7 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status("stdout:\n#{handed}", "execute")).to eq("error")
       expect(described_class.tool_activity_status("stdout:\nok\xFF\xFE\nexit: 0", "execute")).to eq("ok")
       expect(described_class.tool_activity_status("#{handed}\xFF", "execute")).to eq("ok")
-      expect(Samagotchi::Tools::TaskRuntime.handed_over_id("#{handed}\xFF")).to eq("20261010120000-1a2b3c4d")
+      expect(Samagotchi::TaskTranscript.handed_over_id("#{handed}\xFF")).to eq("20261010120000-1a2b3c4d")
     end
 
     it "calls an execute handed over early (a message from the user waiting) ok too" do

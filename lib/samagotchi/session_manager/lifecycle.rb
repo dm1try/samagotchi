@@ -12,7 +12,7 @@ require_relative "../session"
 require_relative "../session_inbox"
 require_relative "../task_files"
 require_relative "../tools/task_record"
-require_relative "../tools/task_runtime"
+require_relative "../task_transcript"
 require_relative "../worker_link"
 
 module Samagotchi
@@ -200,7 +200,7 @@ module Samagotchi
         root = session.working_directory.to_s
         return false if root.empty?
 
-        Tools::TaskRuntime.created_ids_in(session.messages).any? do |id|
+        TaskTranscript.created_ids_in(session.messages).any? do |id|
           next false unless TaskFiles::TASK_ID.match?(id)
 
           path = File.join(root, TaskFiles::TASKS_DIR, id, TaskFiles::METADATA_FILENAME)

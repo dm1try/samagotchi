@@ -10,17 +10,14 @@ require_relative "../log"
 require_relative "../process_group"
 require_relative "../spawn_env"
 require_relative "../task_files"
+require_relative "../task_transcript"
+require_relative "../tool_names"
 require_relative "leftovers"
 require_relative "shell"
 require_relative "task_record"
 
 module Samagotchi
   module Tools
-    # Execute requires this file (it hands a command over with adopt), and
-    # this one needs Execute only at run time: autoload keeps the two from
-    # requiring each other.
-    autoload :Execute, File.expand_path("execute", __dir__)
-
     module TaskRuntime
       # Moved to TaskFiles; kept here one release for bundles that name
       # them (the boundary's stable list). Remove in the release after the
@@ -283,7 +280,7 @@ module Samagotchi
       end
 
       # A record for a command chi already runs: an execute still running at
-      # its limit, handed over as a task (Execute::HANDED_OVER), given as a
+      # its limit, handed over as a task (ToolNames::Execute::HANDED_OVER), given as a
       # TaskRecord.running whose +started_at+ is the spawn's. Its logs and
       # exit_code file stay where execute put them, so the paths must be
       # absolute; +stderr_path+ is a log of its own (task_wait tails it).
@@ -305,7 +302,7 @@ module Samagotchi
 
         cwd = task.cwd
         record = task.with(command: task.command.to_s.strip, cwd: File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
-                           pid_started: ProcessGroup.start_time(pid), handed_over_by: Execute::NAME)
+                           pid_started: ProcessGroup.start_time(pid), handed_over_by: ToolNames::Execute::NAME)
         write_record(record)
         [record, nil]
       rescue StandardError => e
@@ -330,60 +327,13 @@ module Samagotchi
       # task_create calls and the executes it handed over at their limit.
       # Only those results count: records are shared by every session in the
       # worker's cwd, and task_list shows them all.
-      # A native tool_response joins its calls' results with "---".
+      # TaskTranscript.created_ids_in reads which.
       # @return [Array<Hash>] {id:, command:}, oldest first
       def running_created_in(messages)
-        created_ids_in(messages).filter_map do |id|
+        TaskTranscript.created_ids_in(messages).filter_map do |id|
           record, _error = get_record(id)
           { id: id, command: record.command.to_s } if record&.running?
         end
-      end
-
-      # The ids of every task this conversation started (task_create, a
-      # handed-over execute), whatever their status now, oldest first.
-      # @return [Array<String>]
-      def created_ids_in(messages)
-        Array(messages).flat_map do |message|
-          next [] unless (message[:role] || message["role"]).to_s == "tool_response"
-
-          (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
-            block[CREATED_BLOCK, 1] || handed_over_id(block)
-          end
-        end.uniq
-      end
-
-      # A task_create result as the model gets it: its "[task_create]" lead,
-      # after the one "ran as: …" line a gate-corrected call has.
-      RAN_AS_LINE = "(?:ran as: [^\n]*\n)?"
-      CREATED_BLOCK = /\A#{RAN_AS_LINE}\[task_create\]\ntask_id: (\S+)/
-      CREATED_OUTPUT = /\A#{RAN_AS_LINE}(?:\[task_create\]\n)?task_id: (\S+)/
-
-      # The task id of a tool output that started a task, the "[tool]" lead
-      # optional (a UI's row has it or not): a task_create's, or an execute's
-      # handed_over_id. nil for any other tool or output.
-      # @return [String, nil]
-      def created_id(tool, text)
-        case tool
-        when "task_create" then text.to_s[CREATED_OUTPUT, 1]
-        when Execute::NAME then handed_over_id(text)
-        end
-      end
-
-      # The task id an execute's hand-over result names: anchored on its
-      # first line (Execute::HANDED_OVER), never a "task_id:" line anywhere,
-      # which the command's own output can print. The "[execute]" lead and
-      # a "ran as: …" line before it are optional. web/public/task_stop.js
-      # has the JS twin (handedOverId).
-      # @return [String, nil]
-      def handed_over_id(text)
-        text = text.to_s
-        # A regexp raises on bytes that aren't UTF-8 (a command's raw output).
-        text = text.scrub unless text.valid_encoding?
-        text[handed_over_pattern, 1]
-      end
-
-      def handed_over_pattern
-        @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} #{Execute::HANDED_OVER_AFTER}[^\n]*\ntask_id: (\S+)/
       end
 
       def get_record(task_id)
@@ -643,9 +593,9 @@ module Samagotchi
 
       # No caller outside this file. A function a spec calls by name stays
       # public (refresh_record, waiter_for, load_record,
-      # write_record, handed_over_id, quiesce!…): no spec sends a private one.
+      # write_record, quiesce!…): no spec sends a private one.
       private_class_method :remember_waiter, :forget_waiter, :leftovers_after_exit, :settle, :log_paths,
-                           :status_code, :correct_finished_record, :record_at, :handed_over_pattern,
+                           :status_code, :correct_finished_record, :record_at,
                            :leftover_group?, :settle_from_refresh, :chis_group?, :mark_not_chis, :not_found,
                            :record_json, :ensure_tasks_dir, :normalize_cwd, :mark_finished_without_exit_code, :finished_with, :current_record,
                            :mark_stopped, :read_exit_code, :timestamp

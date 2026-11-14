@@ -4,6 +4,8 @@ require "time"
 
 require_relative "config"
 require_relative "log"
+require_relative "task_transcript"
+require_relative "tool_names"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -40,10 +42,10 @@ module Samagotchi
 
     # The first line of a task tool's result, after a gate-corrected call's
     # "ran as: …" line and the optional "[tool]" lead.
-    TASK_LINE = /\A#{Tools::TaskRuntime::RAN_AS_LINE}(?:\[task_(?:wait|get|stop)\]\n)?task_id: (\S+)/
+    TASK_LINE = /\A#{TaskTranscript::RAN_AS_LINE}(?:\[task_(?:wait|get|stop)\]\n)?task_id: (\S+)/
     LOOK_TOOLS = %w[task_wait task_get task_stop].freeze
-    HANDED_OVER_LIMIT = /#{Regexp.escape(Tools::Execute::HANDED_OVER)} (\d+)s limit/
-    HANDED_OVER_EARLY = /#{Regexp.escape(Tools::Execute::HANDED_OVER)} (\d+)s mark/
+    HANDED_OVER_LIMIT = /#{Regexp.escape(ToolNames::Execute::HANDED_OVER)} (\d+)s limit/
+    HANDED_OVER_EARLY = /#{Regexp.escape(ToolNames::Execute::HANDED_OVER)} (\d+)s mark/
 
     MODE_KEY = "session.task_wakes"
     MODES = %w[wake queue off].freeze
@@ -77,8 +79,8 @@ module Samagotchi
       tool = event[:tool].to_s
       output = event[:output].to_s
       output = output.scrub unless output.valid_encoding?
-      if (id = Tools::TaskRuntime.created_id(tool, output))
-        executed = tool == Tools::Execute::NAME
+      if (id = TaskTranscript.created_id(tool, output))
+        executed = tool == ToolNames::Execute::NAME
         add(id, limit_sec: executed ? output[HANDED_OVER_LIMIT, 1]&.to_i : nil,
                 early_sec: executed ? output[HANDED_OVER_EARLY, 1]&.to_i : nil)
       elsif LOOK_TOOLS.include?(tool) && (id = output[TASK_LINE, 1])
@@ -125,7 +127,7 @@ module Samagotchi
     # records ([Entry, TaskRecord], oldest first). One the user stopped (the
     # web's stop-task button) or whose record is gone is dropped, not
     # returned. +keep+: the ids the conversation still holds
-    # (TaskRuntime.created_ids_in): a !rollback or a restored turn may have
+    # (TaskTranscript.created_ids_in): a !rollback or a restored turn may have
     # dropped the result that added one, which is dropped too. One `ps` per
     # running task (TaskRuntime.get_record); nothing with an empty watch.
     # @return [Array<Array(Entry, Tools::TaskRecord)>]

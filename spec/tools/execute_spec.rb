@@ -682,7 +682,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(result).to eq("#{described_class.handed_over_line(1)}\ntask_id: #{id}\n" \
                              "Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
                              "stdout (so far, tail):\nbefore\nstderr (so far, tail):\noops")
-        expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
+        expect(Samagotchi::TaskTranscript.handed_over_id("[execute]\n#{result}")).to eq(id)
         record, = Samagotchi::Tools::TaskRuntime.get_record(id)
         dir = File.join(described_class.logs_root, id)
         expect(record).to have_attributes(status: "running", command: command,
@@ -818,8 +818,8 @@ RSpec.describe Samagotchi::Tools::Execute do
           expect(result).to include("Read the message first. Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
                                     "stdout (so far, tail):\nbefore")
           expect(result).not_to include("limit")
-          expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
-          expect(Samagotchi::Tools::TaskRuntime.created_id("execute", result)).to eq(id)
+          expect(Samagotchi::TaskTranscript.handed_over_id("[execute]\n#{result}")).to eq(id)
+          expect(Samagotchi::TaskTranscript.created_id("execute", result)).to eq(id)
           record, = Samagotchi::Tools::TaskRuntime.get_record(id)
           expect(record).to have_attributes(status: "running", command: command, handed_over_by: "execute")
 

@@ -34,7 +34,7 @@ module Samagotchi
       STOPPED_BY = { signal: STOPPED_BY_SIGNAL, session_stopped: STOPPED_BY_SESSION_STOP }.freeze
       # The first words of a command still running and handed over as a
       # task (handed_over_line at the limit, early_handed_over_line for a
-      # message). TaskRuntime.handed_over_id, the web's task_stop.js and the
+      # message). TaskTranscript.handed_over_id, the web's task_stop.js and the
       # slow-commands bundle match on them; the bundle reads only the limit's
       # form, "at the 120s limit".
       HANDED_OVER = "Still running at the"

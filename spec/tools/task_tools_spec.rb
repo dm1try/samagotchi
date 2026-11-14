@@ -764,14 +764,14 @@ RSpec.describe "task tools" do
       ]
 
       expect(Samagotchi::Tools::TaskRuntime.running_created_in(messages)).to eq([{ id: live, command: "sleep 30" }])
-      expect(Samagotchi::Tools::TaskRuntime.created_ids_in(messages)).to eq([live, done])
+      expect(Samagotchi::TaskTranscript.created_ids_in(messages)).to eq([live, done])
     ensure
       [live, other].compact.each { |id| Samagotchi::Tools::TaskStop.call(id) }
     end
   end
 
-  describe "TaskRuntime.created_ids_in and created_id: tasks other tools started" do
-    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+  describe "TaskTranscript.created_ids_in and created_id: tasks other tools started" do
+    let(:runtime) { Samagotchi::TaskTranscript }
     let(:id) { "20261010120000-1a2b3c4d" }
     let(:handed_over) do
       "#{Samagotchi::Tools::Execute.handed_over_line(120)}\ntask_id: #{id}\n" \

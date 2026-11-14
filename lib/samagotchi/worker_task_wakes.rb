@@ -7,7 +7,7 @@ require_relative "log"
 require_relative "task_finish_note"
 require_relative "task_watch"
 require_relative "tool_output_cut"
-require_relative "tools/task_runtime"
+require_relative "task_transcript"
 require_relative "worker_inbound"
 require_relative "worker_wakes"
 
@@ -117,7 +117,7 @@ module Samagotchi
     # TaskWatch::MAX_FAILURES they no longer hold the worker up): they wait
     # for the next look.
     def take_finished
-      @watch.take_finished(keep: Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint))
+      @watch.take_finished(keep: TaskTranscript.created_ids_in(@engine.messages_checkpoint))
     rescue StandardError => e
       Log.warn(:worker, "task_watch_failed", error: e.class.name, msg: e.message)
       @watch.look_failed
