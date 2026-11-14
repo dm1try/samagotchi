@@ -61,6 +61,8 @@ module Samagotchi
         # enqueued_id => grant id of the turns participants sent through this
         # chi web (their dequeue's check); the oldest go past PARTICIPANT_TURNS_KEPT.
         @participant_turns = {}
+        # A participant's own prompts' read-then-write (ParticipantHistory).
+        @participant_prompts_mutex = Mutex.new
       end
 
       PARTICIPANT_TURNS_KEPT = 1000
@@ -307,7 +309,8 @@ module Samagotchi
       # D10). Of the body only the prompt, the delivery and images they
       # uploaded count: the author and client id are the grant's
       # (participant:<id>), no no_interrupt; the owner's prompt history never
-      # sees it. The delivery
+      # sees it: an accepted one goes into their own (ParticipantHistory),
+      # unless the body's history is false (an image-only send). The delivery
       # is queue or next step (none: next step): the worker puts a next-step
       # message into a running turn only when that turn is theirs, else it
       # runs as their own turn after it (Bridge#same_author_steer?; an older
@@ -340,7 +343,8 @@ module Samagotchi
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
-        participant_turn_result(grant, prompt, result, images: images.empty? ? nil : images.size, revises: revises)
+        participant_turn_result(grant, prompt, result, images: images.empty? ? nil : images.size, revises: revises,
+                                                       record: body["history"] != false)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
@@ -404,13 +408,17 @@ module Samagotchi
       end
 
       # +images+: how many the turn carried (nil: none), +revises+ the turn
-      # id its Revise draft named, for the audit line.
-      def participant_turn_result(grant, prompt, result, images: nil, revises: nil)
+      # id its Revise draft named, for the audit line; +record+: whether an
+      # accepted one goes into their own prompts (ParticipantHistory). A
+      # turn the worker refuses later (at its start) or they take back stays
+      # recorded: chi web accepted it, as the owner's record_history.
+      def participant_turn_result(grant, prompt, result, images: nil, revises: nil, record: true)
         case result.status
         when :accepted
           enqueued_id = result.ack["enqueued_id"]
           remember_participant_turn(enqueued_id, grant.id)
           audit_turn(grant, prompt, status: "accepted", enqueued_id: enqueued_id, images: images, revises: revises)
+          record_participant_prompt(grant, prompt) if record
           # What the worker says will happen (a turn of its own, or into
           # their running turn at its next step); a file (no worker yet)
           # runs as the next turn, which reads as a queue.

@@ -71,6 +71,7 @@ require_relative "principal"
 require_relative "request_body"
 require_relative "viewer"
 require_relative "participant_access"
+require_relative "participant_history"
 require_relative "participant_images"
 require_relative "participants_admin"
 require_relative "participant_review"
@@ -110,6 +111,7 @@ module Samagotchi
       include RequestBody
       include SessionAccessRoutes
       include ParticipantAccess
+      include ParticipantHistory
       include ParticipantImages
       include ParticipantsAdmin
       include ParticipantReview

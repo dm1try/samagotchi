@@ -12,6 +12,7 @@ require "samagotchi/prompt_history"
 require "samagotchi/session_manager"
 require "samagotchi/analytics_file"
 require "samagotchi/participant_uploads"
+require "samagotchi/participant_prompts"
 require "samagotchi/image_store"
 require "samagotchi/vision_support"
 
@@ -338,6 +339,47 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(app.call(env).first).to eq(202)
     expect(delivered.first).to include(client_id: "web:t", delivery: "cut", author: nil)
     expect(Samagotchi::PromptHistory).to have_received(:append).with("go")
+  end
+
+  describe "their own prompts (ParticipantPrompts, the list their ↑ walks)" do
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
+
+    def own = Samagotchi::ParticipantPrompts.entries(dir, grant.id)
+
+    it "records an accepted turn under the grant, whatever author or client id the body names; never the owner's history" do
+      expect(turn({ prompt: "A-1", author: "p:p_bbbbbbbb", client_id: "participant:p_bbbbbbbb" }).first).to eq(202)
+      expect(turn({ prompt: "A-2", delivery: "queue" }).first).to eq(202)
+
+      expect(own).to eq(%w[A-1 A-2])
+      expect(Samagotchi::ParticipantPrompts.entries(dir, "p_bbbbbbbb")).to eq([])
+      expect(Samagotchi::PromptHistory).not_to have_received(:append)
+    end
+
+    it "records nothing for a send chi web refuses, one with history: false, a worker refusal, a timeout or a failure" do
+      turn({ prompt: "!ls" })
+      turn({ prompt: "/model x" })
+      turn({ prompt: "cut it", delivery: "cut" })
+      expect(turn({ prompt: "image only", history: false }).first).to eq(202)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+        .and_return(Samagotchi::SessionManager::DeliverResult.new(status: :refused, code: 429, ack: { "error" => "too_many_turns" }),
+                    Samagotchi::SessionManager::DeliverResult.new(status: :timeout, ack: { "detail" => "slow" }),
+                    Samagotchi::SessionManager::DeliverResult.new(status: :failed))
+      expect(turn({ prompt: "too many" }).first).to eq(429)
+      expect(turn({ prompt: "timed out" }).first).to eq(504)
+      expect(turn({ prompt: "failed" }).first).to eq(500)
+
+      expect(own).to eq([])
+    end
+
+    it "still answers 202 when the record can't be written, and delivers an over-long prompt without recording it" do
+      long = "x" * (Samagotchi::ParticipantPrompts::MAX_ENTRY_BYTES + 1)
+      expect(turn({ prompt: long }).first).to eq(202)
+      expect(delivered.last[:prompt]).to eq(long)
+      expect(own).to eq([])
+
+      allow(Samagotchi::ParticipantPrompts).to receive(:append).and_raise(Errno::EACCES)
+      expect(turn({ prompt: "kept going" }).first).to eq(202)
+    end
   end
 
   describe "dequeue" do
