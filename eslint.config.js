@@ -95,6 +95,24 @@ export default [
     },
   },
   {
+    // The stage (docs/internals/web-frontend.md, "The stage's modules"): a new stage feature goes into its own
+    // stage_<feature>.js, wired in a few lines; each module resets itself from emptySlots. Every stage_*.js module's
+    // cap: 500. stage_view.js's own (the wiring, refresh, the lifecycle, the event API) was 1144 lines before its
+    // features moved out; it is ratcheted down with each move (its size + 30): never raise it, extract instead.
+    name: "samagotchi/stage-size",
+    files: ["lib/samagotchi/web/public/stage_*.js"],
+    rules: {
+      "max-lines": ["error", { max: 500, skipBlankLines: false, skipComments: false }],
+    },
+  },
+  {
+    name: "samagotchi/stage-view-size",
+    files: ["lib/samagotchi/web/public/stage_view.js"],
+    rules: {
+      "max-lines": ["error", { max: 1101, skipBlankLines: false, skipComments: false }],
+    },
+  },
+  {
     // The service worker: a classic script in the worker's scope (self, clients).
     files: ["lib/samagotchi/web/public/sw.js"],
     languageOptions: { sourceType: "script", globals: globals.serviceworker },
