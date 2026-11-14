@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::WorkerInbound do
 
   describe "a participant's /objectives" do
     it "is refused like any command: no turn, nothing queued, no note file" do
-      allow(engine).to receive(:command_registry).and_return(Samagotchi::SessionCommands.builtin_registry)
+      allow(engine).to receive(:command_registry).and_return(Samagotchi::SessionCommandCatalog.builtin_registry)
       allow(Samagotchi::Participants).to receive(:log)
       input = Samagotchi::SessionInbox.write_input(session_dir, prompt: "/objectives set Mine now", author: "p:abc")
 

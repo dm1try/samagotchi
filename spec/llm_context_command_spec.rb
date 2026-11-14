@@ -191,10 +191,10 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
   end
 
   it "is a session command the worker runs between turns (not anytime)" do
-    entry = described_class.builtin_registry.lookup("/llm-context strategy stale")
+    entry = Samagotchi::SessionCommandCatalog.builtin_registry.lookup("/llm-context strategy stale")
 
     expect(entry.name).to eq("/llm-context")
     expect(entry.anytime).to be(false)
-    expect(described_class.builtin_registry.command?("/llm-contextx")).to be(false)
+    expect(Samagotchi::SessionCommandCatalog.builtin_registry.command?("/llm-contextx")).to be(false)
   end
 end

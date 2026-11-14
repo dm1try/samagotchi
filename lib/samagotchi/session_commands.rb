@@ -69,16 +69,6 @@ module Samagotchi
     #   first (nothing changed): the line that applies it
     Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, :decision, :confirm, keyword_init: true)
 
-    # The catalogue's class methods (SessionCommandCatalog), for the
-    # worker-side callers that name SessionCommands.
-    def self.register_builtins(registry) = SessionCommandCatalog.register_builtins(registry)
-    def self.delete_on_exit?(line) = SessionCommandCatalog.delete_on_exit?(line)
-    def self.builtin_registry = SessionCommandCatalog.builtin_registry
-    def self.ui_only_entry(text) = SessionCommandCatalog.ui_only_entry(text)
-    def self.ui_only_refusal(name, id, runner:, remote: nil) = SessionCommandCatalog.ui_only_refusal(name, id, runner:, remote:)
-    def self.builtin_name(line) = SessionCommandCatalog.builtin_name(line)
-    def self.display_name(entry) = SessionCommandCatalog.display_name(entry)
-
     # @return [String, nil] the model /model clear goes back to; nil when none
     attr_reader :default_model
 
@@ -88,7 +78,7 @@ module Samagotchi
     # @param save [#call] saves a session (a worker passes its state dir)
     # @param registry [Commands::Registry] the commands #run looks lines up in
     def initialize(engine:, turn_flow:, default_model:, save: ->(session) { session.save },
-                   registry: self.class.builtin_registry)
+                   registry: SessionCommandCatalog.builtin_registry)
       @engine = engine
       @turn_flow = turn_flow
       @default_model = default_model
@@ -107,13 +97,13 @@ module Samagotchi
       # A name with a UI's entry and the session's (/recap): listed once,
       # as the session's (registered first).
       entries = @registry.entries.uniq(&:name).sort_by { |entry| [help_group(entry), entry.name] }
-      width = entries.map { |entry| self.class.display_name(entry).length }.max
+      width = entries.map { |entry| SessionCommandCatalog.display_name(entry).length }.max
       lines = entries.map do |entry|
         notes = []
         notes << entry.source unless entry.source == "core"
         notes << MID_TURN_NOTES[entry.mid_turn_label] if MID_TURN_NOTES[entry.mid_turn_label]
         notes << "#{ui_words(entry.uis)} only" if entry.local
-        line = "  #{self.class.display_name(entry).ljust(width)}  #{entry.description}"
+        line = "  #{SessionCommandCatalog.display_name(entry).ljust(width)}  #{entry.description}"
         notes.empty? ? line : "#{line}  (#{notes.join("; ")})"
       end
       "commands:\n#{lines.join("\n")}"

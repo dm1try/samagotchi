@@ -219,8 +219,8 @@ read their constants from and the display code (`ToolActivity`, `ToolView`, `Fil
 directly. The session commands' names, the built-ins' registry and its class-level reads (`builtin_name`,
 `builtin_registry`, `ui_only_entry`, `ui_only_refusal`, `delete_on_exit?`, `SHELL_BANG_PREFIX`…) live in
 `SessionCommandCatalog` (`session_command_catalog.rb`), which the TUI, chi web, `chi send` and `PromptHistory`
-require; `SessionCommands` (the runner, worker-side: `!cmd` runs `Tools::Execute`) includes it and forwards the
-class methods, so `SessionCommands.x` reads the same. A new client-side read of either goes to the table or the
+require, and so does every caller of its class methods; `SessionCommands` (the runner, worker-side: `!cmd` runs
+`Tools::Execute`) only includes it, for its constants. A new client-side read of either goes to the table or the
 catalogue, never to the class.
 
 ## Session retention & ordering

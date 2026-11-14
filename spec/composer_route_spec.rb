@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::ComposerRoute do
   # listed name core lacks is a plugin's command, matched by its name.
   def registry_for(names)
     Samagotchi::Commands::Registry.from_listing(names.map { |name| { name: name } },
-                                                base: Samagotchi::SessionCommands.builtin_registry)
+                                                base: Samagotchi::SessionCommandCatalog.builtin_registry)
   end
 
   # Each core command's bare line, idle and running. A new core command
@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::ComposerRoute do
   end
 
   describe "against every core command" do
-    let(:core) { Samagotchi::SessionCommands.builtin_registry }
+    let(:core) { Samagotchi::SessionCommandCatalog.builtin_registry }
 
     it "covers every core command (! is the shell's: a row's !cmd)" do
       expect(CORE_ROUTES.keys).to match_array(core.entries.map(&:name).uniq - ["!"])

@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::Commands::Registry do
   end
 
   describe "#unknown_command_word? and #unknown_command_hint" do
-    let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
+    let(:builtins) { Samagotchi::SessionCommandCatalog.builtin_registry }
 
     it "hints a close name for a typo of a command" do
       expect(builtins.unknown_command_word?("/modle")).to be(true)
@@ -110,7 +110,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     end
 
     it "keeps the base's entries (their match) and adds the listed ones it lacks, JSON keys too" do
-      base = Samagotchi::SessionCommands.builtin_registry
+      base = Samagotchi::SessionCommandCatalog.builtin_registry
       listing = JSON.parse(JSON.generate(base.listing + [{ name: "/hello", description: "greet", anytime: true,
                                                            local: false, uis: nil, source: "sample-plugin" }]))
       rebuilt = described_class.from_listing(listing, base: base)
@@ -150,8 +150,8 @@ RSpec.describe Samagotchi::Commands::Registry do
     end
   end
 
-  describe "the built-ins (SessionCommands.builtin_registry)" do
-    let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
+  describe "the built-ins (SessionCommandCatalog.builtin_registry)" do
+    let(:builtins) { Samagotchi::SessionCommandCatalog.builtin_registry }
 
     it "runs the show forms mid-turn, queues the setting forms and !cmd, refuses !rollback and /continue" do
       lines = ["/models", "/models qwen", "/model", " /model ", "/model x", "/model clear", "/llm-context",
@@ -185,8 +185,8 @@ RSpec.describe Samagotchi::Commands::Registry do
       expect(["quit", "exit now", "/exit --force", "/archive now", "/model", "no exit"].map { |line| builtins.lookup_local(line) })
         .to all(be_nil)
       expect(builtins.lookup("/exit")).to be_nil
-      expect(["/exit --delete", "EXIT --DELETE", "/quit --delete"].map { |l| Samagotchi::SessionCommands.delete_on_exit?(l) }).to all(be(true))
-      expect(Samagotchi::SessionCommands.delete_on_exit?("/exit")).to be(false)
+      expect(["/exit --delete", "EXIT --DELETE", "/quit --delete"].map { |l| Samagotchi::SessionCommandCatalog.delete_on_exit?(l) }).to all(be(true))
+      expect(Samagotchi::SessionCommandCatalog.delete_on_exit?("/exit")).to be(false)
     end
 
     it "is frozen, and each command #run runs has a handler" do

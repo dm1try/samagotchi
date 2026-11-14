@@ -663,7 +663,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
 
   describe "the session's commands, from its snapshot" do
     let(:commands) do
-      Samagotchi::SessionCommands.builtin_registry.listing +
+      Samagotchi::SessionCommandCatalog.builtin_registry.listing +
         [{ "name" => "/hello", "description" => "greet", "anytime" => false, "local" => false, "uis" => nil,
            "source" => "sample-plugin" }]
     end
