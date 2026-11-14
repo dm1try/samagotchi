@@ -1,14 +1,15 @@
 ---
 name: slow-commands
-version: 0.2.5
+version: 0.2.6
 scope: system
 description: "Remembers commands that ran past the execute limit in a project; the next identical execute is denied once a turn with advice to run it with task_create and task_wait; /slow-commands lists and forgets them"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:e51c099c1552bd0cd1fe46e4fd235a3fe8340693e6ca338eb7ed09d8398a6f0f
+  sha256: sha256:255bd833b7012f5e6d4597b97e9510f91da61eef13539ba4de2c0baece44964e
 # Execute::HANDED_OVER, read when the plugin loads (0.59.0); after_tool_call's
 # call:, elapsed_ms: and result: (0.57.0)
 requires_chi: ">= 0.143.0"
+requires_chi_next: "Samagotchi::TaskFiles (TASKS_DIR, EXIT_CODE_FILENAME), new in the next chi"
 # config.yml bundles: slow-commands: (another key warns; an older chi ignores this)
 settings: [mode, warn_ratio, ttl_days]

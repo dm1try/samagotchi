@@ -63,7 +63,7 @@ module Samagotchi
     # would trust, and remember, an untrusted repo's mise.toml); CI too.
     MISE_UNSET = %w[MISE_YES CI].freeze
     TIMEOUT = 5
-    # What execute and tasks set themselves (Tools::TaskRuntime's
+    # What execute and tasks set themselves (SpawnEnv's
     # sanitized env): never taken from the project's.
     TOOLS_DROP = BundlerEnv::CHILD_RUBY
 
@@ -111,20 +111,22 @@ module Samagotchi
     def install!(overlay) = @current = overlay
 
     # #current's env for a tool's spawn, less what every tool runs without
-    # (Tools::TaskRuntime::SANITIZED_ENV_KEYS: RUBYOPT, RUBYLIB, Bundler's).
+    # (SpawnEnv::SANITIZED_ENV_KEYS: RUBYOPT, RUBYLIB, Bundler's).
     # @return [Hash{String=>String, nil}]
     def tools_env = current.env.except(*TOOLS_DROP)
 
     # The whole env change for a command chi starts for the session outside
     # execute (MCP servers, context sources): what execute spawns over
-    # (Tools::TaskRuntime.sanitized_spawn_env: chi's own RUBYOPT without
+    # (SpawnEnv.sanitized_spawn_env: chi's own RUBYOPT without
     # bundler/setup, no RUBYLIB or Bundler variables), then #tools_env. One
     # env for every command, so a worker run from a checkout under `bundle
     # exec` hands none of them its Gemfile.
     # @return [Hash{String=>String, nil}]
     def spawn_env
-      require_relative "tools/task_runtime" # lazily: bin/chi loads this file for #take_orig!
-      Tools::TaskRuntime.sanitized_spawn_env.merge(tools_env)
+      # Lazily: bin/chi loads this file for #take_orig!, and spawn_env's
+      # child_env requires this file.
+      require_relative "spawn_env"
+      SpawnEnv.sanitized_spawn_env.merge(tools_env)
     end
 
     # Specs: back to NONE.

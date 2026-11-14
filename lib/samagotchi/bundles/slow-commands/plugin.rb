@@ -67,7 +67,7 @@ require "samagotchi/atomic_file"
 require "samagotchi/config"
 require "samagotchi/guardrails/shell_lex"
 require "samagotchi/tools/execute"
-require "samagotchi/tools/task_runtime"
+require "samagotchi/task_files"
 
 class Plugin
   SOURCE = "bundle slow-commands"
@@ -406,7 +406,7 @@ class Plugin
   def task_duration(ctx, key)
     roots = [ctx.cwd, project_of(ctx)].uniq
     records = roots.flat_map do |root|
-      Dir.glob(File.join(root, Samagotchi::Tools::TaskRuntime::TASKS_DIR, "*", "task.json"))
+      Dir.glob(File.join(root, Samagotchi::TaskFiles::TASKS_DIR, "*", "task.json"))
     end.uniq
     found = records.filter_map { |path| finished_task(path, ctx, key) }
     found.max_by(&:first)&.last
@@ -416,7 +416,7 @@ class Plugin
   def finished_task(path, ctx, key)
     record = JSON.parse(File.read(path))
     exit_code = record["exit_code_path"].to_s
-    exit_code = File.join(File.dirname(path), Samagotchi::Tools::TaskRuntime::EXIT_CODE_FILENAME) unless File.absolute_path?(exit_code)
+    exit_code = File.join(File.dirname(path), Samagotchi::TaskFiles::EXIT_CODE_FILENAME) unless File.absolute_path?(exit_code)
     return nil unless File.file?(exit_code) && File.read(exit_code).strip == "0"
 
     command = self.class.normalize(record["command"], cwd: record["cwd"], project: key[0], base: ctx.cwd)

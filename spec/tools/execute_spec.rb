@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT" => ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"]
-    }.merge(Samagotchi::Tools::TaskRuntime::SANITIZED_ENV_KEYS.to_h { |key| [key, ENV[key]] })
+    }.merge(Samagotchi::SpawnEnv::SANITIZED_ENV_KEYS.to_h { |key| [key, ENV[key]] })
 
     example.run
   ensure
@@ -113,7 +113,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
-    # The same scrub as task_create (TaskRuntime.sanitized_spawn_env): chi run
+    # The same scrub as task_create (SpawnEnv.sanitized_spawn_env): chi run
     # under `bundle exec` doesn't hand a project's command its Gemfile.
     it "keeps chi's Bundler setup out of the command, and other RUBYOPT flags in" do
       ENV.update("RUBYOPT" => "-W0 -rbundler/setup", "BUNDLE_GEMFILE" => "/chi/Gemfile",
@@ -682,13 +682,13 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(result).to eq("#{described_class.handed_over_line(1)}\ntask_id: #{id}\n" \
                              "Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
                              "stdout (so far, tail):\nbefore\nstderr (so far, tail):\noops")
-        expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
+        expect(Samagotchi::TaskTranscript.handed_over_id("[execute]\n#{result}")).to eq(id)
         record, = Samagotchi::Tools::TaskRuntime.get_record(id)
         dir = File.join(described_class.logs_root, id)
         expect(record).to have_attributes(status: "running", command: command,
                                           output_path: File.join(dir, "stdout.log"), stderr_path: File.join(dir, "stderr.log"),
                                           exit_code_path: File.join(dir, "exit_code"), handed_over_by: "execute")
-        expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::Tools::TaskRuntime.metadata_path(id)))
+        expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::TaskFiles.metadata_path(id)))
 
         FileUtils.touch("go")
         waited = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
@@ -818,8 +818,8 @@ RSpec.describe Samagotchi::Tools::Execute do
           expect(result).to include("Read the message first. Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
                                     "stdout (so far, tail):\nbefore")
           expect(result).not_to include("limit")
-          expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
-          expect(Samagotchi::Tools::TaskRuntime.created_id("execute", result)).to eq(id)
+          expect(Samagotchi::TaskTranscript.handed_over_id("[execute]\n#{result}")).to eq(id)
+          expect(Samagotchi::TaskTranscript.created_id("execute", result)).to eq(id)
           record, = Samagotchi::Tools::TaskRuntime.get_record(id)
           expect(record).to have_attributes(status: "running", command: command, handed_over_by: "execute")
 

@@ -6,33 +6,28 @@ require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
-require_relative "../bundler_env"
-require_relative "../child_env"
 require_relative "../log"
 require_relative "../process_group"
+require_relative "../spawn_env"
+require_relative "../task_files"
+require_relative "../task_transcript"
+require_relative "../tool_names"
 require_relative "leftovers"
 require_relative "shell"
 require_relative "task_record"
 
 module Samagotchi
   module Tools
-    # Execute requires this file (it hands a command over with adopt), and
-    # this one needs Execute only at run time: autoload keeps the two from
-    # requiring each other.
-    autoload :Execute, File.expand_path("execute", __dir__)
-
     module TaskRuntime
-      TASKS_DIR = File.join("tmp", "tasks")
-      METADATA_FILENAME = "task.json"
-      OUTPUT_FILENAME = "output.log"
-      EXIT_CODE_FILENAME = "exit_code"
+      # Moved to TaskFiles; kept here one release for bundles that name
+      # them (the boundary's stable list). Remove in the release after the
+      # one that ships TaskFiles, with their stable-list entries.
+      TASKS_DIR = TaskFiles::TASKS_DIR
+      EXIT_CODE_FILENAME = TaskFiles::EXIT_CODE_FILENAME
       STOP_GRACE_SEC = 3.0
       STOP_POLL_INTERVAL_SEC = 0.1
       METADATA_VERSION = TaskRecord::METADATA_VERSION
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
-      SANITIZED_ENV_KEYS = BundlerEnv::CHILD_RUBY
-      # Set by chi (Builtins.parent_env); the model's env can't change it.
-      MARKER_ENV_KEYS = ChildEnv::SESSION_MARKERS
       # task_wait and task_get add it to a task the user stopped (the web's
       # stop-task button), so the model doesn't rerun the job.
       # A record whose pid isn't a process group chi started (missing, 0, 1,
@@ -73,17 +68,17 @@ module Samagotchi
         resolved_cwd = normalize_cwd(cwd)
         return [nil, "Error: cwd not found: #{resolved_cwd}"] unless Dir.exist?(resolved_cwd)
 
-        spawn_env, env_error = spawn_env_for(env)
+        spawn_env, env_error = SpawnEnv.spawn_env_for(env)
         return [nil, env_error] if env_error
 
         spawn_env = spawn_env.merge(marker_env || {})
 
         task_id = generate_task_id
-        task_dir = task_dir_for(task_id)
-        output_path = File.join(task_dir, OUTPUT_FILENAME)
+        task_dir = TaskFiles.task_dir_for(task_id)
+        output_path = File.join(task_dir, TaskFiles::OUTPUT_FILENAME)
         # Absolute: the trap writes it wherever the shell is when it exits
         # (a +cwd+, or a cd in the command). Ruby opens output_path here.
-        exit_code_path = File.expand_path(File.join(task_dir, EXIT_CODE_FILENAME))
+        exit_code_path = File.expand_path(File.join(task_dir, TaskFiles::EXIT_CODE_FILENAME))
 
         FileUtils.mkdir_p(task_dir)
 
@@ -140,7 +135,7 @@ module Samagotchi
       # @return [Thread]
       def record_exit_status(waiter, path, task_id:)
         # Absolute now: safe against a later chdir.
-        record_path = File.expand_path(metadata_path(task_id))
+        record_path = File.expand_path(TaskFiles.metadata_path(task_id))
         path = File.expand_path(path)
         started = record_at(record_path)
         logs = log_paths(started).map { |log| File.expand_path(log) }
@@ -285,7 +280,7 @@ module Samagotchi
       end
 
       # A record for a command chi already runs: an execute still running at
-      # its limit, handed over as a task (Execute::HANDED_OVER), given as a
+      # its limit, handed over as a task (ToolNames::Execute::HANDED_OVER), given as a
       # TaskRecord.running whose +started_at+ is the spawn's. Its logs and
       # exit_code file stay where execute put them, so the paths must be
       # absolute; +stderr_path+ is a log of its own (task_wait tails it).
@@ -297,7 +292,7 @@ module Samagotchi
       def adopt(task)
         id = task.id
         return [nil, "Error: invalid task id: #{id}"] unless TASK_ID_SHAPE.match?(id.to_s)
-        return [nil, "Error: task already exists: #{id}"] if File.exist?(metadata_path(id))
+        return [nil, "Error: task already exists: #{id}"] if File.exist?(TaskFiles.metadata_path(id))
 
         relative = %i[output_path stderr_path exit_code_path].find { |key| !File.absolute_path?(task.public_send(key).to_s) }
         return [nil, "Error: #{relative} must be absolute: #{task.public_send(relative)}"] if relative
@@ -307,7 +302,7 @@ module Samagotchi
 
         cwd = task.cwd
         record = task.with(command: task.command.to_s.strip, cwd: File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
-                           pid_started: ProcessGroup.start_time(pid), handed_over_by: Execute::NAME)
+                           pid_started: ProcessGroup.start_time(pid), handed_over_by: ToolNames::Execute::NAME)
         write_record(record)
         [record, nil]
       rescue StandardError => e
@@ -316,7 +311,7 @@ module Samagotchi
 
       def list_records
         ensure_tasks_dir
-        task_dirs = Dir.glob(File.join(TASKS_DIR, "*"))
+        task_dirs = Dir.glob(File.join(TaskFiles::TASKS_DIR, "*"))
                        .select { |path| File.directory?(path) }
 
         task_dirs.map do |task_dir|
@@ -332,81 +327,13 @@ module Samagotchi
       # task_create calls and the executes it handed over at their limit.
       # Only those results count: records are shared by every session in the
       # worker's cwd, and task_list shows them all.
-      # A native tool_response joins its calls' results with "---".
+      # TaskTranscript.created_ids_in reads which.
       # @return [Array<Hash>] {id:, command:}, oldest first
       def running_created_in(messages)
-        created_ids_in(messages).filter_map do |id|
+        TaskTranscript.created_ids_in(messages).filter_map do |id|
           record, _error = get_record(id)
           { id: id, command: record.command.to_s } if record&.running?
         end
-      end
-
-      # The ids of every task this conversation started (task_create, a
-      # handed-over execute), whatever their status now, oldest first.
-      # @return [Array<String>]
-      def created_ids_in(messages)
-        Array(messages).flat_map do |message|
-          next [] unless (message[:role] || message["role"]).to_s == "tool_response"
-
-          (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
-            block[CREATED_BLOCK, 1] || handed_over_id(block)
-          end
-        end.uniq
-      end
-
-      # A task_create result as the model gets it: its "[task_create]" lead,
-      # after the one "ran as: …" line a gate-corrected call has.
-      RAN_AS_LINE = "(?:ran as: [^\n]*\n)?"
-      CREATED_BLOCK = /\A#{RAN_AS_LINE}\[task_create\]\ntask_id: (\S+)/
-      CREATED_OUTPUT = /\A#{RAN_AS_LINE}(?:\[task_create\]\n)?task_id: (\S+)/
-
-      # The task id of a tool output that started a task, the "[tool]" lead
-      # optional (a UI's row has it or not): a task_create's, or an execute's
-      # handed_over_id. nil for any other tool or output.
-      # @return [String, nil]
-      def created_id(tool, text)
-        case tool
-        when "task_create" then text.to_s[CREATED_OUTPUT, 1]
-        when Execute::NAME then handed_over_id(text)
-        end
-      end
-
-      # The task id an execute's hand-over result names: anchored on its
-      # first line (Execute::HANDED_OVER), never a "task_id:" line anywhere,
-      # which the command's own output can print. The "[execute]" lead and
-      # a "ran as: …" line before it are optional. web/public/task_stop.js
-      # has the JS twin (handedOverId).
-      # @return [String, nil]
-      def handed_over_id(text)
-        text = text.to_s
-        # A regexp raises on bytes that aren't UTF-8 (a command's raw output).
-        text = text.scrub unless text.valid_encoding?
-        text[handed_over_pattern, 1]
-      end
-
-      def handed_over_pattern
-        @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} #{Execute::HANDED_OVER_AFTER}[^\n]*\ntask_id: (\S+)/
-      end
-
-      # A task id as task_create makes them: no path parts.
-      TASK_ID = /\A[A-Za-z0-9_-]+\z/
-
-      # The command of the task +task_id+ under +root+ (a session's working
-      # directory) as its record has it, for a UI row's title; nil for no
-      # such task or an unreadable record. Reads the record only (no
-      # refresh), so it is cheap and never fails.
-      # @return [String, nil]
-      def command_of(task_id, root: Dir.pwd)
-        id = task_id.to_s.strip
-        return nil unless id.match?(TASK_ID)
-
-        path = File.join(root || Dir.pwd, TASKS_DIR, id, METADATA_FILENAME)
-        return nil unless File.file?(path)
-
-        command = TaskRecord.from_file(JSON.parse(File.read(path)))&.command
-        command.is_a?(String) && !command.strip.empty? ? command : nil
-      rescue StandardError
-        nil
       end
 
       def get_record(task_id)
@@ -562,7 +489,7 @@ module Samagotchi
       def load_record(task_id)
         return nil unless TASK_ID_SHAPE.match?(task_id.to_s)
 
-        path = metadata_path(task_id)
+        path = TaskFiles.metadata_path(task_id)
         return nil unless File.exist?(path)
 
         TaskRecord.from_file(JSON.parse(File.read(path)))
@@ -572,31 +499,23 @@ module Samagotchi
 
       def write_record(record)
         ensure_tasks_dir
-        dir = task_dir_for(record.id)
+        dir = TaskFiles.task_dir_for(record.id)
         FileUtils.mkdir_p(dir)
 
-        path = File.join(dir, METADATA_FILENAME)
+        path = File.join(dir, TaskFiles::METADATA_FILENAME)
         AtomicFile.write(path, record_json(record))
       end
 
       def record_json(record) = JSON.pretty_generate(record.to_file) + "\n"
 
-      def metadata_path(task_id)
-        File.join(task_dir_for(task_id), METADATA_FILENAME)
-      end
-
-      def task_dir_for(task_id)
-        File.join(TASKS_DIR, task_id.to_s)
-      end
-
       def ensure_tasks_dir
-        FileUtils.mkdir_p(TASKS_DIR)
+        FileUtils.mkdir_p(TaskFiles::TASKS_DIR)
       end
 
       def generate_task_id
         loop do
           candidate = "#{Time.now.utc.strftime("%Y%m%d%H%M%S")}-#{SecureRandom.hex(4)}"
-          return candidate unless File.exist?(metadata_path(candidate))
+          return candidate unless File.exist?(TaskFiles.metadata_path(candidate))
         end
       end
 
@@ -618,54 +537,6 @@ module Samagotchi
       def wrapped_shell_command(command, exit_code_path)
         write = %(printf "%s" "$?" > #{Shellwords.escape(exit_code_path)})
         "trap #{Shellwords.escape(write)} EXIT\n#{command}\n"
-      end
-
-      # chi's own Ruby/Bundler setup, kept out of a command's environment
-      # (execute and task_create both spawn with it): run under `bundle
-      # exec`, chi would otherwise hand a project's `ruby -e` or
-      # `bundle exec` its Gemfile (RUBYOPT=-rbundler/setup, BUNDLE_GEMFILE,
-      # BUNDLER_SETUP) and lockfile.
-      def sanitized_spawn_env
-        SANITIZED_ENV_KEYS.to_h { |key| [key, nil] }.merge("RUBYOPT" => sanitized_rubyopt)
-      end
-
-      # The model's way out: a Ruby or Bundler variable it does want, for one command.
-      def sanitized_key_error(key)
-        "Error: env key is reserved: #{key} (chi clears it for every command; to set it for this one, " \
-          "put it in the command: #{key}=value cmd)"
-      end
-
-      def spawn_env_for(overrides)
-        return [sanitized_spawn_env, nil] if overrides.nil? || overrides.to_s.empty?
-
-        overrides = JSON.parse(overrides) if overrides.is_a?(String)
-        return [nil, "Error: env must be an object"] unless overrides.is_a?(Hash)
-
-        normalized = {}
-        overrides.each do |key, value|
-          return [nil, "Error: env keys and values must be strings"] unless key.is_a?(String) && value.is_a?(String)
-          return [nil, "Error: env keys and values cannot contain NUL bytes"] if key.include?("\0") || value.include?("\0")
-          return [nil, "Error: env key is reserved: #{key}"] if MARKER_ENV_KEYS.include?(key)
-          return [nil, sanitized_key_error(key)] if SANITIZED_ENV_KEYS.include?(key)
-
-          normalized[key] = value
-        end
-
-        [sanitized_spawn_env.merge(normalized), nil]
-      rescue JSON::ParserError
-        [nil, "Error: env must be a JSON object"]
-      end
-
-      def sanitized_rubyopt
-        rubyopt = ENV["RUBYOPT"].to_s
-        return nil if rubyopt.empty?
-
-        filtered = rubyopt.split(/\s+/).reject do |arg|
-          arg == "-rbundler/setup" || arg.match?(%r{\A-r.*bundler/setup\z})
-        end
-        return nil if filtered.empty?
-
-        filtered.join(" ")
       end
 
       # @param leftovers [Symbol, nil] what a refresh found left holding the log
@@ -719,6 +590,15 @@ module Samagotchi
       def timestamp
         Time.now.utc.iso8601
       end
+
+      # No caller outside this file. A function a spec calls by name stays
+      # public (refresh_record, waiter_for, load_record,
+      # write_record, quiesce!…): no spec sends a private one.
+      private_class_method :remember_waiter, :forget_waiter, :leftovers_after_exit, :settle, :log_paths,
+                           :status_code, :correct_finished_record, :record_at,
+                           :leftover_group?, :settle_from_refresh, :chis_group?, :mark_not_chis, :not_found,
+                           :record_json, :ensure_tasks_dir, :normalize_cwd, :mark_finished_without_exit_code, :finished_with, :current_record,
+                           :mark_stopped, :read_exit_code, :timestamp
     end
   end
 end

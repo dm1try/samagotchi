@@ -493,7 +493,7 @@ mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while 
   `.config/mise/`, `mise/`, `.mise/`) are secrets to them, as `.env` is.
 - **What tools still drop**: every `execute`, task, `!cmd`, context source and MCP server takes no `RUBYOPT`, `RUBYLIB`, or what `bundle exec` sets
   (`BUNDLE_GEMFILE`, `BUNDLE_LOCKFILE`, `BUNDLE_BIN_PATH`, `BUNDLER_VERSION`, `BUNDLER_SETUP`: `BundlerEnv`) from the project's mise env: it runs without `RUBYLIB` and Bundler's
-  variables, and with the worker's own `RUBYOPT`, Bundler's part removed (`TaskRuntime`).
+  variables, and with the worker's own `RUBYOPT`, Bundler's part removed (`SpawnEnv`).
 - **`chi` in a tool** stays the home's: with a chi home the tools' PATH starts with `$XDG_STATE_HOME/samagotchi/bin`,
   a dir holding only a `chi` script that boots the home (rewritten at each worker start when the home changed; it
   unsets `RUBYOPT`, `RUBYLIB`, `RUBYGEMS_GEMDEPS`, `GEMRC` and `BUNDLE*` before it runs, so a `bundle exec` around it

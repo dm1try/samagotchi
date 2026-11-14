@@ -130,9 +130,11 @@ RSpec.describe Samagotchi::Testing::Sandbox do
   # (SessionPaths, SessionField: Session's leaves.)
   # (The schedule tools require Schedules inside their call, not at load: a
   #  session that never touches a schedule does not pull the session lifecycle
-  #  into the kit. Budget 295 — 293 loaded with Compat and ApprovalUse, 294 with ToolNames
-  #  (tool_names.rb, the built-ins' names the tool classes read), plus a one-file margin.)
-  it "requires no Engine with the kit, in under 295 chi files" do
+  #  into the kit. Budget 299 — 293 loaded with Compat and ApprovalUse, 294 with ToolNames
+  #  (tool_names.rb, the built-ins' names the tool classes read), 297 with TaskRuntime's
+  #  code split into spawn_env.rb, task_files.rb and task_transcript.rb (the same code, in
+  #  three more files), plus a one-file margin (under 299: up to 298).)
+  it "requires no Engine with the kit, in under 299 chi files" do
     lib = File.expand_path("../../../lib", __dir__)
     script = 'lib = ARGV.fetch(0); require "samagotchi/testing"; ' \
              'print [$LOADED_FEATURES.count { |f| f.start_with?(lib + "/samagotchi/") }, ' \
@@ -141,6 +143,6 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(status).to be_success, err
     count, engine = out.split
     expect(engine).to eq("nil")
-    expect(Integer(count)).to be < 295
+    expect(Integer(count)).to be < 299
   end
 end

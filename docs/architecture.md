@@ -176,7 +176,7 @@ unless mise sets them; never `HOME`, `XDG_*`, `SAMAGOTCHI_*`, `CHI_REMOTE`, `RAC
 (`$XDG_STATE_HOME/samagotchi/bin`, only a `chi` that execs `Record#boot_argv(run: CHI_BOOT)`) first on PATH when there
 is a home, `SAMAGOTCHI_PROJECT_ENV` (`mise:<ruby>` or `none:<reason>`, for `chi self`) and
 `SAMAGOTCHI_PROJECT_ENV_ORIG` (the worker's own value of each key it changes). It is merged into: `execute` and
-`task_create` for the owner's turns (`Builtins.project_env`, less `TaskRuntime::SANITIZED_ENV_KEYS`; never a
+`task_create` for the owner's turns (`Builtins.project_env`, less `SpawnEnv::SANITIZED_ENV_KEYS`; never a
 participant's turn), `!cmd` (`SessionCommands#shell`), context sources (`ContextFetch`) and MCP servers (the mcp
 bundle's `server_env`). A worker started from the worker inherits its clean ENV. A `chi` a tool runs (through the shim or not, a fresh
 process with the tools' env) takes the worker's values back from the record in `bin/chi`, before anything reads

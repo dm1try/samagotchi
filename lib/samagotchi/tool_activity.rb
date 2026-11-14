@@ -6,7 +6,7 @@ require_relative "command_steps"
 require_relative "tool_view"
 require_relative "tool_names"
 require_relative "tools/registry"
-require_relative "tools/task_runtime"
+require_relative "task_files"
 require_relative "tools/forget_outputs"
 require_relative "tools/objectives_tool"
 
@@ -139,7 +139,7 @@ module Samagotchi
     # command's title, and for a wait how long it waits ("npm test · up to
     # 600s"). nil when there is no record: the row keeps its id.
     def task_title(tool_name, call, cwd)
-      command = Tools::TaskRuntime.command_of(call[:content], root: cwd)
+      command = TaskFiles.command_of(call[:content], root: cwd)
       return nil unless command
 
       suffix = ""

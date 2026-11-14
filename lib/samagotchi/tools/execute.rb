@@ -8,6 +8,8 @@ require_relative "../process_group"
 require_relative "leftovers"
 require_relative "output_guardrails"
 require_relative "shell"
+require_relative "../spawn_env"
+require_relative "../task_files"
 require_relative "task_runtime"
 require_relative "../tool_names"
 
@@ -96,7 +98,7 @@ module Samagotchi
       #   instead of the user)
       # @param env [Hash, nil] added to the command's environment, over
       #   chi's Ruby/Bundler variables scrubbed as task_create scrubs them
-      #   (TaskRuntime.sanitized_spawn_env); chi's callers build it, so it
+      #   (SpawnEnv.sanitized_spawn_env); chi's callers build it, so it
       #   may set those keys (task_create refuses them from the model)
       # @param on_timeout [Symbol, String, nil] :task or :kill (ON_TIMEOUT);
       #   nil reads execute.on_timeout
@@ -195,7 +197,7 @@ module Samagotchi
         dir = File.join(logs_root, id)
         FileUtils.mkdir_p(dir)
         logs = [File.join(dir, STDOUT_LOG), File.join(dir, STDERR_LOG)]
-        exit_code_path = File.join(dir, TaskRuntime::EXIT_CODE_FILENAME)
+        exit_code_path = File.join(dir, TaskFiles::EXIT_CODE_FILENAME)
         begin
           pid = spawn_logged(command, env: env, cwd: cwd, logs: logs, exit_code_path: exit_code_path)
         rescue StandardError => e
@@ -301,7 +303,7 @@ module Samagotchi
         # file, and each write lands at the end.
         ios = logs.map { |path| File.open(path, "a") }
         ios.each { |io| io.flock(File::LOCK_SH) }
-        ProcessGroup.spawn(TaskRuntime.sanitized_spawn_env.merge(env || {}), *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
+        ProcessGroup.spawn(SpawnEnv.sanitized_spawn_env.merge(env || {}), *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
                            chdir: cwd, in: File::NULL, out: ios[0], err: ios[1])
       ensure
         ios&.each(&:close)
@@ -352,7 +354,7 @@ module Samagotchi
         record, error = TaskRuntime.adopt(task)
         return nil if error
 
-        File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record.id)))
+        File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskFiles.metadata_path(record.id)))
         TaskRuntime.record_exit_status(waiter, record.exit_code_path, task_id: record.id)
         # Ended between the deadline and the adopt: the record says how.
         TaskRuntime.get_record(record.id) unless waiter.alive?
