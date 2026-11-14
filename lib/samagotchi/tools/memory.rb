@@ -26,11 +26,11 @@ module Samagotchi
       SEPARATOR = "\n\n---\n\n"
 
       # A memory_read's text, and which file answered each name it read
-      # (+reads+: name => {path:, overlay_path:}, absolute paths, the overlay
-      # only when one was read with the entry). A String, so every reader of
-      # the result reads the same bytes the model does; ToolRunner turns
-      # +reads+ into the run's stamp (ToolRunner#memory_stamp), which is what
-      # later tells a memory the model read from one whose file changed after.
+      # (+reads+: name => {path:, overlay_path:, requested_scope:, model_key:,
+      # fallback_model_key:, project_dir:}, absolute paths, the overlay only
+      # when one was read with the entry). A String, so every reader of the
+      # result reads the same bytes the model does; ToolRunner turns +reads+
+      # into the run's stamp (ToolRunner#memory_stamp).
       class Result < String
         attr_reader :reads
 
@@ -38,6 +38,58 @@ module Samagotchi
           super(text)
           @reads = reads
         end
+      end
+
+      Resolved = Data.define(:scope, :path, :overlay_path, :overlay_key)
+
+      # The entry and overlay that would answer +name+ from these explicit
+      # memory roots. Nil when no entry exists.
+      def self.resolve(name, project_dir:, system_dir:, scope: nil, model_key: nil, fallback_model_key: nil)
+        name = name.to_s.strip
+        return nil if name.empty? || invalid_name?(name)
+
+        scope = normalize_scope(scope)
+        roots = { "project" => project_dir, "system" => system_dir }
+        scopes = scope ? [scope] : %w[project system]
+        scopes.each do |resolved_scope|
+          root = roots[resolved_scope]
+          next unless root
+
+          path = File.join(root, "#{name}.md")
+          next unless File.exist?(path)
+
+          overlay_path = overlay_key = nil
+          [model_key, fallback_model_key].compact.each do |candidate|
+            key = candidate.to_s.strip
+            next if key.empty?
+
+            candidate_path = File.join(root, "#{name}.#{key}.md")
+            next unless File.exist?(candidate_path)
+
+            overlay_path = candidate_path
+            overlay_key = key
+            break
+          end
+          return Resolved.new(scope: resolved_scope, path: path, overlay_path: overlay_path, overlay_key: overlay_key)
+        end
+        nil
+      end
+
+      def self.overlay_prefix(key) = "#{SEPARATOR}Model-specific guidance (#{key}):\n"
+
+      def self.append_overlay(body, overlay_text, key) = "#{body}#{overlay_prefix(key)}#{overlay_text}"
+
+      def self.overlay_key(name, path)
+        basename = File.basename(path.to_s)
+        prefix = "#{name}."
+        return nil unless basename.start_with?(prefix) && basename.end_with?(".md")
+
+        basename.delete_prefix(prefix).delete_suffix(".md")
+      end
+
+      def self.overlay_tail(text, key)
+        at = text.to_s.rindex(overlay_prefix(key))
+        at ? text[at..] : ""
       end
 
       # @param fallback_model_key [String, nil] read when +model_key+ has no overlay
@@ -73,30 +125,22 @@ module Samagotchi
         results = []
         reads = {}
         missing = []
+        project_dir = memories_dir("project") unless scope == "system"
+        system_dir = memories_dir("system") unless scope == "project"
 
         names.each do |name|
-          found = false
-          resolved_scopes.each do |resolved_scope|
-            path = memory_path(name, resolved_scope)
-            next unless File.exist?(path)
-
-            body = File.read(path, encoding: "UTF-8")
-            overlay = nil
-            # Append model-specific overlay if key is provided and overlay exists.
-            [model_key, fallback_model_key].compact.each do |key|
-              overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
-              next unless overlay_path && File.exist?(overlay_path)
-
-              body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path, encoding: "UTF-8")
-              overlay = overlay_path
-              break
-            end
-            results << body
-            reads[name] = { path: path, overlay_path: overlay }
-            found = true
-            break
+          resolved = resolve(name, scope: scope, model_key: model_key, fallback_model_key: fallback_model_key,
+                             project_dir: project_dir, system_dir: system_dir)
+          unless resolved
+            missing << name
+            next
           end
-          missing << name unless found
+
+          body = File.read(resolved.path, encoding: "UTF-8")
+          body = append_overlay(body, File.read(resolved.overlay_path, encoding: "UTF-8"), resolved.overlay_key) if resolved.overlay_path
+          results << body
+          reads[name] = { path: resolved.path, overlay_path: resolved.overlay_path, requested_scope: scope,
+                          model_key: model_key, fallback_model_key: fallback_model_key, project_dir: project_dir }
         end
 
         return Result.new(results.join(SEPARATOR), reads) if missing.empty?

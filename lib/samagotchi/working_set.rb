@@ -113,13 +113,15 @@ module Samagotchi
     #   LLMContextView takes it (the session's current one)
     # @param stat [#call] File.stat, or a stand-in (specs)
     # @param pins [Array<WorkingSetPin>] the session's pins
+    # @param root [String] the system memories folder
     # @return [Snapshot]
-    def build(conversation, cwd:, strategy:, stat: File.method(:stat), pins: [])
+    def build(conversation, cwd:, strategy:, stat: File.method(:stat), pins: [],
+              root: Tools::MemoryRead.memories_dir("system"))
       conversation = Array(conversation)
       view = LLMContextView.new(strategy: strategy)
       pinned = pins.to_set { |pin| [pin.kind, pin.key] }
       items = all_touches(conversation, cwd, view).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
-        item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]))
+        item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]), root)
       end
       Snapshot.new(items: items, at: conversation.size, adds: pending_adds(conversation))
     end
@@ -239,9 +241,6 @@ module Samagotchi
             MEMORY_WRITE => "memory_write", WEB_FETCH => "fetch" }.freeze
     # A range read past the file's end says so after its lines (Tools::Read).
     CLAMP_NOTE = /\n\[read: end_line \d+ exceeds \d+ lines; returning lines \d+-\d+\]\z/
-    # How memory_read appends a model overlay (Tools::MemoryRead.call).
-    OVERLAY_HEAD = "#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (".freeze
-
     # The timeline of the item +kind+/+key+ (#build's identity): every run
     # that touched it, edits and writes too, by the same walk #build and
     # #outputs_of use (one all_touches), so the projection, the steer and
@@ -263,8 +262,8 @@ module Samagotchi
     # diff from what that read sent; nil when no read of it has a stamp (a
     # session saved before memory stamps). +root+: the memories folder
     # (MemoryPaths.system_dir: the projects' folders are under it); a stamped
-    # path (entry or overlay) outside it is never read, nil then. +read+:
-    # File.read, or a stand-in.
+    # or resolved path outside it is never read, nil then. +read+: File.read,
+    # or a stand-in.
     # @return [Now, nil]
     def memory_now(conversation, key:, strategy:, cwd:, root:, read: ->(path) { File.read(path, encoding: "UTF-8") })
       conversation = Array(conversation)
@@ -276,10 +275,25 @@ module Samagotchi
       return nil unless entries
 
       names = found_names(touch.run)
-      return nil unless names.all? { |name| entries[name].is_a?(Hash) && memory_paths?(entries[name], root) }
+      current_entries = names.map do |name|
+        entry = entries[name]
+        return nil unless entry.is_a?(Hash)
+
+        if resolution_metadata?(entry)
+          resolved = resolve_memory(name, entry, system_dir: root)
+          if resolved != :stamped_paths
+            return Now.new(text: nil, diff: nil, gone: true) unless resolved
+
+            entry = resolved_memory_entry(resolved)
+          end
+        end
+        return nil unless memory_paths?(entry, root)
+
+        entry
+      end
 
       had = body_of(touch.run.text)
-      bodies = names.map { |name| memory_body(name, entries[name], read) }
+      bodies = names.zip(current_entries).map { |name, entry| memory_body(name, entry, read) }
       return Now.new(text: nil, diff: nil, gone: true) if bodies.any?(&:nil?)
 
       # Here, not at load: the testing kit loads WorkingSet and keeps a file budget (sandbox_spec).
@@ -306,6 +320,30 @@ module Samagotchi
       end
     end
 
+    def project_dir_within_root?(path, root)
+      return true if path.nil?
+
+      File.expand_path(path.to_s).start_with?(File.join(File.expand_path(root.to_s), ""))
+    end
+
+    def resolution_metadata?(entry)
+      %i[requested_scope model_key fallback_model_key project_dir].all? do |key|
+        entry.key?(key) || entry.key?(key.to_s)
+      end
+    end
+
+    def resolve_memory(name, entry, system_dir:)
+      return :stamped_paths unless project_dir_within_root?(field(entry, :project_dir), system_dir)
+
+      Tools::MemoryRead.resolve(name, scope: field(entry, :requested_scope), model_key: field(entry, :model_key),
+                                fallback_model_key: field(entry, :fallback_model_key),
+                                project_dir: field(entry, :project_dir), system_dir: system_dir)
+    end
+
+    def resolved_memory_entry(resolved)
+      { path: resolved.path, overlay: resolved.overlay_path && { path: resolved.overlay_path } }
+    end
+
     def event(touch, conversation, view, cwd)
       run = touch.run
       name = run.call[:name].to_s
@@ -321,7 +359,10 @@ module Samagotchi
         diff = saved_diff(conversation[run.index], run.ref.run)
       when MEMORY_READ
         memory = memory_part(touch, conversation)
-        text = text.delete_suffix(overlay_tail(text)) if memory&.overlay
+        if memory&.overlay
+          overlay_key = Tools::MemoryRead.overlay_key(touch.key, memory.overlay_path)
+          text = text.delete_suffix(overlay_tail(text, overlay_key)) if overlay_key
+        end
       when MEMORY_WRITE
         text = run.call[:content].to_s
       end
@@ -372,17 +413,15 @@ module Samagotchi
       path = field(entry, :path).to_s
       overlay = field(entry, :overlay)
       overlay_path = overlay.is_a?(Hash) ? field(overlay, :path).to_s : nil
-      tail = touch.share == 1 && overlay_path ? overlay_tail(body_of(touch.run.text)) : ""
+      overlay_key = overlay_path && Tools::MemoryRead.overlay_key(touch.key, overlay_path)
+      tail = touch.share == 1 && overlay_key ? overlay_tail(body_of(touch.run.text), overlay_key) : ""
       MemoryPart.new(scope: memory_scope(path), path: path, overlay_path: overlay_path,
-                     overlay: tail.empty? ? nil : tail.sub(/\A#{Regexp.escape(OVERLAY_HEAD)}[^\n]*\n/o, ""))
+                     overlay: tail.empty? ? nil : tail.sub(Tools::MemoryRead.overlay_prefix(overlay_key), ""))
     end
 
     # The overlay memory_read appended to +text+ (its separator and head
     # line included), or "".
-    def overlay_tail(text)
-      at = text.rindex(OVERLAY_HEAD)
-      at ? text[at..] : ""
-    end
+    def overlay_tail(text, key) = Tools::MemoryRead.overlay_tail(text, key)
 
     # A memory's scope by where its file is: a project's under
     # memories/projects/<key>/, a system one's in memories/.
@@ -397,8 +436,8 @@ module Samagotchi
       return body unless overlay.is_a?(Hash)
 
       overlay_path = field(overlay, :path).to_s
-      model_key = File.basename(overlay_path, ".md").delete_prefix("#{name}.")
-      "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{model_key}):\n#{read.call(overlay_path)}"
+      model_key = Tools::MemoryRead.overlay_key(name, overlay_path)
+      model_key ? Tools::MemoryRead.append_overlay(body, read.call(overlay_path), model_key) : body
     rescue SystemCallError
       nil
     end
@@ -458,7 +497,7 @@ module Samagotchi
       names - missing
     end
 
-    def item(kind, key, group, conversation, view, stat, pinned)
+    def item(kind, key, group, conversation, view, stat, pinned, root)
       first = group.first
       contents = group.select(&:content)
       tokens = contents.sum { |touch| touch.sent.length / TokenUsage::CHARS_PER_TOKEN / touch.share }.ceil
@@ -466,7 +505,7 @@ module Samagotchi
                 contents.all? { |touch| dropped?(touch, conversation) } ? DROPPED : FORGOTTEN
               elsif kind == FILE && changed?(key, group.last.run, conversation, stat)
                 STALE
-              elsif kind == MEMORY && memory_changed?(key, group.last.run, conversation, stat)
+              elsif kind == MEMORY && memory_changed?(key, group.last.run, conversation, stat, root)
                 STALE
               else
                 LIVE
@@ -511,12 +550,10 @@ module Samagotchi
     end
 
     # Whether the memory +key+ has changed since +run+'s stamp (the item's
-    # latest run): a memory_read's stamp has one entry per name it read, each
-    # with the file that answered and the model overlay read with it. No stamp
-    # - a session saved before memory stamps, or a reader that only knows file
-    # stamps - means not changed. The memory is gone, or its overlay is, as
-    # well: changed.
-    def memory_changed?(key, run, conversation, stat)
+    # latest run): re-resolve stamps with request metadata, then compare the
+    # answering files. Older path-only stamps compare their stamped files.
+    # No stamp means not changed; a missing entry or overlay is changed.
+    def memory_changed?(key, run, conversation, stat, root)
       stamp = stamp_hash(conversation[run.index], run.ref.run)
       return false unless stamp
 
@@ -524,9 +561,29 @@ module Samagotchi
       entry = entries.is_a?(Hash) ? field(entries, key) : nil
       return false unless entry.is_a?(Hash)
 
+      if resolution_metadata?(entry)
+        resolved = resolve_memory(key, entry, system_dir: root)
+        unless resolved == :stamped_paths
+          return true unless resolved
+
+          return true unless memory_paths?(resolved_memory_entry(resolved), root)
+
+          stamped_overlay = field(entry, :overlay)
+          stamped_overlay_path = stamped_overlay.is_a?(Hash) ? field(stamped_overlay, :path) : nil
+          return true unless same_path?(resolved.path, field(entry, :path))
+          return true unless same_path?(resolved.overlay_path, stamped_overlay_path)
+        end
+      end
+
       overlay = field(entry, :overlay)
       differs?(field(entry, :path), entry, stat) ||
         (overlay.is_a?(Hash) && differs?(field(overlay, :path), overlay, stat))
+    end
+
+    def same_path?(left, right)
+      return left.nil? && right.nil? if left.nil? || right.nil?
+
+      File.expand_path(left.to_s) == File.expand_path(right.to_s)
     end
 
     # Whether the file at +path+ is not what +entry+ ({mtime_ns:, size:}) says
@@ -560,7 +617,9 @@ module Samagotchi
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
     private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id,
-                         :changed?, :memory_changed?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
-                         :lines_of, :saved_diff, :memory_entries, :memory_paths?, :memory_part, :overlay_tail, :memory_scope, :memory_body
+                         :changed?, :memory_changed?, :same_path?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
+                         :lines_of, :saved_diff, :memory_entries, :memory_paths?, :project_dir_within_root?,
+                         :resolution_metadata?, :resolve_memory, :resolved_memory_entry, :memory_part, :overlay_tail,
+                         :memory_scope, :memory_body
   end
 end

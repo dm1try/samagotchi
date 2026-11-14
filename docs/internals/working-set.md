@@ -16,13 +16,15 @@ directory), gives no stamp; nor does any other tool.
 An ok `memory_read` is stamped differently: `Tools::MemoryRead.call` returns a `Tools::MemoryRead::Result`, a String
 with `reads` besides it - per name read, the file that answered and the model overlay appended to it, if any (KernelLoop
 hands those to the runner as `result[:memory_reads]`). Its stamp is
-`{memories: {name => {path:, mtime_ns:, size:, overlay: {…}}}}`, one entry per name, with no `mtime_ns` at its top.
+`{memories: {name => {path:, mtime_ns:, size:, overlay: {…}, requested_scope:, model_key:, fallback_model_key:,
+project_dir:}}}`, one entry per name, with no `mtime_ns` at its top. The request fields let the working set resolve
+the name and overlay again with the same scope and model keys; an older path-only stamp keeps its original behavior.
 That is compat N-1 in both directions: a reader that only knows file stamps (`WorkingSet.stamp_of` needs a top-level
 `mtime_ns`) sees nothing in it, and a session saved before memory stamps has no stamp at all - either way its memories
-are never stale. The name it read from, and its overlay, are what "changed since" is measured against, so a system
-memory the model read is stale when its file or the overlay read with it moved, even if a project memory of the same
-name exists. A `read`, `edit` or `write` of a memory's file is still a file item: the page has no memory row for
-that path, so counting it as the memory comes with the page builds that map it too.
+are never stale. The working set marks a read stale if a different scope or overlay would answer now, or if the
+stamped files changed; this includes a project memory appearing after an unscoped read fell back to system.
+A `read`, `edit` or `write` of a memory's file is still a file item: the page has no memory row for that path, so
+counting it as the memory comes with the page builds that map it too.
 
 Both `ToolResponse` shapes save the stamps as `tool_stamps`, one per run, read by the run's place
 (`ToolIds::Ref#run`):
