@@ -8,7 +8,6 @@ require "samagotchi/session"
 require "samagotchi/session_manager"
 require "samagotchi/session_continue"
 require "samagotchi/plugin/context"
-require "samagotchi/review_start"
 require "samagotchi/verify_fresh"
 require "samagotchi/verify_fresh_origin"
 require "samagotchi/tools/delegate"
@@ -40,7 +39,7 @@ RSpec.describe "Session file goldens (characterization)" do
   def session_class = Samagotchi::Session
 
   # Both spellings of the tmpdir are <TMP>, its realpath first: on macOS
-  # /var/folders and /tmp resolve to /private/..., and ReviewStart stores the
+  # /var/folders and /tmp resolve to /private/..., and a session may store the
   # project's realpath, so the unresolved one alone left "/private<TMP>".
   def normalize(text)
     text.gsub(File.realpath(tmp), "<TMP>").gsub(tmp, "<TMP>").gsub(%("written_by": #{Samagotchi::VERSION.to_json}), %("written_by": "<VERSION>"))
@@ -322,14 +321,6 @@ RSpec.describe "Session file goldens (characterization)" do
       id = spawn_session_for_spec(manager, prompt: "hi", working_directory: folder, model_name: "main:gemma-small",
                                  state_dir: state_dir).id
       expect_path_golden("spawned.json", id)
-    end
-
-    it "a review session (ReviewStart.start)" do
-      git_repo(folder)
-      File.write(File.join(folder, "plan.md"), "# Plan\n")
-      id = Samagotchi::ReviewStart.start(subjects: ["plan.md"], dir: folder, model: "main:gemma-small",
-                                         state_dir: state_dir).id
-      expect_path_golden("review_started.json", id)
     end
 
     it "a Verify fresh child (VerifyFresh.start)" do

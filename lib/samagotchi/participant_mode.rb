@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "delivery"
-require_relative "session_paths"
+require_relative "worker_link"
 
 module Samagotchi
   # The rules for a participant's turn: the one place that decides them.
@@ -71,18 +71,11 @@ module Samagotchi
       of(session) == PAIR && live(session, state_dir: state_dir) == REVIEW
     end
 
-    # The live worker's features, nil without a live worker (or when it
-    # can't be read).
+    # The live worker's features (WorkerLink.live_features), nil without one.
     def live_features(session, state_dir)
-      return nil if session.nil? || !session.respond_to?(:id) || session.id.to_s.empty?
+      return nil if session.nil? || !session.respond_to?(:id)
 
-      require_relative "session"
-      require_relative "worker_link"
-      dir = SessionPaths.session_dir(session.id, state_dir: state_dir || SessionPaths.default_state_dir)
-      link = WorkerLink.resolve(dir, unlink: false)
-      link.live? ? link.features : nil
-    rescue StandardError
-      nil
+      WorkerLink.live_features(session.id, state_dir: state_dir)
     end
   end
 end

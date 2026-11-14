@@ -118,8 +118,8 @@ module Samagotchi
     # What chi share made: the participant, their token and the link that
     # carries it (both shown this once: chi keeps only a digest), and
     # whether that chi web listens on the LAN (+lan+ false: the link works
-    # on that machine only), and the warning for sharing a working session
-    # (ReviewStart.share_warning; nil for a review session).
+    # on that machine only), and the warning that a participant's turns act
+    # in the session (ShareTerms#warning).
     Invitation = Data.define(:participant, :token, :link, :lan, :warning) do
       def initialize(participant:, token:, link:, lan:, warning: nil) = super
 
@@ -139,21 +139,11 @@ module Samagotchi
     # bundles). +client_id+ (chi send's, or chi answer's for a parent's
     # /continue yes) and +images+ (images follow) are for a Remote's server,
     # which checks the first line and the model as chi send checks them
-    # here (Local checks before it creates). +review+ (a Review) makes it a
-    # review session (chi review): idle, no prompt, and with +review.from+
-    # a review fork of that session (its folder and setup: the rest is nil).
+    # here (Local checks before it creates).
     NewSession = Data.define(:prompt, :preview, :continues, :working_directory, :model_name, :setup, :client_id,
-                             :images, :idle, :review) do
+                             :images, :idle) do
       def initialize(prompt:, preview: nil, continues: nil, working_directory: nil, model_name: nil, setup: nil,
-                     client_id: nil, images: false, idle: false, review: nil) = super
-    end
-
-    # A review session to create (NewSession#review): +subjects+ as typed
-    # (relative to the session's folder; the side that has the files checks
-    # them, ReviewStart.check_subjects), +from+ the session a review fork
-    # starts from (an id, a prefix or last:<id>), or nil.
-    Review = Data.define(:subjects, :from) do
-      def initialize(subjects: [], from: nil) = super(subjects: Array(subjects).map(&:to_s), from: from)
+                     client_id: nil, images: false, idle: false) = super
     end
 
     # chi send --new's setup flags as typed, for a Remote: +llm_context+

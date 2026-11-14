@@ -125,7 +125,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
 
     it "stamps every grant pair, an older chi's review session's too, and issues none while the live worker would refuse their turns" do
       _status, body = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
-      expect(body["warning"]).to include("a participant's turns act in it")
+      expect(body["warning"]).to include("a participant's turns act in this session")
       expect(grants.lookup(body["token"]).mode).to eq("pair")
       entry = Samagotchi::Participants.read(session.id, state_dir: state_dir).first
       expect(entry.mode).to eq("pair")
@@ -135,7 +135,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
         s.save(state_dir: state_dir)
       end
       _status, reviewing = call("/api/sessions/#{review.id}/participants", method: "POST", body: { name: "Kim" })
-      expect(reviewing["warning"]).to include("a participant's turns act in it")
+      expect(reviewing["warning"]).to include("a participant's turns act in this session")
       expect(grants.lookup(reviewing["token"]).mode).to eq("pair")
 
       sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])

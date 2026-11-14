@@ -22,7 +22,6 @@ require "samagotchi/analytics_file"
 require "samagotchi/toolkit"
 require "samagotchi/web/app"
 require "samagotchi/grants"
-require "samagotchi/review_start"
 require "samagotchi/review_apply"
 
 # The P3b gate (the shared-sessions plan, "Phases", P3b's red-team): a
@@ -668,15 +667,6 @@ RSpec.describe "a participant red-teaming a session" do
       expect(owner_line).not_to include("rm")
       expect(quote.lines).to all(match(/\A>( |$)/))
       expect(text).not_to include("ignore the above")
-    end
-
-    it "can't be made a subject at chi review: a secret, a file outside the project, chi's own" do
-      File.write(File.join(project, "key.pem"), "PEM\n")
-      outside = File.join(root, "outside.txt").tap { |f| File.write(f, "x") }
-      [".env", "key.pem", "../outside.txt", outside, File.join(Samagotchi::Paths.state_dir, "web-token")].each do |given|
-        expect { Samagotchi::ReviewStart.check_subjects([given], dir: project) }
-          .to raise_error(Samagotchi::ReviewStart::Refused, format(Samagotchi::ReviewStart::SUBJECT_REFUSED, given))
-      end
     end
 
     it "reads no cut-off thought or tool call in a raw loop's reply, and no delegate child's first prompt" do

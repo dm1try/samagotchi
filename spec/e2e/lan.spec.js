@@ -139,7 +139,7 @@ test("a participant: the owner invites from the panel, warned that their turns a
   const link = await owner.locator("#participantsPopover .pp-link input").inputValue();
   expect(link).toMatch(/\/\?token=chp_[\w-]+#s=[0-9a-f-]+$/);
   // The warning: a participant's turns act in it.
-  await expect(owner.locator("#participantsPopover .pp-warning").first()).toContainText("a participant's turns act in it");
+  await expect(owner.locator("#participantsPopover .pp-warning").first()).toContainText("a participant's turns act in this session");
   // No "view as a participant" any more.
   await expect(owner.locator("#participantsPopover a[href*='as=participant']")).toHaveCount(0);
   await expect(chip).toHaveText("1 participant");

@@ -2,7 +2,7 @@
 
 require_relative "../grants"
 require_relative "qr"
-require_relative "../review_start"
+require_relative "../share_terms"
 require_relative "../review_apply"
 require_relative "../session_metrics"
 require_relative "../participants"
@@ -21,12 +21,11 @@ module Samagotchi
       # GET /api/sessions/:id/participants, GET /api/participants: the
       # grants (one session's, or every one), in every state, never a token
       # or digest. One session's also carries +warning+: the share warning
-      # for a session that isn't a review session (ReviewStart.share_warning,
-      # null for one), which the panel shows before its Invite; and
-      # +identity_header+: the header this chi web's auth proxy names the
-      # signed-in user in (null without one), for the Invite's email field;
-      # +mode+: what a participant invited now gets, "pair" or "review"
-      # (ReviewStart.share_terms), for the panel's words; +link_base+: where
+      # (ShareTerms#warning: what a participant's turns do there, or why no
+      # one can be invited until the session restarts), which the panel shows
+      # before its Invite; +identity_header+: the header this chi web's auth
+      # proxy names the signed-in user in (null without one), for the
+      # Invite's email field; and +link_base+: where
       # a participant's link opens (participant_base), for a claim link
       # (claim_link.js) the participant's browser opens with its cookie.
       def handle_participants_list(req, id = nil)
@@ -34,8 +33,8 @@ module Samagotchi
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
-        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
-        json_response(200, { participants: with_spend(id, grants), warning: terms.warning, mode: terms.mode.to_s,
+        terms = ShareTerms.of(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        json_response(200, { participants: with_spend(id, grants), warning: terms.warning,
                              identity_header: @public_url&.identity_header, link_base: participant_base(req) })
       rescue Grants::Unwritable => e
         grants_unwritable(e)
@@ -61,8 +60,8 @@ module Samagotchi
       # cap? (dollars), identity? (an email: the grant is bound to it, only
       # behind an auth proxy with an identity header)}: a new grant. The
       # answer carries the token and the link once (chi keeps only its
-      # digest), and +warning+ for a session that isn't a review session
-      # (ReviewStart.share_warning; null for one).
+      # digest), and +warning+ (ShareTerms#warning); 409 worker_too_old
+      # while the session's live worker would refuse their turns.
       def handle_participants_invite(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         ttl = body["ttl"]
@@ -72,8 +71,8 @@ module Samagotchi
         return error_response(400, "invalid_participant", Grants::CAP_RANGE) unless cap.nil? || Grants.cap?(cap)
 
         # No link while the live worker would refuse every turn of theirs
-        # (one read: ReviewStart.share_terms, the warning that comes back).
-        terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
+        # (one read: ShareTerms.of, the warning that comes back).
+        terms = ShareTerms.of(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         return error_response(409, "worker_too_old", terms.refusal) if terms.refusal
 
         issued = Participants.invite(@grants, session_id: id, name: body["name"], kind: (body["kind"] || "human").to_s,

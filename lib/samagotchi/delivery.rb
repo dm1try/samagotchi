@@ -58,14 +58,16 @@ module Samagotchi
     # owner's guardrails (Guardrails::PairBoundary). One without it would
     # run it as a read-only review turn, which this chi doesn't run: chi web
     # sends it no participant's turn (PAIR_UNAVAILABLE) and no invite is
-    # issued for its session (ReviewStart.share_terms) until it restarts.
+    # issued for its session (ShareTerms.of) until it restarts.
     # Workers advertise REVIEW_FEATURE too: an older chi web refuses
     # participants' turns to a worker without it.
     PAIR_FEATURE = "pair_turns"
+    # The one sentence for a live worker without PAIR_FEATURE; each caller
+    # adds what to do (PAIR_UNAVAILABLE, ShareTerms::OLDER_WORKER_REFUSAL).
+    OLDER_THAN_PAIR = "this session's worker is too old to run a participant's turn"
     PAIR_UNAVAILABLE = {
       "error" => "pair_unavailable",
-      "detail" => "this session's worker is too old to run a participant's turn: the owner must restart it " \
-                  "(chi sessions restart ID, or the web's update badge)"
+      "detail" => "#{OLDER_THAN_PAIR}: the owner must restart it (chi sessions restart ID, or the web's update badge)"
     }.freeze
     # The worker sidecar feature (Bridge::FEATURES) of a worker whose
     # participant's message sent while their own turn runs goes in at its

@@ -39,8 +39,8 @@ RSpec.describe Samagotchi::ShareCommand do
   end
 
   # What chi share printed on stderr besides the share warning every
-  # invite prints (ReviewStart::PAIR_WARNING).
-  def other_err = err.string.lines.grep_v(/\Achi share: warning: \h{8} is a working session: /).join
+  # invite prints (ShareTerms::WARNING).
+  def other_err = err.string.lines.grep_v(/\Achi share: warning: \h{8}: a participant's turns act /).join
 
   it "prints the usage for no arguments and --help" do
     expect(described_class.new([], stdout: out, stderr: err).run).to eq(0)
@@ -169,9 +169,8 @@ RSpec.describe Samagotchi::ShareCommand do
         session.save(state_dir: state_dir)
         expect(run(session.id, "--name", "Alex")).to eq(0), err.string
         short = session.id[0, 8]
-        expect(err.string).to eq("chi share: warning: #{Samagotchi::ReviewStart.share_warning(session)} " \
-                                 "(#{via.command("review --from #{short}")} starts one)\n")
-        expect(err.string).to include("#{short} is a working session").and include("(2 tool outputs so far)")
+        expect(err.string).to eq("chi share: warning: #{Samagotchi::ShareTerms.of(session).warning}\n")
+        expect(err.string).to include("#{short}: a participant's turns act").and include("(2 tool outputs so far)")
         expect(grants.list(session_id: session.id).last.mode).to eq("pair")
 
         err.truncate(0)
@@ -179,7 +178,7 @@ RSpec.describe Samagotchi::ShareCommand do
         session.review = { "subjects" => ["plan.md"] }
         session.save(state_dir: state_dir)
         expect(run(session.id, "--name", "Kim")).to eq(0), err.string
-        expect(err.string).to include("#{short} is a working session")
+        expect(err.string).to include("#{short}: a participant's turns act")
         expect(grants.list(session_id: session.id).last.mode).to eq("pair")
       end
 

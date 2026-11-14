@@ -8,6 +8,7 @@ require_relative "compat"
 require_relative "worker_sidecar"
 require_relative "bridge_client"
 require_relative "chi_invocation"
+require_relative "session_paths"
 
 module Samagotchi
   # Whether a session's worker can be reached, and how: the one question
@@ -143,6 +144,22 @@ module Samagotchi
       end
 
       Live.new(sidecar: sidecar, owner: owner)
+    end
+
+    # The features of session +session_id+'s live worker (WorkerSidecar#features,
+    # a read-only look), nil without a live worker or when it can't be read:
+    # what chi web and chi share check before they send it a participant's
+    # turn or invite anyone to it.
+    # @param state_dir [String, nil] the sessions' state dir (nil: the default)
+    # @return [Array<String>, nil]
+    def live_features(session_id, state_dir: nil)
+      return nil if session_id.to_s.empty?
+
+      dir = SessionPaths.session_dir(session_id, state_dir: state_dir || SessionPaths.default_state_dir)
+      link = resolve(dir, unlink: false)
+      link.live? ? link.features : nil
+    rescue StandardError # degrade-ok: an unreadable sidecar reads as no live worker (the callers' fallback)
+      nil
     end
 
     # @return [BridgeClient, nil] a client for the session's Live worker
