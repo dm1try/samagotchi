@@ -83,8 +83,12 @@ module Samagotchi
     CarryContext = Data.define(:previous, :to, :state_dir, :move)
     # What an undo works on: the previous link's id, the failed link (nil in
     # :moved_back, which looks it up itself), the delegates the plan moved,
-    # and what the forward carry kept (#run's +carried+, by step name).
-    UndoContext = Data.define(:from, :link, :state_dir, :moved, :carried)
+    # what the forward carry kept (#run's +carried+, by step name), and why
+    # (ChildMove.apply's undo: :failed_continue, or :deleted_link for
+    # #undo_deleted_link).
+    UndoContext = Data.define(:from, :link, :state_dir, :moved, :carried, :reason) do
+      def initialize(from:, link:, state_dir:, moved:, carried:, reason: :failed_continue) = super
+    end
 
     # When a failed continue undoes each step, in time order: :moved_back
     # while the failed link's worker may still run (before
@@ -345,13 +349,15 @@ module Samagotchi
     end
 
     # The delegates a failed #run moved, or began to (its
-    # intent names them), go back to the previous link.
+    # intent names them), go back to the previous link; a deleted link's
+    # (#undo_deleted_link) the ones its caller names.
     private_class_method def self.undo_move(ctx)
       id = ctx.from
       state_dir = ctx.state_dir
-      link = SessionChain.next_of(id, state_dir: state_dir) or return
-      ids = ChildMove.read_intent(link, state_dir: state_dir)&.ids || ctx.moved
-      ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: true)
+      link = ctx.link || SessionChain.next_of(id, state_dir: state_dir) or return
+      # A deleted link's caller names exactly the ones still under it.
+      ids = (ctx.reason == :failed_continue && ChildMove.read_intent(link, state_dir: state_dir)&.ids) || ctx.moved
+      ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: ctx.reason)
       ChildMove.clear_intent(link, state_dir: state_dir)
     rescue StandardError => e
       Log.warn(:worker, "continue_undo_move_failed", sid: id, error: e.class.name, msg: e.message)
@@ -388,15 +394,41 @@ module Samagotchi
       end
 
       ctx = UndoContext.new(from: id, link: orphan, state_dir: state_dir, moved: moved, carried: carried)
-      undo_carry(:link_stopped, ctx)
-      FileUtils.rm_f(Session.session_file(orphan, state_dir: state_dir))
-      undo_carry(:link_unlinked, ctx)
-      SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true)
-      undo_carry(:link_deleted, ctx)
+      unlink(ctx) { SessionManager.delete_session(orphan, state_dir: state_dir, allow_scheduled: true) }
     rescue SessionManager::DeleteRefused
       raise
     rescue StandardError => e
       Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
+    # The undo's phases once the link's worker is stopped, shared by a
+    # failed continue (#discard_failed_link) and a deleted link
+    # (#undo_deleted_link): :link_stopped, its session file goes (out of the
+    # chain), :link_unlinked, the block removes the rest (neither caller
+    # recurses: each passes its own removal), :link_deleted.
+    private_class_method def self.unlink(ctx)
+      undo_carry(:link_stopped, ctx)
+      FileUtils.rm_f(Session.session_file(ctx.link, state_dir: ctx.state_dir))
+      undo_carry(:link_unlinked, ctx)
+      yield
+      undo_carry(:link_deleted, ctx)
+    end
+
+    # Deleting +link+, the chain's newest link, undoes the continue +from+ →
+    # +link+ (SessionChain::Delete, D5) once +link+'s worker is stopped:
+    # +moved+ go back to +from+ (:moved_back, their note says the link was
+    # deleted), then #unlink: the rings and every note waiting in +link+
+    # but the continue's own go to +from+ (NoteMove.give_back, moved: []),
+    # and the block removes +link+'s files. +from+ is not woken (unlike a
+    # failed continue): the reports wait for its next start. Unarchiving
+    # is the caller's.
+    # @yieldreturn the block's value is returned
+    def self.undo_deleted_link(from:, link:, moved:, state_dir:)
+      ctx = UndoContext.new(from: from, link: link, state_dir: state_dir, moved: moved, carried: {}, reason: :deleted_link)
+      undo_carry(:moved_back, ctx)
+      removed = nil
+      unlink(ctx) { removed = yield }
+      removed
     end
 
     # A failed link's folder an older chi's note brought back after its
