@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../exit_lines"
+require_relative "../../session_manager"
 
 module Samagotchi
   class TerminalUI
