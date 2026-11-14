@@ -109,7 +109,7 @@ export default [
     name: "samagotchi/stage-view-size",
     files: ["lib/samagotchi/web/public/stage_view.js"],
     rules: {
-      "max-lines": ["error", { max: 1074, skipBlankLines: false, skipComments: false }],
+      "max-lines": ["error", { max: 1037, skipBlankLines: false, skipComments: false }],
     },
   },
   {

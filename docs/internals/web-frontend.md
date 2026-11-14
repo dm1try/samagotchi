@@ -386,6 +386,8 @@ from `emptySlots`.** `npm run lint` holds it (`samagotchi/stage-size`: every `st
 - `stage_dom.js`: the nodes (the status row, the pager, the slots, the chip, the queued slot), plain, no behaviour.
 - `stage_quiet_clock.js`: the quiet signal's clocks (the last event, the stream down, the grace after the page shows
   again; `tick`, `alive`), drawn by `stage_stall.js`, whose factory keeps its signature (the mixed-cache rule).
+- `stage_answer.js`: the answer read from its top at the end (`showAnswerTop`), an answered card's line kept in sight
+  (`settleAnsweredCard`), the prompt's first words (`promptWords`).
 
 ## The stage's height
 
