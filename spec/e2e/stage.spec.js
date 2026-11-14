@@ -20,6 +20,20 @@ const settled = (page, { stage = false } = {}) => page.waitForFunction((stage) =
   !document.querySelector("#history[data-following], #history .ts-arrive") &&
   (!stage || document.querySelector("#turnStage").getAnimations().length === 0), stage);
 
+// The stage's height once the frame is settled. fitFrame (stage_frame.js)
+// frees the held height in the frame after a change: a fold marks the stage
+// collapsed at once, but the box still carries the frame it was holding for a
+// frame or two — more on a busy machine — so read only once the height has
+// held across two frames.
+async function settledHeight(page) {
+  await page.waitForFunction(() => {
+    const stage = document.querySelector("#turnStage");
+    const first = stage.offsetHeight;
+    return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(stage.offsetHeight === first))));
+  });
+  return stageEl(page).evaluate((el) => el.offsetHeight);
+}
+
 async function send(page, prompt) {
   await page.locator("#prompt").fill(prompt);
   await page.locator("#actionBtn").click();
@@ -523,15 +537,18 @@ test("a question folded in the stage stays folded across a reload mid-turn, at i
   await send(page, "Pick a file for me");
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card).toBeVisible();
+  const openHeight = await settledHeight(page);
   await stageEl(page).locator(".ts-fold").click();
   await expect(stageEl(page)).toHaveClass(/collapsed/);
-  const foldedHeight = await stageEl(page).evaluate((el) => el.offsetHeight);
+  const foldedHeight = await settledHeight(page);
+  expect(foldedHeight, "the fold frees the held frame: the box is its status row only")
+    .toBeLessThan(openHeight);
   await page.reload();
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page)).toHaveClass(/collapsed/);
   await expect(stageEl(page).locator(".ts-mini.ts-mini-question")).toHaveText("Which file should I read?");
   await expect(stageEl(page).locator(".ts-scroll")).toBeHidden();
-  expect(await stageEl(page).evaluate((el) => el.offsetHeight)).toBe(foldedHeight);
+  expect(await settledHeight(page)).toBe(foldedHeight);
   // Unfolded by hand: the reload comes back open, and nothing was written to
   // the stage's own choice.
   await stageEl(page).locator(".ts-mini").click();
