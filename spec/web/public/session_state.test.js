@@ -149,6 +149,27 @@ test("sessionStateFrom reads the saved fill and window, counted against a smalle
   assert.equal("ctxPct" in bare, false);
 });
 
+// The live worker's newest estimate (context_status in the show's session),
+// so a page opened mid-turn has a number at once. It wins over the saved
+// fill (the last turn's); without it, or with a non-number, the saved path.
+test("sessionStateFrom: the payload's context_status wins over the saved fill", () => {
+  const timing = { context: { used_tokens: 1000, window_tokens: 10000, window_source: "server" } };
+  const live = sessionStateFrom(payload({ timing, session: { context_status: { est_pct: 12.5, bucket: "under20" } } }));
+  assert.equal(live.ctxPct, 12.5);
+  // The window still comes from timing.context.
+  assert.equal(live.ctxWindow, 10000);
+  assert.equal(live.ctxWindowSource, "server");
+  // No context_status at all (an older worker, a stopped session): the saved fill.
+  assert.equal(sessionStateFrom(payload({ timing })).ctxPct, 10);
+  // A null or unusable estimate falls back to the saved fill too.
+  assert.equal(sessionStateFrom(payload({ timing, session: { context_status: null } })).ctxPct, 10);
+  assert.equal(sessionStateFrom(payload({ timing, session: { context_status: { est_pct: null } } })).ctxPct, 10);
+  // A live estimate with no saved fill at all: still a percent.
+  const fresh = sessionStateFrom(payload({ session: { context_status: { est_pct: 3, bucket: "under20" } } }));
+  assert.equal(fresh.ctxPct, 3);
+  assert.equal("ctxWindow" in fresh, false);
+});
+
 test("sessionStateFrom's title: the first user message wins over the card's preview", () => {
   const st = sessionStateFrom(payload({
     session: { first_preview: "card" },

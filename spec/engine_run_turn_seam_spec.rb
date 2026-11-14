@@ -58,6 +58,21 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 7.5, bucket: "under20")
     end
 
+    it "is the estimate of the request in flight, not only the one kept at turn end" do
+      mid = nil
+      allow(kernel).to receive(:run) do |_messages, on_stream_event:, **|
+        on_stream_event.call({ type: :context_status, iteration: 1, usage: { estimated_pct: 12.5, source: "estimate" },
+                               bucket: "under20", window_tokens: 8192, window_source: "server" })
+        mid = engine.session_state_snapshot[:context_status]
+        kernel_result
+      end
+
+      engine.run_turn(session, "hi")
+
+      expect(mid).to eq(est_pct: 12.5, bucket: "under20")
+      expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 12.5, bucket: "under20")
+    end
+
     it "is also available on the returned result" do
       allow(kernel).to receive(:run).and_return(kernel_result(tool_activity: [activity]))
 

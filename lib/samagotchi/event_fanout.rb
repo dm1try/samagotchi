@@ -35,9 +35,12 @@ module Samagotchi
     # @param working_set_snapshot [#call] (session, conversation) → WorkingSet::Snapshot
     # @param turn_running      [#call] → Boolean
     # @param announce_or_hold  [#call] (event) → announces the event, or holds it
+    # @param keep_context_status [#call] (status) → keeps the newest request's
+    #   context estimate (the Engine's @last_context_status) for a client that
+    #   joins mid-turn
     def initialize(observer:, used_memories:, muted:, steer_cut:, thinking_notices:, metrics:, hooks:, turn_context:,
                    last_turn_context:, model_settings:, session:, live_conversation:, used_memory_names:, served_expected_by:,
-                   working_set_snapshot:, turn_running:, announce_or_hold:)
+                   working_set_snapshot:, turn_running:, announce_or_hold:, keep_context_status:)
       @observer = observer
       @used_memories = used_memories
       @muted = muted
@@ -55,6 +58,7 @@ module Samagotchi
       @working_set_snapshot = working_set_snapshot
       @turn_running = turn_running
       @announce_or_hold = announce_or_hold
+      @keep_context_status = keep_context_status
       @working_set_emitted = nil
     end
 
@@ -97,6 +101,7 @@ module Samagotchi
             watch&.started(event[:iteration], restarted: true)
           end
         when :generation_chunk then thinking_notices.note_thought(progress[:thinking])
+        when :context_status then record_context_status(event)
         end
         # The chat loop asked again without the thinking fields or the
         # reasoning sent back: a notice, not an event of its own.
@@ -177,6 +182,22 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:turn, "generation_report_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       event
+    end
+
+    # The newest request's estimate, kept for a client that joins mid-turn:
+    # EngineSnapshots#session_state_snapshot's `context_status` reads it, so a
+    # page opened while a turn runs shows the percent at once instead of
+    # "ctx ?". Stored before the event is emitted: a snapshot read between the
+    # emit and this store would have a cursor past the event and the older
+    # value. Only a turn's stream handler comes through here, so a side
+    # request (/btw, a recap) can't overwrite it; the turn-end write stays.
+    def record_context_status(event)
+      pct = event.dig(:usage, :estimated_pct)
+      return unless pct.is_a?(Numeric)
+
+      @keep_context_status.call({ est_pct: pct, bucket: event[:bucket] })
+    rescue StandardError => e
+      Log.warn(:turn, "context_status_keep_failed", error: e.class.name, msg: e.message.to_s[0, 200])
     end
 
     # The turn's StreamWatch, or nil when no hook listens.

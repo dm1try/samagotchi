@@ -42,6 +42,10 @@
     "served_model": "live-served",
     "served_model_for": null,
     "served_expected_by": null,
+    "context_status": {
+      "est_pct": 12.5,
+      "bucket": "under20"
+    },
     "llm_context": {
       "strategy": "none",
       "strategy_source": "config",

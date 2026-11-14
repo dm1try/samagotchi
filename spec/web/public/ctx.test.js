@@ -251,6 +251,30 @@ test("ctxBarTip: no percent after requests — the window is unknown, until the 
   }
 });
 
+// A window that resolved but no count yet (a page that joined before the
+// first request, or a worker that never reported one): the percent waits,
+// not the window.
+test("ctxBarTip: no percent with a known window says the count is what's missing", () => {
+  const tip = ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 128000, source: "server", pct: null });
+  assert.equal(tip, "No context count yet: the next request counts it\ntokens: in 500 · out 100\nthis session only, all requests");
+  // afterSwitch still says the window is the missing part.
+  assert.match(ctxBarTip({ prompt_sum: 500 }, null, { tokens: 128000, pct: null, afterSwitch: true }),
+    /^Context window unknown until the next request\n/);
+  // No tokens at all is still "no request in this session yet".
+  assert.equal(ctxBarTip(null, null, { tokens: 128000, pct: null }), "No request in this session yet");
+});
+
+// While a turn runs the counts are of that turn, not the last finished one
+// (info_bar_model.js passes its own running flag into the window).
+test("ctxBarTip: the title of a running turn is the turn in use, not the last turn", () => {
+  const tokens = { prompt_sum: 500, completion_sum: 100 };
+  assert.equal(ctxBarTip(tokens, null, { tokens: 1000, source: "server", pct: 60, running: true }),
+    tokensTipText(tokens, "Context in use (this turn so far)", null, { tokens: 1000, source: "server", pct: 60 }));
+  assert.match(ctxBarTip(tokens, null, { tokens: 1000, pct: 60 }), /^Context used after the last turn\n/);
+  // A card (no running flag, no window tokens) keeps its own words.
+  assert.match(ctxBarTip(tokens, null, { pct: null }), /^Context window unknown\n/);
+});
+
 // The card calls ctxBarTip with {pct} as its window (no tokens/source).
 // A card with a number shows the old tooltip (token sums + memory index,
 // no window line); a card without one says the window is unknown when it
