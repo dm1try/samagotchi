@@ -4,6 +4,7 @@ require "open3"
 require "rbconfig"
 require_relative "../../cli/exit"
 require_relative "../../process_group"
+require_relative "sandbox"
 
 module Samagotchi
   class BundleCommand

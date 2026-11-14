@@ -529,6 +529,9 @@ module Samagotchi
       mode = Config.get("guardrails.system_one.mode").to_s
       return if mode == "off" && entries.empty?
 
+      # The worker's (an Engine's) listing: the attached TUI and chi send load
+      # this file too and never need the judgment client.
+      require_relative "system_one/client"
       no_judgment = SystemOne::Client.no_judgment_reason(host_registry: @engine.host_registry, mode: mode)
       lines << (no_judgment ? "System 1 (#{mode}, but nothing is judged: #{no_judgment}):" : "System 1 (#{mode}):")
       auto_allows = system_one_auto_allows(entries)
