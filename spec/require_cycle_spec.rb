@@ -2,6 +2,7 @@
 
 require "open3"
 require "rbconfig"
+require "tmpdir"
 require "spec_helper"
 
 RSpec.describe "loading session_manager and terminal_ui" do
@@ -49,6 +50,38 @@ RSpec.describe "loading session_manager and terminal_ui" do
     _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", script)
 
     expect(status).to be_success, err
+  end
+
+  # bin/chi requires what each branch uses, not the umbrella samagotchi.rb:
+  # a command that runs no turn loads no engine and no Reline. The prelude
+  # writes $LOADED_FEATURES as bin/chi exits.
+  describe "bin/chi's commands that run no turn" do
+    around do |example|
+      Dir.mktmpdir("chi-loads-") do |dir|
+        @dir = dir
+        example.run
+      end
+    end
+
+    def loaded_by(*args)
+      prelude = File.join(@dir, "loaded_prelude.rb")
+      list = File.join(@dir, "loaded.txt")
+      File.write(prelude, "at_exit { File.write(#{list.inspect}, $LOADED_FEATURES.join(\"\\n\")) }\n")
+      env = isolated_chi_env(@dir, "RUBYOPT" => [ENV.fetch("RUBYOPT", nil), "-r#{prelude}"].compact.join(" "))
+      _out, err, status = ChiCli.capture(*args, env: env)
+      expect(status).to be_success, err
+      File.read(list).lines(chomp: true)
+    end
+
+    [%w[--version], %w[home], %w[sessions list], %w[schedule list]].each do |args|
+      it "loads no engine and no Reline for chi #{args.join(" ")}" do
+        loaded = loaded_by(*args)
+
+        expect(loaded.grep(%r{/lib/samagotchi\.rb\z})).to be_empty
+        expect(loaded.grep(%r{/samagotchi/engine\.rb\z})).to be_empty
+        expect(loaded.grep(/reline/)).to be_empty
+      end
+    end
   end
 
   # A file declaring `autoload :SessionManager` that loads while
