@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../archive_store"
+require_relative "../log"
 require_relative "../session"
 
 module Samagotchi
@@ -93,6 +94,7 @@ module Samagotchi
         while (previous = continues(ids.last)) && !ids.include?(previous)
           ids << previous
         end
+        log_forks(ids)
         ids.reverse
       end
 
@@ -122,6 +124,22 @@ module Samagotchi
       def nexts
         @nexts ||= by_id.each_value.with_object({}) do |session, nexts|
           nexts[session.continues] ||= session.id if session.continues
+        end
+      end
+
+      # continues id → the sessions that continue it, from the one listing.
+      def successors
+        @successors ||= by_id.each_value.select(&:continues).group_by(&:continues)
+      end
+
+      # A link continued twice (a hand edit, an old race): #chain follows
+      # +ids+' own branch and the other keeps a gap. Logged, not handled.
+      def log_forks(ids)
+        ids.each do |link|
+          others = Array(successors[link]).map(&:id) - ids
+          next if others.empty?
+
+          Log.debug(:worker, "chain_fork", sid: link[0, 8], others: others.map { |sid| sid[0, 8] })
         end
       end
     end
