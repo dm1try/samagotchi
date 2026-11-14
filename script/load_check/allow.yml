@@ -38,3 +38,41 @@
   file: lib/samagotchi/log.rb
   constant: Samagotchi::Config
   reason: config.rb requires config/restart_watch.rb, and nothing else does.
+
+# Rule 1: a part naming its host's constants. The host file requires the part,
+# so a require back would be a cycle; the host defines them before any of the
+# part's methods can run. [A-Z][A-Z_]* matches value constants (FOO_BAR) only.
+- rule: 1
+  file: lib/samagotchi/engine/*.rb
+  constant: Samagotchi::Engine::[A-Z][A-Z_]*
+  reason: engine.rb requires its parts (Engine::<Concern>Part).
+- rule: 1
+  file: lib/samagotchi/terminal_ui/attached_loop/*.rb
+  constant: Samagotchi::TerminalUI::AttachedLoop::[A-Z][A-Z_]*
+  reason: attached_loop.rb requires its parts.
+- rule: 1
+  file: lib/samagotchi/web/*.rb
+  constant: Samagotchi::Web::App::[A-Z][A-Z_]*
+  reason: web/app.rb requires participant_access, proxy_gate and session_control.
+- rule: 1
+  file: lib/samagotchi/config/restart_watch.rb
+  constant: Samagotchi::Config*
+  reason: config.rb (Config, ConfigFile) requires config/restart_watch.rb.
+- rule: 1
+  file: lib/samagotchi/objectives_edit.rb
+  constant: Samagotchi::Objectives::[A-Z][A-Z_]*
+  reason: objectives.rb requires objectives_edit.rb.
+- rule: 1
+  file: lib/samagotchi/memory_usage.rb
+  constant: Samagotchi::MemoryCommand::LINE
+  reason: memory_command.rb requires memory_usage.rb.
+- rule: 1
+  file: lib/samagotchi/testing/bundle.rb
+  constant: Samagotchi::Testing::Install
+  reason: testing/install.rb requires testing/bundle.rb.
+- rule: 1
+  file: lib/samagotchi/tool_response.rb
+  constant: Samagotchi::ToolRun
+  reason: >-
+    tool_runner.rb (ToolRun) reaches tool_response.rb through its requires; every
+    entry point that loads tool_response.rb loads tool_runner.rb too.
