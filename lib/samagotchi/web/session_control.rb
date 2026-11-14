@@ -8,6 +8,7 @@ require_relative "../prompt_history"
 require_relative "../session"
 require_relative "../session_command_catalog"
 require_relative "../session_manager"
+require_relative "request_body"
 
 module Samagotchi
   module Web
@@ -49,7 +50,8 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir) rescue nil
         return session_not_found(id) unless session
 
-        body = parse_json(request_body(req))
+        # Relayed to the Bridge, which takes up to its MAX_BODY_BYTES.
+        body = parse_json(request_body(req, RequestBody::BRIDGE_BODY_LIMIT))
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
         qid = body["id"]
@@ -181,7 +183,10 @@ module Samagotchi
       end
 
       def handle_turn(req, id)
-        body = parse_json(request_body(req))
+        # A participant's turn is relayed to the Bridge, which takes up to
+        # its MAX_BODY_BYTES; the owner's may be a big piped chi send.
+        cap = principal(req).owner? ? RequestBody::OWNER_TURN_BODY_LIMIT : RequestBody::BRIDGE_BODY_LIMIT
+        body = parse_json(request_body(req, cap))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
@@ -279,7 +284,7 @@ module Samagotchi
         return participant_image_upload(req, id, session_dir) unless principal(req).owner?
 
         bytes = image_upload_bytes(req)
-        return error_response(413, "too_large", image_too_large_detail) unless bytes
+        return error_response(413, "too_large", bytes.message) if bytes.is_a?(RequestBody::BodyTooLarge)
 
         ref = ImageStore.ingest(session_dir, bytes: bytes, name: upload_name(req), source: "user")
         json_response(201, ref)
@@ -287,16 +292,17 @@ module Samagotchi
         error_response(422, "bad_image", e.message)
       end
 
-      # An upload's body, or nil when it is over MAX_IMAGE_UPLOAD_BYTES (by
-      # its Content-Length or what came).
+      # An upload's body, or the BodyTooLarge when it is over
+      # MAX_IMAGE_UPLOAD_BYTES (by its Content-Length or what came).
+      # Rescued here, not left to App#route's 413: the participant's path
+      # (ParticipantImages#participant_upload) audits its refusal as
+      # too_large, and its own rescue StandardError would audit a raised one
+      # as internal_error.
       def image_upload_bytes(req)
-        return nil if req.content_length.to_i > MAX_IMAGE_UPLOAD_BYTES
-
-        bytes = request_body(req, MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
-        bytes.bytesize > MAX_IMAGE_UPLOAD_BYTES ? nil : bytes
+        request_body(req, MAX_IMAGE_UPLOAD_BYTES, what: "an image").b
+      rescue RequestBody::BodyTooLarge => e
+        e
       end
-
-      def image_too_large_detail = "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB"
 
       # An upload's ?name=, a base name without control characters; "image"
       # without one.

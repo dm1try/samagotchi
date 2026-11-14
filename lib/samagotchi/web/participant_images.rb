@@ -7,6 +7,7 @@ require_relative "../participant_uploads"
 require_relative "../participants"
 require_relative "../send_command"
 require_relative "../session"
+require_relative "request_body"
 
 module Samagotchi
   module Web
@@ -85,7 +86,7 @@ module Samagotchi
         end
 
         bytes = image_upload_bytes(req)
-        return Upload.refused(413, "too_large", image_too_large_detail) unless bytes
+        return Upload.refused(413, "too_large", bytes.message) if bytes.is_a?(RequestBody::BodyTooLarge)
 
         participant_store(dir, grant, bytes, upload_name(req))
       end

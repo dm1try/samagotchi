@@ -14,6 +14,7 @@ require_relative "../client_id"
 require_relative "../children_status"
 require_relative "../session_metrics"
 require_relative "../version"
+require_relative "request_body"
 require_relative "session_hub"
 
 module Samagotchi
@@ -63,8 +64,9 @@ module Samagotchi
       end
 
       # The body as a Hash ({} when there is none), or nil when it isn't one.
-      def body_hash(req)
-        raw = request_body(req)
+      # Read up to +limit+ bytes (RequestBody: over it is the 413).
+      def body_hash(req, limit = RequestBody::SMALL_BODY_LIMIT)
+        raw = request_body(req, limit)
         return {} if raw.to_s.strip.empty?
 
         parsed = parse_json(raw)
@@ -465,7 +467,7 @@ module Samagotchi
       # which an older Remote reads as not_push, nor "continued", which it
       # reads as a continue's refusal); 400 invalid_text.
       def handle_context_push(req, id, name)
-        body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        body = body_hash(req, RequestBody::CONTEXT_PUSH_BODY_LIMIT) or return error_response(400, "invalid_json", "invalid JSON body")
         return error_response(400, "missing_fields", "text is required") unless body["text"].is_a?(String)
 
         fetched = begin

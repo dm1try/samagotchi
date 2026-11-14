@@ -68,6 +68,7 @@ require_relative "session_hub"
 require_relative "project_list"
 require_relative "session_access_routes"
 require_relative "principal"
+require_relative "request_body"
 require_relative "viewer"
 require_relative "participant_access"
 require_relative "participant_images"
@@ -106,6 +107,7 @@ module Samagotchi
     class App
       # @lan holds the LAN access token.
       include RedactedInspect
+      include RequestBody
       include SessionAccessRoutes
       include ParticipantAccess
       include ParticipantImages
@@ -386,6 +388,11 @@ module Samagotchi
         # with an invalid groups: (Toolkit.check_new!), whichever handler
         # spawned it.
         error_response(400, "toolkit_refused", e.message)
+      rescue BodyTooLarge => e
+        # Connection: close, so Web::Server ends the connection rather than
+        # read the rest of the body to keep it alive.
+        status, headers, body = error_response(413, "too_large", e.message)
+        [status, headers.merge("Connection" => "close"), body]
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         # A participant never reads an exception's words (they may name a
@@ -605,11 +612,13 @@ module Samagotchi
         return req.GET["token"] unless fragment_trade?(req)
 
         req.env.fetch(TRADED_TOKEN_ENV) do
-          raw = request_body(req, TRADE_BODY_LIMIT).to_s
-          value = if raw.bytesize >= TRADE_BODY_LIMIT then nil
-                  elsif form_post?(req) then Rack::Utils.parse_query(raw)
-                  else parse_json(raw)
-                  end
+          value = begin
+            # Under TRADE_BODY_LIMIT: a body of the limit or more is no token.
+            raw = request_body(req, TRADE_BODY_LIMIT - 1)
+            form_post?(req) ? Rack::Utils.parse_query(raw) : parse_json(raw)
+          rescue BodyTooLarge
+            nil
+          end
           value = {} unless value.is_a?(Hash)
           req.env[TRADED_TOKEN_ENV] = value.key?("code") ? code_token(req, value["code"]) : string_or_nil(value["token"])
         end
@@ -754,10 +763,7 @@ module Samagotchi
       def handle_update(req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        raw = request_body(req, 16_385)
-        return error_response(413, "body_too_large", "update request is too large") if raw.bytesize > 16_384
-
-        payload = parse_json(raw)
+        payload = parse_json(request_body(req, 16_384, what: "an update request"))
         return error_response(400, "invalid_update", "expected a JSON object with a version") unless payload.is_a?(Hash)
 
         version = payload["version"]
@@ -1986,15 +1992,6 @@ module Samagotchi
       def json_response(status, payload)
         body = JSON.generate(payload)
         [status, { "Content-Type" => "application/json; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" }, [body]]
-      end
-
-      # The request body, "" when there is none: WEBrick (through rackup)
-      # raises LengthRequired on reading a POST that has neither a
-      # Content-Length nor a chunked body (plain `curl -X POST`).
-      def request_body(req, limit = nil)
-        return "" if req.get_header("CONTENT_LENGTH").nil? && req.get_header("HTTP_TRANSFER_ENCODING").nil?
-
-        req.body.read(*limit)
       end
 
       def error_response(status, code, detail)
