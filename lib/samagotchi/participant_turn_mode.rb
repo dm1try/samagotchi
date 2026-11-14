@@ -2,7 +2,7 @@
 
 module Samagotchi
   # Whether a participant's turn runs here, and why not: the one decision
-  # the worker (Worker#participant_refusal, before the turn starts and
+  # the worker (WorkerParticipantGate#refusal, before the turn starts and
   # before each of its generations) and the guardrails
   # (GuardrailWiring#participant_turn_mode, the turn's mode) both take.
   #   :pair        — it runs, under the owner's guardrails (PairBoundary);

@@ -461,7 +461,7 @@ The Bridge exposes:
   `continue_offered`, `client_connected` (a stream not named by the asker), `reminders`,
   `background_tasks` (with `tasks: [{id, command}]`: the running tasks a finish wake watches), `starting`, or
   `leaving_exit` / `leaving_delete` / `leaving_restart` when another client's exit of another kind is already taken
-  (`Worker#claim_exit`, claimed before a stop-all; the words are `WorkerIdleExit::LEAVING_WORDS`). A second exit of
+  (`WorkerExitClaim#claim`, claimed before a stop-all; the words are `WorkerIdleExit::LEAVING_WORDS`). A second exit of
   the kind already taken is answered `200` as that one.
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON), read under the event lock so its `event_seq`/`event_id` match the state.
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.

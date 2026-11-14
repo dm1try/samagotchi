@@ -44,8 +44,8 @@ require_relative "context_candidates"
 require_relative "context_poller"
 require_relative "task_watch"
 require_relative "tools/task_runtime"
-require_relative "participants"
-require_relative "participant_name"
+require_relative "worker_participant_gate"
+require_relative "worker_exit_claim"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -151,13 +151,8 @@ module Samagotchi
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
       @command_queue = Thread::Queue.new
-      # The client_id of a client that asked the worker to exit (POST /exit).
-      @exit_requested = nil
-      @exit_requested_by = nil
       # Set as it leaves: nothing happened in the session (#discard?).
       @discard = false
-      # The exit asked for is a restart (POST /exit restart: true).
-      @exit_restart = false
       # The lines the running turn's drain merged ([prompt, TurnOrigin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
@@ -176,10 +171,10 @@ module Samagotchi
       @loop_started = false
       @left_loop = false
       @signal_mutex = Mutex.new
-      # The exit being taken or taken (:exit, :delete, :restart), claimed
-      # under its own lock before #exit_request's slow stop-all (#claim_exit).
-      @exit_claim = nil
-      @exit_claim_mutex = Mutex.new
+      # The exit being taken or taken (POST /exit: :exit, :delete, :restart,
+      # who asked), claimed under its own lock before #exit_request's slow
+      # stop-all, and what that stop-all stopped.
+      @exit_claim = WorkerExitClaim.new
       @grace_expired = false
       # The running turn has ended (its end event) and its after_turn hooks
       # run: a signal's grace waits for them (#signalled).
@@ -232,9 +227,13 @@ module Samagotchi
     end
 
     # The step that stops what the user can stop (the reminders, the watched
-    # tasks and the delegate children the exit ask lists), and what the last
-    # stop-all exit stopped. /exit's 2 uses it; the web's Stop will too.
-    attr_reader :hold_stop, :stopped_holds
+    # tasks and the delegate children the exit ask lists). /exit's 2 uses
+    # it; the web's Stop will too.
+    attr_reader :hold_stop
+
+    # @return [HoldStop::Stopped, nil] the last stop-all's list (the Bridge's
+    #   exit_stopped)
+    def stopped_holds = @exit_claim.stopped
 
     private
 
@@ -291,9 +290,14 @@ module Samagotchi
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
       @engine.session = @session
+      # May this participant act (loop thread only): a turn as it starts,
+      # the drain, the mid-turn stop, the Continue.
+      @participant_gate = WorkerParticipantGate.new(engine: @engine, session: @session, session_id: @session_id,
+                                                    state_dir: @state_dir, session_dir: @session_dir,
+                                                    hook: Engine::PARTICIPANTS_HOOK)
       # Who is in the review as the worker starts: no notice for them
-      # (#watch_participants announces the changes from here on).
-      watch_participants
+      # (WorkerParticipantGate#watch announces the changes from here on).
+      @participant_gate.watch
       # Input already waiting in the inbox starts the next turn at once, and
       # a command queued mid-turn (/thinking, /model, /llm-context) changes
       # what it starts with: no turn-end warm-up then.
@@ -305,7 +309,7 @@ module Samagotchi
       # Bridge exists by the time anyone answers).
       @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
-                                          participant_refused: method(:participant_refusal),
+                                          participant_refused: @participant_gate.method(:refusal),
                                           save: -> { save_or_log(:command) { save_session } },
                                           queue_command: lambda { |line, client_id:|
                                             @bridge.queue_command(line, client_id: client_id, card: true)
@@ -320,7 +324,7 @@ module Samagotchi
       # one that finishes unseen wakes the idle session (#run_task_wake).
       @task_wakes = WorkerTaskWakes.new(engine: @engine, session: @session, wakes: @wakes,
                                         awaiting_continue: -> { @turn_flow.awaiting_continue? },
-                                        idle: -> { nothing_queued? && !@exit_requested },
+                                        idle: -> { nothing_queued? && !@exit_claim.taken? },
                                         save: -> { save_or_log(:task_notes) { save_session } })
       @engine.subscribe(observer: lambda { |event|
         if Events::TURN_END.include?(event[:type])
@@ -525,7 +529,7 @@ module Samagotchi
       # ahead of an exit or restart a client asked for: it is a note then.
       @inbound.absorb_notes
       absorb_fresh_verdicts
-      return if absorb_context(wake: nothing_queued? && !@exit_requested)
+      return if absorb_context(wake: nothing_queued? && !@exit_claim.taken?)
 
       if (prompt = @inbound.take_initial_prompt)
         run_initial_prompt(prompt) unless @inbound.initial_command?(prompt)
@@ -555,21 +559,12 @@ module Samagotchi
       return left(:scratch_left) if scratch_unattended? && !@engine.turn_running? && leave_scratch
       return left(:idle_exit) if @idle_exit.due? && leave_idle
 
-      leaving = @exit_requested && leave_on_request
+      leaving = @exit_claim.taken? && leave_on_request
       return left(leaving) if leaving
 
-      watch_participants
+      @participant_gate.watch
       @waker.wait(idle_wait)
       nil
-    end
-
-    # A participant invited, revoked or expired since the last look: the
-    # UIs hear it (Engine#announce_participants: :participants_changed).
-    # Between turns, at most once a fallback tick; a failure only logs.
-    def watch_participants
-      @engine.announce_participants
-    rescue StandardError => e
-      Log.warn(:worker, "participants_watch_failed", error: e.class.name)
     end
 
     # A participant's input file is held (left in the inbox, still queued
@@ -681,7 +676,7 @@ module Samagotchi
       # one waits, like ask_user_question.
       engine.interface = :worker
       # A pair turn stops mid-turn at its participant's cap.
-      engine.participant_stop = ->(author) { participant_turn_stop(author) }
+      engine.participant_stop = ->(author) { @participant_gate.turn_stop(author) }
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
@@ -813,8 +808,8 @@ module Samagotchi
       # A participant's turn queued before their link ended or their cap was
       # reached doesn't start (chi web refuses new ones; this is the
       # worker's check).
-      if (reason = participant_refusal(origin.author))
-        return refuse_participant_turn(origin, reason)
+      if (reason = @participant_gate.refusal(origin.author))
+        return @participant_gate.refuse(origin, reason)
       end
 
       # A candidate the prompt mentions is attached and fetched first, so
@@ -837,7 +832,7 @@ module Samagotchi
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
-      participant_refusal(origin.author)
+      @participant_gate.refusal(origin.author)
     end
 
     # +origin+ as this session's turns run it: a participant's Verify fresh
@@ -845,106 +840,6 @@ module Samagotchi
     def fresh_origin(origin)
       fresh = @session&.verify_fresh
       fresh ? fresh.origin_for(origin) : TurnOrigin.of(origin)
-    end
-
-    # Why the participant +author+ ("p:<id>") may run no more turns, nil
-    # while they may (and for the owner): by ParticipantTurnMode, "outdated"
-    # for an older chi's read-only invite (an entry, or a Verify fresh child
-    # saved, without "pair": this chi runs no read-only turn), "revoked" when
-    # participants.json has no current entry for them (revoked, expired,
-    # never invited) or they aren't invited to this (the owner's own Verify
-    # fresh child), "cap_reached" once they spent their cap (its own,
-    # else the config's; their turns and the side requests they caused,
-    # Engine#metrics). The owner hears the cap once per cap (#cap_notice).
-    def participant_refusal(author)
-      author = Steer.sender_author(author) or return nil
-
-      entry = participant_entry(author)
-      case ParticipantTurnMode.of(entry: entry, session: @session, now: Time.now)
-      when :outdated then return "outdated"
-      when :revoked, :not_invited then return "revoked"
-      end
-
-      cap = participant_cap(entry)
-      return nil if participant_spend(author) < cap
-
-      cap_notice(author, entry, cap)
-      "cap_reached"
-    end
-
-    # Why a participant's running pair turn stops (Engine#participant_stop,
-    # asked before each of its generations): their link ended (revoked,
-    # expired, the session archived) or their cap reached
-    # (#participant_refusal, which gives the owner the cap notice), else nil.
-    def participant_turn_stop(author)
-      reason = participant_refusal(author) or return nil
-
-      entry = participant_entry(author)
-      name = participant_label(author, entry&.name)
-      return format(REVOKED_STOP, name: name) if %w[revoked outdated].include?(reason)
-
-      format(CAP_STOP, name: name, cap: participant_cap(entry))
-    end
-
-    # +author+'s participants.json entry: this session's, a Verify fresh
-    # child's parent's (Session#participants_source_id); nil for none.
-    def participant_entry(author)
-      Participants.read(participants_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
-    end
-
-    # The session whose participants.json and audit trail this session's
-    # participants are in.
-    def participants_id = @session&.participants_source_id || @session_id
-
-    # What +author+ spent against their cap: this session's metrics (live)
-    # and, through Verify fresh, the parent's or the children's saved ones
-    # (VerifyFresh.related_spend).
-    def participant_spend(author)
-      @engine.metrics.spend(author) + VerifyFresh.related_spend(@session, author, state_dir: @state_dir)
-    end
-
-    # A participant's cap in dollars: their own, else the config's.
-    def participant_cap(entry) = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Grants.default_cap
-
-    # A participant's cleaned name, else their id.
-    def participant_label(author, name)
-      who = ParticipantName.clean(name)
-      who.empty? ? Steer.participant_id(author) : who
-    end
-
-    # The owner's notice that a participant reached their cap: once per
-    # participant and cap (a raised cap that is reached again says so again).
-    def cap_notice(author, entry, cap)
-      key = [author, cap]
-      return if (@cap_noticed ||= Set.new).include?(key)
-
-      @cap_noticed << key
-      id = Steer.participant_id(author)
-      @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
-                       text: format(CAP_NOTICE, name: participant_label(author, entry.name), cap: cap,
-                                                session: participants_id[0, 8], id: id))
-    end
-
-    CAP_NOTICE = "%<name>s reached their $%<cap>.2f cap: their turns stop and are refused until you raise it " \
-                 "(chi share cap %<session>s %<id>s AMOUNT)."
-    # The reason a pair turn stopped at its participant's cap (the turn's
-    # "stopped the turn: …" notice).
-    CAP_STOP = "%<name>s reached their $%<cap>.2f cap"
-    # The reason a pair turn stopped because its participant's link ended
-    # (revoked, expired, or the session archived).
-    REVOKED_STOP = "%<name>s's link was revoked or expired"
-
-    # A participant's queued turn that may not start (#participant_refusal):
-    # taken off the queue (:turn_dequeued, so every UI drops its bubble)
-    # and audited; it never runs. Its settled record (canceled, the reason)
-    # ends the sender's wait on it (chi send --wait, chi web's /wait).
-    # @param origin [TurnOrigin] a participant's
-    def refuse_participant_turn(origin, reason)
-      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
-      Participants.log(participants_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
-                                           enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
-      @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
-      nil
     end
 
     # A due reminder runs as a continue turn: Engine#run_turn
@@ -1625,10 +1520,10 @@ module Samagotchi
             end
             begin
               # A participant's line gets the checks their queued turn gets at
-              # its start (#participant_refusal: the link, the cap): refused,
+              # its start (WorkerParticipantGate#refusal: the link, the cap): refused,
               # it is taken off as that turn would be, and never merged.
-              if (author = input.origin.participant_author) && (reason = participant_refusal(author))
-                refuse_participant_turn(input.origin, reason)
+              if (author = input.origin.participant_author) && (reason = @participant_gate.refusal(author))
+                @participant_gate.refuse(input.origin, reason)
                 next
               end
               prompt = input.prompt.to_s.strip
@@ -1822,7 +1717,7 @@ module Samagotchi
       return if @marked_leaving
 
       @marked_leaving = true
-      wait ||= @exit_restart ? 0 : @engine.recap_timeout.to_f
+      wait ||= @exit_claim.restart? ? 0 : @engine.recap_timeout.to_f
       @owner_lock&.mark_leaving(wait: wait)
     rescue StandardError => e
       Log.warn(:worker, "mark_leaving_failed", error: e.class.name, msg: e.message)
@@ -1857,53 +1752,22 @@ module Samagotchi
       # stop-all, so a request of another kind meanwhile is refused (409),
       # not told it went through. Held at the leave, it is forgotten and the
       # next request counts again.
-      refused = claim_exit(kind)
+      refused = @exit_claim.claim(kind)
       return refused.value if refused
 
       hold = exit_hold(client_id, kind: kind, stop: stop, ask: ask)
       if hold
-        forget_exit
+        @exit_claim.forget
         return hold
       end
 
-      @stopped_holds = nil unless stop
-      @exit_requested_by = client_id
-      @exit_deletes = kind == :delete
-      @exit_restart = kind == :restart
-      @exit_requested = true
+      @exit_claim.accept(by: client_id, stop: stop)
       @waker.wake
       nil
     rescue StandardError
       # A look or a stop that raised lets the claim go (the Bridge answers 500).
-      forget_exit unless @exit_requested
+      @exit_claim.release
       raise
-    end
-
-    # One answer for an exit request that doesn't get the claim, boxed so a
-    # nil (accepted) is told apart from "claimed".
-    ExitRefused = Data.define(:value)
-
-    # @return [ExitRefused, nil] nil when this request now holds the claim;
-    #   else its answer: nil (accepted: an exit of the same kind is already
-    #   taken) or WorkerIdleExit.leaving (one of another kind is, or is still
-    #   being taken)
-    def claim_exit(kind)
-      @exit_claim_mutex.synchronize do
-        next ExitRefused.new(value: nil) if @exit_claim == kind && @exit_requested
-        next ExitRefused.new(value: WorkerIdleExit.leaving(@exit_claim)) if @exit_claim
-
-        @exit_claim = kind
-        nil
-      end
-    end
-
-    # The taken exit is let go: held at the leave, or its hand-off failed.
-    def forget_exit
-      @exit_claim_mutex.synchronize do
-        @exit_requested = nil
-        @exit_restart = false
-        @exit_claim = nil
-      end
     end
 
     # What keeps the worker up for this request, nil when nothing does; a
@@ -1928,7 +1792,7 @@ module Samagotchi
       # The ask's 409: the list, for the terminal to ask with.
       return hold unless stop
 
-      @stopped_holds = @hold_stop.stop_all
+      @exit_claim.stopped!(@hold_stop.stop_all)
       # An unstoppable hold may have arrived while stopping (a child stopped
       # here is no longer counted).
       @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
@@ -1944,23 +1808,26 @@ module Samagotchi
     def leave_on_request
       stop_bridge_after do
         @engine.synchronize_events do
-          hold = if @exit_restart
+          # One read: the kind and the asker of the same exit.
+          taken = @exit_claim.taken
+          restart = taken&.restart?
+          hold = if restart
                    @idle_exit.hold_for_restart
                  else
-                   @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+                   @idle_exit.hold_for_request(requester: taken&.by, streams: false)
                  end
           if hold
-            forget_exit
+            @exit_claim.forget
             Log.info(:worker, "exit_held", reason: hold)
             next false
           end
-          next false if @exit_restart && !carry_reminders
+          next false if restart && !carry_reminders
 
           @bridge&.close_intake
           # Not joined: a recap tick's emit waits for the event log held here.
           @engine.stop_idle(join: false)
-          Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
-          @exit_restart ? :restart : :exit_requested
+          Log.info(:worker, restart ? "restart_requested" : "exit_requested", by: taken&.by || "a client")
+          restart ? :restart : :exit_requested
         end
       end
     end
@@ -1979,7 +1846,7 @@ module Samagotchi
       end
       true
     rescue StandardError => e
-      forget_exit
+      @exit_claim.forget
       Log.warn(:worker, "reminders_carry_failed", error: e.class.name, msg: e.message)
       false
     end
@@ -2012,7 +1879,7 @@ module Samagotchi
     # A restart keeps even an empty session (a new worker takes it over at
     # once) and leaves the recap to the conversation's next real pause.
     def left(result)
-      deleting = (result == :exit_requested && @exit_deletes) || result == :scratch_left
+      deleting = (result == :exit_requested && @exit_claim.deletes?) || result == :scratch_left
       # The attached context goes with this process: a change that landed after
       # the leaving pass looked at it has no later pass to note it, so note it
       # here (no wake turn: the worker is on its way out). Not into a session

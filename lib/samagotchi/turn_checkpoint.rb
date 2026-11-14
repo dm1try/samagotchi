@@ -122,7 +122,7 @@ module Samagotchi
       Log.warn(:worker, "command_outcome_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
     end
 
-    # A participant's queued turn the worker refused (Worker#refuse_participant_turn:
+    # A participant's queued turn the worker refused (WorkerParticipantGate#refuse:
     # +reason+ revoked or cap_reached) ends its sender's wait: no turn ran,
     # canceled for that reason (ParentReport reads it as refused). Its
     # +author+ (the participant's "p:<id>") says whose wait it is to a chi

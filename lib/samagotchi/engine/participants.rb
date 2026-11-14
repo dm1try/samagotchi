@@ -23,7 +23,7 @@ module Samagotchi
       # Whether a participant's pair turn must stop, read before each of its
       # generations (#guard_participant_spend): author ("p:<id>") → why (their
       # link ended, or they passed their cap), nil while it may go on. The
-      # Worker sets it (Worker#participant_turn_stop); without one (a one-shot)
+      # Worker sets it (WorkerParticipantGate#turn_stop); without one (a one-shot)
       # nothing is checked mid-turn.
       attr_writer :participant_stop
 
@@ -34,7 +34,7 @@ module Samagotchi
       # plugins' stop path (cost-cap's, work-cap's), with its notice. A
       # generation's own cost is known only once it ends, so a turn can pass
       # the cap by its last generation. The turn-start check is the Worker's
-      # (Worker#participant_refusal).
+      # (WorkerParticipantGate#refusal).
       # @param context [TurnContext] the running turn's (the loop's)
       def guard_participant_spend(context)
         author = context&.author

@@ -76,7 +76,7 @@ module Samagotchi
     end
 
     # The reasons a worker refuses a participant's queued turn
-    # (Worker#participant_refusal), as its settled record's cancel_reason.
+    # (WorkerParticipantGate#refusal), as its settled record's cancel_reason.
     REFUSED_LINES = { "revoked" => ParticipantMessages::TOKEN_ENDED,
                       "outdated" => ParticipantMessages::TOKEN_OUTDATED,
                       "cap_reached" => ParticipantMessages::CAP_REACHED }.freeze
