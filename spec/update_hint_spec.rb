@@ -5,6 +5,7 @@ require "stringio"
 require "json"
 require "tmpdir"
 require "yaml"
+require "samagotchi/memory_bundle/source"
 require "samagotchi/update_hint"
 
 RSpec.describe Samagotchi::UpdateHint do

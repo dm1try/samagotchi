@@ -2,7 +2,7 @@
 
 require "fileutils"
 require_relative "desktop"
-require_relative "memory_bundle/shipped_update"
+require_relative "memory_bundle/source"
 require_relative "session"
 require_relative "version"
 
@@ -43,6 +43,8 @@ module Samagotchi
     end
 
     def message(version, shipped_dir:, helper:)
+      require_relative "memory_bundle/shipped_update"
+
       # A retry that would merge is an update too; one that only records a reason isn't.
       bundles = MemoryBundle::ShippedUpdate.plan(shipped_dir: shipped_dir).count do |r|
         r.status == :would_update || (r.status == :would_merge && r.merged.any?)
