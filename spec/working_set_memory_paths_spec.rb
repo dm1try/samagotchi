@@ -47,7 +47,7 @@ RSpec.describe "a run on a memory's file" do
     items = build(edit_turn(File.join(memories, "notes.test-model.md"), "c1", "t1",
                             stamp: stamp(File.join(memories, "notes.test-model.md")))).items
 
-    expect(items.map { |item| [item.kind, item.key] }).to eq([["memory", "notes"]])
+    expect(items.map { |item| [item.kind, item.key] }).to eq([%w[memory notes]])
   end
 
   it "is stale when that file moved after the run" do

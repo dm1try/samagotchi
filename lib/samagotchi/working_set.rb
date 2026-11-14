@@ -32,8 +32,9 @@ module Samagotchi
   # decide forgotten; edit, write and memory_write add ops and stamps only
   # (their content is in the call's arguments, which no strategy cuts).
   # Stale: the item's latest run left a stamp (ToolRun#stamp) and the file
-  # now differs from it in mtime or size, or is gone; a run with no stamp
-  # (an old session's) never makes a file stale.
+  # now differs from it in mtime or size, or is gone - for a memory, its
+  # entry or the model overlay read with it. A run with no stamp (an old
+  # session's) never makes an item stale.
   module WorkingSet
     FILE = "file"
     MEMORY = "memory"

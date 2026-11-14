@@ -134,7 +134,7 @@ RSpec.describe "a memory's stamp in the working set" do
       entry = Samagotchi::ToolResponse.single(read("notes"), tool_call_id: "c1", ids: ["t1"])
 
       expect(entry[:tool_stamps]).to be_a(Array)
-      expect(entry.except(*Samagotchi::ToolResponse::SAVED_KEYS).keys).to eq([:role, :content, :tool_call_id])
+      expect(entry.except(*Samagotchi::ToolResponse::SAVED_KEYS).keys).to eq(%i[role content tool_call_id])
     end
 
     it "still works read back from a session file (string keys)" do
