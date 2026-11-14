@@ -29,7 +29,9 @@ module Samagotchi
   # loaded, stamp) are nil. +loaded+: the tools a find_tools hit loads
   # (Tools::ToolIndex::FoundText#loaded), by their wire names. +stamp+: an
   # ok read/edit/write's file right after it ran ({path:, mtime_ns:,
-  # size:}), what WorkingSet tells a file changed since by.
+  # size:}), what WorkingSet tells a file changed since by; for an ok
+  # memory_read, one entry per name it read, with the file that answered and
+  # the model overlay read with it (ToolRunner#memory_stamp).
   ToolRun = Data.define(:output, :capped_output, :truncated, :activity, :images, :shown_params, :shown_label, :refs, :diff,
                         :output_file, :loaded, :stamp) do
     def initialize(output: nil, capped_output: nil, truncated: nil, activity: nil, images: nil, shown_params: nil,
@@ -205,7 +207,8 @@ module Samagotchi
                   images: images&.any? ? images : nil,
                   shown_params: params && plugin_tool?(call[:name]) ? params : nil,
                   shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file,
-                  loaded: result[:loaded], stamp: status == "ok" ? file_stamp(call, context) : nil)
+                  loaded: result[:loaded],
+                  stamp: status == "ok" ? file_stamp(call, context) || memory_stamp(result) : nil)
     end
 
     private
@@ -216,12 +219,43 @@ module Samagotchi
     # can't place and a stat that fails or isn't a file's.
     def file_stamp(call, context)
       ref = FileRef.for(call[:name], call, cwd: session_cwd(context))
-      return nil unless ref
+      ref ? stat_entry(ref.path) : nil
+    end
 
-      stat = File.stat(ref.path)
+    # A memory_read's stamp, one entry per name it read: the file that
+    # answered it, and the model overlay read with it when there was one, as
+    # they are right after the call:
+    # {memories: {name => {path:, mtime_ns:, size:, overlay: {path:, mtime_ns:,
+    # size:}}}} (no +overlay+ key when no overlay was read). Nothing at the
+    # top carries mtime_ns, so a reader that knows only file stamps
+    # (WorkingSet.stamp_of) sees none here, and a session saved before memory
+    # stamps has none: either way its memories are never stale (compat N-1).
+    # nil when the read answered no name (the index listing, every name
+    # missing), or none of its files can be stat'd.
+    def memory_stamp(result)
+      reads = result[:memory_reads]
+      return nil unless reads.is_a?(Hash)
+
+      entries = reads.filter_map do |name, read|
+        entry = stat_entry(read[:path])
+        next if entry.nil?
+
+        overlay = stat_entry(read[:overlay_path])
+        entry[:overlay] = overlay if overlay
+        [name, entry]
+      end
+      entries.empty? ? nil : { memories: entries.to_h }
+    end
+
+    # A file as it is now: {path:, mtime_ns:, size:}; nil for a path that is
+    # not a file or cannot be stat'd.
+    def stat_entry(path)
+      return nil if path.to_s.empty?
+
+      stat = File.stat(path)
       return nil unless stat.file?
 
-      { path: ref.path, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size }
+      { path: path, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size }
     rescue SystemCallError
       nil
     end

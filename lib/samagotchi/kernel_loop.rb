@@ -102,7 +102,9 @@ module Samagotchi
         errors = refused.map { |name| "Error: memory '#{name}' is muted for this session" }
         return errors.join("\n") if allowed.empty?
 
-        [read.call(allowed.join(",")), *errors].join(Tools::MemoryRead::SEPARATOR)
+        found = read.call(allowed.join(","))
+        text = [found, *errors].join(Tools::MemoryRead::SEPARATOR)
+        found.respond_to?(:reads) ? Tools::MemoryRead::Result.new(text, found.reads) : text
       end
 
       # ask_user_question: validate the call, then hand the payload to the
@@ -1192,6 +1194,10 @@ module Samagotchi
       # The tools a find_tools hit loads (Tools::ToolIndex::FoundText),
       # saved with a chat result (ToolResponse.single).
       dispatched[:loaded] = result.loaded if result.respond_to?(:loaded) && !Array(result.loaded).empty?
+      # Which files answered a memory_read (Tools::MemoryRead::Result), so the
+      # run can be stamped with them (ToolRunner#memory_stamp): nothing else
+      # says which scope's file, or which overlay, read each name.
+      dispatched[:memory_reads] = result.reads if result.respond_to?(:reads)
       if result.respond_to?(:images) && !Array(result.images).empty?
         dispatched[:images] = Array(result.images)
         dispatched[:image_only] = true if result.respond_to?(:image_only?) && result.image_only?
