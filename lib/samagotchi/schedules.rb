@@ -1220,11 +1220,12 @@ module Samagotchi
         next if link == entry.anchor
         break unless ArchiveStore.archived?(Session.session_dir(link, state_dir: @state_dir))
 
-        descendants = SessionManager.descendant_ids(link, @state_dir)
+        tree = SessionManager.delete_tree_ids(link, @state_dir)
+        descendants = tree[0...-1]
         # The whole subtree must be ready: a live worker anywhere in it, or a
         # link's descendant that is not archived, stops the walk here rather
         # than half-deleting a tree.
-        owned = [link, *descendants].select { |sid| SessionManager.session_owner(sid, state_dir: @state_dir) }
+        owned = tree.select { |sid| SessionManager.session_owner(sid, state_dir: @state_dir) }
         unless owned.empty?
           Log.warn(:worker, "prune_waiting", sid: link, id: entry.id, owned: owned.map { |sid| sid[0, 8] })
           break
@@ -1240,9 +1241,7 @@ module Samagotchi
         # refused partway, nothing above it has gone, so the next firing
         # retries the same set instead of leaving children under a link that
         # is already deleted.
-        (descendants.reverse + [link]).each do |sid|
-          SessionManager.delete_session(sid, state_dir: @state_dir)
-        end
+        SessionManager.delete_ids(tree, state_dir: @state_dir)
         Log.info(:worker, "pruned_link", sid: link, id: entry.id, links: descendants.size + 1)
       end
     rescue SessionManager::DeleteRefused => e

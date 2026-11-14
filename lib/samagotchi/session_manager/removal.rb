@@ -199,6 +199,34 @@ module Samagotchi
         { id: id, removed: removed, stopped: held }
       end
 
+      # Delete these ids safely, in this order: #delete_session for each (it
+      # re-checks the one-turn run, the starting marker and the owner lock),
+      # and the expensive session-scoped logs (#purge_removal_stores) once
+      # for the batch, for the ids deleted even when a later one is refused.
+      # No eligibility policy: each caller (Schedules#prune, the chain
+      # delete) decides which ids, and keeps its own checks and log tags.
+      # @param ids [Array<String>] full ids, in the order to delete them
+      # @return [Array<Hash>] #delete_session's result for each
+      # @raise [DeleteRefused, OwnedByTUI, Session::NotFound] the first
+      #   refusal; the ids before it are deleted
+      def delete_ids(ids, state_dir: nil, stop: false, wait: STOP_WAIT)
+        sd = state_dir || Session.default_state_dir
+        results = []
+        # Not a map: the ids deleted before a refusal must reach the ensure's purge.
+        ids.each do |id| # rubocop:disable Style/MapIntoArray
+          results << delete_session(id, state_dir: sd, stop: stop, wait: wait, purge_runs: false)
+        end
+        results
+      ensure
+        purge_removal_stores(results.map { |result| result[:id] }, state_dir: sd) if results
+      end
+
+      # +id+'s delegate subtree and +id+, in the order a delete takes them:
+      # the descendants deepest first, +id+ last. A delete refused part-way
+      # leaves nothing above what it took, so a retry finds the same tree.
+      # @return [Array<String>]
+      def delete_tree_ids(id, state_dir) = [*descendant_ids(id, state_dir).reverse, id]
+
       # Remove every store with state scoped to +id+. The file and sidecar
       # directory keep the deleting owner lock; the other stores have their
       # own locking where they need it. +still+, when given, is the caller's

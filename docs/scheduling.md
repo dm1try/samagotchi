@@ -228,9 +228,12 @@ instead of racing it.
 chain links stay behind the head. After a successful chain firing — and after the
 result is recorded under the lock, so a prune that raises midway cannot lose the
 new `head` — the walk goes backwards from `head` and every link older than the
-window is deleted **together with its delegated children** (`descendant_ids`): the
+window is deleted **together with its delegated children** (`SessionManager.delete_tree_ids`): the
 whole subtree only when every session in it is archived and no worker owns any of
-it, deepest child first and the link last, oldest link first. A subtree with a live
+it, deepest child first and the link last, oldest link first. The delete itself is
+`SessionManager.delete_ids` (the prune keeps its own checks and log tags): each id
+through `delete_session`, and System 1's saved runs and the candidate log purged once
+per link's batch, not once per session. A subtree with a live
 worker or an unarchived descendant is left whole and retried at the next firing. Pruning a link alone would leave its finished
 delegates archived forever with a dangling `parent_id`: archiving a session archives
 its descendants, and archived sessions are outside the retention sweep

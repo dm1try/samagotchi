@@ -296,4 +296,47 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class.delete_session(session.id, state_dir: tmpdir)[:removed]).to eq([session_dir])
     end
   end
+
+  describe ".delete_ids and .delete_tree_ids" do
+    def saved(parent: nil)
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                      parent_id: parent&.id).tap { |s| s.save(state_dir: tmpdir) }
+    end
+
+    def file?(session) = File.exist?(Samagotchi::Session.session_file(session.id, state_dir: tmpdir))
+
+    it "orders a tree deepest first, the id last" do
+      link = saved
+      child = saved(parent: link)
+      grandchild = saved(parent: child)
+
+      expect(described_class.delete_tree_ids(link.id, tmpdir)).to eq([grandchild.id, child.id, link.id])
+      expect(described_class.delete_tree_ids(grandchild.id, tmpdir)).to eq([grandchild.id])
+    end
+
+    it "deletes the ids in order and purges the session logs once for the batch" do
+      link = saved
+      child = saved(parent: link)
+      ids = described_class.delete_tree_ids(link.id, tmpdir)
+      expect(Samagotchi::SystemOne::Runs).to receive(:purge_sessions).once.with(ids, sessions_dir: tmpdir)
+      expect(Samagotchi::ContextCandidatesLog).to receive(:purge_sessions).once.with(ids, state_dir: tmpdir)
+
+      results = described_class.delete_ids(ids, state_dir: tmpdir)
+
+      expect(results.map { |r| r[:id] }).to eq([child.id, link.id])
+      expect([file?(link), file?(child)]).to eq([false, false])
+    end
+
+    it "stops at the first refusal, keeping the rest, and still purges the ids it deleted" do
+      first = saved
+      held = saved
+      last = saved
+      Samagotchi::StartingMarker.mark(held.id, state_dir: tmpdir)
+      expect(Samagotchi::SystemOne::Runs).to receive(:purge_sessions).once.with([first.id], sessions_dir: tmpdir)
+
+      expect { described_class.delete_ids([first.id, held.id, last.id], state_dir: tmpdir) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.session_id).to eq(held.id) }
+      expect([file?(first), file?(held), file?(last)]).to eq([false, true, true])
+    end
+  end
 end
