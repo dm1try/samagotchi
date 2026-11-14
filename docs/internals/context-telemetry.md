@@ -24,7 +24,10 @@ next turn's estimate before its first count uses it instead of
 Emission behavior:
 
 - The estimate is emitted on every request (both loops, before each request),
-  so the web and the attached TUI get a fresh number each time.
+  so the web and the attached TUI get a fresh number each time; the Engine also
+  keeps the last one it saw (`@last_context_status`, from the stream handler),
+  so a page or TUI that joins while a turn runs reads it from
+  `session_state_snapshot` at once instead of waiting for the turn to end.
 - The model's own `[CONTEXT: …]` line is still gated: it is left only on a rise
   into a guidance bucket (from the second threshold up), never on a fall, and
   not again for a bucket a resumed session's line already names.
@@ -53,6 +56,15 @@ window), and the attached TUI's status row drops its ctx until the next generati
 plain `Context window unknown` after it, and for a session whose window lookup failed). Nothing is sent before the
 session's first counted turn. A
 hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
+
+The owner's show (`Web::SessionShow#shown_session_json`) passes the snapshot's
+`context_status` to the page as `session.context_status`, which
+`session_state.js#sessionStateFrom` reads as the ctx percent before any stream
+event (it wins over the saved fill). With a window known and no percent yet,
+`ctxBarTip` says `No context count yet: the next request counts it`; while the
+session's turn runs (`window.running`, the info bar's own flag) the tooltip's
+title is `Context in use (this turn so far)` rather than `Context used after
+the last turn`.
 
 A process that loads the session on another model than its last turn ran on (`Engine#session=`:
 `SessionMetrics#last_model_ref` differs from `effective_model_ref`; a `--resume`'d one-shot with `--model`, a worker woken

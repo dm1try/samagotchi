@@ -170,7 +170,9 @@ test("the ctx tooltip carries the side requests line from the timing's side bloc
 });
 
 // The ctx tooltip waits for the next request only right after a /model
-// whose new window didn't resolve (session_state.js ctxUnknownAfterSwitch).
+// whose new window didn't resolve (session_state.js ctxUnknownAfterSwitch);
+// with a window that resolved and no count yet, it says the count is what
+// waits (ctx.js ctxBarTip).
 test("the ctx tooltip says the window is unknown, until the next request right after such a /model", () => {
   const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 } };
   const model = (fields) => infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ...fields }, sessions: [],
@@ -179,6 +181,19 @@ test("the ctx tooltip says the window is unknown, until the next request right a
   assert.match(model({}).ctx.tip, /^Context window unknown\n/);
   assert.match(model({ ctxUnknownAfterSwitch: true }).ctx.tip, /^Context window unknown until the next request\n/);
   assert.equal(model({ ctxUnknownAfterSwitch: true }).ctx.text, "ctx ?");
+  assert.match(model({ ctxWindow: 128000, ctxWindowSource: "server" }).ctx.tip,
+    /^No context count yet: the next request counts it\n/);
+});
+
+// A turn in flight: the info bar's running flag rides in the tooltip's window
+// (ctxBarTip), so the title is of this turn, not the last finished one.
+test("the ctx tooltip of a running turn counts this turn, not the last one", () => {
+  const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 } };
+  const bar = (running) => infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ctxPct: 30, ctxWindow: 1000 },
+                                         sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
+                                         restarting: false, running }).ctx.tip;
+  assert.match(bar(true), /^Context in use \(this turn so far\)\ncontext: ~300 of 1\.0k tokens\n/);
+  assert.match(bar(false), /^Context used after the last turn\n/);
 });
 
 test("the status chip says waiting while a card blocks the running turn, and only then", () => {

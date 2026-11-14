@@ -14,6 +14,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- chi web: a page opened while a turn runs shows the context percent at once, not `ctx ?`.
 - chi web: in the iPhone Home Screen app, the top bar no longer sits in iOS's blurred band under the clock.
 - chi web: a question card folded in the turn box stays folded after a reload or when the page reconnects mid-turn.
 
