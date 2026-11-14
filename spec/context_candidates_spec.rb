@@ -96,11 +96,9 @@ RSpec.describe Samagotchi::ContextCandidates do
       expect(described_class.with_status(session.id, project_root: nil, state_dir: state_dir).map(&:last)).to eq(["attached"])
     end
 
-    it "attaches nothing for a participant's prompt, in a review session, or without a mention" do
+    it "attaches nothing for a participant's prompt, or without a mention" do
       expect(described_class.before_turn(session: session, prompt: "#412", author: "p:abc", state_dir: state_dir)).to eq([])
       expect(described_class.before_turn(session: session, prompt: "unrelated", author: nil, state_dir: state_dir)).to eq([])
-      session.review = { "subjects" => ["a.md"] }
-      expect(described_class.before_turn(session: session, prompt: "#412", author: nil, state_dir: state_dir)).to eq([])
       expect(own.sources).to eq([])
     end
 

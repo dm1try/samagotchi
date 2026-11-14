@@ -120,7 +120,6 @@ module Samagotchi
     # @return [Array(Symbol, String)] :ok or :error, and the answer
     def choose(action, name, session:, state_dir:, show_card:)
       return [:error, Session::NONE_YET] unless session&.id
-      return [:error, "a review session takes no context candidates"] if session.review?
       return [:error, USAGE] if name.to_s.empty?
 
       candidate, status = find(session, name, state_dir: state_dir)

@@ -15,12 +15,12 @@ module Samagotchi
       # A late proposal no owner prompt mentions (Plugin::Host
       # #candidate_proposed, maybe while the plugins load, before a session
       # or the event log is there): TurnStages::ContextJudge#late_candidates
-      # on the session the Engine is on (none, or a review session: nothing,
-      # before anything else is read), the owner's prompts so far, the
+      # on the session the Engine is on (none: nothing, before anything else
+      # is read), the owner's prompts so far, the
       # recorder and the sessions dir, all read now on the caller's thread.
       def judge_late_candidates
         session = @session
-        return if session.nil? || session.review?
+        return if session.nil?
 
         @context_judge.late_candidates(session, messages: plugin_messages, recorder: system_one_recorder,
                                                 state_dir: session_state_dir)

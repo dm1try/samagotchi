@@ -83,7 +83,7 @@ module Samagotchi
     # path, when the session already has a model reply.
     def self.eligible?(session:, prompt:, author:, candidate_count:, last_suggestion:, defer_turns:, defer_tokens:)
       return false unless session&.toolkit_origin == "default"
-      return false if session.delegate? || !OwnerPrompt.turn?(session: session, author: author)
+      return false if session.delegate? || !OwnerPrompt.turn?(author: author)
       return false unless prompt.is_a?(String) && !prompt.strip.empty?
       return false if value(candidate_count).to_i < 2
 

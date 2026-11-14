@@ -81,7 +81,7 @@ module Samagotchi
     private
 
     def ask(judgment, session, message)
-      return if session.nil? || session.id.nil? || session.scratch || session.review?
+      return if session.nil? || session.id.nil? || session.scratch
 
       items = Objectives.current(session.id, session.messages, state_dir: @state_dir).items
                         .select { |item| item.status == Objectives::ACTIVE }.first(MAX_OBJECTIVES)

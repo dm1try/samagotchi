@@ -41,7 +41,7 @@ module Samagotchi
       # reminder's or a delegate's prompt isn't one.
       # @param recorder [SystemOne::Recorder] the audit's runs (built for this call)
       def incoming(turn, recorder:)
-        return unless turn.prompt.is_a?(String) && turn.origin.human? && OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
+        return unless turn.prompt.is_a?(String) && turn.origin.human? && OwnerPrompt.turn?(author: turn.origin.author)
 
         audit(turn.context.state_dir, recorder).incoming(turn.session, turn.prompt)
       end
@@ -51,7 +51,7 @@ module Samagotchi
       # @param recorder [SystemOne::Recorder] the audit's runs (built for this
       #   call: after a before_turn hook's model switch, the new model)
       def outgoing(turn, result, recorder:)
-        return unless OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
+        return unless OwnerPrompt.turn?(author: turn.origin.author)
 
         audit(turn.context.state_dir, recorder).outgoing(turn.session, result.text)
       end

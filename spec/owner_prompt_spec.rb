@@ -29,16 +29,10 @@ RSpec.describe Samagotchi::OwnerPrompt do
   end
 
   describe ".turn?" do
-    let(:session) { Struct.new(:review?).new(false) }
-
-    it "is the owner's turn in a working session" do
-      expect(described_class.turn?(session: session, author: nil)).to be(true)
-      expect(described_class.turn?(session: session, author: "owner")).to be(true)
-    end
-
-    it "isn't a participant's turn, nor any turn in a review session" do
-      expect(described_class.turn?(session: session, author: "p_1")).to be(false)
-      expect(described_class.turn?(session: Struct.new(:review?).new(true), author: nil)).to be(false)
+    it "is the owner's turn, never a participant's" do
+      expect(described_class.turn?(author: nil)).to be(true)
+      expect(described_class.turn?(author: "owner")).to be(true)
+      expect(described_class.turn?(author: "p_1")).to be(false)
     end
   end
 end

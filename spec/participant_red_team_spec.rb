@@ -590,18 +590,16 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
 
-    it "reads a review session's title from its subjects, and never a subject's text, a secret or a file outside the project" do
-      outside = File.join(root, "outside.txt")
-      File.write(outside, "OUTSIDE-SECRET\n")
+    it "reads an older chi's review session's title as any session's: never its subjects, a subject's text or a secret" do
       File.write(plan, "# The plan\n\nDeploy with token=PLAN-TOKEN-VALUE and key sk-ant-abcdefghijklmnopqrstuvwx\n")
-      session.review = { "subjects" => ["docs/plan.md", ".env", "../outside.txt", outside] }
+      session.review = { "subjects" => ["docs/plan.md", ".env"] }
       session.save(state_dir: state_dir)
 
       status, body = get("/api/sessions/#{session.id}")
       expect(status).to eq(200)
-      expect(JSON.parse(body).dig("session", "title")).to eq("review of docs/plan.md +3")
+      expect(JSON.parse(body).dig("session", "title")).to eq("an untitled session")
       expect(JSON.parse(body)).not_to have_key("subjects")
-      ["The plan", "PLAN-TOKEN-VALUE", "sk-ant-", "sk-secret", "OUTSIDE-SECRET", "owner-token"].each { |secret| expect(body).not_to include(secret) }
+      ["docs/plan.md", "The plan", "PLAN-TOKEN-VALUE", "sk-ant-", "sk-secret", "owner-token"].each { |secret| expect(body).not_to include(secret) }
     end
 
     it "reads no cut-off thought or tool call in a raw loop's reply, and no delegate child's first prompt" do

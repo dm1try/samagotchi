@@ -82,14 +82,12 @@ module Samagotchi
     end
 
     # The last answer as the carry note takes it, in at most +room+ bytes;
-    # nil with session.carry_last_answer off, when there is none, when a
-    # review link has it (a continue copies review: but not the grants, so
-    # the next link's participants could differ) or when the session can't
-    # be read: this runs inside a continue's rollback, and a note without it
-    # is still a good note.
+    # nil with session.carry_last_answer off, when there is none, or when
+    # the session can't be read: this runs inside a continue's rollback, and
+    # a note without it is still a good note.
     # @return [String, nil]
     def carried_answer(previous, room:, state_dir:)
-      return nil if previous.review? || !Config.get("session.carry_last_answer")
+      return nil unless Config.get("session.carry_last_answer")
 
       text = last_answer(Session.load(previous.id, state_dir: state_dir).messages)
       text && keep_end(text, room)

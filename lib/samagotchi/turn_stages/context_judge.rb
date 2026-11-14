@@ -48,13 +48,13 @@ module Samagotchi
       # ask settled: the session's candidates' status changes are logged
       # (ContextCandidatesLog#look) and, unless context.candidates.mode is
       # off, the proposed candidates due an ask are asked about the owner's
-      # prompts so far, this one included. Never a participant's turn, a
-      # review session or a Continue (no new prompt). The sessions dir is
+      # prompts so far, this one included. Never a participant's turn or a
+      # Continue (no new prompt). The sessions dir is
       # the turn's (TurnContext#state_dir).
       # @param recorder [SystemOne::Recorder] the asks' runs (built for this call)
       def start(turn, recorder:)
         session = turn.session
-        return unless turn.prompt.is_a?(String) && OwnerPrompt.turn?(session: session, author: turn.origin.author)
+        return unless turn.prompt.is_a?(String) && OwnerPrompt.turn?(author: turn.origin.author)
 
         pass(session, ContextCandidates.owner_texts(session.messages) + [turn.prompt], phase: "turn",
                                                                                          state_dir: turn.context.state_dir, recorder: recorder)
@@ -64,7 +64,7 @@ module Samagotchi
       # #candidate_proposed: github-pr's init task runs beside the first
       # turn): judged on the owner's prompts so far, the running turn's too.
       # The caller (Engine#judge_late_candidates) gives the session the
-      # Engine is on, never nil nor a review session.
+      # Engine is on, never nil.
       # @param messages [Array<Hash>] the owner's conversation so far (Engine#plugin_messages)
       # @param recorder [SystemOne::Recorder] the asks' runs (built for this call)
       # @param state_dir [String] the sessions dir

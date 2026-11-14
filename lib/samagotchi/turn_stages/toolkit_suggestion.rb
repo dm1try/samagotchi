@@ -113,12 +113,12 @@ module Samagotchi
       # never logged and never waited for, so System 1's server has the
       # question's prefix cached for the first prompt. Only for a session a
       # first prompt could be asked for: origin default, no model reply, not
-      # a delegate child or a review session, at least two candidates; and
+      # a delegate child, at least two candidates; and
       # not when the worker starts on a first prompt (that ask comes at once).
       def warm!(session)
         return unless Config.get("toolkit.suggest.mode").to_s == "on"
 
-        return if session.nil? || session.toolkit_origin != "default" || session.delegate? || session.review?
+        return if session.nil? || session.toolkit_origin != "default" || session.delegate?
         return if ToolkitSuggest.model_reply?(session.messages) || !session.last_prompt.to_s.strip.empty?
 
         default = Toolkit.of(session.toolkit)

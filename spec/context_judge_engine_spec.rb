@@ -132,14 +132,12 @@ RSpec.describe Samagotchi::Engine do
     expect(second.first["conversation"]).to eq(["Fix the login redirect"])
   end
 
-  it "asks nothing for a participant's turn or in a review session" do
+  it "asks nothing for a participant's turn" do
     engine = build_engine
     session = new_session
     propose(session, "pr-412")
 
     judge(engine, session, "Fix the login redirect", author: "p:abc")
-    session.review = { "subjects" => ["a.md"] }
-    judge(engine, session, "Fix the login redirect")
 
     expect(system_one).not_to have_received(:ask)
   end

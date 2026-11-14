@@ -131,13 +131,10 @@ RSpec.describe Samagotchi::ContextCandidateChoice do
       expect(cards).to be_empty
     end
 
-    it "refuses an unknown name, a missing one and a review session" do
+    it "refuses an unknown name and a missing one" do
       expect(choose(:attach, "nope")).to eq([:error, "no candidate nope in this session (see /context)"])
       expect(choose(:attach, "../x")).to eq([:error, "no candidate ../x in this session (see /context)"])
       expect(choose(:attach, "")).to eq([:error, described_class::USAGE])
-      propose
-      session.review = { "subjects" => ["a.md"] }
-      expect(choose(:attach, "pr-412")).to eq([:error, "a review session takes no context candidates"])
       expect(own.sources).to eq([])
     end
   end

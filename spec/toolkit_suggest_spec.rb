@@ -58,8 +58,8 @@ RSpec.describe Samagotchi::ToolkitSuggest do
 
   describe ".eligible?" do
     let(:session) do
-      Struct.new(:toolkit_origin, :delegate?, :review?, :messages).new(
-        "default", false, false, []
+      Struct.new(:toolkit_origin, :delegate?, :messages).new(
+        "default", false, []
       )
     end
     let(:eligible) do
@@ -67,14 +67,13 @@ RSpec.describe Samagotchi::ToolkitSuggest do
         last_suggestion: nil, defer_turns: 3, defer_tokens: 5000 }
     end
 
-    it "allows the first prompt of a default, non-delegate, non-review session" do
+    it "allows the first prompt of a default, non-delegate session" do
       expect(described_class.eligible?(**eligible)).to be(true)
     end
 
     {
       "a chosen toolkit" => ->(args) { args[:session].toolkit_origin = "chosen" },
       "a delegate child" => ->(args) { args[:session].define_singleton_method(:delegate?) { true } },
-      "a review session" => ->(args) { args[:session].define_singleton_method(:review?) { true } },
       "a participant turn" => ->(args) { args[:author] = "participant" },
       "a blank prompt" => ->(args) { args[:prompt] = " \n " },
       "fewer than two candidates" => ->(args) { args[:candidate_count] = 1 }
