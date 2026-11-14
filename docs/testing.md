@@ -235,7 +235,9 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   hand-off: where a finished turn's questions land and the reply they keep) and reloaded from the cut's show, and the stage (`stageShape`:
   its cards, the docked ones, the lead-in bubbles, the card in front, the one that shows and the pager, the fold) and
   the history compared; a known difference is listed in its `EXPECTED`, by scenario, cut and field (one gone fails
-  too; one today: `checkin_approval/turn end`, where a reload can't tell when a card stopped asking), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. Both
+  too; one today: `checkin_approval/turn end`, where a reload can't tell when a card stopped asking), and on both pages `stage_waiting.js`'s cards agree with the slots, one docked card showing. `STAGE_CUTS_DEBUG=1` prints each cut's differences. The cuts also
+  feed `card_registry.test.js` (every cut: its events against its show seeded and replayed) and
+  `reload_check.test.js` (the turn-end cuts: the opt-in reload check, live against the read, says same). Both
   harnesses build their page with `spec/web/public/live_page.js`. The stage's drift check (the
   registry against the slots: no entry without its waiting card, no waiting card without its entry) is the tests' own:
   `stage_cuts_parity.test.js` runs it after every live event and at each cut, and `stage.spec.js` at each test's end
@@ -556,7 +558,8 @@ real tasks under each strategy (needs a model; costs tokens): [internals/llm-con
 ## The stage perf probe
 
 `script/stage-perf-probe` (`PROBE_MACHINE=<label>` names the machine; `--keep` leaves its folder, `--headed` shows
-the browser) times the web page's stage on a big session: `script/stage_perf_probe/session.rb` writes 300 finished
+the browser, `--reload-check` turns `web.reload_check` on: `reload:compare` times the check's compare, `reload:posted`
+the hand-off to its post, and the posted counts are printed) times the web page's stage on a big session: `script/stage_perf_probe/session.rb` writes 300 finished
 turns with 60 plugin cards and 40 answered questions through chi's own writers (TurnAccumulator's drawings, CardStore,
 `Session#save`; CardStore keeps its cap of 20, the rest are in the drawings), then `probe.js` opens it in chi web
 (the e2e fake model, isolated `HOME` and `XDG_*` under `tmp/stage-probe-*`) at `/?stage_probe=1` (`stage_probe.js`:

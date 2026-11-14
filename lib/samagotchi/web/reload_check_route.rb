@@ -51,8 +51,8 @@ module Samagotchi
 
       private
 
-      # {turn_id, same, kinds, excused, explained, drawn, undrawn} from the
-      # page: 204, whatever it said
+      # {turn_id, same, kinds, excused, explained, drawn, undrawn,
+      # cards_compared?} from the page: 204, whatever it said
       # (fire-and-forget); 400 for a body that isn't a JSON object.
       # worker_version is chi web's own view of the session's worker (its
       # sidecar), never the body's.
@@ -70,6 +70,9 @@ module Samagotchi
         # count chi web should keep at 0.
         undrawn = body["undrawn"].is_a?(Integer) ? body["undrawn"].clamp(0, 10_000) : 0
         fields = { sid: id, turn_id: turn_id, same: same, drawn: drawn, undrawn: undrawn, worker_version: checked_worker_version(id) }
+        # A page with no card registry (an app.js older than its reload_check.js)
+        # compared no cards or questions: its "same" is the history's alone.
+        fields[:cards_compared] = false if body["cards_compared"] == false
         Log.info(:web, "reload_checked", **fields)
         unless same
           Log.info(:web, "reload_mismatch", **fields.except(:same), kinds: checked_tokens(body["kinds"], KINDS),

@@ -27,6 +27,9 @@ const RUN_MS = 180_000;
 const HARD_MS = 300_000;
 const keep = process.argv.includes("--keep");
 const headed = process.argv.includes("--headed");
+// web.reload_check on: the turn's hand-off read again and compared, timed
+// (reload_check.js: reload:compare, reload:posted) and its counts kept.
+const reloadCheck = process.argv.includes("--reload-check");
 
 const started = Date.now();
 const root = path.join(CHECKOUT, "tmp", `stage-probe-${process.pid}-${started.toString(36)}`);
@@ -67,7 +70,7 @@ guardrails:
       command: 'echo PROBE_APPROVED'
       verdict: ask
       reason: the stage probe's approval
-`;
+${reloadCheck ? "web:\n  reload_check: true\n" : ""}`;
 }
 
 function freePort() {
@@ -203,6 +206,8 @@ async function main() {
   runTimer = setTimeout(() => { console.error(`stage probe: the run passed ${RUN_MS / 1000} s`); }, RUN_MS);
   browser = await chromium.launch({ headless: !headed });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const reloadPosts = [];
+  page.on("request", (req) => { if (req.method() === "POST" && req.url().endsWith("/reload_check")) reloadPosts.push(req.postDataJSON()); });
   page.setDefaultTimeout(60_000);
   const cdp = await page.context().newCDPSession(page);
   // The probe on for the tab (stage_probe.js): kept over the hash jump and the reload.
@@ -259,6 +264,8 @@ async function main() {
   await page.locator("#history .bubble.output", { hasText: "The approved command ran" }).waitFor();
   await page.mouse.move(0, 0);
   await page.locator("#turnStage").waitFor({ state: "hidden" });
+  if (reloadCheck) await page.waitForFunction(() => performance.getEntriesByName("reload:posted").length > 0, null, { timeout: 15_000 });
+  const reloadMeasures = { compare: await measures(page, "reload:compare"), posted: await measures(page, "reload:posted") };
   const heapTurn = await heap(cdp);
   const afterReload = await refreshes(page);
   const appliesAfter = await measures(page, "cards:apply");
@@ -283,6 +290,7 @@ async function main() {
     "cards:apply": stats([...appliesBefore, ...appliesAfter]),
     "cards:seed": stats([...seedOpen, ...seedReload]),
     registry: { after_open: registryOpen, after_turn: registryTurn },
+    ...(reloadCheck ? { reload_check: { "reload:compare": stats(reloadMeasures.compare), "reload:posted": stats(reloadMeasures.posted), posts: reloadPosts } } : {}),
   };
   console.log(JSON.stringify(out, null, 2));
   if (generateMs > GENERATE_MS || runMs > RUN_MS) {
