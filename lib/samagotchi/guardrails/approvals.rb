@@ -37,10 +37,6 @@ module Samagotchi
       COLLECTION = "approvals"
       FORMAT = StateFormat.new(version: 1, members: [StateFormat.required(:scope), StateFormat.extra(:extra, in_version: 1)])
       STORED_SCOPES = %w[session repo rule].freeze
-      # Rules a stored answer allows only for its session: their asks offer
-      # once/session, and a repo entry for the same call (from another
-      # rule) would hold in every worktree, for every child.
-      SESSION_ONLY_RULES = %w[child-boundary].freeze
 
       # @param sessions_dir [String] Session's state dir
       #   ($XDG_STATE_HOME/samagotchi/sessions): the store sits beside it,
@@ -62,9 +58,11 @@ module Samagotchi
       end
 
       # @param verdict [Verdict] an ask with its targets and context
+      # @param scopes [Array<String>] the entries' scopes it may use
+      #   (ApprovalUse.scopes: which ones an ask may use is decided there)
       # @return [Hash, nil] the first entry that allows it
-      def match(verdict)
-        self.class.find_in(read.first, verdict)
+      def match(verdict, scopes: STORED_SCOPES)
+        self.class.find_in(read.first, verdict, scopes: scopes)
       end
 
       # Store the verdict's allowed scope (not "once").
@@ -77,17 +75,17 @@ module Samagotchi
       end
 
       # @param list [Array<Hash>] entries
+      # @param scopes [Array<String>] the scopes of the entries it may use
       # @return [Hash, nil] the first of +list+ that allows +verdict+
-      def self.find_in(list, verdict)
+      def self.find_in(list, verdict, scopes: STORED_SCOPES)
         key = key_for(verdict)
         place = place_for(verdict)
         repo = verdict.targets&.repo
         here = ->(e) { e["repo"] ? e["repo"] == repo : e["repo_root"] == place }
         session_id = verdict.context&.session_id
-        session_only = SESSION_ONLY_RULES.include?(verdict.rule.to_s)
         command_place = session_place(verdict)
         list.find do |e|
-          next false if session_only && e["scope"] != "session"
+          next false unless scopes.include?(e["scope"])
 
           case e["scope"]
           when "session"
@@ -269,8 +267,8 @@ module Samagotchi
         # The store's entries, then this session's own.
         def entries = @store.entries + @mutex.synchronize { @own.dup }
 
-        def match(verdict)
-          @mutex.synchronize { Approvals.find_in(@own, verdict) } || @store.match(verdict)
+        def match(verdict, scopes: STORED_SCOPES)
+          @mutex.synchronize { Approvals.find_in(@own, verdict, scopes: scopes) } || @store.match(verdict, scopes: scopes)
         end
 
         def add(verdict, scope)

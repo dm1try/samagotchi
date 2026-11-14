@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     it "reads the row by the sender's client id" do
       senders = { "cli:send" => :send, "web:tab1" => :send, "web:unnamed" => :send, "tui:42" => :send,
                   "system:schedule:s1" => :schedule, "plugin" => :plugin, "delegate:abcdef12" => :delegate,
-                  "review:p_1" => :participant, "system:reminder" => :automatic, "child:ab12cd34" => :automatic,
+                  "participant:p_1" => :participant, "system:reminder" => :automatic, "child:ab12cd34" => :automatic,
                   "cli:answer" => :automatic, "bot:x" => :automatic, "plugin:x" => :automatic }
       expect(senders.keys.to_h { |id| [id, described_class.for_sender(id).kind] }).to eq(senders)
     end

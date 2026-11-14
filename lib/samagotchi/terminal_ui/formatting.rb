@@ -216,21 +216,20 @@ module Samagotchi
         " #{paint("\u00b7 auto-allowed (#{detail})", 33)}"
       end
 
-      # Prompt labels by the sender's client_id: a whole id, or a prefix
-      # (ending in ":") it starts with (turn_events.js CLIENT_LABELS;
-      # spec/shared/labels_matrix.json).
-      CLIENT_LABELS = { ClientId::WEB_PREFIX => "web", ClientId::TUI_PREFIX => "tui", ClientId::SYSTEM_PREFIX => "reminder",
-                        ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report",
-                        ClientId::CLI_SEND => "chi send", ClientId::CLI_ANSWER => "chi answer",
-                        ClientId::PLUGIN => "plugin", ClientId::REVIEW_PREFIX => "invited" }.freeze
+      # Prompt labels by the sender's client_id, as its ClientId::Sender row
+      # gives them: a whole id, or a prefix (ending in ":") it starts with
+      # (turn_events.js CLIENT_LABELS; spec/shared/labels_matrix.json); nil
+      # for a row labelled as no sender is.
+      CLIENT_LABELS = ClientId::ROWS.to_h { |row| [row.match, row.label] }.freeze
       # A client id chi doesn't know: not the user (ClientId.human?).
-      AUTOMATIC_LABEL = "automatic"
+      AUTOMATIC_LABEL = ClientId::UNKNOWN.label
 
-      # Who sent a line, by its client_id: CLIENT_LABELS by the whole id or
-      # its prefix, a turn an attached context source started
+      # Who sent a line, by its client_id: its row's label (the whole id or
+      # its longest prefix), a turn an attached context source started
       # (context:<name>) as "context <name> changed", a finished background
       # task's (task:<id>) as "task <id8> finished", AUTOMATIC_LABEL for an
-      # id chi doesn't know; +fallback+ for none (the user's own).
+      # id chi doesn't know; +fallback+ for none (the user's own) and for a
+      # row labelled as none (ClientId::FIRST_PROMPT, CARD_ANSWER).
       def client_label(client_id, fallback = "user")
         return fallback unless client_id
 
@@ -246,8 +245,7 @@ module Samagotchi
           return "schedule"
         end
 
-        prefix = id[/\A[^:]*:/]
-        CLIENT_LABELS[id] || (prefix && CLIENT_LABELS[prefix]) || AUTOMATIC_LABEL
+        ClientId.sender(id).label || fallback
       end
 
       # "web> <prompt>": a prompt, labelled by who sent it; nil: the label
@@ -313,7 +311,7 @@ module Samagotchi
         source = (message[:source] || message["source"]).to_s
         content = (message[:content] || message["content"]).to_s
         author = Steer.sender_author(message[:author] || message["author"])
-        return prompt_line(ClientId::REVIEW_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
+        return prompt_line(ClientId::PARTICIPANT_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
         return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
 
         content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")

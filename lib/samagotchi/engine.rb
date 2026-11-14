@@ -503,7 +503,9 @@ module Samagotchi
         cancel_controller: -> { active_cancel_controller },
         # A participant's turn: their name on the owner's card, their
         # grant's mode for the turn's (GuardrailWiring#begin_turn).
-        participant: ->(author) { @participants.entry_for(author, session: @session) }
+        participant: ->(author) { @participants.entry_for(author, session: @session) },
+        # The same clock the participants line measures "active" at.
+        clock: -> { @participants.now }
       )
     end
     private :build_guardrail_wiring

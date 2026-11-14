@@ -93,7 +93,7 @@ RSpec.describe "a participant's author on delivery" do
         if prompt == "first"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p",
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "participant:p",
                                                             author: author, delivery: "cut")
           drained << kwargs[:pending_input].call
         end
@@ -126,7 +126,7 @@ RSpec.describe "a participant's author on delivery" do
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p", author: author,
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "participant:p", author: author,
                                                         enqueued_id: "p1")
 
       expect(pop!(drained, "the participant turn's drain")).to eq([])
@@ -146,22 +146,22 @@ RSpec.describe "a participant's author on delivery" do
         if prompt == "is step 3 safe?"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           Samagotchi::SessionInbox.write_input(session_dir, prompt: "owner steer", client_id: "web:o")
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "only step 3", client_id: "review:p", author: author,
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "only step 3", client_id: "participant:p", author: author,
                                                             enqueued_id: "p2")
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "later", client_id: "review:p", author: author,
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "later", client_id: "participant:p", author: author,
                                                             enqueued_id: "p3", delivery: "queue")
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "Sam's", client_id: "review:q", author: "p:p_other")
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "Sam's", client_id: "participant:q", author: "p:p_other")
           drained << kwargs[:pending_input].call
         end
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "review:p", author: author,
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "is step 3 safe?", client_id: "participant:p", author: author,
                                                         enqueued_id: "p1")
 
       lines = pop!(drained, "the participant turn's drain")
       expect(lines.map { |l| [l.text, l.author] }).to eq([["only step 3", author]])
-      expect(pop!(merged, "the merge")[:origins]).to eq([{ client_id: "review:p", enqueued_id: "p2", author: author }])
+      expect(pop!(merged, "the merge")[:origins]).to eq([{ client_id: "participant:p", enqueued_id: "p2", author: author }])
       expect(Samagotchi::SessionInbox.merged_into(session_dir, "p2")&.into).to eq("p1")
       expect(pop!(prompts, "the participant's turn")).to eq(["is step 3 safe?", author])
       later = Array.new(2) { pop!(prompts, "a turn after it") }
@@ -179,14 +179,14 @@ RSpec.describe "a participant's author on delivery" do
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
           Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "participant:p", author: author,
                                                             enqueued_id: "p2")
           drained << kwargs[:pending_input].call
         end
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "participant:p", author: author, enqueued_id: "p1")
 
       expect(pop!(drained, "the drain")).to eq([])
       expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
@@ -205,14 +205,14 @@ RSpec.describe "a participant's author on delivery" do
         if prompt == "first"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           spend = 2.5
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "participant:p", author: author,
                                                             enqueued_id: "p2")
           drained << kwargs[:pending_input].call
         end
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "participant:p", author: author, enqueued_id: "p1")
 
       expect(pop!(drained, "the drain")).to eq([])
       expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
@@ -234,8 +234,8 @@ RSpec.describe "a participant's author on delivery" do
       allow(engine.metrics).to receive(:spend).with(author).and_return(2.5)
       allow(engine).to receive(:run_turn).and_return(result)
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q2", client_id: "review:p", author: author, enqueued_id: "e2")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "participant:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q2", client_id: "participant:p", author: author, enqueued_id: "e2")
 
       expect(pop!(dequeued, "the first refused turn")).to include(enqueued_id: "e1")
       expect(pop!(dequeued, "the second refused turn")).to include(enqueued_id: "e2")
@@ -267,7 +267,7 @@ RSpec.describe "a participant's author on delivery" do
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "participant:p", author: author, enqueued_id: "e1")
 
       expect(pop!(reasons, "under the cap")).to eq("nil")
       expect(pop!(reasons, "past the cap")).to eq('"Alex reached their $2.00 cap"')
@@ -289,7 +289,7 @@ RSpec.describe "a participant's author on delivery" do
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "participant:p", author: author, enqueued_id: "e1")
 
       expect(pop!(reasons, "while the link works")).to eq("nil")
       expect(pop!(reasons, "once it is revoked")).to eq(%("Alex's link was revoked or expired"))
@@ -305,7 +305,7 @@ RSpec.describe "a participant's author on delivery" do
       allow(engine).to receive(:run_turn).and_return(result)
       baseline = Samagotchi::ReplyWait.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "participant:p", author: author, enqueued_id: "e1")
       pop!(dequeued, "the refused turn")
 
       wait = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 5, poll_interval: 0.02,
@@ -328,7 +328,7 @@ RSpec.describe "a participant's author on delivery" do
       Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
       allow(engine).to receive(:run_turn).and_return(result)
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "participant:p", author: author, enqueued_id: "e1")
 
       expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "e1")
       expect(engine).not_to have_received(:run_turn)
@@ -353,7 +353,7 @@ RSpec.describe "a participant's author on delivery" do
       allow(engine).to receive(:run_turn).and_return(result)
       baseline = Samagotchi::ReplyWait.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "review:p", author: author, enqueued_id: "e1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q", client_id: "participant:p", author: author, enqueued_id: "e1")
 
       expect(pop!(dequeued, "the refused turn")).to include(enqueued_id: "e1")
       expect(engine).not_to have_received(:run_turn)
@@ -378,14 +378,14 @@ RSpec.describe "a participant's author on delivery" do
         if prompt == "first"
           engine.instance_variable_get(:@participants).refresh!(turn_session)
           make_outdated!(Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir)), grant, state_dir: tmpdir)
-          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "review:p", author: author,
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "one more", client_id: "participant:p", author: author,
                                                             enqueued_id: "p2")
           drained << kwargs[:pending_input].call
         end
         result
       end
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "review:p", author: author, enqueued_id: "p1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "first", client_id: "participant:p", author: author, enqueued_id: "p1")
 
       expect(pop!(drained, "the drain")).to eq([])
       expect(pop!(dequeued, "the refused line")).to include(enqueued_id: "p2")
@@ -411,8 +411,8 @@ RSpec.describe "a participant's author on delivery" do
     it "refuses a participant's /word or !line input file (dropped, audited); the owner's is queued" do
       allow(engine).to receive(:run_turn).and_return(result)
       start_worker
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "/toolkit full", client_id: "review:p_1", author: "p:p_1")
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "!ls", client_id: "review:p_1", author: "p:p_1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "/toolkit full", client_id: "participant:p_1", author: "p:p_1")
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "!ls", client_id: "participant:p_1", author: "p:p_1")
       Samagotchi::SessionInbox.write_input(session_dir, prompt: "/title mine", client_id: "web:o")
 
       mine = pop!(events, "the owner's command_queued")
@@ -464,7 +464,7 @@ RSpec.describe "a participant's author on delivery" do
       end
 
       def write_queued(prompt:, author: nil, enqueued_id: nil, now: Time.now)
-        Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, client_id: author ? "review:p" : "web:o",
+        Samagotchi::SessionInbox.write_input(session_dir, prompt: prompt, client_id: author ? "participant:p" : "web:o",
                                                           enqueued_id: enqueued_id, author: author, delivery: "queue", now: now)
       end
 
@@ -564,7 +564,7 @@ RSpec.describe "a participant's author on delivery" do
 
     it "refuses a participant's /word or !line sent as a message (403 not_permitted); the owner's is the command" do
       ["/title x", "/toolkit full", "!ls"].each do |line|
-        reply = @client.post_turn(prompt: line.delete("\\"), client_id: "review:p_1", author: "p:p_1")
+        reply = @client.post_turn(prompt: line.delete("\\"), client_id: "participant:p_1", author: "p:p_1")
         expect([reply.status, reply.json]).to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])
       end
       @client.post_turn(prompt: "/title y", client_id: "web:o")
@@ -574,11 +574,11 @@ RSpec.describe "a participant's author on delivery" do
     end
 
     it "refuses a participant's turn past their pending limit (429 too_many_turns); another's and the owner's go in" do
-      2.times { |i| expect(@client.post_turn(prompt: "q#{i}", client_id: "review:p_1", author: "p:p_1", pending_limit: 2).status).to eq(202) }
-      reply = @client.post_turn(prompt: "q2", client_id: "review:p_1", author: "p:p_1", pending_limit: 2)
+      2.times { |i| expect(@client.post_turn(prompt: "q#{i}", client_id: "participant:p_1", author: "p:p_1", pending_limit: 2).status).to eq(202) }
+      reply = @client.post_turn(prompt: "q2", client_id: "participant:p_1", author: "p:p_1", pending_limit: 2)
       expect([reply.status, reply.json]).to eq([429, { "error" => "too_many_turns",
                                                        "detail" => Samagotchi::ParticipantMessages::TOO_MANY_TURNS }])
-      expect(@client.post_turn(prompt: "k", client_id: "review:p_2", author: "p:p_2", pending_limit: 2).status).to eq(202)
+      expect(@client.post_turn(prompt: "k", client_id: "participant:p_2", author: "p:p_2", pending_limit: 2).status).to eq(202)
       expect(@client.post_turn(prompt: "mine", client_id: "web:o").status).to eq(202)
       expect(of_type(:turn_enqueued).map { |event| event[:prompt] }).to eq(%w[q0 q1 k mine])
     end
@@ -586,7 +586,7 @@ RSpec.describe "a participant's author on delivery" do
     it "keeps a participant's Revise draft (the Engine checks it at the stamp), their Verify claim and the owner's draft" do
       verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
       revises = { turn_id: "123e4567-e89b-12d3-a456-426614174001" }
-      @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", anchors: { verify: verify, revises: revises })
+      @client.post_turn(prompt: "theirs", client_id: "participant:p_1", author: "p:p_1", anchors: { verify: verify, revises: revises })
       @client.post_turn(prompt: "mine", client_id: "web:o", anchors: { revises: revises })
 
       theirs, mine = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")].sort.map { |file| read_file(file) }
@@ -597,17 +597,17 @@ RSpec.describe "a participant's author on delivery" do
 
     it "puts a participant's message into their own running turn at its next step, never a cut; anyone else's turn queues it" do
       accumulator = @bridge.instance_variable_get(:@accumulator)
-      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "review:p_1", author: "p:p_1" },
+      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "participant:p_1", author: "p:p_1" },
                          author: "p:p_1" })
       %w[next_step cut].each do |delivery|
-        reply = @client.post_turn(prompt: "mine #{delivery}", client_id: "review:p_1", author: "p:p_1", delivery: delivery)
+        reply = @client.post_turn(prompt: "mine #{delivery}", client_id: "participant:p_1", author: "p:p_1", delivery: delivery)
         expect(reply.status).to eq(202)
         expect(reply.json).to include("delivery" => "next_step")
         expect(reply.json).not_to have_key("cut")
       end
-      queued = @client.post_turn(prompt: "for later", client_id: "review:p_1", author: "p:p_1", delivery: "queue")
+      queued = @client.post_turn(prompt: "for later", client_id: "participant:p_1", author: "p:p_1", delivery: "queue")
       expect(queued.json).to include("delivery" => "queue")
-      other = @client.post_turn(prompt: "Sam's", client_id: "review:p_2", author: "p:p_2")
+      other = @client.post_turn(prompt: "Sam's", client_id: "participant:p_2", author: "p:p_2")
       expect(other.json).to include("delivery" => "queue")
       files = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*.json")].map { |file| read_file(file) }
       expect(files.to_h { |data| [data["prompt"], data["delivery"]] })
@@ -615,7 +615,7 @@ RSpec.describe "a participant's author on delivery" do
 
       accumulator.call({ type: :turn_completed })
       accumulator.call({ type: :turn_started, prompt: "owner's", origin: { client_id: "web:o" } })
-      expect(@client.post_turn(prompt: "during the owner's", client_id: "review:p_1", author: "p:p_1").json)
+      expect(@client.post_turn(prompt: "during the owner's", client_id: "participant:p_1", author: "p:p_1").json)
         .to include("delivery" => "queue")
     end
 
@@ -624,7 +624,7 @@ RSpec.describe "a participant's author on delivery" do
     end
 
     it "queues a participant's message as its own turn whatever its delivery asks, and never cuts" do
-      reply = @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", delivery: "cut")
+      reply = @client.post_turn(prompt: "theirs", client_id: "participant:p_1", author: "p:p_1", delivery: "cut")
       expect(reply.status).to eq(202)
       expect(reply.json).not_to have_key("cut")
       file = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")].first
@@ -636,7 +636,7 @@ RSpec.describe "a participant's author on delivery" do
     # during the owner's own turn it steers as before.
     it "queues the owner's message behind a participant's running turn, never steering or cutting it" do
       accumulator = @bridge.instance_variable_get(:@accumulator)
-      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "review:p_1", author: "p:p_1" },
+      accumulator.call({ type: :turn_started, prompt: "theirs", origin: { client_id: "participant:p_1", author: "p:p_1" },
                          author: "p:p_1" })
       %w[next_step cut].each do |delivery|
         reply = @client.post_turn(prompt: "owner #{delivery}", client_id: "web:o", delivery: delivery)

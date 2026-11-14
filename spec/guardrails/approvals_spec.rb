@@ -89,12 +89,22 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
   end
 
   it "lets a child-boundary ask through only on a session entry, not a repo or rule one" do
+    child = ->(**opts) { ask(rule: "child-boundary", source: "core", **opts) }
+    match = ->(v) { store.match(v, scopes: Samagotchi::Guardrails::ApprovalUse.scopes(v, nil)) }
     store.add(ask, "repo")
-    store.add(ask(rule: "child-boundary", source: "core", session: "s0"), "rule")
-    expect(store.match(ask(rule: "child-boundary", source: "core"))).to be_nil
+    store.add(child.call(session: "s0"), "rule")
+    expect(match.call(child.call)).to be_nil
     store.add(ask(rule: "git-push"), "session")
-    expect(store.match(ask(rule: "child-boundary", source: "core"))).to include("scope" => "session")
-    expect(store.match(ask(rule: "child-boundary", source: "core", session: "s2"))).to be_nil
+    expect(match.call(child.call)).to include("scope" => "session")
+    expect(match.call(child.call(session: "s2"))).to be_nil
+  end
+
+  it "uses only the scopes it is given" do
+    store.add(ask, "repo")
+    expect(store.match(ask, scopes: %w[session])).to be_nil
+    expect(store.match(ask, scopes: [])).to be_nil
+    expect(store.match(ask, scopes: %w[session repo])).to include("scope" => "repo")
+    expect(store.match(ask)).to include("scope" => "repo")
   end
 
   it "matches a rule entry for any call that rule asks about in the repo, from the same source" do
@@ -390,6 +400,68 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
       2.times { settle("git push") }
       expect(asked.size).to eq(2)
       expect(store.entries).to eq([])
+    end
+  end
+
+  # A participant's pair turn: the owner's repo or rule approvals are the
+  # owner's; only this session's own entries answer its asks.
+  describe "in a participant's turn" do
+    let(:participant) { Samagotchi::TurnContext.none(author: "p:g1") }
+    let(:pick) { "once" }
+
+    def settle_as(turn, content)
+      v = gate.evaluate({ name: "execute", content: content }, context: turn, iteration: 1, params: "")
+      gate.settle_ask(v, context: turn)
+    end
+
+    %w[repo rule].each do |scope|
+      it "asks the owner despite a #{scope} approval" do
+        store.add(settle_as(Samagotchi::TurnContext.none, "git push").tap { asked.clear }, scope)
+        expect(store.entries.map { |e| e["scope"] }).to eq([scope])
+        v = settle_as(participant, "git push")
+        expect(asked).to eq(["git push"])
+        expect(v.decided_by).to eq("user")
+      end
+    end
+
+    it "runs on this session's own session approval" do
+      v = settle_as(Samagotchi::TurnContext.none, "git push")
+      store.add(v, "session")
+      asked.clear
+      second = settle_as(participant, "git push")
+      expect(asked).to be_empty
+      expect([second.decision, second.decided_by, second.scope]).to eq([:allow, "approval", "session"])
+    end
+
+    it "leaves the owner's turn on the repo approval" do
+      store.add(settle("git push"), "repo")
+      asked.clear
+      expect(settle("git push").decided_by).to eq("approval")
+      expect(asked).to be_empty
+    end
+
+    context "with a scratch session's store" do
+      let(:scratch) { Samagotchi::Guardrails::Approvals::InMemory.new(Samagotchi::Guardrails::Approvals.new(dir: File.join(state, "guardrails"))) }
+      let(:gate) do
+        approver = lambda do |v, _turn|
+          asked << v.call[:content]
+          v.settle!(:allow)
+          v.scope = "once"
+          v
+        end
+        ctx = Samagotchi::Guardrails::Context.new(cwd: state, session_id: "s1")
+        described_class.new(hooks: hooks, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { scratch })
+      end
+
+      it "asks despite a repo approval in the store, and runs on its own session one" do
+        owner_ask = gate.evaluate({ name: "execute", content: "git push" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
+        store.add(owner_ask, "repo")
+        settle_as(participant, "git push")
+        expect(asked).to eq(["git push"])
+        scratch.add(owner_ask, "session")
+        expect(settle_as(participant, "git push").decided_by).to eq("approval")
+        expect(asked.size).to eq(1)
+      end
     end
   end
 

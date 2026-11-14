@@ -77,7 +77,7 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
       owner = Samagotchi::Web::Principal::OWNER
       expect(app.send(:stream_filter, request.call(owner), session.id)).to be_nil
 
-      frame = %(id: 1\r\ndata: {"type":"turn_started","prompt":"hi","author":"p:p_0123abcd","origin":{"client_id":"review:p_0123abcd"}}\r\n\r\n)
+      frame = %(id: 1\r\ndata: {"type":"turn_started","prompt":"hi","author":"p:p_0123abcd","origin":{"client_id":"participant:p_0123abcd"}}\r\n\r\n)
       expect(app.send(:stream_filter, request.call(owner, "?as=participant"), session.id)).to be_nil
       theirs = app.send(:stream_filter, request.call(Samagotchi::Web::Principal.new(kind: :participant, grant: grant)), session.id)
       expect(theirs).to be_a(Samagotchi::Web::ParticipantStreamFilter)

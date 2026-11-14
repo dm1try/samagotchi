@@ -136,7 +136,7 @@ module Samagotchi
     # By the message's participant_mode stamp; a missing or unknown one is
     # a review (every message saved before the stamp).
     PARTICIPANT_HEADERS = { "review" => REVIEW_HEADER, "pair" => PAIR_HEADER }.freeze
-    # A participant's line's saved source (review:<id>): never the user's,
+    # A participant's line's saved source (participant:<id>): never the user's,
     # and never one that cuts (CUT_SOURCES). Its header is the review one,
     # by its author.
     PARTICIPANT_SOURCE = "participant"
@@ -150,19 +150,13 @@ module Samagotchi
 
     module_function
 
-    # The saved source of a worker input line from +client_id+: nil for the
-    # user (no client id, the web, an attached TUI); automatic:<client id>
-    # for a client that is no human's and chi doesn't name (an unknown id is
-    # not the user).
+    # The saved source of a worker input line from +client_id+, as its
+    # ClientId::Sender row says: nil for the user (no client id, the web, an
+    # attached TUI); automatic:<client id> for a client that is no human's
+    # and chi doesn't name (an unknown id is not the user).
     def source_for_client(client_id)
-      id = client_id.to_s
-      if id == ClientId::CLI_SEND then "chi_send"
-      elsif id.start_with?(ClientId::DELEGATE_PREFIX) then "parent_agent"
-      elsif id.start_with?(ClientId::CHILD_PREFIX) then DELEGATE_REPORT
-      elsif id == ClientId::PLUGIN then "plugin_send"
-      elsif ClientId.review?(id) then PARTICIPANT_SOURCE
-      elsif !ClientId.human?(client_id) then "#{AUTOMATIC_SOURCE_PREFIX}#{id}"
-      end
+      source = ClientId.sender(client_id).source
+      source == :automatic ? "#{AUTOMATIC_SOURCE_PREFIX}#{client_id}" : source
     end
 
     # The header for a steer or merged input message, else nil. No source

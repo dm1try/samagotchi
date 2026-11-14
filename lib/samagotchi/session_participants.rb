@@ -29,6 +29,11 @@ module Samagotchi
       self
     end
 
+    # The time "still active" is measured at (the clock it was given):
+    # GuardrailWiring's participant turn mode reads the same, so the prompt
+    # line and a turn's mode agree.
+    def now = @clock.call
+
     # Whether anyone is still in the review (Participants::Entry#active?),
     # as of the last #refresh!.
     def active? = @entries.any? { |entry| entry.active?(@clock.call) }

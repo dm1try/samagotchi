@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(status).to eq(202)
     # A file (no delivery in the worker's ack) reads as a queue.
     expect(body).to include("status" => "accepted", "delivery" => "queue")
-    expect(delivered.first).to include(prompt: "Is step 3 safe?", client_id: "review:#{grant.id}", author: grant.author,
+    expect(delivered.first).to include(prompt: "Is step 3 safe?", client_id: "participant:#{grant.id}", author: grant.author,
                                        delivery: "queue", pending_limit: 4)
     expect(delivered.first).not_to include(no_interrupt: true)
     expect(delivered.first).not_to have_key(:images)
@@ -354,21 +354,21 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       turn({ prompt: "mine" })
       status, = call("/api/sessions/#{session.id}/turn/e-1/dequeue", body: { client_id: "web:owner" })
       expect(status).to eq(200)
-      expect(bridge).to have_received(:dequeue).with(enqueued_id: "e-1", client_id: "review:#{grant.id}")
+      expect(bridge).to have_received(:dequeue).with(enqueued_id: "e-1", client_id: "participant:#{grant.id}")
     end
 
     it "refuses another author's queued turn (403 not_permitted), whatever the body says" do
       other = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Kim", state_dir: state_dir)
       call("/api/sessions/#{session.id}/turn", body: { prompt: "kim's" }, token: other.token)
 
-      expect(call("/api/sessions/#{session.id}/turn/e-1/dequeue", body: { client_id: "review:#{other.grant.id}" }).first).to eq(403)
+      expect(call("/api/sessions/#{session.id}/turn/e-1/dequeue", body: { client_id: "participant:#{other.grant.id}" }).first).to eq(403)
       expect(call("/api/sessions/#{session.id}/turn/owner-eid/dequeue").first).to eq(403)
       expect(bridge).not_to have_received(:dequeue)
     end
 
     it "knows a turn by its waiting file's author after chi web restarted" do
       dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
-      Samagotchi::SessionInbox.write_input(dir, prompt: "mine", client_id: "review:#{grant.id}", enqueued_id: "e-old",
+      Samagotchi::SessionInbox.write_input(dir, prompt: "mine", client_id: "participant:#{grant.id}", enqueued_id: "e-old",
                                                 author: grant.author, delivery: "queue")
       Samagotchi::SessionInbox.write_input(dir, prompt: "owner's", client_id: "web:o", enqueued_id: "e-owner", delivery: "queue")
 
@@ -392,7 +392,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     def prepare(eid, token: issued.token) = call("/api/sessions/#{session.id}/wait/prepare", body: { turn: eid }, token: token)
 
     it "knows their claimed, running turn by the claimed file's author" do
-      file = Samagotchi::SessionInbox.write_input(dir, prompt: "mine", client_id: "review:#{grant.id}", enqueued_id: "e-run",
+      file = Samagotchi::SessionInbox.write_input(dir, prompt: "mine", client_id: "participant:#{grant.id}", enqueued_id: "e-run",
                                                        author: grant.author, delivery: "queue")
       Samagotchi::SessionInbox.claim_input_file(file)
       session.status = Samagotchi::Session::STATUS_RUNNING

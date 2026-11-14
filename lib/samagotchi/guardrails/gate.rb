@@ -4,6 +4,7 @@ require_relative "verdict"
 require_relative "context"
 require_relative "targets"
 require_relative "approvals"
+require_relative "approval_use"
 require_relative "protected_paths"
 require_relative "../log"
 
@@ -81,12 +82,14 @@ module Samagotchi
       # Settle an ask: the approver asks the user; with none, or one that
       # fails, it is denied.
       # @return [Verdict]
-      # A stored approval that covers the call allows it without asking; an
-      # answer that allows it beyond this once is stored.
+      # A stored approval that covers the call allows it without asking
+      # (only the scopes ApprovalUse lets this ask use: none for a fresh
+      # ask, this session's own for a participant's turn); an answer that
+      # allows it beyond this once is stored.
       # @param context [TurnContext] the call's turn (the approver's)
       def settle_ask(verdict, context:)
         approvals = @approvals_lookup.call
-        if !verdict.fresh_ask? && (entry = stored(approvals, verdict))
+        if (entry = stored(approvals, verdict, ApprovalUse.scopes(verdict, context)))
           verdict.settle!(:allow, decided_by: "approval")
           verdict.scope = entry["scope"]
           return verdict
@@ -104,8 +107,10 @@ module Samagotchi
 
       private
 
-      def stored(approvals, verdict)
-        approvals&.match(verdict)
+      def stored(approvals, verdict, scopes)
+        return nil if scopes.empty?
+
+        approvals&.match(verdict, scopes: scopes)
       rescue StandardError
         nil
       end

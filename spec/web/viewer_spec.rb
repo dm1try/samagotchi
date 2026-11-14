@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Web::Viewer do
 
     expect(viewer).not_to be_owner
     expect(viewer.to_h).to eq(kind: "participant", id: "p_0123abcd", name: "Alex",
-                              can: described_class::PARTICIPANT_CAPABILITIES, client_id: "review:p_0123abcd")
+                              can: described_class::PARTICIPANT_CAPABILITIES, client_id: "participant:p_0123abcd")
     expect(described_class::CAPABILITIES.select { |name| viewer.can?(name) }).to eq(%w[working_set images])
     expect(described_class::PARTICIPANT_CAPABILITIES).to all(satisfy { |name| viewer.can?(name) })
   end

@@ -195,10 +195,10 @@ test("participants: a participant's queued or started prompt carries their badge
   const { userBubbleTemplate } = await import("../../../lib/samagotchi/web/public/turn_html.js");
   setParticipantNames([grant()]);
   const known = () => false;
-  const [queued] = promptOps({ type: "turn_enqueued", enqueued_id: "e1", client_id: "review:p_0001abcd", prompt: "q", author: "p:p_0001abcd" }, { myId: "web:me", known });
+  const [queued] = promptOps({ type: "turn_enqueued", enqueued_id: "e1", client_id: "participant:p_0001abcd", prompt: "q", author: "p:p_0001abcd" }, { myId: "web:me", known });
   assert.equal(queued.author.name, "Alex");
   const [started] = promptOps({ type: "turn_started", prompt: "q", author: "p:p_0001abcd", author_name: "Alex B",
-                                origin: { client_id: "review:p_0001abcd", author: "p:p_0001abcd" } }, { myId: "web:me", known });
+                                origin: { client_id: "participant:p_0001abcd", author: "p:p_0001abcd" } }, { myId: "web:me", known });
   assert.equal(started.author.name, "Alex B");
   const [owner] = promptOps({ type: "turn_enqueued", enqueued_id: "e2", client_id: "tui:1", prompt: "mine" }, { myId: "web:me", known });
   assert.ok(!("author" in owner));

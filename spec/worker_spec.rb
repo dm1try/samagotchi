@@ -497,6 +497,19 @@ RSpec.describe Samagotchi::Worker do
         end
       end
 
+      # A person's session saves no sender for its first prompt (nor did
+      # one from before the field): the owner's (ClientId::FIRST_PROMPT).
+      it "comes back to the lists on its own first prompt" do
+        session.messages = []
+        session.last_prompt = "first"
+        session.status = Samagotchi::Session::STATUS_RUNNING
+        session.save(state_dir: tmpdir)
+        start_worker(poll_interval: 0.02)
+
+        expect(next_turn&.first).to eq("first")
+        expect(archived?).to be(false)
+      end
+
       it "stays archived on a reminder turn" do
         allow(engine).to receive(:reminders_due?).and_return(true)
         start_worker(poll_interval: 5)
@@ -1892,7 +1905,7 @@ RSpec.describe Samagotchi::Worker do
         expect(next_turn&.first).to eq("boom")
         seen = []
         wait_for("the prompt_restored event") { (seen += drain_events).any? { |e| e[:type] == :prompt_restored } }
-        expect(seen.find { |e| e[:type] == :prompt_restored }).to include(prompt: "boom", origin: nil)
+        expect(seen.find { |e| e[:type] == :prompt_restored }).to include(prompt: "boom", origin: { client_id: Samagotchi::ClientId::FIRST_PROMPT })
         expect(@thread).to be_alive
         wait_for("the failed initial prompt's note") { saved_messages.length == 1 && saved_messages.first.start_with?("[SYSTEM: the previous turn failed") }
       end
@@ -2002,6 +2015,33 @@ RSpec.describe Samagotchi::Worker do
         post.call("web:1")
         wait_for("the continue_resolved event") { saw?(:continue_resolved) }
         expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "resume", client_id: "web:1")
+      end
+
+      # A TUI's or the web's answer names no sender (only chi answer's
+      # does): the owner's card answer (ClientId::CARD_ANSWER), so a
+      # person's Continue un-archives the session and resets the wakes.
+      it "takes a TUI or web Continue tap (no client id) as the owner's: un-archives and resets the wakes" do
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        wait_for("the continue offer") { saw?(:continue_offered) && saw?(:question_requested) }
+        Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+        wakes = @worker.instance_variable_get(:@wakes)
+        resets = Queue.new
+        allow(wakes).to receive(:human_input!).and_wrap_original do |original, **kwargs|
+          original.call(**kwargs).tap { resets << kwargs }
+        end
+        question = seen.reverse.find { |e| e[:type] == :question_requested }[:pending_question]
+
+        port = JSON.parse(File.read(sidecar))["port"]
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/answer"),
+                       JSON.generate(id: question[:id], selected: [Samagotchi::ContinueOffer::CONTINUE]),
+                       "Content-Type" => "application/json", **bridge_auth(sidecar))
+
+        wait_for("the continue_resolved event") { saw?(:continue_resolved) }
+        expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "resume",
+                                                                            client_id: Samagotchi::ClientId::CARD_ANSWER)
+        expect(pop!(resets, "the wakes' reset")).to eq(interactive: false)
+        expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(false)
       end
 
       it "drops the offer when a new prompt is taken, keeping the partial turn (D2)" do
@@ -2132,16 +2172,20 @@ RSpec.describe Samagotchi::Worker do
         start_worker(poll_interval: 5)
         stored = -> { Samagotchi::Session.load(session.id, state_dir: tmpdir).parent_answers }
 
-        ["cli:send", "cli:answer", "delegate:abcd1234", "plugin", nil].each do |client_id|
+        ["cli:send", "cli:answer", Samagotchi::ClientId::CARD_ANSWER].each do |client_id|
           done = ran(JSON.parse(post_command("/parent-answers soft", client_id: client_id).body)["command_id"])
           expect(done).to include(status: "error"), client_id.inspect
           expect(done[:output]).to include("loosening parent_answers is the user's"), client_id.inspect
         end
+        # An unmarked command isn't run at all (every sender names itself),
+        # nor one from a sender that may not send commands.
+        expect(post_command("/parent-answers soft", client_id: nil).code).to eq("400")
+        expect(%w[delegate:abcd1234 plugin].map { |id| post_command("/parent-answers soft", client_id: id).code }).to eq(%w[403 403])
         # The same line as a message (chi send -m, /queue TEXT): the Bridge runs it as the command, with its client.
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
                        JSON.generate(session_id: session.id, prompt: "/parent-answers soft", client_id: "cli:answer"),
                        "Content-Type" => "application/json", **bridge_auth(sidecar))
-        wait_for("the sixth command_ran") { events_seen.count { |e| e[:type] == :command_ran } >= 6 }
+        wait_for("the fourth command_ran") { events_seen.count { |e| e[:type] == :command_ran } >= 4 }
         expect(seen.select { |e| e[:type] == :command_ran }.last).to include(status: "error")
         expect(stored.call).to eq("hard")
 
@@ -2384,7 +2428,7 @@ RSpec.describe Samagotchi::Worker do
 
         wait_for("the command to run") { events_seen.any? { |e| e[:type] == :command_ran } }
         done = seen.find { |e| e[:type] == :command_ran }
-        expect(done).to include(line: "/model Qwen3-14B", status: "ok", model_name: "Qwen3-14B", client_id: nil)
+        expect(done).to include(line: "/model Qwen3-14B", status: "ok", model_name: "Qwen3-14B", client_id: Samagotchi::ClientId::FIRST_PROMPT)
         expect(turns).to be_empty
         saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
         expect([saved.model_name, saved.status, saved.last_prompt]).to eq(["Qwen3-14B", Samagotchi::Session::STATUS_IDLE, ""])
@@ -2830,13 +2874,14 @@ RSpec.describe Samagotchi::Worker do
           end
           start_worker(poll_interval: 5)
 
+          # The Bridge refuses it before it is queued (CommandIntake.allowed?);
+          # Worker#command_result's own refusal stays the layer behind it.
           response = post_command("!touch #{marker}", client_id: "delegate:abcd1234")
-          done = ran(JSON.parse(response.body)["command_id"])
 
-          expect(response.code).to eq("202")
-          expect(done).to include(status: "error", output: Samagotchi::CommandIntake::REFUSED,
-                                  client_id: "delegate:abcd1234", anytime: true)
-          expect(seen.count { |event| event[:type] == :command_ran }).to eq(1)
+          expect(response.code).to eq("403")
+          expect(JSON.parse(response.body)).to include("error" => Samagotchi::CommandIntake::REFUSED_ERROR,
+                                                       "detail" => Samagotchi::CommandIntake::REFUSED)
+          expect(events_seen.count { |event| event[:type] == :command_ran }).to eq(0)
           expect(File.exist?(marker)).to be(false)
         end
 

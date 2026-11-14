@@ -6,6 +6,7 @@ require_relative "log"
 require_relative "participant_messages"
 require_relative "steer"
 require_relative "turn_origin"
+require_relative "client_id"
 
 module Samagotchi
   # A session worker's continue offer: what it announces when a turn runs out
@@ -283,6 +284,10 @@ module Samagotchi
              elsif text.empty? then "/continue no"
              else "/continue no, #{text}"
              end
+      # A person's answer names no sender (a TUI's, the web's): the owner's
+      # card answer, so their Continue / Stop un-archives and resets the
+      # wakes (Worker#user_input); a parent agent's keeps its own.
+      client_id ||= ClientId::CARD_ANSWER unless answer.parent_agent?
       @queue_command&.call(line, client_id: client_id)
     end
   end

@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::Web::App, "a participant stopping a turn" do
   let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir) }
   let(:other) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", state_dir: state_dir) }
   let(:client) { instance_double(Samagotchi::BridgeClient) }
-  let(:running) { { "turn_id" => "t-alex", "author" => issued.grant.author, "origin" => { "client_id" => "review:x" } } }
+  let(:running) { { "turn_id" => "t-alex", "author" => issued.grant.author, "origin" => { "client_id" => "participant:x" } } }
   let(:not_permitted) { [403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }] }
   # A worker whose cancel compares the turn_id it is named (TurnState#cancel!).
   let(:features) { ["delivery", Samagotchi::Delivery::CANCEL_TURN_ID_FEATURE] }
@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Web::App, "a participant stopping a turn" do
     running.replace("turn_id" => "t-sam", "author" => other.grant.author)
     expect(cancel({ turn_id: "t-sam" })).to eq(not_permitted)
     # An author named only in the turn's origin counts the same.
-    running.replace("turn_id" => "t-sam", "origin" => { "client_id" => "review:#{other.grant.id}", "author" => other.grant.author })
+    running.replace("turn_id" => "t-sam", "origin" => { "client_id" => "participant:#{other.grant.id}", "author" => other.grant.author })
     expect(cancel({ turn_id: "t-sam" })).to eq(not_permitted)
     expect(client).not_to have_received(:cancel)
     expect(refusals.map { |line| [line["participant"], line["path"], line["reason"]] })

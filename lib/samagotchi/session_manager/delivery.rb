@@ -230,6 +230,13 @@ module Samagotchi
             return DeliverResult.new(status: :refused, code: 409, ack: ReviseAnchor::PARTICIPANT_UNAVAILABLE)
           end
 
+          # compat shim review_client_id: a worker from before participant:
+          # reads a participant's turn by review:<id> (dequeue is left out:
+          # its client id is only echoed back).
+          if ClientId.participant?(client_id) && !worker_has?(client, Delivery::PARTICIPANT_ID_FEATURE)
+            client_id = ClientId.legacy_participant(client_id)
+          end
+
           begin
             options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }
             options[:images] = images unless images.empty?

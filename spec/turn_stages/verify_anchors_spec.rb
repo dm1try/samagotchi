@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::TurnStages::VerifyAnchors do
     let(:v1) { "123e4567-e89b-12d3-a456-426614174001" }
 
     def revise_turn(author)
-      origin = Samagotchi::TurnOrigin.new(client_id: author ? "review:x" : "web:o", author: author)
+      origin = Samagotchi::TurnOrigin.new(client_id: author ? "participant:x" : "web:o", author: author)
       Struct.new(:id, :verify, :revises, :origin).new("r1", nil, Samagotchi::ReviseAnchor.new(turn_id: v1), origin)
     end
 

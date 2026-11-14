@@ -16,6 +16,10 @@ and commands may change between minor versions. How releases are made:
 - `toolkit.kits.review` is an ordinary config kit name now (there is no built-in review kit).
 - `chi` commands that run no turn start faster: `bin/chi` no longer loads the engine for every command (`chi --version` 203 → 63 ms, `chi home` 204 → 69 ms, `chi sessions list` 206 → 149 ms on a Mac Studio).
 - Participants' words: links are "this link …" rather than "this review link …", a participant's prompt is labelled `invited`, their badge reads `· pair` (an older chi's read-only turn `· read-only`), and `chi send` says "queued as turn T".
+- Participants: a participant's turn uses only your approvals for this session ("Allow … for the session"); a call your repo or rule approval would allow asks you on a card.
+- Participants: a participant's turn in your own Verify fresh child is refused before it starts ("revoked"), rather than starting and having every call denied as an older chi's.
+- Input that names no sender is never taken as yours: its `/model x` line is text and its `!` line is refused, it doesn't un-archive the session, and the worker's `POST /command` without a `client_id` answers 400 (every chi UI and command names itself); from a participant, a delegate, a plugin or an id chi doesn't know it answers 403 and runs nothing. A session's first prompt and your Continue / Stop on a card still count as yours.
+- Participants: a participant's client id is `participant:<id>` (was `review:<id>`); a `review:<id>` from before (drawn turns, queued input, an older `chi web` or worker still running) is read as a participant's until 0.173.
 
 ### Removed
 

@@ -37,6 +37,9 @@ RSpec.describe "the recorded compatibility corpus" do
   # hold them.
   let(:live_files_after) { Gem::Version.new("0.164.0") }
   let(:session_stores_after) { Gem::Version.new("0.168.0") }
+  # The last release whose corpus has no participant's input by its sender
+  # (ClientId.participant): a later one must hold it.
+  let(:participant_input_after) { Gem::Version.new("0.171.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -256,13 +259,15 @@ RSpec.describe "the recorded compatibility corpus" do
     input_dir = File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR)
     if recorded?(input_dir, version, since)
       inputs = Samagotchi::SessionInbox.find_new_input_files(session_dir)
-      expect(inputs.size).to eq(1)
+      with_participant = since == Gem::Version.new("0") || Gem::Version.new(version) > participant_input_after
+      expect(inputs.size).to eq(with_participant ? 2 : 1)
       input = Samagotchi::SessionInbox.read_input(inputs.first)
       expect(input).to have_attributes(prompt: "compatibility corpus", delivery: "queue",
                                        images: [{ file: "compat.png", name: "compat.png" }])
       expect(input.origin).to have_attributes(client_id: "web:compat", enqueued_id: ReleaseTools::COMPAT_ENQUEUED_ID,
                                               author: "p:compat")
       expect(Samagotchi::SessionInbox.waits_for_turn_end?(inputs.first)).to be(true)
+      expect_participant_input(inputs.last, ReleaseTools::COMPAT_PARTICIPANT_CLIENT_ID) if with_participant
     end
 
     notes_dir = File.join(session_dir, Samagotchi::SessionInbox::NOTES_DIR)
@@ -284,6 +289,31 @@ RSpec.describe "the recorded compatibility corpus" do
 
     expect(Samagotchi::Session.stopped_at("compat-session", state_dir: sessions_dir)).to eq(Time.utc(2026, 1, 1))
     expect(Samagotchi::Session.load("compat-session", state_dir: sessions_dir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
+  end
+
+  # A participant's queued input file, by its sender: a participant's (a
+  # human's, never the owner's), waiting for a turn of its own.
+  def expect_participant_input(path, client_id)
+    input = Samagotchi::SessionInbox.read_input(path)
+    expect(input.origin).to have_attributes(client_id: client_id, author: "p:compat")
+    expect([Samagotchi::ClientId.participant?(client_id), Samagotchi::ClientId.owner?(client_id),
+            input.origin.source, Samagotchi::Steer.source_for_client(client_id)]).to eq([true, false, "participant", "participant"])
+    expect(Samagotchi::SessionInbox.waits_for_turn_end?(path)).to be(true)
+  end
+
+  # compat shim review_client_id: chi 0.171 and before gave a participant's
+  # turns review:<id>, in input files and drawn turns alike (no corpus
+  # recorded one: hand-made in spec/fixtures/compat_review_client_id).
+  it "reads an older chi's review:<id> input file and drawn turn as a participant's" do
+    fixture = File.expand_path("../fixtures/compat_review_client_id", __dir__)
+    Dir.mktmpdir("chi-compat-review-") do |tmp|
+      FileUtils.cp_r(File.join(fixture, "."), tmp)
+      expect_participant_input(Samagotchi::SessionInbox.find_new_input_files(tmp).fetch(0), "review:compat")
+      line = Samagotchi::Bridge::TurnDrawings.read(tmp).fetch(0)
+      origin = Samagotchi::TurnOrigin.from(line.drawing["origin"])
+      expect([origin.participant_author, origin.source, origin.human?, Samagotchi::ClientId.owner?(origin.client_id)])
+        .to eq(["p:compat", "participant", true, false])
+    end
   end
 
   it "reads the newest previous-release samples with today's state readers" do

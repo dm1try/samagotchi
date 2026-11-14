@@ -387,7 +387,7 @@ RSpec.describe "Tool host characterization" do
       enqueue(wire, calls: [["c1", "read", { "path" => "notes.txt" }]])
       enqueue(wire, text: "never asked")
 
-      turn(engine, session, wire, "go", origin: { client_id: "review:#{grant.id}", author: grant.author })
+      turn(engine, session, wire, "go", origin: { client_id: "participant:#{grant.id}", author: grant.author })
 
       expect(requests_on(wire).size).to eq(1)
       expect(checks).to eq(2)

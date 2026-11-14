@@ -426,7 +426,7 @@ RSpec.describe "Engine turn goldens" do
                                 ["call_w1", "write", { "path" => "notes.txt", "content" => "pwned" }]])
       enqueue("openai", text: "Proposed a change.")
 
-      result = run(engine, session, "Review the notes.", origin: { client_id: "review:#{grant.id}", author: grant.author })
+      result = run(engine, session, "Review the notes.", origin: { client_id: "participant:#{grant.id}", author: grant.author })
 
       expect(File.read(File.join(project, "notes.txt"))).to eq("golden notes\n")
       expect(asked).to eq([])

@@ -25,7 +25,7 @@ RSpec.describe "a participant's spend" do
   end
 
   def turn(id, cost, author: nil, finish: true)
-    origin = author ? { client_id: "review:x", author: author } : { client_id: "web:t" }
+    origin = author ? { client_id: "participant:x", author: author } : { client_id: "web:t" }
     metrics.call(type: :turn_started, session_id: "s1", prompt: "p", turn_id: id, origin: origin)
     metrics.call(type: :generation_started, iteration: 1)
     metrics.call(chunk(cost))
@@ -83,7 +83,7 @@ RSpec.describe "a participant's spend" do
 
     # Their turn, as the Engine publishes it (TurnState): running, then the last one.
     let(:their_turn) do
-      origin = Samagotchi::TurnOrigin.new(client_id: "review:x", author: alex)
+      origin = Samagotchi::TurnOrigin.new(client_id: "participant:x", author: alex)
       Samagotchi::TurnContext.none(origin: origin, author: origin.participant_author)
     end
 

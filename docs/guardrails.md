@@ -114,6 +114,11 @@ answers it, since it is keyed on the whole command you saw: `git branch -D x && 
 once, session and repo, while `git merge y && git push` offers once, as `git-merge` offers only once and its rule.
 Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
 [child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
+
+Which stored approvals an ask may use is decided in one place, `Guardrails::ApprovalUse` (before `Gate#settle_ask`
+looks in the store): an owner's ask uses every scope; a [participant's turn](#a-participants-pair-boundary) and a
+[delegate child's boundary](#a-delegate-childs-boundary) use only this session's own `session` entries; a fresh ask
+(`Verdict#fresh_ask`) uses none.
 The file is a versioned store (`{"version": 1, "approvals": [...]}`, `Approvals::FORMAT`); a write keeps its version,
 the keys this chi doesn't know and an entry with no `scope`. A bare list of entries, as chi 0.166 and before wrote it,
 is read and converted to a versioned store on the next write. Chi 0.165 and before set a versioned store aside, so restart their sessions
@@ -305,16 +310,20 @@ sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 A message that is a session command (`/model x`, `!cmd`, `!rollback`) runs as the command only when a person sends
 it: a web tab, an attached chi TUI, `chi send` (yours, or one a model runs from `execute`: the trust model above), a
-message with no sender named, and `chi answer`'s lines (`cli:answer`: a parent agent's `/continue yes` and
+session's own first prompt, and `chi answer`'s lines (`cli:answer`: a parent agent's `/continue yes` and
 `/parent-answers`), which may send any session command, with the same trust as `chi send`.
 `!cmd` runs its shell line with no rule or ask (it is yours), so from anyone else it is refused: a delegating parent's
 task or follow-up, a schedule's firing (both modes), a plugin's message, a context or task wake. Chi web's Bridge answers
 `403 command_not_permitted` with one message, an input file's line shows as the command's error, and nothing runs.
 Their `/word` line is plain text: the model reads it. `delegate`, `schedule_task` and `chi schedule add` refuse a task
 or prompt that starts with `!` with the same message, so the model can rewrite it. A participant's command is refused
-as before ([their boundary](#a-participants-pair-boundary)). The rule is `CommandIntake`
-(`lib/samagotchi/command_intake.rb`), asked by `Bridge#handle_post_turn` and `WorkerInbound#queue_as_command`;
-`POST /command` (a UI's or a card's explicit command line) is not a message and is not covered.
+as before ([their boundary](#a-participants-pair-boundary)). A message that names no sender (an input file from an
+older chi, a Bridge `POST /turn` without `client_id`) is nobody's: its `/word` line is text, its `!` line refused
+(`ClientId::NONE` is never the owner's). The rule is `CommandIntake` (`lib/samagotchi/command_intake.rb`, on
+`ClientId.owner?`), asked by `Bridge#handle_post_turn`, `WorkerInbound#queue_as_command` and `Bridge#handle_command`
+(`POST /command`, a UI's or a card's explicit command line): that route must name its sender (without `client_id` 400
+`missing_client_id`), and from any other sender (a participant, a delegate, a plugin, an unknown id) it answers 403
+`command_not_permitted` (`CommandIntake::COMMAND_REFUSED`; a `!` line's is `REFUSED`) and runs nothing.
 
 ## Protected paths
 
@@ -373,7 +382,7 @@ under its own `env:` (its `$TMPDIR`, `$HOME`, `GIT_DIR`, …): either one naming
 redefines the shell (`BASH_ENV`, `BASH_FUNC_cat%%`, `CDPATH`, …, as under `skip_read_only` below) always asks, even
 for `cat a.txt` in the child's own folder: what it runs is in no word of the command. The answer is once or for the child's
 session only: a repo or rule answer would hold in every worktree, for every
-child, so a stored repo or rule approval doesn't let it through either. Its
+child, so a stored repo or rule approval doesn't let it through either (`ApprovalUse::SESSION_ONLY_RULES`). Its
 ask goes before the rules, so with the guardrails bundle in strict mode the
 card still names `child-boundary`. The parent (never a delegate), forks and
 ordinary sessions don't get it. Like the rules it reads command text: a
@@ -383,7 +392,9 @@ ordinary sessions don't get it. Like the rules it reads command text: a
 
 chi runs no read-only turn: no turn an older chi ran read-only may run with tool rights here. The worker refuses a
 participant's turn whose invite is an older chi's (a grant or `participants.json` entry without `mode: pair`), a Verify
-fresh child saved for a read-only turn, and a participant with no invite at all, before it starts
+fresh child saved for a read-only turn, a participant with no invite at all, and a participant's turn in the owner's
+own Verify fresh child (the parent's participants are the parent's), before it starts; one function decides it for the
+worker and the guardrails alike (`ParticipantTurnMode`)
 ([participants](internals/participants.md#turns)). Should such a turn start anyway, its seat in
 `GuardrailWiring#checks` is `Guardrails::ParticipantRefusal` (rule `participant-refused`, source `core`): every call
 is denied, nobody is asked, in every mode and with `guardrails.enabled: false`.
@@ -391,10 +402,13 @@ is denied, nobody is asked, in every mode and with `guardrails.enabled: false`.
 ## A participant's pair boundary
 
 A participant's turn acts with the session's tools under the owner's
-guardrails, as the owner's own turns do: the rules, the protected paths and
-every approval the owner already granted apply, and an ask goes to the owner.
+guardrails, as the owner's own turns do: the rules and the protected paths
+apply, and an ask goes to the owner. Of the owner's stored approvals only this
+session's own ("Allow … for the session") answer its asks
+(`Guardrails::ApprovalUse`): a call the owner allowed in this repo or for a
+rule asks the owner again, on a card.
 Every invite is stamped `mode: pair`; the turn's mode is decided once at its
-start (`GuardrailWiring#participant_turn_mode`, into the turn's
+start (`ParticipantTurnMode` via `GuardrailWiring#participant_turn_mode`, into the turn's
 `TurnContext#participant_mode`), and it runs only on a worker that names the
 `pair_turns` feature.
 

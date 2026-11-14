@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::SessionManager do
         [%w[delivery], %w[delivery review_turns]].each do |features|
           bridge = client_naming(features)
           expect(bridge).not_to receive(:post_turn)
-          result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+          result = described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                             bridge: -> { bridge })
           expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::PAIR_UNAVAILABLE)
         end
@@ -291,9 +291,24 @@ RSpec.describe Samagotchi::SessionManager do
 
         posting = client_naming(%w[delivery review_turns pair_turns])
         allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
-        expect(described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+        expect(described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                         bridge: -> { posting }).status).to eq(:accepted)
         expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
+      end
+
+      # compat shim review_client_id: a worker from before participant:<id>
+      # reads a participant's turn only by review:<id>.
+      it "sends a participant's turn as review:<id> to a worker without participant_client_id, participant:<id> to one with" do
+        own("worker")
+        sent = {}
+        [%w[delivery review_turns pair_turns], %w[delivery review_turns pair_turns participant_client_id]].each do |features|
+          bridge = client_naming(features)
+          allow(bridge).to receive(:post_turn) { |**options| (sent[features.size] = options[:client_id]) && Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}') }
+          expect(described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", author: "p:p_1", state_dir: tmpdir,
+                                                          bridge: -> { bridge }).status).to eq(:accepted)
+        end
+        expect(sent).to eq(3 => "review:p_1", 4 => "participant:p_1")
+        expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::PARTICIPANT_ID_FEATURE)
       end
 
       it "refuses a participant's Revise to a worker without participant_revise in their words; the owner's goes" do
@@ -301,7 +316,7 @@ RSpec.describe Samagotchi::SessionManager do
         revises = { revises: { turn_id: "123e4567-e89b-12d3-a456-426614174001" } }
         bridge = client_naming(%w[delivery review_turns pair_turns revise])
         expect(bridge).not_to receive(:post_turn)
-        result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1",
+        result = described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1",
                                                           anchors: revises, state_dir: tmpdir, bridge: -> { bridge })
         expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::ReviseAnchor::PARTICIPANT_UNAVAILABLE)
         expect(result.ack["detail"]).to eq(Samagotchi::ParticipantMessages::REVISE_UNAVAILABLE)
@@ -341,10 +356,10 @@ RSpec.describe Samagotchi::SessionManager do
       it "counts a participant's waiting files against their pending limit when no worker runs" do
         allow(described_class).to receive(:resume_session)
         2.times do
-          expect(described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
+          expect(described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
                                                           state_dir: tmpdir, bridge: -> {}).status).to eq(:accepted)
         end
-        result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
+        result = described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 2,
                                                           state_dir: tmpdir, bridge: -> {})
         expect(result).to have_attributes(status: :refused, code: 429)
         expect(result.ack["error"]).to eq("too_many_turns")
@@ -367,7 +382,7 @@ RSpec.describe Samagotchi::SessionManager do
           original.call(*args, **options)
         end
         deliver = lambda do
-          described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 1,
+          described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", pending_limit: 1,
                                                    state_dir: tmpdir, bridge: -> {})
         end
         first = Thread.new { deliver.call }
@@ -384,7 +399,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "writes no participant's file while a worker holds the session with its Bridge gone (it may be an older one)" do
         own("worker")
-        result = described_class.deliver_turn(session.id, client_id: "review:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
+        result = described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                           bridge: -> {})
         expect(result).to have_attributes(status: :timeout)
         expect(result.ack["detail"]).to include("exiting")
@@ -520,7 +535,7 @@ RSpec.describe Samagotchi::SessionManager do
     describe "who may wake a stopped or archived session" do
       unattended = {
         "a schedule firing" => "system:schedule:s1", "a plugin send" => "plugin",
-        "a delegate follow-up" => "delegate:abcdef12", "a participant turn" => "review:p_1",
+        "a delegate follow-up" => "delegate:abcdef12", "a participant turn" => "participant:p_1",
         "an unknown sender" => "bot:x"
       }
 

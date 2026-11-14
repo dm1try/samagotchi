@@ -44,7 +44,7 @@ RSpec.describe "hooks on a participant's turn" do
   end
 
   it "gives a participant's turn's hooks author: and ctx.turn_author" do
-    run({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
+    run({ client_id: "participant:p_0123abcd", author: "p:p_0123abcd" })
     expect(seen).to include([:before_turn, "p:p_0123abcd"], [:after_turn, "p:p_0123abcd"])
     expect(ctx_author).to eq(["p:p_0123abcd"])
     expect(engine.send(:plugin_host).turn_author.call).to be_nil
@@ -59,7 +59,7 @@ RSpec.describe "hooks on a participant's turn" do
   it "leaves the owner's due reminders out of a participant's turn, for the owner's next one" do
     queue = engine.instance_variable_get(:@reminder_queue)
     allow(queue).to receive(:inject!).and_return([])
-    run({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
+    run({ client_id: "participant:p_0123abcd", author: "p:p_0123abcd" })
     expect(queue).not_to have_received(:inject!)
     run({ client_id: "web:t" })
     expect(queue).to have_received(:inject!).once

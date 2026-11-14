@@ -793,7 +793,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
 }
 
 ## events
-{"at":"2026-01-02T03:04:05.678+00:00","author":"p:<GRANT>","cut_after":20,"origin":{"author":"p:<GRANT>","client_id":"review:<GRANT>"},"prompt":"Review the notes.","session_id":"00000000-0000-4000-8000-00000000c0de","turn_id":"00000000-0000-4000-8000-00000000beef","type":":turn_started"}
+{"at":"2026-01-02T03:04:05.678+00:00","author":"p:<GRANT>","cut_after":20,"origin":{"author":"p:<GRANT>","client_id":"participant:<GRANT>"},"prompt":"Review the notes.","session_id":"00000000-0000-4000-8000-00000000c0de","turn_id":"00000000-0000-4000-8000-00000000beef","type":":turn_started"}
 {"bucket":"<estimate>","iteration":1,"source":"estimate","status":"<estimate>","type":":context_status","usage":"<estimate>"}
 {"context_window_source":":default","context_window_tokens":256000,"iteration":1,"model_ref":"oai:chat-a","price":null,"type":":generation_started"}
 {"content":"","iteration":1,"payload":{"choices":[{"delta":{"content":null,"role":"assistant"},"finish_reason":null,"index":0}],"created":1790000000,"id":"chatcmpl-golden","model":"served-golden","object":"chat.completion.chunk"},"text":"","thinking":"","type":":generation_chunk"}
@@ -815,7 +815,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
 {"content":"","iteration":2,"payload":{"choices":[{"delta":{},"finish_reason":"stop","index":0}],"created":1790000000,"id":"chatcmpl-golden","model":"served-golden","object":"chat.completion.chunk"},"text":"","thinking":"","type":":generation_chunk"}
 {"content":"","iteration":2,"payload":{"choices":[],"created":1790000000,"id":"chatcmpl-golden","model":"served-golden","object":"chat.completion.chunk","usage":{"completion_tokens":10,"prompt_tokens":100,"total_tokens":110}},"text":"","thinking":"","type":":generation_chunk"}
 {"cache_write_tokens":null,"cached_tokens":0,"content_length":18,"finish_reason":"stop","iteration":2,"model_segments":[],"prompt_tokens":100,"requested_model":"chat-a","served_expected_by":null,"served_model":"served-golden","served_provider":null,"speed":null,"thinking_chars":0,"tokens":{"avg_decode_tps":null,"cache_write_sum":0,"cached_sum":0,"completion_sum":20,"cost_estimate_sum":0,"cost_sum":0,"decode_ms_sum":0,"decode_tokens_sum":0,"last_decode_tps":null,"last_prefill_tps":null,"prompt_sum":200,"reasoning_sum":0,"reprefill_sum":0,"source":"server","tps_source":null},"type":":generation_completed"}
-{"display_pending":false,"kept_from":1,"kept_to":6,"origin":{"author":"p:<GRANT>","client_id":"review:<GRANT>"},"result":{"class":"ModelResult","text":"Proposed a change.","canceled":false,"exhausted":false},"turn_id":"00000000-0000-4000-8000-00000000beef","turn_summary":{"context_status":"<estimate>","exhausted":false,"output":"Proposed a change.","pending_tool_calls":false,"resumable":false,"tool_activity":[{"action":"reading file","guardrail":{"decided_by":"core","rule":"participant-refused","verdict":"deny"},"params":"path=\"notes.txt\"","status":"blocked","title":"notes.txt","tool":"read"},{"action":"writing file","guardrail":{"decided_by":"core","rule":"participant-refused","verdict":"deny"},"params":"path=\"notes.txt\"","status":"blocked","title":"notes.txt","tool":"write"}]},"type":":turn_completed"}
+{"display_pending":false,"kept_from":1,"kept_to":6,"origin":{"author":"p:<GRANT>","client_id":"participant:<GRANT>"},"result":{"class":"ModelResult","text":"Proposed a change.","canceled":false,"exhausted":false},"turn_id":"00000000-0000-4000-8000-00000000beef","turn_summary":{"context_status":"<estimate>","exhausted":false,"output":"Proposed a change.","pending_tool_calls":false,"resumable":false,"tool_activity":[{"action":"reading file","guardrail":{"decided_by":"core","rule":"participant-refused","verdict":"deny"},"params":"path=\"notes.txt\"","status":"blocked","title":"notes.txt","tool":"read"},{"action":"writing file","guardrail":{"decided_by":"core","rule":"participant-refused","verdict":"deny"},"params":"path=\"notes.txt\"","status":"blocked","title":"notes.txt","tool":"write"}]},"type":":turn_completed"}
 
 ## before_tool_call
 {
@@ -835,7 +835,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
     "interface": ":worker",
     "origin": {
       "author": "p:<GRANT>",
-      "client_id": "review:<GRANT>"
+      "client_id": "participant:<GRANT>"
     },
     "repo_root": null,
     "session_id": "00000000-0000-4000-8000-00000000c0de"
@@ -868,7 +868,7 @@ headers: {"accept":"*/*","content-type":"application/json","session-id":"0000000
     "interface": ":worker",
     "origin": {
       "author": "p:<GRANT>",
-      "client_id": "review:<GRANT>"
+      "client_id": "participant:<GRANT>"
     },
     "repo_root": null,
     "session_id": "00000000-0000-4000-8000-00000000c0de"

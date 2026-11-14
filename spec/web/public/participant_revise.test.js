@@ -84,7 +84,7 @@ test("participantReviseUnavailable: a live worker without participant_revise onl
 });
 
 test("participantMayRevise: the viewer's own answers, none while their composer is closed", () => {
-  setViewerSelf({ kind: "participant", id: "p_me", name: "Me", client_id: "review:p_me" });
+  setViewerSelf({ kind: "participant", id: "p_me", name: "Me", client_id: "participant:p_me" });
   let closed = false;
   const may = participantMayRevise(() => closed);
   const list = turns([[null], [ME]]);

@@ -24,7 +24,12 @@ module Samagotchi
                      "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
       Shim.new(id: :approvals_bare_list, added_in: "0.169.0", added_on: "2026-11-12", remove_after: "0.172.0",
                files: ["lib/samagotchi/guardrails/approvals.rb"],
-               what: "Approvals reads the bare list written by chi 0.166 and before, converting it on write")
+               what: "Approvals reads the bare list written by chi 0.166 and before, converting it on write"),
+      Shim.new(id: :review_client_id, added_in: "0.172.0", added_on: "2026-11-14", remove_after: "0.173.0",
+               files: ["lib/samagotchi/client_id.rb", "lib/samagotchi/session_manager/delivery.rb",
+                       "lib/samagotchi/web/public/turn_events.js", "lib/samagotchi/web/public/viewer_self.js"],
+               what: "A participant's client id from before participant:<id> (review:<id>: drawings, input files, an " \
+                     "older chi web) reads as a participant's, and a worker without participant_client_id is sent it")
     ].freeze
 
     module_function

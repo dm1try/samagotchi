@@ -3,7 +3,7 @@
 module Samagotchi
   # Who sent a turn, a line or an answer: its client_id, as a turn's origin,
   # an input file and the events carry it. The one table of the ids chi
-  # makes, and of which of them are a human's input (#human?). No requires,
+  # makes (ROWS: one Sender row each), and what each may do. No requires,
   # so any file can use it.
   module ClientId
     # A web tab (web:<random>, per tab); web:restart, the page's Restart.
@@ -43,74 +43,131 @@ module Samagotchi
     PLUGIN = "plugin"
     # A relayed answer (RelayVerifier): relay:<parent8>.
     RELAY_PREFIX = "relay:"
-    # A participant's review turn: review:<participant id> (chi web stamps
-    # it from the participant's token, never from the request's body).
-    REVIEW_PREFIX = "review:"
+    # A participant's turn: participant:<participant id> (chi web stamps it
+    # from the participant's token, never from the request's body). Not
+    # their author (Steer::PARTICIPANT_PREFIX, "p:<id>"), which says who
+    # wrote a turn: this says which sender delivered it.
+    PARTICIPANT_PREFIX = "participant:"
+    # compat shim review_client_id: chi before 0.172 gave a participant's
+    # turns review:<id> (in turn_drawings.jsonl, input files, an older chi
+    # web still running): read as a participant's, never the owner's, and
+    # sent to a worker without Delivery::PARTICIPANT_ID_FEATURE.
+    LEGACY_REVIEW_PREFIX = "review:"
 
-    # Input a human typed: a web tab, a chi TUI, chi send, a participant
-    # (review:, a person or an agent they run: never automatic input), and
-    # nil, which reaches only a worker's own seams: its initial prompt
-    # (spawn_session saves no first_turn_client_id for a person's), a Bridge
-    # POST /turn naming none (the Bridge's secret holder: a local TUI or chi
-    # web, which names its sender) and an input file from an older chi.
-    # SessionManager.deliver_turn refuses nil; chi web's turn and command routes
-    # name it (WEB_UNNAMED). An allowlist: delegates, plugins, reminders, context
-    # changes and any id chi doesn't know are not.
-    HUMAN_PREFIXES = [WEB_PREFIX, TUI_PREFIX, REVIEW_PREFIX].freeze
-    HUMAN_IDS = [CLI_SEND].freeze
+    # A worker's own first prompt (spawn_session's) when no sender was
+    # saved for it (WorkerInbound#initial_origin: a person's session saves
+    # no first_turn_client_id, nor did an older chi): the owner's, as chi
+    # send's. Seen in turn_drawings.jsonl and a turn's SSE origin, labelled
+    # as no sender is (the TUI's "user", the web's none).
+    FIRST_PROMPT = "spawn:first"
+    # A person's answer to a card that queues a command (ContinueOffer's
+    # Continue / Stop: a TUI's or the web's answer names no sender, only
+    # chi answer's does): the owner's, labelled as no sender is.
+    CARD_ANSWER = "card:answer"
 
-    # A person at a screen that shows a command's reply and can answer it
-    # (#interactive?): a web tab, an attached chi TUI.
-    INTERACTIVE_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
+    # One sender: its id (+match+: the whole id, or a prefix ending in ":"
+    # for the ids that carry a suffix) and what it may do:
+    #   human       — a human's input (a web tab, a chi TUI, chi send, a
+    #                 participant: never automatic input);
+    #   owner       — the owner's input: session commands (CommandIntake),
+    #                 un-archive and wake resets (Worker#user_input);
+    #   interactive — a screen that shows a command's reply and can answer
+    #                 it (CacheConfirm, /parent-answers);
+    #   wake        — the SessionInbox::WakePolicy row a delivery reads
+    #                 (only :send un-stops and un-archives);
+    #   origin      — LastTurn#origin / TurnOrigin#source;
+    #   source      — a merged line's Steer source: a String, nil (the
+    #                 user's own) or :automatic ("automatic:<id>");
+    #   label       — the TUI's and the web's word for it (turn_events.js
+    #                 CLIENT_LABELS keeps the same; nil: as no sender, the
+    #                 TUI's "user", the web's none).
+    Sender = Data.define(:match, :human, :owner, :interactive, :wake, :origin, :source, :label) do
+      def prefix? = match.to_s.end_with?(":")
+    end
 
-    # A turn's origin by its sender (#origin, LastTurn#origin): the ids chi
-    # runs turns for on its own, by prefix, and a participant's ("review");
-    # system:reminder is "reminder", anything else "client".
-    # Which SessionInbox::WakePolicy row a turn delivery from a sender reads
-    # (#wake_kind): a person's (:send: un-stops, un-archives) by allowlist,
-    # like HUMAN_PREFIXES; the unattended senders' own rows; any other id
-    # the safe :automatic row (no un-stop, no un-archive).
-    PERSON_WAKE_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
-    WAKE_PREFIXES = { SCHEDULE_PREFIX => :schedule, DELEGATE_PREFIX => :delegate,
-                      REVIEW_PREFIX => :participant }.freeze
+    person = { human: true, owner: true, interactive: true, wake: :send, origin: "client", source: nil }
+    unattended = { human: false, owner: false, interactive: false, wake: :automatic, origin: "client", source: :automatic,
+                   label: "automatic" }
 
-    ORIGIN_PREFIXES = { DELEGATE_PREFIX => "delegate", CHILD_PREFIX => "delegate_report",
-                        CONTEXT_PREFIX => "context", TASK_PREFIX => "task", REVIEW_PREFIX => "review",
-                        SCHEDULE_PREFIX => "schedule" }.freeze
+    # A participant: a human's input, never the owner's.
+    participant = Sender.new(match: PARTICIPANT_PREFIX, human: true, owner: false, interactive: false, wake: :participant,
+                             origin: "participant", source: "participant", label: "invited")
+
+    # Every id chi makes: an allowlist. Delegates, plugins, reminders,
+    # context changes and any id chi doesn't know (UNKNOWN) are no human's.
+    ROWS = [
+      Sender.new(match: WEB_PREFIX, **person, label: "web"),
+      Sender.new(match: WEB_RESTART, **person, label: "web"),
+      Sender.new(match: WEB_CREATE, **person, label: "web"),
+      Sender.new(match: WEB_UNNAMED, **person, label: "web"),
+      Sender.new(match: TUI_PREFIX, **person, label: "tui"),
+      Sender.new(match: CLI_SEND, **person, interactive: false, source: "chi_send", label: "chi send"),
+      Sender.new(match: FIRST_PROMPT, **person, interactive: false, label: nil),
+      Sender.new(match: CARD_ANSWER, **person, interactive: false, wake: :automatic, label: nil),
+      # chi answer's: no human's input (a parent agent's), but CommandIntake
+      # lets its commands run (CommandIntake::ALLOWED_IDS).
+      Sender.new(match: CLI_ANSWER, **unattended, label: "chi answer"),
+      Sender.new(match: CLI_RESTART, **unattended),
+      Sender.new(match: DELEGATE_PREFIX, **unattended, wake: :delegate, origin: "delegate", source: "parent_agent",
+                 label: "delegate"),
+      Sender.new(match: CHILD_PREFIX, **unattended, origin: "delegate_report", source: "delegate_report",
+                 label: "delegate report"),
+      Sender.new(match: CONTEXT_PREFIX, **unattended, origin: "context"),
+      Sender.new(match: TASK_PREFIX, **unattended, origin: "task"),
+      Sender.new(match: SYSTEM_PREFIX, **unattended, label: "reminder"),
+      Sender.new(match: REMINDER, **unattended, origin: "reminder", label: "reminder"),
+      Sender.new(match: SCHEDULE_PREFIX, **unattended, wake: :schedule, origin: "schedule", label: "schedule"),
+      Sender.new(match: PLUGIN, **unattended, wake: :plugin, source: "plugin_send", label: "plugin"),
+      Sender.new(match: RELAY_PREFIX, **unattended),
+      participant,
+      # compat shim review_client_id: the same row for the old prefix.
+      participant.with(match: LEGACY_REVIEW_PREFIX)
+    ].freeze
+
+    # No client id: reaches only a worker's own seams (an input file from
+    # an older chi, a Bridge POST /turn naming none). A human's (it counts
+    # for a delegate child's report and the session's metrics) but never
+    # the owner's: every sender names itself (POST /command refuses none;
+    # a POST /turn's /word line from none is prose).
+    NONE = Sender.new(match: nil, human: true, owner: false, interactive: false, wake: :automatic, origin: "client",
+                      source: nil, label: nil)
+    # An id chi doesn't know: automatic input, never a human's.
+    UNKNOWN = Sender.new(match: nil, **unattended)
+
+    EXACT_ROWS = ROWS.reject(&:prefix?).to_h { |row| [row.match, row] }.freeze
+    # Longest first: system:schedule: before system:.
+    PREFIX_ROWS = ROWS.select(&:prefix?).sort_by { |row| -row.match.length }.freeze
 
     module_function
 
+    # The row for +client_id+: the whole id first, then its longest prefix;
+    # NONE for nil, UNKNOWN for an id chi doesn't know ("" too).
+    # @return [Sender]
+    def sender(client_id)
+      return NONE if client_id.nil?
+
+      id = client_id.to_s
+      EXACT_ROWS[id] || PREFIX_ROWS.find { |row| id.start_with?(row.match) } || UNKNOWN
+    end
+
     # What sent a turn: "delegate" (a delegating parent), "delegate_report"
     # (a child's report), "context" (a context wake), "task" (a task finish
-    # wake), "review" (a participant), "reminder", "schedule" (a durable
+    # wake), "participant", "reminder", "schedule" (a durable
     # schedule's firing), else "client" (the owner, chi send, a plugin, nil).
     # @return [String]
-    def origin(client_id)
-      id = client_id.to_s
-      return "reminder" if id == REMINDER
-
-      ORIGIN_PREFIXES.each { |prefix, origin| return origin if id.start_with?(prefix) }
-      "client"
-    end
+    def origin(client_id) = sender(client_id).origin
 
     # Whether +client_id+ is a web tab or a chi TUI, which see a command's
     # reply and can send the line it asks for (CacheConfirm); chi send, a
     # delegate, a plugin, chi itself and nil are not.
-    def interactive?(client_id)
-      id = client_id.to_s
-      INTERACTIVE_PREFIXES.any? { |prefix| id.start_with?(prefix) }
-    end
+    def interactive?(client_id) = sender(client_id).interactive
 
     # Whether +client_id+ (a turn's or a line's origin) is a human's input.
-    def human?(client_id)
-      return true if client_id.nil?
+    def human?(client_id) = sender(client_id).human
 
-      id = client_id.to_s
-      HUMAN_IDS.include?(id) || HUMAN_PREFIXES.any? { |prefix| id.start_with?(prefix) }
-    end
-
-    # Whether +client_id+ is the owner's input, not a participant's.
-    def owner?(client_id) = human?(client_id) && !review?(client_id)
+    # Whether +client_id+ is the owner's input: not a participant's, not
+    # automatic, never nil.
+    def owner?(client_id) = sender(client_id).owner
 
     # The WakePolicy row a turn delivery from +client_id+ reads (deliver_turn's
     # two liveness checks): :send for a person (a web tab, a chi TUI, chi
@@ -118,21 +175,22 @@ module Samagotchi
     # senders, :automatic for anything else (nil too: deliver_turn refuses it
     # first). Only :send un-stops a stopped session or starts an archived one.
     # @return [Symbol]
-    def wake_kind(client_id)
-      id = client_id.to_s
-      return :send if id == CLI_SEND || PERSON_WAKE_PREFIXES.any? { |prefix| id.start_with?(prefix) }
-      return :plugin if id == PLUGIN
-
-      WAKE_PREFIXES.each { |prefix, kind| return kind if id.start_with?(prefix) }
-      :automatic
-    end
+    def wake_kind(client_id) = sender(client_id).wake
 
     # The client id a participant's turn carries (chi web's, from their
-    # grant): review:<participant id>.
-    def review(participant_id) = "#{REVIEW_PREFIX}#{participant_id}"
+    # grant): participant:<participant id>.
+    def participant(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"
 
-    # Whether +client_id+ is a participant's (review:).
-    def review?(client_id) = client_id.to_s.start_with?(REVIEW_PREFIX)
+    # Whether +client_id+ is a participant's (participant:, or an older
+    # chi's review:).
+    def participant?(client_id) = sender(client_id).wake == :participant
+
+    # compat shim review_client_id: +client_id+ as a worker from before
+    # participant: reads a participant's (review:<id>); any other as it is.
+    def legacy_participant(client_id)
+      id = client_id.to_s
+      id.start_with?(PARTICIPANT_PREFIX) ? "#{LEGACY_REVIEW_PREFIX}#{id.delete_prefix(PARTICIPANT_PREFIX)}" : client_id
+    end
 
     # The client id a delegating parent's task and follow-ups carry:
     # delegate:<parent8>.

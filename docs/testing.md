@@ -84,6 +84,11 @@ next round folds the first three into one wiring example each in `effective_mode
 `session_model_settings_spec.rb` and `session_setting_spec.rb`, and the ladders the round after into the setting
 modules' and `model_lookup_spec.rb`.
 
+The sender rows (`ClientId::ROWS`) have three pins: `spec/client_id_characterization_spec.rb` (what every id chi
+makes, a sample per prefix, nil, "" and unknown ids get from `human?`, `owner?`, `interactive?`, `wake_kind`, `origin`
+and `Steer.source_for_client`: a row change shows up there), `spec/client_id_spec.rb` (every String constant of
+`ClientId` has a row) and `spec/shared/labels_matrix.json` (a client case per row, both UIs' labels).
+
 The session file goldens (`spec/session_file_goldens_spec.rb`, `spec/fixtures/session_goldens/`) pin the bytes `Session#save`
 writes: every field away from its default, a new session, a newer chi's file, an old chi's file in a git repo, every key
 present as `null`, the plain writers' raw values, a running turn's checkpoint and the scrub (the `*_in.json` files are
@@ -190,7 +195,9 @@ registered in `Compat::SHIMS` (`lib/samagotchi/compat.rb`): an id, the release
 that added it, `remove_after` (nil: the owner hasn't dated it) and its files,
 each Ruby one naming it in a comment (`compat shim <id>`). `spec/compat_spec.rb`
 fails once `Samagotchi::VERSION` passes a shim's `remove_after`, naming it:
-remove the shim, or move its date with the owner's OK. A new shim gets a row.
+remove the shim, or move its date with the owner's OK. A new shim gets a row
+(`review_client_id`: a participant's `review:<id>` from 0.171 and before, until 0.173; its old-shape samples are
+hand-made in `spec/fixtures/compat_review_client_id/`, as no corpus recorded one).
 
 ## Levels
 

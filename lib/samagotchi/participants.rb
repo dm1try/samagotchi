@@ -8,6 +8,7 @@ require_relative "participant_messages"
 require_relative "archive_store"
 require_relative "session"
 require_relative "grants"
+require_relative "participant_turn_mode"
 
 module Samagotchi
   # A session's participants: the people (or agents) its owner invited to
@@ -54,7 +55,7 @@ module Samagotchi
 
       # An older chi's invite for read-only turns (no "pair" mode), which
       # this chi doesn't run.
-      def outdated? = mode.to_s != Grants::PAIR_MODE
+      def outdated? = !ParticipantTurnMode.invite_mode?(mode)
     end
 
     module_function

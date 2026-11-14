@@ -203,15 +203,23 @@ a link and before a write that may land outside the project, failing closed (a g
 that names no path, `Guardrails::ImplicitWriters`, and a script read from stdin count; a session at or above home has
 none: every write asks) ([guardrails](../guardrails.md#a-participants-pair-boundary)).
 
-**One kind of invite, and the safety rule.** Every grant is stamped `mode: "pair"` (`Grants#issue`), and that stamp is
-the one mark of a grant this chi honours: no turn that an older chi ran read-only may run with tool rights here.
+**One kind of invite, and the safety rule.** Every grant is stamped `mode: "pair"` (`Grants#issue`,
+`ParticipantTurnMode::PAIR_MODE`), and that stamp is the one mark of a grant this chi honours: no turn that an older chi
+ran read-only may run with tool rights here. Whether a participant's turn runs is one function,
+`ParticipantTurnMode.of(entry:, session:, now:)`: `:pair` (it runs), `:revoked` (no current entry: none, revoked,
+expired, or anything that isn't an entry), `:outdated` (an older chi's read-only invite, or a participant's Verify fresh
+child saved read-only) or `:not_invited` (no session, or the owner's own Verify fresh child). The worker
+(`#participant_refusal`: `:outdated` → `outdated`, the other two → `revoked`, no new reason on the wire) and the
+guardrails (`GuardrailWiring#participant_turn_mode`: `:pair` → `PAIR`, else `REFUSED`) both read it; `Grant#state`
+and `Entry#outdated?` use its `invite_mode?`.
 - A grant without it (an older chi's read-only invite) is ended at the gate (`token_outdated`, above), and its
   `participants.json` entry is not active (`Participants::Entry#outdated?`): the worker's `#participant_refusal`
   refuses its turns with `outdated` (every Bridge and inbox-file turn, and every line the own-turn drain would merge,
   passes there: an older chi web still running and files queued before the upgrade are covered), and the system
   prompt's line and the terminal's count leave it out.
 - A Verify fresh child saved with `verify_fresh.mode` other than `pair` (`VerifyFreshOrigin#pair?`) is refused at the
-  same place.
+  same place. So is a participant's turn in the owner's own Verify fresh child (`revoked`): chi web never sends one
+  there (a participant reaches only their grant's session), but an input file or a Bridge-secret holder could.
 - `GuardrailWiring#participant_turn_mode` decides the turn's mode once at its start (`TurnStart#mode`, into
   `TurnContext#participant_mode`): `GuardrailWiring::PAIR` for a current entry in a session (and a fresh child saved
   pair), else `REFUSED`, whose seat in `#checks` is `Guardrails::ParticipantRefusal`: every call denied, nobody asked
@@ -232,9 +240,13 @@ A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_partici
 running turn only when that turn is theirs (at its next step, as the owner's message does), else it runs as a turn
 of its own after it.
 
-**chi web.** The author is the grant's (`p:<id>`) and the client id `review:<id>` (`ClientId.review`: a human's
-input, origin `review`, source `participant`, labelled `invited`; the prefix and origin stay `review`, as saved in
-session files); the body's `client_id`, `author` and
+**chi web.** The author is the grant's (`p:<id>`) and the client id `participant:<id>` (`ClientId.participant`, its
+`ClientId::Sender` row: a human's input, never the owner's, origin `participant`, source `participant`, labelled
+`invited`; not the author, which says who wrote it). A `review:<id>` from chi 0.171 and before (in
+`turn_drawings.jsonl`, input files, an older chi web still running) reads the same (`ClientId::LEGACY_REVIEW_PREFIX`,
+compat shim `review_client_id`, until 0.173), and a live worker that doesn't name `participant_client_id`
+(`Delivery::PARTICIPANT_ID_FEATURE`) is sent `review:<id>` (`SessionManager` delivery; a dequeue's id, only echoed
+back, is left as it is); the body's `client_id`, `author` and
 `no_interrupt` never count, its `images` only as refs to their own uploads, and its `delivery` only as `queue` or
 next step (none: next step).
 Refused before delivery, each audited:
@@ -514,7 +526,7 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
 - `session`: id, participant title, status (idle when a worker says running with no turn), `bridge_up`,
   `worker_features`, `verdicts` (filtered, as the review's) and `verify_unavailable`.
 - `viewer`: `Web::Viewer`'s kind, id, name, `can` (`Viewer::PARTICIPANT_CAPABILITIES`: `send`, `stop_own_turn`,
-  `steer_own_turn`, `revise_own_turn`, and of the owner's `working_set` and `images`), `client_id` (`review:<grant id>`, which chi web gives their
+  `steer_own_turn`, `revise_own_turn`, and of the owner's `working_set` and `images`), `client_id` (`participant:<grant id>`, which chi web gives their
   turns), their `participant_kind`, `mode`, `cap_reached` and `usage`, `session_stopped`, and
   `waiting_for_owner` (the kind the session waits on, the review read's rule: the running turn's question, a
   Continue offer, a question between turns; nil when nothing).

@@ -52,7 +52,7 @@ module Samagotchi
     def participant_id = participant_author && Steer.participant_id(participant_author)
 
     # What sent the turn, by its client (ClientId.origin): "client",
-    # "reminder", "delegate", "review"...
+    # "reminder", "delegate", "participant"...
     def source = ClientId.origin(client_id)
 
     # Whether a human sent the turn (ClientId.human?: a missing client is).

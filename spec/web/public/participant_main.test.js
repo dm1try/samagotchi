@@ -29,7 +29,7 @@ const ptest = (name, fn) => test(name, async (t) => {
   }
 });
 
-const ALEX = { kind: "participant", id: "p_0123abcd", name: "Alex", client_id: "review:p_0123abcd", mode: "pair",
+const ALEX = { kind: "participant", id: "p_0123abcd", name: "Alex", client_id: "participant:p_0123abcd", mode: "pair",
   can: ["send", "stop_own_turn", "steer_own_turn", "working_set"], usage: { spent: 0.42, cap: 2, expires_at: "2026-11-20T12:00:00Z" } };
 
 function html(template) {
@@ -41,6 +41,9 @@ function html(template) {
 ptest("viewer_self: a participant's show names them; the owner's (or none) clears it", () => {
   setViewerSelf(ALEX);
   assert.equal(viewerSelf().author, "p:p_0123abcd");
+  assert.equal(isViewerClient("participant:p_0123abcd"), true);
+  assert.equal(isViewerClient("participant:p_other"), false);
+  // compat shim review_client_id: the same id from an older chi.
   assert.equal(isViewerClient("review:p_0123abcd"), true);
   assert.equal(isViewerClient("review:p_other"), false);
   assert.equal(isViewerAuthor("p:p_0123abcd"), true);
@@ -48,14 +51,14 @@ ptest("viewer_self: a participant's show names them; the owner's (or none) clear
   setViewerSelf({ kind: "owner", can: [] });
   assert.equal(viewerSelf(), null);
   assert.equal(ownerLabel(), null);
-  assert.equal(isViewerClient("review:p_0123abcd"), false);
+  assert.equal(isViewerClient("participant:p_0123abcd"), false);
 });
 
 ptest("their own turns: any tab's send is theirs by the client id; a turn_started they own starts their queued bubble", () => {
   setViewerSelf(ALEX);
-  assert.equal(isOwn("review:p_0123abcd", "web:this-tab"), true);
+  assert.equal(isOwn("participant:p_0123abcd", "web:this-tab"), true);
   assert.equal(isOwn("web:other", "web:this-tab"), false);
-  const queued = promptOps({ type: "turn_enqueued", enqueued_id: "e1", client_id: "review:p_0123abcd", prompt: "hi", author: "p:p_0123abcd" },
+  const queued = promptOps({ type: "turn_enqueued", enqueued_id: "e1", client_id: "participant:p_0123abcd", prompt: "hi", author: "p:p_0123abcd" },
     { myId: "web:this-tab", known: () => false });
   assert.equal(queued[0].op, "tag");
   const started = promptOps({ type: "turn_started", turn_id: "t1", prompt: "hi", author: "p:p_0123abcd", mine: true },

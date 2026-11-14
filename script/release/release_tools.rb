@@ -28,6 +28,10 @@ module ReleaseTools
   COMPAT_STAMP = "2026-01-01T00:00:00Z"
   # The queued input's ids, and the successor a continue intent names.
   COMPAT_ENQUEUED_ID = "00000000-0000-4000-8000-000000000001"
+  # A participant's queued input, by the sender chi web stamps
+  # (ClientId.participant), beside the one above (which names them by author).
+  COMPAT_PARTICIPANT_ENQUEUED_ID = "00000000-0000-4000-8000-000000000002"
+  COMPAT_PARTICIPANT_CLIENT_ID = "participant:compat"
   COMPAT_SUCCESSOR_ID = "compat-successor"
   # The children an interrupted continue's move.json names (the first
   # already noted), and a participant's grant: its id and the token whose
@@ -212,6 +216,13 @@ module ReleaseTools
                                                               author: "p:compat", now: at)
     raise Error, "compatibility corpus: the input file wasn't written" unless input
 
+    # A nanosecond later: input files are named by their time, in arrival order.
+    participant = Samagotchi::SessionInbox.write_input(session_dir, prompt: "compatibility corpus",
+                                                                    client_id: COMPAT_PARTICIPANT_CLIENT_ID,
+                                                                    enqueued_id: COMPAT_PARTICIPANT_ENQUEUED_ID,
+                                                                    author: "p:compat", now: at + Rational(1, 1_000_000_000))
+    raise Error, "compatibility corpus: the participant's input file wasn't written" unless participant
+
     note = Samagotchi::SessionInbox.write_note(COMPAT_SESSION_ID, text: "compatibility corpus", source: "cli",
                                                                   from_session: COMPAT_DRAWN_ID, from_cwd: "/compat-fixture",
                                                                   state_dir: sessions_dir, now: at)
@@ -219,7 +230,7 @@ module ReleaseTools
     Samagotchi::ContinueIntent.write(intent, successor_id: COMPAT_SUCCESSOR_ID, previously_archived: [COMPAT_DRAWN_ID],
                                              archived_ids: [COMPAT_SESSION_ID])
     Samagotchi::Session.mark_stopped(COMPAT_SESSION_ID, state_dir: sessions_dir, now: at)
-    [input, note, intent, File.join(session_dir, Samagotchi::Session::STOPPED_FILE)]
+    [input, participant, note, intent, File.join(session_dir, Samagotchi::Session::STOPPED_FILE)]
   end
   private_class_method :write_compat_live_files!
 

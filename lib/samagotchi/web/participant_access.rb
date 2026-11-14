@@ -305,7 +305,7 @@ module Samagotchi
       # POST /api/sessions/:id/turn from a participant: their turn (D6,
       # D10). Of the body only the prompt, the delivery and images they
       # uploaded count: the author and client id are the grant's
-      # (review:<id>), no no_interrupt; the owner's prompt history never
+      # (participant:<id>), no no_interrupt; the owner's prompt history never
       # sees it. The delivery
       # is queue or next step (none: next step): the worker puts a next-step
       # message into a running turn only when that turn is theirs, else it
@@ -332,7 +332,7 @@ module Samagotchi
 
         # A Verify turn's claim, a Revise turn's draft of their own answer.
         delivery = Delivery.queue?(body["delivery"]) ? Delivery::QUEUE : Delivery::NEXT_STEP
-        result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
+        result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.participant(grant.id),
                                                  delivery: delivery, author: grant.author,
                                                  **(images.empty? ? {} : { images: images }),
                                                  anchors: anchors,

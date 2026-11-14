@@ -29,9 +29,9 @@ module Samagotchi
       def owner? = kind == "owner"
 
       # The client id chi web gives this viewer's turns (it replaces the
-      # body's): a participant's review:<grant id> (ClientId.review), so the
+      # body's): a participant's participant:<grant id> (ClientId.participant), so the
       # page can tell its own turns; nil for the owner (each tab names its own).
-      def client_id = owner? ? nil : ClientId.review(id)
+      def client_id = owner? ? nil : ClientId.participant(id)
 
       def can?(name) = can.include?(name.to_s)
 
