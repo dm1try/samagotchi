@@ -388,6 +388,8 @@ from `emptySlots`.** `npm run lint` holds it (`samagotchi/stage-size`: every `st
   again; `tick`, `alive`), drawn by `stage_stall.js`, whose factory keeps its signature (the mixed-cache rule).
 - `stage_answer.js`: the answer read from its top at the end (`showAnswerTop`), an answered card's line kept in sight
   (`settleAnsweredCard`), the prompt's first words (`promptWords`).
+- `stage_pager.js`: one docked card at a time, the others behind it, the status row's "‹ 1 of 2 ›" (`drawDocked`, the
+  focus moved to the card in front, the pager's buttons).
 
 ## The stage's height
 
