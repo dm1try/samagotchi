@@ -13,7 +13,7 @@ const BOOT = fileURLToPath(new URL("./page_boot.js", import.meta.url));
 const SID = "11111111-1111-4111-8111-111111111111";
 // Web::Viewer::CAPABILITIES (spec/web/viewer_spec.rb pins the server's list).
 const ALL = ["sessions", "models", "prompt_history", "push", "context", "working_set", "working_set_items", "participants_admin", "rename", "images",
-  "session_controls", "revise", "apply", "answer_cards", "render", "block_renderers", "stop_any_turn", "steer_any_turn"];
+  "session_controls", "revise", "answer_cards", "render", "block_renderers", "stop_any_turn", "steer_any_turn"];
 
 function boot(viewer) {
   const out = execFileSync(process.execPath, [BOOT, JSON.stringify(viewer)], { encoding: "utf8", timeout: 60_000 });
@@ -41,7 +41,7 @@ test("every capability: today's calls and controls", () => {
     // No Notification API here: the bell stays hidden; the model list is empty: no picker.
     notifyBtn: "hidden", titleRenameBtn: "shown", modelPick: "hidden", attachBtn: "shown",
     infoMoreBtn: "shown", infoStopBtn: "shown", infoContinueBtn: "shown", infoArchiveBtn: "shown", infoDeleteBtn: "shown",
-    stopTurn: "shown", questionCard: "shown", applyRow: "shown", reviseBtn: "shown", settingsChip: "shown",
+    stopTurn: "shown", questionCard: "shown", reviseBtn: "shown", settingsChip: "shown",
   });
 });
 
@@ -52,7 +52,7 @@ test("no capability: no owner route is called and no owner control is drawn", ()
   assert.deepEqual(streams, [`/api/sessions/${SID}/stream`]);
   for (const [name, state] of Object.entries(controls)) assert.notEqual(state, "shown", `${name} is drawn`);
   // Drawn per turn: none made (the stage's Stop turn is its row's, kept hidden with no onCancel).
-  for (const name of ["questionCard", "applyRow", "reviseBtn", "settingsChip"]) assert.equal(controls[name], "absent", `${name} exists`);
+  for (const name of ["questionCard", "reviseBtn", "settingsChip"]) assert.equal(controls[name], "absent", `${name} exists`);
 });
 
 test("a participant: their show and the working set, their stream, the image button; no owner control, and no Stop turn on the owner's running turn", () => {
@@ -81,7 +81,6 @@ const GATES = {
   session_controls: { controls: ["infoMoreBtn", "infoStopBtn", "infoContinueBtn", "infoArchiveBtn", "infoDeleteBtn", "settingsChip"] },
   stop_any_turn: { controls: ["stopTurn"] },
   answer_cards: { controls: ["questionCard"] },
-  apply: { controls: ["applyRow"] },
   revise: { controls: ["reviseBtn"] },
 };
 

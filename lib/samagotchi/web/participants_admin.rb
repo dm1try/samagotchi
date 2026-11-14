@@ -3,7 +3,6 @@
 require_relative "../grants"
 require_relative "qr"
 require_relative "../share_terms"
-require_relative "../review_apply"
 require_relative "../session_metrics"
 require_relative "../participants"
 require_relative "../session"
@@ -11,8 +10,7 @@ require_relative "../session"
 module Samagotchi
   module Web
     # The owner's routes for a session's participants, mixed into App:
-    # invite, list, revoke, a participant's cap, and the review Apply (the
-    # owner's turn quoting a review turn's proposal). What a participant
+    # invite, list, revoke and a participant's cap. What a participant
     # may do themselves is ParticipantAccess's. See
     # docs/internals/participants.md.
     module ParticipantsAdmin
@@ -85,25 +83,6 @@ module Samagotchi
         error_response(400, "invalid_participant", e.message)
       rescue Grants::Unwritable => e
         grants_unwritable(e)
-      end
-
-      # GET /api/sessions/:id/apply[?turn=T] (owner): the owner's turn that
-      # applies review turn T's proposal (ReviewApply: the reply quoted
-      # under one line of the owner's), for the composer: never sent from
-      # here. Without turn, the latest review turn with a reply. Read from
-      # the live worker's messages, else the saved ones.
-      # @return 200 {text, turn_id, author, author_name}; 404 not_found (no
-      #   such turn, or no review turn); 400 not_review_turn; 409 no_reply
-      def handle_apply(req, id)
-        session = @session_class.load(id, state_dir: default_state_dir)
-        live = bridge_get_json(id, "snapshot")
-        messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
-        proposal = ReviewApply.find(messages, req.params["turn"])
-        json_response(200, { text: ReviewApply.compose(proposal), turn_id: proposal.turn_id, author: proposal.author,
-                             author_name: proposal.author_name })
-      rescue ReviewApply::Refused => e
-        status = { not_found: 404, not_review_turn: 400, no_reply: 409 }.fetch(e.code)
-        error_response(status, e.code.to_s, e.message)
       end
 
       # DELETE /api/sessions/:id/participants[?id=p_…], DELETE

@@ -28,11 +28,6 @@ test("turnPieces: loose steers, then the merged lines (a report and its reply) a
     answer: ["answer"], timing: "timing" }), ["prompt", "block", "nudge", "steered", "report", "reply", "answer", "timing"]);
 });
 
-test("turnPieces: a review turn's Apply comes under the answer and its timing", () => {
-  assert.deepEqual(turnPieces({ prompt: "prompt", answer: ["answer"], timing: "timing", apply: "apply" }),
-    ["prompt", "answer", "timing", "apply"]);
-});
-
 test("turnPieces: the kept cards, then the lines queued for after the turn, come last", () => {
   assert.deepEqual(turnPieces({ prompt: "prompt", block: "block", answer: ["thinking", "answer"], timing: "timing", kept: ["card"],
     queued: ["later"] }), ["prompt", "block", "thinking", "answer", "timing", "card", "later"]);

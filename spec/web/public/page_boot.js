@@ -3,7 +3,7 @@
 // JSON {can: [...], kind}), since app.js is the page's top-level module and
 // would leave its globals, listeners and timers in the suite's one process.
 // chi web is faked: fetch answers by route (the session show has a running
-// turn, a question, a review participant's finished turn and a revisable
+// turn, a question, a participant's finished turn and a revisable
 // answer), EventSource records its URL and never opens. Prints one JSON
 // line: {requests: ["GET /api/…"], streams: ["/api/…"], controls: {name:
 // "absent" | "hidden" | "shown"}, errors: [...]}.
@@ -56,13 +56,13 @@ process.on("unhandledRejection", (e) => errors.push(String(e?.stack || e)));
 
 const AT = "2026-11-13T12:00:00Z";
 // Two drawn turns from the shared scenario (a step text, a tool row, the
-// answer): the owner's, and the same as a review participant's whose answer
+// answer): the owner's, and the same as a participant's whose answer
 // holds a fenced block a bundle's renderer would draw.
 const scenario = JSON.parse(readFileSync(fileURLToPath(new URL("../../shared/turn_drawings/tools_answer.json", import.meta.url)), "utf8")).show;
-const REVIEW = "turn-review";
+const REVIEW = "turn-participant";
 const reviewed = (value) => JSON.parse(JSON.stringify(value).replaceAll("turn-tools", REVIEW));
 const reviewMessages = reviewed(scenario.messages).map((m, i) => (i === 0
-  ? { ...m, author: "p:p_0123abcd", author_name: "Alex", participant_mode: "review" }
+  ? { ...m, author: "p:p_0123abcd", author_name: "Alex", participant_mode: "pair" }
   : m.content === "It says alpha, beta." ? { ...m, content: "It says:\n\n```mermaid\ngraph TD; A-->B\n```",
                                              html: '<p>It says:</p><pre data-lang="mermaid"><code>graph TD; A--&gt;B</code></pre>' } : m));
 const reviewDrawing = reviewed(scenario.turn_drawings["turn-tools"]);
@@ -146,7 +146,7 @@ const CONTROLS = {
   infoMoreBtn: "#infoMoreBtn", infoStopBtn: "#infoStopBtn", infoContinueBtn: "#infoContinueBtn",
   infoArchiveBtn: "#infoArchiveBtn", infoDeleteBtn: "#infoDeleteBtn",
   stopTurn: ".ts-cancel", questionCard: ".bubble.question, details.question",
-  applyRow: ".review-apply", reviseBtn: ".revise-btn", settingsChip: ".settings-chip",
+  reviseBtn: ".revise-btn", settingsChip: ".settings-chip",
 };
 const controls = Object.fromEntries(Object.entries(CONTROLS).map(([name, selector]) => [name, state(selector)]));
 process.stdout.write(`${JSON.stringify({ requests: [...new Set(requests)].sort(), streams: [...new Set(streams)].sort(), controls, errors })}\n`);

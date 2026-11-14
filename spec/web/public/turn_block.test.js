@@ -4,7 +4,7 @@
 // rows, notices and end come out is turn_drawing.test.js's and the parity
 // test's (turn_drawing_parity.test.js); here: the saved items' overlays
 // (an answer's markdown, refs and key, a step's text, the timing line,
-// merged lines, a report's label and reply, Apply, the gap dividers) and
+// merged lines, a report's label and reply, the gap dividers) and
 // what sits between the turns (notes, `!cmd` records).
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
@@ -268,17 +268,15 @@ test("an old session's turns get their divider from the turn records (started_at
   assert.ok(holder.querySelector(".time-gap").nextElementSibling.matches(".bubble.user"));
 });
 
-// A participant's review turn gets Apply under its reply; a pair turn (a
-// working session's) acted itself: its badge says so, and no Apply.
-test("Apply under a review turn's reply, none under a pair turn; the badge says the mode", () => {
+// A participant's turn has no Apply row; the badge says its mode.
+test("no Apply row under a participant's turn; the badge says the mode", () => {
   const turn = (id, mode) => [
     { role: "user", content: "q", turn_id: id, author: "p:p_0001abcd", author_name: "Sam", ...(mode ? { participant_mode: mode } : {}) },
     { role: "assistant", content: "done" },
   ];
   const review = historyHtml(turn("rev-1", "review"));
-  assert.match(review, /data-apply-turn="rev-1"/);
+  assert.doesNotMatch(review, /data-apply-turn|review-apply/);
   assert.match(review, />Sam · review</);
-  assert.match(historyHtml(turn("old-1", null)), /data-apply-turn="old-1"/);
   const pair = historyHtml(turn("pair-1", "pair"));
   assert.doesNotMatch(pair, /review-apply/);
   assert.match(pair, />Sam · pair</);
