@@ -13,6 +13,7 @@ require_relative "llm/errors"
 require_relative "host_registry"
 require_relative "session"
 require_relative "owner_lock"
+require_relative "empty_answer_error"
 require_relative "bridge/card_store"
 require_relative "bridge/turn_accumulator"
 require_relative "bridge/turn_drawings"
@@ -46,8 +47,6 @@ module Samagotchi
     # Raised when another process (a worker or another chi) owns the session
     # this run was asked to use.
     class SessionBusy < StandardError; end
-
-    EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
 
     # The session's Engine.
     # @return [Engine]

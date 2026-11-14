@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../session"
+require_relative "../empty_answer_error"
 require_relative "../config"
 require_relative "../model_profile"
 require_relative "../session_manager"
@@ -207,11 +208,8 @@ module Samagotchi
       # (input from a pipe): one line on stderr, so a script doesn't take
       # the silence for an answer (exit 1).
       def report_ended(ended, err: $stderr)
-        # EMPTY_ANSWER_ERROR is the one-shot host's (terminal_ui.rb, which
-        # loads the engine): required here, on the one line that needs it.
-        require_relative "../terminal_ui" if ended == :empty_answer
         case ended
-        when :empty_answer then err.puts(TerminalUI::EMPTY_ANSWER_ERROR)
+        when :empty_answer then err.puts(EMPTY_ANSWER_ERROR)
         when :removed then err.puts("chi: the prompt was removed before it ran")
         end
       end
