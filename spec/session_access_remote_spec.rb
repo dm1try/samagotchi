@@ -171,6 +171,33 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "a chain delete (chi --remote sessions delete --chain)" do
+    it "names the feature chi web lists (Web::App::CHAIN_DELETE_FEATURE), and that chi web lists it" do
+      expect(described_class::CHAIN_DELETE_FEATURE).to eq(Samagotchi::Web::App::CHAIN_DELETE_FEATURE)
+      expect(Samagotchi::Web::App::INFO_FEATURES).to include(described_class::CHAIN_DELETE_FEATURE)
+    end
+
+    it "is never sent to an older chi web, which would answer not found: update it, nothing deleted" do
+      old, calls = scripted([200, {}], info: { app: "chi-web", version: "0.173.0", features: %w[session_commands] })
+      expect { old.delete_chain("s", force: true) }
+        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /runs chi 0\.173\.0, too old/)
+      expect(calls.map(&:first)).to eq([:get])
+    end
+
+    it "gives each new refusal its own reason and message, not a worker running" do
+      access, = scripted([409, { error: "continuing", reason: "continuing", session_id: "s",
+                                 message: "a continue of s is under way; try again in a moment" }],
+                         [409, { error: "delegate_unmovable", reason: "delegate_unmovable", session_id: "s", ids: [],
+                                 message: "moved delegates can't go back" }])
+      expect { access.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect([e.reason, e.message]).to eq([:continuing, "a continue of s is under way; try again in a moment"])
+      }
+      expect { access.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect(e.reason).to eq(:delegate_unmovable)
+      }
+    end
+  end
+
   describe "a bound invite (chi share --identity)" do
     let(:participant) do
       { id: "p_0000beef", session_id: "s", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",

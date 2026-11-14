@@ -39,7 +39,61 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
     described_class.new(argv, stdout: out, stderr: err, state_dir: state_dir, access: backend_access(state_dir)).run
   end
 
+  # A chain first -> last, the first archived as a continue leaves it.
+  def chain_of_two
+    first = make(id: "aaaa1111-0000", prompt: "first")
+    Samagotchi::ArchiveStore.archive(first.id, state_dir: state_dir)
+    last = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+                                           continues: first.id).tap do |s|
+      s.id = "bbbb2222-0000"
+      s.first_preview = "last"
+      s.save(state_dir: state_dir)
+    end
+    [first, last]
+  end
+
   RemoteBackend.both(self) do
+    it "brings the previous link back when it deletes a chain's newest link, and says so" do
+      first, last = chain_of_two
+
+      expect(run(last.id)).to eq(0)
+
+      expect(out.string).to eq("bbbb2222  deleted; the previous link aaaa1111 is back in the lists  last\n")
+      expect(gone?(last)).to be true
+      expect(Samagotchi::ArchiveStore.archived?(dir_of(first))).to be false
+    end
+
+    it "says how many of the link's own delegates went with it" do
+      _first, last = chain_of_two
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app", parent_id: last.id)
+                         .tap { |s| s.id = "cccc3333-0000" }.save(state_dir: state_dir)
+
+      expect(run(last.id)).to eq(0)
+
+      expect(out.string).to eq("bbbb2222  deleted; the previous link aaaa1111 is back in the lists; 1 delegate deleted with it  last\n")
+    end
+
+    it "deletes every link with --chain, one line each and a summary" do
+      first, last = chain_of_two
+
+      expect(run("--chain", first.id)).to eq(0)
+
+      expect(out.string).to eq("bbbb2222  deleted\naaaa1111  deleted\nchain: 2 deleted\n")
+      expect(gone?(first) && gone?(last)).to be true
+    end
+
+    it "refuses --chain with a schedule on the chain, in its own words, deleting nothing" do
+      first, last = chain_of_two
+      entry = Samagotchi::Schedules.new(state_dir: state_dir).add(target: last.id, prompt: "Audit",
+                                                                  recurrence: { "every" => "1h" })
+
+      expect(run("--chain", last.id)).to eq(1)
+
+      expect(out.string).to eq("bbbb2222  refused: an enabled schedule runs on this chain; " \
+                               "cancel it with chi schedule cancel #{entry.id}\n")
+      expect(gone?(first) || gone?(last)).to be false
+    end
+
     it "deletes each session by id or prefix, one line each, and exits 0" do
       first = make(id: "aaaa1111-0000")
       second = make(id: "bbbb2222-0000", prompt: "second")
@@ -136,7 +190,7 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
 
     it "prints its usage for --help and exits 0" do
       expect(run("--help")).to eq(0)
-      expect(out.string).to include("Usage: chi sessions delete [--force] (ID|PREFIX)...")
+      expect(out.string).to include("Usage: chi sessions delete [--force] [--chain] (ID|PREFIX)...")
     end
   end
 

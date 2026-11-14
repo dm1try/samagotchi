@@ -199,10 +199,11 @@ RSpec.describe "chi subcommand argument parsing" do
     def command(*argv) = Samagotchi::SessionDeleteCommand.new(argv, stdout: out, stderr: err, state_dir: tmpdir)
     def parse(*argv) = command(*argv).send(:parse)
 
-    it "takes -f and --force" do
-      expect(parse("-f", "a")).to eq(ids: ["a"], force: true)
-      expect(parse("a", "--force", "b")).to eq(ids: %w[a b], force: true)
-      expect(parse("a")).to eq(ids: ["a"], force: false)
+    it "takes -f and --force, and --chain" do
+      expect(parse("-f", "a")).to eq(ids: ["a"], force: true, chain: false)
+      expect(parse("a", "--force", "b")).to eq(ids: %w[a b], force: true, chain: false)
+      expect(parse("a")).to eq(ids: ["a"], force: false, chain: false)
+      expect(parse("--chain", "a")).to eq(ids: ["a"], force: false, chain: true)
     end
 
     it "prints its usage for -h, --help and help, wherever they come" do

@@ -293,7 +293,15 @@ module Samagotchi
 
       # @param force [Boolean] stop a live worker first (else refused)
       # @return [Hash] SessionManager.delete_session's
-      def delete(id, force:) = SessionManager.delete_session(id, stop: force, **dir)
+      # A user's delete: SessionManager.delete_session's revive_previous: and
+      # refuse_continuing: (D2/D5), on unless told otherwise.
+      def delete(id, force:, revive_previous: true, refuse_continuing: true)
+        SessionManager.delete_session(id, stop: force, revive_previous: revive_previous,
+                                          refuse_continuing: refuse_continuing, **dir)
+      end
+
+      # Every link of the chain (SessionManager.delete_chain).
+      def delete_chain(id, force:) = SessionManager.delete_chain(id, stop: force, **dir)
 
       # --- context (a session's sources, or a project's: local only)
       #

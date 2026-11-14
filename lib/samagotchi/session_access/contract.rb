@@ -116,6 +116,7 @@ module Samagotchi
         "sessions unarchive" => SUPPORTED,
         "sessions delete" => SUPPORTED,
         "sessions delete --force" => SUPPORTED,
+        "sessions delete --chain" => SUPPORTED,
         "sessions prune" => LOCAL_ONLY,
         "sessions clean" => LOCAL_ONLY,
         "sessions stats" => LOCAL_ONLY,
