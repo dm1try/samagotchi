@@ -59,11 +59,7 @@ is left out. So is a failed run (`LLMContextStale`'s rule: an `Error` after the 
 
 **Items** follow the page's `rowEntries`:
 - `read`, `edit` and `write` give a file, keyed by its `FileRef` path; `read` adds op `read`, `edit` and `write`
-  add op `edit`. A path inside a memories dir is the exception: `MemoryUsage#memory_file` (the mapping `chi memory
-  usage` uses) names the memory it belongs to, so the row is that memory - op `read` for a `read`, `write` for an
-  `edit` or `write` - and an overlay's file counts as its base entry. The key is the name alone, so a project and a
-  system memory of the same name share one row: the stamp records which file answered, so a stale mark still says
-  which one moved.
+  add op `edit`.
 - `memory_read` gives one memory per name (`Tools::MemoryRead.parse_names`; an empty name, the index listing, gives
   none). A partial read ("a,b" where b is missing: the found bodies, then `Error: memory not found: b`) keeps the
   found names only, and its tokens are split evenly among them. The names come off that line alone
@@ -109,8 +105,7 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 `memory_read` of several names is an output of each name.
 
 **Cost.** Two `paired_runs` walks, one view build, a stat per file item and one per memory stamp. A 500-message
-session builds in about 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against
-a blow-up (< 400 ms).
+session builds in about 10 ms on an M5 Ultra and 75 ms on a CI runner; `spec/working_set_spec.rb` only guards against a blow-up (< 400 ms).
 
 ## Delivery
 
