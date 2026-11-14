@@ -265,6 +265,27 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     let(:delete_session) { ->(id) { deleted << id } }
     let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", delete_session: delete_session) }
 
+    context "when the delete brought the previous link of the chain back" do
+      let(:delete_session) do
+        ->(id) { { id: id, unarchived: ["aaaa1111-0000"], deleted: ["dddd4444-0000", id], left_running: ["eeee5555-0000"] } }
+      end
+
+      it "says so, with the delegates deleted with it and the ones left running" do
+        allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+
+        expect(run_lines("/exit --delete")).to eq(:detached)
+        expect(screen.lines.last).to eq("Detached; deleted session s-1234. The previous link aaaa1111 is back in the lists. " \
+                                        "1 delegate deleted with it. 1 left running: eeee5555.")
+      end
+    end
+
+    it "deletes with the shared default: a user's delete, revive and continue refusal on" do
+      expect(Samagotchi::SessionManager).to receive(:delete_session)
+        .with("s-9", stop: true, wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT, revive_previous: true,
+                     refuse_continuing: true)
+      Samagotchi::TerminalUI::LocalLink::DELETE.call("s-9")
+    end
+
     ["/exit --delete", "/quit --delete", "exit --delete", "EXIT --DELETE"].each do |line|
       it "asks the worker to exit, then deletes the session (#{line})" do
         allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))

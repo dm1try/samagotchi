@@ -26,6 +26,12 @@ module Samagotchi
       # How long /exit --delete and /archive wait for the worker to let go
       # (AttachedLoop's defaults too).
       DELETE_WAIT = 10
+      # /exit --delete on this machine (LocalLink's and AttachedLoop's
+      # default): a user's delete, so a chain's newest link is undone and the
+      # previous one comes back (SessionManager.delete_session's keywords).
+      DELETE = lambda do |id|
+        SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT, revive_previous: true, refuse_continuing: true)
+      end
 
       attr_reader :client
 
@@ -37,7 +43,7 @@ module Samagotchi
       # @param installed_version [#call] -> the newest chi installed
       # @param children_counts [#call] session id -> ChildrenStatus::Counts
       def initialize(client:, state_dir: Session.default_state_dir,
-                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
+                     delete_session: DELETE,
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
                      children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) })

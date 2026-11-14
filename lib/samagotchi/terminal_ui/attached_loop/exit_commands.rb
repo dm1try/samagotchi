@@ -99,8 +99,8 @@ module Samagotchi
           # An empty session: the worker deletes it as it leaves.
           return detach(ExitLines::EMPTY_EXIT) if ExitLines.discards?(reply)
 
-          @link.delete_session
-          detach("Detached; deleted session #{id}.")
+          result = @link.delete_session
+          detach("Detached; deleted session #{id}.#{ExitLines.deleted_tail(result, id)}")
         rescue SystemCallError, IOError => e
           detach("#{ExitLines.exit_failed_line(e.message, via: via, session_id: id)} Not deleted.")
         rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e

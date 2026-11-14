@@ -118,7 +118,7 @@ module Samagotchi
       def initialize(screen:, client_id:, client: nil, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, as_parent: false, scratch: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, now: -> { MessageTime.now },
-                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: LocalLink::DELETE_WAIT) },
+                     delete_session: LocalLink::DELETE,
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: LocalLink::DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
                      state_dir: Session.default_state_dir,
