@@ -163,6 +163,23 @@ the gate asks for it (on the LAN, this machine's loopback too). On a chi web the
 401 for a grant's cookie that no longer works clears the cookie, so that browser is the owner's again at its next
 request; on the LAN that browser gets the ended page and opens the owner's link again.
 
+The gate reads one body, `POST /api/token`'s, through `traded_token`, under `TRADE_BODY_LIMIT` (a body of 4096
+bytes or more is no token, 401). The page's `?token=` trade reads the query only (`req.GET`): Rack's `req.params`
+would parse a urlencoded body into memory and a multipart one into temp files, before any check, so chi web reads
+every query through `req.GET` (`spec/web/no_body_params_spec.rb` fails on a new `req.params` or `req.POST`). Past
+the gate, every handler reads its body through `Web::RequestBody#request_body`, capped: 64 KB by default; a
+participant's turn and an answer 1 MB (what the Bridge takes, `BRIDGE_BODY_LIMIT`); the owner's turn and new session
+(`OWNER_TURN_BODY_LIMIT`) and a context push 16 MB; an image 20 MB, a text to render 64 KB, `/api/update` 16 KB,
+push 8 KB, a stop's wait and the reload check 4 KB. Over its cap, by its Content-Length (nothing read) or by what
+came (a chunked body: the cap + 1 read), the request gets `#route`'s one **413 `too_large`** ("a request body may be
+up to 64 KB"), with `Connection: close`. Every 4xx (or 5xx) to a request that declared a body (Content-Length > 0 or
+Transfer-Encoding) closes the connection the same way, whichever route or the gate answered it (the gate's 401, a
+participant's 403/404, the image path's own 413 and 429): `Web::Server`'s `CloseOnConnectionClose` turns WEBrick's
+keep-alive off, so it doesn't read the rest of the body before answering, and `LingerAfterAnswer` reads and drops at
+most 4 MB (2 s) after the answer so the client reads it before the close. An unauthenticated big body holds a thread
+at most those 2 s. A 2xx/3xx keeps the connection alive; a hijacked stream is left alone. The image path keeps its own rescue: a participant's
+oversized upload is audited `too_large`, not `internal_error` (`SessionControl#image_upload_bytes`).
+
 Then `#route`, for each matching `ROUTES` row:
 
 1. A participant on a `/api/sessions/:id…` route whose id isn't their grant's session gets **404 `not_found`**, the
