@@ -10,6 +10,7 @@ require_relative "../process_group"
 require_relative "../reminder_carry"
 require_relative "../session"
 require_relative "../session_inbox"
+require_relative "../task_files"
 require_relative "../tools/task_record"
 require_relative "../tools/task_runtime"
 require_relative "../worker_link"
@@ -200,9 +201,9 @@ module Samagotchi
         return false if root.empty?
 
         Tools::TaskRuntime.created_ids_in(session.messages).any? do |id|
-          next false unless Tools::TaskRuntime::TASK_ID.match?(id)
+          next false unless TaskFiles::TASK_ID.match?(id)
 
-          path = File.join(root, Tools::TaskRuntime::TASKS_DIR, id, Tools::TaskRuntime::METADATA_FILENAME)
+          path = File.join(root, TaskFiles::TASKS_DIR, id, TaskFiles::METADATA_FILENAME)
           next false unless File.file?(path)
 
           Tools::TaskRecord.from_file(JSON.parse(File.read(path)))&.running?

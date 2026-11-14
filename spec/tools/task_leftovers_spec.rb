@@ -176,7 +176,7 @@ RSpec.describe "a background task's leftover processes" do
     # (an older chi), and a running record for it; no record_exit_status.
     def spawn_task(command, flock: true)
       id = runtime.generate_task_id
-      dir = runtime.task_dir_for(id)
+      dir = Samagotchi::TaskFiles.task_dir_for(id)
       FileUtils.mkdir_p(dir)
       output_path = File.join(dir, "output.log")
       exit_code_path = File.expand_path(File.join(dir, "exit_code"))

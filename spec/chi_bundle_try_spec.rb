@@ -204,13 +204,13 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         pid_started: Samagotchi::ProcessGroup.start_time(task), started_at: Time.now.iso8601,
         output_path: "out", exit_code_path: "code"
       )
-      task_dir = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, "task-1")
+      task_dir = File.join(sandbox.work_dir, Samagotchi::TaskFiles::TASKS_DIR, "task-1")
       FileUtils.mkdir_p(task_dir)
-      File.write(File.join(task_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME), JSON.generate(record.to_file))
+      File.write(File.join(task_dir, Samagotchi::TaskFiles::METADATA_FILENAME), JSON.generate(record.to_file))
       # A finished task's record names a pid that isn't signalled.
-      done_dir = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, "task-2")
+      done_dir = File.join(sandbox.work_dir, Samagotchi::TaskFiles::TASKS_DIR, "task-2")
       FileUtils.mkdir_p(done_dir)
-      File.write(File.join(done_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME),
+      File.write(File.join(done_dir, Samagotchi::TaskFiles::METADATA_FILENAME),
                  JSON.generate(record.with(id: "task-2", status: "completed", pid: Process.pid).to_file))
       allow(Process).to receive(:kill).and_call_original
 
@@ -230,7 +230,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     Process.detach(foreign)
     Dir.mktmpdir do |dir|
       sandbox = described_class.new(bundle_at(File.join(dir, "source")))
-      tasks = File.join(sandbox.work_dir, Samagotchi::Tools::TaskRuntime::TASKS_DIR)
+      tasks = File.join(sandbox.work_dir, Samagotchi::TaskFiles::TASKS_DIR)
       base = Samagotchi::Tools::TaskRecord.running(
         id: "task-1", command: "sleep 30", cwd: sandbox.work_dir, pid: foreign, pid_started: nil,
         started_at: Time.now.iso8601, output_path: "out", exit_code_path: "code"
@@ -239,7 +239,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       { "unadopted" => base, "reused" => base.with(id: "reused", pid_started: "Mon Jan  1 00:00:00 2001") }
         .each do |id, record|
           FileUtils.mkdir_p(File.join(tasks, id))
-          File.write(File.join(tasks, id, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME),
+          File.write(File.join(tasks, id, Samagotchi::TaskFiles::METADATA_FILENAME),
                      JSON.generate(record.to_file))
         end
       allow(Samagotchi::ProcessGroup).to receive(:stop).and_call_original

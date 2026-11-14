@@ -9,6 +9,7 @@ require_relative "../atomic_file"
 require_relative "../log"
 require_relative "../process_group"
 require_relative "../spawn_env"
+require_relative "../task_files"
 require_relative "leftovers"
 require_relative "shell"
 require_relative "task_record"
@@ -21,10 +22,11 @@ module Samagotchi
     autoload :Execute, File.expand_path("execute", __dir__)
 
     module TaskRuntime
-      TASKS_DIR = File.join("tmp", "tasks")
-      METADATA_FILENAME = "task.json"
-      OUTPUT_FILENAME = "output.log"
-      EXIT_CODE_FILENAME = "exit_code"
+      # Moved to TaskFiles; kept here one release for bundles that name
+      # them (the boundary's stable list). Remove in the release after the
+      # one that ships TaskFiles, with their stable-list entries.
+      TASKS_DIR = TaskFiles::TASKS_DIR
+      EXIT_CODE_FILENAME = TaskFiles::EXIT_CODE_FILENAME
       STOP_GRACE_SEC = 3.0
       STOP_POLL_INTERVAL_SEC = 0.1
       METADATA_VERSION = TaskRecord::METADATA_VERSION
@@ -75,11 +77,11 @@ module Samagotchi
         spawn_env = spawn_env.merge(marker_env || {})
 
         task_id = generate_task_id
-        task_dir = task_dir_for(task_id)
-        output_path = File.join(task_dir, OUTPUT_FILENAME)
+        task_dir = TaskFiles.task_dir_for(task_id)
+        output_path = File.join(task_dir, TaskFiles::OUTPUT_FILENAME)
         # Absolute: the trap writes it wherever the shell is when it exits
         # (a +cwd+, or a cd in the command). Ruby opens output_path here.
-        exit_code_path = File.expand_path(File.join(task_dir, EXIT_CODE_FILENAME))
+        exit_code_path = File.expand_path(File.join(task_dir, TaskFiles::EXIT_CODE_FILENAME))
 
         FileUtils.mkdir_p(task_dir)
 
@@ -136,7 +138,7 @@ module Samagotchi
       # @return [Thread]
       def record_exit_status(waiter, path, task_id:)
         # Absolute now: safe against a later chdir.
-        record_path = File.expand_path(metadata_path(task_id))
+        record_path = File.expand_path(TaskFiles.metadata_path(task_id))
         path = File.expand_path(path)
         started = record_at(record_path)
         logs = log_paths(started).map { |log| File.expand_path(log) }
@@ -293,7 +295,7 @@ module Samagotchi
       def adopt(task)
         id = task.id
         return [nil, "Error: invalid task id: #{id}"] unless TASK_ID_SHAPE.match?(id.to_s)
-        return [nil, "Error: task already exists: #{id}"] if File.exist?(metadata_path(id))
+        return [nil, "Error: task already exists: #{id}"] if File.exist?(TaskFiles.metadata_path(id))
 
         relative = %i[output_path stderr_path exit_code_path].find { |key| !File.absolute_path?(task.public_send(key).to_s) }
         return [nil, "Error: #{relative} must be absolute: #{task.public_send(relative)}"] if relative
@@ -312,7 +314,7 @@ module Samagotchi
 
       def list_records
         ensure_tasks_dir
-        task_dirs = Dir.glob(File.join(TASKS_DIR, "*"))
+        task_dirs = Dir.glob(File.join(TaskFiles::TASKS_DIR, "*"))
                        .select { |path| File.directory?(path) }
 
         task_dirs.map do |task_dir|
@@ -382,27 +384,6 @@ module Samagotchi
 
       def handed_over_pattern
         @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} #{Execute::HANDED_OVER_AFTER}[^\n]*\ntask_id: (\S+)/
-      end
-
-      # A task id as task_create makes them: no path parts.
-      TASK_ID = /\A[A-Za-z0-9_-]+\z/
-
-      # The command of the task +task_id+ under +root+ (a session's working
-      # directory) as its record has it, for a UI row's title; nil for no
-      # such task or an unreadable record. Reads the record only (no
-      # refresh), so it is cheap and never fails.
-      # @return [String, nil]
-      def command_of(task_id, root: Dir.pwd)
-        id = task_id.to_s.strip
-        return nil unless id.match?(TASK_ID)
-
-        path = File.join(root || Dir.pwd, TASKS_DIR, id, METADATA_FILENAME)
-        return nil unless File.file?(path)
-
-        command = TaskRecord.from_file(JSON.parse(File.read(path)))&.command
-        command.is_a?(String) && !command.strip.empty? ? command : nil
-      rescue StandardError
-        nil
       end
 
       def get_record(task_id)
@@ -558,7 +539,7 @@ module Samagotchi
       def load_record(task_id)
         return nil unless TASK_ID_SHAPE.match?(task_id.to_s)
 
-        path = metadata_path(task_id)
+        path = TaskFiles.metadata_path(task_id)
         return nil unless File.exist?(path)
 
         TaskRecord.from_file(JSON.parse(File.read(path)))
@@ -568,31 +549,23 @@ module Samagotchi
 
       def write_record(record)
         ensure_tasks_dir
-        dir = task_dir_for(record.id)
+        dir = TaskFiles.task_dir_for(record.id)
         FileUtils.mkdir_p(dir)
 
-        path = File.join(dir, METADATA_FILENAME)
+        path = File.join(dir, TaskFiles::METADATA_FILENAME)
         AtomicFile.write(path, record_json(record))
       end
 
       def record_json(record) = JSON.pretty_generate(record.to_file) + "\n"
 
-      def metadata_path(task_id)
-        File.join(task_dir_for(task_id), METADATA_FILENAME)
-      end
-
-      def task_dir_for(task_id)
-        File.join(TASKS_DIR, task_id.to_s)
-      end
-
       def ensure_tasks_dir
-        FileUtils.mkdir_p(TASKS_DIR)
+        FileUtils.mkdir_p(TaskFiles::TASKS_DIR)
       end
 
       def generate_task_id
         loop do
           candidate = "#{Time.now.utc.strftime("%Y%m%d%H%M%S")}-#{SecureRandom.hex(4)}"
-          return candidate unless File.exist?(metadata_path(candidate))
+          return candidate unless File.exist?(TaskFiles.metadata_path(candidate))
         end
       end
 
@@ -669,7 +642,7 @@ module Samagotchi
       end
 
       # No caller outside this file. A function a spec calls by name stays
-      # public (refresh_record, waiter_for, task_dir_for, load_record,
+      # public (refresh_record, waiter_for, load_record,
       # write_record, handed_over_id, quiesce!…): no spec sends a private one.
       private_class_method :remember_waiter, :forget_waiter, :leftovers_after_exit, :settle, :log_paths,
                            :status_code, :correct_finished_record, :record_at, :handed_over_pattern,

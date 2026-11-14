@@ -288,6 +288,12 @@ RSpec.describe "task tools" do
   end
 
   describe Samagotchi::Tools::TaskRuntime do
+    # Bundles named them here before TaskFiles: kept one release.
+    it "keeps TASKS_DIR and EXIT_CODE_FILENAME under their old names, TaskFiles' own objects" do
+      expect(described_class::TASKS_DIR).to equal(Samagotchi::TaskFiles::TASKS_DIR)
+      expect(described_class::EXIT_CODE_FILENAME).to equal(Samagotchi::TaskFiles::EXIT_CODE_FILENAME)
+    end
+
     it "ends a user stop as stopped, recording who stopped it" do
       record, = described_class.create_task("sleep 30")
 
@@ -877,7 +883,7 @@ RSpec.describe "task tools" do
                                         exit_code_path: paths[:exit_code_path])
       expect(record.pid_started).to eq(Samagotchi::ProcessGroup.start_time(pid))
       expect(runtime.get_record(id).first).to have_attributes(status: "running")
-      expect(runtime.command_of(id)).to eq("sleep 31.81")
+      expect(Samagotchi::TaskFiles.command_of(id)).to eq("sleep 31.81")
 
       stopped, = runtime.stop_task(id, by: "user")
       expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
@@ -1030,7 +1036,7 @@ RSpec.describe "task tools" do
       # A finished record as a refresh writes one that read no exit code.
       def finished_without_code(**fields)
         id = runtime.generate_task_id
-        dir = File.expand_path(runtime.task_dir_for(id))
+        dir = File.expand_path(Samagotchi::TaskFiles.task_dir_for(id))
         FileUtils.mkdir_p(dir)
         record = Samagotchi::Tools::TaskRecord.running(id: id, command: "x", cwd: Dir.pwd, pid: 999_999,
                                                        started_at: "2026-10-16T10:00:00Z",

@@ -688,7 +688,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(record).to have_attributes(status: "running", command: command,
                                           output_path: File.join(dir, "stdout.log"), stderr_path: File.join(dir, "stderr.log"),
                                           exit_code_path: File.join(dir, "exit_code"), handed_over_by: "execute")
-        expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::Tools::TaskRuntime.metadata_path(id)))
+        expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::TaskFiles.metadata_path(id)))
 
         FileUtils.touch("go")
         waited = Samagotchi::Tools::TaskWait.call(id, timeout: 10)

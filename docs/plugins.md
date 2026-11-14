@@ -1458,7 +1458,9 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::Tools::ToolIndex.spec_tokens` (used by the mcp bundle).
 4. `Samagotchi::Tools::Execute::NAME`, `TIMEOUT_PREFIX`, `HANDED_OVER` and
    `Samagotchi::Tools::Execute.timeout_seconds`.
-5. `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `EXIT_CODE_FILENAME`.
+5. `Samagotchi::TaskFiles::TASKS_DIR` and `EXIT_CODE_FILENAME` (require `samagotchi/task_files`). Their old names,
+   `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `EXIT_CODE_FILENAME`, still work in this release and are removed
+   in the next.
 6. `Samagotchi::AtomicFile.write`, `Samagotchi::Log.warn` /
    `Samagotchi::Log.debug`, `Samagotchi::Config.get`,
    `Samagotchi::VERSION`, `Samagotchi::CancellationController` (`new`, `cancel!`: what `cancel:` takes) and

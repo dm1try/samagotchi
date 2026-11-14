@@ -282,9 +282,9 @@ RSpec.describe Samagotchi::SessionManager do
           task_id = "20261027123456-abcdef01"
           session.working_directory = tmpdir
           session.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{task_id}" }]
-          task_dir = File.join(tmpdir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, task_id)
+          task_dir = File.join(tmpdir, Samagotchi::TaskFiles::TASKS_DIR, task_id)
           FileUtils.mkdir_p(task_dir)
-          File.write(File.join(task_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME), JSON.generate(status: "running"))
+          File.write(File.join(task_dir, Samagotchi::TaskFiles::METADATA_FILENAME), JSON.generate(status: "running"))
         end
       }
 

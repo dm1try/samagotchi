@@ -17,7 +17,7 @@ require_relative "../../sandbox_layout"
 require_relative "../../session"
 require_relative "../../session_manager"
 require_relative "../../tools/task_record"
-require_relative "../../tools/task_runtime"
+require_relative "../../task_files"
 
 module Samagotchi
   class BundleCommand
@@ -194,7 +194,7 @@ module Samagotchi
         end
 
         def leftover_tasks
-          pattern = File.join(work_dir, Tools::TaskRuntime::TASKS_DIR, "*", Tools::TaskRuntime::METADATA_FILENAME)
+          pattern = File.join(work_dir, TaskFiles::TASKS_DIR, "*", TaskFiles::METADATA_FILENAME)
           Dir.glob(pattern).filter_map do |file|
             record = Tools::TaskRecord.from_file(JSON.parse(File.read(file)))
             record.pid if record&.running? && same_process?(record)
