@@ -6,6 +6,7 @@ require_relative "../share_terms"
 require_relative "../session_metrics"
 require_relative "../participants"
 require_relative "../session"
+require_relative "link_codes"
 
 module Samagotchi
   module Web

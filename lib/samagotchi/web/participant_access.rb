@@ -19,6 +19,7 @@ require_relative "../turn_checkpoint"
 require_relative "../turn_origin"
 require_relative "../verify_fresh"
 require_relative "../log"
+require_relative "proxy_gate"
 
 module Samagotchi
   module Web
