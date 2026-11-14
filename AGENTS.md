@@ -49,7 +49,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
   session's `:participant` routes through chi web. One kind of invite: every grant is stamped `mode: pair` and a
   participant's turn acts under the owner's guardrails (`Guardrails::PairBoundary`); there are no read-only turns and
   no review sessions. A grant or `participants.json` entry without `pair` (an older chi's read-only invite) is ended
-  (`Grant#state :outdated`) and the worker refuses its turns (`Worker#participant_refusal`); `Guardrails::ParticipantRefusal`
+  (`Grant#state :outdated`) and the worker refuses its turns (`WorkerParticipantGate#refusal`); `Guardrails::ParticipantRefusal`
   is the gate's fail-closed seat. **Code and docs say "participants" / "pair", never "shared"**. See docs/cli.md
   (Participants), docs/internals/participants.md.
 - `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`) never uses Funnel and never writes config.yml. Specs reach
