@@ -9,7 +9,6 @@ plugin:
   sha256: sha256:255bd833b7012f5e6d4597b97e9510f91da61eef13539ba4de2c0baece44964e
 # Execute::HANDED_OVER, read when the plugin loads (0.59.0); after_tool_call's
 # call:, elapsed_ms: and result: (0.57.0)
-requires_chi: ">= 0.143.0"
-requires_chi_next: "Samagotchi::TaskFiles (TASKS_DIR, EXIT_CODE_FILENAME), new in the next chi"
+requires_chi: ">= 0.173.0"
 # config.yml bundles: slow-commands: (another key warns; an older chi ignores this)
 settings: [mode, warn_ratio, ttl_days]

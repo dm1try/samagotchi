@@ -8,10 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.173.0] - 2026-11-14
+
 ### Added
 
 - chi web: a participant's ↑ in the composer recalls their own earlier messages in that session (never the owner's or
   another participant's). Messages they sent before this update aren't recalled, and a new invite starts empty.
+
+### Changed
+
+- The terminal and chi web start a little faster and use a little less memory: they no longer load the code that runs
+  tools (about 40 fewer files).
 
 ### Fixed
 
@@ -27,6 +34,8 @@ and commands may change between minor versions. How releases are made:
 - chi web caps every request body: 64 KB unless a route needs more (a turn, an image, a context push). A bigger one
   gets `413 too_large` and the connection is closed, instead of being read whole, so a participant can't fill chi
   web's memory with one request.
+
+Update with `chi update` (slow-commands 0.2.6, the core profile 0.4.4).
 
 ## [0.172.1] - 2026-11-14
 
@@ -6379,7 +6388,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.172.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.173.0...HEAD
+[0.173.0]: https://github.com/dm1try/samagotchi/compare/v0.172.1...v0.173.0
 [0.172.1]: https://github.com/dm1try/samagotchi/compare/v0.172.0...v0.172.1
 [0.172.0]: https://github.com/dm1try/samagotchi/compare/v0.171.0...v0.172.0
 [0.171.0]: https://github.com/dm1try/samagotchi/compare/v0.170.0...v0.171.0
