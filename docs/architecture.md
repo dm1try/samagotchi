@@ -240,8 +240,8 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   run's own prompts until their turns end; `#run` distinguishes an empty answer from a
   prompt this terminal removed before it ran (both exit 1), as well as chi's other outcomes.
   Without a capable terminal it falls back to `PlainSurface` (append-only).
-- The browser's page (`lib/samagotchi/web/public/`: `app.js` for the owner, `participant.js` for a participant) is a
-  client of chi web: where its state lives, which redraw follows which write, its render idioms, stale-answer guards,
+- The browser's page (`lib/samagotchi/web/public/`: `app.js`, the owner's and a participant's alike, with
+  `participant_main.js` for what is a participant's) is a client of chi web: where its state lives, which redraw follows which write, its render idioms, stale-answer guards,
   storage keys and streams are in [internals/web-frontend.md](internals/web-frontend.md).
 
 #### Using the core

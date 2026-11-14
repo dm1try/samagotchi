@@ -620,8 +620,7 @@ successor from the old worker); chi web's `App#worker_link` / `#await_worker_lin
 `bridge_error` / `bridge_secret` for a refused Bridge; 200 only after the Bridge answers; full history of any session
 is served by `GET /api/sessions/:id/output`). It opens the Bridge before answering and gives the one opened socket to
 `App#proxy_stream_body` / `ProxyStreamBody`, which closes it when the body or hijacked client ends. The owner's stream
-is a byte pipe; the body gives it the request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
-`?as=participant`, a `Web::ParticipantStreamFilter`, which cuts the Bridge's chunks into frames and writes each again
+is a byte pipe; the body gives it the request's frame filter (`App#stream_filter`: nil for the owner; for a participant, a `Web::ParticipantStreamFilter`, which cuts the Bridge's chunks into frames and writes each again
 from `Web::ParticipantView.event`'s allowlist, dropping every other event; only `from_seq` and `snapshot` reach the
 Bridge; [internals/participants.md](participants.md#what-a-participant-sees)). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
 an earlier worker gets the `reset` snapshot, not a replay.

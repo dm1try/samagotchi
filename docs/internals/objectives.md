@@ -213,7 +213,7 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   (completed, canceled, failed, in `turnEnded`), `data-participant` for a participant's turn (from `turn_started`'s
   author live, the prompt's author in `drawnGroupPieces`), and each row's `data-tool` (also `turn_html.js
   toolRowTemplate`, so live and reloaded rows stay the same markup). A pair turn's `objectives` call is always denied,
-  so without the participant stamp every pair turn that edits would get it. The participant page draws none of this.
+  so without the participant stamp every pair turn that edits would get it. A participant's page draws none of this (their show carries no objectives).
 - **The tracker** (`objectives_track.js`, a module of its own for the same reason): the list's row under an item it read
   says `tracker: no sign — nothing ran for it · 14:32` (`.obj-track`), with weight and the warn colour when it differs
   from the agent's last move's state (`trackDiffers`: a move to compare with, a reading other than no answer), faded when

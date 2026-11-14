@@ -1223,7 +1223,7 @@ threshold; its folded row shows its first line as typed). A delegate
 report itself starts folded. Folding is this browser's choice, kept per session in
 localStorage (`chi_answer_fold:<session id>`, the last 200 folded answers and prompts;
 the keys of sessions gone from the list are dropped when the list loads);
-other viewers and the participant page are not affected. A jump into a
+other viewers (a participant's browser too) are not affected. A jump into a
 folded answer (a claim link, say) unfolds it for that page load.
 
 **Revise** rewrites an answer and stacks the versions. A finished turn's
@@ -1246,8 +1246,8 @@ version on view, and the chip names it, "v1 of 3"); › back to the newest. Swit
 page shows, and a reload shows the newest again. Revise
 again on the newest version adds to the stack. Stacks are session data (the
 stamp is on the Revise prompt, see [sessions.md](sessions.md), Revise
-stacks): every owner's page shows them, live and after a reload; the
-participant page doesn't draw them yet. A session whose worker predates
+stacks): the owner's page shows them, live and after a reload; a participant's
+page has no Revise yet. A session whose worker predates
 Revise (started by an older chi) disables the button and shows the chip as
 "Revise: restart this session to use Revise"; a message sent then is a plain
 one. A Revise turn that fails comes back into the composer with its chip.
@@ -1442,13 +1442,11 @@ On a touch screen (a phone, a tablet) the bar sits just above the composer
 instead of next to the selection, where the system's own Copy menu and the
 selection handles would cover it; several pills wrap to a second row.
 
-A review's participants get the same on their page (a `chi share` / `chi
-review` link): selecting text in the Plan or the thread quotes it into
-their comment box, labelled `From docs/plan.md:` or `From Sam's comment:`,
-with the same presets. Not in the owner's participant view, and no plugin
-pills there (a review turn refuses `/` lines).
+Participants get the same on their page (a `chi share` / `chi review`
+link, the main page): a selection quotes into their composer with the same
+presets; no plugin pills and no Copy link there.
 
-After the presets, both pages have a built-in **Verify**: the quote, then
+After the presets comes a built-in **Verify**: the quote, then
 an ask to check the claim against the code and end on a line `Verdict:
 confirmed|refuted|unclear — <reason>`. Verify is offered only on text in a finished turn's final answer, the
 claim a verdict card can come from; elsewhere (an earlier reply, a step, a message, a line added mid-turn, a turn
@@ -1763,16 +1761,20 @@ chi share revoke --all          # every link to every session
   Apply (they acted already). This is an accident guard for a trusted team, not containment: a pair turn can still
   send what it reads out through `web_fetch` or your MCP tools. A link without `--identity` gets the same access:
   share it only with people you'd let type in your session.
-- **The participant page.** Their link opens a page of its own (never yours): the session's title and status, who
-  else takes part, and the conversation as a participant sees it: every prompt and reply with who wrote it, each
-  step's tools as one line (`read docs/plan.md`: the tool and a project file's path, never arguments or output), and
-  the reply streaming in while a turn runs. A "Comment or ask" box sends their comment (your composer's box, with its
-  grip to resize or fold it and ↑/↓ over their own earlier comments from that browser; no `/` list, no images yet);
-  their queued comments show with **Take back**; "waiting for the owner" shows while you answer a question or an approval of the turn; a refused
-  comment (a `!` or `/` line, too many waiting, their cap reached) says why. On a phone it is the thread first with
-  the box pinned, tool lines folded. They never see tool output or arguments, thinking, approvals or questions,
-  memories, context notes, plugin and delegate input, cards, command output, the working set, cost, timing or host
-  paths; secret-shaped text (API keys, tokens, private keys) is redacted too. An agent participant can wait on its
+- **Their page is the main page.** Their link opens the page you use, as theirs: the session's title, their name
+  ("Alex · invited") and when the link ends, the conversation with the same folded steps, answers and live turn box
+  (what chi says, which tools and files it touches, the working set's file names; never thinking, tool arguments or
+  output), and the composer. Your messages read "owner" to them. Under the composer: the turn's status, the context's
+  fill, the speed (the turn's time while one runs) and what they spent of the cap you set ("$0.42 of $2.00 used").
+  While their own turn runs they can **Stop turn**, and a message goes in at its next step (Alt+Enter keeps it for
+  after the turn); while yours or another participant's runs, it goes in as their own turn afterwards. When their
+  turn waits for you (an approval, a question, your Continue) they see that it waits and for what kind of thing,
+  never its content. At their cap, in a stopped session, or once their link ended the composer gives way to one line
+  and the conversation stays readable. They get none of your controls: no new session, list, rename, model, images
+  (yet), session menu, participants panel, cards or approvals, and no file panel (they ask chi to quote what they
+  need). They never see tool output or arguments, thinking, approvals or questions, memories, context notes,
+  plugin and delegate input, cards, command output, your cost or host paths; secret-shaped text (API keys, tokens,
+  private keys) is redacted too. An agent participant can wait on its
   turns' replies through the API, or with chi: its link's token in a remote, `chi --remote NAME send --wait -m "…" ID`,
   or `send -m`, which prints the turn id `--wait --turn T` takes; that wait exits 3 with `waiting_for_owner` while
   their turn waits on you (a question, an approval, your step-limit Continue) and 1 with `refused` (`cancel_reason`
@@ -1787,8 +1789,7 @@ chi share revoke --all          # every link to every session
   then `2 participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
   spend against their cap, turns and expiry, with **Cap** and **Revoke** (revoking ends their page and stream and
   drops their queued comments). **Invite** takes a name, person or agent, the expiry and a cap, and shows the link
-  once, with Copy, Share (a phone's share sheet) and its QR code. **Participant view ↗** opens their page for this
-  session in a new tab, read-only, through the same server filter: exactly what they see. A participant's prompt
+  once, with Copy, Share (a phone's share sheet) and its QR code. A participant's prompt
   shows their name in their colour, live and after a reload.
 - `chi --remote studio share …` invites on studio: the link names studio's LAN address. Locally, the link names
   this machine's running chi web, on the port it listens on (it records it in `$XDG_STATE_HOME/samagotchi/web.json`;
