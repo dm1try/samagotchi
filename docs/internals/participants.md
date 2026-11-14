@@ -177,7 +177,9 @@ Transfer-Encoding) closes the connection the same way, whichever route or the ga
 participant's 403/404, the image path's own 413 and 429): `Web::Server`'s `CloseOnConnectionClose` turns WEBrick's
 keep-alive off, so it doesn't read the rest of the body before answering, and `LingerAfterAnswer` reads and drops at
 most 4 MB (2 s) after the answer so the client reads it before the close. An unauthenticated big body holds a thread
-at most those 2 s. A 2xx/3xx keeps the connection alive; a hijacked stream is left alone. The image path keeps its own rescue: a participant's
+at most those 2 s. A 2xx/3xx with a small body (at most 64 KB) keeps the connection alive; a larger declared body or
+any chunked body closes after the answer instead of holding a thread for the upload. A hijacked stream is left alone.
+The image path keeps its own rescue: a participant's
 oversized upload is audited `too_large`, not `internal_error` (`SessionControl#image_upload_bytes`).
 
 Then `#route`, for each matching `ROUTES` row:
