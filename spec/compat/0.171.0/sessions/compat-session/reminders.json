@@ -1,0 +1,13 @@
+{
+  "session_id": "compat-session",
+  "written_at": "2026-01-01T00:00:00Z",
+  "reminders": [
+    {
+      "id": "compat-reminder",
+      "name": "compatibility",
+      "description": "compatibility corpus",
+      "interval_minutes": 20,
+      "next_fire_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

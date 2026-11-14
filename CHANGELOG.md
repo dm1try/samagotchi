@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.171.0] - 2026-11-14
+
 ### Added
 
 - chi web: see what chi has of a working-set item: a row's ▸ in the working set list peeks at its latest edit or read, and "Open the timeline" (also a tool row's "timeline" and a file ref's "What chi has") shows every read as merged line slices over a strip of the file, every edit as its diff, slices chi no longer has greyed, and for a memory that changed since chi read it, the diff to what it says now.
@@ -6314,7 +6316,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.170.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.171.0...HEAD
+[0.171.0]: https://github.com/dm1try/samagotchi/compare/v0.170.0...v0.171.0
 [0.170.0]: https://github.com/dm1try/samagotchi/compare/v0.169.0...v0.170.0
 [0.169.0]: https://github.com/dm1try/samagotchi/compare/v0.168.0...v0.169.0
 [0.168.0]: https://github.com/dm1try/samagotchi/compare/v0.167.0...v0.168.0
