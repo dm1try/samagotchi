@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::ShareCommand do
         grant = grants.list(session_id: session.id).first
         lines = out.string.lines.map(&:chomp)
         expires = Time.iso8601(grant.expires_at).localtime.strftime("%Y-%m-%d %H:%M")
-        expect(lines[0]).to eq("#{grant.id}  Alex (reviewer) · session #{session.id[0, 8]} · expires #{expires} · cap $2.00")
+        expect(lines[0]).to eq("#{grant.id}  Alex (participant) · session #{session.id[0, 8]} · expires #{expires} · cap $2.00")
         token = lines[1][/token=(chp_[^#]+)#/, 1]
         expect(grants.lookup(token)&.id).to eq(grant.id)
         expect(lines[1]).to end_with("#s=#{session.id}")
@@ -327,7 +327,7 @@ RSpec.describe Samagotchi::ShareCommand do
                   "STATE"])
         expect(lines.size).to eq(3)
         expect(lines[1].split(/\s{2,}/).values_at(0, 1, 2, 3, 4, 7, 8, 9))
-          .to eq([session.id[0, 8], a.grant.id, "Alex", "-", "reviewer", "-", "$2.00", "active"])
+          .to eq([session.id[0, 8], a.grant.id, "Alex", "-", "participant", "-", "$2.00", "active"])
         expect(out.string).not_to include(a.token)
 
         out.truncate(0)
@@ -335,6 +335,7 @@ RSpec.describe Samagotchi::ShareCommand do
         expect(run("ls", session.id[0, 8], "--format", "json")).to eq(0)
         rows = JSON.parse(out.string)
         expect(rows.map { |row| row["name"] }).to eq(["Alex"])
+        expect(rows.first["role"]).to eq("reviewer")
         expect(rows.first.keys).not_to include("digest", "token")
       end
 

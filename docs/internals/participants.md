@@ -27,8 +27,8 @@ participant** and **one role**, until it expires or is revoked.
   compares it with every grant's digest (`Rack::Utils.secure_compare`).
 - **Participant.** The grant's `id`, `p_<8 hex>`, names the participant: a turn they send is authored
   `"p:<id>"` (`Grant#author`, `Principal#author`). There is no kind: a grant an older chi stored with `kind`
-  (`human`, `agent`) keeps it in `Grant#extra`, never read. `role` is `reviewer` (the stored value; only its label
-  changed), the only one in v1. `name` is cleaned to
+  (  `human`, `agent`) keeps it in `Grant#extra`, never read. `role` remains `reviewer` in stored grants and JSON;
+  text output labels it `participant`. It is the only stored role in v1. `name` is cleaned to
   one line of at most 64 characters with no brackets (`Grants.clean_name`), so it can't forge the
   `[Review contribution from …]` header.
 - **Lifetime (D8).** 7 days by default (`web.participants.expires`; `chi share --expires Nh|Nd`, 1 hour to 30 days). Revoked by the owner
