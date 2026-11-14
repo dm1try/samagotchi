@@ -31,7 +31,8 @@ HELP = <<~TEXT
     RULE file:line Constant — why
 
   Proven false positives live in script/load_check/allow.yml, each with a
-  reason; the summary says how many entries matched.
+  reason (--allow FILE reads another one); the summary says how many entries
+  matched.
 TEXT
 
 if ARGV.include?("-h") || ARGV.include?("--help")
@@ -65,7 +66,7 @@ end
 strict = ARGV.include?("--strict")
 rule = options["--rule"]
 limit = options["--limit"]&.to_i
-allow = options["--allow"]
+allow = options["--allow"] || File.expand_path("load_check/allow.yml", __dir__)
 json = ARGV.include?("--json")
 
 result = LoadCheck::Check.new(allow: allow).run
