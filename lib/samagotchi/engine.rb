@@ -528,7 +528,11 @@ module Samagotchi
         served_expected_by: ->(served) { served_expected_by(served) },
         working_set_snapshot: ->(session, conversation) { working_set_snapshot(session, conversation) },
         turn_running: -> { turn_running? },
-        announce_or_hold: ->(event) { announce_or_hold(event) }
+        announce_or_hold: ->(event) { announce_or_hold(event) },
+        # The newest request's estimate, for a client that joins mid-turn
+        # (see EventFanout#record_context_status). The turn thread writes it;
+        # the snapshot reads it once and dups it.
+        keep_context_status: ->(status) { @last_context_status = status }
       )
     end
     private :build_event_fanout
