@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "log"
+require_relative "model_markup"
 module Samagotchi
   # Encapsulates all model-specific token formats and parsing behavior.
   # Each profile maps to a model family; ModelProfile.resolve picks one
@@ -108,13 +109,13 @@ module Samagotchi
         name: "qwen36",
         turn_start: "",
         turn_end: "",
-        tool_call_open: "<tool_call>",
-        tool_call_close: "</tool_call>",
-        tool_response_open: "<tool_response>",
-        tool_response_close: "</tool_response>",
+        tool_call_open: ModelMarkup::TOOL_CALL_OPEN,
+        tool_call_close: ModelMarkup::TOOL_CALL_CLOSE,
+        tool_response_open: ModelMarkup::TOOL_RESPONSE_OPEN,
+        tool_response_close: ModelMarkup::TOOL_RESPONSE_CLOSE,
         string_delim: nil,
-        thought_open: "<think>",
-        thought_close: "</think>",
+        thought_open: ModelMarkup::THINK_OPEN,
+        thought_close: ModelMarkup::THINK_CLOSE,
         system_prefix: "<|im_start|>system\n",
         user_prefix: "<|im_start|>user\n",
         assistant_prefix: "<|im_start|>assistant\n",
@@ -377,7 +378,7 @@ module Samagotchi
     # <eos> or <turn|>, depending on who packed it). llama.cpp itself detects
     # Gemma 4 by '<|tool_call>call:'.
     FINGERPRINTS = {
-      "qwen36" => ["<|im_start|>", "<function="],
+      "qwen36" => ["<|im_start|>", ModelMarkup::FUNCTION_OPEN],
       "gemma4" => ["<|turn>", "<|tool_call>"]
     }.freeze
 

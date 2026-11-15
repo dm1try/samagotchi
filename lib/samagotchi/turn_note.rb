@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "model_markup"
 require_relative "thinking_tails"
 
 module Samagotchi
@@ -32,7 +33,7 @@ module Samagotchi
     STEP_CHARS = ThinkingTails::TAIL_CHARS
     # A step's native thinking starts with one of these; the cut keeps it,
     # so the UIs still find the thinking (MessageParts).
-    THINK_OPENS = ["<think>", ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN].freeze
+    THINK_OPENS = [ModelMarkup::THINK_OPEN, ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN].freeze
 
     module_function
 

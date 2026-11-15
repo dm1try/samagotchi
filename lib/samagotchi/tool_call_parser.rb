@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "model_markup"
 require_relative "tools/args"
 require_relative "tools/ask_user_question"
 require_relative "tools/builtin_calls"
@@ -353,8 +354,8 @@ module Samagotchi
         results = []
 
         pos = 0
-        tool_open = "<tool_call>"
-        tool_close = "</tool_call>"
+        tool_open = ModelMarkup::TOOL_CALL_OPEN
+        tool_close = ModelMarkup::TOOL_CALL_CLOSE
 
         while (open_pos = text.index(tool_open, pos))
           body_start = open_pos + tool_open.length
@@ -383,7 +384,7 @@ module Samagotchi
       end
 
       def strip_tool_calls(text)
-        ToolCallParser.strip_calls(text, "<tool_call>", "</tool_call>")
+        ToolCallParser.strip_calls(text, ModelMarkup::TOOL_CALL_OPEN, ModelMarkup::TOOL_CALL_CLOSE)
       end
 
       def parse_with_recovery(response, partial_fragment)
@@ -420,8 +421,8 @@ module Samagotchi
       end
 
       def qwen_unterminated_tool_call_fragment(text)
-        open_tag = "<tool_call>"
-        close_tag = "</tool_call>"
+        open_tag = ModelMarkup::TOOL_CALL_OPEN
+        close_tag = ModelMarkup::TOOL_CALL_CLOSE
         pos = 0
 
         while (open_pos = text.index(open_tag, pos))

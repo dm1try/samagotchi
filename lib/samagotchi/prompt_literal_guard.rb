@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "model_markup"
 
 module Samagotchi
   # Escapes literal control-token text when arbitrary source/output is embedded
@@ -25,12 +26,12 @@ module Samagotchi
     QWEN_TOKEN_PAIRS = [
       ["[[SAMAGOTCHI_LITERAL_IM_START]]", "<|im_start|>"],
       ["[[SAMAGOTCHI_LITERAL_IM_END]]", "<|im_end|>"],
-      ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN]]", "<tool_call>"],
-      ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE]]", "</tool_call>"],
-      ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]", "<tool_response>"],
-      ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_CLOSE]]", "</tool_response>"],
-      ["[[SAMAGOTCHI_LITERAL_THINK_OPEN]]", "<think>"],
-      ["[[SAMAGOTCHI_LITERAL_THINK_CLOSE]]", "</think>"],
+      ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN]]", ModelMarkup::TOOL_CALL_OPEN],
+      ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE]]", ModelMarkup::TOOL_CALL_CLOSE],
+      ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]", ModelMarkup::TOOL_RESPONSE_OPEN],
+      ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_CLOSE]]", ModelMarkup::TOOL_RESPONSE_CLOSE],
+      ["[[SAMAGOTCHI_LITERAL_THINK_OPEN]]", ModelMarkup::THINK_OPEN],
+      ["[[SAMAGOTCHI_LITERAL_THINK_CLOSE]]", ModelMarkup::THINK_CLOSE],
       ["[[SAMAGOTCHI_LITERAL_VISION_START]]", "<|vision_start|>"],
       ["[[SAMAGOTCHI_LITERAL_VISION_END]]", "<|vision_end|>"]
     ].freeze

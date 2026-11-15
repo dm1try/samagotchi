@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "model_markup"
 require_relative "output_formatter"
 require_relative "tool_call_parser"
 
@@ -22,11 +23,12 @@ module Samagotchi
     # @return [String] "" when nothing was visible
     def visible(text)
       text = text.to_s.scrub
-      template_opened = !text.include?("<think>")
+      template_opened = !text.include?(ModelMarkup::THINK_OPEN)
       gemma = ToolCallParser::Gemma.new(ModelProfile.gemma4)
       text = gemma.strip_thought(text).gsub(OutputFormatter::QWEN_THINK_RE, "")
       text = text.sub(TEMPLATE_OPENED_THINK, "") if template_opened
-      text = ToolCallParser.strip_calls(gemma.strip_tool_calls(text), "<tool_call>", "</tool_call>")
+      text = ToolCallParser.strip_calls(gemma.strip_tool_calls(text), ModelMarkup::TOOL_CALL_OPEN,
+                                        ModelMarkup::TOOL_CALL_CLOSE)
       OutputFormatter.strip_markup(text) # drops a thought cut off before it closed
     end
   end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../output_formatter"
+require_relative "../model_markup"
 require_relative "../steer"
 require_relative "../turn_origin"
 require_relative "../revise_anchor"
@@ -692,10 +693,11 @@ module Samagotchi
                                    OutputFormatter::GEMMA_TOOL_CALL_RE, OutputFormatter::GEMMA_THOUGHT_RE)
       # A close with no open before it: what came before was thinking (the
       # raw loop saves prefill + response).
-      BARE_CLOSES = ["</think>", "<channel|>"].freeze
+      BARE_CLOSES = [ModelMarkup::THINK_CLOSE, "<channel|>"].freeze
       # An open with no close after it (a cut-off thought, a tool call the
       # loop recovered): everything from it on is the model's own.
-      OPENS = ["<think>", "<tool_call>", "<|tool_call>", "<|channel>", "<|tool_response>", "<tool_response>", "<|think|>"].freeze
+      OPENS = [ModelMarkup::THINK_OPEN, ModelMarkup::TOOL_CALL_OPEN, "<|tool_call>", "<|channel>",
+               "<|tool_response>", ModelMarkup::TOOL_RESPONSE_OPEN, "<|think|>"].freeze
 
       # A saved model message's raw content as a participant may read it:
       # closed blocks kept (the display strips them, its tool rows come from

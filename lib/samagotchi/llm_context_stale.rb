@@ -5,6 +5,7 @@ require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_edit"
 require_relative "model_profile"
+require_relative "model_markup"
 require_relative "tool_call_parser"
 require_relative "tools/builtin_calls"
 require_relative "tools/tool_path"
@@ -264,7 +265,7 @@ module Samagotchi
       {}
     end
 
-    QWEN_CALL = "<tool_call>"
+    QWEN_CALL = ModelMarkup::TOOL_CALL_OPEN
     GEMMA_CALL = "<|tool_call>"
 
     def native_parser(content)

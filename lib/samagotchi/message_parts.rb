@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "model_markup"
 require_relative "tool_call_parser"
 require_relative "tool_activity"
 require_relative "tool_row_fields"
@@ -106,7 +107,7 @@ module Samagotchi
 
     def thinking_of(content)
       blocks = content.scan(QWEN_THINK).flatten
-      if blocks.empty? && !content.include?("<think>") && (open = content[QWEN_OPEN_THINK, 1])
+      if blocks.empty? && !content.include?(ModelMarkup::THINK_OPEN) && (open = content[QWEN_OPEN_THINK, 1])
         blocks = [open]
       end
       blocks += content.scan(GEMMA_THOUGHT).flatten
@@ -115,7 +116,9 @@ module Samagotchi
 
     def markup_tools(content, responses, registry, cwd = nil, marks = {})
       calls = []
-      calls.concat(ToolCallParser::Qwen.new(ModelProfile.qwen36).parse(content)) if content.include?("<tool_call>")
+      if content.include?(ModelMarkup::TOOL_CALL_OPEN)
+        calls.concat(ToolCallParser::Qwen.new(ModelProfile.qwen36).parse(content))
+      end
       calls.concat(ToolCallParser::Gemma.new(ModelProfile.gemma4).parse(content)) if content.include?("<|tool_call>")
       return [] if calls.empty?
 

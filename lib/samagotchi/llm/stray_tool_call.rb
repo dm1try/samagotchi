@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../model_markup"
+
 module Samagotchi
   module LLM
     # A reply that is nothing but a tool call written as text. The host's
@@ -25,16 +27,17 @@ module Samagotchi
     # predicate is ChatLoop's.
     module StrayToolCall
       # A stray call can only open with the block itself.
-      OPENS = ["<tool_call>", "<function=", "<parameter="].freeze
+      OPENS = [ModelMarkup::TOOL_CALL_OPEN, ModelMarkup::FUNCTION_OPEN, ModelMarkup::PARAMETER_OPEN].freeze
       # ... and end with the close of that same block: nothing else in the
       # reply. A `<parameter=` call often closes with `</function>` (the
       # flavour that mixes the two tags does it mid-block too), and a block
       # opened by `<function=` or `<parameter=` can also end with the
       # wrapper's own `</tool_call>` instead of its tag.
       CLOSES = {
-        "<tool_call>" => ["</tool_call>"],
-        "<function=" => ["</function>", "</tool_call>"],
-        "<parameter=" => ["</parameter>", "</function>", "</tool_call>"]
+        ModelMarkup::TOOL_CALL_OPEN => [ModelMarkup::TOOL_CALL_CLOSE],
+        ModelMarkup::FUNCTION_OPEN => [ModelMarkup::FUNCTION_CLOSE, ModelMarkup::TOOL_CALL_CLOSE],
+        ModelMarkup::PARAMETER_OPEN => [ModelMarkup::PARAMETER_CLOSE, ModelMarkup::FUNCTION_CLOSE,
+                                        ModelMarkup::TOOL_CALL_CLOSE]
       }.freeze
       # How much of the reply the warning keeps (KernelLoop's own cap).
       TAIL_CHARS = 400
