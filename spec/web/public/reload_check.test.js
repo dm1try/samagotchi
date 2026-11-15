@@ -21,9 +21,8 @@ const PROMPT = '<div class="bubble user" data-turn-id="T1"><div class="user-mess
 const ANSWER = '<div class="bubble output">hello</div><div class="turn-timing">turn 1 · 5ms</div>';
 
 // +cards+: the page's registry (a getter's value; an empty one by default),
-// null: none (an older app.js); +place+: what an older app.js passes
-// (cards_offscreen.js), unused.
-function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {}, cards = createCardRegistry(), place = undefined } = {}) {
+// null: none (no registry).
+function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {}, cards = createCardRegistry() } = {}) {
   const posts = [];
   const reads = [];
   let session = "s1";
@@ -34,7 +33,6 @@ function setup({ enabled = true, reloaded = PROMPT + ANSWER, data = {}, cards = 
     running: () => running,
     read: async (id) => { reads.push(id); return { ...data, html: reloaded }; },
     ...(cards ? { cards: () => cards } : {}),
-    ...(place !== undefined ? { place, capabilities: () => null } : {}),
     render: (d) => {
       const frag = document.createDocumentFragment();
       frag.append(...nodes(d.html).childNodes);
@@ -248,11 +246,9 @@ test("the history's compare drops cards and questions on both sides, and keeps a
   assert.deepEqual(lostNotice.posts[0][1].kinds, ["notice"]);
 });
 
-test("without the page's registry (an older app.js passes cards_offscreen.js's placer), cards and questions are left out", async () => {
-  let placed = 0;
-  const { check, posts } = setup({ cards: null, place: () => { placed += 1; }, data: { cards: [CHECK_IN, ASKED] }, reloaded: PROMPT + ANSWER });
+test("without the page's registry, cards and questions are left out", async () => {
+  const { check, posts } = setup({ cards: null, data: { cards: [CHECK_IN, ASKED] }, reloaded: PROMPT + ANSWER });
   await check.handedOff({ pieces: pieces(PROMPT + CARD_EL + QCARD + ANSWER) });
-  assert.equal(placed, 0, "the placer is not called");
   assert.deepEqual([posts[0][1].same, posts[0][1].kinds], [true, []]);
   assert.equal(posts[0][1].cards_compared, false, "a same that checked no cards says so");
   const full = setup({ cards: livedTurn({ card: CHECK_IN, question: ASKED.pending_question }), data: { cards: [CHECK_IN, ASKED] } });
