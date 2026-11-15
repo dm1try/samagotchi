@@ -39,6 +39,7 @@ function pageFor(win = { innerHeight: 800 }) {
     store: page.store, turnDom: page.turnDom, composerEl: document.getElementById("composer"), win,
     warn: (line) => warnings.push(line),
   });
+  page.store.on("infoBar", missingRef.checkOnStatus);
   const view = createSessionView({
     store: page.store, historyEl: page.historyEl, getSession: async () => show(),
     liveTurn: page.liveTurn, turnDom: page.turnDom, questionCards: page.questionCards,
@@ -65,6 +66,7 @@ function pageFor(win = { innerHeight: 800 }) {
 
 const stage = (page) => page.turnDom.root;
 const marked = (page) => stage(page).dataset.stageMissing;
+const bare = (page) => stage(page).classList.contains("bare");
 
 test("a running read with a turn and its replay draws the turn: no mark, no warning", async () => {
   const page = pageFor();
@@ -89,6 +91,7 @@ test("current_turn with no turn_started in the replay: the bare stage and the li
   await settle();
   assert.ok(!page.turnDom.holds(), "nothing was drawn");
   assert.equal(marked(page), "1");
+  assert.ok(bare(page), "the stage keeps its status row rather than vanishing");
   assert.equal(page.warnings.length, 1, "one line per visit");
   assert.match(page.warnings[0], /stage-missing s1 \(none\) live_read=ok current_turn=t1 replay=0 events=none/);
 });
@@ -98,6 +101,7 @@ test("a failed snapshot read of a running session: the bare stage and the line",
   page.view.renderSessionView(show({ liveRead: "failed", currentTurn: null, replay: [] }));
   await settle();
   assert.equal(marked(page), "1");
+  assert.ok(bare(page), "Stop turn stays in reach");
   assert.match(page.warnings[0], /live_read=failed current_turn=none replay=0 events=none last_end=none/);
 });
 
@@ -115,6 +119,7 @@ test("a replay that carries the turn's end while the status says running: bare a
   await folded();
   assert.ok(!page.turnDom.holds(), "the turn left the stage");
   assert.equal(marked(page), "1");
+  assert.ok(bare(page), "the stage is not gone: its status row is there");
   assert.match(page.warnings[0], /replay=2 events=turn_started=1 turn_completed=1 last_end=t1 vs turn=t1/);
 });
 
@@ -126,6 +131,7 @@ test("only an earlier turn's end in the replay: the bare stage at once", async (
   }));
   await settle();
   assert.equal(marked(page), "1");
+  assert.ok(bare(page), "the stage shows the running session at once");
   assert.match(page.warnings[0], /last_end=t1 vs turn=t2/);
 });
 
@@ -146,6 +152,20 @@ test("a stage the composer covers: marked covered, and nothing else", async () =
   assert.equal(marked(page), "covered");
   assert.ok(page.turnDom.holds(), "the turn is still on the stage: only its place is wrong");
   assert.match(page.warnings[0], /stage-missing s1 \(covered\).*stage_row=910\.\.940 composer_top=700 window=800/);
+});
+
+test("the status turning idle without setTurnRunning: the bare row goes", async () => {
+  const page = pageFor();
+  page.view.renderSessionView(show({ liveRead: "failed", currentTurn: null, replay: [] }));
+  await settle();
+  assert.equal(marked(page), "1");
+  assert.ok(bare(page), "the net put the row there");
+  // turnEndStatus and the hub write the status without the turn's own path.
+  page.store.setStatus("idle", "turnEnd", { running: false });
+  await settle();
+  assert.equal(marked(page), undefined);
+  assert.ok(!bare(page), "no row left behind");
+  assert.ok(stage(page).hidden, "the stage is empty again");
 });
 
 test("the pure rule: running with no turn, a covered stage, a stopped session", () => {
