@@ -524,8 +524,7 @@ that leave, `session_view.js endTurnView`'s cancel of a question still pending g
 `emptySlots` resets it (a resync's and `workerGone`'s reset too). Nothing on the page reads the slots back against
 it: the tests do (`stage_cuts_parity.test.js`, after every event and at each cut: no entry without its waiting card in
 the extras or the tail, no waiting card there without its entry; the e2e's stage check at each test's end, reading the
-registry off the stage's node, `#turnStage.chiWaiting()`). `stage_asking.js reconcileWaiting` is a no-op kept one
-release for a stale `stage_view.js` that still calls it.
+registry off the stage's node, `#turnStage.chiWaiting()`).
 The registry's order is the stage's: blocking cards before the asking ones, arrival order within each, and `place`
 puts a blocking card before check-in's in the slot, so a live page and a reload agree whatever the replay's order. The
 asking form's card is the shown docked entry, the fold is the folded key (`stageCollapsed` compares keys); `opener`'s
