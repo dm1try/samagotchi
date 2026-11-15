@@ -17,14 +17,23 @@ module LoadCheck
   # A constant the file names. stage: :load (evaluated when the file loads) or
   # :call (inside a method body).
   Ref = Data.define(:parts, :scope, :line, :stage, :context)
+  # A method called in the file: its name and, when the receiver is a constant,
+  # that constant's parts (nil for a call on an object or a bare call). scope is
+  # the namespaces around the call, so a receiver can be resolved like a ref.
+  Call = Data.define(:receiver, :name, :line, :scope)
+  # A method the file defines in a namespace. visibility: :public unless a
+  # `private`, `protected` or `module_function` line in that body said otherwise.
+  Method = Data.define(:name, :scope, :line, :visibility)
 
   # One file, parsed but never executed.
   class Scan
     MIXINS = %i[include extend prepend].freeze
     # Blocks whose body runs at call time, not when the file loads.
     LAZY = %i[define_method].freeze
+    # The visibility lines of a class or module body.
+    VISIBILITY = %i[private protected module_function].freeze
 
-    attr_reader :path, :defs, :refs, :requires, :autoloads
+    attr_reader :path, :defs, :refs, :requires, :autoloads, :calls, :methods
 
     def initialize(path, root = nil)
       @abs = File.expand_path(path)
@@ -34,6 +43,12 @@ module LoadCheck
       @refs = []
       @requires = []
       @autoloads = []
+      @calls = []
+      @methods = []
+      # Visibility of the namespace a body is in, and of single methods named
+      # by `private :foo` or `private def foo`.
+      @visibility = {}
+      @named_visibility = Hash.new { |hash, key| hash[key] = {} }
       @local_paths = {}
       @loop_autoload_names = {}
       parse
@@ -73,6 +88,7 @@ module LoadCheck
         targets.each { |target| parts = parts(target); define(parts, scope, node.location.start_line) if parts }
         walk(node.value, scope, call)
       when "Prism::DefNode"
+        note_method(node, scope)
         # A default argument is evaluated when the method is called, so it is a
         # call-time reference (Rule 1), not a load-time one.
         walk(node.parameters, scope, true) if node.parameters
@@ -134,11 +150,39 @@ module LoadCheck
         arguments.each { |arg| note(parts(arg), scope, node.location.start_line, false, name.to_s) }
         return
       end
+      if node.receiver.nil? && VISIBILITY.include?(name)
+        note_visibility(name, arguments, scope)
+      end
       if name == :const_set
         const = literal(arguments.first)
         define([const], scope, node.location.start_line) if const
       end
+      @calls << Call.new(parts(node.receiver), name.to_s, node.location.start_line, scope.dup)
       node.compact_child_nodes.each { |child| walk(child, scope, LAZY.include?(name) || call) }
+    end
+
+    # A bare `private` sets the visibility of the defs that follow it in this
+    # body; `private def foo` and `private :foo` name one method.
+    def note_visibility(name, arguments, scope)
+      key = scope.join("::")
+      if arguments.empty?
+        @visibility[key] = name == :module_function ? :public : name
+      else
+        arguments.each do |arg|
+          method = if arg.class.name.end_with?("SymbolNode")
+                     arg.value
+                   else
+                     (arg.respond_to?(:name) ? arg.name : nil)
+                   end
+          @named_visibility[key][method] = name == :module_function ? :public : name if method
+        end
+      end
+    end
+
+    def note_method(node, scope)
+      key = scope.join("::")
+      visibility = @named_visibility[key][node.name] || @visibility[key] || :public
+      @methods << Method.new(node.name.to_s, scope, node.location.start_line, visibility)
     end
 
     def add_require(kind, arg, line, load_time)

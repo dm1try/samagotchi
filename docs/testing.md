@@ -678,8 +678,30 @@ matched and those that match nothing: delete a stale one.
 
 **The thin client load budgets.** `spec/require_cycle_spec.rb` loads the attached TUI's files
 (`terminal_ui/attach_launcher`, `attached_loop`) and chi web's (`web/app`) in a fresh ruby and fails when either
-loads the turn loop (`kernel_loop`), the bundle updater (`memory_bundle/shipped_update`), or a tool that runs:
-`tools/execute`, `tools/builtins`, `tools/task_runtime`. A client that needs a tool's name or result text reads
-`ToolNames`; one that needs a session command's name or the built-ins' registry reads `SessionCommandCatalog`;
 task files and transcripts are `TaskFiles` and `TaskTranscript`. A require that breaks a budget is a sign the
 reader wants one of those, not the class.
+
+## The partial-use probes
+
+A tech-debt audit round also runs `script/partial-use`, which reads the same files with the same Prism scan and
+never loads them, and looks for two smells that hint an abstraction wants splitting:
+
+- **`script/partial-use doors`** — a narrow door that drags a subtree. For every load-time `require` A → B, `added`
+  is the files B brings to A that A would not reach without that edge (B itself counted), and `names` the names A
+  takes from what B pulls in: the constants A names that are defined there, and the methods A calls on them. Ranked
+  by `added`, then by the fewest names. `--min-files` (1) drops the doors that add nothing, `--entry FILE` walks one
+  client's closure only (`bin/chi`, `lib/samagotchi/web/app.rb`), `--limit` (20) caps the rows. A reader under
+  `lib/samagotchi/testing/` is a spec helper, not a product path, so its doors are left out unless
+  `--include-testing` asks for them.
+- **`script/partial-use wide`** — a wide class each client barely uses. Every namespace with at least `--min-public`
+  (15) public `def`s counts (`def self.x` and `module_function` are public; `attr_accessor` and `define_method` are
+  not read). Each file that names it, the files defining it apart, is a client, with `share` the public method names
+  it calls on it directly (`Const.m`) and `any` the same names called on any receiver in that file. A class used
+  through an object scores 0 in `share` by construction, so the ranking is by the smallest `any` share, then by the
+  widest class. `--min-clients` (2) drops a namespace only one file names, since one client is not a split worth
+  making, and the engine's own top-level `Samagotchi` module is not reported: its "public methods" are the whole
+  engine.
+
+Matching is by name, never by execution, so every number is an upper bound: a row is a lead for a human to read, not
+a finding. Like `script/dead-code` it is a report, always exits 0, and CI does not run it. Its spec is
+`spec/script/partial_use_spec.rb`.

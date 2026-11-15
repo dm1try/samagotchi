@@ -1,0 +1,114 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# script/partial-use: two probes an audit round runs, both about an abstraction
+# that may want splitting. Advisory: it always exits 0. See docs/testing.md.
+HELP = <<~TEXT
+  usage: script/partial-use doors [--entry FILE] [--min-files N] [--limit N] [--include-testing] [--json]
+         script/partial-use wide  [--min-public N] [--min-clients N] [--limit N] [--json]
+
+  Both reports read lib/samagotchi/**/*.rb (the shipped bundles under
+  lib/samagotchi/bundles/ apart) and bin/* with Prism, the same scan
+  script/load-check uses, and never load a file.
+
+  doors — "narrow door, heavy load". For every load-time require A -> B, added
+  is the files B brings to A that A would not reach without that edge (B
+  itself counted), and names the distinct names A takes from B's closure: the
+  constants defined there that A names, plus the methods A calls on them.
+  Ranked by added, then by the fewest names. --min-files (default 1) drops the
+  doors that add nothing; --entry FILE walks one client's closure only, e.g.
+  bin/chi or lib/samagotchi/web/app.rb. A file under lib/samagotchi/testing/
+  is a spec helper, not a product path: its doors are left out unless
+  --include-testing asks for them.
+
+  wide — "wide class, partial use". A class or module with at least
+  --min-public (default 15) public defs: a def in its body, not under
+  private/protected; def self.x and module_function count as public,
+  attr_accessor and define_method are not counted. Every file that names it
+  (the files defining it apart) is a client, and share is the public method
+  names that file calls on it directly. any is the same count for that name
+  called on any receiver in the file, which is the looser of the two and the
+  one a class used through an object scores on. --min-clients (default 2)
+  drops a namespace only one file names: one client is not a split worth
+  making. The engine's own top module is not a class to split, so it is not
+  reported. Ranked by the smallest any share, then by the widest class.
+
+  Nothing here is a finding: the matching is by name and never by execution, so
+  every number is an upper bound and every row a lead for a human.
+
+  Nothing here is a finding: the matching is by name and never by execution, so
+  every number is an upper bound and every row a lead for a human.
+TEXT
+
+if ARGV.empty? || ARGV.include?("-h") || ARGV.include?("--help")
+  puts HELP
+  exit 0
+end
+
+require "json"
+
+begin
+  require "prism"
+rescue LoadError
+  warn "script/partial-use: needs Prism (Ruby 3.4+, or bundle exec on 3.3); skipped"
+  exit 0
+end
+
+require_relative "partial_use/doors"
+require_relative "partial_use/wide"
+
+command, *arguments = ARGV
+flags = {}
+while arguments.first
+  flag = arguments.shift
+  flags[flag] = %w[--json --include-testing].include?(flag) || arguments.shift
+end
+
+def option(flags, name, default)
+  value = flags[name]
+  value.nil? ? default : value.to_i
+end
+
+units = PartialUse::Units.new
+limit = option(flags, "--limit", 20)
+
+if command == "doors"
+  entry = flags["--entry"]
+  if entry && !units.units.key?(entry)
+    warn "script/partial-use: --entry #{entry} is not a file it reads (try bin/chi or lib/samagotchi/web/app.rb)"
+    exit 0
+  end
+
+  rows = PartialUse::Doors.new(units, entry: entry, min_files: option(flags, "--min-files", 1),
+                               include_testing: flags["--include-testing"]).report
+  shown = rows.first(limit)
+  if flags["--json"]
+    puts JSON.pretty_generate(shown.map(&:to_h))
+  else
+    puts "partial-use doors: added = the files B brings that A would not reach without the edge (B counted); names = what A takes from B's closure"
+    puts "matched by name, never executed: upper bounds, leads for a human"
+    puts "readers: #{flags["--include-testing"] ? "including lib/samagotchi/testing/" : "lib/samagotchi/testing/ apart"}"
+    shown.each { |row| puts PartialUse::Doors.line(row) }
+    puts format("shown: %d of %d doors (--min-files %d)", shown.size, rows.size, option(flags, "--min-files", 1))
+  end
+  exit 0
+end
+
+if command == "wide"
+  min_public = option(flags, "--min-public", 15)
+  min_clients = option(flags, "--min-clients", 2)
+  rows = PartialUse::Wide.new(units, min_public: min_public, min_clients: min_clients).report
+  shown = rows.first(limit)
+  if flags["--json"]
+    puts JSON.pretty_generate(shown.map(&:to_h))
+  else
+    puts "partial-use wide: namespaces with at least #{min_public} public defs and #{min_clients} clients; share = the public names a client calls on it, any = that name called on any receiver"
+    puts "matched by name, never executed: upper bounds, leads for a human; ranked by the smallest any share"
+    puts(shown.flat_map { |row| PartialUse::Wide.line(row) })
+    puts format("shown: %d of %d namespaces (--min-public %d, --min-clients %d)", shown.size, rows.size, min_public, min_clients)
+  end
+  exit 0
+end
+
+warn "script/partial-use: unknown report #{command.inspect}; run it with --help"
+exit 0
