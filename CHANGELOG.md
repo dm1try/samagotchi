@@ -8,8 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: the page's session read says how the live worker's snapshot read went (`live_read`: ok, none, failed),
+  and a failed one logs the why and the elapsed ms to chi web's debug log.
+
 ### Fixed
 
+- chi web: a running session always has its stage — the turn in progress, or a bare "running" row with Stop turn
+  when the page has nothing to draw — so a turn missing from the stage no longer leaves the page with nothing. The
+  stage marks itself when that happens (`data-stage-missing`), and says once in the console what the read had.
 - Tool output with invalid UTF-8 no longer breaks task tracking or finishing a background task.
 
 ## [0.174.0] - 2026-11-15

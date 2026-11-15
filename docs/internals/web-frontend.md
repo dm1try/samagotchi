@@ -429,6 +429,26 @@ from `emptySlots`.** `npm run lint` holds it (`samagotchi/stage-size`: every `st
 - `stage_probe.js`: the perf probe (`?stage_probe=1`, kept for the tab, or `<body data-stage-probe="1">`: `measured`,
   `chiStageProbe.report()`), around
   `refresh`; `script/stage-perf-probe` drives it ([testing.md](../testing.md)).
+- `stage_missing.js`: the "the session runs, the stage shows nothing of it" check — the bare status row
+  (`runningWithoutTurn`), the `data-stage-missing` mark and one console line per session visit. Its rules
+  (`missingReason`, `stageCovered`, `readCounts`) are pure; the numbers come from `getBoundingClientRect`.
+
+## A running session without a turn
+
+A session whose status is running should always have its stage: the turn in progress, or, when the page has nothing
+to draw, the bare status row ("running" plus Stop turn). `stage_missing.js` checks at the end of a render
+(`session_view.js renderSessionView`), at the hand-off (`onHandedOff`) and at the end of a fold
+(`stage_view.js clearStage`), then again on a resize, a composer that changed size or a status change. When the
+session runs and `turnDom.holds()` is false, it calls `runningWithoutTurn(true)` (a no-op while a turn is held or
+folding); a status that leaves running — through `turnEndStatus` or the hub, not only `setTurnRunning` — clears the
+row. It also marks the stage `data-stage-missing`: `"1"` when it holds no turn, `"covered"` when it holds one but
+its status row's rect is off the window or below the composer card's top edge (the user's own tall or folded
+composer: reported, not fixed), and warns once per visit with counts only — `live_read`, whether `current_turn`
+came, the replay's event types with their counts, the last replayed end event's turn id beside the running turn's,
+the stage's and the composer's rects and the composer's saved floor and fold. The show's `live_read`
+(`SessionShow#live_snapshot`: "ok", "none", "failed") says whether the snapshot read that fills the page came from
+a live worker; chi web logs the why and the elapsed ms when it did not (bridge.md, The show). The e2e stage check
+(`spec/e2e/support/fixtures.js`) reads the mark.
 
 ## The stage's height
 
