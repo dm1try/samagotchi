@@ -102,24 +102,27 @@ export const test = base.extend({
     await use(page);
     expect(errors, "page errors").toEqual([]);
     expect(waitingWarnings, "the stage's waiting cards as data agree with the cards drawn").toEqual([]);
-    if (stageCheck && !page.isClosed()) expect(await stageDrift(page), "the stage's waiting cards as data agree with its slots").toEqual([]);
+    if (stageCheck && !page.isClosed()) expect(await stageDrift(page), "the stage's waiting cards as data agree with its slots, and its stage shows its running turn").toEqual([]);
   },
 });
 
 // The stage's drift (fixtures' stageCheck): the keys the registry holds with no
-// waiting card in the stage's extras or tail, and the waiting cards there with
-// no entry, read with the page's own stage_waiting.js (the same module
-// instance: its URL next to app.js). [] when the page has no stage.
+// waiting card in the stage's extras or tail, the waiting cards there with no
+// entry, and the stage marked `data-stage-missing` (stage_missing.js: a running
+// session with no turn on the stage, or one the composer covers). [] when the
+// page has no stage.
 async function stageDrift(page) {
   return page.evaluate(async () => {
     const stage = document.getElementById("turnStage");
-    if (!stage?.chiWaiting) return [];
+    if (!stage) return [];
+    const missing = stage.dataset.stageMissing ? `stage-missing:${stage.dataset.stageMissing}` : null;
+    if (!stage.chiWaiting) return missing ? [missing] : [];
     const app = document.querySelector('script[type="module"][src$="app.js"]');
     const { waitingKey, waitingKind } = await import(new URL("stage_waiting.js", app.src).href);
     const slots = [...(stage.querySelector(".ts-extras")?.children || []), ...(stage.querySelector(".ts-tail")?.children || [])];
     const kinds = new Map(slots.map((el) => [waitingKey(el), waitingKind(el)]).filter(([key, kind]) => key && kind));
     const keys = new Set(stage.chiWaiting().map((e) => e.key));
-    return [...[...keys].filter((key) => !kinds.has(key)), ...[...kinds.keys()].filter((key) => !keys.has(key))];
+    return [...[...keys].filter((key) => !kinds.has(key)), ...[...kinds.keys()].filter((key) => !keys.has(key)), ...(missing ? [missing] : [])];
   });
 }
 

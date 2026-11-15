@@ -33,13 +33,16 @@ export function clearSession() {
 // no timing line (the reload has no records here either). No question
 // cards (a question's card is placed from CardStore on both sides), unless
 // +questions+: question_cards.js wired as app.js wires it (the stage cuts).
-export function livePage({ questions = false } = {}) {
+// +onStageCleared+: the stage's hook for "the stage just went empty"
+// (stage_missing.js); null: none.
+export function livePage({ questions = false, onStageCleared = null } = {}) {
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
   const shownTexts = createShownTexts();
   const turnDom = createStageView({
     historyEl, isNearBottom: () => false, sawText: (k) => shownTexts.saw(k), sessionId: () => "s1",
     dockEl: document.getElementById("dock"), centerEl: document.getElementById("center"),
+    onStageCleared,
   });
   const findInTurnRoots = (selector) => [...historyEl.querySelectorAll(selector), ...turnDom.root.querySelectorAll(selector)];
   const liveTurn = {
@@ -96,5 +99,5 @@ export function livePage({ questions = false } = {}) {
     showHookNotice: bubbles.showHookNotice, addTimeGap() {},
     upsertCard: cards.upsertCard, refreshCardBodies() {},
   }));
-  return { historyEl, turnDom, handlers, cards, questionCards, cardRegistry };
+  return { historyEl, turnDom, handlers, cards, questionCards, cardRegistry, store, liveTurn, shownTexts, bubbles };
 }
