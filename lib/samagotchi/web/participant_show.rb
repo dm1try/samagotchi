@@ -58,6 +58,7 @@ module Samagotchi
           **participant_drawings_field(drawn, messages, viewer),
           failed_turn: nil,
           current_turn: current,
+          live_read: reads.live_read,
           replay: participant_replay(turn_snapshot, timing, viewer),
           queued: participant_queued(queued, viewer),
           queued_commands: [],

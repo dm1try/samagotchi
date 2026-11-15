@@ -26,8 +26,9 @@ module Samagotchi
     # worker's turn snapshot and state snapshot (both nil without one), the
     # messages shown (the snapshot's, else the file's) and the stream cursor
     # the page goes on from (+event_seq+, and the snapshot's +event_id+
-    # `<seq>-<epoch>`). Each assembler makes its own payload from it.
-    ShowReads = Data.define(:id, :session, :turn_snapshot, :state, :event_seq, :event_id, :raw_messages) do
+    # `<seq>-<epoch>`), and how the snapshot read went (+live_read+: "ok",
+    # "failed" or "none"). Each assembler makes its own payload from it.
+    ShowReads = Data.define(:id, :session, :turn_snapshot, :state, :event_seq, :event_id, :raw_messages, :live_read) do
       # The turn in progress, as the worker's snapshot has it (nil: none).
       def current_turn = turn_snapshot && turn_snapshot["current_turn"]
 
@@ -79,7 +80,7 @@ module Samagotchi
       # behind it, all at one event_seq the client streams on from.
       # @return [ShowReads]
       def show_reads(id, session)
-        live = bridge_get_json(id, "snapshot")
+        live, live_read = live_snapshot(id)
         turn_snapshot = live && live["snapshot"]
         state = live && live["session_state_snapshot"]
         ShowReads.new(
@@ -88,8 +89,42 @@ module Samagotchi
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
           # instead of taking the seq as its own. Only the snapshot has it.
           event_id: turn_snapshot && turn_snapshot["event_id"],
-          raw_messages: live_or_saved(turn_snapshot, "messages") { session.messages }
+          raw_messages: live_or_saved(turn_snapshot, "messages") { session.messages },
+          live_read: live_read
         )
+      end
+
+      # The live worker's turn snapshot and what its read did: [snapshot,
+      # live_read] — "ok" when a snapshot came, "none" when no worker owns the
+      # session, "failed" when a live worker's Bridge answered with none. The
+      # page's stage_missing.js reads live_read, so a running session whose
+      # stage shows no turn (this read had no current_turn, and so no replay
+      # and no stream cursor) is not mistaken for one whose stream replayed the
+      # turn's end. A failed read logs, at debug level, the why (the Bridge's
+      # status, or no reply at all: a refused connect, a timeout, a cut reply)
+      # and the elapsed ms.
+      # @return [Array(Hash, String)]
+      def live_snapshot(id)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        live = bridge_get_json(id, "snapshot")
+        return [live, "ok"] if live
+
+        link = worker_link(id)
+        return [nil, "none"] unless link.live?
+
+        ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+        # The same GET again, this time with its status: bridge_get_json hides
+        # which of these a nil came from.
+        status, = bridge_get(id, "snapshot")
+        why = if status.nil?
+                ms >= BridgeClient::READ_TIMEOUT * 1000 ? "timeout" : "no reply"
+              elsif status == 200
+                "no snapshot in the answer"
+              else
+                "status #{status}"
+              end
+        Log.debug(:web, "live_snapshot_failed", sid: id, why: why, ms: ms, port: link.port)
+        [nil, "failed"]
       end
 
       # Every finished turn of +reads+ drawn from a line (a real one, else
@@ -124,6 +159,11 @@ module Samagotchi
           **turn_drawings_field(drawn, messages),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: reads.current_turn,
+          # What the live snapshot read gave: "ok", "none" (no live worker) or
+          # "failed" (a live worker answered with no snapshot): the page's
+          # stage_missing.js tells a turn that never reached the stage from one
+          # whose stream replayed its end (docs/internals/bridge.md, The show).
+          live_read: reads.live_read,
           # The page's join: the turn in progress and the queue behind it as
           # the live events that draw them (TurnAccumulator.join_events, one
           # unfold, here: any worker's snapshot works).

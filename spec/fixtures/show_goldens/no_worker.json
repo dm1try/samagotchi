@@ -239,6 +239,7 @@
   },
   "failed_turn": null,
   "current_turn": null,
+  "live_read": "none",
   "replay": [],
   "queued": [],
   "queued_commands": [],

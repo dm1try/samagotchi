@@ -253,6 +253,7 @@
     "steps": [],
     "pending_question": null
   },
+  "live_read": "ok",
   "replay": [
     {
       "type": "turn_started",
