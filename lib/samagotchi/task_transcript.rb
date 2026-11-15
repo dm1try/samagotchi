@@ -28,7 +28,7 @@ module Samagotchi
       Array(messages).flat_map do |message|
         next [] unless (message[:role] || message["role"]).to_s == "tool_response"
 
-        (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
+        utf8(message[:content] || message["content"]).split("\n\n---\n\n").filter_map do |block|
           block[CREATED_BLOCK, 1] || handed_over_id(block)
         end
       end.uniq
@@ -39,8 +39,9 @@ module Samagotchi
     # handed_over_id. nil for any other tool or output.
     # @return [String, nil]
     def created_id(tool, text)
+      text = utf8(text)
       case tool
-      when "task_create" then text.to_s[CREATED_OUTPUT, 1]
+      when "task_create" then text[CREATED_OUTPUT, 1]
       when ToolNames::Execute::NAME then handed_over_id(text)
       end
     end
@@ -52,16 +53,20 @@ module Samagotchi
     # web/public/task_stop.js has the JS twin (handedOverId).
     # @return [String, nil]
     def handed_over_id(text)
+      text = utf8(text)
+      text[handed_over_pattern, 1]
+    end
+
+    def utf8(text)
       text = text.to_s
       # A regexp raises on bytes that aren't UTF-8 (a command's raw output).
-      text = text.scrub unless text.valid_encoding?
-      text[handed_over_pattern, 1]
+      text.valid_encoding? ? text : text.scrub
     end
 
     def handed_over_pattern
       @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{ToolNames::Execute::NAME}\]\n)?#{Regexp.escape(ToolNames::Execute::HANDED_OVER)} #{ToolNames::Execute::HANDED_OVER_AFTER}[^\n]*\ntask_id: (\S+)/
     end
 
-    private_class_method :handed_over_pattern
+    private_class_method :utf8, :handed_over_pattern
   end
 end

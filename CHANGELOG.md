@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Tool output with invalid UTF-8 no longer breaks task tracking or finishing a background task.
+
 ## [0.174.0] - 2026-11-15
 
 ### Added
