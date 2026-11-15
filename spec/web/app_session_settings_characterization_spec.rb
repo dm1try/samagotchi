@@ -7,6 +7,7 @@ require "samagotchi/session"
 require "samagotchi/worker"
 require "samagotchi/queued_command"
 require "samagotchi/web/app"
+require_relative "../support/worker_links"
 require_relative "../support/fake_provider_server"
 require_relative "../support/effective_model_configs"
 
@@ -21,6 +22,8 @@ require_relative "../support/effective_model_configs"
 # Regenerate only after an intended behaviour change:
 #   UPDATE_GOLDENS=1 bundle exec rspec spec/web/app_session_settings_characterization_spec.rb
 RSpec.describe "Session settings chips (characterization)" do
+  include WorkerLinks
+
   include_context "effective model configs"
 
   let(:state_dir) { File.join(tmp, "state", "samagotchi", "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
@@ -68,7 +71,7 @@ RSpec.describe "Session settings chips (characterization)" do
                 "reasoning_history" => { "level" => "all" }, "toolkit" => { "name" => "lean" } }
     snapshots = { present: present, nil_valued: chip_keys.to_h { |key| [key, nil] }, absent: {} }
     values[:snapshot] = snapshots.transform_values do |state|
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live(state))
+      stub_snapshot_get(app, session.id, live(state))
       chips(session)
     end
 

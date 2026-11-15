@@ -7,9 +7,12 @@ require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/session"
 require "samagotchi/objectives"
+require_relative "../support/worker_links"
 
 # The page's objectives: the session read's fold and each list note's entry.
 RSpec.describe Samagotchi::Web::App, "objectives" do
+  include WorkerLinks
+
   let(:tmpdir) { Dir.mktmpdir("web-objectives") }
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:session) do
@@ -55,10 +58,9 @@ RSpec.describe Samagotchi::Web::App, "objectives" do
     session.messages = [note("n1", list)]
     session.save(state_dir: state_dir)
     live_view = { "items" => [{ "id" => "O1", "text" => "worker view" }] }
-    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
-      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "objectives" => live_view },
-      "session_state_snapshot" => {}
-    )
+    stub_snapshot_get(app, session.id, { "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)),
+                                                         "objectives" => live_view },
+                                         "session_state_snapshot" => {} })
     expect(Samagotchi::Objectives).not_to receive(:view)
 
     expect(show["objectives"]).to eq(live_view)
@@ -67,10 +69,8 @@ RSpec.describe Samagotchi::Web::App, "objectives" do
   it "falls back to the saved objectives view when a live snapshot has no objectives key" do
     session.messages = [note("n1", list)]
     session.save(state_dir: state_dir)
-    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
-      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)) },
-      "session_state_snapshot" => {}
-    )
+    stub_snapshot_get(app, session.id, { "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)) },
+                                         "session_state_snapshot" => {} })
 
     view = show["objectives"]
     expect(view).to include("pending" => false)
@@ -80,10 +80,9 @@ RSpec.describe Samagotchi::Web::App, "objectives" do
   it "shows no objectives when a live worker explicitly reports nil" do
     session.messages = [note("n1", list)]
     session.save(state_dir: state_dir)
-    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
-      "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "objectives" => nil },
-      "session_state_snapshot" => {}
-    )
+    stub_snapshot_get(app, session.id, { "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)),
+                                                         "objectives" => nil },
+                                         "session_state_snapshot" => {} })
 
     expect(show).not_to have_key("objectives")
   end

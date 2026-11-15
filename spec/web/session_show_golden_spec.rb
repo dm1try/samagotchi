@@ -8,6 +8,7 @@ require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/session"
 require "samagotchi/bridge/turn_drawings"
+require_relative "../support/worker_links"
 
 # The owner's GET /api/sessions/:id, byte for byte (characterization):
 # pinned before SessionShow#handle_show was split into the shared reads and
@@ -21,6 +22,8 @@ require "samagotchi/bridge/turn_drawings"
 # Regenerate only after an intended change to the owner's show:
 #   UPDATE_GOLDENS=1 bundle exec rspec spec/web/session_show_golden_spec.rb
 RSpec.describe Samagotchi::Web::App, "the owner's show (golden)" do
+  include WorkerLinks
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:golden_dir) { File.expand_path("../fixtures/show_goldens", __dir__) }
@@ -77,8 +80,12 @@ RSpec.describe Samagotchi::Web::App, "the owner's show (golden)" do
 
   def app_with(live)
     app = described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0, markdown: false)
-    allow(app).to receive(:bridge_get_json).and_call_original
-    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+    # The snapshot read is one GET of the Bridge, so a live show needs a live
+    # worker link as well as the answer.
+    allow(app).to receive(:worker_link).and_return(live ? live_link({ port: 4321, version: Samagotchi::VERSION,
+                                                                      protocol: Samagotchi::WorkerLink::PROTOCOL }) : Samagotchi::WorkerLink::None.new)
+    allow(app).to receive(:bridge_get).and_call_original
+    allow(app).to receive(:bridge_get).with(session.id, "snapshot").and_return([200, live])
     allow(app).to receive(:bridge_event_seq).and_return(nil)
     app
   end

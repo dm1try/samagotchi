@@ -9,12 +9,15 @@ require "samagotchi/web/app"
 require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
+require_relative "../support/worker_links"
 
 # A participant's GET /api/sessions/:id (the main page's show) with a live
 # worker's snapshot: the turn in progress, their own queue, waiting for the
 # owner, their usage. The leak cases of the read the participant page had
 # (GET …/review, gone with that page), on the show.
 RSpec.describe Samagotchi::Web::App, "participant reads" do
+  include WorkerLinks
+
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { File.realpath(Dir.mktmpdir("web-review")) }
@@ -46,7 +49,10 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
       "session_state_snapshot" => { "status" => "running", "participants" => [{ "id" => "p_x" }], "metrics" => { "cost" => 1 } } }
   end
 
-  before { allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot) }
+  before do
+    stub_snapshot_get(app, session.id, snapshot)
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
+  end
 
   after { FileUtils.remove_entry(root) }
 
@@ -217,7 +223,7 @@ RSpec.describe Samagotchi::Web::App, "participant reads" do
       snapshot["session_state_snapshot"]["metrics"] = { "spend_by_author" => { other.author => { "cost" => 4.0 } } }
       expect(show(issued.token).last.dig("viewer", "usage", "spent")).to eq(0.5)
 
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(nil)
+      stub_snapshot_get(app, session.id, nil)
       usage = show(issued.token).last.dig("viewer", "usage")
       expect(usage).to include("spent" => 0.5, "queue_limit" => 3, "model" => "m")
       expect(usage).not_to have_key("queued")

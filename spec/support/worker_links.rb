@@ -22,4 +22,15 @@ module WorkerLinks
 
   # @return [Samagotchi::WorkerLink::None]
   def none_link = Samagotchi::WorkerLink::None.new
+
+  # The show's snapshot read as one stubbed GET of the Bridge: a Live worker on
+  # +port+ whose Bridge answers [status, body] ([nil, nil]: no reply at all).
+  # SessionShow#live_snapshot asks the Bridge once, with its status, so a spec
+  # that gives the show a live worker needs the link as well as the body.
+  def stub_snapshot_get(app, id, body, status: 200, port: 4321)
+    allow(app).to receive(:worker_link).and_return(live_link({ port: port, version: Samagotchi::VERSION,
+                                                               protocol: Samagotchi::WorkerLink::PROTOCOL }))
+    allow(app).to receive(:bridge_get).and_call_original
+    allow(app).to receive(:bridge_get).with(id, "snapshot").and_return([status, body])
+  end
 end

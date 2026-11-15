@@ -1139,8 +1139,10 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     def stub_worker(app, live)
-      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
-      allow(app).to receive(:bridge_get).and_call_original
+      # The show reads the live Bridge once, with its status (live_snapshot);
+      # the light re-reads keep their own GETs.
+      stub_snapshot_get(app, "s1", live)
+      allow(app).to receive(:bridge_get_json).and_call_original
       allow(app).to receive(:bridge_get).with("s1", "tail").and_return(live ? [200, tail_from(live)] : [nil, nil])
     end
 
@@ -1726,7 +1728,7 @@ RSpec.describe Samagotchi::Web::App do
 
       live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
                "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "llm_context" => { "strategy" => "none" } } }
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      stub_snapshot_get(app, session.id, live)
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload.dig("session", "llm_context")).to eq("strategy" => "none")
     end
@@ -1743,7 +1745,7 @@ RSpec.describe Samagotchi::Web::App do
 
       live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
                "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "thinking" => { "level" => "high" } } }
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      stub_snapshot_get(app, session.id, live)
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload.dig("session", "thinking")).to eq("level" => "high")
     end
@@ -1768,7 +1770,7 @@ RSpec.describe Samagotchi::Web::App do
 
       live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
                "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "reasoning_history" => nil } }
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      stub_snapshot_get(app, session.id, live)
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload["session"]).to include("reasoning_history" => nil)
     end
@@ -1790,7 +1792,7 @@ RSpec.describe Samagotchi::Web::App do
       allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
       live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
                "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "toolkit" => { "name" => "lean" } } }
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      stub_snapshot_get(app, session.id, live)
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload["session"]).to include("toolkit_default" => "lean", "toolkit" => { "name" => "lean" })
     end
@@ -1812,7 +1814,7 @@ RSpec.describe Samagotchi::Web::App do
       summary = { "name" => "lean", "label" => "lean +delegate", "left_out" => ["send_note"], "fallback" => nil }
       live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
                "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "toolkit" => summary } }
-      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      stub_snapshot_get(app, session.id, live)
       payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
       expect(payload.dig("session", "toolkit")).to eq(summary)
     end
@@ -3645,7 +3647,7 @@ RSpec.describe Samagotchi::Web::App do
 
     it "shows a 'running' left behind by a dead worker as idle, in the list and the session view" do
       session = saved_session("running")
-      allow(app).to receive(:bridge_get_json).and_return(nil)
+      stub_snapshot_get(app, session.id, nil)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
       hub.scan
@@ -3661,7 +3663,7 @@ RSpec.describe Samagotchi::Web::App do
       locks = { worker => "worker", tui => "tui" }.map do |session, kind|
         Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: kind)
       end
-      allow(app).to receive(:bridge_get_json).and_return(nil)
+      allow(app).to receive(:worker_link).and_return(none_link)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
       hub.scan
@@ -3680,7 +3682,7 @@ RSpec.describe Samagotchi::Web::App do
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(with.id, state_dir: state_dir))
       File.write(File.join(Samagotchi::Session.session_dir(with.id, state_dir: state_dir), "recap.json"),
                  JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
-      allow(app).to receive(:bridge_get_json).and_return(nil)
+      allow(app).to receive(:worker_link).and_return(none_link)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
       hub.scan
@@ -3692,7 +3694,7 @@ RSpec.describe Samagotchi::Web::App do
     it "takes the turn state from the live worker when there is one" do
       session = saved_session("running")
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
-      allow(app).to receive(:bridge_get_json).and_return("session_state_snapshot" => { "status" => "idle", "event_seq" => 3 })
+      stub_snapshot_get(app, session.id, { "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } })
 
       _, _, show = app.call(env_for("/api/sessions/#{session.id}"))
       hub.scan

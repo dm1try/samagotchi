@@ -15,6 +15,7 @@ require "samagotchi/participant_uploads"
 require "samagotchi/participant_prompts"
 require "samagotchi/image_store"
 require "samagotchi/vision_support"
+require_relative "../support/worker_links"
 
 # POST /api/sessions/:id/turn and …/turn/:eid/dequeue from a participant:
 # a turn whose author and client id are the grant's, queued or at the next
@@ -22,6 +23,8 @@ require "samagotchi/vision_support"
 # no shell line, command or image, nothing in the owner's prompt history,
 # and every answer audited.
 RSpec.describe Samagotchi::Web::App, "a participant's turn" do
+  include WorkerLinks
+
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { Dir.mktmpdir("web-participant-turn") }
@@ -131,6 +134,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
 
       snapshot = { "snapshot" => { "messages" => JSON.parse(JSON.generate(snapshot_messages)) } }
       allow(app).to receive(:bridge_get_json).and_call_original
+      stub_snapshot_get(app, session.id, snapshot)
       allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
     end
 

@@ -9,11 +9,14 @@ require "samagotchi/web/app"
 require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
+require_relative "../support/worker_links"
 
 # A participant's GET /api/sessions/:id (Web::ParticipantShow): the main
 # page's read in the owner's shape, every value filtered. Its leak cases
 # are participant_review_spec's and participant_red_team_spec's.
 RSpec.describe Samagotchi::Web::App, "a participant's show" do
+  include WorkerLinks
+
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { File.realpath(Dir.mktmpdir("web-participant-show")) }
@@ -69,7 +72,11 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
   let(:extra_top) { %w[fresh_running] }
   let(:extra_session) { %w[verify_unavailable] }
 
-  before { allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot) }
+  before do
+    stub_snapshot_get(app, session.id, snapshot)
+    # The routes that still read the snapshot by JSON (the working set's) keep their stub.
+    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
+  end
 
   after { FileUtils.remove_entry(root) }
 
@@ -179,7 +186,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(status).to eq(200)
     expect(body["current_turn"]).not_to have_key("generation")
 
-    allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(nil)
+    stub_snapshot_get(app, session.id, nil)
     status, body = read(issued.token)
     expect([status, body["current_turn"], body["replay"], body["queued"]]).to eq([200, nil, [], []])
     expect(body.dig("session", "bridge_up")).to be(false)

@@ -11,12 +11,15 @@ require "samagotchi/analytics_file"
 require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_drawings"
 require "support/turn_drawing_scenarios"
+require_relative "../support/worker_links"
 
 # GET /api/sessions/:id: every finished turn's items are stamped (drawn:
 # <turn_id>) from its line (a real one, else one made from its messages),
 # with no parts, and turn_drawings carries chi web's unfold of each
 # drawing, whatever the query (a tab from before 0.157 sends parts=1).
 RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
+  include WorkerLinks
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:state_dir) { Dir.mktmpdir }
@@ -51,7 +54,7 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader_for(messages), bridge_wait_timeout: 0,
                               markdown: false)
     allow(app).to receive(:bridge_get_json).and_call_original
-    allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+    stub_snapshot_get(app, "s1", live)
     app
   end
 

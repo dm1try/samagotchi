@@ -45,9 +45,8 @@ RSpec.describe Samagotchi::Web::App, "the show's live_read" do
   end
 
   # The app with a worker that is Live on +port+ (nil: no worker at all), whose
-  # snapshot read answers +live+ and, asked for its status, +status+ (nil: no
-  # reply came).
-  def app(live:, status: nil, port: 4321)
+  # snapshot GET answers [status, body] (status nil: no reply came).
+  def app(status: 200, body: nil, port: 4321)
     Samagotchi::Log.configure(path: log_path, level: :debug)
     app = Samagotchi::Web::App.new(manager: manager, state_dir: state_dir, session_class: loader,
                                    bridge_wait_timeout: 0, markdown: false)
@@ -57,9 +56,8 @@ RSpec.describe Samagotchi::Web::App, "the show's live_read" do
              Samagotchi::WorkerLink::None.new
            end
     allow(app).to receive(:worker_link).and_return(link)
-    allow(app).to receive(:bridge_get_json).and_call_original
-    allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
-    allow(app).to receive(:bridge_get).with("s1", "snapshot").and_return([status, nil])
+    allow(app).to receive(:bridge_get).and_call_original
+    allow(app).to receive(:bridge_get).with("s1", "snapshot").and_return([status, body])
     app
   end
 
@@ -75,25 +73,31 @@ RSpec.describe Samagotchi::Web::App, "the show's live_read" do
     File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.tag == "web" && r.event == event } }
   end
 
-  it "says ok when the live worker's snapshot came, and logs nothing" do
+  it "says ok when the live worker's snapshot came, in one GET, and logs nothing" do
     snapshot = { "current_turn" => { "turn_id" => "t1", "prompt" => "go" } }
-    data = show(app(live: { "snapshot" => snapshot }))
+    app = app(status: 200, body: { "snapshot" => snapshot, "session_state_snapshot" => { "event_seq" => 7 } })
+    data = show(app)
 
     expect(data["live_read"]).to eq("ok")
     expect(data["current_turn"]).to eq(snapshot["current_turn"])
+    expect(data["last_event_seq"]).to eq(7)
+    expect(app).to have_received(:bridge_get).with("s1", "snapshot").once
     expect(web_records("live_snapshot_failed")).to be_empty
   end
 
-  it "says none when no worker owns the session, and logs nothing" do
-    data = show(app(live: nil, port: nil))
+  it "says none when no worker owns the session, without asking the Bridge, and logs nothing" do
+    app = app(port: nil)
+    data = show(app)
 
     expect(data["live_read"]).to eq("none")
     expect(data["current_turn"]).to be_nil
+    expect(app).not_to have_received(:bridge_get)
     expect(web_records("live_snapshot_failed")).to be_empty
   end
 
-  it "says failed and logs the status when a live worker answers a non-200" do
-    data = show(app(live: nil, status: 500))
+  it "says failed and logs the status, in one GET, when a live worker answers a non-200" do
+    app = app(status: 500)
+    data = show(app)
 
     expect(data["live_read"]).to eq("failed")
     expect(data["current_turn"]).to be_nil
@@ -101,25 +105,30 @@ RSpec.describe Samagotchi::Web::App, "the show's live_read" do
     expect(record.fields["why"]).to eq("status 500")
     expect(record.sid).to eq("s1")
     expect(record.fields["ms"].to_i).to be >= 0
+    expect(app).to have_received(:bridge_get).with("s1", "snapshot").once
   end
 
   it "says failed and logs no reply when the Bridge never answered" do
-    data = show(app(live: nil, status: nil))
+    app = app(status: nil)
+    data = show(app)
 
     expect(data["live_read"]).to eq("failed")
     record = web_records("live_snapshot_failed").first
     expect(record.fields["why"]).to eq("no reply")
+    expect(app).to have_received(:bridge_get).with("s1", "snapshot").once
   end
 
-  it "says failed when the Bridge answers 200 with no snapshot in it" do
-    data = show(app(live: nil, status: 200))
+  it "says failed when the Bridge answers 200 with no JSON body" do
+    app = app(status: 200, body: nil)
+    data = show(app)
 
     expect(data["live_read"]).to eq("failed")
     expect(web_records("live_snapshot_failed").first.fields["why"]).to eq("no snapshot in the answer")
+    expect(app).to have_received(:bridge_get).with("s1", "snapshot").once
   end
 
   it "keeps a failed read's session as the file has it, without a stream cursor" do
-    data = show(app(live: nil, status: 503))
+    data = show(app(status: 503))
 
     expect(data["current_turn"]).to be_nil
     expect(data["replay"]).to eq([])

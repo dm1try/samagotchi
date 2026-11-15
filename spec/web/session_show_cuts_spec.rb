@@ -11,6 +11,7 @@ require "samagotchi/bridge/card_store"
 require "samagotchi/bridge/turn_accumulator"
 require "samagotchi/bridge/turn_drawings"
 require "support/stage_cut_scenarios"
+require_relative "../support/worker_links"
 
 # The show a page reloads to mid-turn while a card waits (the live-vs-reload
 # harness, spec/web/public/stage_cuts_parity.test.js): for each scenario's
@@ -18,6 +19,8 @@ require "support/stage_cut_scenarios"
 # a worker's snapshot, and Web::SessionShow sends the page's read of it.
 # UPDATE_STAGE_CUTS=1 writes spec/shared/stage_cuts/<name>.json.
 RSpec.describe Samagotchi::Web::App, "the show at a turn's cuts (stage cuts)" do
+  include WorkerLinks
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:state_dir) { Dir.mktmpdir }
@@ -75,7 +78,7 @@ RSpec.describe Samagotchi::Web::App, "the show at a turn's cuts (stage cuts)" do
     messages = ended ? [StageCutScenarios::HEAD, *scenario[:messages]] : [StageCutScenarios::HEAD]
     app = described_class.new(manager: manager, state_dir: state_dir, session_class: loader, bridge_wait_timeout: 0, markdown: false)
     allow(app).to receive(:bridge_get_json).and_call_original
-    allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return({ "snapshot" => snapshot(events, messages) })
+    stub_snapshot_get(app, "s1", { "snapshot" => snapshot(events, messages) })
     data = JSON.parse(app.call(Rack::MockRequest.env_for("/api/sessions/s1", "HTTP_HOST" => "127.0.0.1"))[2].first)
     data.slice("messages", "turn_drawings", "current_turn", "replay", "cards", "pending_question", "continue_offer")
   end

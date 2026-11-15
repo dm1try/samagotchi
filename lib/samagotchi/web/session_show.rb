@@ -96,34 +96,32 @@ module Samagotchi
 
       # The live worker's turn snapshot and what its read did: [snapshot,
       # live_read] — "ok" when a snapshot came, "none" when no worker owns the
-      # session, "failed" when a live worker's Bridge answered with none. The
-      # page's stage_missing.js reads live_read, so a running session whose
-      # stage shows no turn (this read had no current_turn, and so no replay
-      # and no stream cursor) is not mistaken for one whose stream replayed the
-      # turn's end. A failed read logs, at debug level, the why (the Bridge's
-      # status, or no reply at all: a refused connect, a timeout, a cut reply)
-      # and the elapsed ms.
+      # session, "failed" when a live worker's Bridge answered with none. One
+      # GET of the Bridge, never two: a worker that is busy is hit once, not
+      # twice. The page's stage_missing.js reads live_read, so a running session
+      # whose stage shows no turn (this read had no current_turn, and so no
+      # replay and no stream cursor) is not mistaken for one whose stream
+      # replayed the turn's end. A failed read logs, at debug level, the why from
+      # that same request (no reply: a refused connect, a timeout, a cut reply;
+      # 200 with no JSON body; another status) and the elapsed ms.
       # @return [Array(Hash, String)]
       def live_snapshot(id)
+        return [nil, "none"] unless bridge_client(id)
+
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        live = bridge_get_json(id, "snapshot")
+        status, body = bridge_get(id, "snapshot")
+        live = status == 200 && body.is_a?(Hash) ? body : nil
         return [live, "ok"] if live
 
-        link = worker_link(id)
-        return [nil, "none"] unless link.live?
-
         ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
-        # The same GET again, this time with its status: bridge_get_json hides
-        # which of these a nil came from.
-        status, = bridge_get(id, "snapshot")
         why = if status.nil?
-                ms >= BridgeClient::READ_TIMEOUT * 1000 ? "timeout" : "no reply"
+                "no reply"
               elsif status == 200
                 "no snapshot in the answer"
               else
                 "status #{status}"
               end
-        Log.debug(:web, "live_snapshot_failed", sid: id, why: why, ms: ms, port: link.port)
+        Log.debug(:web, "live_snapshot_failed", sid: id, why: why, ms: ms)
         [nil, "failed"]
       end
 

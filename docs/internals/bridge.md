@@ -157,9 +157,11 @@ no line for (an older worker's, one from before drawings, a dropped one) gets on
   is memoized per range (`Synth.memoized`), so a show after a turn end makes no old turn again. What each step did
   as message parts (`MessageParts`, `parts: true`) is the participant review's only (`ParticipantReview`, frozen on
   its message model). The read also says how the snapshot read went, as `live_read`: `ok` (a live worker's snapshot
-  came), `none` (no worker owns the session) or `failed` (a live worker's Bridge answered with no snapshot). A
+  came), `none` (no worker owns the session) or `failed` (a live worker's Bridge answered with no snapshot). The
+  snapshot is asked for once — `SessionShow#live_snapshot` uses `bridge_get`, the status it needs for the why is
+  the same reply's, never a second GET. A
   failed one logs `web live_snapshot_failed` with the why — the Bridge's status, or no reply at all (a refused
-  connect, a timeout, a cut reply) — and the elapsed ms, so a page showing a running session with nothing on its
+  connect, a timeout, a cut reply; the record's ms tells them apart) — and the elapsed ms, so a page showing a running session with nothing on its
   stage can be told from a stream that replayed the turn's end; the page's `stage_missing.js` reads the key
   (internals/web-frontend.md, "A running session without a turn"). Participants get the same key.
 - **Compat.** An older worker writes nothing, a continue (a note, no turns) copies no drawings, and
