@@ -195,6 +195,14 @@ RSpec.describe AffectedSpecs::Picker do
     end
   end
 
+  it "picks the worker specs for a Worker part, by a rule" do
+    files["spec/worker_spec.rb"] = ""
+    files["lib/samagotchi/worker/leave.rb"] = ""
+
+    picked = pick("lib/samagotchi/worker/leave.rb").ruby.find { |entry| entry.path == "spec/worker_spec.rb" }
+    expect(picked&.reason).to start_with("rule: ")
+  end
+
   it "picks the specs of PrivateFiles' callers, which check it through their own errors, by a rule" do
     users = %w[spec/grants_spec.rb spec/web/push/store_spec.rb spec/web/server_spec.rb]
     users.each { |path| files[path] = "" }
