@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - chi web: the working-set list includes model notes in the system prompt and redraws an open list when notes change.
+- /working-set add: refuse to re-read a memory already in the system prompt unless its output is in the working set.
 
 ## [0.176.0] - 2026-11-16
 

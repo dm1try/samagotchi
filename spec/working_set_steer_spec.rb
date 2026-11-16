@@ -217,8 +217,8 @@ RSpec.describe Samagotchi::WorkingSetSteer do
   describe ".add and .unadd" do
     let(:conversation) { [head, { role: "user", content: "go" }, *read_turn("lib/cart.rb", "c1", "t1"), { role: "model", content: "done" }] }
 
-    def add(conversation, word, found: ->(_) {}, strategy: :none)
-      described_class.add(conversation, target(word), strategy: strategy, cwd: root, found: found)
+    def add(conversation, word, found: ->(_) {}, in_prompt: [], strategy: :none)
+      described_class.add(conversation, target(word), strategy: strategy, cwd: root, found: found, in_prompt: in_prompt)
     end
 
     it "notes a request to read the item, pending until a turn sends it; an unadd takes it back, free" do
@@ -249,6 +249,35 @@ RSpec.describe Samagotchi::WorkingSetSteer do
       sent = messages + [{ role: "user", content: "next" }]
       expect(Samagotchi::WorkingSet.pending_adds(sent)).to eq([])
       expect(Samagotchi::WorkingSet.build(sent, cwd: root, strategy: :none, stat: ->(_) { raise Errno::ENOENT }).to_h).not_to have_key(:adds)
+    end
+
+    it "refuses a prompt-only memory, after an existing add, but leaves reads on their current path" do
+      expect { add(conversation, "memory:style", in_prompt: [" style "]) }
+        .to raise_error(described_class::Refused) { |error|
+          expect(error.reason).to eq(:in_prompt)
+          expect(error.message).to eq("already in the system prompt: nothing to add")
+        }
+
+      pending = described_class.record!(conversation, add(conversation, "memory:style"))
+      expect { add(pending, "memory:style", in_prompt: ["style"]) }
+        .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:already_added) }
+
+      read = [head, chat_model("c1", "memory_read", { "name" => "style" }),
+              chat_result("c1", "memory_read", "A brief style.", "t1")]
+      expect { add(read, "memory:style", in_prompt: ["style"]) }
+        .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:already_sent) }
+
+      forgotten = read.map(&:dup)
+      Samagotchi::LLMContextEdit.store(forgotten.last, Samagotchi::LLMContextEdit.new(id: "t1", kind: :forget, note: "x", by: "model",
+                                                                                      staged_at: now, applied_at: now))
+      expect(add(forgotten, "memory:style", in_prompt: ["style"], strategy: [:forget])).to have_attributes(op: "add")
+    end
+
+    it "compares scoped prompt names but leaves invalid scoped targets to memory_read's validation" do
+      expect { add(conversation, "memory:system/style", found: ->(_) {}, in_prompt: ["project/style"]) }
+        .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:in_prompt) }
+      expect { add(conversation, "memory:project/style", found: ->(_) { :bad_memory }, in_prompt: ["style"]) }
+        .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:bad_memory) }
     end
 
     it "refuses what can't be read and what the model has whole; a stale or forgotten item is its refresh" do

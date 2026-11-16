@@ -830,6 +830,45 @@ RSpec.describe Samagotchi::SessionCommands do
       memory&.close!
     end
 
+    it "refuses a memory already in the prompt without changing or saving the session" do
+      memory = Tempfile.new(%w[model-notes .md])
+      before = session.messages.dup
+      allow(engine).to receive(:prompt_memory_names).and_return(["model_notes_qwen"])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).and_call_original
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).with("model_notes_qwen", "project").and_return(memory.path)
+
+      result = commands.run("/working-set add memory:model_notes_qwen")
+
+      expect(result).to have_attributes(status: :error, changed: [],
+                                        output: "add memory:model_notes_qwen: already in the system prompt: nothing to add")
+      expect(session.messages).to eq(before)
+      expect(saved).to be_empty
+
+      scoped = commands.run("/working-set add memory:project/model_notes_qwen")
+      expect(scoped).to have_attributes(status: :error, changed: [],
+                                        output: "add memory:project/model_notes_qwen: #{Samagotchi::WorkingSetSteer::Refused.text(:bad_memory)}")
+      expect(session.messages).to eq(before)
+      expect(saved).to be_empty
+    ensure
+      memory&.close!
+    end
+
+    it "does not refuse an identity memory excluded from the prompt" do
+      memory = Tempfile.new(%w[identity .md])
+      allow(engine).to receive(:prompt_memory_names).and_return([])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).and_call_original
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).with("identity", "project").and_return(memory.path)
+
+      result = commands.run("/working-set add memory:identity")
+
+      expect(result).to have_attributes(status: :ok, changed: [:messages])
+      expect(result.output).to eq("added memory identity: the next turn's note asks the model to read it first (one tool call)")
+      expect(session.messages.last[:content]).to include('memory_read "identity"')
+      expect(saved).not_to be_empty
+    ensure
+      memory&.close!
+    end
+
     it "lists the set, then the change the next turn starts with; the conversation changes and is saved" do
       expect(commands.run("/working-set").output).to start_with("working set (1 item):\n  README.md  read · ~")
 

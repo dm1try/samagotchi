@@ -33,7 +33,7 @@ module Samagotchi
                  WorkingSetSteer::ADD => "added", WorkingSetSteer::UNADD => "unadded" }.freeze
     PIN_OPS = [WorkingSetSteer::PIN, WorkingSetSteer::UNPIN].freeze
 
-    # @param engine [Engine] #session, #working_set_strategy,
+    # @param engine [Engine] #session, #working_set_strategy, #prompt_memory_names,
     #   #clone_messages, #replace_messages
     # @param save [#call] saves the session after a change
     def initialize(engine:, save:)
@@ -110,7 +110,8 @@ module Samagotchi
       when WorkingSetSteer::PIN then WorkingSetSteer.pin(messages, pins, target, strategy: strategy, cwd: cwd)
       when WorkingSetSteer::UNPIN then WorkingSetSteer.unpin(pins, target)
       when WorkingSetSteer::ADD
-        WorkingSetSteer.add(messages, target, strategy: strategy, cwd: cwd, found: method(:missing))
+        WorkingSetSteer.add(messages, target, strategy: strategy, cwd: cwd, found: method(:missing),
+                             in_prompt: @engine.prompt_memory_names)
       else WorkingSetSteer.unadd(messages, target)
       end
     end
