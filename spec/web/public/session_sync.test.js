@@ -48,6 +48,7 @@ function fakePage({ read = async () => ({ messages: [] }) } = {}) {
     participantsControl: { load: rec("participantsControl.load") },
     view: {
       forgetSession: rec("forgetSession"),
+      leaveSession: () => page.calls.push(["leaveSession", store.selected]),
       renderSessionView: rec("renderSessionView"),
       endTurnView: rec("endTurnView"),
     },
@@ -85,6 +86,18 @@ test("select shows Loading… and forgets the last session before its read lands
   page.read = async () => ({ messages: [] });
   await sync.select("s1");
   assert.deepEqual(page.calls.filter((c) => c[0] === "forgetSession").at(-1), ["forgetSession", { keepVerify: true }]);
+});
+
+// What the user opened of the running turn is kept (session_view.js
+// leaveSession) while the session left is still the open one, before the reset.
+test("select keeps the view of the session it leaves first, then forgets it", async () => {
+  const { page, sync } = fakePage({ read: async () => ({ messages: [] }) });
+  await sync.select("s1");
+  await sync.select("s2");
+  const names = page.calls.map((c) => c[0]);
+  const second = names.lastIndexOf("leaveSession");
+  assert.deepEqual(page.calls[second], ["leaveSession", "s1"], "the one it leaves");
+  assert.ok(second < names.lastIndexOf("forgetSession"), "before the reset");
 });
 
 // The fold of the asking card is this tab's (stage_waiting.js): it follows the
