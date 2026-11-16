@@ -247,3 +247,28 @@ test("switching A to B and back: A's cloud and the step opened in it are as left
   await settle();
   assert.equal(page.turnDom.cloud.isOpen(), false, "a different turn: closed");
 });
+
+// The start page (app.js clearSelection) leaves a session through
+// forgetSession alone, with no select: the view is kept there too.
+test("going to the start page and back: A's opened cloud is as left", async () => {
+  const page = pageFor();
+  const a = show({
+    currentTurn: { turn_id: "a1", prompt: "A's turn", status: "running" },
+    replay: [
+      { type: "turn_started", turn_id: "a1", prompt: "A's turn", started_at: "2026-11-15T12:00:00.000Z" },
+      { type: "generation_started", iteration: 1 }, { type: "generation_chunk", iteration: 1, text: "First." },
+    ],
+  });
+  page.view.renderSessionView(a);
+  await settle();
+  page.turnDom.cloud.setCloud(true);
+  // clearSelection's order: the session unset, then forgetSession.
+  page.store.update({ selected: null });
+  page.view.forgetSession();
+  assert.equal(page.turnDom.cloud.isOpen(), false, "the start page: no cloud");
+  page.store.update({ selected: "s1" });
+  page.view.forgetSession();
+  page.view.renderSessionView(a);
+  await settle();
+  assert.equal(page.turnDom.cloud.isOpen(), true, "back: the cloud open again");
+});
