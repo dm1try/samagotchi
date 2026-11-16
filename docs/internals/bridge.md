@@ -462,7 +462,7 @@ The Bridge exposes:
   client asks first (`CacheConfirm`; nothing changed, `line` applies it).
 - `POST /session/:id/exit` — ask the worker to exit now (`{client_id:, delete?, restart?, deadline?}`; `delete`:
   `/exit --delete`, no recap written; `restart: true`: hand the session to a new worker on the newest chi
-  installed, `200 {status: "restarting"}`; an empty session's `exiting` carries `discard: true`). The worker checks with
+  installed, `200 {status: "restarting"}`; an empty session's `exiting` carries `discard: true`; a `stop: "all"` exit's `exiting` carries `stopped`, read with the event log held right after the accept, so a later exit's list is never its own). The worker checks with
   the event log held (`WorkerIdleExit#hold_for_request`): `200 {status: "exiting"}` and it leaves
   like an idle exit, or `409 {status: "held", reason:}` with `turn_running`, `input_queued`,
   `continue_offered`, `client_connected` (a stream not named by the asker), `reminders`,

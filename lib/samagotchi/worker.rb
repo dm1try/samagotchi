@@ -46,6 +46,8 @@ require_relative "task_watch"
 require_relative "tools/task_runtime"
 require_relative "worker_participant_gate"
 require_relative "worker_exit_claim"
+require_relative "worker/leave"
+require_relative "worker/wake_turns"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -78,7 +80,15 @@ module Samagotchi
   # no new work. A turn that hasn't ended SIGNAL_GRACE seconds after the
   # signal is cut: the session is saved as it is and the signal raised in
   # the loop's thread, as Ruby's default would (the teardown still runs).
+  #
+  # This file keeps the loop's wiring and the turn plumbing. Two concerns are
+  # parts, lib/samagotchi/worker/<concern>.rb holding Worker::<Concern>Part,
+  # included here (they share Worker's ivars): LeavePart (exit and leave) and
+  # WakeTurnsPart (the turns nobody typed).
   class Worker
+    include LeavePart
+    include WakeTurnsPart
+
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
     # long: a worker spawned for a message (chi send to a stopped parent)
@@ -91,8 +101,6 @@ module Samagotchi
     # on the streams, a session file doesn't hold it.
     COMMAND_OUTPUT_LIMIT = 64 * 1024
     BUSY_OUTPUT = "busy: wait for the turn to end"
-    # /exit held by background tasks a finish wake waits for: how to end them.
-    TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"
     # !rollback mid-turn would mean "the turn I'm in".
     ROLLBACK_BUSY_OUTPUT = "busy: Ctrl-C the turn first, then !rollback"
     # How long a signalled worker's turn has to end (it is canceled at once,
@@ -230,10 +238,6 @@ module Samagotchi
     # tasks and the delegate children the exit ask lists). /exit's 2 uses
     # it; the web's Stop will too.
     attr_reader :hold_stop
-
-    # @return [HoldStop::Stopped, nil] the last stop-all's list (the Bridge's
-    #   exit_stopped)
-    def stopped_holds = @exit_claim.stopped
 
     private
 
@@ -451,18 +455,6 @@ module Samagotchi
         reminders: @engine.reminder_store&.any? ? 1 : 0,
         tasks_holding: Degrade.call(:worker, "activity_tasks_unreadable") { @task_wakes&.watch&.holding&.size.to_i }
       }
-    end
-
-    # The delegate children of this session that are running a turn or have
-    # a live worker. ChildrenStatus.of scans the session files; this runs on
-    # an exit request, not every pass.
-    # @return [Array<ChildrenStatus::Child>]
-    def live_delegates
-      ChildrenStatus.of(@session_id, state_dir: @state_dir)
-                      .select { |child| child.delegate && (child.state == "running" || child.live) }
-    rescue StandardError => e
-      Log.warn(:worker, "delegate_look_failed", error: e.class.name, msg: e.message)
-      []
     end
 
     # What runs beside the loop until it leaves.
@@ -770,19 +762,6 @@ module Samagotchi
     # No input file or queued command waits: the loop would go idle.
     def nothing_queued? = @command_queue.empty? && SessionInbox.find_new_input_files(@session_dir).empty?
 
-    # A turn nobody typed for a changed source (a context wake): a continue
-    # turn from context:<name> whose first message is the wake note already
-    # in the conversation (named by +turn_id+), on the same rules as a
-    # delegate report's wake turn (#run_wake): it counts toward
-    # session.max_wakes (a peer's answer toward context.peer_turns too,
-    # unless it agrees).
-    # +context_wake+: a WorkerInbound::ContextWake.
-    def run_context_wake_turn(context_wake)
-      name = context_wake.name
-      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
-      run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake)
-    end
-
     # The first prompt (spawn_session's): a delegate child's task, which is
     # its parent's. Its turn carries the id spawn_session gave it, so a
     # wait for it (--new --wait) names it, and its sender
@@ -840,158 +819,6 @@ module Samagotchi
     def fresh_origin(origin)
       fresh = @session&.verify_fresh
       fresh ? fresh.origin_for(origin) : TurnOrigin.of(origin)
-    end
-
-    # A due reminder runs as a continue turn: Engine#run_turn
-    # injects the reminders as a tail system message, and no user message is
-    # added. A prompt's turn may have injected them already (a stale latch):
-    # then there is nothing to run.
-    # @return [Boolean] whether a reminder turn ran
-    def run_due_reminders
-      return false if @engine.due_reminder_names.empty?
-
-      @engine.clear_due_reminder_names!
-      return false unless @engine.reminders_due?
-
-      @continue_offer.drop(REMINDER_ORIGIN)
-      # A failure has no prompt to hand back (the Engine announced
-      # :turn_failed). The offer went before the turn
-      # (ContinueOffer#drop); either way the rollback window closes.
-      run_engine_turn(nil, continue: true, origin: wake_origin(REMINDER_ORIGIN),
-                           max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
-      true
-    end
-
-    # A reminder turn's origin: chi's own (system:reminder). Its run gets
-    # an id of its own (#wake_origin); this constant has none.
-    REMINDER_ORIGIN = TurnOrigin.new(client_id: ClientId::REMINDER)
-
-    # A turn nobody typed (a reminder, a wake) with an enqueued_id of its
-    # own, minted here as it runs, so its checkpoint mark, last_turn, reply
-    # file and settle name it (a wait with no message binds it:
-    # ReplyWait.own_turn). Never on the origin constants nor on
-    # ChildReports::Report#origin: a report merged into a turn keeps an
-    # id-less origin, which the web page reads as a report (turn_events.js
-    # promptOps), not as an unmatched steer.
-    # @return [TurnOrigin] +origin+ with an id ("wake-<16 hex>")
-    def wake_origin(origin)
-      origin.enqueued_id ? origin : origin.with(enqueued_id: "#{WAKE_ID_PREFIX}#{SecureRandom.hex(8)}")
-    end
-
-    # A wake turn's minted enqueued_id starts with this
-    # (SessionInbox::ENQUEUED_ID_NAME).
-    WAKE_ID_PREFIX = "wake-"
-
-    # :due when an idle parent should run a turn for its delegate
-    # children's reports now (session.delegate_reports: wake): rings wait,
-    # no continue offer does (they merge into its turn), wakes aren't paused
-    # by a failed one, and the wake budget isn't spent; :budget when only
-    # the budget stops it; nil otherwise.
-    def wake_state
-      return nil unless @child_reports && ChildRing.mode == "wake"
-
-      @wakes.delegate_state(awaiting_continue: @turn_flow&.awaiting_continue?) { @child_reports.waiting? }
-    end
-
-    # Run a turn nobody typed for the reports the rings bring (a wake turn):
-    # a continue turn (no prompt bubble) whose first boundary merges them,
-    # with origin child:<id8>. A failure goes back to the checkpoint, keeps
-    # the rings and pauses wakes until a human's input (a provider outage
-    # doesn't loop).
-    # @return [Boolean] whether a wake turn ran
-    def run_wake_turn
-      return false if @wakes.in_grace?
-
-      state = wake_state
-      budget_notice if state == :budget
-      return false unless state == :due
-
-      # Unresolved: a relay among them opens its card at the turn's first
-      # boundary, on the turn thread (a Stop closes it).
-      reports, = take_child_reports(resolve: false)
-      # The turn must not generate with nothing to say: the drain gets this
-      # exact list at its first boundary.
-      return false if reports.empty?
-
-      @wakes.hand_over(reports)
-      Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes.count!)
-      # Rolled back, the rings stay (settle_child_reports): the user's next
-      # turn takes them. A turn that got somewhere stays, and read them.
-      run_wake(origin: reports.first.origin,
-               failed: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
-               kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
-                     "again with the user's next message.")
-      true
-    ensure
-      @wakes.drop_handed
-    end
-
-    # A wake turn (a delegate report's, an attached context change's, a
-    # finished task's): a continue turn nobody typed, from +origin+. A
-    # failure goes back to before the turn and pauses wakes until a human's
-    # input (a provider outage doesn't loop); so does a Stop before it got
-    # anywhere (a Stop or a before_turn hook's cancel before the model
-    # call, restored by TurnFlow), rather than waking again at once. Either
-    # way +mark+ (a WorkerInbound::ContextWake or TaskWake: its wake note,
-    # the turn's first message) goes back to a plain note
-    # (WorkerInbound#unmark_wake), unless the failed turn kept its steps.
-    # +failed+ names the wake in the failed turn's note, +kept+ says what
-    # happens to it (TurnFlow#prompt_turn_failed).
-    def run_wake(origin:, failed:, kept: nil, mark: nil)
-      @turn_flow.before_prompt_turn
-      restores = @turn_flow.restores
-      run_engine_turn(nil, continue: true, origin: wake_origin(origin), id: mark&.turn_id,
-                           max_iterations: IterationLimit.for) do |result, error|
-        if error
-          steps_kept = @turn_flow.prompt_turn_failed(error: error, wake: failed, wake_kept: kept) == :kept
-          @inbound.unmark_wake(mark) if mark && !steps_kept
-          @wakes.pause!
-        else
-          @continue_offer.after_turn(result)
-          if result.canceled? && @turn_flow.restores != restores
-            @inbound.unmark_wake(mark) if mark
-            @wakes.pause!
-          end
-        end
-      end
-    end
-
-    # The background tasks this session started that finished unseen, as
-    # notes (WorkerTaskWakes#take), and the wake turn the first one may
-    # start.
-    # @return [Boolean] whether a wake turn ran
-    def run_task_wake
-      task_wake = @task_wakes.take
-      return false unless task_wake
-
-      run_task_wake_turn(task_wake)
-      true
-    end
-
-    # A turn nobody typed for a finished task: a continue turn from
-    # task:<id> whose first message is the wake note, on the delegate wake's
-    # rules (#run_wake; counted toward session.max_wakes): a failure that
-    # kept nothing, or a Stop that restored the conversation, leaves the
-    # note as a plain one (M4).
-    def run_task_wake_turn(task_wake)
-      Log.info(:worker, "task_wake_turn", task_id: task_wake.id, in_a_row: @wakes.count!)
-      run_wake(origin: task_wake.origin, failed: "a finished background task (#{task_wake.name.delete_prefix("task ")})",
-               kept: "Its note stays for the user's next message.", mark: task_wake)
-    end
-
-    # The idle loop's sleep: the fallback tick, or less while reports or
-    # attached-context wakes wait out the start grace.
-    def idle_wait = @wakes.idle_wait(@poll_interval) { wake_state == :due || @inbound.context_wake_waiting? }
-
-    # The wake budget is spent: the parent's UIs hear once that reports
-    # wait for the next message.
-    def budget_notice
-      return unless @wakes.notice_budget!
-
-      count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
-      @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
-                       text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
-                             "your next message (#{@wakes.max} turn#{"s" if @wakes.max != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
@@ -1669,251 +1496,6 @@ module Samagotchi
           true
         end
       end
-    end
-
-    # Check again with the event log held, which the Bridge holds while it
-    # queues a POST /turn, then close the Bridge's intake so no client can
-    # queue one after the check, and stop the idle jobs (reminder callback,
-    # recap). The Bridge stops after the log is let go (#stop_bridge_after).
-    # A client connecting from here on finds no worker: `chi --attach` fails
-    # and the web stream answers 503 (a small window, left as is).
-    # @return [Boolean] false when something came in since #due?
-    def leave_idle
-      stop_bridge_after do
-        @engine.synchronize_events do
-          next false unless @idle_exit.due?
-
-          @bridge&.close_intake
-          # Not joined: a recap tick's emit waits for the event log held here.
-          @engine.stop_idle(join: false)
-          log_idle_exit
-          true
-        end
-      end
-    end
-
-    # The Bridge stops once the block (which closed its intake with the
-    # event log held) answers true, outside the log: Bridge#stop waits for
-    # the requests it is answering, and one waiting on the log would hold
-    # it for the whole grace before being killed. The owner lock says it is
-    # leaving first, so a client that finds no Bridge from here on waits
-    # for the lock (OwnerLock.await_release) instead of giving up.
-    # @return [Boolean] what the block answered
-    def stop_bridge_after
-      leaving = yield
-      if leaving
-        mark_leaving
-        @bridge&.stop
-      end
-      leaving
-    end
-
-    # How long the lock stays held after the Bridge: the recap on leave's
-    # timeout (#left), none for a restart (#left writes none). A delete
-    # writes none either, but the bound only has to be an upper one.
-    # Once: the teardown's (after #stop_bridge_after's) keeps the first one.
-    # @param wait [Numeric, nil] nil: as above
-    def mark_leaving(wait: nil)
-      return if @marked_leaving
-
-      @marked_leaving = true
-      wait ||= @exit_claim.restart? ? 0 : @engine.recap_timeout.to_f
-      @owner_lock&.mark_leaving(wait: wait)
-    rescue StandardError => e
-      Log.warn(:worker, "mark_leaving_failed", error: e.class.name, msg: e.message)
-    end
-
-    # Bridge POST /exit, on a Bridge thread with the event log held.
-    # +delete+: the session is deleted after (/exit --delete), so no recap.
-    # +restart+: a new worker takes over (on the newest chi installed), so
-    # WorkerIdleExit#hold_for_restart's rules, and no recap or discard.
-    # +stop+: the exit ask's "stop them and exit" — stop every hold the user
-    #   can stop before leaving; a hold they can't stop refuses the request
-    #   (WorkerIdleExit#request_hold checks again, so one that appeared
-    #   since the ask is refused too).
-    # +ask+: this client asks the user what to do with what still runs, so the
-    #   delegate children are part of the list. An exit that deletes the
-    #   session, or one a UI can't ask about (/archive), leaves them out:
-    #   they never hold the worker up on their own.
-    # @return [WorkerIdleExit::Hold, nil] what keeps the worker up (for
-    #   :background_tasks, the watched tasks still running), nil when it
-    #   will leave
-    def exit_request(client_id, delete: false, restart: false, stop: false, ask: true)
-      # The Bridge serves before the idle-exit policy exists.
-      return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
-
-      kind = if restart then :restart
-             elsif delete then :delete
-             else :exit
-             end
-      # One exit at a time, and the first one taken decides how the worker
-      # leaves (a later stop-all can't turn a restart, whose reminders go to
-      # the next worker, into a plain exit): claimed before the slow
-      # stop-all, so a request of another kind meanwhile is refused (409),
-      # not told it went through. Held at the leave, it is forgotten and the
-      # next request counts again.
-      refused = @exit_claim.claim(kind)
-      return refused.value if refused
-
-      hold = exit_hold(client_id, kind: kind, stop: stop, ask: ask)
-      if hold
-        @exit_claim.forget
-        return hold
-      end
-
-      @exit_claim.accept(by: client_id, stop: stop)
-      @waker.wake
-      nil
-    rescue StandardError
-      # A look or a stop that raised lets the claim go (the Bridge answers 500).
-      @exit_claim.release
-      raise
-    end
-
-    # What keeps the worker up for this request, nil when nothing does; a
-    # stop request stops what the user can stop first (#exit_request).
-    # @return [WorkerIdleExit::Hold, nil]
-    def exit_hold(client_id, kind:, stop:, ask:)
-      if kind == :restart
-        # A scratch session's worker ends with its terminal: never restarted.
-        return WorkerIdleExit::Hold.new(reason: :scratch) if @session.scratch
-
-        hold = @idle_exit.hold_for_restart
-        return hold && WorkerIdleExit::Hold.new(reason: hold)
-      end
-
-      # /exit names the tasks it waits for (D3), from the one look that found them.
-      # The ask covers the delegate children too, but only for a plain /exit: an
-      # exit that deletes the session, or one a UI won't ask about, ignores them.
-      hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT, ask: ask && kind != :delete)
-      return nil unless hold
-      # A hold the user can't stop here: no ask, today's refusal.
-      return hold unless hold.ask?
-      # The ask's 409: the list, for the terminal to ask with.
-      return hold unless stop
-
-      @exit_claim.stopped!(@hold_stop.stop_all)
-      # An unstoppable hold may have arrived while stopping (a child stopped
-      # here is no longer counted).
-      @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
-    end
-
-    # #leave_idle for an exit a client asked for: check again with the event
-    # log held (a prompt may have come in since), then close the Bridge's
-    # intake and stop the idle jobs (the Bridge stops after the log). Other clients' streams no longer hold: the asker's
-    # may not have closed yet, and a UI joining now finds the worker gone
-    # (:stream_closed), the window #leave_idle has too.
-    # @return [Symbol, false] how it leaves (:restart or :exit_requested,
-    #   decided under the lock), false when something came in since the request
-    def leave_on_request
-      stop_bridge_after do
-        @engine.synchronize_events do
-          # One read: the kind and the asker of the same exit.
-          taken = @exit_claim.taken
-          restart = taken&.restart?
-          hold = if restart
-                   @idle_exit.hold_for_restart
-                 else
-                   @idle_exit.hold_for_request(requester: taken&.by, streams: false)
-                 end
-          if hold
-            @exit_claim.forget
-            Log.info(:worker, "exit_held", reason: hold)
-            next false
-          end
-          next false if restart && !carry_reminders
-
-          @bridge&.close_intake
-          # Not joined: a recap tick's emit waits for the event log held here.
-          @engine.stop_idle(join: false)
-          Log.info(:worker, restart ? "restart_requested" : "exit_requested", by: taken&.by || "a client")
-          restart ? :restart : :exit_requested
-        end
-      end
-    end
-
-    # A restart hands the reminders to the next worker (ReminderCarry), while
-    # the event log is held: no turn can register or fire one from here. A
-    # write that fails keeps this worker up with them rather than losing them.
-    # A session stopped meanwhile drops them (WorkerBoot.run_session_loop
-    # then starts no successor): nothing is written.
-    # @return [Boolean] false when the write failed
-    def carry_reminders
-      if stopped_on_disk?
-        ReminderCarry.remove(@session_dir)
-      else
-        ReminderCarry.write(@session_dir, session_id: @session_id, store: @engine.reminder_store)
-      end
-      true
-    rescue StandardError => e
-      @exit_claim.forget
-      Log.warn(:worker, "reminders_carry_failed", error: e.class.name, msg: e.message)
-      false
-    end
-
-    # The reminders a restart handed over (#carry_reminders), read and
-    # deleted; a stopped session drops them.
-    # @return [Array<Hash>, nil] ReminderStore#export's entries
-    def take_carried_reminders
-      ReminderCarry.take(@session_dir, session_id: @session_id, stopped: stopped_on_disk?)
-    rescue StandardError => e
-      Log.warn(:worker, "reminders_carry_take_failed", error: e.class.name, msg: e.message)
-      nil
-    end
-
-    # Into the new Engine's store, before the idle scheduler starts polling it.
-    def restore_carried_reminders(entries)
-      return unless entries
-
-      names = @engine.reminder_store.restore(entries)
-      Log.info(:worker, "reminders_carried", count: names.size)
-    rescue StandardError => e
-      Log.warn(:worker, "reminders_carry_restore_failed", error: e.class.name, msg: e.message)
-    end
-
-    # @return [Symbol] +result+, with #discard? decided and, for a session
-    #   kept, its recap written: the Bridge is closed and the idle jobs are
-    #   stopped by now, and nothing waits on this (the TUI has detached). A
-    #   `chi send` meanwhile is picked up after the exit (WorkerBoot.run_session_loop);
-    #   a `chi --attach` finds no Bridge until then.
-    # A restart keeps even an empty session (a new worker takes it over at
-    # once) and leaves the recap to the conversation's next real pause.
-    def left(result)
-      deleting = (result == :exit_requested && @exit_claim.deletes?) || result == :scratch_left
-      # The attached context goes with this process: a change that landed after
-      # the leaving pass looked at it has no later pass to note it, so note it
-      # here (no wake turn: the worker is on its way out). Not into a session
-      # /exit --delete deletes next: its save could land after the delete and
-      # write the session back.
-      absorb_context unless deleting
-      # The watch goes with this process: a task that finished since the
-      # last look (nothing held the exit for it: queue, a note-only task,
-      # /exit) is a plain note for the next turn, not lost. Not into a
-      # session /exit --delete deletes next: its save could land after the
-      # delete and write the session back.
-      @task_wakes.absorb unless deleting
-      return result if %i[restart scratch_left].include?(result)
-
-      @discard = empty_session?
-      write_recap_on_leave unless @discard || deleting
-      result
-    end
-
-    def write_recap_on_leave
-      written = @engine.write_recap_now
-      Log.info(:worker, "recap_on_leave") if written
-    rescue StandardError => e
-      Log.warn(:worker, "recap_on_leave_failed", error: e.class.name, msg: e.message)
-    end
-
-    # Memory used before any turn saved it lives only in the Engine.
-    def empty_session?
-      SessionManager.discardable?(@session_id, state_dir: @state_dir, default_model: @default_model,
-                                               used_memory_names: @engine.used_memory_names)
-    end
-
-    def log_idle_exit
-      Log.info(:worker, "idle_exit", idle_s: @idle_exit.idle_seconds.round)
     end
 
     # The owner's input (ClientId.owner?) un-archives the session; a

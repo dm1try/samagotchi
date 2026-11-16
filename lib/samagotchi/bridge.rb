@@ -150,13 +150,16 @@ module Samagotchi
     #   session, /exit --delete) or stop: ("all": stop everything the user
     #   can stop first), returns nil when the worker will leave or
     #   what keeps it up (a WorkerIdleExit::Hold: #reason, #tasks, #hint,
-    #   #holds); called with the event log held. Without one, POST /exit
+    #   #holds); called with the event log held, and +exit_stopped+ is read
+    #   there too, right after the accept. Without one, POST /exit
     #   answers 501
     # @param exit_discards [#call, nil] after an exit the worker agreed to:
     #   whether it will delete the session as empty (the 200 says
     #   +discard+); without one the reply leaves the field out
     # @param exit_stopped [#call, nil] after a stop-all exit: what it stopped
-    #   (a HoldStop::Stopped) for the 200's +stopped+; nil leaves it out
+    #   (a HoldStop::Stopped) for the 200's +stopped+; nil leaves it out. Read
+    #   with the event log held, right after the accept (not for a restart),
+    #   so a later exit's list is never this 200's
     # @param on_holds [#call, nil] what the user could stop in this worker
     #   right now (WorkerIdleExit#stoppable_holds) for GET /holds; without
     #   one that route answers 501
@@ -1169,11 +1172,16 @@ module Samagotchi
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
+      stopped = nil
       hold = @engine.synchronize_events do
         raise IntakeClosed if stopped?
         next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
 
-        @on_exit_request.call(client_id, **options)
+        hold = @on_exit_request.call(client_id, **options)
+        # Read here, right after the accept: every accept runs with the log
+        # held, so no later exit's list can be the one this 200 carries.
+        stopped = @exit_stopped&.call if hold.nil? && !restart
+        next hold
       end
       return deadline_passed("exit request") if hold == :expired
 
@@ -1182,7 +1190,6 @@ module Samagotchi
 
         body = { status: "exiting", session_id: @session_id }
         body[:discard] = @exit_discards.call == true if @exit_discards
-        stopped = @exit_stopped&.call
         body[:stopped] = stopped.to_h if stopped
         return [{}, 200, body]
       end
