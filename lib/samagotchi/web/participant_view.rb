@@ -63,6 +63,9 @@ module Samagotchi
         # prompts are theirs).
         "turn_enqueued" => :turn_enqueued,
         "turn_dequeued" => :turn_dequeued,
+        # A failed turn's prompt handed back: the viewer's own turn only
+        # (#prompt_restored).
+        "prompt_restored" => :prompt_restored,
         "input_merged" => :input_merged,
         # The owner's question, approval or Continue offer: "waiting for the
         # owner" and for what kind of thing (#waiting_kind), nothing of it.
@@ -85,7 +88,7 @@ module Samagotchi
         card command_output command_queued command_ran context_added empty_answer_retry
         generation_cancelled generation_progress generation_started guardrail_warning hook_notice
         llm_context_edited merged_input objectives_updated participants_changed pending_input_merged plugin_init_finished
-        plugin_init_started plugin_init_wait prompt_restored question question_relay reasoning_history_refused
+        plugin_init_started plugin_init_wait question question_relay reasoning_history_refused
         recap_ready reminder_injected sampling_refused session_end session_start side_usage steer_cut thinking_dropped
         thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated
       ].freeze
@@ -129,6 +132,29 @@ module Samagotchi
         return bare(event, viewer) unless enqueued_id.is_a?(String) && !enqueued_id.empty? && own_enqueued.include?(enqueued_id)
 
         { "type" => "turn_dequeued", **seq(event), "enqueued_id" => enqueued_id }
+      end
+
+      # A failed turn of the viewer's own handing its prompt back: the text,
+      # their image refs (#image_refs), the Revise draft's turn id and the
+      # origin's ids the page matches it by (restore.js restoreAction). nil
+      # for anyone else's, the owner's or an automatic turn (decided by the
+      # origin's author, which chi web stamped). Never source, the error, a
+      # Verify claim's quote or anything else the owner's event carries.
+      def prompt_restored(event, viewer)
+        origin = field(event, :origin)
+        return nil unless origin.is_a?(Hash)
+
+        author = field(origin, :author)
+        return nil unless viewer.own?(author) && Steer.participant_author?(author)
+
+        out = { "type" => "prompt_restored", **seq(event), "prompt" => field(event, :prompt).to_s }
+        images = image_refs(field(event, :images), author, viewer)
+        out["images"] = images if images
+        revises = ReviseAnchor.from(field(event, :revises))
+        out["revises"] = { "turn_id" => revises.turn_id } if revises
+        out["origin"] = { "client_id" => field(origin, :client_id).to_s, "enqueued_id" => field(origin, :enqueued_id).to_s,
+                          "author" => author.to_s }
+        out
       end
 
       # Input merged into the running turn: the viewer's own lines (their

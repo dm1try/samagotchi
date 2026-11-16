@@ -124,6 +124,30 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         .to eq("type" => "turn_started", "continue" => true)
     end
 
+    describe "a failed turn's prompt handed back (prompt_restored)" do
+      let(:restored) do
+        { type: :prompt_restored, event_seq: 9, prompt: "look at this", images: [STORED], model: "secret-model",
+          output: "SECRET OUTPUT", error: "/home/o/x boom", source: "user", verify: { turn_id: "t0", quote: "OWNER QUOTE" },
+          revises: { turn_id: "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f" },
+          origin: { client_id: "participant:p_1", enqueued_id: "e1", author: "p:p_1", source: "participant" } }
+      end
+
+      it "gives the viewer their own text and their own image refs, in the shape the page reads" do
+        expect(shown(restored)).to eq(
+          "type" => "prompt_restored", "event_seq" => 9, "prompt" => "look at this", "images" => [STORED_SHOWN],
+          "revises" => { "turn_id" => "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f" },
+          "origin" => { "client_id" => "participant:p_1", "enqueued_id" => "e1", "author" => "p:p_1" }
+        )
+      end
+
+      it "gives nothing for another person's or the owner's turn" do
+        expect(shown(restored.merge(origin: restored[:origin].merge(author: "p:p_2", client_id: "participant:p_2")))).to be_nil
+        expect(shown(restored.merge(origin: { client_id: "web:tab", enqueued_id: "e1" }))).to be_nil
+        expect(shown(restored.merge(origin: nil))).to be_nil
+        expect(shown(restored.except(:origin))).to be_nil
+      end
+    end
+
     it "marks no turn as the owner's own when the owner looks through the participant view" do
       owner = Samagotchi::Redact::Viewer.new(cwd: "/p")
       out = described_class.event({ "type" => "turn_started", "author" => "p:p_1", "origin" => { "client_id" => "participant:p_1" } }, owner)

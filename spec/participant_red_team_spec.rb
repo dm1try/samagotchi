@@ -548,6 +548,27 @@ RSpec.describe "a participant red-teaming a session" do
       expect(out).not_to include(root)
     end
 
+    it "gets a failed turn's prompt back for its own turn only: never the owner's or another participant's" do
+      observer = engine.instance_variable_get(:@session_observer)
+      ref = { file: "images/0123456789abcdef.png", name: "mine.png", width: 3, height: 2, mime: "image/png", bytes: 9, source: "user" }
+      [
+        { type: :prompt_restored, prompt: "OWNER-PROMPT", images: [ref.merge(name: "OWNER-IMG.png")],
+          error: "OWNER-ERROR #{project}/x", origin: { client_id: "web:tab", enqueued_id: "e-owner" } },
+        { type: :prompt_restored, prompt: "EVE-PROMPT", images: [ref.merge(name: "EVE-IMG.png")],
+          origin: { client_id: "participant:p_eve", enqueued_id: "e-eve", author: "p:p_eve" } },
+        { type: :prompt_restored, prompt: "MY-PROMPT", images: [ref], error: "MY-ERROR", model: "MY-MODEL",
+          origin: { client_id: "participant:#{grant.id}", enqueued_id: "e-mine", author: grant.author, source: "MY-SOURCE" } },
+        { type: :turn_completed, turn_id: "t1" }
+      ].each { |event| observer.notify(event) }
+
+      out = participant_stream("turn_completed")
+      expect(out).to include("MY-PROMPT", "mine.png", "e-mine")
+      %w[OWNER-PROMPT OWNER-IMG OWNER-ERROR e-owner EVE-PROMPT EVE-IMG e-eve MY-ERROR MY-MODEL MY-SOURCE image/png].each do |leak|
+        expect(out).not_to include(leak), leak
+      end
+      expect(out).not_to include(root)
+    end
+
     it "can't read a secret the reply streams on a long line, split by the stream's length cut" do
       observer = engine.instance_variable_get(:@session_observer)
       observer.notify({ type: :turn_started, prompt: "go", turn_id: "t1", origin: { client_id: "web:tab" } })
