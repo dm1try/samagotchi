@@ -397,6 +397,9 @@ test("prompt notes update the open session list and count as in the prompt, not 
   assert.equal(row.querySelector(".ws-step").title, "in the system prompt");
   assert.match(ws.popover.pop.querySelector(".ctx-pop-meta").textContent, /1 used · 1 in the prompt/);
   assert.equal([...ws.popover.pop.querySelectorAll(".ws-row[data-ws-id]")].filter((item) => item.dataset.wsId === "memory:model_notes_style").length, 1);
+  const withFile = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { tool: "memory_read", title: "model_notes_style", status: "ok" }] }] }, 0);
+  ws.seed([{ items: withFile, prompt: "first" }]);
+  assert.ok(ws.popover.pop.querySelector('[data-ws-id="memory:model_notes_style"]') === row);
   ws.popover.close();
   infoEl.remove();
   pop.remove();

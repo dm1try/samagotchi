@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ariaLabel, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
+  ariaLabel, bodySections, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
   forgetOn, pinnable, quoteWord, steerWords, undroppable, addLine, addedItem, addedItems, refreshable, serverAddIds,
   stepRange, stepTag, tokensText, urlLabel, urlOfParams,
@@ -100,6 +100,27 @@ test("sessionItems: notes are prompt rows, merged with preload and reads", () =>
 
 // The spec's §3 examples.
 const files = (dir, names, edits = []) => names.map((n) => file(`${dir}/${n}`, edits.includes(n) ? "edit" : "read"));
+
+test("bodySections: ordered sections, memory metadata and folds at the popover budget", () => {
+  const rows = [...files("lib", ["a", "b", "c", "d", "e", "f", "g"]), ...Array.from({ length: 7 }, (_, i) => memory(`m${i}`)),
+    ...Array.from({ length: 7 }, (_, i) => fetch(`https://x.dev/${i}`))];
+  const set = sessionItems({ turns: [itemsOfTurn(turnOf(rows), 0)], preloaded: ["m0"], muted: ["quiet"] });
+  const before = structuredClone(set);
+  const sections = bodySections(set, 6);
+  assert.deepEqual(sections.map(({ key, title, meta }) => [key, title, meta]), [
+    ["files", "files", "7"], ["memories", "memories", "6 used · 1 in the prompt · 1 muted"], ["urls", "urls", "7"],
+  ]);
+  assert.deepEqual(sections.map((section) => section.labels.map((label) => [label.type, label.n])), [
+    [["dir", 7]], [["kind", 7]], [["kind", 7]],
+  ]);
+  assert.deepEqual(sections[1].muted, set.muted);
+  assert.deepEqual(set, before);
+  const atBudget = sessionItems({ turns: [itemsOfTurn(turnOf(rows.slice(7, 13)), 0)] });
+  assert.deepEqual(bodySections(atBudget, 6)[0].labels.map((label) => label.type), Array(6).fill("leaf"));
+  const mutedOnly = bodySections(sessionItems({ muted: ["quiet"] }), 6);
+  assert.deepEqual(mutedOnly.map(({ key, meta, labels, muted }) => [key, meta, labels.length, muted.length]), [["memories", "0 used · 1 muted", 0, 1]]);
+  assert.deepEqual(bodySections(sessionItems(), 6), []);
+});
 
 test("fold: up to the budget, leaves in entry order (1–3 files → names)", () => {
   const items = itemsOfTurn(turnOf(files("lib/samagotchi/web/public", ["a.js", "b.js"]), [memory("m")]), 0);
