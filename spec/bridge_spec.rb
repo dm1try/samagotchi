@@ -2679,6 +2679,29 @@ RSpec.describe Samagotchi::Bridge do
           .to eq([200, { "status" => "exiting", "session_id" => @session.id,
                          "stopped" => { "reminders" => ["api_health"], "tasks" => ["rails s"], "delegates" => [] } }])
       end
+
+      it "reads the stopped list with the event log held, so a later exit's list is not its 200's" do
+        mine = Samagotchi::HoldStop::Stopped.new(reminders: ["mine"], tasks: [], delegates: [])
+        later = Samagotchi::HoldStop::Stopped.new(reminders: ["later"], tasks: [], delegates: [])
+        list = mine
+        # exit_discards runs after the event log is let go, so the swap stands
+        # for a concurrent exit's stop-all landing there: only a read made
+        # inside the log's block escapes it.
+        start_bridge(on_exit_request: ->(_, **) {},
+                     exit_discards: -> { list = later and false },
+                     exit_stopped: -> { list })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1", stop: "all")))
+          .to eq([200, { "status" => "exiting", "session_id" => @session.id, "discard" => false,
+                         "stopped" => { "reminders" => ["mine"], "tasks" => [], "delegates" => [] } }])
+      end
+
+      it "reads no stopped list for a restart" do
+        start_bridge(on_exit_request: ->(_, **) {}, exit_stopped: -> { raise "read for a restart" })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1", restart: true)))
+          .to eq([200, { "status" => "restarting", "session_id" => @session.id }])
+      end
     end
 
     describe "GET /session/:id/holds and POST /session/:id/holds/stop (the web's Stop asks first)" do
