@@ -372,3 +372,25 @@ test("the composer's own box and a radio don't fold it", () => {
   ctx.promptEl.dispatchEvent(new ctx.win.Event("focusin", { bubbles: true }));
   assert.equal(ctx.folded(), false);
 });
+
+// A click's delayed fold belongs to the session it was made in: a switch
+// inside the double-click window (newVisit) takes it back. An open next
+// composer cancels it anyway (applyComposerFolded); a folded one didn't, and
+// the late fold wrote the next session's key.
+test("a grip click's pending fold doesn't land on the next session", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { grip, pointer, folded, state } = setup();
+  localStorage.setItem("chi_composer_collapsed:s2", "1");
+  t.after(() => localStorage.removeItem("chi_composer_collapsed:s2"));
+  grip.newVisit();
+  pointer("pointerdown", 300);
+  pointer("pointerup", 300);
+  state.session = "s2";
+  grip.newVisit();
+  assert.equal(folded(), true, "s2 is folded, its own choice");
+  // Its key cleared behind the page's back: a late fold would write it again.
+  localStorage.removeItem("chi_composer_collapsed:s2");
+  t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
+  assert.ok(localStorage.getItem("chi_composer_collapsed:s2") === null, "nothing written for the next session");
+  assert.ok(localStorage.getItem(COMPOSER_FOLD_KEY) === null, "nor for the one left");
+});
