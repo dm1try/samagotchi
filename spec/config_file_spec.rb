@@ -90,6 +90,17 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(entry.lifecycle).to eq(:web_start)
       end
 
+      it "keeps every stage unfolded by default; folded from the file, env or cli (--[no-]web-stage-collapsed)" do
+        key = "web.stage_collapsed"
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(false)
+        expect(described_class.resolve(key, file_data: { "web" => { "stage_collapsed" => true } }, env: {})).to be(true)
+        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_STAGE_COLLAPSED" => "true" })).to be(true)
+        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => true })).to be(true)
+        entry = described_class.find_by_key(key)
+        expect(entry.cli_flag).to eq("--web-stage-collapsed")
+        expect(entry.lifecycle).to eq(:web_start)
+      end
+
       it "keeps the reload check off by default; on from the file, env or cli (--[no-]web-reload-check)" do
         key = "web.reload_check"
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to be(false)

@@ -202,3 +202,73 @@ test("switching A to B and back while A's turn is folding: A's turn is on the st
   assert.equal(marked(page), undefined);
   assert.equal(page.warnings.length, 0, "nothing was missing at any point");
 });
+
+// What the user opened of a running turn (stage_view_memory.js), through the
+// real stage and session view: kept when the page leaves the session
+// (leaveSession, select's), put back when it draws the same turn again.
+test("switching A to B and back: A's cloud and the step opened in it are as left; B's are not", async () => {
+  const page = pageFor();
+  const steps = (id, prompt) => [
+    { type: "turn_started", turn_id: id, prompt, started_at: "2026-11-15T12:00:00.000Z" },
+    { type: "generation_started", iteration: 1 }, { type: "generation_chunk", iteration: 1, text: "First." }, { type: "generation_completed", iteration: 1 },
+    { type: "generation_started", iteration: 2 }, { type: "generation_chunk", iteration: 2, text: "Second." },
+  ];
+  const a = show({ currentTurn: { turn_id: "a1", prompt: "A's turn", status: "running" }, replay: steps("a1", "A's turn") });
+  const b = show({ currentTurn: { turn_id: "b1", prompt: "B's turn", status: "running" }, replay: steps("b1", "B's turn") });
+  page.view.renderSessionView(a);
+  await settle();
+  assert.ok(page.turnDom.holds());
+  assert.equal(page.liveTurn.timing.turnId, "a1");
+  page.turnDom.cloud.setCloud(true);
+  const first = page.turnDom.step(0);
+  assert.ok(first && !first.el.open, "the first step ended closed");
+  first.summary.click();
+  assert.ok(page.turnDom.step(0).el.open);
+  // A → B: select's order, the memory first.
+  page.view.leaveSession();
+  page.view.forgetSession();
+  page.store.update({ selected: "s2" });
+  page.view.renderSessionView(b);
+  await settle();
+  assert.equal(page.turnDom.cloud.isOpen(), false, "B's cloud: closed");
+  assert.ok(!page.turnDom.step(0).el.open, "B's first step: closed");
+  // B → A.
+  page.view.leaveSession();
+  page.view.forgetSession();
+  page.store.update({ selected: "s1" });
+  page.view.renderSessionView(a);
+  await settle();
+  assert.equal(page.turnDom.cloud.isOpen(), true, "A's cloud: open again");
+  assert.ok(page.turnDom.step(0).el.open, "A's opened step: open again");
+  // Another turn of A by the next visit: nothing put back.
+  page.view.leaveSession();
+  page.view.forgetSession();
+  page.view.renderSessionView(show({ currentTurn: { turn_id: "a2", prompt: "A's next", status: "running" }, replay: steps("a2", "A's next") }));
+  await settle();
+  assert.equal(page.turnDom.cloud.isOpen(), false, "a different turn: closed");
+});
+
+// The start page (app.js clearSelection) leaves a session through
+// forgetSession alone, with no select: the view is kept there too.
+test("going to the start page and back: A's opened cloud is as left", async () => {
+  const page = pageFor();
+  const a = show({
+    currentTurn: { turn_id: "a1", prompt: "A's turn", status: "running" },
+    replay: [
+      { type: "turn_started", turn_id: "a1", prompt: "A's turn", started_at: "2026-11-15T12:00:00.000Z" },
+      { type: "generation_started", iteration: 1 }, { type: "generation_chunk", iteration: 1, text: "First." },
+    ],
+  });
+  page.view.renderSessionView(a);
+  await settle();
+  page.turnDom.cloud.setCloud(true);
+  // clearSelection's order: the session unset, then forgetSession.
+  page.store.update({ selected: null });
+  page.view.forgetSession();
+  assert.equal(page.turnDom.cloud.isOpen(), false, "the start page: no cloud");
+  page.store.update({ selected: "s1" });
+  page.view.forgetSession();
+  page.view.renderSessionView(a);
+  await settle();
+  assert.equal(page.turnDom.cloud.isOpen(), true, "back: the cloud open again");
+});

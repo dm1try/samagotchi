@@ -5,12 +5,13 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { GRIP_KEY } from "../../../lib/samagotchi/web/public/composer_grip.js";
-import { COMPOSER_FOLD_KEY } from "../../../lib/samagotchi/web/public/composer_fold.js";
 import { MAX_TURN_IMAGES } from "../../../lib/samagotchi/web/public/images.js";
 import { mountComposer } from "../../../lib/samagotchi/web/public/composer_mount.js";
 
 if (!("localStorage" in globalThis)) globalThis.localStorage = new Window().localStorage;
+// The open session's own keys (session_prefs.js): the page's session is "s1".
+const GRIP_KEY = "chi_composer_floor:s1";
+const COMPOSER_FOLD_KEY = "chi_composer_collapsed:s1";
 
 const image = (name = "shot.png", type = "image/png") => ({ name, type, size: 10 });
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -182,7 +183,7 @@ test("no history hook: ↑ is the browser's", () => {
 });
 
 test("the box's height: the page's minimum, a saved floor, and again on input and resize", () => {
-  const { prompt, listeners } = setup({ floor: 120 });
+  const { prompt, listeners } = setup({ floor: 120, fold: { session: () => "s1" } });
   assert.equal(prompt.style.height, "120px");
   localStorage.removeItem(GRIP_KEY);
   assert.equal(typeof listeners.resize, "function");
@@ -192,6 +193,24 @@ test("the box's height: the page's minimum, a saved floor, and again on input an
   const { prompt: fresh } = setup();
   assert.equal(fresh.style.height, "26px");
   assert.equal(fresh.style.overflowY, "hidden");
+});
+
+// The floor is the open session's own (session_prefs.js): another session's
+// view drawn (applyPrefs) takes its height, none: the page's minimum.
+test("applyPrefs: the open session's own floor, read again as its view is drawn", (t) => {
+  let session = "s1";
+  t.after(() => localStorage.removeItem("chi_composer_floor:s2"));
+  const { prompt, composer } = setup({ floor: 120, fold: { session: () => session } });
+  assert.equal(prompt.style.height, "120px");
+  session = "s2";
+  composer.applyPrefs();
+  assert.equal(prompt.style.height, "26px");
+  localStorage.setItem("chi_composer_floor:s2", "90");
+  composer.applyPrefs();
+  assert.equal(prompt.style.height, "90px");
+  session = "s1";
+  composer.applyPrefs();
+  assert.equal(prompt.style.height, "120px");
 });
 
 test("typing anywhere opens a folded session composer unless the page turns it off", () => {

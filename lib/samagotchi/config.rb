@@ -388,6 +388,9 @@ module Samagotchi
       # The stage view's working set (files, memories and URLs the turn brought into context): a rail in the stage, a
       # footprint under each finished turn and a "set N" chip in place of the mem chip; ?working_set=1|0 overrides it per page load.
       Entry.new(key: "web.working_set",          yaml_path: %w[web working_set],          type: :bool,    default: true,            expose: %i[env config cli], lifecycle: :web_start),
+      # Every session's stage starts folded to its status row in chi web (a session folded or unfolded by hand keeps
+      # its own, per browser: session_prefs.js); participants' pages too.
+      Entry.new(key: "web.stage_collapsed",      yaml_path: %w[web stage_collapsed],      type: :bool,    default: false,           expose: %i[env config cli], lifecycle: :web_start),
       # Opt-in: the page checks each finished turn against a reload of it (one full read per turn end) and chi web logs
       # reload_checked, with reload_mismatch and the kinds that differed (counts only, no content).
       Entry.new(key: "web.reload_check",         yaml_path: %w[web reload_check],         type: :bool,    default: false,           expose: %i[env config cli], lifecycle: :web_start),

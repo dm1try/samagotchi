@@ -39,7 +39,7 @@ function answeredBy(card, cls = "answered") {
   view?.settleWaiting(waitingKey(card), { done: true });
 }
 
-function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null, isNearBottom = () => false } = {}) {
+function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamLive, onHandedOff = null, isNearBottom = () => false, sessionId = () => "s1" } = {}) {
   foldStore.clear();
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
   const historyEl = document.getElementById("history");
@@ -47,7 +47,7 @@ function page({ taskStop = null, renderMarkdown, onCancel = null, clock, streamL
     historyEl,
     isNearBottom,
     sawText: () => false,
-    sessionId: () => "s1",
+    sessionId,
     dockEl: document.getElementById("dock"),
     centerEl: document.getElementById("center"),
     taskStop,
@@ -1400,7 +1400,8 @@ function askingCard(text = "Which file first?", qid = "q1") {
   card.insertBefore(q, card.querySelector(":scope > button"));
   return card;
 }
-const COLLAPSE_KEY = "chi_stage_collapsed";
+// The open session's own fold (session_prefs.js; the page's session is "s1").
+const COLLAPSE_KEY = "chi_stage_collapsed:s1";
 const collapsed = (view) => view.root.classList.contains("collapsed");
 // A page whose stage was saved as collapsed (+saved+) or not.
 function savedPage(t, saved) {
@@ -1531,6 +1532,61 @@ test("outside the asking form the fold is the user's choice, kept", async (t) =>
   } finally {
     view.reset();
   }
+});
+
+// The fold by hand is the open session's own (session_prefs.js): another
+// session's stage is as that one was left, and coming back brings it back.
+test("the fold is per session: a fold in one leaves another open; back, it is folded again", (t) => {
+  let sid = "fa";
+  const keys = ["chi_stage_collapsed:fa", "chi_stage_collapsed:fb"];
+  t.after(() => keys.forEach((k) => localStorage.removeItem(k)));
+  const { view } = page({ sessionId: () => sid });
+  const prompt = row("bubble user");
+  view.turnStarted({ promptBubble: prompt });
+  $(view, ".ts-fold").click();
+  assert.ok(collapsed(view));
+  assert.equal(localStorage.getItem("chi_stage_collapsed:fa"), "1");
+  assert.ok(localStorage.getItem("chi_stage_collapsed") === null, "the global key is never written");
+  view.reset();
+  sid = "fb";
+  view.applyPrefs();
+  view.turnStarted({ promptBubble: row("bubble user") });
+  assert.ok(!collapsed(view), "the other session's stage is open");
+  assert.ok(localStorage.getItem("chi_stage_collapsed:fb") === null);
+  view.reset();
+  sid = "fa";
+  view.applyPrefs();
+  view.turnStarted({ promptBubble: row("bubble user") });
+  assert.ok(collapsed(view), "back: folded as left");
+  view.reset();
+});
+
+// web.stage_collapsed: <body data-stage-collapsed="1"> folds every stage
+// that was never folded or unfolded by hand; a hand unfold stays the session's.
+test("the page's default folds a session never touched; a session unfolded by hand stays open", (t) => {
+  let sid = "da";
+  t.after(() => {
+    delete document.body.dataset.stageCollapsed;
+    ["chi_stage_collapsed:da", "chi_stage_collapsed:db"].forEach((k) => localStorage.removeItem(k));
+  });
+  document.body.dataset.stageCollapsed = "1";
+  const { view } = page({ sessionId: () => sid });
+  view.turnStarted({ promptBubble: row("bubble user") });
+  assert.ok(collapsed(view), "folded by default");
+  $(view, ".ts-status").click();
+  assert.ok(!collapsed(view));
+  assert.equal(localStorage.getItem("chi_stage_collapsed:da"), "0");
+  view.reset();
+  sid = "db";
+  view.applyPrefs();
+  view.turnStarted({ promptBubble: row("bubble user") });
+  assert.ok(collapsed(view), "another session follows the default");
+  view.reset();
+  sid = "da";
+  view.applyPrefs();
+  view.turnStarted({ promptBubble: row("bubble user") });
+  assert.ok(!collapsed(view), "unfolded by hand, kept");
+  view.reset();
 });
 
 test("another card that comes to wait behind a folded question opens the stage on it; folded again, both stay folded", async (t) => {

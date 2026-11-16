@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: `web.stage_collapsed` (off by default) starts every session's stage folded to its status row, a
+  participant's page too; a session you fold or unfold by hand keeps its own.
+
+### Changed
+
+- chi web: the stage's fold, the working-set rail's, the composer's fold and its dragged height are kept per
+  session (per browser): what you do in one session no longer shows in another, and coming back finds it as you
+  left it. A running turn's opened cloud, the steps opened in it and the working-set reader come back too when you
+  switch away and back during the same turn (this tab only). The old page-wide choices are not carried over.
+
 ## [0.175.0] - 2026-11-16
 
 ### Added

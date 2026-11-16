@@ -160,6 +160,9 @@ module Samagotchi
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
       # @param working_set [Boolean] the stage view's working set
       #   (web.working_set); ?working_set=1|0 overrides it for one page load
+      # @param stage_collapsed [Boolean] every session's stage starts folded
+      #   to its status row (web.stage_collapsed: the page's default; a
+      #   session folded by hand keeps its own, session_prefs.js)
       # @param reload_check [Boolean] the page checks each finished turn
       #   against a reload of it and posts the counts (web.reload_check,
       #   opt-in; POST /api/sessions/:id/reload_check logs them)
@@ -202,6 +205,7 @@ module Samagotchi
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
                      reload_check: Config::BY_KEY["web.reload_check"].default,
+                     stage_collapsed: Config::BY_KEY["web.stage_collapsed"].default,
                      grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil, update_runner: nil,
                      update_blocked: nil, update_ops: nil)
         @start_dir = start_dir
@@ -218,6 +222,7 @@ module Samagotchi
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @working_set = working_set
         @reload_check = reload_check
+        @stage_collapsed = stage_collapsed
         @reload_checks = ReloadCheckRoute::Seen.new
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @editor_url = Editor.template(editor)
@@ -1925,6 +1930,7 @@ module Samagotchi
         attrs["working-set"] = "1" if working_set?(req.GET["working_set"])
         # The opt-in reload check (reload_check.js): only when on.
         attrs["reload-check"] = "1" if @reload_check
+        attrs.merge!(stage_collapsed_data)
         attrs.merge!(annotate_presets_data)
         # Who looks and what they may do (Viewer; viewer.js reads it at boot).
         attrs.merge!(Viewer.for(principal(req)).body_attributes)
@@ -1952,8 +1958,9 @@ module Samagotchi
 
       # A participant's <body> data for index.html: who they are (Viewer), their
       # grant's session and its participant title (the tab's), the version
-      # and the Annotate presets, and whether the working set is on
-      # (web.working_set: their stage's file column, as the owner's).
+      # and the Annotate presets, whether the working set is on
+      # (web.working_set: their stage's file column, as the owner's) and the
+      # stage's fold default (web.stage_collapsed, the owner's).
       # Nothing of the owner's machine: no home, folders, project or way
       # back (sessions-dir, server-dir, home, scope-dir, project-*, back-*).
       def participant_index_data(req)
@@ -1964,6 +1971,7 @@ module Samagotchi
           participant_title(@session_class.load(grant.session_id, state_dir: default_state_dir))
         end
         attrs["session-title"] = title if title
+        attrs.merge!(stage_collapsed_data)
         attrs.merge!(annotate_presets_data)
         attrs.merge!(Viewer.for(principal(req)).body_attributes)
         body_data(attrs)
@@ -1971,6 +1979,11 @@ module Samagotchi
 
       # +attrs+ as <body> data attributes, each value escaped.
       def body_data(attrs) = attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
+
+      # The stage's fold default (web.stage_collapsed) for the page's <body>,
+      # the owner's and a participant's (a layout choice, not a secret): only
+      # when on; the page reads its presence (session_prefs.js).
+      def stage_collapsed_data = @stage_collapsed ? { "stage-collapsed" => "1" } : {}
 
       # The Annotate presets (web.annotate_presets) for the page's <body>,
       # the owner's and a participant's. Always there: an empty one means

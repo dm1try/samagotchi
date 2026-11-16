@@ -12,6 +12,12 @@ import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, s
 test.use({ stageCheck: true });
 
 const stageEl = (page) => page.locator("#turnStage");
+// The stage's fold by hand: the open session's own (session_prefs.js,
+// chi_stage_collapsed:<session>); the old global key is never written.
+const savedFold = (page) => page.evaluate(() => {
+  if (localStorage.getItem("chi_stage_collapsed") !== null) return "global key written";
+  return localStorage.getItem(`chi_stage_collapsed:${location.hash.split("/").pop()}`);
+});
 // A shift's source in the top bar, or the session panel it pushes down.
 const TOP_BAR = /#topBar|#sessionTitle|#stripStatus|#stripGrip|#notifyBtn|section#center$/;
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
@@ -392,7 +398,7 @@ test("a question card sits in the stage, its reason in the history (also after a
   await expect(stageEl(page).locator(".ts-mini.ts-mini-question")).toHaveText("Which file should I read?");
   await expect(card).toBeHidden();
   await expect.poll(reserve).toBeLessThan(openReserve);
-  expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBeNull();
+  expect(await savedFold(page)).toBeNull();
   await stageEl(page).locator(".ts-mini").click();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
   await expect(card.locator(".question-submit")).toBeVisible();
@@ -557,7 +563,7 @@ test("a question folded in the stage stays folded across a reload mid-turn, at i
   // the stage's own choice.
   await stageEl(page).locator(".ts-mini").click();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
-  expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBeNull();
+  expect(await savedFold(page)).toBeNull();
   await page.reload();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
   await expect(card).toBeVisible();
@@ -627,7 +633,7 @@ test("the stage folds to its status row, and stays folded across a reload; a tur
   await expect(stageEl(page).locator(".ts-cancel")).toBeVisible();
   await stageEl(page).locator(".ts-phase").click();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
-  expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBe("0");
+  expect(await savedFold(page)).toBe("0");
   await stageEl(page).locator(".ts-cancel").click();
   await page.mouse.move(0, 0);
   await handedOff(page, 1);

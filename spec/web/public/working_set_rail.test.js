@@ -2,23 +2,25 @@ import "./dom_shim.js";
 import { Window } from "happy-dom";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COLLAPSE_KEY, createWorkingSetRail, ringBucket } from "../../../lib/samagotchi/web/public/working_set_rail.js";
+import { createWorkingSetRail, ringBucket } from "../../../lib/samagotchi/web/public/working_set_rail.js";
 import { itemsOfTurn } from "../../../lib/samagotchi/web/public/working_set.js";
 
 globalThis.matchMedia ??= () => ({ matches: false });
 if (!("localStorage" in globalThis)) globalThis.localStorage = new Window().localStorage;
 
 const read = (path) => ({ tool: "read", status: "ok", title: path, ref: { kind: "file", path } });
+// The open session's own fold (session_prefs.js; the rail's session is "s1").
+const COLLAPSE_KEY = "chi_working_set_collapsed:s1";
 const items = (...paths) => itemsOfTurn({ gens: [{ tools: paths.map(read) }] }, 0);
 
-function rail() {
+function rail({ sessionId = () => "s1" } = {}) {
   const stage = document.createElement("section");
   Object.defineProperty(stage, "clientWidth", { value: 1200 });
   const live = document.createElement("div");
   stage.append(live);
   document.body.append(stage);
   const opened = [];
-  const r = createWorkingSetRail({ live, stage, onOpen: (el) => opened.push(el), onChange: () => {} });
+  const r = createWorkingSetRail({ live, stage, onOpen: (el) => opened.push(el), onChange: () => {}, sessionId });
   return { r, live, stage, opened, done: () => stage.remove() };
 }
 
@@ -43,7 +45,7 @@ test("the rail: keyed lines (an unchanged one keeps its node), a fold at the bud
   s.done();
 });
 
-test("the rail folds to its head line by its button (kept per browser); a click on the head line opens it again", () => {
+test("the rail folds to its head line by its button (kept per session); a click on the head line opens it again", () => {
   const s = rail();
   s.r.draw(items("a.rb"), { now: 0 });
   s.r.el.querySelector(".ws-fold").click();
@@ -58,6 +60,33 @@ test("the rail folds to its head line by its button (kept per browser); a click 
   assert.equal(s.opened.length, 0);
   globalThis.localStorage.removeItem(COLLAPSE_KEY);
   s.done();
+});
+
+test("the rail's fold is the open session's own: another session's rail is open; back, folded again", (t) => {
+  let sid = "ra";
+  t.after(() => ["chi_working_set_collapsed:ra", "chi_working_set_collapsed:rb"].forEach((k) => globalThis.localStorage.removeItem(k)));
+  let changes = 0;
+  const stage = document.createElement("section");
+  Object.defineProperty(stage, "clientWidth", { value: 1200 });
+  const live = document.createElement("div");
+  stage.append(live);
+  document.body.append(stage);
+  const r = createWorkingSetRail({ live, stage, onOpen: () => {}, onChange: () => { changes += 1; }, sessionId: () => sid });
+  r.el.querySelector(".ws-fold").click();
+  assert.equal(globalThis.localStorage.getItem("chi_working_set_collapsed:ra"), "1");
+  assert.ok(globalThis.localStorage.getItem("chi_working_set_collapsed") === null, "the global key is never written");
+  sid = "rb";
+  const before = changes;
+  r.applyPrefs();
+  assert.equal(r.isCollapsed(), false);
+  assert.equal(r.el.getAttribute("aria-expanded"), "true");
+  assert.equal(changes, before + 1, "redrawn");
+  r.applyPrefs();
+  assert.equal(changes, before + 1, "no change, no redraw");
+  sid = "ra";
+  r.applyPrefs();
+  assert.equal(r.isCollapsed(), true);
+  stage.remove();
 });
 
 test("ringBucket: warn from 70 %, danger from 90 %", () => {

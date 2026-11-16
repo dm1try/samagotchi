@@ -567,7 +567,8 @@ verdicts' (`fresh_running`, `session.verify_unavailable`).
   the editor.
 
 The main page's `<body>` for a participant (`App#participant_index_data`): `version`, `session`,
-`session-title`, the Annotate presets, the viewer and `working-set` (the owner's `web.working_set`); nothing of the
+`session-title`, the Annotate presets, the viewer, `working-set` (the owner's `web.working_set`) and
+`stage-collapsed` (the owner's `web.stage_collapsed`: a layout default, not a secret); nothing of the
 owner's machine (`home`, the folders, `project-*`, `back-*`).
 - **Their usage** (`viewer.usage`, `ParticipantReview#review_usage`, built from named fields by the exposure policy
   beside `ParticipantView`'s): the fields their grant's exposure shows
