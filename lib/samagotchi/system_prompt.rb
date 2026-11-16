@@ -95,7 +95,18 @@ module Samagotchi
     # plugins' sections it holds, its stable part's length (chat) and the
     # Tools::ToolSurface it declares (the tools, the not-loaded line, the
     # kit's prompt text).
-    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface, :memory_names)
+    #
+    # parts: the Sections the prompt is joined from (stable ones, then the
+    # volatile ones), in prompt order; Gemma's tail declarations are not one.
+    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface, :memory_names, :parts)
+
+    # One part of the prompt: its kind (KINDS), what it was made from (the
+    # memory names of identity and preloads, the files of agents and
+    # appended, the notes of notes, the plugins' Built of plugins; nil
+    # elsewhere) and its text, as the prompt holds it.
+    Section = Data.define(:kind, :ref, :text)
+
+    KINDS = %i[base identity notes preloads agents appended kit plugins indexes participants model location session].freeze
 
     # The full prompt: #base wrapped with the index and the rest. Built once
     # per loop and level (until #reset!) so the prompt prefix, and the
@@ -204,12 +215,14 @@ module Samagotchi
       @section_files = []
       @section_plugins = []
       @measured_stable_length = nil
+      @section_parts = []
       surface = tool_surface(layers)
       prompt = system_prompt_with_index(assist_system_prompt(chat: chat, surface: surface),
                                         chat: chat, thinking: thinking, surface: surface)
       Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
                 files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length,
-                surface: surface, memory_names: [@section_identity_memory_name, *@section_activated_memory_names].compact.uniq.freeze)
+                surface: surface, memory_names: [@section_identity_memory_name, *@section_activated_memory_names].compact.uniq.freeze,
+                parts: @section_parts.freeze)
     end
 
     # The session's tools as a build under +layers+ declares them, read
@@ -360,15 +373,46 @@ module Samagotchi
         "Project memories:\n#{indexes[:project]}",
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
-      stable = [thinking_token + base, not_loaded_line(surface), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
-                project_specific_description, appended_section, kit_prompt_section(surface), plugin_prompt_section, memory_sections]
-      stable_text = stable.compact.join("\n")
-      volatile = [participants_section, current_model, project_location, current_session].compact
+      # Built eagerly and in this order: the builders set the @section_* scratch.
+      base_text = [thinking_token + base, not_loaded_line(surface), rg_guidance].compact.join("\n")
+      stable = [
+        Section.new(kind: :base, ref: nil, text: base_text),
+        section(:identity, -> { @section_identity_memory_name }) { system_identity_section },
+        section(:notes, -> { @section_notes }) { model_notes_section },
+        section(:preloads, -> { Array(@section_activated_memory_names).dup }) { explicit_memory_section },
+        files_section(:agents) { project_specific_description },
+        files_section(:appended) { appended_section },
+        section(:kit, nil) { kit_prompt_section(surface) },
+        section(:plugins, -> { @section_plugins }) { plugin_prompt_section },
+        Section.new(kind: :indexes, ref: %i[project system], text: memory_sections)
+      ].compact
+      stable_text = stable.map(&:text).join("\n")
+      volatile = [section(:participants, nil) { participants_section }, section(:model, nil) { current_model },
+                  section(:location, nil) { project_location }, section(:session, nil) { current_session }].compact
+      @section_parts = stable + volatile
       return with_tail_declarations(stable_text, chat: chat, surface: surface) if volatile.empty?
 
-      prompt = "#{stable_text}\n#{volatile.join("\n")}"
+      prompt = "#{stable_text}\n#{volatile.map(&:text).join("\n")}"
       @measured_stable_length = stable_text.length + 1 if chat
       with_tail_declarations(prompt, chat: chat, surface: surface)
+    end
+
+    # A Section of +kind+ with what the block (a builder) returns, nil when
+    # that is nil (never when it is empty: an "" part stays in the prompt).
+    # +ref+ is read after the block ran, so it may name what the builder set.
+    def section(kind, ref = nil, &)
+      text = yield
+      if text.nil?
+        nil
+      else
+        Section.new(kind: kind, ref: ref.respond_to?(:call) ? ref.call : ref, text: text)
+      end
+    end
+
+    # A Section whose ref is the files its builder added to @section_files.
+    def files_section(kind, &block)
+      before = @section_files&.size || 0
+      section(kind, nil, &block)&.then { |part| part.with(ref: Array(@section_files)[before..].dup) }
     end
 
     # The tools the session's toolkit leaves out, named once right after the

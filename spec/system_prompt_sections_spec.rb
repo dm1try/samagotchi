@@ -127,4 +127,22 @@ RSpec.describe Samagotchi::SystemPrompt, "section snapshots" do
     text = prompt.build(chat: true)
     expect(text[prompt.stable_length(text)..]).to start_with("Participants:")
   end
+
+  it "gives the parts on the Built: kinds in prompt order, refs, and texts that join to the prompt" do
+    config_appended.push("extra.md")
+    notes = [note("model_notes_a", "system", "SYSTEM A")]
+    prompt = described_class.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
+                                 session: -> { session }, thinking: -> { :off }, memories: ["cli_note"], model: -> { model },
+                                 model_notes: -> { notes }, participants: -> { true },
+                                 sections: -> { [section("alpha", "one", "First.")] })
+    text = prompt.build(chat: true)
+    built = prompt.instance_variable_get(:@last)
+    expect(built.parts.map(&:kind)).to eq(%i[base identity notes preloads agents appended plugins indexes participants model location session])
+    expect(built.parts.to_h { |part| [part.kind, part.ref] }).to include(
+      identity: "identity", notes: notes, preloads: %w[cli_note], plugins: built.sections,
+      agents: [File.join(@project, "AGENTS.md")], appended: [File.join(@project, "extra.md")]
+    )
+    stable, volatile = built.parts.partition { |part| !%i[participants model location session].include?(part.kind) }
+    expect(text).to eq("#{stable.map(&:text).join("\n")}\n#{volatile.map(&:text).join("\n")}")
+  end
 end
