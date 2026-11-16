@@ -119,7 +119,24 @@ RSpec.describe Samagotchi::Web::App, "a participant's images" do
       expect(upload("not an image").first).to eq(422)
       expect(upload(png)).to eq([429, { "error" => "too_many_image_attempts",
                                         "detail" => Samagotchi::ParticipantMessages::TOO_MANY_IMAGE_ATTEMPTS }])
-      expect(Samagotchi::ParticipantUploads.attempts(dir, grant.id)).to eq(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS)
+      expect(Samagotchi::ParticipantUploads.attempts(dir, grant.id)).to eq(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS + 1)
+    end
+
+    it "audits only the first refusal past the attempts cap" do
+      answers = Array.new(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS + 2) { upload(png) }
+
+      expect(answers.last(2)).to all(eq([429, { "error" => "too_many_image_attempts",
+                                                "detail" => Samagotchi::ParticipantMessages::TOO_MANY_IMAGE_ATTEMPTS }]))
+      expect(audit.length).to eq(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS + 1)
+    end
+
+    it "keeps the audit bounded when the usage cap takes precedence over the attempts refusal" do
+      File.write(Samagotchi::AnalyticsFile.path(dir),
+                 JSON.generate({ "turn_records" => [{ "id" => "t1", "author" => grant.author, "cost" => 2.0 }] }))
+      answers = Array.new(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS + 2) { upload(png) }
+
+      expect(answers).to all(eq([429, { "error" => "cap_reached", "detail" => Samagotchi::ParticipantMessages::CAP_REACHED }]))
+      expect(audit.length).to eq(Samagotchi::Grants::MAX_IMAGE_ATTEMPTS + 1)
     end
 
     {
