@@ -3446,6 +3446,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call(reload_check: true)).to include(' data-reload-check="1"')
     end
 
+    # web.stage_collapsed (off by default): every session's stage starts
+    # folded (session_prefs.js reads the attribute's presence).
+    it "tells the owner's page the stage's fold default only when it is on" do
+      page = ->(**opts) { build_app(**opts).call(env_for("/"))[2].first }
+
+      expect(page.call).not_to include("data-stage-collapsed")
+      expect(page.call(stage_collapsed: true)).to include(' data-stage-collapsed="1"')
+    end
+
     # The page parses them (annotate_presets.js); an empty one is kept so
     # it means "none", not the default.
     it "hands the page the annotate presets, escaped, empty kept, a list joined" do

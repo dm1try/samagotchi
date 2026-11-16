@@ -224,6 +224,16 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(attrs).not_to include(root, Dir.home, "secret-project")
   end
 
+  # web.stage_collapsed: the owner's default for every stage, a layout choice, theirs too.
+  it "stamps a participant's <body> with the stage's fold default only when it is on" do
+    env = Rack::MockRequest.env_for("/")
+    env[described_class::PRINCIPAL_ENV] = Samagotchi::Web::Principal.new(kind: :participant, grant: issued.grant)
+    folded = described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants, stage_collapsed: true,
+                                 lan: { ip: lan_ip, token: owner_token })
+    expect(folded.send(:index_data_attributes, Rack::Request.new(env))).to include(' data-stage-collapsed="1"')
+    expect(app.send(:index_data_attributes, Rack::Request.new(env))).not_to include("data-stage-collapsed")
+  end
+
   it "is refused an item's timeline (GET …/working_set/item: owner only, no peek or reader)" do
     env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/working_set/item?kind=file&key=#{File.join(root, "a.rb")}")
     env["HTTP_HOST"] = "#{lan_ip}:4567"
