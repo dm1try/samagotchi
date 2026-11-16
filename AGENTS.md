@@ -12,7 +12,7 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
 - `Engine` owns all agent logic: system prompt, memory injection, tool declarations,
   session lifecycle, and the model↔tool loop (`Engine#run_turn`). No terminal coupling.
   Its concerns are `include`d parts in `lib/samagotchi/engine/` (`Engine::<Concern>Part`).
-- A session's **Worker** (`lib/samagotchi/worker.rb`; its process's main is `WorkerBoot`,
+- A session's **Worker** (`lib/samagotchi/worker.rb`, its parts in `lib/samagotchi/worker/`; its process's main is `WorkerBoot`,
   `worker_boot.rb`) builds its `Engine` and runs it with the session's **Bridge**
   (`lib/samagotchi/bridge.rb`, a localhost SSE + HTTP surface);
   `SessionManager` (parts in `lib/samagotchi/session_manager/`) forks/spawns the workers. `chi web`
