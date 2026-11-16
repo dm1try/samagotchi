@@ -20,6 +20,11 @@ and commands may change between minor versions. How releases are made:
   left it. A running turn's opened cloud, the steps opened in it and the working-set reader come back too when you
   switch away and back during the same turn (this tab only). The old page-wide choices are not carried over.
 
+### Fixed
+
+- chi web: a participant's failed turn puts their text and images back in their composer (it gave them nothing
+  back before); only their own turn does, never the owner's or another participant's.
+
 ## [0.175.0] - 2026-11-16
 
 ### Added

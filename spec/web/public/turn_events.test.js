@@ -664,3 +664,15 @@ test("another participant's image count (no refs on the wire) reaches the bubble
   assert.deepEqual(withImages({ op: "add" }, 0), { op: "add" });
   assert.deepEqual(withImages({ op: "add" }, []), { op: "add" });
 });
+
+test("restoreAction: a participant's failed turn carries their badge ; another page's refills nothing; the owner's own stays plain", () => {
+  const mine = { type: "prompt_restored", prompt: "boom", origin: { client_id: "participant:g1", enqueued_id: "e1", author: "p:g1" } };
+  const opts = { myId: ME, sentIds: new Set(["e1"]), composerEmpty: true };
+  const out = restoreAction(mine, opts);
+  assert.equal(out.author.author, "p:g1");
+  // The owner's page: a participant's failed turn has the badge and no refill.
+  const onOwner = restoreAction({ ...mine, origin: { ...mine.origin, enqueued_id: "e9" } }, opts);
+  assert.equal(onOwner.author.author, "p:g1");
+  assert.equal(onOwner.refill, null);
+  assert.equal("author" in restoreAction({ type: "prompt_restored", prompt: "x", origin: { client_id: ME, enqueued_id: "e1" } }, opts), false);
+});
