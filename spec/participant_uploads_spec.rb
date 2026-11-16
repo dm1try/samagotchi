@@ -80,4 +80,17 @@ RSpec.describe Samagotchi::ParticipantUploads do
       expect(warned.map { |args, _| args }).to all(eq([:web, "participant_images_unreadable"]))
     end
   end
+
+  it "warns once for each unreadable file state" do
+    File.write(path, "{oops")
+    warned = []
+    allow(Samagotchi::Log).to receive(:warn) { |*args, **kw| warned << [args, kw] }
+
+    2.times { described_class.read(dir) }
+    expect(warned.map { |args, _| args }).to eq([[:web, "participant_images_unreadable"]])
+
+    File.write(path, "[")
+    2.times { described_class.read(dir) }
+    expect(warned.map { |args, _| args }).to eq([[:web, "participant_images_unreadable"]] * 2)
+  end
 end

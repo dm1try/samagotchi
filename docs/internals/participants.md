@@ -452,8 +452,9 @@ is still downscaled by `ImageStore.fit`, so the tool does read their bytes: thei
 magick reading the sniffed format's coder under `-limit memory 256MiB -limit disk 1GiB -limit area 64MP`. An
 upload that raises is audited (`internal_error`) before chi web's 500. The quota is checked under `@participant_images_mutex`, the
 image ingested, then checked again and recorded under it (a race past it is refused there; the stored file may stay
-in `images/`, unreachable to them). Each answer is an `image` audit line. The reply is the ref without `source`,
-`mime` or `bytes`.
+in `images/`, unreachable to them). The first upload past the attempts cap is audited; later uploads are not, even
+when another refusal takes precedence, so uploads add at most `MAX_IMAGE_ATTEMPTS + 1` audit lines per grant. The
+reply is the ref without `source`, `mime` or `bytes`.
 
 **Read back** (`GET …/images/<name>`, `SessionControl#handle_image`): a participant gets the file only when
 `ParticipantUploads.owned?` says they uploaded it (the record proves they had the bytes), with `Cache-Control:
@@ -462,8 +463,8 @@ headers alike. A revoked or expired grant is refused by the gate (401) as on eve
 
 **Their turn** takes only refs they uploaded ([Turns](#turns)); **what they see** is their own images as thumbnails
 and anyone else's as "N images" ([What a participant sees](#what-a-participant-sees)). A corrupt or unreadable
-record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. Not covered:
-a participant's `chi --remote … --image`; a failed turn of theirs gives the text back without its chips.
+record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. A failed turn
+of theirs gives the text back without its chips.
 
 ## What a participant sees
 

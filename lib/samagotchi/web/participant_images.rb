@@ -20,9 +20,12 @@ module Samagotchi
     module ParticipantImages
       # One upload's answer: +ref+ when accepted, else +status+, +code+ and
       # +detail+; +bytes+ the stored size (for the audit line).
-      Upload = Data.define(:status, :code, :detail, :ref, :bytes) do
-        def self.refused(status, code, detail) = new(status: status, code: code, detail: detail, ref: nil, bytes: nil)
-        def self.accepted(ref) = new(status: 201, code: nil, detail: nil, ref: ref, bytes: ref[:bytes])
+      Upload = Data.define(:status, :code, :detail, :ref, :bytes, :audit) do
+        def self.refused(status, code, detail, audit: true)
+          new(status: status, code: code, detail: detail, ref: nil, bytes: nil, audit: audit)
+        end
+
+        def self.accepted(ref) = new(status: 201, code: nil, detail: nil, ref: ref, bytes: ref[:bytes], audit: true)
       end
 
       private
@@ -48,9 +51,9 @@ module Samagotchi
       # unsupported_image: chi converts those with an external tool), no
       # size in its header or over MAX_PARTICIPANT_PIXELS / _SIDE (422
       # image_too_big), their quota (429 too_many_images; a file they own
-      # already is accepted again, no new entry). Every answer is audited,
-      # an exception too (internal_error, then raised). The reply is the ref
-      # without source, mime or bytes.
+      # already is accepted again, no new entry). Answers are audited except
+      # repeated refusals after the attempts cap; exceptions too (internal_error,
+      # then raised). The reply is the ref without source, mime or bytes.
       def participant_image_upload(req, id, session_dir)
         grant = principal(req).grant
         upload = begin
@@ -59,7 +62,7 @@ module Samagotchi
           audit_image(id, grant, Upload.refused(500, "internal_error", nil))
           raise
         end
-        audit_image(id, grant, upload)
+        audit_image(id, grant, upload) if upload.audit
         return error_response(upload.status, upload.code, upload.detail) unless upload.ref
 
         json_response(201, upload.ref.slice(:file, :name, :width, :height))
@@ -72,17 +75,18 @@ module Samagotchi
       end
 
       def participant_upload(req, dir, grant)
-        over = @participant_images_mutex.synchronize do
+        over, first_over = @participant_images_mutex.synchronize do
           record = ParticipantUploads.read(dir)
           tried = record.attempts_of(grant.id)
-          ParticipantUploads.attempt!(dir, grant.id, state: record) if tried < Grants::MAX_IMAGE_ATTEMPTS
-          tried >= Grants::MAX_IMAGE_ATTEMPTS
+          ParticipantUploads.attempt!(dir, grant.id, state: record) if tried <= Grants::MAX_IMAGE_ATTEMPTS
+          [tried >= Grants::MAX_IMAGE_ATTEMPTS, tried == Grants::MAX_IMAGE_ATTEMPTS]
         end
         if (cap = participant_cap_refusal(grant))
-          return Upload.refused(*cap)
+          return Upload.refused(*cap, audit: !over || first_over)
         end
         if over
-          return Upload.refused(429, "too_many_image_attempts", ParticipantMessages::TOO_MANY_IMAGE_ATTEMPTS)
+          return Upload.refused(429, "too_many_image_attempts", ParticipantMessages::TOO_MANY_IMAGE_ATTEMPTS,
+                                audit: first_over)
         end
 
         bytes = image_upload_bytes(req)

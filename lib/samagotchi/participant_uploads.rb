@@ -36,6 +36,8 @@ module Samagotchi
       def owned?(file, grant_id) = entries.any? { |entry| entry.file == file && entry.grant_id == grant_id }
     end
     BROKEN = State.new(entries: [].freeze, attempts: {}.freeze, broken: true)
+    WARNED_UNREADABLE = Set.new
+    WARNED_UNREADABLE_MUTEX = Mutex.new
 
     module_function
 
@@ -55,8 +57,19 @@ module Samagotchi
 
       State.new(entries: entries, attempts: attempts.transform_values(&:to_i), broken: false)
     rescue JSON::ParserError, SystemCallError, TypeError, KeyError, NoMethodError => e
-      Log.warn(:web, "participant_images_unreadable", file: path, msg: e.message)
+      warn_unreadable(path, e)
       BROKEN
+    end
+
+    def warn_unreadable(path, error)
+      stat = begin
+        File.stat(path)
+      rescue SystemCallError
+        nil
+      end
+      key = [path, stat&.size, stat&.mtime]
+      first = WARNED_UNREADABLE_MUTEX.synchronize { WARNED_UNREADABLE.add?(key) }
+      Log.warn(:web, "participant_images_unreadable", file: path, msg: error.message) if first
     end
 
     # Distinct files +grant_id+ uploaded; a broken record reads as at quota.

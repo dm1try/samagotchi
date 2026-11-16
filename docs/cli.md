@@ -1628,6 +1628,8 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   project's sessions there (`--scope=project --cwd DIR` one project's), each
   on the same line a list here prints. `context` takes the session ids (no default session),
   and a URL resolves through that machine's bundles.
+- A participant token can send `--image` too: each file uploads to that grant's
+  participant image route before the turn is sent.
 - That machine's config.yml decides what it checks for `send` and `answer`:
   a parent agent's `/continue yes` and options (`guardrails.parent_answers`),
   a loosening `/parent-answers`, images to a model that can't see them. Each
