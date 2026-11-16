@@ -20,6 +20,15 @@ module Samagotchi
     # (accepted) is told apart from "claimed".
     Refused = Data.define(:value)
 
+    # #accept with no claim held: a caller that skipped #claim (a bug, never
+    # a request). Worker#exit_request releases and re-raises it, so the
+    # Bridge answers 500 rather than a silent exit of no kind.
+    class NotClaimed < StandardError
+      def initialize(msg = "no exit claimed: #accept follows a #claim that returned nil")
+        super
+      end
+    end
+
     # The exit taken: its +kind+ (:exit, :delete, :restart) and the client
     # that asked (+by+).
     Taken = Data.define(:kind, :by) do
@@ -54,8 +63,11 @@ module Samagotchi
 
     # The claimed exit goes through: it is taken by +by+ (a client id), and
     # a plain one (no +stop+) drops the last stop-all's list.
+    # @raise [NotClaimed] when no claim is held
     def accept(by:, stop:)
       @mutex.synchronize do
+        raise NotClaimed unless @claim
+
         @stopped = nil unless stop
         @taken = Taken.new(kind: @claim, by: by)
       end

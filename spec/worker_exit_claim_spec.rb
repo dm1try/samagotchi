@@ -19,6 +19,16 @@ RSpec.describe Samagotchi::WorkerExitClaim do
     expect(claim.taken).to be_nil
   end
 
+  it "refuses an accept with no claim, fresh or after a forget" do
+    expect { claim.accept(by: "tui:1", stop: false) }.to raise_error(described_class::NotClaimed, /no exit claimed/)
+    expect(claim.taken?).to be(false)
+
+    claim.claim(:exit)
+    claim.forget
+    expect { claim.accept(by: "tui:1", stop: false) }.to raise_error(described_class::NotClaimed)
+    expect(claim.taken?).to be(false)
+  end
+
   it "answers a request of the kind already taken as accepted (Refused nil)" do
     claim.claim(:restart)
     claim.accept(by: "web:1", stop: false)
