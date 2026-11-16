@@ -455,7 +455,7 @@ The Bridge exposes:
   `:command_ran` names, `400` when the line isn't one. `client_id` is required: without one (or a blank one) `400
   missing_client_id` (`Bridge::UNNAMED_COMMAND`); from a sender that may not send commands (`CommandIntake.allowed?`:
   only the owner's senders, `web:`, `tui:`, `cli:send`, and chi answer's `cli:answer`) `403 command_not_permitted`, its
-  detail `CommandIntake::COMMAND_REFUSED` (`CommandIntake::REFUSED` for a `!` line), nothing queued. A `:command_ran`'s `output` is the command's, up to `Worker::COMMAND_OUTPUT_LIMIT` (64 KiB of chars; past it
+  detail `CommandIntake::COMMAND_REFUSED` (`CommandIntake::REFUSED` for a `!` line), nothing queued. A `:command_ran`'s `output` is the command's, up to `Worker::CommandQueuePart::COMMAND_OUTPUT_LIMIT` (64 KiB of chars; past it
   the text ends with a `[cut: N of M chars: …]` line, which the UIs print as they print the rest). It carries `thinking`, `reasoning_history` and `llm_context`
   (the summaries the next turn runs under) when the command changed them or the model, and
   `confirm: {line, text}` when a `/thinking` or `/reasoning-history` change from a `web:` or `tui:`
