@@ -1387,11 +1387,15 @@ session bar shows the `mem N` chip again.
   tooltip goes too): the session's whole set, preloaded (`--memory`) and muted
   (`--mute`) memories included; its dot lights when the set changed since you
   last opened it.
-- **The list** the three open (a bottom sheet on a phone): this turn or the
-  whole session, files grouped by folder (a group opens in place), memories
+- **The list** the three open (a bottom sheet on a phone): always the whole
+  session's set, files grouped by folder (a group opens in place), memories
   (used, preloaded, muted) and URLs, each with what was done to it (`read ×2`,
-  `read, edited`, `preloaded`) and a step tag (`s3`, `t2·s3` in the session's
-  scope, `prompt` for a preloaded memory) that goes to the call. A file opens
+  `read, edited`, `preloaded`) and a step tag (`t2·s3`, `prompt` for a preloaded
+  memory) that goes to the call. The header's `session | ‹ turn N ›` is a lens:
+  the chip opens the session, a footprint or the rail opens a turn, and `‹` `›`
+  step through the turns. In a turn's lens the rows that turn touched are lit,
+  with that turn's words and step tag (`s3`), the others dimmed; the line under
+  the header says `turn 2 touched 3 · 1 new`; a folded group still shows its lit rows. A file opens
   as its row's title does, a URL in a new tab. A row (on hover or keyboard
   focus) and a folded group offer `drop`, which runs `/working-set drop` (see
   `/working-set` above); a dropped row offers `undrop`, and so does one whose

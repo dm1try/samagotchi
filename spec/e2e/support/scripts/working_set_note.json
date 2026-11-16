@@ -1,0 +1,7 @@
+{
+ "delay": 0.005,
+ "iterations": [
+  {"thinking": "The style memory again.", "tools": [{"name": "memory_read", "arguments": {"name": "e2e-style"}}]},
+  {"thinking": "Read.", "text": "Read the style note again."}
+ ]
+}

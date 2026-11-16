@@ -128,6 +128,12 @@ test("theme: no web JS module sets a raw colour", () => {
 // and ops text, the drop/pin buttons) and the rail's rule: one step brighter
 // on the dark palette, where text-faint and border read as almost nothing;
 // the light palette keeps the base tokens.
+test("theme: the turn lens's dim is a token in both palettes, and the popover's dim rows use it", () => {
+  assert.equal(DARK["--ws-lens-dim"], ".38");
+  assert.equal(LIGHT["--ws-lens-dim"], ".38");
+  assert.match(HTML.slice(HTML.indexOf(".ws-row.dim{")).split("}")[0], /opacity:var\(--ws-lens-dim\)/);
+});
+
 test("theme: the working set's faint text and rule are a step brighter on dark, unchanged on light", () => {
   assert.equal(DARK["--ws-faint"], "var(--text-muted)");
   assert.equal(DARK["--ws-muted"], "var(--text-3)");

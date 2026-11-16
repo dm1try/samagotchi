@@ -884,6 +884,51 @@ test.describe("the working set", () => {
     }
   });
 
+  // The list's lens: the list is always the session's; a turn's footprint
+  // lights the rows that turn touched and dims the rest, `‹ ›` step turns.
+  test("the lens: a footprint lights the turn's rows and dims the others; the arrows step; the session lens lights nothing", async ({ page, script, chi }) => {
+    test.setTimeout(60_000);
+    const memories = path.join(chi.dirs.config, "samagotchi", "memories");
+    fs.mkdirSync(memories, { recursive: true });
+    const note = path.join(memories, "e2e-style.md");
+    fs.writeFileSync(note, "Keep it short.\n");
+    try {
+      script("working_set");
+      await send(page, "Read the README and the style note.");
+      await expect(stageEl(page)).toBeVisible();
+      await page.mouse.move(0, 0);
+      await handedOff(page, 1);
+      script("working_set_note");
+      await send(page, "Read the style note again.");
+      await expect(stageEl(page)).toBeVisible();
+      await page.mouse.move(0, 0);
+      await handedOff(page, 2);
+      const pop = page.locator("#workingSetPopover");
+      const readme = pop.locator(".ws-row.file", { hasText: "README.md" });
+      const style = pop.locator(".ws-row.memory", { hasText: "e2e-style" });
+      // The second turn's footprint: the style note lit, the README dimmed.
+      await page.locator("#history .turn-work").nth(1).locator("> summary .ws-foot .w").click();
+      await expect(pop).toBeVisible();
+      await expect(pop.locator(".ws-lens-line")).toHaveText("turn 2 touched 1 · 0 new");
+      await expect(style).toHaveClass(/\blit\b/);
+      await expect(readme).toHaveClass(/\bdim\b/);
+      await expect(readme).toHaveCSS("opacity", "0.38");
+      await expect(style).toHaveCSS("opacity", "1");
+      // ‹ steps to the first turn, which touched both; › is disabled at the newest.
+      await expect(pop.locator('[data-lens="next"]')).toBeDisabled();
+      await pop.locator('[data-lens="prev"]').click();
+      await expect(pop.locator(".ws-lens-line")).toHaveText("turn 1 touched 2 · 2 new");
+      await expect(readme).toHaveClass(/\blit\b/);
+      await expect(pop.locator('[data-lens="prev"]')).toBeDisabled();
+      // The session lens: no lit, no dim.
+      await pop.locator('[data-lens="session"]').click();
+      await expect(pop.locator(".ws-row.lit, .ws-row.dim")).toHaveCount(0);
+      await expect(pop.locator(".ws-lens-line")).toHaveCount(0);
+    } finally {
+      fs.rmSync(note, { force: true });
+    }
+  });
+
   // What chi has (the peek and the reader), then steering (P3a): a drop from the list between turns runs at once (the
   // session's /working-set command): the row is struck `dropped`, and the next
   // turn's first request sends the stub and the turn-start note instead of the

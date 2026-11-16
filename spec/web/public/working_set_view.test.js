@@ -501,3 +501,208 @@ test("a stale or forgotten row offers refresh (an add of it); pending, it reads 
     pop.remove();
   }
 });
+
+// Two turns over one list: turn 0 reads lib/a.rb and lib/b.rb, turn 1 edits
+// lib/b.rb and reads lib/c.rb (the footprints are on the page).
+function lensView({ files = null, state = {}, sendLine = null, turn1 = null, oneTurn = false } = {}) {
+  const historyEl = document.createElement("div");
+  const infoEl = document.createElement("div");
+  infoEl.innerHTML = '<button class="ws-chip"></button>';
+  document.body.append(historyEl, infoEl);
+  const ws = createWorkingSet({
+    historyEl, infoEl, state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], ...state }), session: () => "s1", sendLine,
+  });
+  const okRead = (path, tool = "read") => ({ ...read(path), tool, status: "ok" });
+  const turn0 = itemsOfTurn({ gens: [{ tools: files ? files.map((f) => okRead(f)) : [okRead("lib/a.rb"), okRead("lib/b.rb")] }] }, 0);
+  const turn1Items = itemsOfTurn(turn1 || { gens: [{ tools: [okRead("lib/c.rb")] }, { tools: [okRead("lib/b.rb", "edit")] }] }, 1);
+  const lists = [{ items: turn0, prompt: "first" }, { items: turn1Items, prompt: "second" }].slice(0, oneTurn ? 1 : 2);
+  ws.seed(lists);
+  const foots = [footprintNode(turn0, 0), footprintNode(turn1Items, 1)];
+  historyEl.append(...foots);
+  const pop = ws.popover.pop;
+  const rows = () => [...pop.querySelectorAll(".ws-row[data-ws-id]")];
+  const lit = () => rows().filter((r) => r.classList.contains("lit")).map((r) => r.querySelector(".t").textContent);
+  const dim = () => rows().filter((r) => r.classList.contains("dim")).map((r) => r.querySelector(".t").textContent);
+  const lensBtn = (which) => pop.querySelector(`[data-ws="lens"][data-lens="${which}"]`);
+  const done = () => { ws.popover.close(); infoEl.remove(); historyEl.remove(); pop.remove(); };
+  return { ws, pop, rows, lit, dim, lensBtn, foots, infoEl, done, lists, okRead };
+}
+
+test("a footprint opens the turn lens: the list is the session's, the turn's rows lit with its step tags, the rest dimmed", () => {
+  const v = lensView();
+  try {
+    v.foots[1].click();
+    assert.ok(v.ws.isOpen());
+    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["a.rb", "b.rb", "c.rb"], "always the session's list");
+    assert.deepEqual(v.lit(), ["b.rb", "c.rb"]);
+    assert.deepEqual(v.dim(), ["a.rb"]);
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
+    // b.rb's step tag and words are the turn's (step 2, edited), not the session's first entry (t1·s1, read).
+    const b = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb");
+    assert.equal(b.querySelector(".ws-step").textContent, "s2");
+    assert.equal(b.querySelector(".ws-step").dataset.at, "1.1.0");
+    assert.match(b.querySelector(".st").textContent, /edited/);
+    assert.equal(v.rows()[0].querySelector(".ws-step").textContent, "t1·s1", "an untouched row keeps the session's own tag");
+    // The session lens: no lit, no dim, no line.
+    v.lensBtn("session").click();
+    assert.deepEqual([v.lit(), v.dim()], [[], []]);
+    assert.ok(v.pop.querySelector(".ws-lens-line") === null);
+    assert.equal(v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb").querySelector(".ws-step").textContent, "t1·s1");
+  } finally { v.done(); }
+});
+
+test("‹ › step through the turns, disabled at the ends; the turn button takes the newest turn from the session lens", () => {
+  const v = lensView();
+  try {
+    v.foots[0].click();
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 1 touched 2 · 2 new");
+    assert.deepEqual(v.lit(), ["a.rb", "b.rb"]);
+    assert.equal(v.lensBtn("prev").disabled, true);
+    assert.equal(v.lensBtn("next").disabled, false);
+    v.lensBtn("next").click();
+    assert.deepEqual(v.lit(), ["b.rb", "c.rb"]);
+    assert.equal(v.lensBtn("next").disabled, true);
+    v.lensBtn("next").click();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 2 /, "a click past the end is dropped");
+    v.lensBtn("prev").click();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 1 /);
+    v.lensBtn("session").click();
+    assert.equal(v.lensBtn("turn").textContent, "turn 2");
+    assert.equal(v.lensBtn("next").disabled, true);
+    v.lensBtn("prev").click();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 2 /, "from the session lens ‹ goes to the newest turn");
+    v.lensBtn("session").click();
+    v.lensBtn("turn").click();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 2 /);
+  } finally { v.done(); }
+});
+
+test("the chip opens the session lens even after a turn lens; the rail's open is the running turn's lens, the live turn steppable", () => {
+  const v = lensView();
+  try {
+    v.foots[0].click();
+    v.ws.popover.close();
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.ok(v.ws.isOpen());
+    assert.deepEqual([v.lit(), v.dim()], [[], []]);
+    assert.equal(v.lensBtn("session").classList.contains("on"), true);
+    v.ws.popover.close();
+    // The running turn (ordinal 2) joins the turns the lens steps through.
+    v.ws.liveItems({ gens: [{ tools: [{ ...read("lib/d.rb"), status: "ok" }] }] });
+    const anchor = document.createElement("div");
+    v.infoEl.append(anchor);
+    v.ws.openTurn(anchor);
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 3 touched 1 · 1 new");
+    assert.deepEqual(v.lit(), ["d.rb"]);
+    assert.equal(v.lensBtn("next").disabled, true);
+    v.lensBtn("prev").click();
+    assert.deepEqual(v.lit(), ["b.rb", "c.rb"]);
+  } finally { v.done(); }
+});
+
+test("a folded group keeps the rows the lens lights; the others wait inside it", () => {
+  const files = Array.from({ length: 8 }, (_, i) => `lib/x/f${i}.rb`);
+  const v = lensView({ files });
+  try {
+    v.foots[1].click();
+    // Past the budget the files fold by directory: lib/x (8) is a group head, lib/c.rb its own row.
+    const head = v.pop.querySelector(".ws-group-head");
+    assert.ok(head, "the directory is folded");
+    assert.equal(head.getAttribute("aria-expanded"), "false");
+    // Turn 1 touched lib/c.rb and lib/b.rb (not in the group): the head is dim, no member shown.
+    assert.equal(head.classList.contains("dim"), true);
+    assert.equal(v.rows().filter((r) => r.classList.contains("member")).length, 0);
+    // Turn 0 touched every file of the group: its head is lit and shows the members while folded.
+    v.lensBtn("prev").click();
+    const lit = v.pop.querySelector(".ws-group-head");
+    assert.equal(lit.getAttribute("aria-expanded"), "false");
+    assert.equal(lit.classList.contains("lit"), true);
+    assert.equal(v.rows().filter((r) => r.classList.contains("member") && r.classList.contains("lit")).length, 8);
+    // Session lens: folded means folded.
+    v.lensBtn("session").click();
+    assert.equal(v.rows().filter((r) => r.classList.contains("member")).length, 0);
+  } finally { v.done(); }
+});
+
+test("a lit row's actions come from the session item: a read in turn 1 and an edit only in turn 2 still offers drop in turn 2's lens", () => {
+  const sent = [];
+  const v = lensView({
+    files: ["lib/b.rb"], sendLine: (line) => { sent.push(line); return Promise.resolve(); },
+    turn1: { gens: [{ tools: [{ ...read("lib/b.rb"), tool: "edit", status: "ok" }] }] },
+  });
+  try {
+    // The server's snapshot (tokens set), so dropRefusal has something to say.
+    v.ws.update({ items: [{ kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 12 }], at: 3 });
+    v.foots[1].click();
+    const row = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb");
+    assert.ok(row.classList.contains("lit"));
+    assert.match(row.querySelector(".st").textContent, /edited/, "the turn's words: only edited");
+    assert.equal(row.querySelector(".ws-step").textContent, "s1");
+    const drop = row.querySelector('[data-op="drop"]');
+    assert.equal(drop.disabled, false, "the session read it: the same drop as the session lens");
+    v.lensBtn("session").click();
+    assert.equal(v.rows()[0].querySelector('[data-op="drop"]').disabled, false);
+  } finally { v.done(); }
+});
+
+test("a lit preloaded memory shows the turn's step tag (with its jump), not \"prompt\"; unlit, it says prompt", () => {
+  const v = lensView({
+    state: { preloadedMemories: ["style", "other"] },
+    turn1: { gens: [{ tools: [{ tool: "memory_read", title: "style", status: "ok" }] }] },
+  });
+  try {
+    v.foots[1].click();
+    const tagOf = (id) => v.rows().find((r) => r.dataset.wsId === id).querySelector(".ws-step");
+    assert.equal(tagOf("memory:style").textContent, "s1");
+    assert.equal(tagOf("memory:style").dataset.at, "1.0.0");
+    assert.equal(tagOf("memory:other").textContent, "prompt");
+    v.lensBtn("session").click();
+    assert.equal(tagOf("memory:style").textContent, "prompt");
+  } finally { v.done(); }
+});
+
+test("a seed for the same session while the lens is on the live turn keeps the lens; the live turn coming back lights it again", () => {
+  const v = lensView({ oneTurn: true });
+  try {
+    const live = { gens: [{ tools: [{ ...read("lib/d.rb"), status: "ok" }] }] };
+    v.ws.liveItems(live);
+    const anchor = document.createElement("div");
+    v.infoEl.append(anchor);
+    v.ws.openTurn(anchor);
+    assert.deepEqual(v.lit(), ["d.rb"]);
+    // A resync: the history is seeded again, the running turn not yet back.
+    v.ws.seed(v.lists);
+    assert.ok(v.ws.isOpen());
+    assert.deepEqual([v.lit(), v.dim()], [[], []], "no such turn yet: the session is shown");
+    v.ws.liveItems(live);
+    v.ws.sessionChanged();
+    assert.deepEqual(v.lit(), ["d.rb"], "the lens was kept");
+  } finally { v.done(); }
+});
+
+test("one finished turn: its lens has both arrows disabled; the live turn ending keeps the lens on its turn", () => {
+  const v = lensView({ oneTurn: true });
+  try {
+    v.foots[0].click();
+    assert.equal(v.lensBtn("prev").disabled, true);
+    assert.equal(v.lensBtn("next").disabled, true);
+    v.lensBtn("session").click();
+    assert.equal(v.lensBtn("prev").disabled, false, "from the session lens ‹ goes to that turn");
+    v.lensBtn("prev").click();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 1 /);
+    v.ws.popover.close();
+    // A running turn is the lens; it ends (hand-off): the lens stays on it.
+    const live = { gens: [{ tools: [{ ...read("lib/d.rb"), status: "ok" }] }] };
+    v.ws.liveItems(live);
+    const anchor = document.createElement("div");
+    v.infoEl.append(anchor);
+    v.ws.openTurn(anchor);
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 2 /);
+    v.ws.handOff(live);
+    v.ws.sessionChanged();
+    assert.match(v.pop.querySelector(".ws-lens-line").textContent, /^turn 2 touched 1/);
+    assert.deepEqual(v.lit(), ["d.rb"]);
+    assert.equal(v.lensBtn("prev").disabled, false);
+    assert.equal(v.lensBtn("next").disabled, true);
+  } finally { v.done(); }
+});
