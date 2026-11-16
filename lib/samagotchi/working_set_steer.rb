@@ -86,6 +86,7 @@ module Samagotchi
         not_http: "not an http(s) URL: web_fetch can't fetch it",
         already_sent: "already in the model's context (sent whole): nothing to add",
         already_added: "already added: the next turn reads it",
+        in_prompt: "already in the system prompt: nothing to add",
         not_added: "not added (no add of it is pending)"
       }.freeze
 
@@ -258,11 +259,13 @@ module Samagotchi
     # Adds +target+: the next turn's note asks the model to read it. +found+
     # answers whether the item exists (a file, a memory; the caller's
     # look). Refused for an item the model is sent whole now (live, a read
-    # of it sent), a dropped one (undrop it), and one added already.
+    # of it sent), a dropped one (undrop it), a prompt-only memory, and one
+    # added already.
     # @param found [#call] target → nil when it exists, else a Refused reason
+    # @param in_prompt [Array<String>] memory names the system prompt holds
     # @return [Done]
     # @raise [Refused]
-    def add(conversation, target, strategy:, cwd:, found: ->(_) {})
+    def add(conversation, target, strategy:, cwd:, found: ->(_) {}, in_prompt: [])
       raise Refused, :already_added if pending?(conversation, ADD, target)
 
       reason = target.kind == WorkingSet::URL && !target.key.match?(%r{\Ahttps?://}i) ? :not_http : found.call(target)
@@ -270,6 +273,7 @@ module Samagotchi
 
       outputs = WorkingSet.outputs_of(conversation, kind: target.kind, key: target.key, strategy: strategy, cwd: cwd)
       raise Refused, :undrop_first if outputs.any? { |output| drop_of(conversation, output) }
+      raise Refused, :in_prompt if outputs.empty? && prompt_memory?(target, in_prompt)
       raise Refused, :already_sent if outputs.any?(&:sent) && live?(conversation, target, strategy, cwd)
 
       Done.new(target: target, op: ADD, ids: [], freed_chars: 0, tail_chars: 0, free: true)
@@ -366,6 +370,19 @@ module Samagotchi
       entry["op"] == op && entry["kind"] == target.kind && entry["key"] == target.key
     end
 
+    def prompt_memory?(target, names)
+      return false unless target.kind == WorkingSet::MEMORY
+
+      name = normalized_memory_name(target.key)
+      Array(names).any? { |prompt_name| normalized_memory_name(prompt_name) == name }
+    end
+
+    def normalized_memory_name(raw)
+      value = raw.to_s.strip
+      scope, name = value.split("/", 2)
+      Tools::VALID_SCOPES.include?(scope) ? name : value
+    end
+
     # The note listing +ops+: a tail system message, escaped like a context
     # note (Prompt::ESCAPED_KINDS: it carries paths and URLs).
     def note(ops)
@@ -409,6 +426,7 @@ module Samagotchi
       tokens >= 1000 ? format("%.1fk tokens", tokens / 1000.0) : "#{tokens} tokens"
     end
 
-    private_class_method :relative, :shared_with, :drop_of, :known?, :live?, :layers, :same?, :labels, :call_of
+    private_class_method :relative, :shared_with, :drop_of, :known?, :live?, :layers, :same?, :prompt_memory?, :normalized_memory_name,
+                         :labels, :call_of
   end
 end

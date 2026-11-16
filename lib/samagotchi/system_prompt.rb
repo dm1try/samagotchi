@@ -95,7 +95,7 @@ module Samagotchi
     # plugins' sections it holds, its stable part's length (chat) and the
     # Tools::ToolSurface it declares (the tools, the not-loaded line, the
     # kit's prompt text).
-    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface)
+    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface, :memory_names)
 
     # The full prompt: #base wrapped with the index and the rest. Built once
     # per loop and level (until #reset!) so the prompt prefix, and the
@@ -120,6 +120,7 @@ module Samagotchi
       built = cache[key] || (cache[key] = build_prompt(chat: chat, thinking: thinking, layers: layers))
       @memory_index = built.memory_index
       @last = built
+      @last_prompt_memory_names = built.memory_names
       built.prompt
     end
 
@@ -136,6 +137,11 @@ module Samagotchi
     # #reset!. Read when the prompt is built, as the section is.
     # @return [Array<ModelNotes::Note>, nil]
     def prompt_notes = @last&.notes
+
+    # The identity and preloaded memories the last prompt build actually
+    # rendered; retained across reset! until another build completes.
+    # @return [Array<String>]
+    def prompt_memory_names = @last_prompt_memory_names || []
 
     # The files whose text the prompt #build returned last holds, as
     # absolute paths in prompt order: the AGENTS.md chain, then the
@@ -192,6 +198,8 @@ module Samagotchi
     # @section_* and @measured_* scratch is this build's (the turn thread's)
     # alone: #reset! never touches it.
     def build_prompt(chat:, thinking:, layers:)
+      @section_identity_memory_name = nil
+      @section_activated_memory_names = []
       @section_notes = nil
       @section_files = []
       @section_plugins = []
@@ -201,7 +209,7 @@ module Samagotchi
                                         chat: chat, thinking: thinking, surface: surface)
       Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
                 files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length,
-                surface: surface)
+                surface: surface, memory_names: [@section_identity_memory_name, *@section_activated_memory_names].compact.uniq.freeze)
     end
 
     # The session's tools as a build under +layers+ declares them, read
@@ -432,6 +440,7 @@ module Samagotchi
           next if body.start_with?("Error:")
           next if body.strip.empty?
 
+          @section_identity_memory_name = name
           return "System identity (auto-loaded, scope=system):\n#{body}"
         end
         nil
@@ -546,6 +555,7 @@ module Samagotchi
           # status line. The memory-body injection itself stays here — the
           # SystemPrompt is the single source of truth for the system prompt.
           @activated_memory_names << actual_name
+          @section_activated_memory_names << actual_name
           entries << "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
         end
       end

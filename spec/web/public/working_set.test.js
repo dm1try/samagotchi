@@ -86,6 +86,18 @@ test("sessionItems: turns merged with the first entry kept; preloaded first (pro
   assert.deepEqual(t0[0].ops, ["read"]);
 });
 
+test("sessionItems: notes are prompt rows, merged with preload and reads", () => {
+  const turns = itemsOfTurn(turnOf([memory("note"), memory("used")]), 0);
+  const { items } = sessionItems({
+    turns: [turns], preloaded: ["pre", "note"], notes: [{ name: "note" }, { name: "model_note" }],
+    used: ["note", "used", "other"],
+  });
+  assert.deepEqual(items.map((item) => [item.key, item.preloaded, item.ops]), [
+    ["pre", true, []], ["note", true, ["read"]], ["model_note", true, []],
+    ["used", undefined, ["read"]], ["other", undefined, ["read"]],
+  ]);
+});
+
 // The spec's §3 examples.
 const files = (dir, names, edits = []) => names.map((n) => file(`${dir}/${n}`, edits.includes(n) ? "edit" : "read"));
 
@@ -380,7 +392,7 @@ test("dropRefusal: a read item drops; edit-only, preloaded-only, forgotten ones 
   assert.equal(dropRefusal(item({ state: "stale" })), "");
   assert.match(dropRefusal(item({ ops: ["edit"], tokens: 0 })), /^only edited/);
   assert.match(dropRefusal(item({ state: "forgotten" })), /^forgotten/);
-  assert.match(dropRefusal({ kind: "memory", key: "m", ops: [], preloaded: true, state: "live" }), /^preloaded/);
+  assert.equal(dropRefusal({ kind: "memory", key: "m", ops: [], preloaded: true, state: "live" }), "in the system prompt: not dropped from here");
   assert.equal(dropRefusal(item({ tokens: undefined })), null);
   assert.equal(dropRefusal(item({ state: "dropped" })), null);
   assert.equal(dropRefusal(item({ muted: true })), null);
@@ -466,4 +478,6 @@ test("refreshable: a stale or forgotten item the server knows; not one holding t
   assert.equal(refreshable(item({ state: "dropped" })), false);
   assert.equal(refreshable(item({ tokens: undefined })), false);
   assert.equal(refreshable(item({ muted: true })), false);
+  assert.equal(refreshable({ kind: "memory", key: "note", ops: [], preloaded: true, state: "stale", tokens: 40 }), false);
+  assert.equal(refreshable({ kind: "memory", key: "note", ops: ["read"], preloaded: true, state: "stale", tokens: 40 }), true);
 });

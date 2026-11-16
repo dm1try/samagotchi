@@ -1,7 +1,8 @@
 # The working set: what the model really has
 
 The stage view's working set (`web.working_set`, [cli.md](../cli.md#the-working-set)) shows the files, memories
-and URLs a session's tool runs brought into the model's context. The page builds the set itself from its tool rows
+and URLs a session's tool runs brought into the model's context, and model notes carried in the system prompt as
+`prompt` rows. The page builds the set itself from its tool rows
 (`working_set.js`, phase 1). The server says what the model still has of each item: **live**, **stale** (a file
 changed since the model last saw it) or **forgotten** (nothing of it is still sent), and its size in tokens. This
 page covers the server's side and how the page overlays it.
@@ -220,9 +221,11 @@ projection), on both loops. It costs one model step; a model may skip it (the no
 - **`WorkingSetSteer.add`** refuses an item already added (pending), a URL not http(s) (`web_fetch` fetches only
   those), what the caller's `found` look says can't be read (`WorkingSetCommand#missing`: a file not there or a
   directory; a memory name `memory_read` rejects or that neither scope holds), an item holding the user's drop
-  (`undrop_first`: undrop brings it back without a step), and one the model has whole (`already_sent`: live, a read
-  of it sent). A stale or forgotten item may be added: that is the web row's `refresh`. **`unadd`** takes a pending
-  add back (free); without one it is refused (`not_added`).
+  (`undrop_first`: undrop brings it back without a step), one already in the system prompt and with no working-set
+  output (`in_prompt`: nothing to add), and one the model has whole (`already_sent`: live, a read of it sent). The
+  prompt-only refusal doesn't apply when the set holds a read of that memory: a stale or forgotten item may still be
+  added as the web row's `refresh`. **`unadd`** takes a pending add back (free); without one it is refused
+  (`not_added`).
 - **The note**: an add always joins it (`the user added lib/tax.rb, memory style to your context: before anything
   else, load them with read "/abs/lib/tax.rb", memory_read "style"`); a file is named by its absolute path in the
   call, since a `read` resolves a relative path against the process's folder. An unadd cancels its add there.

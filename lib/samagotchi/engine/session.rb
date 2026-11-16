@@ -22,6 +22,13 @@ module Samagotchi
         @muted_memory_names.dup
       end
 
+      # @return [Array<String>] sorted, deduped names the prompt carries or
+      #   will carry on a fresh session
+      def prompt_memory_names
+        names = Array(@prompt_builder.prompt_memory_names) + Array(prompt_notes).map(&:name)
+        names.map { |name| name.to_s.strip }.reject(&:empty?).uniq.sort
+      end
+
       # @return [Array<String>] the names the session preloads (config baseline
       #   + --memory, minus mutes), known before the prompt is built, unlike
       #   #activated_memory_names

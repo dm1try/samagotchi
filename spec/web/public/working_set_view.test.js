@@ -378,6 +378,30 @@ test("a strategy change (/llm-context's command_ran) redraws the open list: pin 
   pop.remove();
 });
 
+test("prompt notes update the open session list and count as in the prompt, not used", () => {
+  const historyEl = document.createElement("div");
+  const infoEl = document.createElement("div");
+  infoEl.innerHTML = '<button class="ws-chip"></button>';
+  document.body.append(historyEl, infoEl);
+  const current = { preloadedMemories: [], mutedMemories: [], usedMemories: [], promptNotes: [] };
+  const ws = createWorkingSet({ historyEl, infoEl, state: () => current, session: () => "s1" });
+  const pop = ws.popover.pop;
+  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [{ tool: "memory_read", title: "model_notes_style", status: "ok" }] }] }, 0), prompt: "first" }]);
+  ws.popover.open(infoEl.querySelector(".ws-chip"));
+  current.promptNotes = [{ name: "model_notes_style" }];
+  current.usedMemories = ["model_notes_style", "older"];
+  ws.sessionChanged();
+  const row = [...ws.popover.pop.querySelectorAll(".ws-row[data-ws-id]")].find((item) => item.dataset.wsId === "memory:model_notes_style");
+  assert.ok(row);
+  assert.equal(row.querySelector(".ws-step").textContent, "prompt");
+  assert.equal(row.querySelector(".ws-step").title, "in the system prompt");
+  assert.match(ws.popover.pop.querySelector(".ctx-pop-meta").textContent, /1 used · 1 in the prompt/);
+  assert.equal([...ws.popover.pop.querySelectorAll(".ws-row[data-ws-id]")].filter((item) => item.dataset.wsId === "memory:model_notes_style").length, 1);
+  ws.popover.close();
+  infoEl.remove();
+  pop.remove();
+});
+
 test("an item holding the user's drop on some reads (has_drop) offers undrop: alone when forgotten, beside drop when partly sent", () => {
   const { ws, pop, sent, row, infoEl } = steeringView({ llmContext: { strategy: "stale,forget" } });
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "forgotten", tokens: 12, has_drop: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9, has_drop: true }], at: 6 });

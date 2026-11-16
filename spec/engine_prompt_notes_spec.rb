@@ -58,6 +58,32 @@ RSpec.describe Samagotchi::Engine, "prompt notes" do
     expect(e.session.prompt_notes).to eq([])
   end
 
+  it "names rendered identity and activated preloads with notes, deduped and kept through a model reset" do
+    File.write(File.join(dir, "identity.md"), "I am chi.")
+    e = engine("box:gemma-small", memories: ["system/model_notes_gemma", "system/gone_preload"])
+    e.session = new_session("box:gemma-small")
+
+    e.system_prompt
+
+    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma])
+    e.switch_model!("box:qwen3")
+    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma model_notes_qwen])
+  end
+
+  it "does not name a muted or unreadable identity memory" do
+    File.write(File.join(dir, "identity.md"), "I am chi.")
+    muted = engine("box:gemma-small", muted_memories: ["identity"])
+    muted.system_prompt
+    expect(muted.prompt_memory_names).not_to include("identity")
+
+    unreadable = engine("box:gemma-small")
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_wrap_original do |original, name, **options|
+      name == "identity" ? "Error: unreadable identity" : original.call(name, **options)
+    end
+    unreadable.system_prompt
+    expect(unreadable.prompt_memory_names).not_to include("identity")
+  end
+
   it "leaves a muted note out of a fresh session's prompt notes" do
     e = engine("box:gemma-small", muted_memories: ["model_notes_gemma"])
     e.session = new_session("box:gemma-small")

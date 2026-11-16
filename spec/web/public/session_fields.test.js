@@ -41,6 +41,13 @@ test("the session's settings redraw the ⚙ panel and the bar", () => {
   assert.ok(ORDER.includes("settingsPanel"));
 });
 
+test("prompt memory fields redraw the open working set and the bar", () => {
+  for (const key of ["preloadedMemories", "promptNotes", "usedMemories"]) {
+    assert.deepEqual(FIELDS[key].redraws, ["workingSet", "infoBar"]);
+  }
+  assert.ok(ORDER.includes("workingSet"));
+});
+
 test("the payload sources agree with sessionStateFrom on a full payload", () => {
   const all = sessionStateFrom(FULL);
   for (const [key, entry] of Object.entries(FIELDS)) {
