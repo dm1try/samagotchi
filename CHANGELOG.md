@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.175.0] - 2026-11-16
+
 ### Added
 
 - chi web: the page's session read says how the live worker's snapshot read went (`live_read`: ok, none, failed),
@@ -19,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   when the page has nothing to draw — so a turn missing from the stage no longer leaves the page with nothing. The
   stage marks itself when that happens (`data-stage-missing`), and says once in the console what the read had.
 - Tool output with invalid UTF-8 no longer breaks task tracking or finishing a background task.
+
+Update with `chi update`.
 
 ## [0.174.0] - 2026-11-15
 
@@ -6429,7 +6433,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.174.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.175.0...HEAD
+[0.175.0]: https://github.com/dm1try/samagotchi/compare/v0.174.0...v0.175.0
 [0.174.0]: https://github.com/dm1try/samagotchi/compare/v0.173.0...v0.174.0
 [0.173.0]: https://github.com/dm1try/samagotchi/compare/v0.172.1...v0.173.0
 [0.172.1]: https://github.com/dm1try/samagotchi/compare/v0.172.0...v0.172.1
