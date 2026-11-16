@@ -464,7 +464,7 @@ headers alike. A revoked or expired grant is refused by the gate (401) as on eve
 **Their turn** takes only refs they uploaded ([Turns](#turns)); **what they see** is their own images as thumbnails
 and anyone else's as "N images" ([What a participant sees](#what-a-participant-sees)). A corrupt or unreadable
 record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. A failed turn
-of theirs gives the text back without its chips.
+of theirs gives the text back with its chips (`prompt_restored`, below).
 
 ## What a participant sees
 
@@ -491,6 +491,10 @@ fields: a field added to an event later reaches nobody until it is named there.
   `enqueued_id`, `client_id`, `prompt`, `delivery`, `author`, their image refs; `turn_dequeued`: its `enqueued_id`, never
   the client that took it back, the filter knowing their ids from the `turn_enqueued` it sent them and from
   `ParticipantAccess#own_turn?`; `input_merged`: the count and origins of their own lines only), anyone else's bare;
+  `prompt_restored` (a failed turn's prompt handed back, **their own turn only**: the origin's server-stamped author
+  is theirs; another person's, the owner's and an author-less one's give nothing; carries `prompt`, `images` as their
+  own refs (`.image_refs`), `revises: {turn_id}` and `origin: {client_id, enqueued_id, author}`, never `source`, the
+  error, a Verify claim's quote or any other field; the page refills its composer as the owner's, `restore.js`);
   `question_requested` and `continue_offered` with one derived `kind` (`.waiting_kind`: `approval` for a guardrail's
   approval or a relayed one, `continue` for the step-limit question and every offer, `question` else); the main
   page's numbers (`context_status`: usage's `estimated_pct` and token counts, `bucket`, a switch's
