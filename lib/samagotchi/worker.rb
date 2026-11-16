@@ -4,10 +4,8 @@ require "fileutils"
 require "securerandom"
 
 require_relative "client_id"
-require_relative "command_intake"
 require_relative "config"
 require_relative "engine"
-require_relative "guardrails/parent_policy"
 require_relative "events"
 require_relative "session"
 require_relative "session_inbox"
@@ -28,15 +26,12 @@ require_relative "reminder_carry"
 require_relative "log"
 require_relative "turn_flow"
 require_relative "turn_checkpoint"
-require_relative "llm/errors"
 require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
-require_relative "session_setting"
 require_relative "queued_command"
 require_relative "model_profile"
 require_relative "child_reports"
-require_relative "verify_fresh"
 require_relative "child_move"
 require_relative "starting_marker"
 require_relative "context_absorber"
@@ -48,6 +43,11 @@ require_relative "worker_participant_gate"
 require_relative "worker_exit_claim"
 require_relative "worker/leave"
 require_relative "worker/wake_turns"
+require_relative "worker/startup"
+require_relative "worker/signal_grace"
+require_relative "worker/scratch"
+require_relative "worker/child_side"
+require_relative "worker/command_queue"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -81,13 +81,22 @@ module Samagotchi
   # signal is cut: the session is saved as it is and the signal raised in
   # the loop's thread, as Ruby's default would (the teardown still runs).
   #
-  # This file keeps the loop's wiring and the turn plumbing. Two concerns are
-  # parts, lib/samagotchi/worker/<concern>.rb holding Worker::<Concern>Part,
-  # included here (they share Worker's ivars): LeavePart (exit and leave) and
-  # WakeTurnsPart (the turns nobody typed).
+  # This file keeps the loop, the wiring, the prompt turns and the steering
+  # drain. Seven concerns are parts, lib/samagotchi/worker/<concern>.rb
+  # holding Worker::<Concern>Part, included here (they share Worker's ivars):
+  # LeavePart (exit and leave), WakeTurnsPart (the turns nobody typed),
+  # StartupPart (the start-up settle), SignalGracePart (a signal's grace),
+  # ScratchPart (a scratch worker whose terminal left), ChildSidePart (a
+  # delegate child's rings, Verify fresh verdicts) and CommandQueuePart
+  # (session commands between turns).
   class Worker
     include LeavePart
     include WakeTurnsPart
+    include StartupPart
+    include SignalGracePart
+    include ScratchPart
+    include ChildSidePart
+    include CommandQueuePart
 
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
@@ -95,26 +104,6 @@ module Samagotchi
     # gets it over the Bridge a moment after it starts, and that message's
     # turn goes first (the reports join it).
     WAKE_START_GRACE = 2.0
-    # How much of a command's output goes into its :command_ran, in chars.
-    # Room for a real listing (/guardrails with a bundle's rules, /models):
-    # the event lives only in the Bridge's ring (256 events, in memory) and
-    # on the streams, a session file doesn't hold it.
-    COMMAND_OUTPUT_LIMIT = 64 * 1024
-    BUSY_OUTPUT = "busy: wait for the turn to end"
-    # !rollback mid-turn would mean "the turn I'm in".
-    ROLLBACK_BUSY_OUTPUT = "busy: Ctrl-C the turn first, then !rollback"
-    # How long a signalled worker's turn has to end (it is canceled at once,
-    # and again every SIGNAL_RETRY until it ends: a signal that lands just
-    # before the turn begins finds none to cancel).
-    SIGNAL_GRACE = 3.0
-    # A second signal, or a TERM after `chi sessions stop` marked the
-    # session stopped (that stop already canceled over the Bridge and waits
-    # only seconds for the lock): this much.
-    SIGNAL_SHORT_GRACE = 0.5
-    SIGNAL_RETRY = 0.1
-    # After the grace ran out and the signal was raised: the process ends
-    # this much later at the latest (a teardown that hangs).
-    SIGNAL_HARD_EXIT = 10.0
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a
@@ -474,30 +463,6 @@ module Samagotchi
       @scratch_watch = start_scratch_watch if @session.scratch
     end
 
-    # A scratch session's turn never runs on with no terminal: a turn
-    # waiting on a question or an approval would keep the worker up for
-    # nobody. Each tick while a turn runs and its terminal is gone
-    # (#scratch_unattended?), the question is dropped and the turn
-    # cancelled as a stop cancels it; the idle pass then leaves
-    # (:scratch_left) and the session is deleted.
-    def start_scratch_watch
-      Thread.new do
-        loop do
-          sleep(@poll_interval)
-          Degrade.call(:worker, "scratch_watch_failed") { cancel_unattended_turn }
-        end
-      end.tap { |thread| thread.report_on_exception = false }
-    end
-
-    def cancel_unattended_turn
-      return unless @engine.turn_running? && scratch_unattended?
-
-      Log.info(:worker, "scratch_turn_cancelled", sid: @session_id)
-      @engine.cancel_question(SessionManager::STOP_CANCEL_REASON) if @engine.pending_question
-      @engine.cancel_current_turn!(SessionManager::STOP_CANCEL_REASON.to_sym)
-      @waker.wake
-    end
-
     # One pass of the loop: the first work found runs (queued commands, a
     # context wake turn, the first prompt, the queued input files) and the
     # next pass looks again; with none, #idle_pass.
@@ -588,18 +553,6 @@ module Samagotchi
       nil
     end
 
-    # Whether a command or an input file waits to run (WorkerIdleExit's
-    # :input_queued). A participant's file held for the Continue offer
-    # (#held_for_offer?) doesn't count: what waits is the owner's answer,
-    # the policy's :continue_offered.
-    def input_pending?
-      !@command_queue.empty? || SessionInbox.find_new_input_files(@session_dir).any? { |file| !held_for_offer?(file) }
-    end
-
-    # Whether +input_file+ waits for the owner's answer to the Continue
-    # offer that stands (#run_input_files).
-    def held_for_offer?(input_file) = @turn_flow&.awaiting_continue? && SessionInbox.participant_input?(input_file)
-
     # An error outside a turn: the session is marked errored.
     # @return [Symbol] :crashed
     def crashed(error)
@@ -674,76 +627,6 @@ module Samagotchi
       engine
     end
 
-    # A turn an earlier worker died in (TurnCheckpoint's mark in the file):
-    # ended now as canceled, with its note, and saved, before the Bridge
-    # serves the session (TurnCheckpoint.settle). Its queued id's wait
-    # (chi send --queue --wait) reads the end it records in the session dir.
-    def settle_interrupted_turn
-      mark = TurnCheckpoint.settle(@session, session_dir: @session_dir)
-      return unless mark
-
-      Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)
-      save_or_log(:interrupted_turn) { save_session }
-    end
-
-    # No turn runs yet: a status a turn would be behind is from before this
-    # worker, and goes idle under the lock (resume_session writes nothing to
-    # the file, which this worker owns): a stopped one with no stop marker
-    # (Session.load reads it stopped while the marker is there; a stop that
-    # landed before an earlier worker took the lock saved it so), an error,
-    # a running whose worker died. Not a new session's running whose first
-    # prompt waits (WorkerInbound.initial_prompt_pending?).
-    STALE_STATUSES = [Session::STATUS_STOPPED, Session::STATUS_ERROR, Session::STATUS_RUNNING].freeze
-
-    #
-    # Saved whatever the status: the save stamps updated_at, which a resume
-    # used to move (an old session woken with no turn, an attach or a web
-    # wake, stays young for the sweep and moves up the lists). Not a
-    # stopped one: this worker leaves at once, and would write "stopped".
-    def settle_stale_status
-      return if Session.stopped_marker?(@session_id, state_dir: @state_dir)
-
-      status = @session.status
-      if STALE_STATUSES.include?(status) && !(status == Session::STATUS_RUNNING && WorkerInbound.initial_prompt_pending?(@session))
-        @session.status = Session::STATUS_IDLE
-        Log.info(:worker, "stale_status_settled", status: status)
-      end
-      save_or_log(:worker_start) { save_session }
-    end
-
-    # The per-input tombstones (removed, settled, merged) older than
-    # SessionInbox::TOMBSTONE_MAX_AGE, once per worker start: they only go
-    # with the session dir otherwise.
-    def prune_tombstones
-      removed = SessionInbox.prune_removed(@session_dir)
-      settled = TurnCheckpoint.prune_settled(@session_dir)
-      merged = SessionInbox.prune_merged(@session_dir)
-      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled, merged: merged) if (removed + settled + merged).positive?
-    end
-
-    # A saved parent_answers that isn't a level reads as hard on every
-    # answer without a word; said once here, as the session loads.
-    def announce_session_warnings
-      value = @session.parent_answers
-      return unless Guardrails::ParentPolicy.unknown_level?(value)
-
-      @engine.announce({ type: :guardrail_warning, label: "parent_answers",
-                         message: "parent_answers #{value.inspect} in session #{@session_id} isn't hard/standard/soft; hard applies" })
-    end
-
-    # A question saved by a worker that died while it waited (an
-    # ask_user_question, an approval, a hook's question): the turn that
-    # asked is gone, so nobody can answer it, and left in the file it
-    # would keep the hub's "needs you" badge on for good. Dropped and saved
-    # before the Engine and the Bridge exist (no question lock, no events).
-    def drop_dead_question
-      id = @session.drop_dead_question
-      return unless id
-
-      Log.info(:worker, "dead_question_dropped", id: id)
-      save_or_log(:dead_question) { save_session }
-    end
-
     # The attached context's notes (WorkerInbound#absorb_context), and the
     # context wake turn one may start. A failure to read or write them (or
     # in that turn) is logged: the next pass tries again.
@@ -758,9 +641,6 @@ module Samagotchi
       Log.exception(:worker, "context_failed", e)
       false
     end
-
-    # No input file or queued command waits: the loop would go idle.
-    def nothing_queued? = @command_queue.empty? && SessionInbox.find_new_input_files(@session_dir).empty?
 
     # The first prompt (spawn_session's): a delegate child's task, which is
     # its parent's. Its turn carries the id spawn_session gave it, so a
@@ -822,298 +702,6 @@ module Samagotchi
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
-
-    # The queued commands that may run now, in order, up to one whose
-    # after_file (D1) still waits in the inbox: it and those behind it stay
-    # queued.
-    # @return [Boolean] whether any command ran
-    def run_queued_commands
-      ran = false
-      # A signalled worker runs no more (a /continue would start a turn).
-      while !signalled? && (command = next_ready_command)
-        run_command(command)
-        ran = true
-      end
-      ran
-    end
-
-    # Pops the first queued command if it may run now (its after_file is
-    # taken), else none: one behind it waits too, in arrival order (an idle
-    # /model Y that came just after the turn ended stays behind a /model X
-    # still waiting for a prompt sent before it). With the event log held,
-    # as the Bridge queues.
-    def next_ready_command
-      return nil if @command_queue.empty?
-
-      @engine.synchronize_events do
-        commands = drain_commands
-        first = commands.first
-        ready = first && ready_command?(first) ? commands.shift : nil
-        commands.each { |command| @command_queue << command }
-        ready
-      end
-    end
-
-    # A participant's file held for the Continue offer (#run_input_files)
-    # doesn't hold a command back: that command may be the owner's answer.
-    def ready_command?(command)
-      return true if command.after_file.nil?
-
-      SessionInbox.find_new_input_files(@session_dir).none? do |path|
-        File.basename(path) <= command.after_file && !held_for_offer?(path)
-      end
-    end
-
-    def drain_commands
-      commands = []
-      while (command = next_command)
-        commands << command
-      end
-      commands
-    end
-
-    # A command a turn refuses (:refuse while it ran, S1) is answered busy:
-    # at the turn's iteration boundaries (mid_turn: all of them), and when
-    # it ends (the ones queued before its end event; later ones run next).
-    # A queued one (:queue) stays for after the turn, but a !cmd after a
-    # canceled or failed turn (D4): running it would close the rollback
-    # window the turn left, so it is dropped. With the event log held, so
-    # a command the Bridge queues meanwhile stays behind the ones kept, in
-    # arrival order. One that comes after the empty look is the next
-    # boundary's (or end's), as it would be.
-    def refuse_queued_commands(mid_turn: false)
-      return if @command_queue.empty?
-
-      @engine.synchronize_events do
-        drain_commands.each do |command|
-          during = mid_turn || command.after_seq.to_i < @turn_end_seq
-          case (during ? turn_answer(command, ended: !mid_turn) : :keep)
-          when :refuse then announce_command(command, status: "busy", output: busy_output(command), changed: [])
-          when :drop then drop_command(waiting_for_turn_end(command), "turn #{@turn_end_type == :turn_failed ? "failed" : "canceled"}: " \
-                                                                      "#{command.line} not run; send it again")
-          else @command_queue << (during ? waiting_for_turn_end(command) : command)
-          end
-        end
-      end
-    end
-
-    # What a turn does with +command+, queued while it ran: :refuse, :drop
-    # (D4, once it +ended+) or :keep. One queued idle just as the turn
-    # began (:loop) goes by its line's policy (a show form waits too).
-    def turn_answer(command, ended:)
-      policy = command.mid_turn
-      policy = @engine.command_registry.mid_turn(command.line) if policy == :loop
-      return :refuse if policy == :refuse
-      return :drop if ended && policy == :queue && shell_command?(command) &&
-                      %i[turn_canceled turn_failed].include?(@turn_end_type)
-
-      :keep
-    end
-
-    # +command+, kept for after the turn. One queued idle just as the turn
-    # began (:loop) whose line waits for a turn's end (/model X, !cmd) is
-    # marked as one queued mid-turn: its command_queued (waits) tells the
-    # UIs now, and its command_ran says queued.
-    def waiting_for_turn_end(command)
-      return command unless command.mid_turn == :loop && @engine.command_registry.mid_turn(command.line) == :queue
-
-      @engine.announce(type: :command_queued, **command.event_fields, waits: "turn_end")
-      command.with(mid_turn: :queue)
-    end
-
-    def shell_command?(command) = @engine.command_registry.lookup(command.line)&.id == :shell
-
-    def busy_output(command)
-      @engine.command_registry.lookup(command.line)&.id == :rollback ? ROLLBACK_BUSY_OUTPUT : BUSY_OUTPUT
-    end
-
-    # +command+ won't run: its sender (a UI's queued bubble) is told.
-    def drop_command(command, output)
-      announce_command(command, status: "dropped", output: output, changed: [])
-    end
-
-    # The worker leaves with commands still queued (a stop, a crash): each
-    # one's sender is told it won't run, so no UI shows it waiting for good.
-    def drop_queued_commands
-      return if @command_queue.nil? || @command_queue.empty? || @engine.nil?
-
-      @engine.synchronize_events do
-        drain_commands.each { |command| drop_command(command, "dropped: the session's worker stopped before it ran") }
-      end
-    rescue StandardError => e
-      Log.warn(:worker, "drop_commands_failed", error: e.class.name, msg: e.message)
-    end
-
-    def next_command
-      @command_queue.pop(true)
-    rescue ThreadError
-      nil
-    end
-
-    def run_command(command)
-      awaiting = @continue_offer.awaiting?
-      result, shown = run_command_line(command)
-      resolved = @continue_offer.resolved?(awaiting, result)
-      @engine.synchronize_events do
-        @continue_offer.announce_resolved(result, command) if resolved
-        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
-                                  confirm: result.confirm)
-        shown.each { |event| @engine.announce(event) }
-      end
-      save_or_log(:command) { save_session } unless Array(result.changed).empty?
-      user_input(command.client_id) if resolved
-      @continue_offer.after_command(result, resolved: resolved)
-      @continue_offer.run_continue_turn(command) if result.resume
-    end
-
-    # @return [Array(SessionCommands::Result, Array<Hash>)] the result, and
-    #   the cards and notices it showed, held: they follow its command_ran,
-    #   as its output
-    def run_command_line(command)
-      @engine.holding_announcements do
-        command_result(command) do
-          @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
-        end
-      end
-    end
-
-    # A shell line from a sender that may not run one (CommandIntake: a
-    # delegate's task, a schedule's prompt, a plugin's message): not run,
-    # its command_ran an error with the one refusal text.
-    def shell_refused(command)
-      Log.warn(:worker, "shell_line_refused", client_id: command.client_id)
-      SessionCommands::Result.new(status: :error, output: CommandIntake::REFUSED, changed: [])
-    end
-
-    # Whether +command+ asks before a costly /thinking or /reasoning-history
-    # change (CacheConfirm): only a person at a web tab or a TUI sees the
-    # question; chi send, a delegate, a plugin and a card's action apply it.
-    def confirm?(command) = ClientId.interactive?(command.client_id) && !command.card
-
-    # Whether +command+ is a parent agent's (chi answer's marker, which chi
-    # send and a parent's attach give a /continue yes too): held to
-    # guardrails.parent_answers (SessionCommands#continue_answer).
-    def as_parent?(command) = command.client_id.to_s == ClientId::CLI_ANSWER
-
-    # Whether +command+ is a user's at a UI (a web tab, a chi TUI, a card's
-    # click), not a parent agent's: only such a line loosens
-    # /parent-answers. chi send, a delegate's follow-up, a plugin and an
-    # input with no client never do (ParentAnswersCommand).
-    def user_ui?(command) = ClientId.interactive?(command.client_id) && !as_parent?(command)
-
-    # The block's Result for +command+; one that raised, or found no
-    # command for the line, is an error Result saying so.
-    # @return [SessionCommands::Result]
-    def command_result(command)
-      return shell_refused(command) if CommandIntake.refused?(command.line, command.client_id)
-
-      yield || SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
-    rescue StandardError => e
-      SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
-    end
-
-    # A session command from the Bridge, called with the event log held:
-    # an anytime one starts now, any other is queued for the loop (and
-    # refused if a turn runs: #refuse_queued_commands). While a turn runs
-    # the line's policy decides (a show form like /model runs now); idle,
-    # only an always-anytime command (/help) runs beside the loop, so an
-    # idle /model X then /model run in order. A turn starting or ending
-    # right now may see the other side: the line is only shown early or
-    # run in order.
-    #
-    # A queued one (:queue) keeps arrival order with the prompts (D1): it
-    # runs once every input file written before it is taken (after_file,
-    # the newest one now; names compare, not clocks), so a prompt sent
-    # before it runs first and one sent after it runs after. One that came
-    # in an input file runs once that file is taken (+after_file+).
-    # @return [Symbol] the policy it applied (the Bridge marks an anytime
-    #   one's command_queued, and a queued one's): :anytime, :queue or
-    #   :refuse while a turn runs, :loop idle
-    def on_command(command, after_file: nil)
-      registry = @engine.command_registry
-      policy = if @engine.turn_running? then registry.mid_turn(command.line)
-               else registry.anytime?(command.line) ? :anytime : :loop
-               end
-      if policy == :anytime
-        start_anytime_command(command)
-        return policy
-      end
-
-      after_file ||= newest_input_file if policy == :queue
-      # The count says which turn ends came before it.
-      @command_queue << command.with(after_seq: @engine.event_count, mid_turn: policy, after_file: after_file)
-      @waker.wake
-      policy
-    end
-
-    # @return [String, nil] the newest input file waiting (its basename)
-    def newest_input_file
-      SessionInbox.find_new_input_files(@session_dir).map { |path| File.basename(path) }.max
-    end
-
-    # An anytime command (/help, a plugin's /btw; D8) runs now, on its own
-    # thread, never queued behind a turn: it is never busy. The Bridge calls
-    # this with the event log held, so its command_ran (announced when it
-    # finishes) comes after its command_queued. The cards it shows go out at
-    # once (btw's "thinking…" card), after its command_queued, which the
-    # UIs draw its line at (Engine#running_anytime). Its handler reads
-    # copies (ctx.messages) and shows things through ctx only. One that
-    # changed the session (/title, /recap off: fields no turn writes) is
-    # saved here, as a queued one is (#run_command), through Session#save,
-    # which takes the session's lock and writes a running turn's checkpoint
-    # (as WorkerSignals' save off the turn thread does), so the turn's own
-    # saves keep it.
-    def start_anytime_command(command)
-      @engine.spawn_anytime do
-        result = command_result(command) { @engine.running_anytime { @commands.run(command.line, confirm: confirm?(command)) } }
-        # Saved before its command_ran: a client that reads the file on the reply finds it.
-        save_or_log(:command) { save_session } unless Array(result.changed).empty?
-        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
-                                  anytime: true, confirm: result.confirm)
-        # It may have left a note (/objectives): an idle loop takes it now, not
-        # at the fallback tick. Harmless otherwise: one more pass.
-        @waker.wake
-      rescue StandardError => e
-        Log.warn(:worker, "anytime_command_failed", line: command.line, error: e.class.name, msg: e.message)
-      end
-    end
-
-    # @param anytime [Boolean] an anytime command's: its line was shown at
-    #   its command_queued already
-    # @param confirm [CacheConfirm::Confirm, nil] the change asks first: the
-    #   line that applies it (the TUI's prefill, the web's Apply button)
-    def announce_command(command, status:, output:, changed:, anytime: false, confirm: nil)
-      TurnCheckpoint.record_command_outcome(@session_dir, command.enqueued_id, status: status)
-      # Any bytes (a !cmd's): one that JSON can't take would end every stream
-      # that reaches this event, for as long as the ring holds it.
-      text = output.to_s.scrub("?")
-      event = { type: :command_ran, **command.event_fields, status: status, output: command_output_shown(text),
-                changed: changed.map(&:to_s), model_name: @engine.effective_model_name }
-      event[:anytime] = true if anytime
-      # The session's title after /title (nil: cleared), for the TUIs' row.
-      event[:title] = @engine.session&.title if changed.include?(:title)
-      # Its line was shown at its command_queued (waits: turn_end).
-      event[:queued] = true if command.waits_for_turn_end?
-      # The chips the command moved (SessionSetting#changed_by): what the next
-      # turn runs under now (/llm-context, /thinking, /reasoning-history,
-      # /toolkit, and /model for the model's).
-      SessionSetting::ALL.each { |setting| event[setting.key] = setting.summary(@engine) if setting.changed_by?(changed) }
-      event[:confirm] = confirm.to_h if confirm
-      event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
-      @engine.announce(event)
-    end
-
-    # +text+ as its :command_ran carries it: over the limit, its head to a
-    # line's end (one long line is cut where it must be), then a line that
-    # says so: every UI prints this text as it is.
-    def command_output_shown(text)
-      return text if text.length <= COMMAND_OUTPUT_LIMIT
-
-      kept = text[0, COMMAND_OUTPUT_LIMIT]
-      line_end = kept.rindex("\n")
-      kept = kept[0, line_end] if line_end && line_end > COMMAND_OUTPUT_LIMIT / 2
-      "#{kept}\n[cut: #{kept.length} of #{text.length} chars: a command's output stops here]"
-    end
 
     # One Engine turn, the same for a prompt, a reminder and a continue:
     # the session shows as running to readers of the file (the web's
@@ -1183,102 +771,6 @@ module Samagotchi
       ring_parent_after_turn
       forward_fresh_verdicts(verdicts_before)
     end
-
-    # A Verify fresh child's verdicts this turn recorded go to its parent
-    # (VerifyFresh.forward), after the save: the parent's card shows them.
-    # A fresh child never rings (ChildRing.ring): nothing enters the
-    # parent's conversation.
-    def forward_fresh_verdicts(before)
-      return unless @session.verify_fresh
-
-      added = @session.verdicts.drop(before)
-      VerifyFresh.forward(@session, added, state_dir: @state_dir) unless added.empty?
-    end
-
-    # The parent's side, between turns: the verdicts its Verify fresh
-    # children forwarded join the session's (saved, then their files go)
-    # and the UIs hear each (:verdict_recorded).
-    def absorb_fresh_verdicts
-      added, files = VerifyFresh.take(@session, @session_dir)
-      return if files.empty?
-
-      return unless save_or_log(:fresh_verdicts) { save_session }
-
-      FileUtils.rm_f(files)
-      added.each { |record| @engine.announce(type: :verdict_recorded, verdict: record) }
-    rescue StandardError => e
-      Log.warn(:worker, "fresh_verdicts_failed", error: e.class.name, msg: e.message)
-    end
-
-    # The delegate reports this turn took: a kept turn moves the cursors on
-    # and deletes their rings; a rolled-back one leaves the rings for the
-    # next turn. Once either way: the model reads a report in the
-    # conversation, or the next turn brings it (unless a later !rollback
-    # erases a kept turn, which drops what it read).
-    def settle_child_reports(rolled_back:)
-      rolled_back ? @child_reports.release : @child_reports.commit
-    end
-
-    # Whether +error+ ended the turn without its loop's conversation: a
-    # failure the loops didn't mark (LLM::FailedTurn), one past their end
-    # (the Engine's own end of the turn, say). The Engine kept the turn's
-    # start only, so the reports its loop merged are not in the
-    # conversation: their rings stay for the next turn, even when the turn
-    # itself stays (a reminder or continue turn). Not one raised after the
-    # turn ended (the Engine's post-turn work): the turn was kept as it
-    # ended, completed or canceled, the reports in it (a turn TurnFlow
-    # takes back is a restore, above).
-    def merges_lost?(error)
-      return false if error.nil? || error.is_a?(LLM::FailedTurn)
-
-      !KEPT_TURN_OUTCOMES.include?(@session.last_turn&.outcome)
-    end
-
-    # The Engine's turn endings that keep the turn's conversation (#merges_lost?).
-    KEPT_TURN_OUTCOMES = %w[completed canceled].freeze
-
-    # A delegate child's turn that was its parent's (#reports_to_parent?)
-    # rings the parent, after the save: the parent reads a settled child.
-    # A question it rang about that still waits makes the next turn ring
-    # too, whoever starts it (the user answering Continue on the web).
-    def ring_parent_after_turn
-      ChildRing.ring(@session, why: "turn_end", state_dir: @state_dir) if @reporting_turn
-      @owes_parent = @asked_parent && !@session.pending_question.nil?
-      @asked_parent = false
-      @reporting_turn = false
-    end
-
-    # Whether the turn starting now is a delegate child's parent's: its
-    # task (the initial prompt), a follow-up, a continue the parent
-    # answered, a reminder, anything but a human typing into the child
-    # (ClientId.human?), and any turn after a question the parent
-    # was rung about.
-    def reports_to_parent?(origin)
-      return false unless @session.delegate?
-
-      @initial_turn || @owes_parent || !ClientId.human?(origin.client_id)
-    end
-
-    # The Engine published a question (after the question desk saved it).
-    # In a turn that reports to the parent, the model's own question, the
-    # step-limit continue and a hook's question ring it (the parent reports
-    # or relays a hook's: ChildReports). Approvals don't: the relay takes
-    # them while the parent waits. Nor does a card relayed from this
-    # session's own child (relay set): the hop is the parent's wait.
-    def ring_question(event)
-      return unless @reporting_turn
-
-      pending = event[:pending_question] || {}
-      kind = pending[:kind].to_s
-      return unless RINGING_KINDS.include?(kind)
-      return if pending[:relay]
-
-      ChildRing.ring(@session, why: "question", state_dir: @state_dir)
-      @asked_parent = true
-    end
-
-    # The kinds of question that ring a delegate child's parent (#ring_question).
-    RINGING_KINDS = ["", ContinueOffer::KIND, "hook"].freeze
 
     # WorkerInbound.save_or_log: a failed save between turns is logged.
     def save_or_log(at, &) = WorkerInbound.save_or_log(at, &)
@@ -1444,59 +936,7 @@ module Samagotchi
       end
     end
 
-    # How long a scratch worker waits for its terminal's first stream
-    # (AttachLauncher attaches within BRIDGE_WAIT of the spawn).
-    SCRATCH_JOIN_GRACE = 30
-
-    # How long a scratch worker's terminal may have no stream open, after
-    # it had one, before it counts as gone: twice the attached terminal's
-    # whole reconnect ladder (TerminalUI::LocalLink#reconnect_delays), so
-    # a reconnect gap (a dropped stream, a slow worker) never reads as a
-    # terminal that left.
-    SCRATCH_GONE_AFTER = 2 * BridgeClient::EventStream::REDISCOVER_DELAYS.sum
-
-    # Whether this is a `chi scratch` session's worker whose terminal is
-    # gone: no terminal stream (a tui: client id's) open for
-    # SCRATCH_GONE_AFTER, after a stream was (a killed TUI's closes as its
-    # writer reads the hang-up), or none came within SCRATCH_JOIN_GRACE.
-    # Any other stream (a web tab's, which chi web refuses for a scratch
-    # session anyway) never keeps it. Its terminal deletes it on every way
-    # out it sees; this is for the ones it doesn't (kill -9, a closed
-    # terminal window).
-    def scratch_unattended?
-      return false unless @session&.scratch && @bridge
-
-      if @bridge.open_streams_of(ClientId::TUI_PREFIX).positive?
-        @unattended_since = nil
-        return false
-      end
-      return monotonic_now - @started_at >= SCRATCH_JOIN_GRACE unless @bridge.streams_served.positive?
-
-      # Set by the first look (the scratch watch or the idle pass) that
-      # finds no stream; a stream back resets it above.
-      @unattended_since ||= monotonic_now
-      monotonic_now - @unattended_since >= SCRATCH_GONE_AFTER
-    end
-
     def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-    # #leave_idle for a scratch worker its terminal left: checked again with
-    # the event log held, then the intake closes. The session is deleted
-    # once the lock is free (WorkerBoot.run_session_loop: :scratch_left).
-    # @return [Boolean] false when a client came back since
-    def leave_scratch
-      stop_bridge_after do
-        @engine.synchronize_events do
-          # A turn still running is the scratch watch's to cancel first.
-          next false unless scratch_unattended? && !@engine.turn_running?
-
-          @bridge&.close_intake
-          @engine.stop_idle(join: false)
-          Log.info(:worker, "scratch_left", served: @bridge.streams_served)
-          true
-        end
-      end
-    end
 
     # The owner's input (ClientId.owner?) un-archives the session; a
     # delegate's, a plugin's, a reminder's or a participant's doesn't.
@@ -1521,69 +961,6 @@ module Samagotchi
     # threads, the turn's checkpoints, a signal's thread).
     def save_session
       @session.save(state_dir: @state_dir)
-    end
-
-    def signalled? = !@signals.signal.nil?
-
-    # @return [Symbol] :stopped when the session was stopped too (chi
-    #   sessions stop TERMs its worker), else :signal
-    def signal_leave
-      Session.stopped_marker?(@session_id, state_dir: @state_dir) ? :stopped : :signal
-    end
-
-    # A signal (WorkerSignals#fire), on a thread of its own: the loop wakes
-    # (an idle worker leaves at once), the running turn is canceled as a
-    # Stop (again every SIGNAL_RETRY, until the loop has left), and when
-    # the grace runs out first, #signal_grace_expired. A turn that has
-    # ended and runs its after_turn hooks (which store the answer's display
-    # and refs) is no longer canceled, and gets until SIGNAL_HARD_EXIT
-    # past the grace, the worker's own end of the turn (its saves, after
-    # the turn stopped running) too: the loop leaves next. A grace that runs out before the loop started waits
-    # for it (the loop's first look leaves). A signal after the loop left
-    # (the teardown, the caller's last steps) only brings the hard exit.
-    def signalled(name, count)
-      Log.info(:worker, "signal", signal: name, count: count, turn_running: @engine&.turn_running? || false)
-      return signal_hard_exit if @left_loop
-
-      @waker.wake
-      short = count > 1 || Session.stopped_marker?(@session_id, state_dir: @state_dir)
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      deadline = now + (short ? @signal_short_grace : @signal_grace)
-      hooks_deadline = deadline + @signal_hard_exit
-      ended = false
-      until @left_loop
-        running = @engine&.turn_running?
-        ended ||= running && @turn_ending
-        @engine.cancel_current_turn!(:signal) if running && !ended
-        break if @loop_started && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= (ended ? hooks_deadline : deadline)
-
-        sleep(SIGNAL_RETRY)
-      end
-      signal_grace_expired(name) unless @left_loop
-    rescue StandardError => e
-      Log.warn(:worker, "signal_failed", signal: name, error: e.class.name, msg: e.message)
-    end
-
-    # The process ends SIGNAL_HARD_EXIT from now at the latest.
-    def signal_hard_exit
-      sleep(@signal_hard_exit)
-      @signals.hard_exit
-    end
-
-    # The turn didn't end in time (a tool that ignores the cancel, slow
-    # after_turn hooks): the session is saved as it is now (a turn that has
-    # ended: with it), and the signal raised in the loop's thread, so
-    # Worker#run's teardown and the lock's release still run. The process
-    # ends SIGNAL_HARD_EXIT later at the latest. Once, whatever the signals.
-    def signal_grace_expired(name)
-      expired = @signal_mutex.synchronize { !@grace_expired && !@left_loop && (@grace_expired = true) }
-      return unless expired
-
-      Log.warn(:worker, "signal_grace_expired", signal: name, turn_running: @engine&.turn_running? || false)
-      save_or_log(:signal) { save_session }
-      # Not once the loop has left (it may have, during the save).
-      @signal_mutex.synchronize { @run_thread&.raise(SignalException.new(name)) unless @left_loop }
-      signal_hard_exit
     end
   end
 end

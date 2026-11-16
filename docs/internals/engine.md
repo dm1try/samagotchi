@@ -131,10 +131,10 @@ A Stop (Engine#cancel_current_turn!, the Bridge's POST cancel) or a hook's stop_
 A worker's TERM, HUP or INT (WorkerSignals, a spawned worker only):
   → a Stop with reason :signal (Worker#signalled, off the trap, retried until the loop leaves); saved as after any
     turn; Worker#run returns :signal (:stopped with the stop marker) and takes no new work
-  → not ended within Worker::SIGNAL_GRACE (a turn already in its after_turn hooks gets SIGNAL_HARD_EXIT more,
+  → not ended within Worker::SignalGracePart::SIGNAL_GRACE (a turn already in its after_turn hooks gets SIGNAL_HARD_EXIT more,
     uncanceled): the session saved as it is, SignalException raised in the loop's thread, only while the loop runs
     (never into start, serve or the teardown, which runs whole)
-  → exit! Worker::SIGNAL_HARD_EXIT (10 s) after that at the latest; a signal after the loop left brings only that
+  → exit! Worker::SignalGracePart::SIGNAL_HARD_EXIT (10 s) after that at the latest; a signal after the loop left brings only that
     hard exit
   → WorkerBoot.run_session_loop restores the default handlers; exit 0, no discard; input queued behind the stopped turn
     wakes a new worker
