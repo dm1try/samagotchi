@@ -1236,7 +1236,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "stays up while its terminal's stream is open, and leaves once it has been closed for SCRATCH_GONE_AFTER (idle exit off), with no recap" do
-        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
+        stub_const("Samagotchi::Worker::ScratchPart::SCRATCH_GONE_AFTER", 0.2)
         allow(engine).to receive(:write_recap_now)
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         stream = follow
@@ -1252,7 +1252,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "leaves once its terminal's stream has closed though a web tab's stream (a chi web proxy's, no client id) is still open" do
-        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
+        stub_const("Samagotchi::Worker::ScratchPart::SCRATCH_GONE_AFTER", 0.2)
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         terminal = follow
         follow(client_id: nil)
@@ -1266,7 +1266,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "cancels a turn running when its terminal has left for SCRATCH_GONE_AFTER (a question it waits on too), then leaves" do
-        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
+        stub_const("Samagotchi::Worker::ScratchPart::SCRATCH_GONE_AFTER", 0.2)
         calls = []
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         stream = follow
@@ -1290,7 +1290,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "cancels nothing in a reconnect gap shorter than SCRATCH_GONE_AFTER (its terminal is still there)" do
-        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 30)
+        stub_const("Samagotchi::Worker::ScratchPart::SCRATCH_GONE_AFTER", 30)
         calls = []
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         follow
@@ -1316,7 +1316,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "leaves when no terminal joined within the grace" do
-        stub_const("Samagotchi::Worker::SCRATCH_JOIN_GRACE", 0.1)
+        stub_const("Samagotchi::Worker::ScratchPart::SCRATCH_JOIN_GRACE", 0.1)
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
 
         expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
