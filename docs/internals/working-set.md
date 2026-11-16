@@ -1,7 +1,8 @@
 # The working set: what the model really has
 
 The stage view's working set (`web.working_set`, [cli.md](../cli.md#the-working-set)) shows the files, memories
-and URLs a session's tool runs brought into the model's context. The page builds the set itself from its tool rows
+and URLs a session's tool runs brought into the model's context, and model notes carried in the system prompt as
+`prompt` rows. The page builds the set itself from its tool rows
 (`working_set.js`, phase 1). The server says what the model still has of each item: **live**, **stale** (a file
 changed since the model last saw it) or **forgotten** (nothing of it is still sent), and its size in tokens. This
 page covers the server's side and how the page overlays it.

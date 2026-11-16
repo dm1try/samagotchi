@@ -102,7 +102,7 @@ the chain's ← → links, the children chip, the archived button, the card's ti
 marks `paintActive`, `composer` and `infoBar`; `touch(name)` marks one redraw for an input the store doesn't hold
 (the clock, versions, the stream, `liveTurn.running`). They run synchronously, once each, at the end of the outermost
 `batch()` (at once for a bare write), in one `ORDER`: `lists`, `paintActive`, the open panels (`settingsPanel`,
-`workingSetStrategy`), `featureGates`, `composer`, `infoBar`. `lists` comes before
+`workingSetStrategy`, `workingSet`), `featureGates`, `composer`, `infoBar`. `lists` comes before
 the bar because `updateSessionTitle` reads the strip's active card; `composer` before the bar as `setTurnRunning`
 runs them. Not a rAF (a background tab runs none, and the title badge tests run there; the e2e per-frame checks would
 see the composer move a frame late) and not a microtask (code that reads the page right after a write would see it
@@ -110,7 +110,8 @@ stale).
 
 **The redraws are registered, not called.** app.js registers each name once (`store.on`, at the bottom, once every
 piece a redraw calls exists): `lists` → `lists.render()`, `paintActive` → `lists.paintActive()`, `settingsPanel` →
-`settingsControl.refresh()`, `workingSetStrategy` → `workingSet.strategyChanged()`, `featureGates` (below), `composer` →
+`settingsControl.refresh()`, `workingSetStrategy` → `workingSet.strategyChanged()`, `workingSet` →
+`workingSet.sessionChanged()`, `featureGates` (below), `composer` →
 `composerMode.update()` (`composer_mode.js`), `infoBar` → `updateInfoBar()`. A writer writes and stops there: no `updateInfoBar()` after
 a store write. A value written unchanged redraws nothing (a chunk with the same ctx %).
 

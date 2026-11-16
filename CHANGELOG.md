@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: the working-set list includes model notes in the system prompt and redraws an open list when notes change.
+
 ## [0.176.0] - 2026-11-16
 
 ### Added
