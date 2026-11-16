@@ -474,7 +474,6 @@ Samagotchi/FileSize:
     lib/samagotchi/session.rb: 1077
     lib/samagotchi/session_metrics.rb: 1434
     lib/samagotchi/web/app.rb: 2187
-    lib/samagotchi/worker.rb: 1639
     script/release/release_tools.rb: 1162
 
 # A sleep that waits for something, a wait that names nothing when it times

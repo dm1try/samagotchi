@@ -86,10 +86,14 @@ module Samagotchi
   # signal is cut: the session is saved as it is and the signal raised in
   # the loop's thread, as Ruby's default would (the teardown still runs).
   #
-  # This file keeps the loop's wiring and the turn plumbing. Two concerns are
-  # parts, lib/samagotchi/worker/<concern>.rb holding Worker::<Concern>Part,
-  # included here (they share Worker's ivars): LeavePart (exit and leave) and
-  # WakeTurnsPart (the turns nobody typed).
+  # This file keeps the loop, the wiring, the prompt turns and the steering
+  # drain. Seven concerns are parts, lib/samagotchi/worker/<concern>.rb
+  # holding Worker::<Concern>Part, included here (they share Worker's ivars):
+  # LeavePart (exit and leave), WakeTurnsPart (the turns nobody typed),
+  # StartupPart (the start-up settle), SignalGracePart (a signal's grace),
+  # ScratchPart (a scratch worker whose terminal left), ChildSidePart (a
+  # delegate child's rings, Verify fresh verdicts) and CommandQueuePart
+  # (session commands between turns).
   class Worker
     include LeavePart
     include WakeTurnsPart
