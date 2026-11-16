@@ -463,8 +463,8 @@ headers alike. A revoked or expired grant is refused by the gate (401) as on eve
 
 **Their turn** takes only refs they uploaded ([Turns](#turns)); **what they see** is their own images as thumbnails
 and anyone else's as "N images" ([What a participant sees](#what-a-participant-sees)). A corrupt or unreadable
-record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. Not covered:
-a participant's `chi --remote … --image`; a failed turn of theirs gives the text back without its chips.
+record fails closed (every grant at quota, owning nothing, `Log.warn`); the owner can delete the file. A failed turn
+of theirs gives the text back without its chips.
 
 ## What a participant sees
 

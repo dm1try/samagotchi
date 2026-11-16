@@ -433,6 +433,25 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
                                "chi --remote studio send --wait --turn #{turn} #{session.id} waits for its reply)\n")
     end
 
+    it "uploads a participant image to chi web, then sends a turn with its ref" do
+      source = File.join(tmpdir, "source")
+      FileUtils.mkdir_p(File.join(source, "images"))
+      FileUtils.cp(File.expand_path("fixtures/images/tiny.png", __dir__), File.join(source, "images/tiny.png"))
+      transport = RemoteBackend::RackTransport.new(RemoteBackend.app(state_dir: state), token: issued.token)
+      access = described_class.new(RemoteBackend.entry(token: issued.token), transport: transport, sleeper: ->(_s) {})
+      allow(Samagotchi::SendCommand).to receive(:vision_answer).and_return(Samagotchi::SendCommand::UNKNOWN_VISION)
+
+      refs = access.upload_images(session.id, [{ file: "images/tiny.png", name: "tiny.png" }], from: source)
+      turn = access.deliver_turn(session.id, prompt: "What is in this picture?", client_id: "participant:spec",
+                                                  images: refs)
+
+      expect(turn.status).to eq(:accepted)
+      expect(transport.requests).to include(
+        [:post, "/api/sessions/#{session.id}/images?name=tiny.png"],
+        [:post, "/api/sessions/#{session.id}/turn"]
+      )
+    end
+
     it "waits on the review turn chi send --wait -m queued, a running session too (no owner's busy check)" do
       session.status = Samagotchi::Session::STATUS_RUNNING
       session.save(state_dir: state)
