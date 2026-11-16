@@ -1123,11 +1123,17 @@ button.ws-step:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-st
 /* The expanded view (a chip popover; a bottom sheet on a phone). */
 .ws-popover{gap:0}
 .ws-popover .ctx-pop-head{align-items:center;flex-wrap:wrap;margin-bottom:4px}
-.ws-scope{display:inline-flex;gap:2px}
-.ws-scope button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px}
-.ws-scope button.on{color:var(--text-2);border-color:var(--border-strong);background:var(--bg-raised)}
-.ws-scope button:hover:not(:disabled){filter:none}@media(hover:hover){.ws-scope button:hover:not(:disabled){color:var(--text)}}
+.ws-lens{display:inline-flex;gap:2px;align-items:center}
+.ws-lens button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px}
+.ws-lens button.arrow{padding:1px 5px}
+.ws-lens button.on{color:var(--text-2);border-color:var(--border-strong);background:var(--bg-raised)}
+.ws-lens button:disabled{opacity:.4}
+.ws-lens button:hover:not(:disabled){filter:none}@media(hover:hover){.ws-lens button:hover:not(:disabled){color:var(--text)}}
+/* A turn lens (--ws-lens-dim): the rows the turn touched lit, the rest dimmed; the line under the header says how many. */
+.ws-row.dim{opacity:var(--ws-lens-dim)}
+.ws-row.lit{background:var(--accent-tint)}
 .ws-popover .ctx-pop-meta{margin-top:6px;color:var(--ws-muted)}
+.ws-popover .ws-lens-line{color:var(--accent)}
 .ws-popover .ws-hint{margin-top:10px;color:var(--ws-faint)}
 .ws-row{display:flex;align-items:center;gap:8px;width:100%;min-width:0;height:28px;box-sizing:border-box;padding:0 6px;border:0;border-radius:6px;background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:28px;color:var(--text-2);text-align:left}
 @media(hover:hover){.ws-row:hover{background:var(--bg-hover)}}

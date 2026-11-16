@@ -319,6 +319,18 @@ passes `working_set_updated` to it, and does nothing when the flag is off. A new
   `details_motion.js` skips `.ws-foot`, and `footClick` cancels the click;
 - the rail (`onServer`, the stage's `scheduleRefresh`).
 
+**The list's lens.** The expanded list is always the session's set (`sessionSet()`), seen through a lens: `null`
+(the session) or a turn's index (`createWorkingSet`'s `lens`). The chip (and the reader's `‹ Set`, `openList`) opens the
+session lens; a footprint (`footClick`) and the rail (`openTurn`) open the lens on their turn. In a turn lens
+(`working_set.js turnLens`, `lensItem`) the rows the turn touched are `lit` and the rest `dim` (`opacity:
+var(--ws-lens-dim)`, a `:root` token in both palettes). A lit row is the session item's state, tokens and actions with
+the turn item's `at`, ops and count (its step tag is the turn's, `s3`; a dimmed row keeps the session's, `t1·s3`): the
+turn item is passed through, the session item is never overwritten. The header's `session | ‹ turn N ›` steps over the
+finished turns and the running one (`lastTurn()`), `‹` and `›` disabled at the ends; the line under it reads "turn N
+touched A · B new" (new: the session set's first `at` is this turn's, a prompt memory never). A folded inner group
+(`labelsTemplate`) shows its lit members while folded. A new seed that leaves the lens past the last turn, or a reset
+that drops the running turn, puts it back to the session.
+
 A state is the item's state now, not when its turn ran. A state change never refolds and never moves a line: the
 rail's line key carries the label's state and its forgotten count, which are patched in place.
 

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ariaLabel, bodySections, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemsOfTurn, labelText, labelTitle, memoryNames,
+  ariaLabel, bodySections, BUDGETS, dirLabel, dropRefusal, fold, footprint, footprintText, groupState, isFresh, itemKey, itemsOfTurn, labelText, lensItem, labelTitle, memoryNames,
   newerSnapshot, nextSettle, opsText, overlay, parseSteerLine, pendingSteers, rowEntries, sessionItems, shown, STATES, steerId, steerLine,
   forgetOn, pinnable, quoteWord, steerWords, undroppable, addLine, addedItem, addedItems, refreshable, serverAddIds,
-  stepRange, stepTag, tokensText, urlLabel, urlOfParams,
+  stepRange, stepTag, tokensText, turnLens, urlLabel, urlOfParams,
 } from "../../../lib/samagotchi/web/public/working_set.js";
 
 const file = (path, tool = "read", status = "ok", ref = { kind: "file", path }) => ({ tool, status, title: path, ref });
@@ -501,4 +501,31 @@ test("refreshable: a stale or forgotten item the server knows; not one holding t
   assert.equal(refreshable(item({ muted: true })), false);
   assert.equal(refreshable({ kind: "memory", key: "note", ops: [], preloaded: true, state: "stale", tokens: 40 }), false);
   assert.equal(refreshable({ kind: "memory", key: "note", ops: ["read"], preloaded: true, state: "stale", tokens: 40 }), true);
+});
+
+test("turnLens: the turn's items by key, how many are new to the session (first entry in that turn, never a prompt memory)", () => {
+  const turn0 = itemsOfTurn(turnOf([file("/p/a.rb"), file("/p/b.rb")]), 0);
+  const turn1 = itemsOfTurn(turnOf([file("/p/b.rb"), file("/p/c.rb"), memory("note")]), 1);
+  const set = sessionItems({ turns: [turn0, turn1], preloaded: ["note"] }).items;
+  const lens1 = turnLens(set, turn1, 1);
+  assert.deepEqual([...lens1.touched.keys()], ["file:/p/b.rb", "file:/p/c.rb", "memory:note"]);
+  assert.equal(lens1.count, 3);
+  assert.equal(lens1.fresh, 1, "c.rb only: b.rb entered in turn 0, note is in the prompt");
+  assert.deepEqual({ count: turnLens(set, turn0, 0).count, fresh: turnLens(set, turn0, 0).fresh }, { count: 2, fresh: 2 });
+  assert.deepEqual(turnLens(set, [], 1), { touched: new Map(), count: 0, fresh: 0 });
+});
+
+test("lensItem: the session item's state and tokens with the turn's at, ops and count; the session item stays; an untouched item is itself", () => {
+  const turn0 = itemsOfTurn(turnOf([file("/p/a.rb")]), 0);
+  const turn1 = itemsOfTurn(turnOf([file("/p/z.rb"), file("/p/a.rb", "edit")]), 1);
+  const [a, z] = sessionItems({ turns: [turn0, turn1] }).items.map((it) => ({ ...it, state: "stale", tokens: 40 }));
+  const touched = turnLens([a, z], turn1, 1).touched;
+  const drawn = lensItem(a, touched);
+  assert.deepEqual(drawn.at, { turn: 1, step: 0, row: 1 });
+  assert.deepEqual(drawn.ops, ["edit"]);
+  assert.deepEqual([drawn.state, drawn.tokens, itemKey(drawn)], ["stale", 40, "file:/p/a.rb"]);
+  assert.deepEqual([a.at.turn, a.ops], [0, ["read", "edit"]], "the session item is not overwritten");
+  assert.equal(lensItem({ kind: "file", key: "/p/other.rb" }, touched).key, "/p/other.rb");
+  const untouched = { kind: "file", key: "/p/other.rb", at: { turn: 0 } };
+  assert.equal(lensItem(untouched, touched), untouched);
 });
