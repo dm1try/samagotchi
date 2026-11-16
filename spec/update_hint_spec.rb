@@ -5,6 +5,8 @@ require "stringio"
 require "json"
 require "tmpdir"
 require "yaml"
+require "samagotchi/memory_bundle/installer"
+require "samagotchi/memory_bundle/shipped_update"
 require "samagotchi/memory_bundle/source"
 require "samagotchi/update_hint"
 
