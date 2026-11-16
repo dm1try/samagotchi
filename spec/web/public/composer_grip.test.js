@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { COMPOSER_FOLD_KEY } from "../../../lib/samagotchi/web/public/composer_fold.js";
 import { GRIP_CLICK_FOLD_MS } from "../../../lib/samagotchi/web/public/composer_size.js";
-import { GRIP_KEY, createComposerGrip } from "../../../lib/samagotchi/web/public/composer_grip.js";
+import { createComposerGrip } from "../../../lib/samagotchi/web/public/composer_grip.js";
+import { COMPOSER_FLOOR, forget, read } from "../../../lib/samagotchi/web/public/session_prefs.js";
+
+// The open session's own keys (session_prefs.js; the page's session is "s1").
+const GRIP_KEY = "chi_composer_floor:s1";
+const COMPOSER_FOLD_KEY = "chi_composer_collapsed:s1";
 
 // A page of its own per test (the grip adds listeners on the document) and
 // a localStorage the module reads at call time.
@@ -11,6 +15,7 @@ function setup({ session = "s1", saved = null } = {}) {
   if (!("localStorage" in globalThis)) globalThis.localStorage = new Window().localStorage;
   localStorage.removeItem(GRIP_KEY);
   localStorage.removeItem(COMPOSER_FOLD_KEY);
+  forget(COMPOSER_FLOOR, null);
   if (saved !== null) localStorage.setItem(COMPOSER_FOLD_KEY, saved);
   const win = new Window();
   const doc = win.document;
@@ -64,7 +69,36 @@ test("the start page's grip only resizes: no role, its own title, a drag saves t
   assert.equal(composeGrip.classList.contains("will-fold"), false);
   pointer("pointerup", 200);
   assert.equal(folded(), false);
+  // No session: kept in memory, nothing written.
+  assert.equal(read(COMPOSER_FLOOR, null), "100");
+  assert.ok(localStorage.getItem("chi_composer_floor") === null);
+  assert.ok(localStorage.getItem("chi_composer_floor:null") === null);
+});
+
+// Each session's height and fold are its own (session_prefs.js).
+test("the floor and the fold are saved for the open session only", () => {
+  const { grip, pointer, folded, state } = setup();
+  localStorage.removeItem("chi_composer_floor:s2");
+  localStorage.removeItem("chi_composer_collapsed:s2");
+  grip.newVisit();
+  pointer("pointerdown", 300);
+  pointer("pointermove", 200);
+  pointer("pointerup", 200);
   assert.equal(localStorage.getItem(GRIP_KEY), "100");
+  grip.focusPrompt();
+  pointer("pointerdown", 100);
+  pointer("pointermove", 300);
+  pointer("pointerup", 300);
+  assert.equal(folded(), true);
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1");
+  state.session = "s2";
+  grip.newVisit();
+  assert.equal(folded(), false, "another session's composer is open");
+  assert.ok(localStorage.getItem("chi_composer_floor:s2") === null);
+  assert.ok(localStorage.getItem("chi_composer_floor") === null, "the global key is never written");
+  state.session = "s1";
+  grip.newVisit();
+  assert.equal(folded(), true, "back: folded as left");
 });
 
 test("a drag down past the box folds on release: will-fold while it would, the height it had kept, the fold saved", () => {
@@ -228,7 +262,7 @@ test("the start page's grip never folds: a click there only keeps its floor", (t
   t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
   assert.equal(folded(), false);
   assert.equal(state.floor, 100);
-  assert.equal(localStorage.getItem(GRIP_KEY), "100");
+  assert.equal(read(COMPOSER_FLOOR, null), "100");
 });
 
 test("a resize drag after a click takes the pending fold back: the box stays open", (t) => {

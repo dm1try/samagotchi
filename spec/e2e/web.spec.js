@@ -1135,14 +1135,15 @@ test("archive hides a session from the strip, include archived finds it, unarchi
     return [b.x + b.width / 2, b.y + b.height / 2];
   };
   const promptH = () => page.locator("#prompt").evaluate((el) => el.offsetHeight);
-  // A drag up gives the box a custom height (the grip's floor), saved per browser.
+  // A drag up gives the box a custom height (the grip's floor), saved for this
+  // session (session_prefs.js chi_composer_floor:<session>), per browser.
   const [gx, gy] = await gripMiddle();
   await page.mouse.move(gx, gy);
   await page.mouse.down();
   await page.mouse.move(gx, gy - 60, { steps: 6 });
   await page.mouse.up();
   const floorPx = await promptH();
-  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(floorPx);
+  expect(await page.evaluate((sid) => Number(localStorage.getItem(`chi_composer_floor:${sid}`)), id)).toBe(floorPx);
   const [fx, fy] = await gripMiddle();
   await page.mouse.move(fx, fy);
   await page.mouse.down();
@@ -1155,7 +1156,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(grip).toHaveAttribute("aria-expanded", "false");
   // A fold keeps the height: opening brings the box back at the floor it had
   // (a double-click is the only reset).
-  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(floorPx);
+  expect(await page.evaluate((sid) => Number(localStorage.getItem(`chi_composer_floor:${sid}`)), id)).toBe(floorPx);
   await expect.poll(dockH).toBeLessThan(expandedH - 30);
   await page.reload();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
@@ -1211,7 +1212,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   const tallFloor = await promptH();
   await page.setViewportSize({ width: 500, height: 400 });
   await expect.poll(promptH).toBe(200);
-  expect(await page.evaluate(() => Number(localStorage.getItem("chi_composer_floor")))).toBe(tallFloor);
+  expect(await page.evaluate((sid) => Number(localStorage.getItem(`chi_composer_floor:${sid}`)), id)).toBe(tallFloor);
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect.poll(promptH).toBe(tallFloor);
   await clickBarItem(page, "archive");

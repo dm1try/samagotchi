@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COMPOSER_FOLD_KEY, composerFolded, foldHandle, opensOnKey } from "../../../lib/samagotchi/web/public/composer_fold.js";
+import { COMPOSER_FOLD, prefKey } from "../../../lib/samagotchi/web/public/session_prefs.js";
 
-test("COMPOSER_FOLD_KEY: the per-browser key", () => {
-  assert.equal(COMPOSER_FOLD_KEY, "chi_composer_collapsed");
+test("COMPOSER_FOLD_KEY: the name the per-session key is kept under (session_prefs.js)", () => {
+  assert.equal(COMPOSER_FOLD_KEY, COMPOSER_FOLD);
+  assert.equal(prefKey(COMPOSER_FOLD, "s1"), "chi_composer_collapsed:s1");
 });
 
 test("composerFolded: the saved choice (no storage: expanded)", () => {
