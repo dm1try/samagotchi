@@ -121,6 +121,16 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(JSON.generate(body)).not_to include("TOOL-PARAMS", "SECRET-GEN", root)
   end
 
+  it "shows a running session as idle in show and tail when there is no current turn" do
+    expect(read(issued.token).last.dig("session", "status")).to eq("running")
+    expect(read(issued.token, "?tail=1").last.dig("session", "status")).to eq("running")
+
+    snapshot["snapshot"]["current_turn"] = nil
+
+    expect(read(issued.token).last.dig("session", "status")).to eq("idle")
+    expect(read(issued.token, "?tail=1").last.dig("session", "status")).to eq("idle")
+  end
+
   it "lists the viewer's own queued turns in the owner's shape with their stored image refs, never another's prompt" do
     body = read(issued.token).last
     expect(body["queued"]).to eq([{ "enqueued_id" => "e1", "client_id" => client_id, "prompt" => "mine", "author" => author,

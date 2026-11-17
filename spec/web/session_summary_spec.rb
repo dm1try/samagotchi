@@ -208,6 +208,24 @@ RSpec.describe Samagotchi::Web::SessionSummary do
     end
   end
 
+  describe ".shown_status" do
+    let(:worker) { Samagotchi::OwnerLock::Owner.new(kind: "worker") }
+
+    it "shows a running session as idle when its live snapshot has no current turn" do
+      expect(described_class.shown_status(session, { "status" => "running" }, {}, owner: worker)).to eq("idle")
+    end
+
+    it "keeps a running session running when its live snapshot has a current turn" do
+      expect(described_class.shown_status(session, { "status" => "running" }, { "current_turn" => {} }, owner: worker))
+        .to eq("running")
+    end
+
+    it "uses the live snapshot's status before applying the no-current-turn rule" do
+      expect(described_class.shown_status(session(status: "running"), { "status" => "idle" }, { "current_turn" => {} }, owner: worker))
+        .to eq("idle")
+    end
+  end
+
   describe ".build" do
     it "has today's card fields plus project_root and bridge_up" do
       s = session

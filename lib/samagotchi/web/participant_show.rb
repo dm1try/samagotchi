@@ -89,8 +89,7 @@ module Samagotchi
       # delivery line, the stale-worker badge), its verdicts (filtered) and whether Verify fresh can run.
       def participant_session_json(reads, features, viewer)
         session = reads.session
-        status = displayed_status(session, reads.state)
-        status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && reads.turn_snapshot && reads.current_turn.nil?
+        status = SessionSummary.shown_status(session, reads.state, reads.turn_snapshot, owner: session_owner(session.id))
         dir = Session.session_dir(reads.id, state_dir: default_state_dir)
         { id: session.id, title: participant_title(session), status: status,
           bridge_up: !reads.turn_snapshot.nil?, worker_features: Array(features),
@@ -197,8 +196,7 @@ module Samagotchi
         shown = messages_for_display(raw, parts: true, cwd: session.working_directory, markdown: false)
         messages = ParticipantView.messages(shown, viewer)
         answer = participant_answer(messages, turn_id.empty? ? nil : turn_id)
-        status = displayed_status(session, reads.state)
-        status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && reads.turn_snapshot && reads.current_turn.nil?
+        status = SessionSummary.shown_status(session, reads.state, reads.turn_snapshot, owner: session_owner(session.id))
         json_response(200, {
           tail: true,
           session: { id: id, status: status, used_memory_names: [], prompt_notes: [], prompt_parts: [] },
