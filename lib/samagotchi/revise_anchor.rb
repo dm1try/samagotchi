@@ -24,6 +24,8 @@ module Samagotchi
     def to_h = { turn_id: }
 
     def to_file = { "turn_id" => turn_id }
+
+    def participant_view = { "turn_id" => turn_id }
   end
 
   ReviseAnchor::FEATURE = "revise"

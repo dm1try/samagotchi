@@ -31,8 +31,17 @@ RSpec.describe Samagotchi::TurnAnchors do
 
     expect(anchors.to_file).to eq("verify" => verify, "revises" => { "turn_id" => v1 })
     expect(anchors.to_h).to eq(verify: { turn_id: v1, quote: "the claim" }, revises: { turn_id: v1 })
+    expect(anchors.participant_view).to eq("verify" => verify, "revises" => { "turn_id" => v1 })
     expect(anchors.kwargs).to eq(verify: anchors.verify, revises: anchors.revises)
     expect(anchors.present.map { |anchor| anchor.class::FEATURE }).to eq(%w[verify revise])
+  end
+
+  it "requires every anchor member to declare its participant projection" do
+    anchors = described_class.new(verify: verify, revises: { turn_id: v1 })
+
+    described_class.members.each do |member|
+      expect(anchors.public_send(member)).to respond_to(:participant_view), member.to_s
+    end
   end
 
   it "names an anchor in an input file by a Hash under its key, well-formed or not (held for the turn's end)" do

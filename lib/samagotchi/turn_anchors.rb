@@ -40,6 +40,11 @@ module Samagotchi
     # A :prompt_restored event's fields.
     def to_h = { verify: verify&.to_h, revises: revises&.to_h }.compact
 
+    # What a participant sees of each anchor.
+    def participant_view
+      self.class.members.to_h { |member| [member.to_s, public_send(member)&.participant_view] }.compact
+    end
+
     # Engine#run_turn's keywords.
     def kwargs = { verify:, revises: }.compact
   end

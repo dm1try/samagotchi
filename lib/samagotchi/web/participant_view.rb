@@ -4,8 +4,7 @@ require_relative "../output_formatter"
 require_relative "../model_markup"
 require_relative "../steer"
 require_relative "../turn_origin"
-require_relative "../revise_anchor"
-require_relative "../verify_anchor"
+require_relative "../turn_anchors"
 require_relative "../redact"
 require_relative "../file_ref"
 require_relative "../image_store"
@@ -150,10 +149,7 @@ module Samagotchi
         out = { "type" => "prompt_restored", **seq(event), "prompt" => field(event, :prompt).to_s }
         images = image_refs(field(event, :images), author, viewer)
         out["images"] = images if images
-        verify = VerifyAnchor.from(field(event, :verify))
-        out["verify"] = verify.to_file if verify
-        revises = ReviseAnchor.from(field(event, :revises))
-        out["revises"] = { "turn_id" => revises.turn_id } if revises
+        out.merge!(TurnAnchors.new(verify: field(event, :verify), revises: field(event, :revises)).participant_view)
         out["origin"] = { "client_id" => field(origin, :client_id).to_s, "enqueued_id" => field(origin, :enqueued_id).to_s,
                           "author" => author.to_s }
         out
