@@ -30,6 +30,7 @@ module Samagotchi
         save_or_log(:interrupted_turn) { save_session }
       end
 
+      # Statuses that can be stale before this worker handles its first turn.
       # No turn runs yet: a status a turn would be behind is from before this
       # worker, and goes idle under the lock (resume_session writes nothing to
       # the file, which this worker owns): a stopped one with no stop marker
@@ -39,7 +40,6 @@ module Samagotchi
       # prompt waits (WorkerInbound.initial_prompt_pending?).
       STALE_STATUSES = [Session::STATUS_STOPPED, Session::STATUS_ERROR, Session::STATUS_RUNNING].freeze
 
-      #
       # Saved whatever the status: the save stamps updated_at, which a resume
       # used to move (an old session woken with no turn, an attach or a web
       # wake, stays young for the sweep and moves up the lists). Not a
