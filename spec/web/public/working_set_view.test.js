@@ -395,7 +395,7 @@ test("prompt notes update the open session list and count as in the prompt, not 
   assert.ok(row);
   assert.equal(row.querySelector(".ws-step").textContent, "prompt");
   assert.equal(row.querySelector(".ws-step").title, "in the system prompt");
-  assert.match(ws.popover.pop.querySelector(".ctx-pop-meta").textContent, /1 used · 1 in the prompt/);
+  assert.match(ws.popover.pop.querySelector(".ctx-pop-meta:not(.ws-size-line)").textContent, /1 used · 1 in the prompt/);
   assert.equal([...ws.popover.pop.querySelectorAll(".ws-row[data-ws-id]")].filter((item) => item.dataset.wsId === "memory:model_notes_style").length, 1);
   const withFile = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { tool: "memory_read", title: "model_notes_style", status: "ok" }] }] }, 0);
   ws.seed([{ items: withFile, prompt: "first" }]);
@@ -776,6 +776,51 @@ test("the head view: three sections in order, the parts first with their tokens,
   } finally { v.done(); }
 });
 
+test("the header: no item count with parts and the context's tokens; the head line carries the size", () => {
+  const v = headView();
+  try {
+    v.current.ctxPct = 16;
+    v.open();
+    const head = v.pop.querySelector(".ctx-pop-head");
+    assert.ok(head.querySelector(".ctx-pop-kind") === null);
+    assert.doesNotMatch(head.textContent, /item|ctx/);
+    assert.ok(head.querySelector(".ws-ring"), "the ring stays");
+    assert.ok(head.querySelector(".ctx-pop-close"), "the close button stays");
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
+    // A turn lens: its touched line, no size line.
+    v.pop.querySelector('[data-ws="lens"][data-lens="turn"]').click();
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
+  } finally { v.done(); }
+});
+
+test("the size line: the session lens without the context's tokens (or without parts) says \"N items · ctx %\" under the header", () => {
+  const v = headView({ ctxTokens: null });
+  try {
+    v.current.ctxPct = 16;
+    v.open();
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 16 %");
+    assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    assert.ok(v.pop.querySelector(".ctx-pop-head .ctx-pop-kind") === null, "never back in the header");
+    // A change of its text redraws the open list (tokensChanged).
+    let draws = 0;
+    const refresh = v.ws.popover.refresh;
+    v.ws.popover.refresh = (...args) => { draws += 1; return refresh(...args); };
+    v.ws.tokensChanged();
+    assert.equal(draws, 0);
+    v.current.ctxPct = 17;
+    v.ws.tokensChanged();
+    assert.equal(draws, 1);
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 17 %");
+    // The tokens come: the head line takes its place.
+    v.current.ctxTokens = 20000;
+    v.ws.tokensChanged();
+    assert.equal(draws, 2);
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
+    assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~20k of 128k");
+  } finally { v.done(); }
+});
+
 test("held twice: the session lens tags the re-read prompt memory, its tokens the part's + the read's; the turn that read it gets the note", () => {
   const v = headView();
   try {
@@ -840,8 +885,9 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
   try {
     v.open();
     assert.equal(v.pop.querySelectorAll(".ws-sec-head, .ws-sec").length, 0);
-    assert.deepEqual([...v.pop.querySelectorAll(".ctx-pop-meta:not(.ws-hint)")].map((m) => m.textContent), ["files · 2", "memories · 0 used · 1 in the prompt"]);
+    assert.deepEqual([...v.pop.querySelectorAll(".ctx-pop-meta:not(.ws-hint)")].map((m) => m.textContent), ["3 items", "files · 2", "memories · 0 used · 1 in the prompt"]);
     assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items");
     v.ws.popover.close();
     v.foots[1].click();
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");

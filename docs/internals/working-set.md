@@ -358,9 +358,12 @@ changed it, so a turn lens has no forget count.
 
 **Section folds.** Each section header folds (`data-ws="section"`), per session (`chi_ws_sections_folded:<session>`,
 `session_prefs.js`); none stored: all open. Folded, a section shows only the rows the lens lights (the read section's
-lit members flat, without their inner groups). The session lens's line under the header: "in chi's head now · ~X of
-Y" (`headLine`: X `ctxTokens`, Y the window; no "of Y" without one; no line without `ctxTokens`). On a phone's sheet
-rows, section headers and the lens buttons are 44 px targets.
+lit members flat, without their inner groups). The header carries no size (the name, the lens, the ring
+and ×: one line on a phone at 390 px); the line under it does. The session lens's: "in chi's head now · ~X of Y"
+(`headLine`: X `ctxTokens`, Y the window; no "of Y" without one). Without parts or without `ctxTokens` that line is
+the size line instead, "N items · ctx N %" (`.ws-size-line`), so the list never lacks a size; a turn lens has its
+touched line only. The tokens-change check (`tokenText`) compares both lines' text. On a phone's sheet rows, section
+headers and the lens buttons are 44 px targets.
 
 **No parts** (an old session file, a worker before `prompt_parts`, a participant's list: `[]`): `headSections` is
 null and the list is the flat files / memories / urls one with the lens unchanged. A turn end's `?tail=1` from an
