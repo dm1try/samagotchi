@@ -252,6 +252,22 @@ test("context_status: after an unresolved /model a chunk sets no %, and a turn's
   assert.equal(page.current.ctxWindow, 32000);
 });
 
+// The working set's head line: the context's tokens beside its %, from the
+// same events, cleared with it.
+test("ctxTokens: a chunk's total and a context_status's estimate; usage null clears it with the %", () => {
+  const { page, handlers } = fakePage();
+  page.current.ctxWindow = 32000;
+  handlers.generation_chunk({ text: "x", thinking: "", counts: { prompt_tokens: 6000, completion_tokens: 200, total_tokens: 6200 } });
+  assert.equal(page.current.ctxTokens, 6200);
+  handlers.context_status({ usage: { estimated_pct: 20, estimated_used_tokens: 6400 }, bucket: "20to40" });
+  assert.equal(page.current.ctxTokens, 6400);
+  handlers.context_status({ usage: { estimated_pct: 21 }, bucket: "20to40" });
+  assert.equal(page.current.ctxTokens, 6400, "an estimate without its tokens keeps them");
+  handlers.context_status({ usage: null, bucket: null, context_window_tokens: null });
+  assert.equal(page.current.ctxTokens, null);
+  assert.equal(page.current.ctxPct, null);
+});
+
 // The ctx tooltip's "until the next request" (ctxBarTip): set by a switch's
 // unresolved window, gone with a window or when the next request starts.
 test("context_status: an unresolved /model marks the window unknown until the next request starts or a window comes", () => {

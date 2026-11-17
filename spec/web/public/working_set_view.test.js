@@ -706,3 +706,197 @@ test("one finished turn: its lens has both arrows disabled; the live turn ending
     assert.equal(v.lensBtn("next").disabled, true);
   } finally { v.done(); }
 });
+
+// ── the head view (ws_sections.js): From the start · Read in this session · Conversation ──
+
+if (!("localStorage" in globalThis)) globalThis.localStorage = window.localStorage;
+
+const PARTS = [
+  { kind: "tools", label: "31 declared", chars: 24800, tokens: 6200 },
+  { kind: "base", label: "base prompt", chars: 8400, tokens: 2100 },
+  { kind: "identity", label: "identity", chars: 2400, tokens: 600, ref: "identity" },
+  { kind: "notes", label: "model_notes_style", chars: 1600, tokens: 400, ref: "model_notes_style" },
+  { kind: "agents", label: "AGENTS.md", chars: 13600, tokens: 3400, ref: "/p/AGENTS.md" },
+];
+
+// Two turns: turn 0 reads lib/a.rb, turn 1 reads the model note again and
+// lib/c.rb. The session's prompt carries PARTS (the note among them).
+function headView({ parts = PARTS, ctxTokens = 20000, ctxWindow = 128000, session = "h1" } = {}) {
+  const historyEl = document.createElement("div");
+  const infoEl = document.createElement("div");
+  infoEl.innerHTML = '<button class="ws-chip"></button>';
+  document.body.append(historyEl, infoEl);
+  const current = { preloadedMemories: [], mutedMemories: [], usedMemories: [], promptNotes: [{ name: "model_notes_style" }], promptParts: parts, ctxTokens, ctxWindow };
+  let id = session;
+  const ws = createWorkingSet({ historyEl, infoEl, state: () => current, session: () => id, sendLine: () => Promise.resolve() });
+  const ok = (row) => ({ ...row, status: "ok" });
+  const turn0 = itemsOfTurn({ gens: [{ tools: [ok(read("lib/a.rb"))] }] }, 0);
+  const turn1 = itemsOfTurn({ gens: [{ tools: [ok(read("lib/c.rb"))] }, { tools: [ok({ tool: "memory_read", title: "model_notes_style" })] }] }, 1);
+  ws.seed([{ items: turn0, prompt: "first" }, { items: turn1, prompt: "second" }]);
+  ws.update({ items: [
+    { kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 1000 }, { kind: "file", key: "/p/lib/c.rb", state: "live", tokens: 500 },
+    { kind: "memory", key: "model_notes_style", state: "live", tokens: 400 },
+  ], at: 9 });
+  const foots = [footprintNode(turn0, 0), footprintNode(turn1, 1)];
+  historyEl.append(...foots);
+  const pop = ws.popover.pop;
+  const open = () => ws.popover.open(infoEl.querySelector(".ws-chip"));
+  const heads = () => [...pop.querySelectorAll(".ws-sec-head")].map((h) => h.querySelector(".t").textContent);
+  const sec = (key) => pop.querySelector(`.ws-sec.${key}`);
+  const names = (key) => [...sec(key).querySelectorAll(".ws-row")].map((r) => r.querySelector(".t").textContent);
+  const done = () => {
+    ws.popover.close(); infoEl.remove(); historyEl.remove(); pop.remove();
+    for (const s of ["h1", "h2"]) localStorage.removeItem(`chi_ws_sections_folded:${s}`);
+  };
+  return { ws, pop, current, open, heads, sec, names, foots, done, setSession: (s) => { id = s; } };
+}
+
+test("the head view: three sections in order, the parts first with their tokens, read-only; the read section without the prompt's memories", () => {
+  const v = headView();
+  try {
+    v.open();
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
+    const tools = v.sec("start").querySelector('.ws-row.part[data-ws-part^="tools"]');
+    assert.equal(tools.querySelector(".st").textContent, "31 declared");
+    assert.equal(tools.querySelector(".tk").textContent, "~6.2k");
+    assert.equal(v.sec("start").querySelectorAll(".ws-row.part button").length, 0, "a part row has no actions, no peek");
+    assert.equal(v.sec("start").querySelector(".ws-sec-head .tk").textContent, "~13k");
+    // identity: its own memory row (the set has none); the note: the set's row, once in the whole list.
+    assert.ok(v.sec("start").querySelector('.ws-row.memory[data-ws-id="memory:identity"]'));
+    assert.equal(v.pop.querySelectorAll('[data-ws-id="memory:model_notes_style"]').length, 1);
+    assert.deepEqual(v.names("read"), ["a.rb", "c.rb"]);
+    assert.match(v.sec("read").querySelector(".ws-sec-head .n").textContent, /^2 held$/);
+    // Conversation: 20000 − 12700 (parts) − 1500 (files) − 400 (the note's read).
+    const talk = v.sec("talk").querySelector(".ws-row.talk");
+    assert.equal(talk.querySelector(".t").textContent, "conversation");
+    assert.equal(talk.querySelector(".st").textContent, "2 turns");
+    assert.equal(talk.querySelector(".tk").textContent, "~5.4k");
+    assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~20k of 128k");
+  } finally { v.done(); }
+});
+
+test("held twice: the session lens tags the re-read prompt memory, its tokens the part's + the read's; the turn that read it gets the note", () => {
+  const v = headView();
+  try {
+    v.open();
+    const note = () => v.sec("start").querySelector('[data-ws-id="memory:model_notes_style"]');
+    assert.equal(note().querySelector(".ws-twice").textContent, "held twice");
+    assert.equal(note().querySelector(".tk").textContent, "~400 +400");
+    assert.match(note().querySelector(".st").textContent, /^model note$/);
+    assert.ok(v.sec("start").querySelector('[data-ws-id="memory:identity"] .ws-twice') === null);
+    assert.ok(v.pop.querySelector(".ws-note") === null, "no note in the session lens");
+    // Turn 2 (it read the note): lit, amber, the note under it; a part row dim.
+    v.ws.popover.close();
+    v.foots[1].click();
+    assert.ok(note().classList.contains("lit"));
+    assert.ok(note().classList.contains("twice"));
+    assert.equal(note().nextElementSibling.textContent, "read again in this turn: already in the prompt, held twice (+400)");
+    assert.equal(note().querySelector(".ws-step").textContent, "s2");
+    assert.ok(v.sec("start").querySelector(".ws-row.part").classList.contains("dim"));
+    assert.ok(v.pop.querySelector(".ws-head-line") === null, "the turn lens has its own line");
+    // Turn 1 (it didn't): no note, the row dimmed.
+    v.pop.querySelector('[data-ws="lens"][data-lens="prev"]').click();
+    assert.ok(v.pop.querySelector(".ws-note") === null);
+    assert.ok(note().classList.contains("dim"));
+  } finally { v.done(); }
+});
+
+test("section folds: per session; folded, a section shows only the rows the lens lights", () => {
+  const v = headView();
+  try {
+    v.open();
+    v.sec("start").querySelector(".ws-sec-head").click();
+    assert.equal(v.sec("start").querySelector(".ws-sec-head").getAttribute("aria-expanded"), "false");
+    assert.deepEqual(v.names("start"), [], "folded, the session lens lights nothing");
+    v.sec("read").querySelector(".ws-sec-head").click();
+    assert.deepEqual(v.names("read"), []);
+    // Turn 2's lens: the folded start shows the note it read, the folded read its c.rb.
+    v.ws.popover.close();
+    v.foots[1].click();
+    assert.deepEqual(v.names("start"), ["model_notes_style"]);
+    assert.equal(v.sec("start").querySelector(".ws-note").textContent, "read again in this turn: already in the prompt, held twice (+400)");
+    assert.deepEqual(v.names("read"), ["c.rb"]);
+    // Kept for this session; another session's list opens unfolded.
+    v.ws.popover.close();
+    v.open();
+    assert.deepEqual(v.names("start"), []);
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["start","read"]');
+    v.ws.popover.close();
+    v.setSession("h2");
+    v.open();
+    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
+    // Opened again: the key's list loses it.
+    v.setSession("h1");
+    v.ws.popover.close();
+    v.open();
+    v.sec("start").querySelector(".ws-sec-head").click();
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["read"]');
+  } finally { v.done(); }
+});
+
+test("no parts (an old session or worker): today's list, the lens unchanged; no context tokens: no head line, no conversation row", () => {
+  const v = headView({ parts: [], ctxTokens: null });
+  try {
+    v.open();
+    assert.equal(v.pop.querySelectorAll(".ws-sec-head, .ws-sec").length, 0);
+    assert.deepEqual([...v.pop.querySelectorAll(".ctx-pop-meta:not(.ws-hint)")].map((m) => m.textContent), ["files · 2", "memories · 0 used · 1 in the prompt"]);
+    assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    v.ws.popover.close();
+    v.foots[1].click();
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
+    // Parts come (a turn end's re-read), still no context tokens: the sections, no line, no Conversation.
+    v.current.promptParts = PARTS;
+    v.ws.sessionChanged();
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    v.pop.querySelector('[data-ws="lens"][data-lens="session"]').click();
+    assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    // The tokens come: the line, no window: no "of Y".
+    v.current.ctxTokens = 30000;
+    v.current.ctxWindow = null;
+    v.ws.sessionChanged();
+    assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~30k");
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+  } finally { v.done(); }
+});
+
+test("a turn lens never counts a prompt memory as new, even one the set doesn't hold as preloaded", () => {
+  const v = headView();
+  try {
+    v.current.promptNotes = [];
+    v.foots[1].click();
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
+    assert.ok(v.sec("start").querySelector('[data-ws-id="memory:model_notes_style"]').classList.contains("lit"));
+  } finally { v.done(); }
+});
+
+test("the context's tokens: chunks that leave the shown text alone draw nothing; a change draws the line", () => {
+  const v = headView({ ctxTokens: 20000 });
+  try {
+    v.open();
+    let draws = 0;
+    const refresh = v.ws.popover.refresh;
+    v.ws.popover.refresh = (...args) => { draws += 1; return refresh(...args); };
+    // ~20k and the conversation's ~5.4k stay: no draw.
+    for (const tokens of [20010, 20020, 20030, 20040]) {
+      v.current.ctxTokens = tokens;
+      v.ws.tokensChanged();
+    }
+    assert.equal(draws, 0);
+    // The conversation's text moves (~5.5k): one draw, the row says it.
+    v.current.ctxTokens = 20100;
+    v.ws.tokensChanged();
+    assert.equal(draws, 1);
+    assert.equal(v.sec("talk").querySelector(".tk").textContent, "~5.5k");
+    // The head line's (~21k): a draw, the line says it.
+    v.current.ctxTokens = 21000;
+    v.ws.tokensChanged();
+    assert.equal(draws, 2);
+    assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~21k of 128k");
+    // Closed: nothing.
+    v.ws.popover.close();
+    v.current.ctxTokens = 40000;
+    v.ws.tokensChanged();
+    assert.equal(draws, 2);
+  } finally { v.done(); }
+});

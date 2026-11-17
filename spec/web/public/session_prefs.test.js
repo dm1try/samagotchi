@@ -24,7 +24,7 @@ function clean(t) {
 }
 
 test("the keys: the four view settings, each as <key>:<session>", () => {
-  assert.deepEqual(PREF_KEYS, ["chi_stage_collapsed", "chi_composer_floor", "chi_composer_collapsed", "chi_working_set_collapsed"]);
+  assert.deepEqual(PREF_KEYS, ["chi_stage_collapsed", "chi_composer_floor", "chi_composer_collapsed", "chi_working_set_collapsed", "chi_ws_sections_folded"]);
   assert.equal(prefKey(STAGE_FOLD, "s1"), "chi_stage_collapsed:s1");
   assert.ok(prefKey(STAGE_FOLD, null) === null);
 });
