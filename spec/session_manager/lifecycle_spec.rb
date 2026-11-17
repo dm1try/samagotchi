@@ -268,7 +268,7 @@ RSpec.describe Samagotchi::SessionManager do
         }
     end
 
-    it "refuses the fallback when disk shows a running turn, question, queued input or running task" do
+    it "pins saved status as a lifecycle hint, refusing fallback with other disk-visible work (docs/internals/session-lifecycle.md)" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
       allow(Process).to receive(:kill)

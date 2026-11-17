@@ -303,6 +303,28 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).to have_received(:resume_session).once
     end
 
+    it "pins the known empty-discard/send window: a send is accepted under the deletion lock, then removed (docs/internals/session-lifecycle.md)" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      worker = instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: true, wake_due?: false,
+                                                    default_model: "gemma4")
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+      delivered = nil
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, dir, **options|
+        lock = original.call(dir, **options)
+        if options[:kind] == Samagotchi::OwnerLock::DELETING && File.basename(dir) == session.id
+          delivered = described_class.deliver_turn(session.id, prompt: "arrived during delete", client_id: "cli:send",
+                                                    state_dir: tmpdir, bridge: -> {})
+        end
+        lock
+      end
+
+      expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(:idle_exit)
+      expect(delivered).to have_attributes(status: :accepted, via: :file)
+      expect(Samagotchi::Session.exist?(session.id, state_dir: tmpdir)).to be(false)
+      expect(Dir.exist?(File.join(tmpdir, session.id, "input"))).to be(false)
+    end
+
     # Lifecycle P10: a stop that lands as the worker leaves (after its last
     # pass) wins for every way out, not only a restart: the successor's
     # resume would clear it. Its input and rings stay for the next start.

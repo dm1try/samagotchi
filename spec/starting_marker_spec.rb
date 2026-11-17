@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::StartingMarker do
       expect(Dir.children(dir_of(to.id)).grep(/starting\./)).to be_empty
     end
 
-    it "takes over a fresh start from before +over_before+ (a stop), not one from after it" do
+    it "pins the known wall-clock window: at <= over_before takes a start, but one after it stays (docs/internals/session-lifecycle.md)" do
       described_class.mark(to.id, state_dir: tmpdir)
       at = Time.iso8601(JSON.parse(File.read(File.join(dir_of(to.id), "starting")))["at"])
 
