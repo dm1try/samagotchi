@@ -50,8 +50,13 @@ is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's 
 key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state` (`live`, `stale`, `forgotten`,
 `dropped`), `tokens`, `ops`, `count`,
 `first_id` (the first run's ToolIds id), `pinned` (the session's `working_set_pins` name it, whatever the
-strategy: the page shows the mark only under forget, so a switch shows it at once) and `has_drop` (any of its content
-outputs holds the user's applied drop, whatever the state: an undrop has something to take back). The Engine's event and the GET
+strategy: the page shows the mark only under forget, so a switch shows it at once), `has_drop` (any of its content
+outputs holds the user's applied drop, whatever the state: an undrop has something to take back) and, for a memory,
+`scope`: the scope its latest `memory_read` answered from (the memory stamp's file, as `MemoryPart#scope` reads it;
+`memory_item_scope`, no text read), in `to_h` only when known (nil for a memory only written, or read before memory
+stamps). Cost: one field per memory item, from the stamp lookup the stale check makes anyway. Known limit: the set
+has one item per memory name, so a session that read both a project `x` and a system `x` has one item carrying the
+latest read's scope. The Engine's event and the GET
 both pass the session's pins.
 
 **Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what

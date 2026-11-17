@@ -153,6 +153,47 @@ RSpec.describe "a memory's stamp in the working set" do
       .to eq("changed legacy memory")
   end
 
+  describe "an item's scope (the one its latest read answered from)" do
+    let(:project_memories) { File.join(memories, "projects", "p_1") }
+
+    before do
+      allow(Samagotchi::MemoryPaths).to receive(:project_dir).and_return(project_memories)
+      FileUtils.mkdir_p(project_memories)
+    end
+
+    def item(messages) = Samagotchi::WorkingSet.build(messages, cwd: memories, strategy: :none).items.find { |each| each.key == "notes" }
+
+    it "is system for a read the system's memories answered, in to_h" do
+      found = item(conversation(read("notes", scope: nil)))
+      expect(found.scope).to eq("system")
+      expect(found.to_h).to include(scope: "system")
+    end
+
+    it "is project for a read the project's memories answered" do
+      File.write(File.join(project_memories, "notes.md"), "the project's notes")
+      found = item(conversation(read("notes", scope: nil)))
+      expect(found.scope).to eq("project")
+    end
+
+    it "is the latest read's, not a later write's" do
+      File.write(File.join(project_memories, "notes.md"), "the project's notes")
+      run = read("notes", scope: nil)
+      messages = conversation(run) + [
+        { role: "model", content: "", tool_calls: [{ id: "c2", name: "memory_write", arguments: { "name" => "notes", "scope" => "system", "content" => "x" } }] },
+        { role: "tool_response", content: "[memory_write]\nWrote notes", tool_call_id: "c2", tool_ids: ["t2"] }
+      ]
+      expect(item(messages)).to have_attributes(ops: %w[read write], scope: "project")
+    end
+
+    it "is nil, and out of to_h, for a read saved without memory stamps (compat N-1)" do
+      messages = conversation(read("notes"))
+      messages.last.delete(:tool_stamps)
+      found = item(messages)
+      expect(found.scope).to be_nil
+      expect(found.to_h).not_to have_key(:scope)
+    end
+  end
+
   describe "the stamp" do
     it "is one entry per name, with the file that answered and its mtime" do
       File.write(File.join(memories, "other.md"), "second")
