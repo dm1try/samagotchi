@@ -4,7 +4,7 @@
 bundle exec parallel_rspec -n 8 spec lib/samagotchi/bundles/*/spec   # Ruby specs, both roots, in parallel
 bundle exec rspec spec lib/samagotchi/bundles/*/spec                 # the same, plain
 bundle exec rake bundles:specs    # the shipped bundles' own specs, on the bundle test kit alone
-npm test                          # web frontend specs
+npm test                          # web frontend specs, including the new-module exports ratchet
 npm run lint                      # web frontend: undefined names and unused imports (ESLint; CI runs it)
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 npx playwright test spec/e2e/stage.spec.js   # one e2e file (the root playwright.config.js is the suite's)
