@@ -3,6 +3,7 @@
 require "json"
 require_relative "participant_view"
 require_relative "viewer"
+require_relative "session_summary"
 require_relative "../bridge/turn_accumulator"
 require_relative "../worker_link"
 require_relative "../verify_anchor"
