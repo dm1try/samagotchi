@@ -12,7 +12,7 @@ const FULL = {
     status: "idle", model_name: "m", working_directory: "/p", owner: "worker", worker_version: "1.2.0",
     worker_compat: "restart_suggested",
     worker_features: ["delivery"], bridge_up: true, used_memory_names: ["a"], preloaded_memory_names: ["b"],
-    muted_memory_names: ["c"], prompt_notes: [{ name: "n" }], verdicts: [{ check_turn_id: "t" }],
+    muted_memory_names: ["c"], prompt_notes: [{ name: "n" }], prompt_parts: [{ kind: "tools", label: "3 declared", chars: 40, tokens: 10 }], verdicts: [{ check_turn_id: "t" }],
     verify_fresh: [{ of: "t", child_id: "c1" }], llm_context: { strategy: "forget" }, thinking: { level: "low" },
     created_at: "2026-10-30T10:00:00Z", parent_id: "p1", continues: "c0", title: "T",
   },
@@ -48,6 +48,26 @@ test("prompt memory fields redraw the open working set and the bar", () => {
   assert.ok(ORDER.includes("workingSet"));
 });
 
+// The head view's inputs: the parts redraw the open list; the context's
+// tokens (almost every chunk) and window their own redraw, which draws it
+// only when its text changes.
+test("promptParts redraws the open working set; ctxTokens and ctxWindow its tokens' redraw", () => {
+  assert.deepEqual(FIELDS.promptParts.redraws, ["workingSet"]);
+  assert.deepEqual(FIELDS.ctxTokens.redraws, ["workingSetTokens"]);
+  assert.ok(FIELDS.ctxWindow.redraws.includes("workingSetTokens"));
+  assert.ok(ORDER.indexOf("workingSetTokens") > ORDER.indexOf("workingSet"));
+});
+
+// ?tail=1 from an older live worker leaves prompt_parts out: the page keeps
+// the parts it has (unknown is not none); only a list replaces them.
+test("a tail without prompt_parts keeps the parts; an explicit list (even []) replaces them", () => {
+  const parts = [{ kind: "tools", label: "3 declared", chars: 40, tokens: 10 }];
+  assert.deepEqual(sessionFieldsFrom({ session: { used_memory_names: ["a"] } }, ["usedMemories", "promptParts"]), { usedMemories: ["a"] });
+  assert.deepEqual(sessionFieldsFrom({ session: { prompt_parts: parts } }, ["promptParts"]), { promptParts: parts });
+  assert.deepEqual(sessionFieldsFrom({ session: { prompt_parts: [] } }, ["promptParts"]), { promptParts: [] });
+  assert.deepEqual(sessionFieldsFrom({ session: { prompt_parts: "x" } }, ["promptParts"]), {});
+});
+
 test("the payload sources agree with sessionStateFrom on a full payload", () => {
   const all = sessionStateFrom(FULL);
   for (const [key, entry] of Object.entries(FIELDS)) {
@@ -60,9 +80,9 @@ test("the payload sources agree with sessionStateFrom on a full payload", () => 
   for (const key of sourced) assert.deepEqual(read[key], all[key], key);
 });
 
-test("the payload sources are session_payload.js's 11", () => {
+test("the payload sources are session_payload.js's 12", () => {
   assert.deepEqual(Object.keys(FIELDS).filter((key) => FIELDS[key].source).sort(), [
-    "commands", "dir", "model", "mutedMemories", "preloadedMemories", "promptNotes", "status", "timing", "usedMemories",
+    "commands", "dir", "model", "mutedMemories", "preloadedMemories", "promptNotes", "promptParts", "status", "timing", "usedMemories",
     "verdicts", "verifyFresh",
   ]);
 });

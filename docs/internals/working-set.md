@@ -331,6 +331,41 @@ touched A · B new" (new: the session set's first `at` is this turn's, a prompt 
 (`labelsTemplate`) shows its lit members while folded. A new seed that leaves the lens past the last turn, or a reset
 that drops the running turn, puts it back to the session.
 
+**The head view: sections** (`ws_sections.js headSections`, drawn by `working_set_view.js headTemplate`). With the
+session's `prompt_parts` (the worker's sizes of its system prompt; `promptParts` on the page) the list is what is in
+chi's head, in three sections:
+- **From the start** (`start`): every part in prompt order, the tools part first. A memory part (identity, a model
+  note, a preload) IS a memory row: merged with the session set's rows of that name (keys match by `memoryName`: a
+  preloaded `system/x` and a part's `x` are one row, steered by its read item's key), else a row of its own (identity:
+  the set never lists it). It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
+  droppable or pinnable until read). Its tokens are the part's, plus `+X` for the read's (the item's server tokens: a
+  preloaded row carries none of its own, so the two never double-count). Other parts are read-only `part` rows: a
+  label, a sub (the tools part's "N declared"; dropped on a phone), `~tokens`, no actions, no peek; a turn lens dims
+  them.
+- **Read in this session** (`read`): today's files / memories / urls folds (`bodySections`), minus the memories the
+  start section shows. Its meta: held (not struck) and out (forgotten or dropped); its tokens the held items'.
+- **Conversation** (`talk`): one row, "conversation · N turns", `ctxTokens − Σ parts − Σ held items' tokens` (the read
+  section's and the start memories' reads), shown only when `ctxTokens` is known and the rest is > 0. Mixed units,
+  accepted: parts and items are chars/4, `ctxTokens` the server's count or chi's estimate (which on a chat host leaves
+  the tool schemas out, so without server usage the rest can go negative and the row hides); the "~" says so.
+
+**Held twice.** A start memory row whose ops include `read` is held twice: in the prompt and in a read's output. The
+session lens tags it `held twice` (warn tokens); a turn lens whose items read it lights it amber with a note under it:
+"read again in this turn: already in the prompt, held twice (+X)". A lens lights a merged row by any of its merged
+keys (`lensTouched`), and never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
+drop strikes the row where it stands (today's state words); the server knows an item's state now, not the turn that
+changed it, so a turn lens has no forget count.
+
+**Section folds.** Each section header folds (`data-ws="section"`), per session (`chi_ws_sections_folded:<session>`,
+`session_prefs.js`); none stored: all open. Folded, a section shows only the rows the lens lights (the read section's
+lit members flat, without their inner groups). The session lens's line under the header: "in chi's head now · ~X of
+Y" (`headLine`: X `ctxTokens`, Y the window; no "of Y" without one; no line without `ctxTokens`). On a phone's sheet
+rows, section headers and the lens buttons are 44 px targets.
+
+**No parts** (an old session file, a worker before `prompt_parts`, a participant's list: `[]`): `headSections` is
+null and the list is the flat files / memories / urls one with the lens unchanged. A turn end's `?tail=1` from an
+older live worker leaves the key out: the page keeps the parts it has (`session_fields.js`: unknown is not none).
+
 A state is the item's state now, not when its turn ran. A state change never refolds and never moves a line: the
 rail's line key carries the label's state and its forgotten count, which are patched in place.
 

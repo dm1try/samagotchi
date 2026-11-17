@@ -170,6 +170,18 @@ test("sessionStateFrom: the payload's context_status wins over the saved fill", 
   assert.equal("ctxWindow" in fresh, false);
 });
 
+// The working set's head view: the prompt's parts and the context's tokens.
+test("sessionStateFrom: prompt_parts (a list, else []) and ctxTokens (the live % as tokens, else the saved count, else left out)", () => {
+  const parts = [{ kind: "tools", label: "3 declared", chars: 40, tokens: 10 }];
+  assert.equal(sessionStateFrom(payload({ session: { prompt_parts: parts } })).promptParts, parts);
+  assert.deepEqual(sessionStateFrom(payload({ session: {} })).promptParts, []);
+  assert.deepEqual(sessionStateFrom(payload({ session: { prompt_parts: "x" } })).promptParts, []);
+  const timing = { context: { used_tokens: 1000, window_tokens: 10000 } };
+  assert.equal(sessionStateFrom(payload({ timing })).ctxTokens, 1000);
+  assert.equal(sessionStateFrom(payload({ timing, session: { context_status: { est_pct: 12.5 } } })).ctxTokens, 1250);
+  assert.equal("ctxTokens" in sessionStateFrom(payload({ timing: {} })), false);
+});
+
 test("sessionStateFrom's title: the first user message wins over the card's preview", () => {
   const st = sessionStateFrom(payload({
     session: { first_preview: "card" },
