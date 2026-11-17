@@ -147,7 +147,7 @@ test("the head line: '~X of Y', no 'of Y' without a window, nothing without the 
 });
 
 test("foldedSections: the stored JSON list of keys; anything else folds nothing", () => {
-  assert.deepEqual([...foldedSections('["start","talk"]')], ["start", "talk"]);
+  assert.deepEqual([...foldedSections('["start","talk"]')], ["start"], "Conversation never folds: a stored talk is ignored");
   assert.deepEqual([...foldedSections(null)], []);
   assert.deepEqual([...foldedSections("{")], []);
   assert.deepEqual([...foldedSections('{"a":1}')], []);

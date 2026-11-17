@@ -1146,7 +1146,13 @@ button.ws-step:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-st
 .ws-sec-head .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ws-faint)}
 .ws-sec-head .tk{flex:none;margin-left:auto;font-size:11px;color:var(--ws-faint);font-variant-numeric:tabular-nums}
 .ws-sec .ws-sub{margin-top:2px;padding-left:6px}
-.ws-row.part .t,.ws-row.talk .t{margin-right:auto;font-family:ui-sans-serif,system-ui,sans-serif}
+.ws-row.part .t{margin-right:auto;font-family:ui-sans-serif,system-ui,sans-serif}
+/* Conversation: one row at section level (a section header's look, nothing to fold). */
+.ws-row.ws-sec-row{height:30px;margin-top:6px;border-top:1px solid var(--border);border-radius:0;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px}
+.ws-row.ws-sec-row .t{flex:none;font-weight:600;color:var(--text-2)}
+.ws-row.ws-sec-row .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ws-faint)}
+.ws-row.ws-sec-row .tk{margin-left:auto}
+.ws-popover.sheet .ws-row.ws-sec-row{font-size:13px}
 .ws-twice{flex:none;padding:0 6px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;white-space:nowrap}
 .ws-step.twice{color:var(--warn-text);background:var(--warn-bg)}
 .ws-row.twice.lit{background:var(--warn-bg)}

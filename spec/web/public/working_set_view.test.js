@@ -755,7 +755,7 @@ test("the head view: three sections in order, the parts first with their tokens,
   const v = headView();
   try {
     v.open();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session"], "Conversation is a row, not a section header");
     assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
     const tools = v.sec("start").querySelector('.ws-row.part[data-ws-part^="tools"]');
     assert.equal(tools.querySelector(".st").textContent, "31 declared");
@@ -768,10 +768,15 @@ test("the head view: three sections in order, the parts first with their tokens,
     assert.deepEqual(v.names("read"), ["a.rb", "c.rb"]);
     assert.match(v.sec("read").querySelector(".ws-sec-head .n").textContent, /^2 held$/);
     // Conversation: 20000 − 12700 (parts) − 1500 (files) − 400 (the note's read).
-    const talk = v.sec("talk").querySelector(".ws-row.talk");
-    assert.equal(talk.querySelector(".t").textContent, "conversation");
-    assert.equal(talk.querySelector(".st").textContent, "2 turns");
+    assert.equal(v.sec("talk").children.length, 1, "one element: the row, no header");
+    const talk = v.sec("talk").firstElementChild;
+    assert.ok(talk.classList.contains("talk") && talk.classList.contains("ws-row"));
+    assert.equal(talk.querySelectorAll("button").length, 0, "nothing to fold");
+    assert.equal(talk.textContent.replace(/\s+/g, " ").trim(), "Conversation· 2 turns~5.4k");
+    assert.equal(talk.querySelector(".t").textContent, "Conversation");
+    assert.equal(talk.querySelector(".n").textContent, "· 2 turns");
     assert.equal(talk.querySelector(".tk").textContent, "~5.4k");
+    assert.ok(!talk.classList.contains("dim"));
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~20k of 128k");
   } finally { v.done(); }
 });
@@ -839,6 +844,7 @@ test("held twice: the session lens tags the re-read prompt memory, its tokens th
     assert.equal(note().nextElementSibling.textContent, "read again in this turn: already in the prompt, held twice (+400)");
     assert.equal(note().querySelector(".ws-step").textContent, "s2");
     assert.ok(v.sec("start").querySelector(".ws-row.part").classList.contains("dim"));
+    assert.ok(v.sec("talk").querySelector(".ws-row.talk").classList.contains("dim"), "the conversation row is never lit");
     assert.ok(v.pop.querySelector(".ws-head-line") === null, "the turn lens has its own line");
     // Turn 1 (it didn't): no note, the row dimmed.
     v.pop.querySelector('[data-ws="lens"][data-lens="prev"]').click();
@@ -880,6 +886,18 @@ test("section folds: per session; folded, a section shows only the rows the lens
   } finally { v.done(); }
 });
 
+test("an older page's stored fold naming the conversation is ignored: the row shows; a toggle drops the stale key", () => {
+  const v = headView();
+  try {
+    localStorage.setItem("chi_ws_sections_folded:h1", '["talk"]');
+    v.open();
+    assert.ok(v.sec("talk").querySelector(".ws-row.talk"));
+    assert.ok(!v.sec("talk").classList.contains("folded"));
+    v.sec("read").querySelector(".ws-sec-head").click();
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["read"]');
+  } finally { v.done(); }
+});
+
 test("no parts (an old session or worker): today's list, the lens unchanged; no context tokens: no head line, no conversation row", () => {
   const v = headView({ parts: [], ctxTokens: null });
   try {
@@ -902,7 +920,8 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     v.current.ctxWindow = null;
     v.ws.sessionChanged();
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~30k");
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.equal(v.sec("talk").querySelector(".ws-row.talk .tk").textContent, "~15k");
   } finally { v.done(); }
 });
 

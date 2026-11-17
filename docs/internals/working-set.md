@@ -344,7 +344,9 @@ chi's head, in three sections:
   them.
 - **Read in this session** (`read`): today's files / memories / urls folds (`bodySections`), minus the memories the
   start section shows. Its meta: held (not struck) and out (forgotten or dropped); its tokens the held items'.
-- **Conversation** (`talk`): one row, "conversation · N turns", `ctxTokens − Σ parts − Σ held items' tokens` (the read
+- **Conversation** (`talk`): one row at section level, "Conversation · N turns ~X" (`headSections` still returns the
+  section; `headTemplate` draws it headerless, no fold; never lit, so dim in a turn lens),
+  `ctxTokens − Σ parts − Σ held items' tokens` (the read
   section's and the start memories' reads), shown only when `ctxTokens` is known and the rest is > 0. Mixed units,
   accepted: parts and items are chars/4, `ctxTokens` the server's count or chi's estimate (which on a chat host leaves
   the tool schemas out, so without server usage the rest can go negative and the row hides); the "~" says so.
@@ -357,7 +359,8 @@ drop strikes the row where it stands (today's state words); the server knows an 
 changed it, so a turn lens has no forget count.
 
 **Section folds.** Each section header folds (`data-ws="section"`), per session (`chi_ws_sections_folded:<session>`,
-`session_prefs.js`); none stored: all open. Folded, a section shows only the rows the lens lights (the read section's
+`session_prefs.js`); none stored: all open. Conversation has no header to fold: a stored `talk` (an older page's) is
+ignored (`foldedSections`) and the next toggle writes the list without it. Folded, a section shows only the rows the lens lights (the read section's
 lit members flat, without their inner groups). The header carries no size (the name, the lens, the ring
 and ×: one line on a phone at 390 px); the line under it does. The session lens's: "in chi's head now · ~X of Y"
 (`headLine`: X `ctxTokens`, Y the window; no "of Y" without one). Without parts or without `ctxTokens` that line is
