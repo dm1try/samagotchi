@@ -292,7 +292,11 @@ module Samagotchi
       # saves keep it.
       def start_anytime_command(command)
         @engine.spawn_anytime do
-          result = command_result(command) { @engine.running_anytime { @commands.run(command.line, confirm: confirm?(command)) } }
+          result = command_result(command) do
+            @engine.running_anytime do
+              @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
+            end
+          end
           # Saved before its command_ran: a client that reads the file on the reply finds it.
           save_or_log(:command) { save_session } unless Array(result.changed).empty?
           announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
