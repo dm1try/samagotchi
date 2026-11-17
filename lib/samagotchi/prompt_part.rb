@@ -12,11 +12,18 @@ module Samagotchi
   # so a section's parts sum to its text); tokens: chars at TokenUsage's one
   # ratio; ref: the bare memory name (identity, notes, preloads), the file
   # path (agents, appended), "bundle/name" (plugins), the scope (indexes),
-  # else nil.
-  PromptPart = Data.define(:kind, :label, :chars, :tokens, :ref) do
+  # else nil; scope: a memory part's scope, "project" or "system" (identity:
+  # system; a note: its own; a preload: the scope that answered), so the
+  # page tells a project x from a system x; nil for other kinds and in a
+  # file written before it (the page then matches by name alone).
+  PromptPart = Data.define(:kind, :label, :chars, :tokens, :ref, :scope) do
+    def initialize(kind:, label:, chars:, tokens:, ref: nil, scope: nil)
+      super
+    end
+
     # A part of +chars+ characters, its tokens counted by the one ratio.
-    def self.build(kind:, label:, chars:, ref: nil)
-      new(kind: kind.to_s, label: label.to_s, chars: chars, tokens: tokens_for(chars), ref: ref&.to_s)
+    def self.build(kind:, label:, chars:, ref: nil, scope: nil)
+      new(kind: kind.to_s, label: label.to_s, chars: chars, tokens: tokens_for(chars), ref: ref&.to_s, scope: scope&.to_s)
     end
 
     # @return [Integer] the tokens +chars+ characters count as
@@ -35,13 +42,22 @@ module Samagotchi
       chars = chars.is_a?(Numeric) ? chars.to_i : 0
       tokens = get.call(:tokens)
       new(kind: kind, label: get.call(:label).to_s, chars: chars,
-          tokens: tokens.is_a?(Numeric) ? tokens.to_i : tokens_for(chars), ref: get.call(:ref)&.to_s)
+          tokens: tokens.is_a?(Numeric) ? tokens.to_i : tokens_for(chars), ref: get.call(:ref)&.to_s,
+          scope: get.call(:scope)&.to_s)
     end
 
     # The records of a saved list (others dropped).
     # @return [Array<PromptPart>]
     def self.list(raw)
       Array(raw).filter_map { |entry| from_h(entry) }
+    end
+
+    # The record (the wire's, the file's): without scope when it has none,
+    # so a part that has no scope reads as an older chi wrote it.
+    def to_h
+      hash = super
+      hash.delete(:scope) if scope.nil?
+      hash
     end
 
     # The session file's record (string keys).
