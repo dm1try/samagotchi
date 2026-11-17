@@ -835,6 +835,7 @@ module ReleaseTools
 
   COMPAT_WIRE_FIXTURE_REFRESH_COMMAND =
     "UPDATE_COMPAT_WIRE=1 bundle exec rspec spec/compat/wire_readers_spec.rb"
+  EXPORTS_BASELINE_REFRESH_COMMAND = "node script/release/refresh_exports_baseline.js"
 
   # Refresh the shared wire fixtures in a fresh process so it loads the
   # version and compatibility corpus just written by the bump.
@@ -848,11 +849,23 @@ module ReleaseTools
                  "`#{COMPAT_WIRE_FIXTURE_REFRESH_COMMAND}`#{"\n#{detail}" unless detail.empty?}"
   end
 
+  # Refresh the public-module export baseline from the tree after the bump.
+  def refresh_exports_baseline!(root, runner: ->(command, chdir:) { Open3.capture2e("sh", "-c", command, chdir: chdir) })
+    output, status = runner.call(EXPORTS_BASELINE_REFRESH_COMMAND, chdir: root)
+    return if status.success?
+
+    detail = output.to_s.strip
+    raise Error, "export baseline refresh failed; the bump itself was written (VERSION and release files are bumped; " \
+                 "nothing was rolled back); rerun from #{root}: " \
+                 "`#{EXPORTS_BASELINE_REFRESH_COMMAND}`#{"\n#{detail}" unless detail.empty?}"
+  end
+
   # The lines release:bump prints after writing the version and release files.
   def bump_summary(bumped, version)
     lines = [
       "Bumped #{bumped.old} → #{version}: #{VERSION_FILE}, #{SYSTEM_MANIFEST}, " \
-      "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/, spec/shared/compat_wire/"
+      "Gemfile.lock, CHANGELOG.md, spec/compat/#{version}/, spec/shared/compat_wire/, " \
+      "spec/web/public/exports_baseline.json"
     ]
     unless bumped.raised.empty?
       lines << "Raised requires_chi to \">= #{version}\" (requires_chi_next dropped): #{bumped.raised.join(", ")}"
@@ -873,10 +886,12 @@ module ReleaseTools
   end
 
   def bump_with_summary!(root, version, bump: ->(path, release) { bump!(path, release) },
-                         refresh: ->(path) { refresh_compat_wire_fixtures!(path) }, out: $stdout)
+                         refresh: ->(path) { refresh_compat_wire_fixtures!(path) },
+                         refresh_exports: ->(path) { refresh_exports_baseline!(path) }, out: $stdout)
     bumped = bump.call(root, version)
     bump_summary(bumped, version).each { |line| out.puts(line) }
     refresh.call(root)
+    refresh_exports.call(root)
     out.puts("Review with `git diff`, then run rake release:check and commit.")
     bumped
   end

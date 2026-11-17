@@ -20,7 +20,7 @@ RSpec.describe ReleaseTools do
       expect(described_class.bump_summary(bumped, "0.2.0")).to eq([
         "Bumped 0.1.37 → 0.2.0: lib/samagotchi/version.rb, " \
         "lib/samagotchi/bundles/system/manifest.yml, Gemfile.lock, CHANGELOG.md, spec/compat/0.2.0/, " \
-        "spec/shared/compat_wire/"
+        "spec/shared/compat_wire/, spec/web/public/exports_baseline.json"
       ])
     end
 
@@ -32,7 +32,7 @@ RSpec.describe ReleaseTools do
       expect(described_class.bump_summary(bumped, "0.2.0")).to eq([
         "Bumped 0.1.37 → 0.2.0: lib/samagotchi/version.rb, " \
         "lib/samagotchi/bundles/system/manifest.yml, Gemfile.lock, CHANGELOG.md, spec/compat/0.2.0/, " \
-        "spec/shared/compat_wire/",
+        "spec/shared/compat_wire/, spec/web/public/exports_baseline.json",
         "Raised requires_chi to \">= 0.2.0\" (requires_chi_next dropped): mcp",
         "Raised profile dev's requires_chi to \">= 0.2.0\" (its members'), 0.7.1 → 0.7.2; " \
         "named in the CHANGELOG's `chi update` line",
@@ -50,12 +50,15 @@ RSpec.describe ReleaseTools do
       allow(out).to receive(:puts) { |line| events << [:puts, line] }
       bump = ->(root, version) { events << [:bump, root, version]; bumped }
       refresh = ->(root) { events << [:refresh, root] }
+      refresh_exports = ->(root) { events << [:refresh_exports, root] }
 
-      expect(described_class.bump_with_summary!(tmp, "0.2.0", bump: bump, refresh: refresh, out: out)).to eq(bumped)
+      expect(described_class.bump_with_summary!(tmp, "0.2.0", bump: bump, refresh: refresh,
+                                                refresh_exports: refresh_exports, out: out)).to eq(bumped)
       expect(events).to eq([
         [:bump, tmp, "0.2.0"],
         [:puts, described_class.bump_summary(bumped, "0.2.0").first],
         [:refresh, tmp],
+        [:refresh_exports, tmp],
         [:puts, "Review with `git diff`, then run rake release:check and commit."]
       ])
     end
@@ -70,6 +73,42 @@ RSpec.describe ReleaseTools do
         described_class.bump_with_summary!(tmp, "0.2.0", bump: ->(*) { bumped }, refresh: refresh, out: out)
       end.to raise_error(ReleaseTools::Error, "refresh failed")
       expect(events).to eq(described_class.bump_summary(bumped, "0.2.0"))
+    end
+
+    it "does not print the review line when the export baseline refresh fails" do
+      events = []
+      out = double(puts: nil)
+      allow(out).to receive(:puts) { |line| events << line }
+      refresh_exports = ->(_root) { raise ReleaseTools::Error, "baseline refresh failed" }
+
+      expect do
+        described_class.bump_with_summary!(tmp, "0.2.0", bump: ->(*) { bumped },
+                                           refresh: ->(_root) {}, refresh_exports: refresh_exports, out: out)
+      end.to raise_error(ReleaseTools::Error, "baseline refresh failed")
+      expect(events).to eq(described_class.bump_summary(bumped, "0.2.0"))
+    end
+  end
+
+  describe ".refresh_exports_baseline!" do
+    let(:command) { "node script/release/refresh_exports_baseline.js" }
+
+    it "runs the baseline writer from the repository root" do
+      status = instance_double(Process::Status, success?: true)
+      runner = lambda do |actual_command, chdir:|
+        expect(actual_command).to eq(command)
+        expect(chdir).to eq(tmp)
+        ["", status]
+      end
+
+      expect { described_class.refresh_exports_baseline!(tmp, runner: runner) }.not_to raise_error
+    end
+
+    it "raises an error with the command to rerun when the baseline refresh fails" do
+      status = instance_double(Process::Status, success?: false)
+      runner = ->(_actual_command, chdir:) { expect(chdir).to eq(tmp); ["", status] }
+
+      expect { described_class.refresh_exports_baseline!(tmp, runner: runner) }
+        .to raise_error(ReleaseTools::Error, /the bump itself was written.*nothing was rolled back.*#{Regexp.escape(command)}/)
     end
   end
 

@@ -111,6 +111,12 @@ export function newExports(sources, baseline, allowed = []) {
   });
 }
 
+export function formatViolations(violations) {
+  return violations.map(({ file, name }) =>
+    `${file}: new export ${name}; put it in a new module (see docs/internals/web-frontend.md, "New exports go in new modules").`
+  ).join("\n");
+}
+
 async function javascriptFiles(directory, relative = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
