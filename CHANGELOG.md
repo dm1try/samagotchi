@@ -10,7 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- chi web: a chained delete reopens its plan for confirmation when it changed after the sheet was shown.
+- chi web: deleting a chained session no longer deletes more than the sheet showed when something changed since it
+  opened (a delegate that finished, a schedule, a continue); the sheet shows the new plan to confirm.
 - chi web: a participant's failed Verify turn comes back in their composer as a Verify turn, not plain text.
 
 ## [0.177.0] - 2026-11-17

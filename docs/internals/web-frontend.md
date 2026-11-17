@@ -390,8 +390,10 @@ is no longer the live one (a ✕ on another card while the first plan was read) 
 `GET /api/sessions/:id/delete_plan`, fetched as it opens and only for a chained session: the server's own plan and
 refusals (`SessionChain::Delete::Preview`, the code the delete runs), so the sheet and the delete can't disagree; its
 cost is one session listing walk per open. `deleteChoices` (pure) turns it into the two choices, a schedule's banner
-and each refusal's "Not while …"; a plan that says no chain (a link alone past a gap) falls back to the confirm. A
-stale plan is fine: the delete refuses as it does, and `runDeleteFlow` shows the refusal in the sheet
+and each refusal's "Not while …"; a plan that says no chain (a link alone past a gap) falls back to the confirm. The
+confirm sends the shown choice's `digest` (`expect=`, `data.js deleteSession`/`deleteChain` keep it out of `fetch`);
+a `409 plan_changed` re-reads the plan and redraws the sheet with "What this deletes changed; check again" (a link no
+longer chained gets the plain confirm). Any other refusal `runDeleteFlow` shows in the sheet
 (`refusalModel`: a moved delegate that can't go back offers "Stop its worker, then delete" only when the 409 says
 `stoppable`; it stops each, retries only once the stop answers `released`, and says so otherwise, never looping, one
 stop at a time).
