@@ -833,7 +833,7 @@ RSpec.describe Samagotchi::SessionCommands do
     it "refuses a memory already in the prompt without changing or saving the session" do
       memory = Tempfile.new(%w[model-notes .md])
       before = session.messages.dup
-      allow(engine).to receive(:prompt_memory_names).and_return(["model_notes_qwen"])
+      allow(engine).to receive(:prompt_memories).and_return([%w[model_notes_qwen system]])
       allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).and_call_original
       allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).with("model_notes_qwen", "project").and_return(memory.path)
 
@@ -855,7 +855,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
     it "does not refuse an identity memory excluded from the prompt" do
       memory = Tempfile.new(%w[identity .md])
-      allow(engine).to receive(:prompt_memory_names).and_return([])
+      allow(engine).to receive(:prompt_memories).and_return([])
       allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).and_call_original
       allow(Samagotchi::Tools::MemoryRead).to receive(:memory_path).with("identity", "project").and_return(memory.path)
 

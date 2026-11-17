@@ -1,0 +1,37 @@
+[
+  {
+    "part": { "ref": "x", "scope": "project" },
+    "target": { "key": "system/x", "scope": "system" },
+    "expected": false
+  },
+  {
+    "part": { "ref": "x", "scope": "system" },
+    "target": { "key": "system/x", "scope": "system" },
+    "expected": true
+  },
+  {
+    "part": { "ref": "x", "scope": "system" },
+    "target": { "key": "project/x", "scope": "project" },
+    "expected": false
+  },
+  {
+    "part": { "ref": "x", "scope": null },
+    "target": { "key": "system/x", "scope": "system" },
+    "expected": true
+  },
+  {
+    "part": { "ref": "x", "scope": null },
+    "target": { "key": "x", "scope": null },
+    "expected": true
+  },
+  {
+    "part": { "ref": "x", "scope": "project" },
+    "target": { "key": "x", "scope": null },
+    "expected": true
+  },
+  {
+    "part": { "ref": "y", "scope": "system" },
+    "target": { "key": "system/x", "scope": "system" },
+    "expected": false
+  }
+]

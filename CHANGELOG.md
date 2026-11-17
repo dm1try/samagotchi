@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - chi web: a participant's failed Verify turn comes back in their composer as a Verify turn, not plain text.
+- /working-set add: a project and system memory with the same name are matched by scope.
 
 ## [0.177.0] - 2026-11-17
 
