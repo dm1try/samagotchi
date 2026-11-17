@@ -127,7 +127,8 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     describe "a failed turn's prompt handed back (prompt_restored)" do
       let(:restored) do
         { type: :prompt_restored, event_seq: 9, prompt: "look at this", images: [STORED], model: "secret-model",
-          output: "SECRET OUTPUT", error: "/home/o/x boom", source: "user", verify: { turn_id: "t0", quote: "OWNER QUOTE" },
+          output: "SECRET OUTPUT", error: "/home/o/x boom", source: "user",
+          verify: { turn_id: "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f", quote: "THEIR QUOTE" },
           revises: { turn_id: "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f" },
           origin: { client_id: "participant:p_1", enqueued_id: "e1", author: "p:p_1", source: "participant" } }
       end
@@ -135,9 +136,16 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       it "gives the viewer their own text and their own image refs, in the shape the page reads" do
         expect(shown(restored)).to eq(
           "type" => "prompt_restored", "event_seq" => 9, "prompt" => "look at this", "images" => [STORED_SHOWN],
+          "verify" => { "turn_id" => "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f", "quote" => "THEIR QUOTE" },
           "revises" => { "turn_id" => "3f2b8a52-6c1d-4e4a-9b1e-0a1b2c3d4e5f" },
           "origin" => { "client_id" => "participant:p_1", "enqueued_id" => "e1", "author" => "p:p_1" }
         )
+      end
+
+      it "does not restore a malformed, boolean or missing Verify claim" do
+        [restored.merge(verify: { turn_id: "" }), restored.merge(verify: true), restored.except(:verify)].each do |event|
+          expect(shown(event)).not_to have_key("verify")
+        end
       end
 
       it "gives nothing for another person's or the owner's turn" do
