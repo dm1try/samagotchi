@@ -38,6 +38,7 @@
     "verdicts": [],
     "verify_fresh": [],
     "last_verdict": null,
+    "prompt_parts": [],
     "llm_context": {
       "strategy": "none",
       "strategy_source": "config",

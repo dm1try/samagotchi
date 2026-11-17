@@ -124,6 +124,8 @@ module Samagotchi
     #   :used_memory_names [Array<String>] deduped memory names active this session
     #   :prompt_notes  [Array<Hash>] the model notes the prompt carried
     #     ({name:, scope:, chars:, digest:}; #prompt_notes)
+    #   :prompt_parts  [Array<Hash>] the sizes of the prompt's parts
+    #     ({kind:, label:, chars:, tokens:, ref:}; Session#prompt_parts)
     #   :parent_id     [String, nil] the session that delegated this one
     #   :model_name    [String]    the model turns run on now (after /model)
     #   :served_model, :served_model_for [String, nil] what a generation of
@@ -153,6 +155,7 @@ module Samagotchi
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: muted.dup,
         prompt_notes: prompt_notes.map(&:to_h),
+        prompt_parts: Array(session&.prompt_parts).map(&:to_h),
         parent_id: session&.parent_id,
         title: session&.title,
         model_name: effective_model_ref,

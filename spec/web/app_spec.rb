@@ -1652,6 +1652,57 @@ RSpec.describe Samagotchi::Web::App do
                                                               "chars" => 40, "digest" => "0123456789ab" }])
     end
 
+    # The sizes of the prompt's parts (the head view's "From the start"): the
+    # worker's snapshot, else the file's; the full show and the tail re-read.
+    describe "prompt parts" do
+      let(:wire) { [{ "kind" => "tools", "label" => "3 declared", "chars" => 100, "tokens" => 25, "ref" => nil }] }
+      let(:saved) { [{ "kind" => "base", "label" => "base prompt", "chars" => 40, "tokens" => 10, "ref" => nil }] }
+      let(:loader) do
+        parts = saved
+        Class.new(StubSessionLoader) do
+          define_singleton_method(:load) { |id, state_dir: nil| super(id, state_dir: state_dir).tap { |s| s.prompt_parts = parts } }
+        end
+      end
+
+      def read_json(app, query = "") = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first)
+
+      it "sends the live worker's, on the full show and the tail" do
+        live = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }] },
+                 "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "prompt_parts" => wire } }
+        app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir, session_class: loader)
+        stub_worker(app, live)
+        expect(read_json(app).dig("session", "prompt_parts")).to eq(wire)
+        expect(read_json(app, "?tail=1").dig("session", "prompt_parts")).to eq(wire)
+      end
+
+      it "falls back to the file's when the worker's snapshot has none (an older worker)" do
+        live = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }] },
+                 "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+        app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir, session_class: loader)
+        stub_worker(app, live)
+        expect(read_json(app).dig("session", "prompt_parts")).to eq(saved)
+      end
+
+      it "leaves prompt_parts out of the live tail when the worker's state has none (unknown, not none), reading no file" do
+        live = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }] },
+                 "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+        app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir, session_class: loader)
+        stub_worker(app, live)
+        expect(loader).not_to receive(:load)
+        expect(read_json(app, "?tail=1")["session"]).not_to have_key("prompt_parts")
+      end
+
+      it "sends a stopped session's file's on the full show and the tail, [] for a file without any" do
+        app = build_app(state_dir: Dir.mktmpdir, session_class: loader)
+        expect(read_json(app).dig("session", "prompt_parts")).to eq(saved)
+        expect(read_json(app, "?tail=1").dig("session", "prompt_parts")).to eq(saved)
+
+        old = build_app(state_dir: Dir.mktmpdir)
+        expect(read_json(old).dig("session", "prompt_parts")).to eq([])
+        expect(read_json(old, "?tail=1").dig("session", "prompt_parts")).to eq([])
+      end
+    end
+
     # The ctx chip of a page opened while a turn runs: the worker's newest
     # request estimate, kept mid-turn by the Engine (see the golden show).
     it "passes the worker's context estimate to the page, and nothing when its snapshot has none" do
@@ -2269,7 +2320,7 @@ RSpec.describe Samagotchi::Web::App do
         it "no worker: the disk" do
           expect(read("?tail=1")["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
           expect(read("?tail=1")["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => [],
-                                                   "prompt_notes" => [])
+                                                   "prompt_notes" => [], "prompt_parts" => [])
         end
 
         it "an unknown session id: 404, live or not" do

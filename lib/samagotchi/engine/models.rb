@@ -81,6 +81,16 @@ module Samagotchi
       end
       private :record_prompt_notes
 
+      # Records +parts+ (PromptPart) on the session as the sizes of the
+      # prompt's parts; saved with it. A switch records [] (the old model's
+      # parts are not the new one's; the next build records its own; a build
+      # in flight on another thread may still record the old ones, as
+      # prompt_notes may).
+      def record_prompt_parts(parts)
+        @session.prompt_parts = Array(parts) if @session
+      end
+      private :record_prompt_parts
+
       # A failed turn's one line (the error's #summary). A host's failure
       # under an alias says what the alias became (HostRegistry#alias_note):
       # "host main" alone doesn't tell --model splash's user it was splash.
@@ -174,6 +184,7 @@ module Samagotchi
         # The notes the new model's prompt loads at its next build, so /model,
         # /stats and the web name them before the next turn does.
         record_prompt_notes(model_notes) if @session
+        record_prompt_parts([])
         sync_kernel_client!
         @client.invalidate_context_window!
         @metrics.forget_model_reports!

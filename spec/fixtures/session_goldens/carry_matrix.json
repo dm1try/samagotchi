@@ -131,6 +131,12 @@
     "respawn": "same",
     "continue": "default"
   },
+  "prompt_parts": {
+    "fork": "default",
+    "delegate": "default",
+    "respawn": "same",
+    "continue": "default"
+  },
   "parent_id": {
     "fork": "own",
     "delegate": "own",

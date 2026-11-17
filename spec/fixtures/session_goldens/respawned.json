@@ -93,6 +93,22 @@
       "digest": "def456"
     }
   ],
+  "prompt_parts": [
+    {
+      "kind": "notes",
+      "label": "model_notes_gemma",
+      "chars": 612,
+      "tokens": 153,
+      "ref": "model_notes_gemma"
+    },
+    {
+      "kind": "tools",
+      "label": "3 declared",
+      "chars": 90,
+      "tokens": 23,
+      "ref": null
+    }
+  ],
   "parent_id": null,
   "scratch": false,
   "last_turn": {
