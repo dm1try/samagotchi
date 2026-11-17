@@ -172,6 +172,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(status).to eq(200)
     expect(tail.keys).to match_array(%w[tail session messages markdown_warning markdown_tip capabilities editor_url timing])
     expect(tail["messages"].map { |m| m["content"] }).to eq(["ok"])
+    expect(tail["session"]["prompt_parts"]).to eq([])
     expect(tail.dig("timing", "turn_records", 0).keys).to eq(%w[id started_at duration_ms decode_tps tps_source])
     expect(read(issued.token, "?timing=1").last["timing"]["turn_records"].first).not_to have_key("cost")
     expect(read(issued.token, "?cards=1").last).to eq("cards" => [])

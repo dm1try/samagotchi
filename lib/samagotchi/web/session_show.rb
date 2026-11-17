@@ -297,6 +297,10 @@ module Samagotchi
         refs.empty? ? pending.except(key) : pending.merge(key => refs)
       end
 
+      # The session file's prompt parts as the wire has them ([] for a file
+      # without the field).
+      def saved_prompt_parts(session) = Array(session.prompt_parts).map(&:to_h)
+
       # The full show's session part: the file's, with what a live worker's
       # state +snapshot+ knows first (its model, status, served model,
       # prompt notes and chips); without one, the served model from
@@ -310,6 +314,9 @@ module Samagotchi
                                             served_expected_by: snapshot["served_expected_by"])
           # The model notes its prompt carries now (a /model there changes them).
           session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
+          # And the sizes of its parts (the head view's "From the start"); an
+          # older worker's snapshot has none: the file's, [] for an older file.
+          session_json = session_json.merge(prompt_parts: snapshot["prompt_parts"].is_a?(Array) ? snapshot["prompt_parts"] : saved_prompt_parts(session))
           # The newest context estimate the worker has (a turn in flight: the
           # last request's), so a page opened mid-turn shows the percent at
           # once. Owner show only: a participant's show is ParticipantView's
@@ -317,7 +324,7 @@ module Samagotchi
           # nothing, so its page reads as it always did.
           session_json = session_json.merge(context_status: snapshot["context_status"]) if snapshot.key?("context_status")
         else
-          session_json = session_json.merge(saved_served_model(session, persisted))
+          session_json = session_json.merge(saved_served_model(session, persisted), prompt_parts: saved_prompt_parts(session))
         end
         # The per-session settings' chips (the info bar's ⚙ chip: llm ctx, think
         # and reasoning; the tools chip): the worker's, else worked out here from the
@@ -361,7 +368,7 @@ module Samagotchi
         state = tail && tail["session_state_snapshot"]
         state = nil unless state.is_a?(Hash)
         if state
-          status, used, notes = state.values_at("status", "used_memory_names", "prompt_notes")
+          status, used, notes, parts = state.values_at("status", "used_memory_names", "prompt_notes", "prompt_parts")
           answer = tail["answer"]
           cwd = tail_working_directory(id, tail, answer)
           answer = without_file_refs(answer) unless cwd
@@ -371,9 +378,13 @@ module Samagotchi
           status = displayed_status(session)
           used = session.used_memory_names
           notes = session.prompt_notes.map(&:to_h)
+          parts = saved_prompt_parts(session)
           messages = last_assistant_for_display(session.messages, turn_id: turn_id, cwd: session.working_directory)
         end
         session_json = { id: id, status: status, used_memory_names: Array(used), prompt_notes: Array(notes) }
+        # A live worker's state without the key (an older worker) leaves it out:
+        # unknown, not none, so the page keeps the parts it has. No file read.
+        session_json[:prompt_parts] = parts if parts.is_a?(Array)
         live_metrics = state && state["metrics"]
         timing = recent_timing(id, live_metrics)
         json_response(200, {

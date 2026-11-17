@@ -79,6 +79,8 @@ module Samagotchi
         @metrics.memory_index = @prompt_builder.memory_index
         # The model notes it carries: the session records them (/stats, /model, the web).
         record_prompt_notes(@prompt_builder.prompt_notes)
+        # And the sizes of its parts (PromptPart), for the web's head view.
+        record_prompt_parts(@prompt_builder.prompt_parts)
         prompt
       end
 

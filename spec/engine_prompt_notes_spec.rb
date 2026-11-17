@@ -137,4 +137,46 @@ RSpec.describe Samagotchi::Engine, "prompt notes" do
   it "names the notes the model's prompt would load when there is no session" do
     expect(engine("box:gemma-small").prompt_notes.map(&:name)).to eq(%w[model_notes_gemma])
   end
+
+  describe "prompt parts (Session#prompt_parts)" do
+    it "records the sizes of the prompt's parts with a build, in the snapshot and in the saved file; [] before it" do
+      e = engine("box:gemma-small")
+      e.session = new_session("box:gemma-small")
+      expect(e.session.prompt_parts).to eq([])
+      expect(e.session_state_snapshot[:prompt_parts]).to eq([])
+
+      e.system_prompt
+
+      parts = e.session.prompt_parts
+      expect(parts.map(&:kind)).to include("tools", "base", "notes", "indexes", "session")
+      expect(parts.select { |part| part.kind == "notes" }.map(&:ref)).to eq(%w[model_notes_gemma])
+      expect(e.session_state_snapshot[:prompt_parts]).to eq(parts.map(&:to_h))
+      e.session.save
+      expect(Samagotchi::Session.load(e.session.id).prompt_parts).to eq(parts)
+    end
+
+    it "records [] on /model, never the old model's parts, and the new model's at its next build" do
+      e = engine("box:gemma-small")
+      e.session = new_session("box:gemma-small")
+      e.system_prompt
+      expect(e.session.prompt_parts).not_to be_empty
+
+      e.switch_model!("box:qwen3")
+      expect(e.session.prompt_parts).to eq([])
+      expect(e.session_state_snapshot[:prompt_parts]).to eq([])
+
+      e.system_prompt
+      expect(e.session.prompt_parts.select { |part| part.kind == "notes" }.map(&:ref)).to eq(%w[model_notes_qwen])
+    end
+
+    it "reads an old session file without the field as []" do
+      session = new_session("box:gemma-small")
+      session.save
+      path = Dir[File.join(Samagotchi::Session.default_state_dir, "#{session.id}.json")].first
+      data = JSON.parse(File.read(path)).except("prompt_parts")
+      File.write(path, JSON.generate(data))
+
+      expect(Samagotchi::Session.load(session.id).prompt_parts).to eq([])
+    end
+  end
 end

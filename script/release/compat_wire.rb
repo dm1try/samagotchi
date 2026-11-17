@@ -38,6 +38,9 @@ module CompatWire
   # The last turn's measured duration (last_turn.seconds, rounded to 0.1).
   # Only under last_turn: another `seconds` key is not a measurement.
   TIMING_PATH = { "last_turn" => "seconds" }.freeze
+  # A prompt part's sizes (prompt_parts' chars and tokens): the prompt's text
+  # changes with every release, the date, the folder and the tools.
+  SIZE_PATH = { "prompt_parts" => %w[chars tokens] }.freeze
   # The system prompt's text (the tools' descriptions, the date: it changes
   # with every release and every day), as a recording keeps it.
   SYSTEM_PROMPT = "<system prompt>"
@@ -75,7 +78,7 @@ module CompatWire
   end
 
   # +value+ made deterministic: an ISO time is STAMP, an event id's epoch
-  # EPOCH, a timing key's number (and last_turn.seconds) FIXED_NUMBER, the recording's temp folder
+  # EPOCH, a timing key's number (and last_turn.seconds, a prompt part's chars and tokens) FIXED_NUMBER, the recording's temp folder
   # (+roots+) CWD, chi's version +version+ (chi_version, written_by), a
   # message list's system prompt SYSTEM_PROMPT; hashes' keys sorted (as
   # strings). Idempotent.
@@ -98,7 +101,7 @@ module CompatWire
   end
 
   def timing?(key, parent)
-    TIMING_KEY.match?(key.to_s) || TIMING_PATH[parent] == key
+    TIMING_KEY.match?(key.to_s) || TIMING_PATH[parent] == key || SIZE_PATH.fetch(parent, []).include?(key)
   end
 
   # A message list's system prompt (its first message: a system one of no kind).

@@ -17,6 +17,7 @@ require_relative "toolkit"
 require_relative "session_config"
 require_relative "session_setup"
 require_relative "prompt_note"
+require_relative "prompt_part"
 require_relative "working_set_pin"
 require_relative "session_review"
 require_relative "session_field"
@@ -182,6 +183,10 @@ module Samagotchi
       # Engine at each build (a start, a resume's or a woken worker's first
       # turn, /model) and saved, so what a session ran with can be read later.
       SessionField.list("prompt_notes") { PromptNote },
+      # The sizes of the parts that prompt was made of (Array<PromptPart>:
+      # kind, label, chars, tokens, ref), recorded with prompt_notes; the web's
+      # head view lists them. An older file has none: [].
+      SessionField.list("prompt_parts") { PromptPart },
       # The session that delegated this one (the `delegate` tool) or that a
       # plugin forked it from (ctx.sessions.fork), else nil.
       # Set before the spawn and kept on respawns, like preloaded_memory_names.
@@ -314,11 +319,15 @@ module Samagotchi
 
     # The value objects' readers and writers: a writer reads its value as
     # its FIELDS row does (a file's Hash, the object itself; nil is none).
-    attr_reader :prompt_notes, :pending_question, :last_turn, :interrupted_turn, :toolkit, :review, :verify_fresh,
+    attr_reader :prompt_notes, :prompt_parts, :pending_question, :last_turn, :interrupted_turn, :toolkit, :review, :verify_fresh,
                 :working_set_pins
 
     def prompt_notes=(value)
       @prompt_notes = load_field("prompt_notes", value)
+    end
+
+    def prompt_parts=(value)
+      @prompt_parts = load_field("prompt_parts", value)
     end
 
     def pending_question=(value)

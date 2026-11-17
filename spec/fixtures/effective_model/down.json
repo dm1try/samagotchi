@@ -102,6 +102,7 @@
     "preloaded_memory_names",
     "muted_memory_names",
     "prompt_notes",
+    "prompt_parts",
     "parent_id",
     "title",
     "model_name",

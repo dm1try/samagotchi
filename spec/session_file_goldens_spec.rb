@@ -117,6 +117,9 @@ RSpec.describe "Session file goldens (characterization)" do
       s.muted_memory_names = ["system/noisy"]
       s.prompt_notes = [{ "name" => "model_notes_gemma", "scope" => "system", "chars" => 612, "digest" => "abc123" },
                         Samagotchi::PromptNote.new(name: "model_notes_x", scope: "project", chars: 80, digest: "def456")]
+      s.prompt_parts = [{ "kind" => "notes", "label" => "model_notes_gemma", "chars" => 612, "tokens" => 153,
+                          "ref" => "model_notes_gemma" },
+                        Samagotchi::PromptPart.build(kind: :tools, label: "3 declared", chars: 90)]
       s.parent_id = "golden-0002-parent"
       s.scratch = true
       s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: "2026-11-08T11:40:00.000Z", seconds: 4.5,

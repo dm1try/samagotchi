@@ -201,7 +201,7 @@ module Samagotchi
         status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && reads.turn_snapshot && reads.current_turn.nil?
         json_response(200, {
           tail: true,
-          session: { id: id, status: status, used_memory_names: [], prompt_notes: [] },
+          session: { id: id, status: status, used_memory_names: [], prompt_notes: [], prompt_parts: [] },
           messages: with_reply_html([answer].compact),
           # The owner's chi web's own setup notes: never a participant's.
           markdown_warning: nil,
