@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.177.0] - 2026-11-17
+
 ### Added
 
 - chi web: the working-set list is now a view of what is in chi's head, in three groups: **From the start** (every
@@ -6478,7 +6480,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.176.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.177.0...HEAD
+[0.177.0]: https://github.com/dm1try/samagotchi/compare/v0.176.0...v0.177.0
 [0.176.0]: https://github.com/dm1try/samagotchi/compare/v0.175.0...v0.176.0
 [0.175.0]: https://github.com/dm1try/samagotchi/compare/v0.174.0...v0.175.0
 [0.174.0]: https://github.com/dm1try/samagotchi/compare/v0.173.0...v0.174.0
