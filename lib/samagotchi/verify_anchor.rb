@@ -21,6 +21,8 @@ module Samagotchi
     def to_h = { turn_id:, quote: }
 
     def to_file = { "turn_id" => turn_id, "quote" => quote }
+
+    def participant_view = to_file
   end
 
   # The shape of the turn id an anchor names (ReviseAnchor's too).

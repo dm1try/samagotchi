@@ -166,6 +166,13 @@ module Samagotchi
         session.displayed_status(owner: owner)
       end
 
+      def shown_status(session, state, turn_snapshot, owner:)
+        status = displayed_status(session, state, owner: owner)
+        return Session::STATUS_IDLE if status == Session::STATUS_RUNNING && turn_snapshot && !turn_snapshot["current_turn"]
+
+        status
+      end
+
       def first_preview_for(session)
         raw = session.first_preview || session.last_prompt || ""
         norm = raw.to_s.gsub(/\s+/, " ").strip
