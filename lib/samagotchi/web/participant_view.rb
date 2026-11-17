@@ -138,8 +138,8 @@ module Samagotchi
       # their image refs (#image_refs), the Revise draft's turn id and the
       # origin's ids the page matches it by (restore.js restoreAction). nil
       # for anyone else's, the owner's or an automatic turn (decided by the
-      # origin's author, which chi web stamped). Never source, the error, a
-      # Verify claim's quote or anything else the owner's event carries.
+      # origin's author, which chi web stamped). Only a parsed Verify claim is
+      # carried beyond those fields.
       def prompt_restored(event, viewer)
         origin = field(event, :origin)
         return nil unless origin.is_a?(Hash)
@@ -150,6 +150,8 @@ module Samagotchi
         out = { "type" => "prompt_restored", **seq(event), "prompt" => field(event, :prompt).to_s }
         images = image_refs(field(event, :images), author, viewer)
         out["images"] = images if images
+        verify = VerifyAnchor.from(field(event, :verify))
+        out["verify"] = verify.to_file if verify
         revises = ReviseAnchor.from(field(event, :revises))
         out["revises"] = { "turn_id" => revises.turn_id } if revises
         out["origin"] = { "client_id" => field(origin, :client_id).to_s, "enqueued_id" => field(origin, :enqueued_id).to_s,
