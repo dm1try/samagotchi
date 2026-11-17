@@ -103,7 +103,7 @@ module Samagotchi
     # prompt_parts: the same as sizes, one PromptPart per memory, file and
     # plugin section, the tools part first (#prompt_parts).
     Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface, :memory_names, :parts,
-                        :prompt_parts)
+                        :prompt_parts, :prompt_memories)
 
     # One part of the prompt: its kind (KINDS), what it was made from (the
     # memory names of identity and preloads, the files of agents and
@@ -137,6 +137,7 @@ module Samagotchi
       @memory_index = built.memory_index
       @last = built
       @last_prompt_memory_names = built.memory_names
+      @last_prompt_memories = built.prompt_memories
       built.prompt
     end
 
@@ -166,6 +167,11 @@ module Samagotchi
     # rendered; retained across reset! until another build completes.
     # @return [Array<String>]
     def prompt_memory_names = @last_prompt_memory_names || []
+
+    # The identity and preloaded memories in the last built prompt, with the
+    # scope each memory answered from; retained across reset! like the names.
+    # @return [Array<Array(String, String, nil)>]
+    def prompt_memories = @last_prompt_memories || []
 
     # The files whose text the prompt #build returned last holds, as
     # absolute paths in prompt order: the AGENTS.md chain, then the
@@ -240,10 +246,24 @@ module Samagotchi
       prompt_parts = Degrade.call(:prompt, "prompt_parts_failed", fallback: []) do
         prompt_parts_for(@section_parts, chat: chat, surface: surface)
       end
+      prompt_memories = prompt_memories_for(@section_parts)
       Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
                 files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length,
                 surface: surface, memory_names: [@section_identity_memory_name, *@section_activated_memory_names].compact.uniq.freeze,
-                parts: @section_parts.freeze, prompt_parts: prompt_parts.freeze)
+                parts: @section_parts.freeze, prompt_parts: prompt_parts.freeze, prompt_memories: prompt_memories)
+    end
+
+    def prompt_memories_for(sections)
+      sections.flat_map do |section|
+        case section.kind
+        when :identity
+          section.ref ? [[section.ref, "system"]] : []
+        when :preloads
+          Array(section_items(section)).map { |_, name, _, scope| [name, scope] }
+        else
+          []
+        end
+      end.map(&:freeze).uniq.freeze
     end
 
     # ── The parts' sizes ───────────────────────────────────────────────────────

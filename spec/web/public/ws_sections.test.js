@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   foldedSections, headItems, headLine, headSections, heldTwice, heldTwiceNote, lensTouched, memoryName, memoryPartWords, promptKeys, same, startTokensText,
 } from "../../../lib/samagotchi/web/public/ws_sections.js";
@@ -155,6 +156,13 @@ test("scope match: a scope either side lacks falls back to the name alone (an ol
   assert.equal(same({ ref: "x", scope: "system" }, { kind: "memory", key: "x", scope: "project" }), false);
   assert.equal(same({ ref: "x" }, { kind: "memory", key: "system/x", scope: "project" }), true, "an older page's spelling: the name is x");
   assert.equal(same({ ref: "x" }, { kind: "file", key: "x" }), false);
+});
+
+test("same: follows the shared prompt-memory scope-and-name cases", () => {
+  const cases = JSON.parse(readFileSync(new URL("../../shared/prompt_memory_match.json", import.meta.url), "utf8"));
+  for (const { part, target, expected } of cases) {
+    assert.equal(same(part, { kind: "memory", key: target.key, scope: target.scope }), expected, JSON.stringify({ part, target }));
+  }
 });
 
 test("scope match: a project x note and a system x preload are two rows, each its own size", () => {

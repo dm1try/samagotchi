@@ -76,6 +76,35 @@ module Samagotchi
         nil
       end
 
+      # Whether +target+ names a memory held in the prompt. A bare target
+      # matches by name; an explicitly scoped target also matches an
+      # unscoped prompt entry by name for older prompt data.
+      def self.prompt_memory?(target, memories)
+        target_scope, target_name = prompt_memory_target(target)
+        return false if target_name.empty?
+
+        Array(memories).any? do |memory|
+          prompt_name, prompt_scope = memory.is_a?(Array) ? memory : [memory, nil]
+          prompt_name = prompt_memory_name(prompt_name)
+          prompt_scope = normalize_scope(prompt_scope)
+          prompt_name == target_name && (!target_scope || !prompt_scope || target_scope == prompt_scope)
+        end
+      end
+
+      def self.prompt_memory_target(value)
+        name = value.to_s.strip
+        scope, name = name.split("/", 2) if name.include?("/")
+        [normalize_scope(scope), scope && VALID_SCOPES.include?(scope) ? name : value.to_s.strip]
+      end
+      private_class_method :prompt_memory_target
+
+      def self.prompt_memory_name(value)
+        name = value.to_s.strip
+        scope, suffix = name.split("/", 2) if name.include?("/")
+        scope && VALID_SCOPES.include?(scope) ? suffix : name
+      end
+      private_class_method :prompt_memory_name
+
       def self.overlay_prefix(key) = "#{SEPARATOR}Model-specific guidance (#{key}):\n"
 
       def self.append_overlay(body, overlay_text, key) = "#{body}#{overlay_prefix(key)}#{overlay_text}"

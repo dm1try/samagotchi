@@ -262,7 +262,7 @@ module Samagotchi
     # of it sent), a dropped one (undrop it), a prompt-only memory, and one
     # added already.
     # @param found [#call] target → nil when it exists, else a Refused reason
-    # @param in_prompt [Array<String>] memory names the system prompt holds
+    # @param in_prompt [Array<Array(String, String, nil)>] memory names and scopes the system prompt holds
     # @return [Done]
     # @raise [Refused]
     def add(conversation, target, strategy:, cwd:, found: ->(_) {}, in_prompt: [])
@@ -373,14 +373,7 @@ module Samagotchi
     def prompt_memory?(target, names)
       return false unless target.kind == WorkingSet::MEMORY
 
-      name = normalized_memory_name(target.key)
-      Array(names).any? { |prompt_name| normalized_memory_name(prompt_name) == name }
-    end
-
-    def normalized_memory_name(raw)
-      value = raw.to_s.strip
-      scope, name = value.split("/", 2)
-      Tools::VALID_SCOPES.include?(scope) ? name : value
+      Tools::MemoryRead.prompt_memory?(target.key, names)
     end
 
     # The note listing +ops+: a tail system message, escaped like a context
@@ -426,7 +419,7 @@ module Samagotchi
       tokens >= 1000 ? format("%.1fk tokens", tokens / 1000.0) : "#{tokens} tokens"
     end
 
-    private_class_method :relative, :shared_with, :drop_of, :known?, :live?, :layers, :same?, :prompt_memory?, :normalized_memory_name,
+    private_class_method :relative, :shared_with, :drop_of, :known?, :live?, :layers, :same?, :prompt_memory?,
                          :labels, :call_of
   end
 end

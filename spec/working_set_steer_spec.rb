@@ -252,31 +252,35 @@ RSpec.describe Samagotchi::WorkingSetSteer do
     end
 
     it "refuses a prompt-only memory, after an existing add, but leaves reads on their current path" do
-      expect { add(conversation, "memory:style", in_prompt: [" style "]) }
+      expect { add(conversation, "memory:style", in_prompt: [%w[style system]]) }
         .to raise_error(described_class::Refused) { |error|
           expect(error.reason).to eq(:in_prompt)
           expect(error.message).to eq("already in the system prompt: nothing to add")
         }
 
       pending = described_class.record!(conversation, add(conversation, "memory:style"))
-      expect { add(pending, "memory:style", in_prompt: ["style"]) }
+      expect { add(pending, "memory:style", in_prompt: [%w[style system]]) }
         .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:already_added) }
 
       read = [head, chat_model("c1", "memory_read", { "name" => "style" }),
               chat_result("c1", "memory_read", "A brief style.", "t1")]
-      expect { add(read, "memory:style", in_prompt: ["style"]) }
+      expect { add(read, "memory:style", in_prompt: [%w[style system]]) }
         .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:already_sent) }
 
       forgotten = read.map(&:dup)
       Samagotchi::LLMContextEdit.store(forgotten.last, Samagotchi::LLMContextEdit.new(id: "t1", kind: :forget, note: "x", by: "model",
                                                                                       staged_at: now, applied_at: now))
-      expect(add(forgotten, "memory:style", in_prompt: ["style"], strategy: [:forget])).to have_attributes(op: "add")
+      expect(add(forgotten, "memory:style", in_prompt: [%w[style system]], strategy: [:forget])).to have_attributes(op: "add")
     end
 
-    it "compares scoped prompt names but leaves invalid scoped targets to memory_read's validation" do
-      expect { add(conversation, "memory:system/style", found: ->(_) {}, in_prompt: ["project/style"]) }
+    it "compares an explicitly scoped target but matches a bare target by name" do
+      expect(add(conversation, "memory:system/style", in_prompt: [%w[style project]]))
+        .to have_attributes(op: "add")
+      expect { add(conversation, "memory:system/style", in_prompt: [%w[style system]]) }
         .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:in_prompt) }
-      expect { add(conversation, "memory:project/style", found: ->(_) { :bad_memory }, in_prompt: ["style"]) }
+      expect { add(conversation, "memory:style", in_prompt: [["style", nil]]) }
+        .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:in_prompt) }
+      expect { add(conversation, "memory:project/style", found: ->(_) { :bad_memory }, in_prompt: [%w[style system]]) }
         .to raise_error(described_class::Refused) { |error| expect(error.reason).to eq(:bad_memory) }
     end
 

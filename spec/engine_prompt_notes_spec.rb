@@ -58,16 +58,25 @@ RSpec.describe Samagotchi::Engine, "prompt notes" do
     expect(e.session.prompt_notes).to eq([])
   end
 
-  it "names rendered identity and activated preloads with notes, deduped and kept through a model reset" do
+  it "names rendered identity and activated preloads with notes, scoped and kept through a model reset" do
     File.write(File.join(dir, "identity.md"), "I am chi.")
-    e = engine("box:gemma-small", memories: ["system/model_notes_gemma", "system/gone_preload"])
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_wrap_original do |original, name, scope:, **options|
+      if name == "project_style"
+        "Project style."
+      else
+        original.call(name, scope: scope, **options)
+      end
+    end
+    e = engine("box:gemma-small", memories: ["system/model_notes_gemma", "system/gone_preload", "project/project_style"])
     e.session = new_session("box:gemma-small")
 
     e.system_prompt
 
-    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma])
+    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma project_style])
+    expect(e.prompt_memories).to eq([%w[identity system], %w[model_notes_gemma system], %w[project_style project]])
     e.switch_model!("box:qwen3")
-    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma model_notes_qwen])
+    expect(e.prompt_memory_names).to eq(%w[identity model_notes_gemma model_notes_qwen project_style])
+    expect(e.prompt_memories).to include(%w[identity system], %w[model_notes_gemma system], %w[project_style project])
   end
 
   it "does not name a muted or unreadable identity memory" do

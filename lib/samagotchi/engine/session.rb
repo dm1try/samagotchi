@@ -29,6 +29,13 @@ module Samagotchi
         names.map { |name| name.to_s.strip }.reject(&:empty?).uniq.sort
       end
 
+      # @return [Array<Array(String, String, nil)>] prompt memory names and scopes
+      def prompt_memories
+        memories = Array(@prompt_builder.prompt_memories) + Array(prompt_notes).map { |note| [note.name, note.scope] }
+        memories.map { |name, scope| [name.to_s.strip, scope] }.reject { |name, _| name.empty? }.uniq
+                .sort_by { |name, scope| [name, scope.to_s] }
+      end
+
       # @return [Array<String>] the names the session preloads (config baseline
       #   + --memory, minus mutes), known before the prompt is built, unlike
       #   #activated_memory_names
