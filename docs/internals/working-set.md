@@ -227,7 +227,8 @@ projection), on both loops. It costs one model step; a model may skip it (the no
   those), what the caller's `found` look says can't be read (`WorkingSetCommand#missing`: a file not there or a
   directory; a memory name `memory_read` rejects or that neither scope holds), an item holding the user's drop
   (`undrop_first`: undrop brings it back without a step), one already in the system prompt and with no working-set
-  output (`in_prompt`: nothing to add), and one the model has whole (`already_sent`: live, a read of it sent). The
+  output (`in_prompt`: nothing to add; matched by name and scope, `Tools::MemoryRead.prompt_memory?` over
+  `Engine#prompt_memories`, a bare name or an unscoped prompt entry by name only), and one the model has whole (`already_sent`: live, a read of it sent). The
   prompt-only refusal doesn't apply when the set holds a read of that memory: a stale or forgotten item may still be
   added as the web row's `refresh`. **`unadd`** takes a pending add back (free); without one it is refused
   (`not_added`).
