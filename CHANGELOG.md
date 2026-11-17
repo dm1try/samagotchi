@@ -8,10 +8,31 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web: the working-set list is now a view of what is in chi's head, in three groups: **From the start** (every
+  part of the system prompt, with its size: tools, the base prompt, the identity memory, model notes, preloaded
+  memories, AGENTS.md, plugin sections, the memory indexes), **Read in this session** (files, memories and URLs) and
+  **Conversation** (the rest of the context). The line under the header says how much is in chi's head now. Each
+  group folds, and the fold is kept per session.
+- chi web: the list's turn picker is a lens. Picking a turn (the arrows, a footprint, the rail) keeps the whole list
+  and lights the rows that turn touched with its step tags; the rest dim. The line under the header says what the
+  turn touched and how many items were new.
+- chi web: a memory that is in the system prompt and was also read again shows "held twice", with the extra size.
+- Sessions record the sizes of their system prompt's parts (`prompt_parts`), which the list above reads.
+
+### Changed
+
+- chi web: the working-set list's header no longer shows "N items · ctx %"; the line under it does. On the phone the
+  header fits on one line, and the list's rows and buttons are 44 px tall.
+
 ### Fixed
 
 - chi web: the working-set list includes model notes in the system prompt and redraws an open list when notes change.
 - /working-set add: refuse to re-read a memory already in the system prompt unless its output is in the working set.
+- chi web: a project memory and a system memory with the same name are no longer shown as one row.
+
+Update with `chi update`.
 
 ## [0.176.0] - 2026-11-16
 
