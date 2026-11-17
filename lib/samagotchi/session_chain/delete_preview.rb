@@ -35,7 +35,7 @@ module Samagotchi
         end
 
         def link_json(plan, links, whole, at, state_dir)
-          { previous_id: plan.previous, moved: moved_count(plan, state_dir), notes: plan.notes, unarchived: plan.revive.size,
+          { digest: Delete.digest(plan), previous_id: plan.previous, moved: moved_count(plan, state_dir), notes: plan.notes, unarchived: plan.revive.size,
             deletes: plan.delegates.delete.size, left_running: plan.delegates.leave.size,
             earlier: at, next_id: links.next_of(plan.id), later: whole.links.size - at - 1,
             refusal: refusal(state_dir) { link_checks(plan, state_dir) } }
@@ -48,7 +48,7 @@ module Samagotchi
         end
 
         def chain_json(plan, state_dir)
-          { links: plan.links.size, deletes: plan.delegates.values.sum { |d| d.delete.size },
+          { digest: Delete.digest(plan), links: plan.links.size, deletes: plan.delegates.values.sum { |d| d.delete.size },
             left_running: plan.delegates.values.sum { |d| d.leave.size },
             refusal: refusal(state_dir) { chain_checks(plan, state_dir) } }
         end

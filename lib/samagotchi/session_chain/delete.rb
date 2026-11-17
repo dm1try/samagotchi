@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require_relative "links"
 require_relative "../archive_store"
@@ -117,6 +118,22 @@ module Samagotchi
                       cut_off: links.gone?(links.chain(id).first))
       end
 
+      # The ids each delete choice shows, encoded as stable, sorted sets.
+      def digest(plan)
+        canonical = case plan
+                    when LinkPlan
+                      [[plan.id], [plan.previous].compact, plan.revive, plan.moved,
+                       plan.delegates.delete, plan.delegates.leave].map(&:sort)
+                    when ChainPlan
+                      [plan.links.sort, *plan.delegates.sort.map do |link, delegates|
+                        [link, delegates.delete.sort, delegates.leave.sort]
+                      end]
+                    else
+                      raise ArgumentError, "unknown delete plan: #{plan.class}"
+                    end
+        Digest::SHA256.hexdigest(JSON.generate(canonical))[0, 16]
+      end
+
       # Whether +id+ is in a chain of 2 or more links that still exist (D1):
       # a link alone past a gap (its predecessor deleted) is deleted as a
       # session in no chain is.
@@ -130,17 +147,19 @@ module Samagotchi
       # @raise [SessionManager::DeleteRefused] :continuing, :scheduled,
       #   :delegate_unmovable, :worker_running, :still_stopping
       # @raise [SessionManager::OwnedByTUI]
-      def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:)
+      def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:, expect: nil)
         ContinueIntent.hold(id, state_dir: state_dir) do |held|
           raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
 
           links = Links.new(state_dir: state_dir)
           unless chained?(id, links)
+            raise SessionManager::DeleteRefused.new(id, :plan_changed) unless expect.nil?
+
             return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait))
           end
 
           plan = link_plan(id, state_dir: state_dir, links: links, undo: revive_previous)
-          return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait) unless plan.previous
+          return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect) unless plan.previous
 
           # Taken before the link's file goes: after it, a continue of the
           # previous link would no longer be refused. The plan is made again
@@ -149,7 +168,7 @@ module Samagotchi
             raise SessionManager::DeleteRefused.new(plan.previous, :continuing) unless previous_held
 
             again = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: true)
-            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait)
+            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait, expect: expect)
           end
         end
       end
@@ -180,7 +199,9 @@ module Samagotchi
       # files. So a refusal (a schedule on a delegate, a one-turn run, a
       # worker that took the link or a delegate after the checks) leaves
       # every session in place.
-      def delete_link(plan, state_dir:, stop:, wait:)
+      def delete_link(plan, state_dir:, stop:, wait:, expect: nil)
+        raise SessionManager::DeleteRefused.new(plan.id, :plan_changed) if !expect.nil? && expect != digest(plan)
+
         id = plan.id
         check_link!(plan, state_dir)
         stopped = SessionManager.release_for_delete!(id, state_dir: state_dir, stop: stop, wait: wait)
@@ -314,9 +335,11 @@ module Samagotchi
       #   earlier ones; refusal: the message of a part-way refusal, or nil)
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       #   nothing was deleted
-      def chain(id, state_dir:, stop:, wait:)
+      def chain(id, state_dir:, stop:, wait:, expect: nil)
         links = Links.new(state_dir: state_dir)
         plan = chain_plan(id, state_dir: state_dir, links: links)
+        raise SessionManager::DeleteRefused.new(plan.id, :plan_changed) if !expect.nil? && expect != digest(plan)
+
         check_chain!(plan, state_dir, stop: stop)
         hold_all(plan.links, state_dir) do
           stopped = plan.links.select do |link|

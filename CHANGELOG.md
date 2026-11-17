@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- chi web: a chained delete reopens its plan for confirmation when it changed after the sheet was shown.
 - chi web: a participant's failed Verify turn comes back in their composer as a Verify turn, not plain text.
 
 ## [0.177.0] - 2026-11-17

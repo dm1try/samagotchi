@@ -4214,7 +4214,9 @@ RSpec.describe Samagotchi::Web::App do
           expect(status).to eq(200)
           expect(headers["Cache-Control"]).to eq("no-store")
           expect(JSON.parse(body.first)).to include("chained" => true, "position" => 2, "size" => 2,
-                                                    "link" => include("previous_id" => session.id, "refusal" => nil))
+                                                    "link" => include("previous_id" => session.id, "refusal" => nil,
+                                                                      "digest" => a_string_matching(/\A[0-9a-f]{16}\z/)),
+                                                    "chain" => include("digest" => a_string_matching(/\A[0-9a-f]{16}\z/)))
           expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be true
         end
 
@@ -4234,6 +4236,16 @@ RSpec.describe Samagotchi::Web::App do
 
           expect(status).to eq(409)
           expect(JSON.parse(body.first)).to include("error" => "delegate_unmovable", "ids" => [session.id], "stoppable" => true)
+        end
+
+        it "answers 409 plan_changed with the refusal's message when the expected digest is stale" do
+          status, _headers, body = app.call(env_for("/api/sessions/#{link.id}?force=true&expect=stale", method: "DELETE"))
+          message = "what this delete would do changed since it was shown; review the new plan and try again"
+
+          expect(status).to eq(409)
+          expect(JSON.parse(body.first)).to include("error" => "plan_changed", "reason" => "plan_changed",
+                                                    "detail" => message, "message" => message, "session_id" => link.id)
+          expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be true
         end
 
         it "answers 409 chain_scheduled with the schedule, deleting nothing" do
@@ -4262,7 +4274,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(JSON.parse(body.first)).to include("stopped" => true)
         expect(Samagotchi::SessionManager).to have_received(:delete_session)
           .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS,
-                            revive_previous: true, refuse_continuing: true)
+                            revive_previous: true, refuse_continuing: true, expect: nil)
         expect(File.exist?(session_file)).to be false
       end
 

@@ -54,6 +54,72 @@ RSpec.describe Samagotchi::SessionChain::Delete do
     Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f)[:text] }
   end
 
+  describe "plan digests" do
+    it "does not depend on the order of ids or per-link delegate plans" do
+      first = described_class::LinkPlan.new(
+        id: "link", previous: "previous", revive: %w[b a], moved: %w[d c],
+        delegates: described_class::Plan.new(delete: %w[f e], leave: %w[h g]), notes: 0
+      )
+      reordered = first.with(
+        revive: %w[a b], moved: %w[c d],
+        delegates: described_class::Plan.new(delete: %w[e f], leave: %w[g h])
+      )
+      chain = described_class::ChainPlan.new(
+        id: "link", links: %w[b a],
+        delegates: {
+          "b" => described_class::Plan.new(delete: %w[d c], leave: %w[f e]),
+          "a" => described_class::Plan.new(delete: %w[j i], leave: %w[l k])
+        }, cut_off: false
+      )
+      reordered_chain = chain.with(
+        links: %w[a b],
+        delegates: {
+          "a" => described_class::Plan.new(delete: %w[i j], leave: %w[k l]),
+          "b" => described_class::Plan.new(delete: %w[c d], leave: %w[e f])
+        }
+      )
+
+      expect(described_class.digest(first)).to eq(described_class.digest(reordered))
+      expect(described_class.digest(chain)).to eq(described_class.digest(reordered_chain))
+    end
+
+    it "deletes a link and a chain when their expected digests match" do
+      previous = make
+      link = continue(previous.id)
+      link_plan = described_class.link_plan(link.id, state_dir: tmpdir, links: Samagotchi::SessionChain::Links.new(state_dir: tmpdir))
+
+      expect(delete(link.id, expect: described_class.digest(link_plan))[:deleted]).to include(link.id)
+
+      root = make
+      chain = continue(root.id)
+      chain_plan = described_class.chain_plan(chain.id, state_dir: tmpdir, links: Samagotchi::SessionChain::Links.new(state_dir: tmpdir))
+
+      expect(manager.delete_chain(chain.id, state_dir: tmpdir, stop: true, expect: described_class.digest(chain_plan))[:deleted])
+        .to contain_exactly(root.id, chain.id)
+    end
+
+    it "refuses before changes when a delegate stops running after preview" do
+      previous = make
+      link = continue(previous.id)
+      delegate = make(parent: link)
+      own(delegate.id)
+      plan = described_class.link_plan(link.id, state_dir: tmpdir, links: Samagotchi::SessionChain::Links.new(state_dir: tmpdir))
+      expect(plan.delegates.leave).to include(delegate.id)
+      digest = described_class.digest(plan)
+      locks.pop.release
+      before = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).sort
+
+      expect { delete(link.id, expect: digest) }.to raise_error(manager::DeleteRefused) { |error|
+        expect([error.reason, error.message]).to eq([
+          :plan_changed, "what this delete would do changed since it was shown; review the new plan and try again"
+        ])
+      }
+      expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).sort).to eq(before)
+      expect(parent_of(delegate.id)).to eq(link.id)
+      expect(archived?(previous.id)).to be(true)
+    end
+  end
+
   describe "deleting the chain's newest link" do
     it "undoes the continue: the previous link back, not started, with what it archived, its moved delegates and notes" do
       a = make
