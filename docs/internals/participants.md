@@ -493,8 +493,9 @@ fields: a field added to an event later reaches nobody until it is named there.
   `ParticipantAccess#own_turn?`; `input_merged`: the count and origins of their own lines only), anyone else's bare;
   `prompt_restored` (a failed turn's prompt handed back, **their own turn only**: the origin's server-stamped author
   is theirs; another person's, the owner's and an author-less one's give nothing; carries `prompt`, `images` as their
-  own refs (`.image_refs`), `revises: {turn_id}` and `origin: {client_id, enqueued_id, author}`, never `source`, the
-  error, a Verify claim's quote or any other field; the page refills its composer as the owner's, `restore.js`);
+  own refs (`.image_refs`), `revises: {turn_id}`, `origin: {client_id, enqueued_id, author}` and a parsed Verify
+  claim as `verify: {turn_id, quote}`; malformed or boolean claims are omitted. Never `source`, the error or any
+  other field; the page refills its composer as the owner's, `restore.js`);
   `question_requested` and `continue_offered` with one derived `kind` (`.waiting_kind`: `approval` for a guardrail's
   approval or a relayed one, `continue` for the step-limit question and every offer, `question` else); the main
   page's numbers (`context_status`: usage's `estimated_pct` and token counts, `bucket`, a switch's
@@ -620,7 +621,9 @@ owner's machine (`home`, the folders, `project-*`, `back-*`).
 - **Verify verdict cards** (`verdict_card.js`). The built-in Verify preset carries the selected source turn id and quote
   with the submitted turn, without changing its prompt text. A Verify turn that fails fast and is rolled back hands
   the claim back with its prompt (`prompt_restored`'s `verify`), so the owner's resend from the composer is a Verify
-  turn again. Before the Engine stamps the anchor or records a verdict, it checks that the source turn exists and
+  turn again. A participant's own failed turn also gets its parsed `verify` claim in `prompt_restored` (see
+  [What a participant sees](#what-a-participant-sees)). Before the Engine stamps the anchor or records a verdict,
+  it checks that the source turn exists and
   its final assistant reply (`AnswerTail`: the turn's last assistant message with text) contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
   Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
   this matches the rendered text the page selects without treating different casing as the same claim. The quote may
