@@ -50,8 +50,13 @@ is pure and returns a `WorkingSet::Snapshot` (`items`, `at`: the conversation's 
 key). Each `WorkingSet::Item` is `kind` (`file`, `memory`, `url`), `key`, `state` (`live`, `stale`, `forgotten`,
 `dropped`), `tokens`, `ops`, `count`,
 `first_id` (the first run's ToolIds id), `pinned` (the session's `working_set_pins` name it, whatever the
-strategy: the page shows the mark only under forget, so a switch shows it at once) and `has_drop` (any of its content
-outputs holds the user's applied drop, whatever the state: an undrop has something to take back). The Engine's event and the GET
+strategy: the page shows the mark only under forget, so a switch shows it at once), `has_drop` (any of its content
+outputs holds the user's applied drop, whatever the state: an undrop has something to take back) and, for a memory,
+`scope`: the scope its latest `memory_read` answered from (the memory stamp's file, as `MemoryPart#scope` reads it;
+`memory_item_scope`, no text read), in `to_h` only when known (nil for a memory only written, or read before memory
+stamps). Cost: one field per memory item, from the stamp lookup the stale check makes anyway. Known limit: the set
+has one item per memory name, so a session that read both a project `x` and a system `x` has one item carrying the
+latest read's scope. The Engine's event and the GET
 both pass the session's pins.
 
 **Runs.** It pairs the runs twice with `LLMContextStale.paired_runs`: once on the stored conversation, once on what
@@ -335,16 +340,24 @@ that drops the running turn, puts it back to the session.
 session's `prompt_parts` (the worker's sizes of its system prompt; `promptParts` on the page) the list is what is in
 chi's head, in three sections:
 - **From the start** (`start`): every part in prompt order, the tools part first. A memory part (identity, a model
-  note, a preload) IS a memory row: merged with the session set's rows of that name (keys match by `memoryName`: a
-  preloaded `system/x` and a part's `x` are one row, steered by its read item's key), else a row of its own (identity:
-  the set never lists it). It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
+  note, a preload) IS a memory row: merged with the session set's rows of the same memory, else a row of its own
+  (identity: the set never lists it). **The match is scope + name** (`same`): the names match (`memoryName`, which
+  also reads an older page's preloaded `system/x` as `x`) and so do the scopes (the part's `scope`, the item's from the
+  server, `overlay`); a scope either side lacks (an older worker's part or item, an item the server hasn't stamped)
+  matches by name alone, as before scopes. So a project `x` read beside a system `x` in the prompt is two rows: the
+  read stays in Read as a plain read (not "prompt", never held twice), and the part's own row gets the key `x@system`
+  (no collision with the read's `x`), its words its scope ("preloaded · system") and, like identity's, no actions or
+  peek. A note and a preload of one name and scope stay one row with both sizes; of two scopes, two rows. The start
+  section tracks the items it shows by identity, not by key. It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
   droppable or pinnable until read). Its tokens are the part's, plus `+X` for the read's (the item's server tokens: a
   preloaded row carries none of its own, so the two never double-count). Other parts are read-only `part` rows: a
   label, a sub (the tools part's "N declared"; dropped on a phone), `~tokens`, no actions, no peek; a turn lens dims
   them.
 - **Read in this session** (`read`): today's files / memories / urls folds (`bodySections`), minus the memories the
   start section shows. Its meta: held (not struck) and out (forgotten or dropped); its tokens the held items'.
-- **Conversation** (`talk`): one row, "conversation · N turns", `ctxTokens − Σ parts − Σ held items' tokens` (the read
+- **Conversation** (`talk`): one row at section level, "Conversation · N turns ~X" (`headSections` still returns the
+  section; `headTemplate` draws it headerless, no fold; never lit, so dim in a turn lens),
+  `ctxTokens − Σ parts − Σ held items' tokens` (the read
   section's and the start memories' reads), shown only when `ctxTokens` is known and the rest is > 0. Mixed units,
   accepted: parts and items are chars/4, `ctxTokens` the server's count or chi's estimate (which on a chat host leaves
   the tool schemas out, so without server usage the rest can go negative and the row hides); the "~" says so.
@@ -352,15 +365,23 @@ chi's head, in three sections:
 **Held twice.** A start memory row whose ops include `read` is held twice: in the prompt and in a read's output. The
 session lens tags it `held twice` (warn tokens); a turn lens whose items read it lights it amber with a note under it:
 "read again in this turn: already in the prompt, held twice (+X)". A lens lights a merged row by any of its merged
-keys (`lensTouched`), and never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
+keys (`lensTouched`), and a part-only start row (no merged item, e.g. `x@system`) by its bare name too: a turn's rows
+come from tool titles, which carry no scope, so in a turn lens a project `x` read lights a system `x`'s own row (lit,
+not held twice: that row holds no read). A row with a merged item lights by its items' keys only. A turn lens counts
+new over `headItems` (the set as the head view sees it: another scope's read is a plain read, not the prompt's), so a
+project `x` first read beside a system `x` preload is new. It never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
 drop strikes the row where it stands (today's state words); the server knows an item's state now, not the turn that
 changed it, so a turn lens has no forget count.
 
 **Section folds.** Each section header folds (`data-ws="section"`), per session (`chi_ws_sections_folded:<session>`,
-`session_prefs.js`); none stored: all open. Folded, a section shows only the rows the lens lights (the read section's
-lit members flat, without their inner groups). The session lens's line under the header: "in chi's head now · ~X of
-Y" (`headLine`: X `ctxTokens`, Y the window; no "of Y" without one; no line without `ctxTokens`). On a phone's sheet
-rows, section headers and the lens buttons are 44 px targets.
+`session_prefs.js`); none stored: all open. Conversation has no header to fold: a stored `talk` (an older page's) is
+ignored (`foldedSections`) and the next toggle writes the list without it. Folded, a section shows only the rows the lens lights (the read section's
+lit members flat, without their inner groups). The header carries no size (the name, the lens, the ring
+and ×: one line on a phone at 390 px); the line under it does. The session lens's: "in chi's head now · ~X of Y"
+(`headLine`: X `ctxTokens`, Y the window; no "of Y" without one). Without parts or without `ctxTokens` that line is
+the size line instead, "N items · ctx N %" (`.ws-size-line`), so the list never lacks a size; a turn lens has its
+touched line only. The tokens-change check (`tokenText`) compares both lines' text. On a phone's sheet rows, section
+headers and the lens buttons are 44 px targets.
 
 **No parts** (an old session file, a worker before `prompt_parts`, a participant's list: `[]`): `headSections` is
 null and the list is the flat files / memories / urls one with the lens unchanged. A turn end's `?tail=1` from an

@@ -125,7 +125,7 @@ module Samagotchi
     #   :prompt_notes  [Array<Hash>] the model notes the prompt carried
     #     ({name:, scope:, chars:, digest:}; #prompt_notes)
     #   :prompt_parts  [Array<Hash>] the sizes of the prompt's parts
-    #     ({kind:, label:, chars:, tokens:, ref:}; Session#prompt_parts)
+    #     ({kind:, label:, chars:, tokens:, ref:, scope:?}; Session#prompt_parts)
     #   :parent_id     [String, nil] the session that delegated this one
     #   :model_name    [String]    the model turns run on now (after /model)
     #   :served_model, :served_model_for [String, nil] what a generation of

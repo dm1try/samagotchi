@@ -53,8 +53,24 @@ module Samagotchi
     # its outputs), whatever the strategy; +has_drop+ whether any of its
     # content outputs holds the user's applied drop (an undrop has
     # something to take back: a forgotten item too, its other outputs
-    # stubbed by the model's layers).
-    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned, :has_drop)
+    # stubbed by the model's layers); +scope+ a memory's: the scope its
+    # latest memory_read answered from (its stamp's file), nil for one only
+    # written or read before memory stamps. The set has one item per name,
+    # so a session that read both a project x and a system x has one item
+    # with the latest read's scope.
+    Item = Data.define(:kind, :key, :state, :tokens, :ops, :count, :first_id, :pinned, :has_drop, :scope) do
+      def initialize(kind:, key:, state:, tokens:, ops:, count:, first_id:, pinned:, has_drop:, scope: nil)
+        super
+      end
+
+      # The JSON the event and the route carry: scope only for a memory
+      # that has one (the page matches it with the prompt's parts).
+      def to_h
+        hash = super
+        hash.delete(:scope) unless kind == MEMORY && scope
+        hash
+      end
+    end
 
     # An item the user added (/working-set add) that the next turn's note
     # asks the model to read: its identity (+kind+, +key+, as an Item's)
@@ -511,7 +527,19 @@ module Samagotchi
                 LIVE
               end
       Item.new(kind: kind, key: key, state: state, tokens: tokens, ops: group.map(&:op).uniq, count: group.size,
-               first_id: first.run.ref.id, pinned: pinned, has_drop: contents.any? { |touch| dropped?(touch, conversation) })
+               first_id: first.run.ref.id, pinned: pinned, has_drop: contents.any? { |touch| dropped?(touch, conversation) },
+               scope: kind == MEMORY ? memory_item_scope(key, group, conversation) : nil)
+    end
+
+    # The scope a memory's latest memory_read answered from, by its stamp's
+    # file (no memory text read); nil for a memory only written or read
+    # before memory stamps. The stamp lookup the stale check does already.
+    def memory_item_scope(key, group, conversation)
+      touch = group.reverse_each.find { |each| each.op == "read" }
+      entries = touch && memory_entries(touch.run, conversation)
+      entry = entries && entries[key]
+      path = entry.is_a?(Hash) ? field(entry, :path).to_s : ""
+      path.empty? ? nil : memory_scope(path)
     end
 
     # Whether the model is still sent +touch+'s output: whole (with the
@@ -620,6 +648,6 @@ module Samagotchi
                          :changed?, :memory_changed?, :same_path?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
                          :lines_of, :saved_diff, :memory_entries, :memory_paths?, :project_dir_within_root?,
                          :resolution_metadata?, :resolve_memory, :resolved_memory_entry, :memory_part, :overlay_tail,
-                         :memory_scope, :memory_body
+                         :memory_scope, :memory_body, :memory_item_scope
   end
 end

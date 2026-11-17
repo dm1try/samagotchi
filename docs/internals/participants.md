@@ -537,7 +537,8 @@ fields: a field added to an event later reaches nobody until it is named there.
 - **The queue.** Their own queued turns (enqueued id and text, for Take back) and how many others wait.
 - **The working set** (`.working_set`: the event and `GET …/working_set`): the file items inside the project, the
   key made relative, with `state`, `tokens`, `ops`, `count`, `pinned`, and the set's `at`. Never a memory or URL
-  item, a path outside the project, `first_id`, `has_drop` or the pending `adds`.
+  item, a path outside the project, `first_id`, `has_drop` or the pending `adds`. A memory item's `scope` and the
+  prompt parts' `scope` reach no participant either: memory items are dropped and their `prompt_parts` is `[]`.
 
 ### The main page's show
 

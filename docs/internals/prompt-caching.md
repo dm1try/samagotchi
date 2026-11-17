@@ -64,8 +64,8 @@ right-hand column happens.
 ```
 
 - The sections above are recorded as `prompt_parts` (`SystemPrompt#prompt_parts`, `PromptPart`: kind, label, chars,
-  tokens at `TokenUsage::CHARS_PER_TOKEN`, ref; one per memory, file and plugin section, plus a `tools` part): sizes
-  only, worked out once with the build and saved on the session; the prompt's text is unchanged.
+  tokens at `TokenUsage::CHARS_PER_TOKEN`, ref, a memory part's scope; one per memory, file and plugin section, plus a
+  `tools` part): sizes only, worked out once with the build and saved on the session; the prompt's text is unchanged.
 - The system prompt is built **once per key** and kept (`SystemPrompt#build`, keyed by `[chat, thinking, layers]`:
   the loop, the thinking level, the turn's LLM context layers; a `/thinking` change builds under another key). All
   of them are dropped only on `@prompt_builder.reset!`: a model switch (`Engine#switch_model!`), a plugin's

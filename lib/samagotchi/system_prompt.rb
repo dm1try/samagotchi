@@ -232,6 +232,7 @@ module Samagotchi
       @section_file_chars = []
       @section_item_chars = {}
       @section_preload_chars = []
+      @section_preload_scopes = []
       @section_index_chars = {}
       surface = tool_surface(layers)
       prompt = system_prompt_with_index(assist_system_prompt(chat: chat, surface: surface),
@@ -279,22 +280,26 @@ module Samagotchi
 
       # The first item's own chars are the rest of the text.
       rest = items.drop(1).sum { |item| item[2] }
-      items.each_with_index.map do |(label, ref, chars), index|
-        PromptPart.build(kind: section.kind, label: label, ref: ref, chars: index.zero? ? section.text.length - rest : chars)
+      items.each_with_index.map do |(label, ref, chars, scope), index|
+        PromptPart.build(kind: section.kind, label: label, ref: ref, scope: scope,
+                         chars: index.zero? ? section.text.length - rest : chars)
       end
     end
 
-    # [label, ref, own chars] per item of a section made of several, nil for
-    # a section that is one part.
+    # [label, ref, own chars, scope] per item of a section made of several
+    # (scope: a memory part's, else nil), nil for a section that is one part.
     def section_items(section)
       case section.kind
-      when :identity then [[section.ref.to_s, section.ref, section.text.length]] if section.ref
+      when :identity then [[section.ref.to_s, section.ref, section.text.length, "system"]] if section.ref
       when :notes
         # In the text's order: it groups the notes by scope.
         Array(section.ref).group_by(&:scope).values.flatten(1).map do |note|
-          [note.name, note.name, "## #{note.name}\n#{note.body}".length]
+          [note.name, note.name, "## #{note.name}\n#{note.body}".length, note.scope]
         end
-      when :preloads then item_list(Array(section.ref), @section_preload_chars) { |name| [name, name] }
+      when :preloads
+        scopes = @section_preload_scopes
+        item_list(Array(section.ref), @section_preload_chars) { |name| [name, name] }
+          &.each_with_index&.map { |item, index| [*item, scopes&.[](index)] }
       when :agents, :appended
         top = MemoryPaths.work_tree_root(Dir.pwd)
         item_list(Array(section.ref), @section_item_chars[section.kind]) { |path| [file_label(path, top), path] }
@@ -705,6 +710,7 @@ module Samagotchi
           @section_activated_memory_names << actual_name
           entry = "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
           @section_preload_chars&.push(entry.length)
+          @section_preload_scopes&.push(scope || answered_scope(body, actual_name))
           entries << entry
         end
       end
@@ -712,6 +718,18 @@ module Samagotchi
       return nil if entries.empty?
 
       entries.join("\n\n")
+    end
+
+    # The scope whose file answered a bare preload's read (memory_read
+    # falls back project -> system): its file under the project's memories
+    # is the project's, else the system's. nil without the read's record (a
+    # plain String body).
+    def answered_scope(body, name)
+      read = body.respond_to?(:reads) ? body.reads[name] : nil
+      return nil unless read.is_a?(Hash)
+
+      dir = read[:project_dir]
+      dir && read[:path].to_s.start_with?("#{dir}/") ? "project" : "system"
     end
 
     def split_memory_scope(raw)

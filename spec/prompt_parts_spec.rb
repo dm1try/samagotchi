@@ -14,6 +14,20 @@ RSpec.describe Samagotchi::PromptPart do
     expect(described_class.from_h(part.to_h)).to eq(part)
     expect(described_class.list([part.to_file, { "label" => "x" }, nil, "junk"])).to eq([part])
   end
+
+  it "round-trips its scope, and leaves the key out without one (an older chi's record reads as before)" do
+    scoped = described_class.build(kind: :preloads, label: "x", ref: "x", chars: 8, scope: "project")
+    expect(scoped.to_file).to include("scope" => "project")
+    expect(described_class.from_h(scoped.to_file)).to eq(scoped)
+    expect(described_class.from_h(scoped.to_h)).to eq(scoped)
+    bare = described_class.build(kind: :base, label: "base prompt", chars: 8)
+    expect(bare.scope).to be_nil
+    expect(bare.to_h).not_to have_key(:scope)
+    expect(bare.to_file.keys).to eq(%w[kind label chars tokens ref])
+    old = described_class.from_h({ "kind" => "notes", "label" => "x", "chars" => 8, "tokens" => 2, "ref" => "x" })
+    expect(old.scope).to be_nil
+    expect(old.to_file).to eq({ "kind" => "notes", "label" => "x", "chars" => 8, "tokens" => 2, "ref" => "x" })
+  end
 end
 
 RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
@@ -202,6 +216,50 @@ RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
     expect(text.index("## model_notes_b")).to be < text.index("## model_notes_p")
     expect(parts[1].chars).to eq("## model_notes_b\nSB".length)
     expect(parts[2].chars).to eq("## model_notes_p\nPP".length)
+  end
+
+  it "gives each memory part its scope: identity system, a note its own, a preload the one asked for; others none" do
+    notes = [note("model_notes_a", "system", "SA"), note("model_notes_p", "project", "PP")]
+    prompt = builder(memories: %w[project/mine system/other], model_notes: -> { notes })
+    prompt.build(chat: true)
+    parts = prompt.prompt_parts
+    expect(by_kind(parts, :identity).map(&:scope)).to eq(["system"])
+    expect(by_kind(parts, :notes).map { |part| [part.ref, part.scope] }).to eq([%w[model_notes_a system], %w[model_notes_p project]])
+    expect(by_kind(parts, :preloads).map { |part| [part.ref, part.scope] }).to eq([%w[mine project], %w[other system]])
+    expect(parts.reject { |part| %w[identity notes preloads].include?(part.kind) }.map(&:scope).uniq).to eq([nil])
+  end
+
+  describe "a bare preload's scope: the one that answered (memory_read falls back project -> system)" do
+    def read_result(name, scope)
+      project_dir = "/mem/projects/p_1"
+      path = scope == "project" ? "#{project_dir}/#{name}.md" : "/mem/#{name}.md"
+      Samagotchi::Tools::MemoryRead::Result.new("BODY-#{name}", { name => { path: path, overlay_path: nil, requested_scope: nil,
+                                                                            project_dir: project_dir } })
+    end
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_wrap_original do |original, name, scope: nil, **keys|
+        case name.to_s
+        when "from_project" then read_result("from_project", "project")
+        when "from_system" then read_result("from_system", "system")
+        else original.call(name, scope: scope, **keys)
+        end
+      end
+    end
+
+    it "is project for one the project's memories answered, system for one that fell back" do
+      prompt = builder(memories: %w[from_project from_system])
+      text = prompt.build(chat: true)
+      expect(by_kind(prompt.prompt_parts, :preloads).map { |part| [part.ref, part.scope] })
+        .to eq([%w[from_project project], %w[from_system system]])
+      expect(text).to include("memory name: from_project\nBODY-from_project")
+    end
+  end
+
+  it "has no scope for a bare preload whose body has no read's record (a plain String)" do
+    prompt = builder(memories: %w[cli_note])
+    prompt.build(chat: true)
+    expect(by_kind(prompt.prompt_parts, :preloads).map(&:scope)).to eq([nil])
   end
 
   it "counts a later item's own chars: the second preload, an AGENTS.md and an appended file" do

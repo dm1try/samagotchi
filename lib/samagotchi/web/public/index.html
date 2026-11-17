@@ -1123,6 +1123,9 @@ button.ws-step:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-st
 /* The expanded view (a chip popover; a bottom sheet on a phone). */
 .ws-popover{gap:0}
 .ws-popover .ctx-pop-head{align-items:center;flex-wrap:wrap;margin-bottom:4px}
+/* The ring sits by ×, at the header's end (no size text between them now). */
+.ws-popover .ctx-pop-head>.ws-ring{margin-left:auto}
+.ws-popover .ctx-pop-head>.ws-ring~.ctx-pop-close{margin-left:0}
 .ws-lens{display:inline-flex;gap:2px;align-items:center}
 .ws-lens button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px}
 .ws-lens button.arrow{padding:1px 5px}
@@ -1143,7 +1146,13 @@ button.ws-step:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-st
 .ws-sec-head .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ws-faint)}
 .ws-sec-head .tk{flex:none;margin-left:auto;font-size:11px;color:var(--ws-faint);font-variant-numeric:tabular-nums}
 .ws-sec .ws-sub{margin-top:2px;padding-left:6px}
-.ws-row.part .t,.ws-row.talk .t{margin-right:auto;font-family:ui-sans-serif,system-ui,sans-serif}
+.ws-row.part .t{margin-right:auto;font-family:ui-sans-serif,system-ui,sans-serif}
+/* Conversation: one row at section level (a section header's look, nothing to fold). */
+.ws-row.ws-sec-row{height:30px;margin-top:6px;border-top:1px solid var(--border);border-radius:0;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px}
+.ws-row.ws-sec-row .t{flex:none;font-weight:600;color:var(--text-2)}
+.ws-row.ws-sec-row .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ws-faint)}
+.ws-row.ws-sec-row .tk{margin-left:auto}
+.ws-popover.sheet .ws-row.ws-sec-row{font-size:13px}
 .ws-twice{flex:none;padding:0 6px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;white-space:nowrap}
 .ws-step.twice{color:var(--warn-text);background:var(--warn-bg)}
 .ws-row.twice.lit{background:var(--warn-bg)}
@@ -1192,14 +1201,15 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 .ws-strip{display:flex;gap:8px;padding:2px 6px 6px 26px}
 .ws-strip .ws-act-b{padding:0 14px;font-size:12.5px;line-height:28px;border-radius:6px}
 .ws-popover.sheet{border-radius:14px}
-/* A phone's sheet: the name, the scope and × on the first line, the count and the ring under them. */
-.ws-popover.sheet .ctx-pop-close{order:2}
-.ws-popover.sheet .ctx-pop-head>.ctx-pop-kind{order:3;flex:1 0 calc(100% - 30px)}
-.ws-popover.sheet .ctx-pop-head>.ws-ring{order:4}
+/* A phone's sheet: one line, the name, the lens, the ring and ×; the size is the line under it. */
+.ws-popover.sheet .ctx-pop-head{flex-wrap:nowrap;gap:4px}
+.ws-popover.sheet .ws-lens{flex:none;white-space:nowrap}
+/* A long turn number (turn 100) shortens the name, never wraps the line. */
+.ws-popover.sheet .ctx-pop-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A phone's sheet: rows and lens buttons 44 px targets; a part row drops its sub text. */
 .ws-popover.sheet .ws-row{height:44px;line-height:44px}
 .ws-popover.sheet .ws-sec-head{min-height:44px;font-size:13px}
-.ws-popover.sheet .ws-lens button{min-height:44px;min-width:44px;font-size:12.5px}
+.ws-popover.sheet .ws-lens button{min-height:44px;min-width:44px;padding:1px 4px;font-size:12.5px;white-space:nowrap}
 .ws-popover.sheet .ws-row.part .st{display:none}
 /* + add: the list's foot (a sheet's last row), one KEY typed; an added item the set doesn't hold yet is a pending row of its own. */
 .ws-add{display:flex;align-items:center;gap:6px;margin-top:8px}

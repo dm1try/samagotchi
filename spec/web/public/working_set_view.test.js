@@ -395,7 +395,7 @@ test("prompt notes update the open session list and count as in the prompt, not 
   assert.ok(row);
   assert.equal(row.querySelector(".ws-step").textContent, "prompt");
   assert.equal(row.querySelector(".ws-step").title, "in the system prompt");
-  assert.match(ws.popover.pop.querySelector(".ctx-pop-meta").textContent, /1 used · 1 in the prompt/);
+  assert.match(ws.popover.pop.querySelector(".ctx-pop-meta:not(.ws-size-line)").textContent, /1 used · 1 in the prompt/);
   assert.equal([...ws.popover.pop.querySelectorAll(".ws-row[data-ws-id]")].filter((item) => item.dataset.wsId === "memory:model_notes_style").length, 1);
   const withFile = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/a.rb"), status: "ok" }, { tool: "memory_read", title: "model_notes_style", status: "ok" }] }] }, 0);
   ws.seed([{ items: withFile, prompt: "first" }]);
@@ -755,7 +755,7 @@ test("the head view: three sections in order, the parts first with their tokens,
   const v = headView();
   try {
     v.open();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session"], "Conversation is a row, not a section header");
     assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
     const tools = v.sec("start").querySelector('.ws-row.part[data-ws-part^="tools"]');
     assert.equal(tools.querySelector(".st").textContent, "31 declared");
@@ -768,10 +768,60 @@ test("the head view: three sections in order, the parts first with their tokens,
     assert.deepEqual(v.names("read"), ["a.rb", "c.rb"]);
     assert.match(v.sec("read").querySelector(".ws-sec-head .n").textContent, /^2 held$/);
     // Conversation: 20000 − 12700 (parts) − 1500 (files) − 400 (the note's read).
-    const talk = v.sec("talk").querySelector(".ws-row.talk");
-    assert.equal(talk.querySelector(".t").textContent, "conversation");
-    assert.equal(talk.querySelector(".st").textContent, "2 turns");
+    assert.equal(v.sec("talk").children.length, 1, "one element: the row, no header");
+    const talk = v.sec("talk").firstElementChild;
+    assert.ok(talk.classList.contains("talk") && talk.classList.contains("ws-row"));
+    assert.equal(talk.querySelectorAll("button").length, 0, "nothing to fold");
+    assert.equal(talk.textContent.replace(/\s+/g, " ").trim(), "Conversation· 2 turns~5.4k");
+    assert.equal(talk.querySelector(".t").textContent, "Conversation");
+    assert.equal(talk.querySelector(".n").textContent, "· 2 turns");
     assert.equal(talk.querySelector(".tk").textContent, "~5.4k");
+    assert.ok(!talk.classList.contains("dim"));
+    assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~20k of 128k");
+  } finally { v.done(); }
+});
+
+test("the header: no item count with parts and the context's tokens; the head line carries the size", () => {
+  const v = headView();
+  try {
+    v.current.ctxPct = 16;
+    v.open();
+    const head = v.pop.querySelector(".ctx-pop-head");
+    assert.ok(head.querySelector(".ctx-pop-kind") === null);
+    assert.doesNotMatch(head.textContent, /item|ctx/);
+    assert.ok(head.querySelector(".ws-ring"), "the ring stays");
+    assert.ok(head.querySelector(".ctx-pop-close"), "the close button stays");
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
+    // A turn lens: its touched line, no size line.
+    v.pop.querySelector('[data-ws="lens"][data-lens="turn"]').click();
+    assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
+  } finally { v.done(); }
+});
+
+test("the size line: the session lens without the context's tokens (or without parts) says \"N items · ctx %\" under the header", () => {
+  const v = headView({ ctxTokens: null });
+  try {
+    v.current.ctxPct = 16;
+    v.open();
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 16 %");
+    assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    assert.ok(v.pop.querySelector(".ctx-pop-head .ctx-pop-kind") === null, "never back in the header");
+    // A change of its text redraws the open list (tokensChanged).
+    let draws = 0;
+    const refresh = v.ws.popover.refresh;
+    v.ws.popover.refresh = (...args) => { draws += 1; return refresh(...args); };
+    v.ws.tokensChanged();
+    assert.equal(draws, 0);
+    v.current.ctxPct = 17;
+    v.ws.tokensChanged();
+    assert.equal(draws, 1);
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 17 %");
+    // The tokens come: the head line takes its place.
+    v.current.ctxTokens = 20000;
+    v.ws.tokensChanged();
+    assert.equal(draws, 2);
+    assert.ok(v.pop.querySelector(".ws-size-line") === null);
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~20k of 128k");
   } finally { v.done(); }
 });
@@ -794,6 +844,7 @@ test("held twice: the session lens tags the re-read prompt memory, its tokens th
     assert.equal(note().nextElementSibling.textContent, "read again in this turn: already in the prompt, held twice (+400)");
     assert.equal(note().querySelector(".ws-step").textContent, "s2");
     assert.ok(v.sec("start").querySelector(".ws-row.part").classList.contains("dim"));
+    assert.ok(v.sec("talk").querySelector(".ws-row.talk").classList.contains("dim"), "the conversation row is never lit");
     assert.ok(v.pop.querySelector(".ws-head-line") === null, "the turn lens has its own line");
     // Turn 1 (it didn't): no note, the row dimmed.
     v.pop.querySelector('[data-ws="lens"][data-lens="prev"]').click();
@@ -835,13 +886,26 @@ test("section folds: per session; folded, a section shows only the rows the lens
   } finally { v.done(); }
 });
 
+test("an older page's stored fold naming the conversation is ignored: the row shows; a toggle drops the stale key", () => {
+  const v = headView();
+  try {
+    localStorage.setItem("chi_ws_sections_folded:h1", '["talk"]');
+    v.open();
+    assert.ok(v.sec("talk").querySelector(".ws-row.talk"));
+    assert.ok(!v.sec("talk").classList.contains("folded"));
+    v.sec("read").querySelector(".ws-sec-head").click();
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["read"]');
+  } finally { v.done(); }
+});
+
 test("no parts (an old session or worker): today's list, the lens unchanged; no context tokens: no head line, no conversation row", () => {
   const v = headView({ parts: [], ctxTokens: null });
   try {
     v.open();
     assert.equal(v.pop.querySelectorAll(".ws-sec-head, .ws-sec").length, 0);
-    assert.deepEqual([...v.pop.querySelectorAll(".ctx-pop-meta:not(.ws-hint)")].map((m) => m.textContent), ["files · 2", "memories · 0 used · 1 in the prompt"]);
+    assert.deepEqual([...v.pop.querySelectorAll(".ctx-pop-meta:not(.ws-hint)")].map((m) => m.textContent), ["3 items", "files · 2", "memories · 0 used · 1 in the prompt"]);
     assert.ok(v.pop.querySelector(".ws-head-line") === null);
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items");
     v.ws.popover.close();
     v.foots[1].click();
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
@@ -856,7 +920,8 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     v.current.ctxWindow = null;
     v.ws.sessionChanged();
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~30k");
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session", "Conversation"]);
+    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.equal(v.sec("talk").querySelector(".ws-row.talk .tk").textContent, "~15k");
   } finally { v.done(); }
 });
 
