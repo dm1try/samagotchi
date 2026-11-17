@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  foldedSections, headLine, headSections, heldTwice, heldTwiceNote, lensTouched, memoryName, memoryPartWords, promptKeys, same, startTokensText,
+  foldedSections, headItems, headLine, headSections, heldTwice, heldTwiceNote, lensTouched, memoryName, memoryPartWords, promptKeys, same, startTokensText,
 } from "../../../lib/samagotchi/web/public/ws_sections.js";
-import { overlay, sessionItems } from "../../../lib/samagotchi/web/public/working_set.js";
+import { overlay, sessionItems, turnLens } from "../../../lib/samagotchi/web/public/working_set.js";
 import { ctxTokensOf, loadedCtxTokens } from "../../../lib/samagotchi/web/public/ctx_tokens.js";
 
 const part = (kind, label, tokens, ref = null) => ({ kind, label, chars: tokens * 4, tokens, ref });
@@ -180,6 +180,39 @@ test("overlay: a memory's scope from the server; the same object while nothing c
   assert.equal(twice[1], once[1]);
   const older = overlay(once, { items: [{ kind: "memory", key: "x", state: "live", tokens: 5 }], at: 3 });
   assert.equal(older[0].scope, undefined, "an older worker's item: no scope");
+});
+
+test("headItems: a turn lens counts another scope's first read as new (the plain read, not the prompt's)", () => {
+  // System x preloaded; project x first read in turn 3.
+  const set = setOf({
+    preloaded: ["x"], turns: [[], [], [mem("x", at(2, 0))]],
+    server: { items: [{ kind: "memory", key: "x", state: "live", tokens: 80, scope: "project" }], at: 5 },
+  });
+  const parts = [scoped("preloads", "x", 50, "system")];
+  const sections = headSections(set, 6, { parts });
+  const inPrompt = promptKeys(sections);
+  const list = headItems(set, parts).filter((item) => !inPrompt.has(`${item.kind}:${item.key}`));
+  assert.equal(turnLens(list, [mem("x", at(2, 0))], 2).fresh, 1);
+  assert.equal(turnLens(set.items, [mem("x", at(2, 0))], 2).fresh, 0, "the set's own item still says preloaded");
+  // Same scope: the prompt's, never new; no parts: the items as they are.
+  const same = readX("system");
+  assert.equal(headItems(same, parts).find((i) => i.key === "x").preloaded, true);
+  assert.equal(headItems(set, []), set.items);
+});
+
+test("lensTouched: a row with a merged read lights by its items' keys only; the bare name lights a part-only row", () => {
+  // System x preloaded and read (the page's system/x item), project x read too.
+  const set = { items: [mem("system/x", at(0), { preloaded: true, scope: "system" }), mem("x", at(1), { scope: "project", tokens: 80 })], muted: [] };
+  const sections = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
+  const row = sections[0].rows.find((r) => r.label === "x");
+  assert.deepEqual([row.key, row.mergedKeys], ["system/x", ["memory:system/x"]]);
+  // A turn that read project x: the merged row stays unlit, no held-twice note.
+  const turnX = mem("x", at(1));
+  const lit = lensTouched(sections, new Map([["memory:x", turnX]]));
+  assert.equal(lit.has("memory:system/x"), false);
+  assert.equal(heldTwiceNote(row, lit.get("memory:system/x")), "");
+  // A turn that read it under its own key lights it.
+  assert.ok(lensTouched(sections, new Map([["memory:system/x", mem("system/x", at(0))]])).has("memory:system/x"));
 });
 
 test("lensTouched: a turn's read under the set's other spelling lights the merged row", () => {

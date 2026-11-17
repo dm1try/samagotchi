@@ -365,9 +365,11 @@ chi's head, in three sections:
 **Held twice.** A start memory row whose ops include `read` is held twice: in the prompt and in a read's output. The
 session lens tags it `held twice` (warn tokens); a turn lens whose items read it lights it amber with a note under it:
 "read again in this turn: already in the prompt, held twice (+X)". A lens lights a merged row by any of its merged
-keys (`lensTouched`), and a start memory row by its bare name too: a turn's rows come from tool titles, which carry no
-scope, so in a turn lens a project `x` read lights a system `x`'s own row (lit, not held twice: that row holds no
-read). It never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
+keys (`lensTouched`), and a part-only start row (no merged item, e.g. `x@system`) by its bare name too: a turn's rows
+come from tool titles, which carry no scope, so in a turn lens a project `x` read lights a system `x`'s own row (lit,
+not held twice: that row holds no read). A row with a merged item lights by its items' keys only. A turn lens counts
+new over `headItems` (the set as the head view sees it: another scope's read is a plain read, not the prompt's), so a
+project `x` first read beside a system `x` preload is new. It never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
 drop strikes the row where it stands (today's state words); the server knows an item's state now, not the turn that
 changed it, so a turn lens has no forget count.
 
