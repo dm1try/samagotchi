@@ -2902,6 +2902,26 @@ RSpec.describe Samagotchi::Worker do
           expect(File.exist?(marker)).to be(false)
         end
 
+        it "passes sender flags to the command runner" do
+          start_worker(poll_interval: 5)
+          commands = @worker.instance_variable_get(:@commands)
+          flags = []
+          allow(commands).to receive(:run).and_wrap_original do |original, *args, **kwargs|
+            flags << kwargs.slice(:as_parent, :user_ui)
+            original.call(*args, **kwargs)
+          end
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          parent = ran(JSON.parse(post_command("/side parent", client_id: "cli:answer").body)["command_id"])
+          user = ran(JSON.parse(post_command("/side user", client_id: "web:1").body)["command_id"])
+          release << true
+
+          expect(parent).to include(status: "ok", anytime: true)
+          expect(user).to include(status: "ok", anytime: true)
+          expect(flags).to eq([{ as_parent: true, user_ui: false }, { as_parent: false, user_ui: true }])
+        end
+
         ["slow", "slow, no boundary"].each do |prompt|
           it "runs at once while a turn runs (#{prompt}), never busy, its cards announced between its queued and ran" do
             start_worker(poll_interval: 5)
