@@ -4,7 +4,7 @@ module Samagotchi
   # chi's built-in tools' names, and the fixed texts some of them write into
   # their results, apart from the tool classes: the code that only names a
   # tool or matches a result to draw a row (ToolActivity, ToolView, FileRef,
-  # ObjectivesBacking) reads them here and loads no tool class (Tools::Execute
+  # Objectives::Backing) reads them here and loads no tool class (Tools::Execute
   # alone brings TaskRuntime, Shell, Leftovers, the process group…).
   #
   # Each tool class keeps its own constants, read from here

@@ -108,9 +108,10 @@ back to the source dir.
 Class-file hooks (retired). A record an older chi installed may still have a `hooks` map and `hooks/*.rb`
 (`InstalledBundle#hooks`). Nothing loads them, and nothing announces them any more (the first turn, `chi bundle
 status` and `chi update` did from 0.158 to 0.166). A source with
-hooks is refused before its manifest is read (`Installer#refuse_hooks`, then `Manifest.read`), strict or not, a dry
-run too; `ShippedUpdate`'s plan skips one the same way. Over such a record, `AssetInstaller#retire_hooks` (after the
-plugin and scripts, so a refused install leaves them) copies every edited or unknown file under `hooks/` to the trash
+hooks is refused before its manifest is read (`Manifest::HooksRetired.refuse_source_files`, then `Manifest.read`),
+strict or not, a dry run too; `ShippedUpdate`'s plan skips one the same way. Over such a record,
+after the plugin and scripts (so a refused install leaves them), `AssetInstaller#retire_hooks` copies every edited or
+unknown file under `hooks/` to the trash
 (`Trash#copy_edits` with the recorded shas; a dev link never), removes the dir and records each as `:removed` (a dry
 run's `:would_remove`) with the `AssetInstaller::RETIRED` note, which `#summary` lists on a line of
 its own; `ShippedUpdate#trash_bound` names the same files (`Trash.edits` over `hooks/`). `Provenance#write` records

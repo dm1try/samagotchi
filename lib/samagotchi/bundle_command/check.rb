@@ -147,7 +147,7 @@ module Samagotchi
       end
 
       # A source with hooks/*.rb (listed or not) can't be installed: the run
-      # stops there, as after a manifest error (Installer#refuse_hooks).
+      # stops there, as after a manifest error (Manifest::HooksRetired.refuse_source_files).
       def hooks_retired?
         files = MemoryBundle::Manifest::HooksRetired.files_in(@dir)
         return false if files.empty?

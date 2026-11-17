@@ -215,7 +215,7 @@ worker, and (its thin client load budgets) no turn loop, bundle updater, `tools/
 
 The clients name tools and the session commands without loading them. A tool's name and the fixed texts it writes
 into results (`Execute::HANDED_OVER`…) live in `ToolNames` (`tool_names.rb`, no requires), which the tool classes
-read their constants from and the display code (`ToolActivity`, `ToolView`, `FileRef`, `ObjectivesBacking`) reads
+read their constants from and the display code (`ToolActivity`, `ToolView`, `FileRef`, `Objectives::Backing`) reads
 directly. The session commands' names, the built-ins' registry and its class-level reads (`builtin_name`,
 `builtin_registry`, `ui_only_entry`, `ui_only_refusal`, `delete_on_exit?`, `SHELL_BANG_PREFIX`…) live in
 `SessionCommandCatalog` (`session_command_catalog.rb`), which the TUI, chi web, `chi send` and `PromptHistory`

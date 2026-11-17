@@ -478,7 +478,9 @@ file's layer (any `foo/*.rb` → `spec/foo_golden_spec.rb` when there is one; `t
 words the attached TUI prints, pick its `event_renderer` and `attached_loop` specs by a rule; `memory_bundle/*.rb`,
 `bundle_command.rb`, `memory_paths.rb`, `model_overlay.rb` and the corpus's fixtures pick the bundle-state corpus). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
 effective-model, request, prompt-snapshot and full system-prompt goldens because they hash the request's prompt and
-tools. Then come the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
+tools. Changes under `lib/samagotchi/worker/*.rb` also pick `spec/worker_spec.rb`, `spec/worker_*_spec.rb`,
+`spec/web/app_session_settings_characterization_spec.rb` and `spec/require_cycle_spec.rb`. Then come the other name
+matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before
 `spec/guardrails/context_spec.rb`), then the specs that name a method the change touches (the innermost `def` around a
 changed line, read with Prism; one `git grep` for up to 12 names; names under 4 characters, `initialize`, `to_s`,
