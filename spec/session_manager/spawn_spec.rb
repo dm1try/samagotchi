@@ -26,6 +26,22 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".wake_for_report" do
+    it "pins the known ring/stop window: a stop before resume is cleared and the worker starts (docs/internals/session-lifecycle.md)" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Process).to receive(:spawn).and_return(20_005)
+      allow(described_class).to receive(:start_for_inbox).and_wrap_original do |original, id, **options|
+        Samagotchi::Session.mark_stopped(id, state_dir: tmpdir, now: Time.utc(2020, 1, 1))
+        original.call(id, **options)
+      end
+
+      expect(described_class.wake_for_report(session.id, state_dir: tmpdir)).to eq(:woken)
+      expect(Process).to have_received(:spawn).once
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(false)
+    end
+  end
+
   # Every spawn marks the session starting (StartingMarker) until its
   # worker holds the owner lock: the writer's pid before the spawn, the
   # starter's (Process.spawn's child, which lives until then) after.

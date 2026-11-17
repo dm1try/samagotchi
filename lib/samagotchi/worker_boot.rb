@@ -167,8 +167,8 @@ module Samagotchi
       # Delete a session its worker left empty. Checked again now the lock is
       # free: a note or input may have come in since the worker looked, and a
       # worker woken meanwhile owns it (delete_session refuses). A `chi send`
-      # landing between this check and the delete fails with "no session"
-      # (a window of an empty session's last moments, left as is).
+      # during the deleting lock can be accepted to input/ and removed with
+      # the directory; one after removal fails with "no session".
       private def discard_left_session(session_id, state_dir:, default_model:)
         return unless SessionManager.discardable?(session_id, state_dir: state_dir, default_model: default_model)
 
