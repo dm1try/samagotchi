@@ -150,6 +150,7 @@ module Samagotchi
       @command_queue = Thread::Queue.new
       # Set as it leaves: nothing happened in the session (#discard?).
       @discard = false
+      @marked_leaving = false
       # The lines the running turn's drain merged ([prompt, TurnOrigin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
