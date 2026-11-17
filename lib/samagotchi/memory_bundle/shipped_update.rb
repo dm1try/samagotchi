@@ -203,7 +203,7 @@ module Samagotchi
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
-        # The upgrade would refuse it (Installer#refuse_hooks).
+        # The upgrade would refuse it (Manifest::HooksRetired.refuse_source_files).
         hooks = Manifest::HooksRetired.files_in(row.source_dir)
         return skip(row, Manifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
