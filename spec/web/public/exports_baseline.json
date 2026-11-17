@@ -1,0 +1,1587 @@
+{
+  "activity.js": [
+    "ACTIVITY_FIELDS",
+    "EVENT_FIELDS",
+    "addCompleted",
+    "addStarted",
+    "newActivity",
+    "pickFields",
+    "rowKey",
+    "toolName"
+  ],
+  "annotate_actions.js": [
+    "actionEnabled",
+    "actionLine",
+    "actionTitle",
+    "annotationActions",
+    "composerWithAction",
+    "fillTemplate",
+    "sameActions",
+    "selectionFields",
+    "splitInline"
+  ],
+  "annotate_bar.js": [
+    "createAnnotateBar"
+  ],
+  "annotate_presets.js": [
+    "MAX_PRESETS",
+    "parsePresets",
+    "presetNote"
+  ],
+  "annotations.js": [
+    "annotateBarLeft",
+    "annotationSource",
+    "appendQuote",
+    "quoteBlock",
+    "sourceLabel"
+  ],
+  "answer_fold.js": [
+    "FOLD_CHARS",
+    "FOLD_KEEP",
+    "FOLD_LINES",
+    "FOLD_PREFIX",
+    "answerKey",
+    "foldRowText",
+    "foldStoreKey",
+    "foldable",
+    "installAnswerFold",
+    "keepRowInView",
+    "lineCount",
+    "readFolded",
+    "readOpened",
+    "reportLabel",
+    "sweepAnswerFolds",
+    "withFold",
+    "writeFold",
+    "writeOpened"
+  ],
+  "answer_refs.js": [
+    "answerRefsOf",
+    "applyFinalAnswer",
+    "pairAnswerRefs",
+    "setAnswerRefs"
+  ],
+  "app.js": [],
+  "auth_lost.js": [
+    "AUTH_LOST_TEXT",
+    "AUTH_RELOAD_KEY",
+    "AUTH_RELOAD_MS",
+    "authProbe",
+    "createAuthLost",
+    "lostAnswer"
+  ],
+  "bar_fold.js": [
+    "LIVE_KEYS",
+    "META_GROUPS",
+    "PHONE_QUERY",
+    "createBarFold",
+    "foldPlan",
+    "foldSignature",
+    "rowWidth"
+  ],
+  "block_frame.js": [
+    "FRAME_CSP",
+    "FRAME_TIMEOUT_MS",
+    "FrameError",
+    "MAX_SVG_CHARS",
+    "createBlockFrame",
+    "frameMessage",
+    "frameSrcdoc"
+  ],
+  "block_host.js": [
+    "CACHE_SIZE",
+    "DECODE_TIMEOUT_MS",
+    "MARK_PREFIX",
+    "MAX_PICTURE_PIXELS",
+    "MAX_PICTURE_SIDE",
+    "MAX_SOURCE_BYTES",
+    "SLOW_RENDER_MS",
+    "createBlockHost",
+    "createFrameDrawer",
+    "currentTheme",
+    "emptyPicture",
+    "fetchRendererFile",
+    "fetchRendererList",
+    "minShownWidth",
+    "oversize",
+    "pictureOf",
+    "sourceHash"
+  ],
+  "block_open.js": [
+    "openAfterEnd"
+  ],
+  "block_source.js": [
+    "DRAWN",
+    "figureOf",
+    "revealBlockSource",
+    "setSourceShown"
+  ],
+  "block_watch.js": [
+    "createBlockWatch",
+    "failBlock",
+    "holdingView",
+    "rejoin",
+    "scrollerOf"
+  ],
+  "bubbles.js": [
+    "TURN_PROMPT",
+    "createBubbles",
+    "endBubbleTemplate",
+    "guardrailWarningTemplate",
+    "hintEl",
+    "hintTemplate",
+    "hookNoticeLine",
+    "hookNoticeTemplate",
+    "outputBubbleTemplate",
+    "recapTemplate",
+    "removeQueuedBubble",
+    "setBubbleDelivery",
+    "setBubbleState",
+    "turnPromptBubbles"
+  ],
+  "card.js": [
+    "NOTICE_CHARS",
+    "cardBodyTemplate",
+    "cardClass",
+    "cardPlace",
+    "cardTemplate",
+    "drawCard",
+    "isCard",
+    "isNoticeCard",
+    "leavesBlock",
+    "noticeCardLine",
+    "noticeTemplate",
+    "refreshCardBody",
+    "shownElsewhere",
+    "splitSnapshotCards",
+    "turnNoticePlace"
+  ],
+  "card_kinds.js": [
+    "cardWait",
+    "continueWait",
+    "questionText",
+    "questionWait",
+    "warnDiffers"
+  ],
+  "card_registry.js": [
+    "CARD_EVENTS",
+    "createCardRegistry",
+    "observeCards"
+  ],
+  "card_stamps.js": [
+    "snapshotPlace",
+    "stampedOpening"
+  ],
+  "cards_place.js": [
+    "createCardsPlace",
+    "reloadedTurnEls",
+    "turnAnswerEl"
+  ],
+  "chains.js": [
+    "CONTINUE_OPENER",
+    "allViewChains",
+    "chainChipTemplate",
+    "chainClock",
+    "chainDate",
+    "chainLinks",
+    "chainNeighbours",
+    "chainRowsTemplate",
+    "chainStamp",
+    "chainTitle",
+    "continueRefusal",
+    "continuedText",
+    "foldChains",
+    "freshLink",
+    "isOpener",
+    "linksPruned",
+    "openChildrenTemplate",
+    "openTitle",
+    "openerFill",
+    "openerText",
+    "restoredComposer"
+  ],
+  "chip_popover.js": [
+    "SHEET_MAX",
+    "SHEET_SHARE",
+    "SHEET_TALL",
+    "createChipPopover",
+    "popoverPlace",
+    "sheetPlace"
+  ],
+  "chunk_router.js": [
+    "routeChunk"
+  ],
+  "claim_link.js": [
+    "HIGHLIGHT",
+    "HIT_CLASS",
+    "MARK",
+    "PREFIX_MAX",
+    "QUOTE_MAX",
+    "TURN_CHARS",
+    "claimFromHash",
+    "clearClaim",
+    "findClaim",
+    "ownerClaimHash",
+    "participantClaimLink",
+    "selectionClaim",
+    "showClaim",
+    "turnIdOf",
+    "turnRoots"
+  ],
+  "command_complete.js": [
+    "commandMatches",
+    "commandRow",
+    "moveSelection",
+    "pickCommand"
+  ],
+  "command_list.js": [
+    "createCommandList"
+  ],
+  "command_view.js": [
+    "commandBlockTemplate",
+    "heredocChip",
+    "rowHover",
+    "stepTextTemplate",
+    "stepsTemplate"
+  ],
+  "commands.js": [
+    "STEER_CHOICE_USAGE",
+    "applyConfirm",
+    "commandView",
+    "continueLine",
+    "drawCommandBubble",
+    "historyHasCommandBubble",
+    "keptCommandBubbles",
+    "restoreCommandBubbles",
+    "sessionCommandLine",
+    "startPageReply",
+    "startPageReplyOrHint",
+    "steerChoiceRoute",
+    "unknownCommandHint",
+    "webLocalReply"
+  ],
+  "composer.js": [
+    "createComposerCommands",
+    "routeComposerLine",
+    "routeSessionLine"
+  ],
+  "composer_fold.js": [
+    "COMPOSER_FOLD_KEY",
+    "composerFolded",
+    "foldHandle",
+    "opensOnKey"
+  ],
+  "composer_grip.js": [
+    "GRIP_KEY",
+    "createComposerGrip"
+  ],
+  "composer_mode.js": [
+    "NARROW_QUERY",
+    "SEND_HINT",
+    "composerMode",
+    "createComposerMode"
+  ],
+  "composer_mount.js": [
+    "mountComposer"
+  ],
+  "composer_size.js": [
+    "GRIP_CLICK_FOLD_MS",
+    "GRIP_FOLD_PX",
+    "GRIP_OPEN_PX",
+    "PROMPT_LINE_PX",
+    "PROMPT_MIN_PX",
+    "gripFloor",
+    "gripFolds",
+    "gripGesture",
+    "promptHeight"
+  ],
+  "context_chips.js": [
+    "ageText",
+    "chipModel",
+    "chipsTemplate",
+    "createContextChips",
+    "hintUrl",
+    "popoverTemplate"
+  ],
+  "copy.js": [
+    "COPY_SOURCE_ATTR",
+    "bubbleCopyText",
+    "codeText",
+    "copyButtonTemplate",
+    "copySource",
+    "copyText",
+    "installCopy",
+    "showsAnswer",
+    "visibleText"
+  ],
+  "ctx.js": [
+    "cardCtxText",
+    "costText",
+    "ctxBarText",
+    "ctxBarTip",
+    "ctxWindowText",
+    "extractCtxPct",
+    "generationTokens",
+    "lastSpeedText",
+    "memoryIndexText",
+    "modelSegmentCostText",
+    "modelSegmentLabel",
+    "modelSegmentPrefillText",
+    "modelSegmentTokensText",
+    "savedCtxPct",
+    "shortRef",
+    "sideRequestsText",
+    "speedText",
+    "tokensTipText"
+  ],
+  "ctx_tokens.js": [
+    "ctxTokensOf",
+    "loadedCtxTokens"
+  ],
+  "data.js": [
+    "addContext",
+    "api",
+    "archiveSession",
+    "cancelTurn",
+    "continueSession",
+    "createIdleSession",
+    "deleteChain",
+    "deletePlan",
+    "deleteSession",
+    "dequeueTurn",
+    "detachContext",
+    "dismissQuestion",
+    "fetchHistory",
+    "getContext",
+    "getSession",
+    "getWorkingSet",
+    "inviteParticipant",
+    "listContext",
+    "listModels",
+    "listParticipants",
+    "listSessions",
+    "markSystemOneWrong",
+    "onAuthLost",
+    "openEvents",
+    "openStream",
+    "renderText",
+    "restartSession",
+    "restartWeb",
+    "restartWorkers",
+    "revokeParticipant",
+    "sendAnswer",
+    "sendCommand",
+    "sendTurn",
+    "sessionHolds",
+    "setParticipantCap",
+    "stopSession",
+    "stopSessionHolds",
+    "stopTask",
+    "stopTurn",
+    "unarchiveSession",
+    "updateChi",
+    "uploadImage"
+  ],
+  "delete_sheet.js": [
+    "createDeleteSheet",
+    "deleteChoices",
+    "deleteSheetTemplate",
+    "deleteToast",
+    "isChained",
+    "listAfterDelete",
+    "loadingTemplate",
+    "refusalModel",
+    "refusalTemplate",
+    "runDeleteFlow"
+  ],
+  "delivery_line.js": [
+    "AFTER_OWNER",
+    "AFTER_SHORT",
+    "CUT_LABEL",
+    "IDLE_HINT",
+    "IDLE_HINT_NO_HISTORY",
+    "OWN_TURN_QUEUES",
+    "OWN_TURN_STEERS",
+    "OWN_TURN_STEERS_SHORT",
+    "PARTICIPANT_TURN_QUEUES",
+    "PARTICIPANT_TURN_QUEUES_SHORT",
+    "QUEUE_LABEL",
+    "QUEUE_NEEDS_WORKER",
+    "afterTheirs",
+    "charsText",
+    "clockText",
+    "deliveryLine",
+    "genAge"
+  ],
+  "details_motion.js": [
+    "MOTION_MS",
+    "animateHeight",
+    "canAnimate",
+    "installDetailsMotion"
+  ],
+  "diff_view.js": [
+    "DIFF_FOLD_LINES",
+    "activityDiffTemplate",
+    "diffCounts",
+    "diffLineClass",
+    "diffLineNumbers",
+    "diffSummary",
+    "diffTemplate"
+  ],
+  "dock_reserve.js": [
+    "createDockReserve"
+  ],
+  "families_view.js": [
+    "archivedBadge",
+    "createFamilyPop",
+    "familyChipTemplate",
+    "familyRowsTemplate",
+    "rowBadgesTemplate"
+  ],
+  "feature_gates.js": [
+    "createFeatureGates"
+  ],
+  "format.js": [
+    "GAP_SECONDS",
+    "PREVIEW_CHARS",
+    "agoText",
+    "canStopSession",
+    "cantText",
+    "cardName",
+    "cardTitleSource",
+    "childrenSummary",
+    "clip",
+    "delegatedBy",
+    "delegatesSummary",
+    "deleteConfirmText",
+    "escapeHtml",
+    "failedTurnText",
+    "firstPreview",
+    "fullTime",
+    "gapText",
+    "goneSessionNotice",
+    "leadTrimmed",
+    "memChipText",
+    "memChipTitle",
+    "modelLabel",
+    "normalize",
+    "ownerBadge",
+    "previewForCard",
+    "previewOf",
+    "promptNotesChip",
+    "promptNotesText",
+    "recapLabel",
+    "recapPlace",
+    "relativeTime",
+    "servedModelDiffers",
+    "sourceLabel",
+    "steerSender",
+    "timeOf",
+    "wallClock",
+    "withLiveStatus",
+    "withoutWorker"
+  ],
+  "hash_intent.js": [
+    "hashIntent"
+  ],
+  "history_end.js": [
+    "moveToHistoryEnd"
+  ],
+  "history_reveal.js": [
+    "revealInHistory"
+  ],
+  "history_shape.js": [
+    "ACCEPTED",
+    "KINDS",
+    "compareShapes",
+    "historyShape"
+  ],
+  "images.js": [
+    "IMAGES_NOT_HERE",
+    "MAX_IMAGE_MB",
+    "MAX_TURN_IMAGES",
+    "admitImages",
+    "chipName",
+    "chipsAfterSend",
+    "chipsTemplate",
+    "imageFiles",
+    "imageUrl",
+    "restoredChips",
+    "thumbsTemplate",
+    "turnRefs",
+    "turnText",
+    "uploadChips"
+  ],
+  "info_bar.js": [
+    "CLOCK_NONE",
+    "NEXT",
+    "PREV",
+    "chainLinkTemplate",
+    "infoBarHtml",
+    "memoriesTooltip",
+    "renderInfoBar",
+    "workingSetChipTemplate"
+  ],
+  "info_bar_model.js": [
+    "BAR_ITEMS",
+    "SPEED_NONE",
+    "barItemKeys",
+    "chainLinkView",
+    "infoBarModel",
+    "infoButtons",
+    "sessionBar",
+    "workerBadgeFor"
+  ],
+  "init_row.js": [
+    "DONE_MS",
+    "applyInitEvent",
+    "dropDone",
+    "fadeDone",
+    "initRowTemplate",
+    "newInitTasks",
+    "seedInitTasks"
+  ],
+  "inline_widgets.js": [
+    "HOST",
+    "LANG",
+    "STYLESHEET",
+    "TOGGLE_PICTURE",
+    "createWidgetDrawer",
+    "hostOf",
+    "loadWidgetSheet",
+    "widgetData"
+  ],
+  "keep_focus.js": [
+    "keepFocus"
+  ],
+  "kept_commands.js": [
+    "anchorInsertIndex",
+    "commandAnchor",
+    "isShellCommandLine",
+    "keepsCommandBubble"
+  ],
+  "latest.js": [
+    "createLatest",
+    "stillOn"
+  ],
+  "level_chip.js": [
+    "DEFAULT",
+    "commandLine",
+    "followSegment",
+    "segments"
+  ],
+  "lists_view.js": [
+    "CARD_FADE_MS",
+    "allCountText",
+    "allViewFamilies",
+    "cardAnimStyle",
+    "cardTemplate",
+    "createListsView",
+    "enteringCards",
+    "matchesFilter",
+    "stripCountText",
+    "stripOrder",
+    "stripPillTemplate",
+    "stripTileTemplate"
+  ],
+  "live_timing.js": [
+    "createLiveTiming",
+    "lineRecord",
+    "liveLineText",
+    "liveTickMs"
+  ],
+  "live_turn.js": [
+    "createLiveTurn"
+  ],
+  "llm_context_chip.js": [
+    "APPLIES",
+    "BUDGET_ERROR",
+    "choiceWords",
+    "commandLine",
+    "mergeChoice",
+    "ownValues",
+    "parseBudget",
+    "strategyValue"
+  ],
+  "markdown_place.js": [
+    "createMarkdownPlace"
+  ],
+  "markdown_tip.js": [
+    "TIP_DISMISSED_KEY",
+    "createMarkdownTip"
+  ],
+  "method_api.js": [
+    "methodApi"
+  ],
+  "model_pick.js": [
+    "MODEL_KEY",
+    "RECENT_KEY",
+    "groupRows",
+    "matchModels",
+    "modelRows",
+    "modelsFailedText",
+    "pickModel",
+    "pushRecent",
+    "recentRows",
+    "rowNote",
+    "rowTitle",
+    "shortName"
+  ],
+  "model_picker.js": [
+    "createModelPicker"
+  ],
+  "more_sheet.js": [
+    "ACTION_KEYS",
+    "ROW_KEYS",
+    "createMoreSheet",
+    "moreActions",
+    "moreAttention",
+    "moreCount",
+    "moreRows",
+    "moreSheetTemplate",
+    "moreTelemetry"
+  ],
+  "no_contact_fill.js": [
+    "CONTACT_WORDS",
+    "noContactFill"
+  ],
+  "notice_links.js": [
+    "linkedLine"
+  ],
+  "notifications.js": [
+    "NOTIFY_KEY",
+    "PRESENCE_EVERY_MS",
+    "PRESENCE_PATH",
+    "PUSH_DEVICE_KEY",
+    "SW_UPDATE_MS",
+    "TOUCH_FRESH_MS",
+    "createNotifications",
+    "presenceSender"
+  ],
+  "notify.js": [
+    "NOTIFY_CHANNEL",
+    "RELAY_HOLD_MS",
+    "attentionFor",
+    "attentionText",
+    "closedKeys",
+    "createNotifyGate",
+    "initialAttentionState",
+    "notifyState",
+    "questionReason",
+    "randomTabId",
+    "trackAttention",
+    "waitingOn"
+  ],
+  "objectives_entry.js": [
+    "objectivesEntryTemplate"
+  ],
+  "objectives_model.js": [
+    "ACTIVE",
+    "DONE",
+    "DROPPED",
+    "addLine",
+    "changeText",
+    "checkText",
+    "editableText",
+    "entryLine",
+    "expireChecks",
+    "headline",
+    "markLine",
+    "nextExpiry",
+    "notYetText",
+    "pendingText",
+    "progress",
+    "rewordLine",
+    "stripItems"
+  ],
+  "objectives_moves.js": [
+    "chipConcerns",
+    "createObjectivesMoves",
+    "moveOfRow",
+    "moveRowText",
+    "movesInBlock"
+  ],
+  "objectives_state.js": [],
+  "objectives_strip.js": [
+    "createObjectivesStrip"
+  ],
+  "objectives_track.js": [
+    "TRACK_FEATURE",
+    "TRACK_LINE",
+    "expireTracking",
+    "trackDiffers",
+    "trackText",
+    "trackWorkerUnavailable",
+    "tracking",
+    "trackingUntil"
+  ],
+  "objectives_wiring.js": [
+    "createObjectives"
+  ],
+  "owner_claim.js": [
+    "CLAIM_ROOTS",
+    "createOwnerClaim"
+  ],
+  "owner_verify.js": [
+    "createOwnerVerify"
+  ],
+  "participant_bar.js": [
+    "CLOSING_CODES",
+    "RULES_TEXT",
+    "barItems",
+    "barTemplate",
+    "closedLine",
+    "closedTemplate",
+    "endsText",
+    "spentText",
+    "whoTemplate"
+  ],
+  "participant_history.js": [
+    "fetchOwnHistory",
+    "hasHistory",
+    "historyLoader"
+  ],
+  "participant_main.js": [
+    "LINK_ENDED",
+    "PARTICIPANT_STEER",
+    "createParticipantMain"
+  ],
+  "participant_model.js": [
+    "AUTHOR_SLOTS",
+    "PARTICIPANT_PREFIX",
+    "authorColor",
+    "authorSlot",
+    "isParticipantAuthor",
+    "participantAuthor"
+  ],
+  "participant_names.js": [
+    "PAIR",
+    "READ_ONLY",
+    "UNNAMED",
+    "authorBadge",
+    "authorBadgeText",
+    "authorBadgeTitle",
+    "nameUnnamedBadges",
+    "participantName",
+    "setBadgeMode",
+    "setParticipantNames"
+  ],
+  "participant_revise.js": [
+    "PARTICIPANT_REVISE_FEATURE",
+    "PARTICIPANT_REVISE_UNAVAILABLE",
+    "mayReviseOwn",
+    "participantMayRevise",
+    "participantReviseUnavailable",
+    "revisableOwn"
+  ],
+  "participants_panel.js": [
+    "CAP_ERROR",
+    "DEFAULT_EXPIRY_DAYS",
+    "EMPTY",
+    "EXPIRY_DAYS",
+    "INVITE_FIELDS",
+    "PRESENT_MS",
+    "agoText",
+    "capValue",
+    "chipModel",
+    "chipTemplate",
+    "createParticipantsControl",
+    "inviteBody",
+    "lateInviteText",
+    "money",
+    "panelTemplate",
+    "revokeConfirmText",
+    "rowModel",
+    "untilText"
+  ],
+  "plain_line.js": [
+    "plainLine"
+  ],
+  "popover_modal.js": [
+    "focusBack",
+    "holdFocus",
+    "modalDialog",
+    "tabStops"
+  ],
+  "project_picker.js": [
+    "createProjectPicker",
+    "pickerTemplate"
+  ],
+  "prompt_history.js": [
+    "createPromptHistory"
+  ],
+  "push.js": [
+    "WAITING_TAG",
+    "isWaitingTag",
+    "openPushKeys",
+    "pushSupported",
+    "subscribe",
+    "unsubscribe",
+    "urlBase64ToBytes"
+  ],
+  "push_devices.js": [
+    "DEVICE_PATH",
+    "createPushDevices",
+    "deviceRows",
+    "sheetModel",
+    "sheetTemplate",
+    "staleText",
+    "syncSwitches"
+  ],
+  "question_card.js": [
+    "CONTINUE_REASON_PLACEHOLDER",
+    "answerErrorText",
+    "approvalAllowed",
+    "approvalAsker",
+    "approvalView",
+    "deniedReason",
+    "isApproval",
+    "isContinue",
+    "isRecommended",
+    "keepsAskingText",
+    "nextCardAction",
+    "optionText",
+    "relayView",
+    "relayedToView",
+    "resultText",
+    "summaryText",
+    "truncate"
+  ],
+  "question_cards.js": [
+    "createQuestionCards"
+  ],
+  "read_view.js": [
+    "readLines",
+    "readLinesTemplate"
+  ],
+  "reasoning_history_chip.js": [
+    "CONFIG",
+    "LEVELS",
+    "commandLine"
+  ],
+  "recap_stamp.js": [
+    "recapStampPlace"
+  ],
+  "ref_menu.js": [
+    "createRefMenu"
+  ],
+  "ref_scan.js": [
+    "REF",
+    "REF_ALONE",
+    "linkRefs",
+    "resolveRef",
+    "textRefs",
+    "touchedFiles"
+  ],
+  "refs.js": [
+    "REF_ACTIONS",
+    "bindRef",
+    "bindRowRefs",
+    "boundRef",
+    "editorUrl",
+    "httpUrl",
+    "installRefClicks",
+    "refActions",
+    "refAttrs",
+    "refKindOk",
+    "refSpan",
+    "refTarget",
+    "rowTitleRef",
+    "showInTurn",
+    "showRow",
+    "syncRefTabs",
+    "turnRowFor"
+  ],
+  "reload_check.js": [
+    "createReloadCheck"
+  ],
+  "restore.js": [
+    "composerAfterAck",
+    "dropEarlyRestores",
+    "keepEarlyRestore",
+    "restoreAction",
+    "restoreInto",
+    "restoreOnAck"
+  ],
+  "resync_reach.js": [
+    "REACH",
+    "createResyncReach",
+    "readFailed"
+  ],
+  "revise_stack.js": [
+    "HIDDEN_CLASS",
+    "KEPT",
+    "REVISE_UNAVAILABLE",
+    "ROW_CLASS",
+    "STUB_CLASS",
+    "answerLabel",
+    "historyTurns",
+    "installReviseStacks",
+    "openStubOver",
+    "reviseChipTemplate",
+    "reviseChipText",
+    "reviseWorkerUnavailable",
+    "stacks",
+    "stubKey",
+    "stubParts",
+    "stubText",
+    "versionChipText"
+  ],
+  "revise_switch.js": [
+    "SWAPPED_CLASS",
+    "VIEW_CLASS",
+    "stepVersion",
+    "switchText",
+    "switcherTemplate",
+    "viewOf"
+  ],
+  "route.js": [
+    "ALL_SESSIONS_HASH",
+    "sessionHash",
+    "sessionIdFromHash"
+  ],
+  "scope.js": [
+    "allScopeHref",
+    "cardFolder",
+    "projectScopeHref",
+    "scopeDir",
+    "scopeTemplate"
+  ],
+  "scroll.js": [
+    "FOLLOW_MS",
+    "SCROLL_FOLLOW_PX",
+    "easeScrollTo",
+    "keepFollowing",
+    "shouldFollowScroll"
+  ],
+  "send_turn.js": [
+    "createSendTurn"
+  ],
+  "sentences.js": [
+    "DEFAULT_MAX_LEN"
+  ],
+  "session_actions.js": [
+    "createSessionActions"
+  ],
+  "session_fields.js": [
+    "FIELDS",
+    "fieldsFromCard",
+    "statusWrite"
+  ],
+  "session_payload.js": [
+    "sessionFieldsFrom"
+  ],
+  "session_prefs.js": [
+    "COMPOSER_FLOOR",
+    "COMPOSER_FOLD",
+    "PREF_KEYS",
+    "STAGE_FOLD",
+    "WS_RAIL_FOLD",
+    "forget",
+    "prefKey",
+    "read",
+    "sweepSessionPrefs",
+    "write"
+  ],
+  "session_rename.js": [
+    "createRename",
+    "inputBox",
+    "outsideClip",
+    "titleLine"
+  ],
+  "session_state.js": [
+    "emptySessionState",
+    "sessionStateFrom"
+  ],
+  "session_store.js": [
+    "MAX_PASSES",
+    "ORDER",
+    "createSessionStore"
+  ],
+  "session_sync.js": [
+    "RESYNC_RETRIES",
+    "STREAM_RETRY_MS",
+    "createSessionSync"
+  ],
+  "session_title.js": [
+    "renameShown",
+    "tabTitle",
+    "topBarTitle"
+  ],
+  "session_view.js": [
+    "createSessionView"
+  ],
+  "sessions_list.js": [
+    "applySessionEvent",
+    "batchCounts",
+    "batchTargets",
+    "batchToastText",
+    "families",
+    "familyId",
+    "familyOpen",
+    "familySummary",
+    "familyWaits",
+    "filterFamilies",
+    "flattenFamilies",
+    "heldOrder",
+    "inTree",
+    "listedSessions",
+    "rangeIds",
+    "runBatch",
+    "sortedByUpdated",
+    "stoppedBadge",
+    "waitingBadge",
+    "waitingFirst",
+    "waitingSearchText"
+  ],
+  "settings_chip.js": [
+    "NOTE",
+    "PANEL_LABEL",
+    "RUNNING_NOTE",
+    "actLine",
+    "chipModel",
+    "chipTemplate",
+    "createSettingsControl",
+    "moreLine",
+    "noteText",
+    "panelTemplate"
+  ],
+  "settings_panel.js": [
+    "DEFAULT",
+    "contextMoreTemplate",
+    "contextSegments",
+    "contextWords",
+    "segmentsTemplate",
+    "sentAnywayTemplate",
+    "settingsPanelTemplate",
+    "thinkingSegments"
+  ],
+  "shell_command.js": [
+    "isShellCommandItem",
+    "shellCommandMessage"
+  ],
+  "shown_texts.js": [
+    "createShownTexts"
+  ],
+  "stage_answer.js": [
+    "createStageAnswer"
+  ],
+  "stage_asking.js": [
+    "createStageAsking"
+  ],
+  "stage_cards.js": [
+    "ASKS",
+    "PENDING",
+    "WARN_CARD",
+    "waitsInStage"
+  ],
+  "stage_cloud.js": [
+    "createStageCloud"
+  ],
+  "stage_dom.js": [
+    "createStageDom"
+  ],
+  "stage_frame.js": [
+    "STAGE_GAP",
+    "createStageFrame",
+    "reducedMotion"
+  ],
+  "stage_handoff.js": [
+    "FOLD_MS",
+    "OPENING",
+    "createStageHandoff"
+  ],
+  "stage_missing.js": [
+    "createStageMissing",
+    "missingLine",
+    "missingReason",
+    "readCounts",
+    "stageCovered"
+  ],
+  "stage_model.js": [
+    "headlineOf"
+  ],
+  "stage_opened.js": [
+    "createOpenedTurn"
+  ],
+  "stage_owner_wait.js": [
+    "OWNER_WAIT_STATUS",
+    "OWNER_WAIT_TEXT",
+    "createOwnerWait",
+    "ownerWaitText"
+  ],
+  "stage_pager.js": [
+    "createStagePager"
+  ],
+  "stage_place.js": [
+    "createStagePlace"
+  ],
+  "stage_probe.js": [
+    "measured",
+    "probing",
+    "report"
+  ],
+  "stage_quiet_clock.js": [
+    "createStageQuietClock"
+  ],
+  "stage_slots.js": [
+    "createStageSlots",
+    "node"
+  ],
+  "stage_stall.js": [
+    "GRACE_MS",
+    "NET_MS",
+    "STALL_MS",
+    "TOOL_CLOCK_MS",
+    "createStageStall",
+    "stallKind",
+    "stallOf",
+    "stallState",
+    "toolClockText"
+  ],
+  "stage_view.js": [
+    "FOLD_MS",
+    "createStageView"
+  ],
+  "stage_view_memory.js": [
+    "VIEW_MEMORY_CAP",
+    "applyView",
+    "captureView",
+    "createStageViewMemory"
+  ],
+  "stage_waiting.js": [
+    "CONTINUE_KEY",
+    "FOLD_PREFIX",
+    "KINDS",
+    "cardIn",
+    "createStageWaiting",
+    "foldKey",
+    "isApprovalCard",
+    "isBlocking",
+    "pluginCardKey",
+    "questionKey",
+    "waitingKey",
+    "waitingKind"
+  ],
+  "stage_watch.js": [
+    "createInUseWatch"
+  ],
+  "stale_params.js": [
+    "STALE_PARAMS",
+    "withoutStaleParams"
+  ],
+  "start_page.js": [
+    "START_PICK_TITLE",
+    "createStartPage"
+  ],
+  "start_settings.js": [
+    "DEFAULT",
+    "NOTE",
+    "PANEL_LABEL",
+    "contextSegments",
+    "contextWords",
+    "createStartSettings",
+    "overrides",
+    "panelTemplate",
+    "settingsLabel",
+    "thinkingSegments"
+  ],
+  "start_toolkit.js": [
+    "AUTO",
+    "LIST_LABEL",
+    "NOTE",
+    "createStartToolkit",
+    "listTemplate",
+    "offersAuto",
+    "pickValue",
+    "toolkitLabel",
+    "toolkitOverride",
+    "toolkitRows"
+  ],
+  "stop_sheet.js": [
+    "MAX_NAMED",
+    "STOP_ANCHOR",
+    "createStopSheet",
+    "stopSheetModel",
+    "stopSheetTemplate"
+  ],
+  "storage.js": [
+    "readSession",
+    "readStored",
+    "removeSession",
+    "removeStored",
+    "storedKeys",
+    "writeSession",
+    "writeStored"
+  ],
+  "stream_handlers.js": [
+    "createStreamHandlers"
+  ],
+  "strip.js": [
+    "SHORT_WINDOW_QUERY",
+    "STRIP_HIDE_PX",
+    "stripAutoHidden",
+    "stripColumns",
+    "stripGripAction",
+    "stripGripTitle",
+    "stripStatusParts"
+  ],
+  "strip_grip.js": [
+    "createStripGrip"
+  ],
+  "strip_hidden.js": [
+    "STRIP_HIDDEN_KEY",
+    "createStripHidden"
+  ],
+  "sw.js": [],
+  "system_one_wrong.js": [
+    "createSystemOneWrongAction"
+  ],
+  "tally.js": [
+    "MIN_CALLS",
+    "tallyText"
+  ],
+  "task_stop.js": [
+    "confirmText",
+    "createTaskStopper",
+    "handedOverId",
+    "quietFailure",
+    "stopTarget",
+    "taskCommand",
+    "taskStopButton"
+  ],
+  "text_roots.js": [
+    "TEXTS"
+  ],
+  "thinking_chip.js": [
+    "CONFIG",
+    "LEVELS",
+    "commandLine"
+  ],
+  "thinking_ticker.js": [
+    "createTicker",
+    "currentSentence"
+  ],
+  "time_gaps.js": [
+    "TIME_GAP_CLASS",
+    "createGapClock",
+    "groupGaps",
+    "groupTimes",
+    "lastActivity",
+    "timeGapEl",
+    "timeGapTemplate"
+  ],
+  "timing.js": [
+    "STOPPED_LINE_CLASS",
+    "STOP_MARK",
+    "appendAboveLiveTiming",
+    "cancelLineText",
+    "elapsedSince",
+    "formatDuration",
+    "liveDurationText",
+    "mergeTiming",
+    "normalizeTiming",
+    "sessionDurationNow",
+    "turnGroups",
+    "turnTimingText"
+  ],
+  "toast_place.js": [
+    "toastBottom"
+  ],
+  "toasts.js": [
+    "createToasts"
+  ],
+  "token_fragment.js": [
+    "REPLACE_SESSION_TEXT",
+    "fragmentCode",
+    "tradeFragmentCode"
+  ],
+  "toolkit_chip.js": [
+    "chipModel",
+    "chipTemplate"
+  ],
+  "turn_block.js": [
+    "createTurnBlock",
+    "outlineBlock",
+    "stepTemplate",
+    "stepText",
+    "turnHistoryNodes"
+  ],
+  "turn_drawing.js": [
+    "drawingTurn",
+    "drawnIds",
+    "drawnKind"
+  ],
+  "turn_events.js": [
+    "CLIENT_ID_KEY",
+    "authorOf",
+    "clientLabel",
+    "displayWait",
+    "emptyAnswerLine",
+    "emptyRetryLine",
+    "hookNoticeLabel",
+    "initWaitLine",
+    "isOwn",
+    "isReportClient",
+    "llmContextHover",
+    "llmContextLine",
+    "llmContextNotice",
+    "newClientId",
+    "noticeLine",
+    "promptOps",
+    "reminderText",
+    "replaysDrawnTurn",
+    "resyncRetry",
+    "retryStatusLine",
+    "steerCutLine",
+    "streamDropEnd",
+    "turnOutput",
+    "withImages",
+    "workerGoneText"
+  ],
+  "turn_html.js": [
+    "BADGES",
+    "EXIT_LINE",
+    "answerBubbleTemplate",
+    "badgeText",
+    "cancelLineTemplate",
+    "commandBubbleTemplate",
+    "elementOf",
+    "emptyAnswerTemplate",
+    "inlineOutput",
+    "llmEditLine",
+    "noteBubbleTemplate",
+    "shellCommandMessage",
+    "stateBadgeTemplate",
+    "statusParts",
+    "steerRowTemplate",
+    "tailMode",
+    "timeTitle",
+    "toolRowInnerTemplate",
+    "toolRowTemplate",
+    "userBodyTemplate",
+    "userBubbleTemplate"
+  ],
+  "turn_model.js": [
+    "askingRefs",
+    "askingText",
+    "blockGens",
+    "blockSummary",
+    "chunk",
+    "currentGen",
+    "failedCount",
+    "genLabel",
+    "genLabelParts",
+    "generationCompleted",
+    "generationRestarted",
+    "generationStarted",
+    "isNarrated",
+    "newTurn",
+    "notice",
+    "outlineRuns",
+    "questionRefs",
+    "takeAnswer",
+    "toolCompleted",
+    "toolStarted",
+    "turnEnded",
+    "turnStarted"
+  ],
+  "turn_pieces.js": [
+    "answerGen",
+    "turnPieces"
+  ],
+  "turn_range.js": [
+    "NOTE_BOUNDARY",
+    "turnElements"
+  ],
+  "unqueue.js": [
+    "createUnqueue",
+    "unqueueFailureText"
+  ],
+  "update_notice.js": [
+    "compareVersions",
+    "mergeVersionState",
+    "newerVersion",
+    "restartConfirmText",
+    "updateFrameToast",
+    "versionNotice",
+    "workerBadge"
+  ],
+  "update_sheet.js": [
+    "createUpdateSheet",
+    "updateSheetTemplate"
+  ],
+  "verdict_card.js": [
+    "CHECK_NOT_ON_PAGE",
+    "nameVerdictCards",
+    "ownerCheckHash",
+    "placeVerdict"
+  ],
+  "verdict_fresh.js": [
+    "freshURL",
+    "placeVerdictWithFresh",
+    "redrawFresh",
+    "renderFresh",
+    "settleRunning"
+  ],
+  "verify_preset.js": [
+    "VERIFY_PRESET",
+    "VERIFY_UNAVAILABLE",
+    "verifyWorkerUnavailable",
+    "withVerify"
+  ],
+  "verify_target.js": [
+    "OWNER_FINAL",
+    "verifyTurnOf"
+  ],
+  "version_notices.js": [
+    "AVAILABLE_SHOWN_KEY",
+    "createVersionNotices"
+  ],
+  "viewer.js": [
+    "createViewer"
+  ],
+  "viewer_self.js": [
+    "OWNER_LABEL",
+    "isViewerAuthor",
+    "isViewerClient",
+    "ownerLabel",
+    "setViewerSelf",
+    "viewerSelf"
+  ],
+  "widget_picks.js": [
+    "drawPicks",
+    "initialPicks",
+    "replyText",
+    "withDraft"
+  ],
+  "widget_walk.js": [
+    "ALWAYS",
+    "END",
+    "USUAL",
+    "createWalker",
+    "drawWalk",
+    "swimlaneCells",
+    "trailText",
+    "walkRoutes"
+  ],
+  "worker_features.js": [
+    "workerPredates"
+  ],
+  "working_set.js": [
+    "BUDGETS",
+    "FLASH_MS",
+    "GLYPHS",
+    "INVERSE",
+    "STATES",
+    "STEER_COMMAND",
+    "STEER_OPS",
+    "addLine",
+    "addedItem",
+    "addedItems",
+    "ariaLabel",
+    "bodySections",
+    "dropRefusal",
+    "fold",
+    "footprint",
+    "footprintText",
+    "forgetOn",
+    "groupState",
+    "isFresh",
+    "itemKey",
+    "labelText",
+    "labelTitle",
+    "leafText",
+    "lensItem",
+    "memoryNames",
+    "newerSnapshot",
+    "nextSettle",
+    "opsText",
+    "overlay",
+    "parseSteerLine",
+    "pendingSteers",
+    "pinnable",
+    "refreshable",
+    "serverAddIds",
+    "sessionItems",
+    "shown",
+    "steerId",
+    "steerLine",
+    "steerWord",
+    "stepRange",
+    "stepTag",
+    "tokensText",
+    "turnLens",
+    "undroppable",
+    "urlOfParams"
+  ],
+  "working_set_rail.js": [
+    "COLLAPSE_KEY",
+    "RAIL_MIN",
+    "addLabels",
+    "createRing",
+    "createWorkingSetRail",
+    "pendingText",
+    "ringBucket"
+  ],
+  "working_set_view.js": [
+    "createWorkingSet",
+    "footprintNode",
+    "footprintTemplate",
+    "groupItems",
+    "stampHistory",
+    "stampRows"
+  ],
+  "ws_cards.js": [
+    "callTemplate",
+    "cardTemplate",
+    "linesTemplate",
+    "textTemplate"
+  ],
+  "ws_peek.js": [
+    "PEEK_WIDTH",
+    "createPeek"
+  ],
+  "ws_reader.js": [
+    "createWorkingSetPreview",
+    "getWorkingSetItem"
+  ],
+  "ws_sections.js": [
+    "MEMORY_PARTS",
+    "WS_SECTION_FOLD",
+    "foldedSections",
+    "headItems",
+    "headLine",
+    "headSections",
+    "heldTwice",
+    "heldTwiceNote",
+    "lensTouched",
+    "memoryName",
+    "memoryPartWords",
+    "promptKeys",
+    "same",
+    "startTokensText"
+  ],
+  "ws_timeline.js": [
+    "PEEK_LINES",
+    "SLICE_FOLD_LINES",
+    "bandBox",
+    "countsText",
+    "eventState",
+    "eventTag",
+    "eventWords",
+    "fileStrip",
+    "goneText",
+    "itemPath",
+    "linesText",
+    "peekOf",
+    "placeOf",
+    "readRows",
+    "tagsText",
+    "timelineCards"
+  ],
+  "ws_way_in.js": [
+    "setTimelineWayIn",
+    "wayInTemplate"
+  ]
+}

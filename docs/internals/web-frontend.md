@@ -20,7 +20,9 @@ Verify, the composer's mode and the strip's hide went into modules of their own.
 its own, wired from `app.js` in a few lines; a refactor that shrinks `app.js` ratchets its cap down with it. Never
 raise either: extract instead. Ruby's twin is `Samagotchi/FileSize` (docs/testing.md, File size).
 
-**New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
+**New exports go in new modules.** An `npm test` ratchet parses every public module and compares existing modules'
+exports with `spec/web/public/exports_baseline.json`; `release:bump` refreshes the baseline. Its `ALLOWED` entries
+name the file and export and carry a one-line reason. The static JS is served at unversioned URLs. Today every load revalidates
 (app.rb `serve_static` sends `Cache-Control: no-cache` with a content ETag, and `sw.js` has no fetch handler), but an
 open tab still holds the modules it loaded, and a proxy that ignores `no-cache` can serve an old one: a new export
 on an existing module, imported by a new version of another, then finds the old module without it and blanks the
