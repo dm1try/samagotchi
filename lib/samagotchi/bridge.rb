@@ -1177,11 +1177,11 @@ module Samagotchi
         raise IntakeClosed if stopped?
         next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
 
-        hold = @on_exit_request.call(client_id, **options)
+        accepted = @on_exit_request.call(client_id, **options)
         # Read here, right after the accept: every accept runs with the log
         # held, so no later exit's list can be the one this 200 carries.
-        stopped = @exit_stopped&.call if hold.nil? && !restart
-        next hold
+        stopped = @exit_stopped&.call if accepted.nil? && !restart
+        next accepted
       end
       return deadline_passed("exit request") if hold == :expired
 
