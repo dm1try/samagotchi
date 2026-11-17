@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  foldedSections, headLine, headSections, heldTwice, heldTwiceNote, lensTouched, memoryName, memoryPartWords, startTokensText,
+  foldedSections, headLine, headSections, heldTwice, heldTwiceNote, lensTouched, memoryName, memoryPartWords, promptKeys, same, startTokensText,
 } from "../../../lib/samagotchi/web/public/ws_sections.js";
 import { overlay, sessionItems } from "../../../lib/samagotchi/web/public/working_set.js";
 import { ctxTokensOf, loadedCtxTokens } from "../../../lib/samagotchi/web/public/ctx_tokens.js";
@@ -99,6 +99,87 @@ test("held twice: a start memory row read again; its tokens the part's + the rea
   assert.equal(heldTwiceNote({ ...note, tokens: undefined }, { ops: ["read"] }), "read again in this turn: already in the prompt, held twice");
   assert.equal(heldTwiceNote(note, { ops: ["write"] }), "");
   assert.equal(heldTwiceNote(note, undefined), "");
+});
+
+// Scope + name: a part and a set memory are one row when their names match and
+// their scopes do, or either lacks one (an older worker's).
+const scoped = (kind, name, tokens, scope) => ({ ...part(kind, name, tokens, name), ...(scope ? { scope } : {}) });
+const readX = (scope, extra = {}) => setOf({
+  preloaded: ["x"], turns: [[mem("x", at(1, 0))]],
+  server: { items: [{ kind: "memory", key: "x", state: "live", tokens: 80, ...(scope ? { scope } : {}) }], at: 3 }, ...extra,
+});
+
+test("scope match: a project x read beside a system x preloaded is two rows, no held twice", () => {
+  const set = readX("project");
+  const sections = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
+  const [start, read] = sections;
+  const own = start.rows.find((r) => r.label === "x");
+  assert.equal(own.key, "x@system", "its own key: never the read item's");
+  assert.deepEqual([own.ops, own.mergedKeys, own.preloaded], [[], [], true]);
+  assert.equal(heldTwice(own), false);
+  assert.equal(heldTwiceNote(own, { ops: ["read"] }), "");
+  assert.equal(memoryPartWords(own), "preloaded · system");
+  assert.equal(startTokensText(own), "~50");
+  // The project x stays in Read, a plain read (not "the prompt's").
+  const memories = read.inner.find((s) => s.key === "memories");
+  const x = memories.labels.flatMap((l) => l.members).find((m) => m.key === "x");
+  assert.deepEqual([x.scope, x.preloaded, x.tokens], ["project", false, 80]);
+  assert.equal(read.tokens, 80);
+  // A turn lens: the read is new to the head (not a prompt memory); the turn's
+  // read of x (no scope in a tool title) lights the system row by name too.
+  assert.equal(promptKeys(sections).has("memory:x"), false);
+  const lit = lensTouched(sections, new Map([["memory:x", mem("x", at(1, 0))]]));
+  assert.ok(lit.has("memory:x@system"));
+});
+
+test("scope match: a system x read beside a system x preloaded is one row, held twice", () => {
+  const set = readX("system");
+  const [start, read] = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
+  const x = start.rows.find((r) => r.label === "x");
+  assert.equal(x.key, "x");
+  assert.deepEqual(x.mergedKeys, ["memory:x"]);
+  assert.equal(heldTwice(x), true);
+  assert.equal(startTokensText(x), "~50 +80");
+  assert.equal(memoryPartWords(x), "preloaded");
+  assert.deepEqual(read.inner.map((s) => s.key), []);
+});
+
+test("scope match: a scope either side lacks falls back to the name alone (an older worker's part or item)", () => {
+  for (const [partScope, itemScope] of [[null, "project"], ["system", null], [null, null]]) {
+    const [start] = headSections(readX(itemScope), 6, { parts: [scoped("preloads", "x", 50, partScope)] });
+    const x = start.rows.find((r) => r.label === "x");
+    assert.equal(x.key, "x", `${partScope}/${itemScope}`);
+    assert.equal(heldTwice(x), true, `${partScope}/${itemScope}`);
+  }
+  assert.equal(same({ ref: "x", scope: "system" }, { kind: "memory", key: "x" }), true);
+  assert.equal(same({ ref: "x", scope: "system" }, { kind: "memory", key: "x", scope: "project" }), false);
+  assert.equal(same({ ref: "x" }, { kind: "memory", key: "system/x", scope: "project" }), true, "an older page's spelling: the name is x");
+  assert.equal(same({ ref: "x" }, { kind: "file", key: "x" }), false);
+});
+
+test("scope match: a project x note and a system x preload are two rows, each its own size", () => {
+  const set = setOf({ notes: [{ name: "x" }] });
+  const parts = [scoped("notes", "x", 30, "project"), scoped("preloads", "x", 50, "system")];
+  const [start] = headSections(set, 6, { parts });
+  const rows = start.rows.filter((r) => r.label === "x");
+  assert.deepEqual(rows.map((r) => [r.key, r.partKind, r.partTokens]), [["x", "notes", 30], ["x@system", "preloads", 50]]);
+  assert.equal(new Set(rows.map((r) => `memory:${r.key}`)).size, 2, "never two rows of one key");
+  // One scope in two parts (a note also preloaded): one row, both sizes.
+  const [one] = headSections(set, 6, { parts: [scoped("notes", "x", 30, "system"), scoped("preloads", "x", 50, "system")] });
+  assert.deepEqual(one.rows.filter((r) => r.label === "x").map((r) => r.partTokens), [80]);
+});
+
+test("overlay: a memory's scope from the server; the same object while nothing changed", () => {
+  const items = [mem("x", at(0)), file("/p/a.rb", at(0))];
+  const server = { items: [{ kind: "memory", key: "x", state: "live", tokens: 5, scope: "project" }, { kind: "file", key: "/p/a.rb", state: "live", tokens: 9, scope: "system" }], at: 2 };
+  const once = overlay(items, server);
+  assert.equal(once[0].scope, "project");
+  assert.equal(once[1].scope, undefined, "a file has none");
+  const twice = overlay(once, server);
+  assert.equal(twice[0], once[0]);
+  assert.equal(twice[1], once[1]);
+  const older = overlay(once, { items: [{ kind: "memory", key: "x", state: "live", tokens: 5 }], at: 3 });
+  assert.equal(older[0].scope, undefined, "an older worker's item: no scope");
 });
 
 test("lensTouched: a turn's read under the set's other spelling lights the merged row", () => {

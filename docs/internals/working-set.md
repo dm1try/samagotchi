@@ -340,9 +340,15 @@ that drops the running turn, puts it back to the session.
 session's `prompt_parts` (the worker's sizes of its system prompt; `promptParts` on the page) the list is what is in
 chi's head, in three sections:
 - **From the start** (`start`): every part in prompt order, the tools part first. A memory part (identity, a model
-  note, a preload) IS a memory row: merged with the session set's rows of that name (keys match by `memoryName`: a
-  preloaded `system/x` and a part's `x` are one row, steered by its read item's key), else a row of its own (identity:
-  the set never lists it). It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
+  note, a preload) IS a memory row: merged with the session set's rows of the same memory, else a row of its own
+  (identity: the set never lists it). **The match is scope + name** (`same`): the names match (`memoryName`, which
+  also reads an older page's preloaded `system/x` as `x`) and so do the scopes (the part's `scope`, the item's from the
+  server, `overlay`); a scope either side lacks (an older worker's part or item, an item the server hasn't stamped)
+  matches by name alone, as before scopes. So a project `x` read beside a system `x` in the prompt is two rows: the
+  read stays in Read as a plain read (not "prompt", never held twice), and the part's own row gets the key `x@system`
+  (no collision with the read's `x`), its words its scope ("preloaded · system") and, like identity's, no actions or
+  peek. A note and a preload of one name and scope stay one row with both sizes; of two scopes, two rows. The start
+  section tracks the items it shows by identity, not by key. It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
   droppable or pinnable until read). Its tokens are the part's, plus `+X` for the read's (the item's server tokens: a
   preloaded row carries none of its own, so the two never double-count). Other parts are read-only `part` rows: a
   label, a sub (the tools part's "N declared"; dropped on a phone), `~tokens`, no actions, no peek; a turn lens dims
@@ -359,7 +365,9 @@ chi's head, in three sections:
 **Held twice.** A start memory row whose ops include `read` is held twice: in the prompt and in a read's output. The
 session lens tags it `held twice` (warn tokens); a turn lens whose items read it lights it amber with a note under it:
 "read again in this turn: already in the prompt, held twice (+X)". A lens lights a merged row by any of its merged
-keys (`lensTouched`), and never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
+keys (`lensTouched`), and a start memory row by its bare name too: a turn's rows come from tool titles, which carry no
+scope, so in a turn lens a project `x` read lights a system `x`'s own row (lit, not held twice: that row holds no
+read). It never counts a prompt memory as new (`promptKeys`, out of `turnLens`'s list). A forget or a
 drop strikes the row where it stands (today's state words); the server knows an item's state now, not the turn that
 changed it, so a turn lens has no forget count.
 
