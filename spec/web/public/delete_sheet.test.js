@@ -137,7 +137,12 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 test("the flow: reads the plan, runs 'this link', closes and reports", async () => {
   const host = fakeHost();
   const done = [];
-  const api = { deletePlan: async () => newest(), deleteSession: async () => ({ unarchived: [A], deleted: [B] }) };
+  const calls = [];
+  const plan = { ...newest(), link: { ...newest().link, digest: "link-digest" } };
+  const api = {
+    deletePlan: async () => plan,
+    deleteSession: async (id, opts) => { calls.push([id, opts]); return { unarchived: [A], deleted: [B] }; },
+  };
   const flow = runDeleteFlow({ id: B, session, host, api, done: (...args) => done.push(args), plain: () => {}, failed: () => {} });
   await tick();
   assert.match(host.shown.at(-1), /Delete this link/);
@@ -146,6 +151,23 @@ test("the flow: reads the plan, runs 'this link', closes and reports", async () 
   await tick();
   assert.equal(host.closed, 1);
   assert.equal(done[0][0], "this");
+  assert.deepEqual(calls, [[B, { expect: "link-digest" }]]);
+});
+
+test("the flow sends the chain choice's digest", async () => {
+  const host = fakeHost();
+  const calls = [];
+  const plan = { ...newest(), chain: { ...newest().chain, digest: "chain-digest" } };
+  const flow = runDeleteFlow({
+    id: B, session, host,
+    api: { deletePlan: async () => plan, deleteChain: async (id, opts) => { calls.push([id, opts]); return { deleted: [B] }; } },
+    done: () => {}, plain: () => {}, failed: () => {},
+  });
+  await tick();
+  flow.act("chain");
+  await tick();
+
+  assert.deepEqual(calls, [[B, { expect: "chain-digest" }]]);
 });
 
 test("the flow: a plan that says no chain falls back to today's confirm", async () => {
@@ -187,6 +209,72 @@ test("the flow: a refusal shows in place; Stop then delete retries only once the
   flow.act("stop");
   await tick(); await tick();
   assert.deepEqual(calls, ["delete", `stop ${C}`, `stop ${C}`, "delete", "done"]);
+});
+
+test("the flow: plan_changed re-reads and redraws the changed plan before another confirmation", async () => {
+  const host = fakeHost();
+  const original = { ...newest(), link: { ...newest().link, digest: "old-link" } };
+  const refreshed = {
+    ...newest(),
+    link: { ...newest().link, digest: "new-link", deletes: 2 },
+    chain: { ...newest().chain, digest: "new-chain" },
+  };
+  const changed = Object.assign(new Error("plan changed"), { code: "plan_changed" });
+  const calls = [];
+  let reads = 0;
+  const api = {
+    deletePlan: async () => (++reads === 1 ? original : refreshed),
+    deleteSession: async (id, opts) => {
+      calls.push([id, opts]);
+      if (calls.length === 1) throw changed;
+      return { deleted: [B] };
+    },
+  };
+  const flow = runDeleteFlow({ id: B, session, host, api, done: () => {}, plain: () => {}, failed: () => assert.fail() });
+  await tick();
+  flow.act("this");
+  await tick();
+  await tick();
+
+  assert.equal(reads, 2);
+  assert.match(host.shown.at(-1), /What this deletes changed; check again/);
+  assert.match(host.shown.at(-1), /2 stopped delegates/);
+
+  flow.act("this");
+  await tick();
+  assert.deepEqual(calls, [[B, { expect: "old-link" }], [B, { expect: "new-link" }]]);
+});
+
+test("the flow redraws a single-session confirmation if the refreshed plan is no longer chained", async () => {
+  const host = fakeHost();
+  const original = { ...newest(), link: { ...newest().link, digest: "old-link" } };
+  const changed = Object.assign(new Error("plan changed"), { code: "plan_changed" });
+  const calls = [];
+  let reads = 0;
+  const flow = runDeleteFlow({
+    id: B, session, host,
+    api: {
+      deletePlan: async () => (++reads === 1 ? original : { chained: false, session_id: B }),
+      deleteSession: async (id, opts) => {
+        calls.push([id, opts]);
+        if (calls.length === 1) throw changed;
+        return { deleted: [B] };
+      },
+    },
+    done: () => {}, plain: () => assert.fail(), failed: () => assert.fail(),
+  });
+  await tick();
+  flow.act("this");
+  await tick();
+  await tick();
+
+  assert.equal(reads, 2);
+  assert.match(host.shown.at(-1), /What this deletes changed; check again/);
+  assert.match(host.shown.at(-1), /no longer in a chain/);
+
+  flow.act("this");
+  await tick();
+  assert.deepEqual(calls, [[B, { expect: "old-link" }], [B, { expect: undefined }]]);
 });
 
 test("one shell, two cards: a ✕ on another card while the first plan is read takes the shell; the first answer draws and acts on nothing", async () => {

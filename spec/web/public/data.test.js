@@ -13,6 +13,7 @@ import {
   stopTask,
   dequeueTurn,
   deleteSession,
+  deleteChain,
   archiveSession,
   unarchiveSession,
   dismissQuestion,
@@ -475,6 +476,23 @@ test("deleteSession sends DELETE to the session's URL, forced (a live worker is 
   });
   assert.deepEqual(calls, [["/api/sessions/3fa2%20b?force=true", "DELETE"]]);
   assert.equal(result.status, "deleted");
+});
+
+test("deleteSession and deleteChain put the expected digest in the query, not fetch options", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([path, opts]);
+    return Promise.resolve(okResponse({ status: "deleted" }));
+  };
+  await deleteSession("link", { expect: "a&b", fetchImpl });
+  await deleteChain("chain", { expect: "digest", fetchImpl });
+
+  assert.deepEqual(calls.map(([path, opts]) => [path, opts.method]), [
+    ["/api/sessions/link?force=true&expect=a%26b", "DELETE"],
+    ["/api/sessions/chain/chain?force=true&expect=digest", "DELETE"],
+  ]);
+  assert.equal("expect" in calls[0][1], false);
+  assert.equal("expect" in calls[1][1], false);
 });
 
 test("archiveSession and unarchiveSession POST to the session's archive routes", async () => {

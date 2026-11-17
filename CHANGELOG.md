@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- chi web: deleting a chained session no longer deletes more than the sheet showed when something changed since it
+  opened (a delegate that finished, a schedule, a continue); the sheet shows the new plan to confirm.
 - chi web: a participant's failed Verify turn comes back in their composer as a Verify turn, not plain text.
 - `/working-set add system/x` is no longer refused as "already in the system prompt" when only a project memory x
   is there (and the reverse); a bare name still matches either scope.

@@ -13,7 +13,8 @@ module Samagotchi
     # the previous one a delete would bring back), :delegate_unmovable (a
     # delegate the deleted link's continue moved can't go back: +ids+,
     # +detail+ says why), :chain_scheduled (a schedule is on the chain a
-    # chain delete would take: +schedule_id+).
+    # chain delete would take: +schedule_id+), :plan_changed (the plan no
+    # longer matches the digest the caller confirmed).
     class DeleteRefused < StandardError
       attr_reader :session_id, :reason, :schedule_id, :ids
 
@@ -40,6 +41,7 @@ module Samagotchi
           "#{@ids.map { |id| id[0, 8] }.join(", ")}, moved here by the continue, can't go back to the previous link" \
             "#{": #{detail}" if detail}"
         when :chain_scheduled then "an enabled schedule runs on this chain#{cancel}"
+        when :plan_changed then "what this delete would do changed since it was shown; review the new plan and try again"
         else "session #{@session_id} can't be deleted now (#{@reason})"
         end
       end
@@ -194,7 +196,7 @@ module Samagotchi
       # @raise [DeleteRefused] also :scheduled for a schedule's anchor or
       #   head, and with the keywords :continuing and :delegate_unmovable
       def delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true,
-                         allow_scheduled: false, revive_previous: false, refuse_continuing: false)
+                         allow_scheduled: false, revive_previous: false, refuse_continuing: false, expect: nil)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         # Only a plain id: anything else could name a path outside the state dir.
@@ -209,7 +211,7 @@ module Samagotchi
         if revive_previous || refuse_continuing
           require_relative "../session_chain/delete"
           return SessionChain::Delete.link(id, state_dir: sd, stop: stop, wait: wait, revive_previous: revive_previous,
-                                               refuse_continuing: refuse_continuing)
+                                               refuse_continuing: refuse_continuing, expect: expect)
         end
 
         delete_resolved(id, state_dir: sd, stop: stop, wait: wait, purge_runs: purge_runs, allow_scheduled: allow_scheduled)
@@ -223,7 +225,7 @@ module Samagotchi
       # @return [Hash] SessionChain::Delete.chain's
       # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
       # @raise [DeleteRefused, OwnedByTUI] nothing was deleted
-      def delete_chain(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT)
+      def delete_chain(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, expect: nil)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         raise Session::NotFound, given unless Session.valid_id?(given)
@@ -232,7 +234,7 @@ module Samagotchi
         raise Session::NotFound, given unless Session.exist?(id, state_dir: sd)
 
         require_relative "../session_chain/delete"
-        SessionChain::Delete.chain(id, state_dir: sd, stop: stop, wait: wait)
+        SessionChain::Delete.chain(id, state_dir: sd, stop: stop, wait: wait, expect: expect)
       end
 
       # #delete_session's checks and removal for a full id that exists:

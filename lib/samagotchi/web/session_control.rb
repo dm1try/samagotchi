@@ -524,7 +524,8 @@ module Samagotchi
       # session is always refused.
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
-                                             wait: STOP_WAIT_SECONDS, revive_previous: true, refuse_continuing: true)
+                                             wait: STOP_WAIT_SECONDS, revive_previous: true, refuse_continuing: true,
+                                             expect: req.GET["expect"])
         touch_deleted(result[:id], result)
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped],
                              unarchived: Array(result[:unarchived]), moved_back: Array(result[:moved_back]),
@@ -539,7 +540,7 @@ module Samagotchi
       # their delegates (SessionManager.delete_chain). Query-only.
       def handle_delete_chain(req, id)
         result = @manager.delete_chain(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
-                                           wait: STOP_WAIT_SECONDS)
+                                           wait: STOP_WAIT_SECONDS, expect: req.GET["expect"])
         touch_deleted(id, result)
         json_response(200, { status: "deleted", session_id: id, deleted: result[:deleted], left: result[:left],
                              left_running: result[:left_running], unarchived: result[:unarchived],

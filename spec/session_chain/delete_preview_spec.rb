@@ -84,7 +84,9 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     expect(shown).to include(chained: true, position: 3, size: 3, cut_off: false)
     expect(shown[:link]).to include(previous_id: a.id, moved: 1, notes: 1, unarchived: 1, deletes: 1, left_running: 1,
                                     earlier: 2, next_id: nil, later: 0, refusal: nil)
+    expect(shown[:link][:digest]).to match(/\A[0-9a-f]{16}\z/)
     expect(shown[:chain]).to include(links: 3, deletes: 2, left_running: 1, refusal: nil)
+    expect(shown[:chain][:digest]).to match(/\A[0-9a-f]{16}\z/)
 
     result = delete(b.id)
     expect(result[:moved_back].size).to eq(shown[:link][:moved])
