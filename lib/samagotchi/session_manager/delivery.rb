@@ -58,7 +58,7 @@ module Samagotchi
       # tool's follow-up says it after "Error: session <id8>".
       # @return [String]
       def refusal_text
-        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? || wake_refused? ||
+        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? || wake_refused? || deleting? ||
                   DeliverResult::REMOTE_REFUSALS.include?(error)
         "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
       end
@@ -75,6 +75,9 @@ module Samagotchi
       # A stopped or archived session its sender may not wake
       # (DeliverResult::STOPPED / ARCHIVED: only a person's message does).
       def wake_refused? = DeliverResult::WAKE_REFUSALS.include?(error)
+
+      # A session being deleted (DeliverResult::DELETING): nothing went in.
+      def deleting? = error == DeliverResult::DELETING["error"]
 
       # A --cut's outcome ("now", "waits", "off"), nil when nothing was cut.
       def cut = ack["cut"]
@@ -101,6 +104,11 @@ module Samagotchi
     DeliverResult::ARCHIVED = { "error" => "session_archived",
                                 "detail" => "the session is archived; only its owner's message brings it back" }.freeze
     DeliverResult::WAKE_REFUSALS = [DeliverResult::STOPPED["error"], DeliverResult::ARCHIVED["error"]].freeze
+    # Any sender's turn to a session a deleter holds (its owner lock kind
+    # deleting: a delete, an empty session's discard), or that went while
+    # the input was written: refused (a 409 from chi web), its file taken
+    # back (SessionInbox.withdraw), never accepted and then removed.
+    DeliverResult::DELETING = { "error" => "session_deleting", "detail" => "the session is being deleted" }.freeze
 
     # The unclaimed input files +author+ wrote.
     PARTICIPANT_QUEUE_LOCK = "participants.lock"
@@ -140,7 +148,8 @@ module Samagotchi
       #   a web tab, a TUI) un-stops a stopped session and starts an archived
       #   link; a schedule's, a plugin's, a delegate's, a participant's or an
       #   unknown one's is refused there (:refused 409, DeliverResult::STOPPED
-      #   / ARCHIVED, nothing written)
+      #   / ARCHIVED, nothing written); anyone's to a session being deleted
+      #   is refused (:refused 409, DeliverResult::DELETING)
       # @param images [Array<Hash>] refs ({file:, name:}) already in images/
       # @param delivery [String, nil] what the message asks the running turn
       #   for: "next_step" (default), "cut" or "queue"
@@ -314,10 +323,14 @@ module Samagotchi
         # A worker that idle-exited since the resume never reads it either:
         # wake a new one. (The exiting worker also looks for input it left;
         # one the first resume spawned that is still starting is left be.)
-        start_for_send(manager, session_id, state_dir, client_id, before: false) do
+        refused = start_for_send(manager, session_id, state_dir, client_id, before: false, written: path) do
           FileUtils.rm_f(path) if path.is_a?(String)
           raise OwnedByTUI, session_id
         end
+        # A delete that took the lock between the check and the write: the
+        # file is taken back (unless a worker claimed it already).
+        return refused if refused && SessionInbox.withdraw(path, session_id, state_dir: state_dir || Session.default_state_dir)
+
         DeliverResult.new(status: :accepted, via: :file,
                           ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
       end
@@ -341,14 +354,24 @@ module Samagotchi
       # held for its last work) has its input served by its own respawn
       # (WorkerBoot's leave): a stop that landed before this send is
       # cleared, as resume_session clears it (a person's send un-stops); one
-      # that lands after it still wins.
+      # that lands after it still wins. A deleter holding the lock refuses
+      # any sender, before the write and after it (DeliverResult::DELETING),
+      # and so does a session gone after the write (+written+, the file's
+      # path: a stand-in manager's write makes none).
       # @return [DeliverResult, nil] the refusal of a wake the sender may not
-      #   make (+before+ only), else nil
-      private def start_for_send(manager, session_id, state_dir, client_id, before:)
+      #   make (+before+ only) or of a session being deleted, else nil
+      private def start_for_send(manager, session_id, state_dir, client_id, before:, written: nil)
         presence = delivery_presence(manager, session_id, state_dir)
         policy = SessionInbox::WakePolicy.for_sender(client_id)
         outcome = policy.decide(presence)
         yield if outcome == :owned && block_given?
+        if outcome == :deleting || (outcome == :gone && !before)
+          if before || written.is_a?(String)
+            Log.info(:worker, "send_deleting_refused", sid: session_id[0, 8], kind: policy.kind, before: before)
+            return DeliverResult.new(status: :refused, code: 409, ack: DeliverResult::DELETING)
+          end
+          return nil if outcome == :deleting
+        end
         if %i[stopped archived].include?(outcome)
           return nil unless before
 

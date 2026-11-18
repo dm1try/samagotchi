@@ -740,7 +740,10 @@ approval, queued prompt, or running background task; otherwise it says to run
 `chi sessions stop ID`, then send any prompt. That fallback drops reminders,
 and may lose a running `/btw` and other in-memory state. A session with no running worker needs no restart (its next
 prompt starts one on the newest chi), and an older worker without restart
-support needs `chi sessions stop ID`. The Web UI's
+support needs `chi sessions stop ID`. A stopped session, or one being stopped
+(`chi sessions stop`), is refused at once without asking its worker: "can't
+restart: the session is stopped; only its owner's message starts it again (on
+the newest chi)". The Web UI's
 `POST /api/sessions/:id/restart` does the same (409 with `reason` and `detail`
 when it can't). An attached
 terminal says at the join, in one `chi>` line, when the worker or the terminal

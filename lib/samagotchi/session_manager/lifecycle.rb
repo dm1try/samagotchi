@@ -10,6 +10,7 @@ require_relative "../process_group"
 require_relative "../reminder_carry"
 require_relative "../session"
 require_relative "../session_inbox"
+require_relative "../session_lifecycle"
 require_relative "../task_files"
 require_relative "../tools/task_record"
 require_relative "../task_transcript"
@@ -23,7 +24,9 @@ module Samagotchi
     # WorkerIdleExit#hold_for_restart hold (:turn_running, :reminders, ...),
     # :fallback_held (disk-visible work blocks an unresponsive-worker restart),
     # :stopped (its worker, +pid+, is SIGSTOPped: neither the ask nor a TERM
-    # reaches it until it is continued), or :failed (the worker answered something else or didn't release).
+    # reaches it until it is continued), :stop_marked (the session is stopped,
+    # or being stopped: `chi sessions stop`, no successor would come), or
+    # :failed (the worker answered something else or didn't release).
     class RestartRefused < StandardError
       attr_reader :session_id, :reason, :version, :holds, :pid
 
@@ -58,6 +61,8 @@ module Samagotchi
           where = via.remote? ? " on #{via.remote}" : ""
           "session #{session_id}'s worker#{" (pid #{pid})" if pid} is stopped (SIGSTOP or Ctrl-Z) and can't take " \
             "a restart: continue it#{" with `kill -CONT #{pid}`" if pid}#{where}, then restart again"
+        when :stop_marked
+          "session #{session_id} can't restart: #{DeliverResult::STOPPED["detail"]} (on the newest chi)"
         when :not_running
           "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
         when :unsupported
@@ -107,23 +112,26 @@ module Samagotchi
       def restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: ClientId::CLI_RESTART)
         sd = state_dir || Session.default_state_dir
         Session.load(session_id, state_dir: sd) # ArgumentError for none
-        owner = refuse_tui!(session_id, state_dir: sd)
+        # The lifecycle precheck is ALLOWED[:restart] for the state read now
+        # (a stop marked refuses before the worker is asked); the op-local
+        # checks (SIGSTOP, features, the Bridge's reply, the fallback) are here.
+        reading = SessionLifecycle.read(session_id, state_dir: sd, owner: session_owner(session_id, state_dir: sd))
+        cell = SessionLifecycle.allowed(:restart, reading.state)
+        raise OwnedByTUI, session_id if cell == :owned_by_tui
+        raise Session::NotFound, session_id if cell == :gone
+
+        owner = reading.presence.owner
         # A stopped worker answers neither the ask (READ_TIMEOUT) nor the
         # fallback's TERM (FALLBACK_STOP_WAIT): say so now, not after ~70 s.
         raise RestartRefused.new(session_id, :stopped, pid: owner.pid) if owner&.worker? && ProcessGroup.stopped?(owner.pid)
+        raise RestartRefused.new(session_id, cell) if SessionLifecycle.verdict(:restart, cell) == :refused
 
-        dir = Session.session_dir(session_id, state_dir: sd)
-        link = WorkerLink.resolve(dir, unlink: false, owner: owner)
-        if link.is_a?(WorkerLink::Skew)
-          return restart_fallback(session_id, owner: owner, sidecar: link.sidecar, state_dir: sd, wait: wait, why: :skew)
+        link = reading.presence.link
+        if cell == :fallback
+          skew = link.is_a?(WorkerLink::Skew)
+          return restart_fallback(session_id, owner: owner, sidecar: (link.sidecar if skew), state_dir: sd, wait: wait,
+                                              why: skew ? :skew : :starting_stuck)
         end
-
-        if link.is_a?(WorkerLink::Starting)
-          return restart_fallback(session_id, owner: owner, sidecar: nil, state_dir: sd, wait: wait, why: :starting_stuck) if link.stuck
-
-          raise RestartRefused.new(session_id, :starting)
-        end
-        raise RestartRefused.new(session_id, :not_running) unless link.live?
 
         sidecar = link.sidecar
         unless sidecar.features.include?("restart")
@@ -143,7 +151,7 @@ module Samagotchi
         raise RestartRefused.new(session_id, :failed) unless reply.status == 200
 
         Log.info(:worker, "restart", sid: session_id, from: sidecar.version, by: client_id)
-        fresh = WorkerLink.await(session_id, session_dir: dir, timeout: wait, unlink: false, interval: 0.1,
+        fresh = WorkerLink.await(session_id, session_dir: Session.session_dir(session_id, state_dir: sd), timeout: wait, unlink: false, interval: 0.1,
                                  until: ->(live) { live.epoch != sidecar.epoch || live.started_at != sidecar.started_at })
         # Timed out: the last outcome, the old worker's Live too, is no successor.
         changed = fresh.live? && (fresh.epoch != sidecar.epoch || fresh.started_at != sidecar.started_at)

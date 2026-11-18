@@ -15,9 +15,9 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
   # own refusal reason, or a cell word (live, fallback, gone_*) that is no
   # reason but what the operation answers there.
   vocabulary = {
-    delivery: %i[go wait gone owned],
+    delivery: %i[go wait gone owned deleting],
     resume: %i[go gone owned_by_tui live starting],
-    restart: %i[go gone owned_by_tui starting not_running fallback],
+    restart: %i[go gone owned_by_tui starting not_running fallback stop_marked],
     stop: %i[go gone owned_by_tui],
     archive: %i[go gone owned_by_tui starting],
     delete: %i[go owned_by_tui worker_running],
@@ -37,7 +37,7 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
 
   it "generates each delivery column from its WakePolicy row, decided on the canonical facts" do
     mapping = { start: :go, live: :go, starting: :wait, stopped: :wait, archived: :wait, none: :wait,
-                gone: :gone, owned: :owned }
+                gone: :gone, owned: :owned, deleting: :deleting }
     rows.each do |kind, policy|
       expected = lifecycle::STATES.to_h do |state|
         [state, mapping.fetch(policy.decide(lifecycle::CANONICAL.fetch(state), wake: true, load: nil))]
@@ -46,6 +46,7 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     end
     expect(allowed.fetch(:send).fetch(:stopped)).to eq(:go)
     expect(allowed.fetch(:ring).fetch(:stopped)).to eq(:wait)
+    expect(rows.keys.map { |kind| allowed.fetch(kind).fetch(:deleting) }).to all(eq(:deleting))
   end
 
   it "leaves WakePolicy::ROWS the same frozen table" do
@@ -92,6 +93,7 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     expect(lifecycle.verdict(:send, :go)).to eq(:go)
     expect(lifecycle.verdict(:ring, :wait)).to eq(:wait)
     expect(lifecycle.verdict(:send, :owned)).to eq(:refused)
+    expect(lifecycle.verdict(:send, :deleting)).to eq(:refused)
     expect(lifecycle.verdict(:resume, :live)).to eq(:wait)
     expect(lifecycle.verdict(:resume, :starting)).to eq(:wait)
     expect(lifecycle.verdict(:restart, :starting)).to eq(:refused)

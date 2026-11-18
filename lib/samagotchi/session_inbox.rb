@@ -94,6 +94,35 @@ module Samagotchi
       false
     end
 
+    # Take back a file a delivery wrote (an input, a note) once it read
+    # the session as being deleted (WakePolicy's :deleting, or gone) after
+    # its write: the delete took the lock between its check and its write.
+    # @return [Boolean] true when nobody has it: removed now, or gone with
+    #   the session (its folder, if the write made it again, is removed when
+    #   empty); false when a worker claimed it meanwhile (renamed to
+    #   .processing: the delete gave up and the file is delivered after all)
+    def self.withdraw(path, session_id, state_dir:)
+      removed = begin
+        File.delete(path)
+        true
+      rescue Errno::ENOENT
+        false
+      end
+      return removed if Session.exist?(session_id, state_dir: state_dir)
+
+      remove_left_folder(File.dirname(path), session_id, state_dir)
+      true
+    end
+
+    # A gone session's folder that a late write made again (mkdir_p),
+    # inbox folder first, both only while empty.
+    def self.remove_left_folder(inbox_dir, session_id, state_dir)
+      [inbox_dir, Session.session_dir(session_id, state_dir: state_dir)].each { |dir| Dir.rmdir(dir) }
+    rescue SystemCallError
+      nil
+    end
+    private_class_method :remove_left_folder
+
     # Queue a context note for a session: background text its worker adds
     # to the conversation between turns. It never starts a turn.
     # @param source [String] where it came from ("cli", "slack", "session")

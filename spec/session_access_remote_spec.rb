@@ -171,6 +171,19 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  # chi web answers a turn to a session being deleted with 409
+  # DeliverResult::DELETING: chi --remote send prints it as refused, in its
+  # one wording (an older chi reads it as a generic failure with that detail).
+  it "passes a session_deleting refusal through as refused, in its one wording" do
+    deleting = Samagotchi::SessionManager::DeliverResult::DELETING
+    access, = scripted([409, deleting])
+
+    result = access.deliver_turn("s", prompt: "hi", client_id: "cli:send", images: [])
+
+    expect(result).to have_attributes(status: :refused, code: 409, ack: deleting)
+    expect(result.refusal_text).to eq("refused: #{deleting["detail"]}")
+  end
+
   describe "a chain delete (chi --remote sessions delete --chain)" do
     it "names the feature chi web lists (Web::App::CHAIN_DELETE_FEATURE), and that chi web lists it" do
       expect(described_class::CHAIN_DELETE_FEATURE).to eq(Samagotchi::Web::App::CHAIN_DELETE_FEATURE)
@@ -316,6 +329,16 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect { remote.archive(scratch.id) }
         .to raise_error(Samagotchi::SessionManager::ArchiveRefused, "a scratch session is deleted when you leave; nothing to archive")
       expect { remote.restart(make.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
+    end
+
+    it "carries a stop marked as its own reason, in the words of this machine's chi" do
+      session = make
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      expect { remote.restart(session.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |error|
+        expect(error.reason).to eq(:stop_marked)
+        expect(error.message).to eq(Samagotchi::SessionManager::RestartRefused.words(session.id, :stop_marked))
+      }
     end
 
     it "carries fallback holds and prints the remote stop command" do

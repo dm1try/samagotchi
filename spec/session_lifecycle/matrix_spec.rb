@@ -34,11 +34,6 @@ module LifecycleMatrixFindings
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :tui && row.start && !row.stop },
                         reason: "F1b: busy_reason's `mode == CHAIN && presence.starting?` runs with no tui check: " \
                                 "a one-turn run's session with a fresh starting marker is worker_busy"),
-    # New: busy_reason's live-worker branch ends in a bare `nil`, not a return.
-    KnownDifference.new(op: :sched_chain, when: ->(row) { row.state == :live && row.start },
-                        reason: "busy_reason's worker_owned? branch ends in `nil` (no return), so an idle live " \
-                                "worker falls through to chain mode's starting check: with a fresh starting marker " \
-                                "(the window before Worker#start clears it) the firing is worker_busy"),
     # An owner of unknown kind (a lock record still blank) is booting; with a stop the stop-first readers say stopped.
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: WorkerLink reads a blank lock record as Starting (booting), " \
@@ -47,10 +42,6 @@ module LifecycleMatrixFindings
                         reason: "unknown owner: booting by its link, stopped by busy_reason's stop-first check"),
     KnownDifference.new(op: :attach, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: booting by its link, gone_stopped by LocalLink's stop-first check"),
-    # F2: restart_session never reads the stop marker.
-    KnownDifference.new(op: :restart, when: ->(row) { row.state == :stopping && row.link != :live },
-                        reason: "F2: restart_session never reads the stop marker: a stopping worker whose Bridge " \
-                                "doesn't answer is answered by its link (starting, fallback, not_running)"),
     # The start/stop order is a row fact: a start marked after the stop holds a resume off.
     KnownDifference.new(op: :resume, when: lambda(&:start_after_stop),
                         reason: "start_after_stop: StartingMarker.claim takes over only a start marked at or before " \
@@ -58,7 +49,7 @@ module LifecycleMatrixFindings
                                 "Session.clear_stopped) holds resume off: starting where ALLOWED's canonical (marked " \
                                 "before the stop) goes"),
     # New: wake_for_report folds the ring's :live into :owned.
-    KnownDifference.new(op: :ring, when: ->(row) { row.exists && %i[worker deleting unknown].include?(row.owner) },
+    KnownDifference.new(op: :ring, when: ->(row) { row.exists && %i[worker unknown].include?(row.owner) },
                         reason: "wake_for_report maps the ring's :live (a worker reads it) to :owned, the word of a " \
                                 "one-turn run's session: its caller can't tell the two apart"),
     # F3: the hub's liveness keys.

@@ -379,6 +379,28 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).not_to have_received(:kill)
     end
 
+    # A stop marked (chi sessions stop): a stopping worker leaves without a
+    # successor and a stopped session has none to hand over, so the restart
+    # is refused up front (ALLOWED[:restart]), in the stop's words.
+    it "refuses a session whose stop is marked before asking its worker, saying how it starts again" do
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |error|
+          expect(error.reason).to eq(:stop_marked)
+          expect(error.message).to include(described_class::DeliverResult::STOPPED["detail"])
+          expect(error.message).not_to include("SIGSTOP")
+        }
+      expect(client).not_to have_received(:request_exit)
+
+      allow(described_class).to receive(:session_owner).and_return(nil)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_call_original
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |error| expect(error.reason).to eq(:stop_marked) }
+    end
+
     it "is refused for a worker from before restarts, which it never asks" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar.with(features: [])))
       allow(client).to receive(:request_exit)

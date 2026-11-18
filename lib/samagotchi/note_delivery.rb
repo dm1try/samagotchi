@@ -48,16 +48,21 @@ module Samagotchi
     #   resolved already (SessionInbox::Head.resolve(:note, id)): no second walk
     # @return [Result]
     # @raise [SessionInbox::NoteRejected] an empty note or one over 16 KiB
-    # @raise [Session::NotFound] no such session
+    # @raise [Session::NotFound] no such session, or one being deleted
     def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil, pin: false,
                 resolved: nil)
       body = SessionInbox.checked_text(text)
+      path = nil
       delivered = SessionInbox.deliver(:note, id, state_dir: state_dir, pin: pin, resolved: resolved) do |at|
-        SessionInbox.write_note(at, text: body, source: source, from_session: from_session, from_cwd: from_cwd,
-                                    objectives: objectives, state_dir: state_dir)
+        path = SessionInbox.write_note(at, text: body, source: source, from_session: from_session, from_cwd: from_cwd,
+                                           objectives: objectives, state_dir: state_dir)
         false
       end
-      raise Session::NotFound, id if delivered.wake == :gone
+      # A session being deleted is a gone one; a delete that took its lock
+      # after the write gets the note back (unless a worker read it already).
+      raise Session::NotFound, id if delivered.wake == :gone ||
+                                     (delivered.wake == :deleting &&
+                                      (path.nil? || SessionInbox.withdraw(path, delivered.id, state_dir: state_dir)))
 
       Result.new(id: delivered.id, asked: delivered.asked, status: delivered.status, queued: delivered.queued || 0,
                  scratch: delivered.refused? && delivered.wake == :scratch)

@@ -303,7 +303,11 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).to have_received(:resume_session).once
     end
 
-    it "pins the known empty-discard/send window: a send is accepted under the deletion lock, then removed (docs/internals/session-lifecycle.md)" do
+    # The empty-discard/send window, closed (docs/internals/session-lifecycle.md,
+    # Open windows): a send under the deletion lock is refused, one that went
+    # in just before it keeps the session (its emptiness is read again under
+    # the lock). Nothing accepted is lost.
+    it "refuses a send under the empty-discard's deletion lock, in its one wording" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       worker = instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: true, wake_due?: false,
@@ -320,9 +324,30 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(:idle_exit)
-      expect(delivered).to have_attributes(status: :accepted, via: :file)
+      expect(delivered).to have_attributes(status: :refused, code: 409,
+                                           ack: described_class::DeliverResult::DELETING)
       expect(Samagotchi::Session.exist?(session.id, state_dir: tmpdir)).to be(false)
-      expect(Dir.exist?(File.join(tmpdir, session.id, "input"))).to be(false)
+      expect(Dir.exist?(File.join(tmpdir, session.id))).to be(false)
+    end
+
+    it "keeps the session when a send went in just before the empty-discard's deletion lock" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      worker = instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: true, wake_due?: false,
+                                                    default_model: "gemma4")
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, dir, **options|
+        if options[:kind] == Samagotchi::OwnerLock::DELETING && File.basename(dir) == session.id
+          described_class.write_turn_input(session.id, prompt: "arrived just before", client_id: "cli:send",
+                                                       state_dir: tmpdir)
+        end
+        original.call(dir, **options)
+      end
+
+      expect(Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)).to eq(:idle_exit)
+      expect(Samagotchi::Session.exist?(session.id, state_dir: tmpdir)).to be(true)
+      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      expect(Samagotchi::SessionInbox.find_new_input_files(session_dir).size).to eq(1)
     end
 
     # Lifecycle P10: a stop that lands as the worker leaves (after its last

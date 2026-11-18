@@ -87,13 +87,13 @@ RSpec.describe "SessionInbox.deliver" do
     expect(result).to have_attributes(id: link.id, asked: session.id, via: :head, wake: :woken)
   end
 
-  it "reads the owner through the caller's reader, with the id it decides on" do
+  it "reads the owner through the caller's reader, with the id it decides on, before the write and after" do
     asked = []
     expect(Samagotchi::OwnerLock).not_to receive(:owner)
 
     deliver(:ring, owner: ->(id) { (asked << id) && nil })
 
-    expect(asked).to eq([session.id])
+    expect(asked).to eq([session.id, session.id])
   end
 
   it "starts through SessionManager.start_for_inbox, logged as the kind's event, by default" do

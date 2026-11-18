@@ -195,8 +195,8 @@ module Samagotchi
       # landing between the check and the resume is a small window, left as
       # is. An archived parent with a later link wakes that link (one hop:
       # ChildReports reads its predecessor's rings, no further).
-      # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
-      #   :scratch, :owned, :starting)
+      # @return [Symbol] :woken, or why not (:gone, :deleting: a deleter
+      #   holds its lock, :stopped, :archived, :scratch, :owned, :starting)
       def wake_for_report(session_id, state_dir: nil)
         sd = state_dir || Session.default_state_dir
         outcome = SessionInbox.wake(:ring, session_id, state_dir: sd, owner: ->(id) { session_owner(id, state_dir: sd) }).wake
