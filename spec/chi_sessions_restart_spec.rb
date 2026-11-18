@@ -124,6 +124,17 @@ RSpec.describe "chi sessions restart" do
       expect(err).to eq("session #{session.id} has no running worker; the next prompt starts one on the newest chi\n")
     end
 
+    it "refuses a session whose stop is marked, saying how it starts again (the real thing, no stubs)" do
+      session = saved_session
+      Samagotchi::Session.mark_stopped(session.id, state_dir: Samagotchi::Session.default_state_dir)
+
+      _out, err, status = run_restart(session.id)
+
+      expect(status).to eq(1)
+      expect(err).to eq("session #{session.id} can't restart: " \
+                        "#{Samagotchi::SessionManager::DeliverResult::STOPPED["detail"]} (on the newest chi)\n")
+    end
+
     it "refuses a stopped (SIGSTOPped) real worker at once, saying how to continue it, and leaves it be" do
       session = saved_session
       spawn_unreachable_worker(session)

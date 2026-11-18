@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   is there (and the reverse); a bare name still matches either scope.
 - A message sent to a session while it is being deleted is refused ("the session is being deleted") instead of being
   reported delivered and then lost.
+- `chi sessions restart` (and the web's restart) of a stopped session, or one being stopped, is refused at once with
+  what to do, instead of waiting for a restart that never comes.
 
 ## [0.177.0] - 2026-11-17
 

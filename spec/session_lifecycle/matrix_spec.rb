@@ -42,10 +42,6 @@ module LifecycleMatrixFindings
                         reason: "unknown owner: booting by its link, stopped by busy_reason's stop-first check"),
     KnownDifference.new(op: :attach, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: booting by its link, gone_stopped by LocalLink's stop-first check"),
-    # F2: restart_session never reads the stop marker.
-    KnownDifference.new(op: :restart, when: ->(row) { row.state == :stopping && row.link != :live },
-                        reason: "F2: restart_session never reads the stop marker: a stopping worker whose Bridge " \
-                                "doesn't answer is answered by its link (starting, fallback, not_running)"),
     # The start/stop order is a row fact: a start marked after the stop holds a resume off.
     KnownDifference.new(op: :resume, when: lambda(&:start_after_stop),
                         reason: "start_after_stop: StartingMarker.claim takes over only a start marked at or before " \

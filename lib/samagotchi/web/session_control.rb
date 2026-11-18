@@ -480,7 +480,7 @@ module Samagotchi
       # {status: "restarted", session_id, from_version, version} (version nil:
       # the new worker is still starting; its bridge_up follows); 409
       # {error: "held" | "not_running" | "unsupported" | "failed", reason, detail} in words (a stopped
-      # worker: held, reason stopped, its pid); 409
+      # worker: held, reason stopped, its pid; a stop marked: held, reason stop_marked); 409
       # owned_by_tui; 404.
       def handle_restart(_req, id)
         result = @manager.restart_session(id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)

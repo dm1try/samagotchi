@@ -331,6 +331,16 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect { remote.restart(make.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
     end
 
+    it "carries a stop marked as its own reason, in the words of this machine's chi" do
+      session = make
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      expect { remote.restart(session.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |error|
+        expect(error.reason).to eq(:stop_marked)
+        expect(error.message).to eq(Samagotchi::SessionManager::RestartRefused.words(session.id, :stop_marked))
+      }
+    end
+
     it "carries fallback holds and prints the remote stop command" do
       session = make
       refusal = Samagotchi::SessionManager::RestartRefused.new(session.id, :fallback_held, holds: [:turn_running])
