@@ -171,6 +171,19 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  # chi web answers a turn to a session being deleted with 409
+  # DeliverResult::DELETING: chi --remote send prints it as refused, in its
+  # one wording (an older chi reads it as a generic failure with that detail).
+  it "passes a session_deleting refusal through as refused, in its one wording" do
+    deleting = Samagotchi::SessionManager::DeliverResult::DELETING
+    access, = scripted([409, deleting])
+
+    result = access.deliver_turn("s", prompt: "hi", client_id: "cli:send", images: [])
+
+    expect(result).to have_attributes(status: :refused, code: 409, ack: deleting)
+    expect(result.refusal_text).to eq("refused: #{deleting["detail"]}")
+  end
+
   describe "a chain delete (chi --remote sessions delete --chain)" do
     it "names the feature chi web lists (Web::App::CHAIN_DELETE_FEATURE), and that chi web lists it" do
       expect(described_class::CHAIN_DELETE_FEATURE).to eq(Samagotchi::Web::App::CHAIN_DELETE_FEATURE)

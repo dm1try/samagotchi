@@ -78,6 +78,10 @@ module Samagotchi
     # nothing else may resume, stop or delete it.
     def tui_owned? = owner&.tui? == true
 
+    # A deleter holds it (OwnerLock kind deleting: SessionManager's
+    # delete, an empty session's discard) while the session's files go.
+    def deleting? = owner&.deleting? == true
+
     # The `<id>/stopped` marker: a user's stop, not the turn's status.
     def stop_marked? = stop_marked
 

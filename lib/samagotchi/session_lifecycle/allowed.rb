@@ -7,11 +7,11 @@ module Samagotchi
   module SessionLifecycle
     # What a delivery's WakePolicy#decide outcome is as a cell: a worker
     # sees it (:live) or one is started (:start): go; it waits on disk for
-    # whoever runs the session next: wait; :gone and :owned are refusals.
-    # (:off and :scratch are op-local: a delivery that asks no worker, a
-    # scratch session's file.)
+    # whoever runs the session next: wait; :gone, :owned and :deleting (a
+    # deleter holds the lock) are refusals. (:off and :scratch are
+    # op-local: a delivery that asks no worker, a scratch session's file.)
     DELIVERY_CELLS = { start: :go, live: :go, starting: :wait, stopped: :wait, archived: :wait, none: :wait,
-                       gone: :gone, owned: :owned }.freeze
+                       gone: :gone, owned: :owned, deleting: :deleting }.freeze
 
     # The operations that are not inbox deliveries, in the order of LITERAL's
     # rows: resume_session, restart_session, stop_session, archive

@@ -58,7 +58,7 @@ module LifecycleMatrixFindings
                                 "Session.clear_stopped) holds resume off: starting where ALLOWED's canonical (marked " \
                                 "before the stop) goes"),
     # New: wake_for_report folds the ring's :live into :owned.
-    KnownDifference.new(op: :ring, when: ->(row) { row.exists && %i[worker deleting unknown].include?(row.owner) },
+    KnownDifference.new(op: :ring, when: ->(row) { row.exists && %i[worker unknown].include?(row.owner) },
                         reason: "wake_for_report maps the ring's :live (a worker reads it) to :owned, the word of a " \
                                 "one-turn run's session: its caller can't tell the two apart"),
     # F3: the hub's liveness keys.

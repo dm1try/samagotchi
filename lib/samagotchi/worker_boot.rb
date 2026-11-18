@@ -165,14 +165,17 @@ module Samagotchi
       end
 
       # Delete a session its worker left empty. Checked again now the lock is
-      # free: a note or input may have come in since the worker looked, and a
-      # worker woken meanwhile owns it (delete_session refuses). A `chi send`
-      # during the deleting lock can be accepted to input/ and removed with
-      # the directory; one after removal fails with "no session".
+      # free, and once more under the deleting lock (delete_session's
+      # still:): a note or input may have come in since the worker looked
+      # (one that went in before the lock keeps the session), and a worker
+      # woken meanwhile owns it (delete_session refuses). A delivery during
+      # the deleting lock is refused (DeliverResult::DELETING, its file taken
+      # back), one after removal finds no session.
       private def discard_left_session(session_id, state_dir:, default_model:)
-        return unless SessionManager.discardable?(session_id, state_dir: state_dir, default_model: default_model)
+        empty = -> { SessionManager.discardable?(session_id, state_dir: state_dir, default_model: default_model) }
+        return unless empty.call
 
-        SessionManager.delete_session(session_id, state_dir: state_dir, purge_runs: false)
+        SessionManager.delete_session(session_id, state_dir: state_dir, purge_runs: false, still: empty)
         Log.info(:worker, "discarded_empty", sid: session_id)
       rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
         Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)

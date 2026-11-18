@@ -54,8 +54,11 @@ module Samagotchi
     #   worker sees it: one runs, is starting or was started) or :waits (no
     #   worker comes: it waits for the next start)
     # @!attribute wake [Symbol] WakePolicy#decide's outcome, :woken for a
-    #   start made, or the refusal (:gone, :owned: a one-turn chi run's,
-    #   :scratch)
+    #   start made, or the refusal (:gone, :deleting: a deleter holds its
+    #   lock, :owned: a one-turn chi run's, :scratch). :deleting after the
+    #   write (status :waits) is a delete that took the lock meanwhile: the
+    #   file goes with the session (a caller that reports the delivery takes
+    #   it back, SessionInbox.withdraw)
     # @!attribute queued [Integer, nil] notes waiting (a note kind's), nil else
     Delivered = Data.define(:kind, :id, :asked, :via, :status, :wake, :queued) do
       def initialize(kind:, id:, asked:, via:, status:, wake:, queued: nil) = super
@@ -93,19 +96,22 @@ module Samagotchi
       def self.for_sender(client_id) = self.for(ClientId.wake_kind(client_id))
 
       # Why the delivery is refused before anything is written, else nil:
-      # :gone (no session), :owned (a one-turn chi run's), :scratch.
+      # :gone (no session), :deleting (a deleter holds its lock: what is
+      # written goes with it), :owned (a one-turn chi run's), :scratch.
       # @param load [#call, nil] the session, read only when the scratch
       #   flag decides (nil: not a scratch session)
       # @return [Symbol, nil]
       def refusal(presence, load: nil)
         return :gone unless presence.exists?
+        return :deleting if presence.deleting?
         return :owned if refuse_tui && presence.tui_owned?
 
         :scratch if refuse_scratch && scratch?(load)
       end
 
       # What the delivery means for the session's worker, in this order:
-      # :gone, :owned (a one-turn chi run's), :live (a worker holds it: it
+      # :gone, :owned (a one-turn chi run's), :deleting (a deleter holds the
+      # lock: the session is going, no worker sees it), :live (a worker holds it: it
       # sees the delivery), :stopped (the stop marker: the only "stopped",
       # the file's status never decides), :archived, :starting (a worker is
       # being started: it reads the store on its first pass), :none (the
@@ -118,6 +124,7 @@ module Samagotchi
       def decide(presence, wake: true, load: nil)
         return :gone unless presence.exists?
         return :owned if presence.tui_owned?
+        return :deleting if presence.deleting?
         return :live if presence.owned?
         return :stopped if presence.stop_marked? && !unstops
         return :archived if presence.archived? && !starts_archived
@@ -279,9 +286,10 @@ module Samagotchi
                                                                                     start: start)
       end
 
+      # Every kind reads the presence: a session being deleted refuses
+      # them all (WakePolicy#refusal).
       def refusal(policy, id, state_dir, owner)
         return :gone unless Session.exist?(id, state_dir: state_dir)
-        return nil unless policy.refuse_tui || policy.refuse_scratch
 
         policy.refusal(presence(id, state_dir, owner), load: -> { Session.load(id, state_dir: state_dir) })
       end

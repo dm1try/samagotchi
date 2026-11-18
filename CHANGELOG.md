@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - chi web: a participant's failed Verify turn comes back in their composer as a Verify turn, not plain text.
 - `/working-set add system/x` is no longer refused as "already in the system prompt" when only a project memory x
   is there (and the reverse); a bare name still matches either scope.
+- A message sent to a session while it is being deleted is refused ("the session is being deleted") instead of being
+  reported delivered and then lost.
 
 ## [0.177.0] - 2026-11-17
 

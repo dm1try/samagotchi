@@ -10,6 +10,7 @@ require "samagotchi/owner_lock"
 RSpec.describe Samagotchi::SessionInbox::WakePolicy do
   let(:worker) { Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker", started_at: nil) }
   let(:tui) { Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "tui", started_at: nil) }
+  let(:deleter) { Samagotchi::OwnerLock::Owner.new(pid: 1, kind: Samagotchi::OwnerLock::DELETING, started_at: nil) }
 
   def presence(**facts)
     Samagotchi::WorkerPresence.new(session_id: "s", exists: true, owner: nil, stop_marked: false,
@@ -21,7 +22,8 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
 
   # One column per presence and file: every kind's answer is read in each.
   def columns
-    { gone: [presence(exists: false)], tui: [presence(owner: tui)], owned: [presence(owner: worker)],
+    { gone: [presence(exists: false)], tui: [presence(owner: tui)], deleting: [presence(owner: deleter, stop_marked: true)],
+      owned: [presence(owner: worker)],
       stopped: [presence(stop_marked: true)], archived: [presence(archived: true)],
       starting: [presence(starting_marked: true)], scratch: [presence, file(scratch: true)], idle: [presence] }
   end
@@ -30,24 +32,24 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
 
   describe "#decide" do
     it "lets send start a stopped or archived session, and hold off a start pending" do
-      expect(row(:send)).to eq(gone: :gone, tui: :owned, owned: :live, stopped: :start, archived: :start,
+      expect(row(:send)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :start, archived: :start,
                                starting: :starting, scratch: :scratch, idle: :start)
     end
 
     it "never lets a note start a worker" do
-      expect(row(:note)).to eq(gone: :gone, tui: :owned, owned: :live, stopped: :stopped, archived: :archived,
+      expect(row(:note)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :archived,
                                starting: :starting, scratch: :none, idle: :none)
     end
 
     it "lets a push and a ring start an idle session only" do
-      expected = { gone: :gone, tui: :owned, owned: :live, stopped: :stopped, archived: :archived, starting: :starting,
+      expected = { gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :archived, starting: :starting,
                    scratch: :scratch, idle: :start }
       expect(row(:push)).to eq(expected)
       expect(row(:ring)).to eq(expected)
     end
 
     it "never lets a fresh verdict start a worker" do
-      expect(row(:fresh_verdict)).to eq(gone: :gone, tui: :owned, owned: :live, stopped: :stopped, archived: :archived,
+      expect(row(:fresh_verdict)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :archived,
                                         starting: :starting, scratch: :none, idle: :none)
     end
 
@@ -55,7 +57,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     # session as a send does, but a stop and an archive are the owner's.
     it "lets an unattended sender start an idle session only" do
       %i[schedule plugin delegate participant automatic].each do |kind|
-        expect(row(kind)).to eq(gone: :gone, tui: :owned, owned: :live, stopped: :stopped, archived: :archived,
+        expect(row(kind)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :archived,
                                 starting: :starting, scratch: :scratch, idle: :start)
       end
     end
@@ -63,7 +65,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     # WorkerBoot's respawn as a worker leaves: a stop wins (P10), input
     # left in an archived session still starts it.
     it "lets a worker's leave start its successor unless a stop landed, or another worker is up or coming" do
-      expect(row(:leave)).to eq(gone: :gone, tui: :owned, owned: :live, stopped: :stopped, archived: :start,
+      expect(row(:leave)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :start,
                                 starting: :starting, scratch: :scratch, idle: :start)
     end
 
@@ -83,7 +85,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
 
     it "reads the session file only to decide a start, after every marker" do
       load = -> { raise "read" }
-      %i[gone tui owned stopped archived starting].each do |column|
+      %i[gone tui deleting owned stopped archived starting].each do |column|
         expect { described_class.for(:ring).decide(columns.fetch(column).first, load: load) }.not_to raise_error, column.to_s
       end
 
@@ -96,12 +98,12 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
   describe "#refusal" do
     def refusals(kind) = columns.transform_values { |p, load| described_class.for(kind).refusal(p, load: load || file) }.compact
 
-    it "refuses send and a note for a one-turn run's or a scratch session, and every kind for a gone one" do
-      expect(refusals(:send)).to eq(gone: :gone, tui: :owned, scratch: :scratch)
-      expect(refusals(:note)).to eq(gone: :gone, tui: :owned, scratch: :scratch)
-      %i[push ring fresh_verdict].each { |kind| expect(refusals(kind)).to eq(gone: :gone) }
+    it "refuses send and a note for a one-turn run's or a scratch session, and every kind for a gone one or one being deleted" do
+      expect(refusals(:send)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
+      expect(refusals(:note)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
+      %i[push ring fresh_verdict].each { |kind| expect(refusals(kind)).to eq(gone: :gone, deleting: :deleting) }
       %i[schedule plugin delegate participant automatic].each do |kind|
-        expect(refusals(kind)).to eq(gone: :gone, tui: :owned, scratch: :scratch)
+        expect(refusals(kind)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       end
     end
   end

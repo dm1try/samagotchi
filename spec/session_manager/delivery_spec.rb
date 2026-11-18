@@ -453,6 +453,64 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files).to be_empty
     end
 
+    # A deleter holds the owner lock (kind deleting) while the session's
+    # files go: a send is refused (DeliverResult::DELETING), also when the
+    # lock came after its check (the bridge seam runs between the check and
+    # the write), and never reported accepted for a file the delete removes.
+    describe "a session being deleted" do
+      let(:deleting) { described_class::DeliverResult::DELETING }
+
+      before { allow(described_class).to receive(:resume_session) }
+
+      def send_it(bridge) = described_class.deliver_turn(session.id, client_id: "cli:send", prompt: "hi",
+                                                                      state_dir: tmpdir, bridge: bridge)
+
+      it "refuses a send before writing anything, in its one wording" do
+        own(Samagotchi::OwnerLock::DELETING)
+
+        result = send_it(-> { raise "a deleting session has no Bridge to ask" })
+
+        expect(result).to have_attributes(status: :refused, code: 409, ack: deleting)
+        expect(result.refusal_text).to eq("refused: #{deleting["detail"]}")
+        expect(input_files).to be_empty
+        expect(described_class).not_to have_received(:resume_session)
+      end
+
+      it "takes its file back and refuses when the deleting lock came after its check" do
+        result = send_it(lambda do
+          own(Samagotchi::OwnerLock::DELETING)
+          nil
+        end)
+
+        expect(result).to have_attributes(status: :refused, code: 409, ack: deleting)
+        expect(input_files).to be_empty
+      end
+
+      it "refuses, leaving no folder behind, when the session went between its check and its write" do
+        result = send_it(lambda do
+          FileUtils.rm_f(Samagotchi::Session.session_file(session.id, state_dir: tmpdir))
+          FileUtils.rm_rf(session_dir)
+          nil
+        end)
+
+        expect(result).to have_attributes(status: :refused, ack: deleting)
+        expect(Dir.exist?(session_dir)).to be(false)
+      end
+
+      it "stays accepted when a worker claimed the file before the send could take it back" do
+        allow(described_class).to receive(:write_turn_input).and_wrap_original do |original, *args, **options|
+          original.call(*args, **options).tap { |path| File.rename(path, "#{path}.processing") }
+        end
+
+        result = send_it(lambda do
+          own(Samagotchi::OwnerLock::DELETING)
+          nil
+        end)
+
+        expect(result).to have_attributes(status: :accepted, via: :file)
+      end
+    end
+
     it "wakes a worker for a session nobody owns" do
       allow(Process).to receive(:spawn).and_return(20_002)
       # The first worker is gone by the write (it idle-exited): its waiter is

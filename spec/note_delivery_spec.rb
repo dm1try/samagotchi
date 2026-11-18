@@ -103,6 +103,27 @@ RSpec.describe Samagotchi::NoteDelivery do
     end
   end
 
+  # Its owner lock held as deleting (SessionManager.delete_session, an
+  # empty session's discard): a note goes as a gone session's does.
+  it "says a session being deleted is gone, writing nothing" do
+    going = make(owner: Samagotchi::OwnerLock::DELETING)
+
+    expect { deliver(going) }.to raise_error(Samagotchi::Session::NotFound)
+    expect(notes_of(going)).to eq([])
+  end
+
+  it "takes its note back when the delete took the lock between the check and the write" do
+    going = make
+    dir = Samagotchi::Session.session_dir(going.id, state_dir: tmpdir)
+    allow(Samagotchi::SessionInbox).to receive(:write_note).and_wrap_original do |original, *args, **options|
+      locks << Samagotchi::OwnerLock.acquire(dir, kind: Samagotchi::OwnerLock::DELETING)
+      original.call(*args, **options)
+    end
+
+    expect { deliver(going) }.to raise_error(Samagotchi::Session::NotFound)
+    expect(notes_of(going)).to eq([])
+  end
+
   it "says the session is gone, writing nothing" do
     expect do
       described_class.deliver("00000000-0000-0000-0000-000000000000", text: "x", source: "cli", state_dir: tmpdir)

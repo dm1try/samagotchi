@@ -195,8 +195,12 @@ module Samagotchi
       #   (:continuing) while a continue of the session is in flight
       # @raise [DeleteRefused] also :scheduled for a schedule's anchor or
       #   head, and with the keywords :continuing and :delegate_unmovable
+      # @param still [#call, nil] the caller's own check, read again under
+      #   the deleting lock (#remove_files; DeleteRefused :changed when it no
+      #   longer holds): an empty session's discard. Not with the chain keywords.
       def delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true,
-                         allow_scheduled: false, revive_previous: false, refuse_continuing: false, expect: nil)
+                         allow_scheduled: false, revive_previous: false, refuse_continuing: false, expect: nil,
+                         still: nil)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         # Only a plain id: anything else could name a path outside the state dir.
@@ -214,7 +218,8 @@ module Samagotchi
                                                refuse_continuing: refuse_continuing, expect: expect)
         end
 
-        delete_resolved(id, state_dir: sd, stop: stop, wait: wait, purge_runs: purge_runs, allow_scheduled: allow_scheduled)
+        delete_resolved(id, state_dir: sd, stop: stop, wait: wait, purge_runs: purge_runs, allow_scheduled: allow_scheduled,
+                            still: still)
       end
 
       # Delete every link of +id+'s chain with their delegates
@@ -241,14 +246,15 @@ module Samagotchi
       # the schedule refusal, the one-turn run, the worker (stopped with
       # +stop+), then #remove_files. SessionChain::Delete's last step.
       # @return [Hash] {id:, removed:, stopped:}
-      def delete_resolved(id, state_dir:, stop: false, wait: STOP_WAIT, purge_runs: true, allow_scheduled: false)
+      def delete_resolved(id, state_dir:, stop: false, wait: STOP_WAIT, purge_runs: true, allow_scheduled: false,
+                          still: nil)
         sd = state_dir
         path = Session.session_file(id, state_dir: sd)
         dir = Session.session_dir(id, state_dir: sd)
         refuse_scheduled!(id, sd) unless allow_scheduled
 
         held = release_for_delete!(id, state_dir: sd, stop: stop, wait: wait)
-        removed = remove_files(id, path, dir, state_dir: sd, purge_runs: purge_runs)
+        removed = remove_files(id, path, dir, state_dir: sd, purge_runs: purge_runs, still: still)
         { id: id, removed: removed, stopped: held }
       end
 
