@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "approvals": [
+    {
+      "scope": "session",
+      "tool": "execute",
+      "rule": "git-push",
+      "source": "config",
+      "created_at": "2026-01-01T00:00:00Z",
+      "session_id": "compat-session",
+      "key": "execute:git push origin main",
+      "repo_root": "/compat-fixture"
+    },
+    {
+      "scope": "rule",
+      "tool": "execute",
+      "rule": "rm-recursive",
+      "source": "config",
+      "created_at": "2026-01-01T00:00:00Z",
+      "repo_root": "/compat-fixture"
+    }
+  ]
+}
