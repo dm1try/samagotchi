@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions restart` (and the web's restart) of a stopped session, or one being stopped, is refused at once with
   what to do, instead of waiting for a restart that never comes.
 
+Update with `chi update`.
+
 ## [0.177.0] - 2026-11-17
 
 ### Added
