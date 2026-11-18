@@ -3,9 +3,10 @@
 There is no persisted lifecycle enum. A state is derived from the session file, sidecar files, locks, and the worker
 link: `SessionLifecycle.read(id)` (`session_lifecycle.rb`) reads them once (`WorkerPresence` with its link looked at,
 never unlinked, and `ContinueIntent.in_flight`) and names the first of its 15 states whose facts hold (Derived states).
-The same session can satisfy more than one fact (archived while its worker is leaving); the precedence picks one. No
-decider reads `SessionLifecycle` yet: each still reads its own subset of the facts in its own order, and what each
-answers per state is `ALLOWED` (Allowed operations), pinned by the characterization matrix. The session file layout and user-facing session behavior are in [Sessions](../sessions.md); the Worker and
+The same session can satisfy more than one fact (archived while its worker is leaving); the precedence picks one. One
+decider reads `SessionLifecycle`: `restart_session`'s precheck (Allowed operations). The others still read their own
+subset of the facts in their own order, and what each answers per state is `ALLOWED` (Allowed operations), pinned by
+the characterization matrix. The session file layout and user-facing session behavior are in [Sessions](../sessions.md); the Worker and
 SessionManager boundaries are in [Architecture](../architecture.md) and [Engine internals](engine.md).
 
 ## Facts and markers
@@ -40,7 +41,7 @@ These are reader labels, not stored values:
 |---|---|
 | `absent` | No session file; a leftover sidecar directory may still exist (its facts are ignored). |
 | `tui_owned` | `owner.lock` held with kind `tui` (a one-shot `chi -p --non-interactive` owns it): an in-process one-turn host, not a worker. Wins over a stop, a start, an archive. |
-| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). |
+| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). Every delivery is refused (`WakePolicy`'s `:deleting`). |
 | `stopping` | A worker holds the lock and the `stopped` marker exists, whatever its link. |
 | `skew` | A worker holds the lock and its sidecar speaks a newer protocol (`WorkerLink::Skew`). |
 | `leaving` | The worker closed its Bridge and still holds the lock (`leaving_at`, `WorkerLink::Leaving`). |
@@ -75,16 +76,32 @@ state. A cell is `:go`, `:wait` or the decider's own refusal reason; `SessionLif
 - **Delivery columns** (send, note, push, ring, fresh_verdict, leave, schedule, plugin, delegate, participant,
   automatic) are generated at load from `SessionInbox::WakePolicy::ROWS`, unchanged: each row's `decide` on
   `CANONICAL[state]` (a worker asked for, no scratch file), `:start`/`:live` as go, `:starting`/`:stopped`/
-  `:archived`/`:none` as wait, `:gone`/`:owned` as themselves. `:off` and `:scratch` are op-local.
-- **Literal columns** (`LITERAL`): resume (`resume_session`), restart (`restart_session`), stop (`stop_session`),
+  `:archived`/`:none` as wait, `:gone`/`:owned`/`:deleting` as themselves. `:off` and `:scratch` are op-local.
+  `deleting` refuses every kind: `WakePolicy#refusal` before the write (nothing written), `#decide` after it (a
+  delete that took the lock between the two). What each kind does then: a turn delivery (`deliver_turn`, any sender)
+  answers 409 `DeliverResult::DELETING` ("the session is being deleted") and after its write takes its file back
+  (`SessionInbox.withdraw`; a file a worker claimed meanwhile stays delivered), also when the session went while it
+  wrote (and a folder the write made again goes); a note is a gone session's (`Session::NotFound`, its note taken
+  back); a ring, a push and a fresh verdict are refused before their write as for a gone parent (a push records to
+  its source's folder as for a gone session), and `wake_for_report` answers `:deleting`; a leave's respawn drops
+  (`why: deleting`).
+- **Literal columns** (`LITERAL`): resume (`resume_session`), restart (`restart_session`: `stop_marked` in every
+  state with the stop marked: stopping, stopped, stopped_starting), stop (`stop_session`),
   archive (`archivable!`), delete (`release_for_delete!`, without a stop), sched_chain and sched_same
   (`Schedules#busy_reason`; `worker_busy` is "its worker is starting or leaving") and attach
   (`TerminalUI::LocalLink#live_worker`: `gone_stopped`, `gone_worker_newer`). They assume neutral op-local facts: not
   scratch, saved status idle, no `input/`, no question or offer, not SIGSTOPped, features restart and activity, an idle
   worker with no streams. Absent's delete and schedule cells are unreachable (a gone session is refused first).
 
-Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outside: the cells are the link's own. No
-decider reads `ALLOWED` yet.
+Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outside: the cells are the link's own.
+
+`restart_session` is the first decider migrated to the table: its lifecycle precheck is `SessionLifecycle.read` (the
+owner read through `session_owner`) and `ALLOWED[:restart]`: `owned_by_tui` raises `OwnedByTUI`, a refusal cell
+raises `RestartRefused` with it as the reason (`starting`, `not_running`, `stop_marked`), `fallback` goes to
+`restart_fallback` (skew, a stuck start) and `go` asks the live worker. Its op-local checks stay where they were: the
+SIGSTOP check (`:stopped`, the worker's pid: a different condition with its own words, before the table's refusal),
+the worker's `restart` feature, the Bridge's reply and the fallback's holds. The matrix still drives it, so its
+column is pinned against the precheck and the op-local paths together. The other deciders don't read `ALLOWED` yet.
 
 ## Characterization matrix
 
@@ -102,9 +119,10 @@ Every answer must equal `ALLOWED[op][state]` (for the session hub, `SHOWN[state]
 status and bridge_up, its `SessionRow`'s live), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
 over the row, a plain reason); an entry that names no mismatch fails as stale. The entries are the findings for the
 owner, not fixed: stop-first schedule and attach checks under a one-turn run's, a deleter's or an unknown owner's lock;
-chain mode's starting check before any one-turn-run check; restart never reading the stop; a start marked after the
-stop holding a resume off; `wake_for_report` reporting a worker's `:live` as `:owned`; `busy_reason`'s live branch
-falling through to the starting check; the hub's bridge_up, live and status overlay. The delivery columns are
+chain mode's starting check before any one-turn-run check; a start marked after the stop holding a resume off;
+`wake_for_report` reporting a worker's `:live` as `:owned`; the hub's bridge_up, live and status overlay. (Restart
+never reading the stop and `busy_reason`'s live branch falling through to the starting check were fixed: their
+entries went stale and were removed.) The delivery columns are
 generated from `WakePolicy::ROWS`, so for deliveries the matrix proves the states are drawn right (decide is a function
 of the state), not what WakePolicy does; the literal columns and `SHOWN` are goldens.
 
@@ -129,7 +147,7 @@ These are documented race boundaries, not promises of an atomic lifecycle transi
 | Window | Code comment / current behavior | Pin |
 |---|---|---|
 | A ring wake decides to start, then a stop lands before resume. | `SpawnPart#wake_for_report` (`session_manager/spawn.rb`): `resume_session` can clear that stop and start; the check and resume are not one transaction. | Unit spec: stop in the start callback and assert the worker is started and the marker cleared. |
-| Empty-session discard races a send. | `WorkerBoot#discard_left_session` (`worker_boot.rb`): it rechecks emptiness after releasing the worker lock, then deletes. A send during the deletion lock can be accepted to `input/` and then removed with the directory; one after removal fails because the session is gone. | Unit spec: deliver at deletion-lock acquisition and pin the accepted-but-removed input. |
+| Empty-session discard races a delivery (closed for turns and notes). | `WorkerBoot#discard_left_session` (`worker_boot.rb`) checks emptiness after releasing the worker lock and again under the deletion lock (`delete_session`'s `still:`): a send or note that went in before the lock keeps the session. One that reads the session during the lock is refused (`DeliverResult::DELETING`, a note as gone); one that read it before the lock and wrote after it reads it again after its write and takes its file back (`SessionInbox.withdraw`), so no turn or note is reported delivered and then removed. No new lock: the write-then-reread and the recheck under the existing deletion lock close it. What remains: a ring or fresh verdict that read the session before the lock and wrote after it is not taken back: it goes with the directory, or stays for the next worker if the delete gives up; neither is reported to a person. | `run_session_loop_spec.rb`: a send at deletion-lock acquisition is refused; one just before the lock keeps the session. `delivery_spec.rb` / `note_delivery_spec.rb`: the lock (or the removal) between the check and the write, deterministic through the bridge / writer seam. |
 | Stop reads an owner pid, then sends TERM. | `LifecyclePart#stop_session` (`session_manager/lifecycle.rb`): the pid can be reused between the owner read and `Process.kill`; protecting that requires a real pid-reuse scenario. | No unit pin: pid reuse/process signaling is not reliably representable without real processes. |
 | Saved `status` is used as a lifecycle hint. | `LifecyclePart#restart_fallback_holds` and `RemovalPart#archive_refusal` (`session_manager/lifecycle.rb`, `session_manager/removal.rb`) use saved `running` status as a busy hint; status is not a lock or proof that a worker is alive. | Unit spec: pin fallback refusal from saved status without a live Bridge. |
 | Stop/start ordering depends on wall-clock `at`. | `SpawnPart#claim_start` and `StartingMarker#claim` (`session_manager/spawn.rb`, `starting_marker.rb`) compare `starting.at` with `Session.stopped_at`; same-time starts are treated as before the stop. Clock adjustments across processes are not serialized. | Unit spec: pin the inclusive `at <= over_before` takeover boundary. |
