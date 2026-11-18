@@ -26,7 +26,24 @@ module Samagotchi
     autoload :CANONICAL, File.expand_path("session_lifecycle/canonical", __dir__)
     autoload :ALLOWED, File.expand_path("session_lifecycle/allowed", __dir__)
 
+    # The cell words that are no refusal, per operation: a resume that finds
+    # a worker there or one being started waits for it; a restart's
+    # fallback (an unresponsive worker's path) goes.
+    VERDICT_WORDS = { resume: { live: :wait, starting: :wait }, restart: { fallback: :go } }.freeze
+
     module_function
+
+    # @return [Symbol] the cell of +op+ in +state+ (ALLOWED)
+    def allowed(op, state) = ALLOWED.fetch(op).fetch(state)
+
+    # A cell as :go, :wait or :refused: :go and :wait are themselves, an
+    # operation's own words (VERDICT_WORDS) theirs, every other a refusal.
+    # @return [Symbol]
+    def verdict(op, cell)
+      return cell if %i[go wait].include?(cell)
+
+      VERDICT_WORDS.fetch(op, {}).fetch(cell, :refused)
+    end
 
     # Read +session_id+'s state now.
     # @param state_dir [String, nil] nil: Session.default_state_dir
