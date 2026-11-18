@@ -1002,7 +1002,9 @@ module Samagotchi
         # an open session is fine, so same mode does not count streams.
         return [:skip, "a terminal or a web tab is open on it"] if entry.mode == CHAIN && activity[:open_streams].to_i.positive?
 
-        nil
+        # An idle live worker: free, whatever a starting marker its own
+        # start left (Worker#start clears it just after the lock).
+        return nil
       end
       # A worker being started for it holds no lock yet (another ticker's
       # firing just continued the chain to it, a resume): a chain firing

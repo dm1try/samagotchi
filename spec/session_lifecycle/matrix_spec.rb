@@ -34,11 +34,6 @@ module LifecycleMatrixFindings
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :tui && row.start && !row.stop },
                         reason: "F1b: busy_reason's `mode == CHAIN && presence.starting?` runs with no tui check: " \
                                 "a one-turn run's session with a fresh starting marker is worker_busy"),
-    # New: busy_reason's live-worker branch ends in a bare `nil`, not a return.
-    KnownDifference.new(op: :sched_chain, when: ->(row) { row.state == :live && row.start },
-                        reason: "busy_reason's worker_owned? branch ends in `nil` (no return), so an idle live " \
-                                "worker falls through to chain mode's starting check: with a fresh starting marker " \
-                                "(the window before Worker#start clears it) the firing is worker_busy"),
     # An owner of unknown kind (a lock record still blank) is booting; with a stop the stop-first readers say stopped.
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: WorkerLink reads a blank lock record as Starting (booting), " \
