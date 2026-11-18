@@ -1,8 +1,11 @@
 # Session lifecycle
 
-There is no persisted lifecycle enum. A decision derives a state from the session file, sidecar files, locks, and the
-worker link it observes; the same session can satisfy more than one label (for example, archived while its worker is
-leaving). The session file layout and user-facing session behavior are in [Sessions](../sessions.md); the Worker and
+There is no persisted lifecycle enum. A state is derived from the session file, sidecar files, locks, and the worker
+link: `SessionLifecycle.read(id)` (`session_lifecycle.rb`) reads them once (`WorkerPresence` with its link looked at,
+never unlinked, and `ContinueIntent.in_flight`) and names the first of its 15 states whose facts hold (Derived states).
+The same session can satisfy more than one fact (archived while its worker is leaving); the precedence picks one. No
+decider reads `SessionLifecycle` yet: each still reads its own subset of the facts in its own order, and what each
+answers per state is `ALLOWED` (Allowed operations), pinned by the characterization matrix. The session file layout and user-facing session behavior are in [Sessions](../sessions.md); the Worker and
 SessionManager boundaries are in [Architecture](../architecture.md) and [Engine internals](engine.md).
 
 ## Facts and markers
@@ -29,22 +32,81 @@ and entire sidecar directory.
 
 ## Derived states
 
-These are reader/decision labels, not stored values:
+`SessionLifecycle::STATES`, in precedence order (the first whose facts hold wins), as `Reading.derive` names them from a
+`WorkerPresence` read with its link (`SessionLifecycle::Reading`: `state`, `presence` (also `facts`), `continuing`).
+These are reader labels, not stored values:
 
-| Label | Facts that produce it |
+| State | Facts that produce it |
 |---|---|
-| absent | No session file; a leftover sidecar directory may still exist. |
-| starting | A fresh `starting` marker names a live starter, usually before a worker has the owner lock. |
-| booting | A worker holds `owner.lock`, but has not published its matching Bridge sidecar (`WorkerLink::Starting`). |
-| live | A worker holds `owner.lock` and its sidecar matches the owner (`WorkerLink::Live`). |
-| leaving | The worker's Bridge is closed but its owner lock remains held; `leaving_at` bounds its last work. |
-| idle with no worker | The session exists, has no owner and no fresh start, and its saved turn status is idle. |
-| stopped | The `stopped` marker exists; a worker may still be shutting down. |
-| archived | `archived` has `archived_at`; this can overlap a worker's shutdown. |
-| continuing | `continue.json` names a successor and `continue.lock` is held. |
-| deleting | `owner.lock` is held with kind `deleting` while session files are removed. |
-| one-shot owned | `owner.lock` is held with kind `tui`; this is an in-process one-turn host, not a worker. |
-| crashed leftovers | No owner lock remains, but a stale Bridge sidecar, checkpoint, `.processing` file, or unlocked continue intent can remain. |
+| `absent` | No session file; a leftover sidecar directory may still exist (its facts are ignored). |
+| `tui_owned` | `owner.lock` held with kind `tui` (a one-shot `chi -p --non-interactive` owns it): an in-process one-turn host, not a worker. Wins over a stop, a start, an archive. |
+| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). |
+| `stopping` | A worker holds the lock and the `stopped` marker exists, whatever its link. |
+| `skew` | A worker holds the lock and its sidecar speaks a newer protocol (`WorkerLink::Skew`). |
+| `leaving` | The worker closed its Bridge and still holds the lock (`leaving_at`, `WorkerLink::Leaving`). |
+| `booting_stuck` | A worker has held the lock past `WorkerLink::START_LIMIT` without its sidecar (`Starting`, stuck). |
+| `booting` | A worker holds the lock without its matching sidecar yet (`Starting`); also an owner of unknown kind (a lock record still blank after `OWNER_READ_ATTEMPTS`). |
+| `live` | A worker holds the lock and its sidecar matches it (`WorkerLink::Live`). |
+| `stopped_starting` | No owner; the `stopped` marker and a fresh `starting` marker (archived or not). |
+| `stopped` | No owner; the `stopped` marker (archived or not). |
+| `archived_starting` | No owner, no stop; `archived` and a fresh `starting` marker. |
+| `starting` | No owner, no stop, not archived; a fresh `starting` marker names a live starter. |
+| `archived` | No owner, no stop, no start; `archived` has `archived_at`. |
+| `idle` | The session exists with none of the above. |
+
+The compound states exist because the deciders disagree on precedence: owner first (WakePolicy, resume, archive,
+delete) or stop first (a schedule's busy check, a terminal's attach); WakePolicy reads archived before starting. Facts
+that are not states: `continuing` (`continue.json` names a successor and `continue.lock` is held: only a send's and a
+schedule's link resolution reads it), a stale sidecar (`WorkerLink::Stale`: a crashed worker's leftover, reads as
+the no-owner state), and the other crashed leftovers (a checkpoint, a `.processing` file, an unlocked continue intent).
+`SessionLifecycle::CANONICAL` holds the fewest facts per state, each deriving back to it; `stopping` is a worker whose
+Bridge answers, with a stop, and `stopped_starting` a start marked before the stop.
+
+A read costs what `WorkerPresence.read(link: :look)` costs plus a `continue.json` stat: idle about 8 probes and one
+flock, no JSON (~20–50 µs); a live worker adds the owner record and `bridge.json` (~0.1–0.2 ms); a continue in flight a
+lock probe and its JSON. The worst case is `OwnerLock.owner`'s blank-record retry (0.1 s).
+
+## Allowed operations
+
+`SessionLifecycle::ALLOWED` (`session_lifecycle/allowed.rb`) is `{op => {state => cell}}`: every operation in every
+state. A cell is `:go`, `:wait` or the decider's own refusal reason; `SessionLifecycle.verdict(op, cell)` reads it as
+`:go`, `:wait` or `:refused` (resume's `live` and `starting` wait, restart's `fallback` goes).
+
+- **Delivery columns** (send, note, push, ring, fresh_verdict, leave, schedule, plugin, delegate, participant,
+  automatic) are generated at load from `SessionInbox::WakePolicy::ROWS`, unchanged: each row's `decide` on
+  `CANONICAL[state]` (a worker asked for, no scratch file), `:start`/`:live` as go, `:starting`/`:stopped`/
+  `:archived`/`:none` as wait, `:gone`/`:owned` as themselves. `:off` and `:scratch` are op-local.
+- **Literal columns** (`LITERAL`): resume (`resume_session`), restart (`restart_session`), stop (`stop_session`),
+  archive (`archivable!`), delete (`release_for_delete!`, without a stop), sched_chain and sched_same
+  (`Schedules#busy_reason`; `worker_busy` is "its worker is starting or leaving") and attach
+  (`TerminalUI::LocalLink#live_worker`: `gone_stopped`, `gone_worker_newer`). They assume neutral op-local facts: not
+  scratch, saved status idle, no `input/`, no question or offer, not SIGSTOPped, features restart and activity, an idle
+  worker with no streams. Absent's delete and schedule cells are unreachable (a gone session is refused first).
+
+Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outside: the cells are the link's own. No
+decider reads `ALLOWED` yet.
+
+## Characterization matrix
+
+`spec/session_lifecycle/matrix_spec.rb` (rows, files and drivers in `spec/support/lifecycle_matrix.rb`) writes every
+combination as real files: owner/link pairs (none, stale sidecar, tui, tui with a stale sidecar, deleting, a worker
+Live, Starting, stuck, Leaving, Skew, an owner of unknown kind) × stop × starting × archived, one absent session, a
+continue in flight on each archived no-owner row, and a start marked after the stop on each no-owner row with both
+(the order is a row fact: `StartingMarker.claim` takes over only a start at or before `stopped_at`). The owner lock's
+holder, `ContinueIntent.in_flight`, `Process.spawn`, TERM/CONT, the Bridge and the restart fallback are stubbed; no
+process starts. Each row checks that `SessionLifecycle.read` names the state its facts derive, then drives every
+operation (one driver each, every private reach in that one file) and projects its answer into a cell. A row the
+code can't make (a one-turn run's lock with a stop) is marked `reachable: false` with its note and still asserted.
+
+Every answer must equal `ALLOWED[op][state]` (for the session hub, `SHOWN[state]`: `Web::SessionSummary.build`'s
+status and bridge_up, its `SessionRow`'s live), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
+over the row, a plain reason); an entry that names no mismatch fails as stale. The entries are the findings for the
+owner, not fixed: stop-first schedule and attach checks under a one-turn run's, a deleter's or an unknown owner's lock;
+chain mode's starting check before any one-turn-run check; restart never reading the stop; a start marked after the
+stop holding a resume off; `wake_for_report` reporting a worker's `:live` as `:owned`; `busy_reason`'s live branch
+falling through to the starting check; the hub's bridge_up, live and status overlay. The delivery columns are
+generated from `WakePolicy::ROWS`, so for deliveries the matrix proves the states are drawn right (decide is a function
+of the state), not what WakePolicy does; the literal columns and `SHOWN` are goldens.
 
 ## Locks and crash repair
 
@@ -81,4 +143,7 @@ These are documented race boundaries, not promises of an atomic lifecycle transi
 3. Identify every decider that reads the fact and how it observes the change (lock probe, direct read, poll, or SSE).
 4. If the change touches an open window above, extend its pin in the corresponding unit spec; don't hide a race with a
    sleep or a process-wide integration test.
-5. Recheck lock order, crash cleanup, and the existing file-format/compatibility specs before changing runtime behavior.
+5. If the fact changes a state, update `SessionLifecycle::STATES`/`Reading.derive` and `CANONICAL`, then the
+   `ALLOWED` cells (the literal ones by hand; the delivery ones follow `WakePolicy::ROWS`) and the matrix's rows; a
+   decider that answers otherwise is a `KNOWN_DIFFERENCES` entry with its reason, never a silent cell change.
+6. Recheck lock order, crash cleanup, and the existing file-format/compatibility specs before changing runtime behavior.
