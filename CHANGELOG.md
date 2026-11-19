@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi no longer reads a guardrail approvals.json list written by chi 0.166 and before (set aside with a warning; allow
+  again what you need), or a session's cards.json from before 0.151.0 (earlier cards don't show).
+
 ## [0.177.1] - 2026-11-19
 
 ### Fixed

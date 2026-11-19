@@ -121,7 +121,7 @@ looks in the store): an owner's ask uses every scope; a [participant's turn](#a-
 (`Verdict#fresh_ask`) uses none.
 The file is a versioned store (`{"version": 1, "approvals": [...]}`, `Approvals::FORMAT`); a write keeps its version,
 the keys this chi doesn't know and an entry with no `scope`. A bare list of entries, as chi 0.166 and before wrote it,
-is read and converted to a versioned store on the next write. Chi 0.165 and before set a versioned store aside, so restart their sessions
+is now set aside like an unreadable file. Chi 0.165 and before set a versioned store aside, so restart their sessions
 (`chi sessions restart`); a downgrade to 0.165 or before moves the store to a recoverable `approvals.json.corrupt-*`.
 A file that doesn't parse, or a versioned store whose `approvals` isn't a list, is moved aside to
 `approvals.json.corrupt-<UTC time>` with one warning, and chi starts with no stored approvals (more asks, nothing lost).

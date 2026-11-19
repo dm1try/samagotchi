@@ -1328,41 +1328,15 @@ RSpec.describe "Cards" do
       def v1(turns:, entries:, **extra) = File.write(path, JSON.generate({ version: 1, turns: turns, entries: entries, **extra }))
       def old(id, turns, **rest) = { type: "card", id: id, source: "b", title: id, body: "", in_turn: false, actions: [], turns: turns, **rest }
 
-      it "keeps its places, with no running turn: a new opening adds 1; the next save writes version 2" do
-        v1(turns: 3, entries: [old("a", 1), old("b", 3), old("own", 2, in_turn: true)])
-        expect(saved.map { |c| [c[:id], c[:turns_since], c[:current]] }).to eq([["a", 2, false], ["b", 0, false], ["own", 0, false]])
-        expect(JSON.parse(File.read(path))["version"]).to eq(1) # a read writes nothing
+      it "loads no earlier entries and can write a version 2 file" do
+        v1(turns: 2, entries: [old("old", 1)])
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+        expect(store.list).to eq([])
 
-        later = Samagotchi::Bridge::CardStore.new(path: path)
-        turn(:turn_started, on: later)
-        expect(JSON.parse(File.read(path))).to include("version" => 2, "turn_log" => ["t1"])
-        expect(listed(later).map { |c| [c[:id], c[:current]] }).to eq([["a", false], ["b", false], ["own", false]])
-        turn(:turn_completed, on: later)
-        expect(listed(later).map { |c| c[:turns_since] }).to eq([3, 1, 1])
-        expect(saved.map { |c| c[:turns_since] }).to eq([3, 1, 1])
-      end
-
-      it "counts a turn the file says its worker was killed in, and a :during card after it" do
-        v1(turns: 2, running: true, entries: [old("before", 2), old("btw", 2, during: true), old("own", 2, in_turn: true)])
-        expect(saved.map { |c| [c[:id], c[:turns_since], c[:current]] }).to eq([["before", 1, false], ["btw", 0, false], ["own", 0, false]])
-        expect(saved[1]).not_to have_key(:during)
-      end
-
-      it "never reads an old in-turn entry as left nothing: it has no id to check" do
-        v1(turns: 1, entries: [old("own", 0, in_turn: true, actions: [{ label: "Go", command: "/go" }]),
-                               { type: "hook_notice", hook: "h", text: "row", in_turn: true, iteration: 2, calls: 0, turns: 0 }])
-        expect(saved).to contain_exactly(include(id: "own", in_turn: true, actions: [], turns_since: 0, current: false),
-                                         include(text: "row", in_turn: true, iteration: 2, turns_since: 0, current: false))
-      end
-
-      it "skips an entry with no integer turns; a card replaced later keeps its place" do
-        v1(turns: 2, entries: [old("a", 1), { type: "card", id: "x" }])
-        later = Samagotchi::Bridge::CardStore.new(path: path)
-        later.call(card("a").merge(in_turn: false))
-        expect(listed(later).map { |c| [c[:id], c[:turns_since]] }).to eq([["a", 1]])
-        expect(JSON.parse(File.read(path))["entries"].first).to include("base_since" => 1)
-        # Counted from an older file: no stamp, the page counts.
-        expect(listed(later).first).not_to have_key(:opening_id)
+        store.call(card("new").merge(in_turn: false))
+        data = JSON.parse(File.read(path))
+        expect(data).to include("version" => 2)
+        expect(data.fetch("entries").map { |entry| entry["id"] }).to eq(["new"])
       end
     end
 

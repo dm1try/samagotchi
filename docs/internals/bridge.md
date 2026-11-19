@@ -209,8 +209,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   so the stamp and the count always name one place, and the page finds it by the bubble (`card_stamps.js`: `data-turn-id`, or `data-opening-id` on a wake's note or a reason line), not by counting
   bubbles. An entry shown after reason lines also saves which one it came after (`after_opening`, beside `past_idless`): read
   first while that line is still in the run, so a later release can drop the count. No stamp (the page counts `turns_since`) for
-  an entry before every opening, after a line an older chi wrote with no id, or from a version 1 file (`base_since`). A rollback
-  keeps today's rule: a rolled-back turn's cards name the opening before it.
+  an entry before every opening or after a line an older chi wrote with no id. A version 1 file is no longer read (its earlier
+  cards do not show); `base_since` remains readable in version 2 files saved since. A rollback keeps today's rule: a rolled-back
+  turn's cards name the opening before it.
   The saved recap carries the same stamp: `saved_recap`'s `opening_id` (`RecapPlace.opening_id`, the id of the last
   opening its `covered` messages hold, read at read time, so `recap.json` is unchanged), which the page places it after
   (`recap_stamp.js`); an older worker's `saved_recap` has none, and the page counts `turns_since`.
@@ -237,9 +238,8 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   are the worker's own (each start announces them) and an unanswered question waits for no one: neither is saved or seeded. An
   entry from an earlier worker lists with `earlier: true`; one shown during a turn comes back **without its actions** (their
   turn no longer runs), while a between-turns card keeps its buttons.
-- **Version 1.** A file from before the log (top-level `turns`, each entry its own, maybe `running`) keeps its places, drift
-  included: `seed` turns each count into `base_since`, new openings add to it, and such an entry never reads as having left
-  nothing (no id to check). The next save writes version 2 with `base_since` kept. `SessionManager.cards_empty?` reads both.
+- **Version 1.** A file from before the log (top-level `turns`, each entry its own, maybe `running`) is no longer read, so its
+  earlier cards do not show. `SessionManager.cards_empty?` still reads both versions to decide whether a session is empty.
 - **An older chi on a version 2 file.** Its `seed` wants an integer `turns`, finds none, and starts with no entries. A chi web not
   yet restarted only reads: it lists no cards for that session until restarted, and the file stays whole. An older **writer** does
   damage: at its first saved event, `:turn_started`, it writes `{"version":1,"turns":0,"running":true,"entries":[]}` over the file
