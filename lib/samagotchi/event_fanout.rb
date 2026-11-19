@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "hooks"
+require_relative "llm_context_view"
 require_relative "log"
 require_relative "steer_cut"
 
@@ -18,6 +19,14 @@ module Samagotchi
   # notify takes the event lock, as before. #announce_or_hold stays the
   # Engine's: its thread-local is keyed on the Engine.
   class EventFanout
+    # What the running turn's model has, as of its last request: a shallow
+    # copy of the turn's +conversation+ (#keep_turn_view), its size (+at+,
+    # the :working_set_updated's), the set's +strategy+ and the session's
+    # folder (+cwd+). +turn_id+ is the turn it was taken in: a reader
+    # takes it only while that turn runs (#turn_view). Built from the
+    # session's messages, turn_id is nil (Engine#working_set_view).
+    TurnView = Data.define(:turn_id, :conversation, :at, :strategy, :cwd)
+
     # @param observer          [#call] → SessionObserver
     # @param used_memories     [#call] → UsedMemories
     # @param muted             [#call] → Array<String>, the muted memory names
@@ -60,6 +69,26 @@ module Samagotchi
       @announce_or_hold = announce_or_hold
       @keep_context_status = keep_context_status
       @working_set_emitted = nil
+      @turn_view = nil
+      @turn_view_lock = Mutex.new
+    end
+
+    # The running turn's TurnView, nil between turns, before its first
+    # request and once another turn runs: the same guard as
+    # Engine#live_conversation (the turn id), so a turn's end, cancel or
+    # failure needs no clear. Any thread.
+    # @return [TurnView, nil]
+    def turn_view
+      view = @turn_view_lock.synchronize { @turn_view }
+      running = turn_context
+      view if view && running && view.turn_id == running.id
+    end
+
+    # The turn's end (Engine#end_turn, under the event lock, before its
+    # :working_set_updated): the session's kept messages are the truth from
+    # then on, though the turn still reads as running until it has ended.
+    def drop_turn_view
+      @turn_view_lock.synchronize { @turn_view = nil }
     end
 
     # Always return a handler so raw kernel loop events reach the persistent
@@ -91,6 +120,7 @@ module Samagotchi
         steer_cut.observe(event, progress)
         case event[:type]
         when :generation_started
+          keep_turn_view
           event = event.merge(model_ref: model_ref) if model_ref
           thinking_notices.generation_started
           watch&.started(event[:iteration])
@@ -152,6 +182,32 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:turn, "working_set_failed", error: e.class.name, msg: e.message.to_s[0, 200])
     end
+
+    # A TurnView of what this request sends (the loops start a generation
+    # after their apply_llm_context!), on the turn's thread, at every
+    # request: an edit or a forget can change what the model has without
+    # changing the set's rows, so it never waits for #emit_working_set's
+    # dedupe. Before the event goes out, so a client that reads the item
+    # on it finds this step. A copy, not the live Array: the turn's thread
+    # writes its entries in place (LLMContextEdit.store's :edits) while a
+    # Bridge thread reads. Shallow is enough: in-turn writers change only
+    # top-level keys (LLMContextEdit.store/.remove replace :edits, the
+    # forget store, ChatLoop's :interrupted; KernelLoop appends or pops).
+    def keep_turn_view
+      running = turn_context
+      conversation = live_conversation
+      current = session
+      return unless running && conversation && current
+
+      copy = conversation.map(&:dup)
+      view = TurnView.new(turn_id: running.id, conversation: copy, at: copy.size,
+                          strategy: working_set_llm_context&.strategy || LLMContextView::NONE,
+                          cwd: current.working_directory)
+      @turn_view_lock.synchronize { @turn_view = view }
+    rescue StandardError => e
+      Log.warn(:turn, "turn_view_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+    end
+    private :keep_turn_view
 
     # The strategy the set is built under: the running turn's
     # (TurnSettings#llm_context: what its requests send), the last turn's

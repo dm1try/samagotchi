@@ -189,8 +189,74 @@ RSpec.describe Samagotchi::Web::App, "working set" do
                                                "lines" => { "first" => 1, "last" => 1, "whole" => true, "partial" => false })])
     end
 
-    it "builds from a live worker's messages even when it holds a precomputed set" do
+    it "asks a worker with the feature for just the item, the key intact, never the snapshot or the session file" do
       session = saved_session([])
+      key = File.join(repo, "my dir/a&b=c.rb")
+      allow(Samagotchi::WorkerLink).to receive(:live_features).with(session.id, state_dir: state_dir)
+                                                               .and_return([Samagotchi::WorkingSet::ITEM_FEATURE])
+      answer = { "kind" => "file", "key" => key, "events" => [{ "tool_id" => "t9" }], "at" => 12, "running" => true }
+      asked = nil
+      allow(app).to receive(:bridge_get) { |_id, target| asked = target and [200, answer] }
+      allow(app).to receive(:bridge_get_json)
+      allow(Samagotchi::Session).to receive(:load).and_call_original
+
+      expect(item(session, "file", key, "&now=1&latest=1")).to eq([200, answer])
+      expect(URI.decode_www_form(asked.delete_prefix("working_set/item?")).to_h)
+        .to eq("kind" => "file", "key" => key, "now" => "1", "latest" => "1")
+      expect(app).not_to have_received(:bridge_get_json)
+      expect(Samagotchi::Session).not_to have_received(:load)
+    end
+
+    it "falls back to the snapshot's messages for a worker without the feature or one without the route (404)" do
+      session = saved_session([])
+      snapshot = { "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages)), "current_turn" => nil },
+                   "session_state_snapshot" => {} }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
+      allow(app).to receive(:bridge_get).and_return([404, { "error" => "not_found" }])
+
+      [[], [Samagotchi::WorkingSet::ITEM_FEATURE]].each do |features|
+        allow(Samagotchi::WorkerLink).to receive(:live_features).and_return(features)
+        expect(item(session, "file", path).last["events"]).to match([include("tool_id" => "t1", "text" => "one")]), features.inspect
+      end
+      expect(app).to have_received(:bridge_get).once
+    end
+
+    # A lagging snapshot answer would be drawn and never asked again (the
+    # signature it was asked at is the open item's): a 502 marks the page's
+    # ask failed, so it asks again on the next event.
+    it "answers 502 when the worker with the feature times out or fails, never the snapshot" do
+      session = saved_session([])
+      allow(Samagotchi::WorkerLink).to receive(:live_features).and_return([Samagotchi::WorkingSet::ITEM_FEATURE])
+      allow(app).to receive(:bridge_get_json)
+
+      [[nil, nil], [500, { "error" => "bridge_error" }], [409, { "error" => "no_session" }]].each do |reply|
+        allow(app).to receive(:bridge_get).and_return(reply)
+        status, body = item(session, "file", path)
+        expect([status, body["error"]]).to eq([502, "bridge_error"]), reply.inspect
+      end
+      expect(app).not_to have_received(:bridge_get_json)
+    end
+
+    it "answers the peek's events and counts only on ?latest=1 from the file too" do
+      session = saved_session(read_messages)
+
+      expect(item(session, "file", path, "&latest=1").last)
+        .to include("counts" => { "read" => 1, "edit" => 0 }, "latest" => true, "events" => [include("tool_id" => "t1")])
+    end
+
+    it "reads the session file and asks no Bridge without a live worker" do
+      session = saved_session(read_messages)
+      allow(app).to receive(:bridge_get_json)
+      allow(app).to receive(:bridge_get)
+
+      expect(item(session, "file", path).last["events"]).to match([include("tool_id" => "t1")])
+      expect(app).not_to have_received(:bridge_get_json)
+      expect(app).not_to have_received(:bridge_get)
+    end
+
+    it "builds from an older live worker's messages even when it holds a precomputed set" do
+      session = saved_session([])
+      allow(Samagotchi::WorkerLink).to receive(:live_features).and_return([])
       drop = { "t1" => { "kind" => "drop", "note" => "", "by" => "user", "staged_at" => "x", "applied_at" => "x" } }
       allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
         "snapshot" => { "messages" => JSON.parse(JSON.generate(read_messages(edits: drop))), "current_turn" => nil,

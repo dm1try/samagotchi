@@ -488,7 +488,17 @@ The Bridge exposes:
   `cards` (`CardStore#list`; a card an earlier worker showed during a turn comes back read-only, with no
   actions: its turn no longer runs), `event_seq`, `event_id`, all taken in one event-log hold; no message
   list, so it costs the same however long the session is. `?turn_id=` answers that turn's answer
-  (an unknown or missing id: the newest); the only route that reads its query.
+  (an unknown or missing id: the newest). A handler in `Bridge::QUERY_HANDLERS` gets the query string; no other one does.
+- `GET  /session/:id/working_set/item?kind=&key=[&now=1][&latest=1]` — what the model has of one working-set item
+  (`Engine#working_set_item`: `WorkingSet.timeline_of`'s `{kind, key, events}`, `now:` for a memory with `now=1`;
+  with `latest=1` only the peek's events and `counts`, `WorkingSet::Timeline#peek_h`), plus
+  `at` (the conversation's size it was built from) and `running`. While a turn runs it reads the turn's view
+  (`EventFanout#turn_view`: a shallow copy of the running turn's conversation taken at each `:generation_started`,
+  used only while that turn's id is the running one, dropped at the turn's end under the event lock), else a copy of
+  the session's messages. `400 invalid_item`
+  (`WorkingSet::INVALID_ITEM`, chi web's words) for a kind it doesn't know or a blank key. Owner-only is chi web's
+  (its route is `:owner`); the Bridge's gate is its secret. Advertised as `working_set_item`
+  ([working-set.md](working-set.md#delivery)).
 - No browser: only chi's own clients talk to a Bridge. A request with an `Origin` header, a `Sec-Fetch-Site`
   other than `none`, or a `Host` that isn't loopback (a DNS-rebound page) is `403 cross_origin`
   (`Bridge#browser_request?`, before any route); there is no CORS and no `OPTIONS` route. The browser reaches a
@@ -647,6 +657,7 @@ compatibility from its version. `Bridge::FEATURES` advertises:
 | `cancel_turn_id` | `POST /session/:id/cancel` can stop only the named turn. |
 | `participant_revise` | chi web can pass a participant's Revise draft for worker-side validation. |
 | `participant_client_id` | chi web can identify a participant as `participant:<id>` instead of using the legacy `review:<id>`. |
+| `working_set_item` | `GET /session/:id/working_set/item` answers one item's timeline (the running turn's mid-turn), so chi web asks for it instead of the whole snapshot. |
 
 `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` for no worker, a leaving or stuck worker, or an unreachable Bridge; 502 `worker_newer` for skew and

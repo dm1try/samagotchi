@@ -2,6 +2,8 @@
 
 require_relative "../memory_orphans"
 require_relative "../project_id_clash"
+require_relative "../event_fanout"
+require_relative "../memory_paths"
 require_relative "../working_set"
 
 module Samagotchi
@@ -84,6 +86,47 @@ module Samagotchi
 
         WorkingSet.build(conversation, cwd: session.working_directory, strategy: working_set_strategy,
                          pins: session.working_set_pins)
+      end
+
+      # The conversation the working set is built from now: the running
+      # turn's view as of its last request (EventFanout#turn_view), else a
+      # copy of the session's messages (a starting turn shares their entries
+      # and writes them in place: Engine#turn_messages), taken under the
+      # event lock as #working_set_snapshot's callers read them. nil with no
+      # session.
+      # @return [EventFanout::TurnView, nil]
+      def working_set_view
+        @event_fanout.turn_view || synchronize_events do
+          session = @session
+          if session
+            messages = clone_messages(session.messages)
+            EventFanout::TurnView.new(turn_id: nil, conversation: messages, at: messages.size,
+                                      strategy: working_set_strategy, cwd: session.working_directory)
+          end
+        end
+      end
+
+      # What the model has of one item (WorkingSet.timeline_of's to_h), from
+      # #working_set_view: the Bridge's GET working_set/item. +now+ (a
+      # memory): its text now (WorkingSet.memory_now). +latest+: only what
+      # the peek draws (Timeline#peek_h). +at+ is the view's size, +running+
+      # whether it is a running turn's (+turn_id+ then names it). nil with
+      # no session.
+      # @return [Hash, nil]
+      def working_set_item(kind:, key:, now: false, latest: false)
+        view = working_set_view or return nil
+
+        conversation = view.conversation
+        strategy = view.strategy
+        cwd = view.cwd
+        timeline = WorkingSet.timeline_of(conversation, kind: kind, key: key, strategy: strategy, cwd: cwd)
+        body = latest ? timeline.peek_h : timeline.to_h
+        if now && kind == WorkingSet::MEMORY
+          body[:now] = WorkingSet.memory_now(conversation, key: key, strategy: strategy, cwd: cwd,
+                                             root: MemoryPaths.system_dir)&.to_h
+        end
+        body[:turn_id] = view.turn_id if view.turn_id
+        body.merge(at: view.at, running: view.turn_id ? true : turn_running?)
       end
 
       # ── Load events ───────────────────────────────────────────────────────

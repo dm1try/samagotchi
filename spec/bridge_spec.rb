@@ -1546,6 +1546,49 @@ RSpec.describe Samagotchi::Bridge do
         end
       end
 
+      describe "GET /session/:id/working_set/item" do
+        def item_get(query)
+          Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get("working_set/item?#{query}")
+        end
+
+        it "answers the item's timeline from the engine, with at and running; a key with spaces and & arrives intact" do
+          start_bridge
+          @engine.session = @session
+          key = File.join(@session.working_directory, "my dir/a&b.rb")
+          @session.messages = [
+            { role: "user", content: "go" },
+            { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => key } }] },
+            { role: "tool_response", content: "[read]\none\n", tool_call_id: "c1", tool_ids: ["t1"] }
+          ]
+
+          status, body = item_get(URI.encode_www_form(kind: "file", key: key))
+
+          expect(status).to eq(200)
+          expect(body).to include("kind" => "file", "key" => key, "at" => 3, "running" => false)
+          expect(body["events"].map { |e| [e["tool_id"], e["op"], e["text"]] }).to eq([%W[t1 read one\n]])
+          expect(Samagotchi::Bridge::FEATURES).to include("working_set_item")
+        end
+
+        it "passes now=1 and latest=1 on and refuses a kind it doesn't know or a blank key with 400, in chi web's words" do
+          start_bridge
+          @engine.session = @session
+          allow(@engine).to receive(:working_set_item).and_call_original
+
+          expect(item_get("kind=memory&key=notes&now=1").first).to eq(200)
+          expect(@engine).to have_received(:working_set_item).with(kind: "memory", key: "notes", now: true, latest: false)
+          expect(item_get("kind=file&key=x&latest=1")).to eq([200, { "kind" => "file", "key" => "x", "events" => [],
+                                                                     "counts" => { "read" => 0, "edit" => 0 }, "latest" => true,
+                                                                     "at" => 0, "running" => false }])
+          refused = [400, { "error" => "invalid_item", "detail" => Samagotchi::WorkingSet::INVALID_ITEM }]
+          expect(item_get("kind=dir&key=x")).to eq(refused)
+          expect(item_get("kind=file&key=%20")).to eq(refused)
+          expect(item_get("kind=file")).to eq(refused)
+          # A query URI can't decode (a raw invalid byte) is refused the same way, not a 500.
+          expect(@bridge.send(:handle_working_set_item, @session.id, nil, "kind=file&key=\xFF").drop(1))
+            .to eq([400, { error: "invalid_item", detail: Samagotchi::WorkingSet::INVALID_ITEM }])
+        end
+      end
+
       it "carries the guardrail load warning once the first turn announced it" do
         start_bridge
         @engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: false)

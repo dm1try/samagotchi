@@ -87,6 +87,14 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     expect(request("get", "/session/s1/state")[2]).to eq("handler" => "handle_state", "sid" => "s1")
   end
 
+  it "hands the query to a QUERY_HANDLERS handler only" do
+    allow(@bridge).to receive(:handle_tail) { |sid, body, query| [{}, 200, { sid: sid, body: body, query: query }] }
+    expect(request("GET", "/session/s1/tail?turn_id=t%201")[2]).to eq("sid" => "s1", "body" => nil, "query" => "turn_id=t%201")
+    expect(request("GET", "/session/s1/tail")[2]).to eq("sid" => "s1", "body" => nil, "query" => nil)
+    expect(request("GET", "/session/s1/state?turn_id=t1")[2]).to eq("handler" => "handle_state", "sid" => "s1")
+    expect(@bridge).to have_received(:handle_state).with("s1", nil)
+  end
+
   it "answers another session's id with 404 before any handler, and a handler that raises with 500" do
     table = { "POST" => %w[cancel answer question/dismiss turn turn/dequeue command exit recap relay relay/status tasks/stop], "GET" => %w[state stats snapshot] }
     table.each do |method, actions|

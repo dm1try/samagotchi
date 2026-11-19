@@ -186,6 +186,111 @@ RSpec.describe Samagotchi::Engine, "working set event" do
     end
   end
 
+  # The running turn's view (EventFanout#turn_view): a shallow copy of the
+  # turn's conversation taken at each request, which the item's timeline
+  # and the /working-set listing read mid-turn (the session's messages lag
+  # the turn until its end).
+  describe "an item while a turn runs (#working_set_item)" do
+    let(:seen) { {} }
+
+    before { engine.session = session }
+
+    # +seen+[iteration]: what the probe read at that :generation_started, on the turn's thread.
+    def run_watching(&)
+      engine.run_turn(session, "hi", on_event: lambda { |e|
+        events << e
+        seen[e[:iteration]] = yield if e[:type] == :generation_started
+      })
+    end
+
+    it "holds the running turn's read at every request, even when the set didn't change" do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream(%(<|tool_call>call:nope{}<tool_call|>))
+      stream("Read it.")
+
+      run_watching { engine.working_set_item(kind: "file", key: path) }
+
+      expect(seen[1]).to include(running: true, events: [])
+      expect(seen[2]).to include(running: true, kind: "file", key: path, turn_id: a_kind_of(String))
+      expect(seen[2][:events].map { |e| e[:op] }).to eq(%w[read])
+      expect(seen[2][:events].first[:text]).to include("one\ntwo")
+      # The unknown tool changed no row: no event, yet the copy moved on.
+      expect(updates.size).to eq(1)
+      expect(seen[3][:events].size).to eq(1)
+      expect(seen[3][:at]).to be > seen[2][:at]
+    end
+
+    it "is the session's between turns, as the route built it from the messages (the turn's copy unused)" do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      run_turn
+
+      answer = engine.working_set_item(kind: "file", key: path)
+
+      golden = Samagotchi::WorkingSet.timeline_of(session.messages, kind: "file", key: path, strategy: engine.working_set_strategy,
+                                                                    cwd: session.working_directory).to_h
+      expect(answer).to eq(golden.merge(at: session.messages.size, running: false))
+    end
+
+    it "is the session's kept messages from the turn's end on, inside its lock (no running view in the gap)" do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      at_end = nil
+
+      engine.run_turn(session, "hi", on_event: lambda { |e|
+        at_end = engine.working_set_item(kind: "file", key: path) if e[:type] == :turn_completed
+      })
+
+      expect(at_end).not_to have_key(:turn_id)
+      expect(at_end).to include(at: session.messages.size)
+      expect(at_end[:events].size).to eq(1)
+    end
+
+    it "copies the session's entries between turns: a starting turn shares them and writes them in place" do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+      run_turn
+
+      view = engine.working_set_view
+
+      expect(view.conversation).not_to equal(session.messages)
+      expect(view.conversation.zip(session.messages).none? { |copy, entry| copy.equal?(entry) }).to be(true)
+      expect(view.conversation).to eq(session.messages)
+    end
+
+    # In-turn writers change top-level keys only (LLMContextEdit.store/.remove
+    # replace :edits, the forget store, ChatLoop's :interrupted; KernelLoop
+    # appends or pops): the turn view's shallow copy relies on it. A nested
+    # write in place would show through the copy and fail here.
+    it "is a copy: a later top-level write on the live entry doesn't reach it" do
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+
+      run_watching do
+        live = engine.live_conversation
+        view = engine.send(:working_set_view)
+        live.last[:edits] = [{ "kind" => "drop" }]
+        [view.conversation.last.key?(:edits), view.conversation.equal?(live), view.at == live.size]
+      end
+
+      expect(seen[2]).to eq([false, false, true])
+    end
+
+    it "lists the running turn's items in /working-set, and calls no sent op pending" do
+      command = Samagotchi::WorkingSetCommand.new(engine: engine, save: ->(*) {})
+      expect(command.run("add notes.txt").last).to eq(:ok)
+      expect(Samagotchi::WorkingSet.pending_ops(session.messages).map { |op| op["op"] }).to eq(%w[add])
+      stream(%(<|tool_call>call:read{path:<|"|>#{path}<|"|>}<tool_call|>))
+      stream("Read it.")
+
+      run_watching { command.run("").first }
+
+      expect(seen[1]).to start_with("working set: empty")
+      expect(seen[2]).to include("working set (1 item):", "notes.txt")
+      expect(seen[2]).not_to include("at the next turn's start")
+    end
+  end
+
   # /working-set drop between turns (WorkingSetSteer): the native loop's
   # next request is the first with the stub and the turn-start note, the
   # set is announced dropped, and undrop sends the output whole again.

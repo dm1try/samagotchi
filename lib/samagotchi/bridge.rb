@@ -39,6 +39,7 @@ require_relative "proxy_trace"
 require_relative "version"
 require_relative "worker_sidecar"
 require_relative "worker_link"
+require_relative "working_set"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
 require_relative "reply_wait"
@@ -92,6 +93,7 @@ module Samagotchi
       request_recap: "idle-recap monitor",
       reserve_enqueued_id: "turn-state monitor",
       working_set_snapshot: "idle working-set snapshot under event lock",
+      working_set_item: "turn view under its mutex, else session messages under event lock",
       "running_turn_messages=": "callback writer; Bridge lifecycle",
       saved_recap: "recap mutex; replace-only session messages",
       session: "session reference; messages are replace-only",
@@ -803,11 +805,15 @@ module Samagotchi
     # participant_client_id: it reads a participant's client id as
     # participant:<id>; chi web sends a worker without it review:<id>
     # (Delivery::PARTICIPANT_ID_FEATURE).
+    # working_set_item: GET working_set/item answers one item's timeline,
+    # the running turn's mid-turn (WorkingSet::ITEM_FEATURE); chi web asks
+    # an older worker for its whole snapshot instead.
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
-                Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE].freeze
+                Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE,
+                WorkingSet::ITEM_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -832,9 +838,13 @@ module Samagotchi
       %w[GET state] => :handle_state,
       %w[GET stats] => :handle_stats,
       %w[GET snapshot] => :handle_snapshot,
-      %w[GET tail] => :handle_tail
+      %w[GET tail] => :handle_tail,
+      %w[GET working_set/item] => :handle_working_set_item
     }.freeze
     ROUTE_PATH = %r{\A/session/([^/]+)/(.+)\z}u
+    # The handlers that take the request's query string as a third
+    # argument (#dispatch); every other one gets the id and the body only.
+    QUERY_HANDLERS = %i[handle_tail handle_working_set_item].freeze
 
     # @return [Array(Symbol, String), nil] the handler and the session id, or
     #   nil when no route takes this method and path
@@ -848,10 +858,10 @@ module Samagotchi
     # #own_session?), and a handler that raises answers 500 bridge_error,
     # logged (the connection thread doesn't report).
     # @return [Array(Hash, Integer, Hash)] headers, status, body
-    # Only GET tail takes the request's +query+.
+    # Only a QUERY_HANDLERS handler takes the request's +query+.
     def dispatch(handler, session_id, body, query = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-      return handle_tail(session_id, body, query) if handler == :handle_tail
+      return send(handler, session_id, body, query) if QUERY_HANDLERS.include?(handler)
 
       send(handler, session_id, body)
     rescue StandardError => e
@@ -1538,14 +1548,36 @@ module Samagotchi
     end
 
     # The page's light re-read (#tail_frame): no message list. `?turn_id=`:
-    # that turn's answer (a queued turn's page re-reads late). The one
-    # handler that gets the query (#dispatch); an older worker's route
+    # that turn's answer (a queued turn's page re-reads late). A handler
+    # that gets the query (QUERY_HANDLERS); an older worker's route
     # ignores it and sends the newest answer.
     def handle_tail(_session_id, _body = nil, query = nil)
       turn_id = query && URI.decode_www_form(query).to_h["turn_id"].to_s
       [{}, 200, tail_frame(turn_id: turn_id.to_s.empty? ? nil : turn_id)]
     rescue ArgumentError
       [{}, 200, tail_frame]
+    end
+
+    # What the model has of one item now (Engine#working_set_item: the
+    # running turn's view as of its last request, else the session's),
+    # chi web's item route's answer. `?kind=&key=[&now=1][&latest=1]`
+    # (latest: the peek's events and counts only); 400 for a
+    # kind not in WorkingSet::KINDS or a blank key, in chi web's words.
+    # Owner-only stays chi web's: the Bridge's gate is its secret.
+    def handle_working_set_item(_session_id, _body = nil, query = nil)
+      params = begin
+        URI.decode_www_form(query.to_s).to_h
+      rescue ArgumentError
+        {}
+      end
+      kind = params["kind"].to_s
+      key = params["key"].to_s
+      unless WorkingSet::KINDS.include?(kind) && !key.strip.empty?
+        return [{}, 400, { error: "invalid_item", detail: WorkingSet::INVALID_ITEM }]
+      end
+
+      item = @engine.working_set_item(kind: kind, key: key, now: params["now"] == "1", latest: params["latest"] == "1")
+      item ? [{}, 200, item] : [{}, 409, { error: "no_session" }]
     end
 
     # The stream cursor for +seq+ in this worker.
