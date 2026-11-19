@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
+require "uri"
 require_relative "../working_set"
 require_relative "../llm_context_view"
 require_relative "../session_setting"
 require_relative "../memory_paths"
+require_relative "../worker_link"
 require_relative "participant_view"
 
 module Samagotchi
@@ -46,21 +48,36 @@ module Samagotchi
       # GET /api/sessions/:id/working_set/item?kind=&key=[&now=1]: what the
       # model has of one item, its timeline (WorkingSet.timeline_of: every
       # run of it, in conversation order), the reader's and the popover
-      # peek's. Owner only. Always built from messages, unlike the set's
-      # route: the worker's snapshot messages (they lag a running turn's
-      # events; the page asks again on its next :working_set_updated), else
+      # peek's. Owner only. A live worker with the feature
+      # (WorkingSet::ITEM_FEATURE) answers just the item (the Bridge's GET
+      # working_set/item: the running turn's view mid-turn, with at and
+      # running), passed on as is: no snapshot, no session file; no answer
+      # or a failed one is a 502 (the page asks again). Otherwise, or on a
+      # 404 (no such route), it is built from messages: an older
+      # worker's snapshot messages (they lag a running turn's events), else
       # the file's. Whole texts: the tool limits bound them (read's
       # truncate_at_bytes, the ToolRunner cap). +now+ (a memory): what its
       # latest read would answer now and the diff (WorkingSet.memory_now).
       def handle_working_set_item(req, id)
         kind = req.GET["kind"].to_s
         key = req.GET["key"].to_s
-        unless [WorkingSet::FILE, WorkingSet::MEMORY, WorkingSet::URL].include?(kind) && !key.strip.empty?
-          return error_response(400, "invalid_item", "expected kind (file, memory or url) and key")
+        return error_response(400, "invalid_item", WorkingSet::INVALID_ITEM) unless WorkingSet::KINDS.include?(kind) && !key.strip.empty?
+
+        features = WorkerLink.live_features(id, state_dir: default_state_dir)
+        if Array(features).include?(WorkingSet::ITEM_FEATURE)
+          query = { kind: kind, key: key }
+          query[:now] = "1" if req.GET["now"] == "1"
+          status, answer = bridge_get(id, "working_set/item?#{URI.encode_www_form(query)}")
+          return json_response(200, answer) if status == 200 && answer.is_a?(Hash)
+          # No answer, or a failed one: the page marks its ask failed and asks again at the next event, rather than
+          # drawing an older worker's lagging messages it would never ask again for. Only a 404 (no such route) falls back.
+          unless status == 404
+            return error_response(502, "bridge_error", "the session's worker didn't answer the item (#{status || "no reply"})")
+          end
         end
 
         session = @session_class.load(id, state_dir: default_state_dir)
-        source = working_set_source(bridge_get_json(id, "snapshot"), session)
+        source = working_set_source(features && bridge_get_json(id, "snapshot"), session)
         timeline = WorkingSet.timeline_of(source.messages, kind: kind, key: key, strategy: source.strategy, cwd: source.cwd)
         body = timeline.to_h
         if req.GET["now"] == "1" && kind == WorkingSet::MEMORY

@@ -283,8 +283,14 @@ file is; nil without a stamp.
 
 **The route.** `GET /api/sessions/:id/working_set/item?kind=&key=` (`WorkingSetRoutes#handle_working_set_item`,
 `:owner, :session`: a participant gets 403 from `not_permitted_for`) answers `timeline.to_h`, and with `&now=1` for a
-memory `now:` too. Unlike the set's route it never answers a worker's precomputed set: it builds from
-`working_set_source` (the worker's snapshot messages, else the file's; the session's strategy and folder). Its texts
+memory `now:` too. A live worker that advertises `working_set_item` (`WorkingSet::ITEM_FEATURE`,
+`WorkerLink.live_features`) is asked for just the item: the Bridge's `GET working_set/item` (`Engine#working_set_item`,
+the query encoded with `URI.encode_www_form`, so a key with spaces or `&` arrives whole), its answer passed on with its
+`at` and `running`; no snapshot is fetched and the session file is not read. No reply, or one other than 200 or 404, is
+`502 bridge_error`: the page marks its ask failed and asks again at the next event, instead of drawing lagging messages
+it would not ask again for. An older worker without the feature, or one answering 404 (no such route), is read as
+before: `working_set_source` over its snapshot's messages; with no live worker the file's (no Bridge call). Either way
+the session's strategy and folder. Its texts
 are whole (about 1.7k lines at the most seen in real sessions): the tool limits bound them (`read.truncate_at_bytes`,
 the ToolRunner cap), so the page asks this route, never a row's `output` (a 2000-char `ToolOutputCut::WEB_PREVIEW_CHARS`
 preview for a long one). 400 without a known `kind` and a `key`.
