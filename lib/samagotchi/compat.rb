@@ -18,7 +18,7 @@ module Samagotchi
     MIN_AGE_DAYS = 14
 
     SHIMS = [
-      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", added_on: "2026-11-05", remove_after: "0.170.0",
+      Shim.new(id: :cards_v1_seed, added_in: "0.151.0", added_on: "2026-11-05", remove_after: "0.178.0",
                files: ["lib/samagotchi/bridge/card_store.rb"],
                what: "CardStore#seed_v1 reads a cards.json from before the turn log; its comment says a retention " \
                      "period after the release that wrote version 2 (0.151.0, 2026-11-05)"),
