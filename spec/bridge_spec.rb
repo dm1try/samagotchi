@@ -1569,13 +1569,16 @@ RSpec.describe Samagotchi::Bridge do
           expect(Samagotchi::Bridge::FEATURES).to include("working_set_item")
         end
 
-        it "passes now=1 on and refuses a kind it doesn't know or a blank key with 400, in chi web's words" do
+        it "passes now=1 and latest=1 on and refuses a kind it doesn't know or a blank key with 400, in chi web's words" do
           start_bridge
           @engine.session = @session
           allow(@engine).to receive(:working_set_item).and_call_original
 
           expect(item_get("kind=memory&key=notes&now=1").first).to eq(200)
-          expect(@engine).to have_received(:working_set_item).with(kind: "memory", key: "notes", now: true)
+          expect(@engine).to have_received(:working_set_item).with(kind: "memory", key: "notes", now: true, latest: false)
+          expect(item_get("kind=file&key=x&latest=1")).to eq([200, { "kind" => "file", "key" => "x", "events" => [],
+                                                                     "counts" => { "read" => 0, "edit" => 0 }, "latest" => true,
+                                                                     "at" => 0, "running" => false }])
           refused = [400, { "error" => "invalid_item", "detail" => Samagotchi::WorkingSet::INVALID_ITEM }]
           expect(item_get("kind=dir&key=x")).to eq(refused)
           expect(item_get("kind=file&key=%20")).to eq(refused)

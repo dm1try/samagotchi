@@ -1560,7 +1560,8 @@ module Samagotchi
 
     # What the model has of one item now (Engine#working_set_item: the
     # running turn's view as of its last request, else the session's),
-    # chi web's item route's answer. `?kind=&key=[&now=1]`; 400 for a
+    # chi web's item route's answer. `?kind=&key=[&now=1][&latest=1]`
+    # (latest: the peek's events and counts only); 400 for a
     # kind not in WorkingSet::KINDS or a blank key, in chi web's words.
     # Owner-only stays chi web's: the Bridge's gate is its secret.
     def handle_working_set_item(_session_id, _body = nil, query = nil)
@@ -1575,7 +1576,7 @@ module Samagotchi
         return [{}, 400, { error: "invalid_item", detail: WorkingSet::INVALID_ITEM }]
       end
 
-      item = @engine.working_set_item(kind: kind, key: key, now: params["now"] == "1")
+      item = @engine.working_set_item(kind: kind, key: key, now: params["now"] == "1", latest: params["latest"] == "1")
       item ? [{}, 200, item] : [{}, 409, { error: "no_session" }]
     end
 

@@ -252,7 +252,26 @@ module Samagotchi
     # (the reader shows them newest first).
     Timeline = Data.define(:kind, :key, :events) do
       def to_h = { kind: kind, key: key, events: events.map(&:to_h) }
+
+      # The peek's answer (the route's latest=1): only the events the
+      # page's peek draws (ws_timeline.js peekOf, ported: the latest edit or
+      # write with a diff and the newest event after it, else the newest
+      # run that isn't one, else the newest), and the counts of its "N reads,
+      # M edits" (countsText). peekOf over these picks what it picks over all.
+      def peek_h
+        edit_at = events.rindex { |e| PEEK_EDITS.include?(e.op) && e.diff }
+        shown = if edit_at
+                  [events[edit_at], events[(edit_at + 1)..].last].compact
+                else
+                  [events.reverse.find { |e| !PEEK_EDITS.include?(e.op) } || events.last].compact
+                end
+        counts = { read: events.count { |e| COUNT_READS.include?(e.op) }, edit: events.count { |e| COUNT_EDITS.include?(e.op) } }
+        { kind: kind, key: key, events: shown.map(&:to_h), counts: counts, latest: true }
+      end
     end
+    PEEK_EDITS = %w[edit write].freeze
+    COUNT_READS = %w[read memory_read fetch].freeze
+    COUNT_EDITS = %w[edit write memory_write].freeze
 
     # A stale memory's text now against what the model has: the +text+
     # memory_read would answer now for the names the item's latest read

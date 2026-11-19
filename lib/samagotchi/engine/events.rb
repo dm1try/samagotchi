@@ -108,20 +108,24 @@ module Samagotchi
 
       # What the model has of one item (WorkingSet.timeline_of's to_h), from
       # #working_set_view: the Bridge's GET working_set/item. +now+ (a
-      # memory): its text now (WorkingSet.memory_now). +at+ is the view's
-      # size, +running+ whether it is a running turn's. nil with no session.
+      # memory): its text now (WorkingSet.memory_now). +latest+: only what
+      # the peek draws (Timeline#peek_h). +at+ is the view's size, +running+
+      # whether it is a running turn's (+turn_id+ then names it). nil with
+      # no session.
       # @return [Hash, nil]
-      def working_set_item(kind:, key:, now: false)
+      def working_set_item(kind:, key:, now: false, latest: false)
         view = working_set_view or return nil
 
         conversation = view.conversation
         strategy = view.strategy
         cwd = view.cwd
-        body = WorkingSet.timeline_of(conversation, kind: kind, key: key, strategy: strategy, cwd: cwd).to_h
+        timeline = WorkingSet.timeline_of(conversation, kind: kind, key: key, strategy: strategy, cwd: cwd)
+        body = latest ? timeline.peek_h : timeline.to_h
         if now && kind == WorkingSet::MEMORY
           body[:now] = WorkingSet.memory_now(conversation, key: key, strategy: strategy, cwd: cwd,
                                              root: MemoryPaths.system_dir)&.to_h
         end
+        body[:turn_id] = view.turn_id if view.turn_id
         body.merge(at: view.at, running: view.turn_id ? true : turn_running?)
       end
 

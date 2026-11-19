@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 
 - A background task's leftover process holding its log is stopped even when chi exits just after the task's shell
   ends, instead of running on after a one-shot or worker exit.
+- chi web: the working set's peek and reader show a running turn's reads while it runs, not only once the turn has
+  ended; they ask again only when the open item changed.
 
 ## [0.177.1] - 2026-11-19
 

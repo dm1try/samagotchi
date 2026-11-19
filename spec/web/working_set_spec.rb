@@ -200,8 +200,9 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       allow(app).to receive(:bridge_get_json)
       allow(Samagotchi::Session).to receive(:load).and_call_original
 
-      expect(item(session, "file", key, "&now=1")).to eq([200, answer])
-      expect(URI.decode_www_form(asked.delete_prefix("working_set/item?")).to_h).to eq("kind" => "file", "key" => key, "now" => "1")
+      expect(item(session, "file", key, "&now=1&latest=1")).to eq([200, answer])
+      expect(URI.decode_www_form(asked.delete_prefix("working_set/item?")).to_h)
+        .to eq("kind" => "file", "key" => key, "now" => "1", "latest" => "1")
       expect(app).not_to have_received(:bridge_get_json)
       expect(Samagotchi::Session).not_to have_received(:load)
     end
@@ -234,6 +235,13 @@ RSpec.describe Samagotchi::Web::App, "working set" do
         expect([status, body["error"]]).to eq([502, "bridge_error"]), reply.inspect
       end
       expect(app).not_to have_received(:bridge_get_json)
+    end
+
+    it "answers the peek's events and counts only on ?latest=1 from the file too" do
+      session = saved_session(read_messages)
+
+      expect(item(session, "file", path, "&latest=1").last)
+        .to include("counts" => { "read" => 1, "edit" => 0 }, "latest" => true, "events" => [include("tool_id" => "t1")])
     end
 
     it "reads the session file and asks no Bridge without a live worker" do

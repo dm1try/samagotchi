@@ -211,7 +211,7 @@ RSpec.describe Samagotchi::Engine, "working set event" do
       run_watching { engine.working_set_item(kind: "file", key: path) }
 
       expect(seen[1]).to include(running: true, events: [])
-      expect(seen[2]).to include(running: true, kind: "file", key: path)
+      expect(seen[2]).to include(running: true, kind: "file", key: path, turn_id: a_kind_of(String))
       expect(seen[2][:events].map { |e| e[:op] }).to eq(%w[read])
       expect(seen[2][:events].first[:text]).to include("one\ntwo")
       # The unknown tool changed no row: no event, yet the copy moved on.

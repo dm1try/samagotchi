@@ -88,6 +88,30 @@ RSpec.describe Samagotchi::WorkingSet, ".timeline_of" do
     expect(none.map { |e| [e.sent, e.dropped, e.forgotten] }).to eq([[false, true, false], [true, false, false], [true, false, false]])
   end
 
+  # The peek's answer (?latest=1): the events ws_timeline.js peekOf picks of
+  # the whole timeline, so peekOf over them picks the same, and the counts
+  # its "N reads, M edits" needs.
+  describe "#peek_h" do
+    def peek(conversation) = timeline(conversation).peek_h
+
+    it "keeps the latest edit with a diff and the newest event after it, with every run counted" do
+      conversation = [head, *read("c1", "t1"), *edit_run("c2", "t2", [diff]), *read("c3", "t3"), *edit_run("c4", "t4", nil),
+                      *read("c5", "t5")]
+
+      answer = peek(conversation)
+
+      expect(answer[:events].map { |e| e[:tool_id] }).to eq(%w[t2 t5])
+      expect(answer).to include(kind: "file", key: cart, counts: { read: 3, edit: 2 }, latest: true)
+    end
+
+    it "keeps the newest run that isn't an edit when no edit has a diff, else the newest of all; none for none" do
+      expect(peek([head, *read("c1", "t1"), *read("c2", "t2"), *edit_run("c3", "t3", nil)])[:events].map { |e| e[:tool_id] })
+        .to eq(%w[t2])
+      expect(peek([head, *edit_run("c1", "t1", nil), *edit_run("c2", "t2", nil)])[:events].map { |e| e[:tool_id] }).to eq(%w[t2])
+      expect(peek([head])).to include(events: [], counts: { read: 0, edit: 0 })
+    end
+  end
+
   it "has no events for an unknown key and leaves out failed runs" do
     conversation = [head, *read("c1", "t1", text: "Error: file not found: #{cart}")]
 

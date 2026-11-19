@@ -28,7 +28,7 @@ test("itemsOfTurn keeps each row's tool id with its place; the session's set joi
 
 // The page's pieces as app.js wires them: the preview, then the working set
 // with its peek, then attach.
-function page({ answers = {}, sendLine = null } = {}) {
+function page({ answers = {}, sendLine = null, serverSet = () => ({ items: [], at: 0 }) } = {}) {
   const center = document.createElement("section");
   const stage = document.createElement("div");
   stage.id = "stage";
@@ -38,22 +38,25 @@ function page({ answers = {}, sendLine = null } = {}) {
   infoEl.innerHTML = '<button class="ws-chip"></button>';
   document.body.append(center, historyEl, infoEl);
   const asked = [];
+  const latestAsked = [];
   let session = "s1";
   const getItem = (id, kind, key, opts = {}) => {
     asked.push([id, kind, key, !!opts.now]);
-    const answer = answers[`${kind}:${key}`];
+    latestAsked.push(!!opts.latest);
+    const found = answers[`${kind}:${key}`];
+    const answer = typeof found === "function" ? found() : found;
     return answer instanceof Promise ? answer : Promise.resolve(answer || { kind, key, events: [] });
   };
   const preview = createWorkingSetPreview({ centerEl: center, session: () => session, state: () => ({ dir: "/p" }), getItem, sendLine });
   const ws = createWorkingSet({
     historyEl, infoEl, state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], dir: "/p" }), session: () => session,
-    getWorkingSet: () => Promise.resolve({ items: [], at: 0 }), peek: preview.peek, onTimeline: preview.open,
+    getWorkingSet: () => Promise.resolve(serverSet()), peek: preview.peek, onTimeline: preview.open,
   });
   preview.attach(ws);
   const memoryRow = { tool: "memory_read", title: "style", status: "ok", tool_id: "t5" };
   ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [row("a.rb", "t1"), row("b.rb", "t2")] }, { tools: [row("a.rb", "t3", "edit"), memoryRow] }] }, 0), prompt: "go" }]);
   const cleanup = () => { center.remove(); historyEl.remove(); infoEl.remove(); ws.popover.pop.remove(); setTimelineWayIn(false); };
-  return { center, stage, ws, preview, asked, cleanup, setSession: (id) => { session = id; } };
+  return { center, stage, ws, preview, asked, latestAsked, cleanup, setSession: (id) => { session = id; } };
 }
 
 test("the peek: a row's ▸ asks the item route and shows the latest edit, its link opens the reader", async () => {
@@ -91,6 +94,94 @@ test("the peek: a row's ▸ asks the item route and shows the latest edit, its l
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.equal(reader.hidden, true);
   assert.equal(p.stage.inert, false);
+  p.cleanup();
+});
+
+// The open item's server signature (count, ops, tokens, state, has_drop, pinned) decides a refetch.
+const serverA = (count, extra = {}) => ({ items: [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 3, ops: ["read"], count, ...extra }], at: 4 + count });
+
+test("the peek asks for the latest only, and again only when the open item's server signature changed", async () => {
+  let answer = { kind: "file", key: "/p/a.rb", events: [readEvent("t1", 1, 3)], counts: { read: 3, edit: 1 }, latest: true };
+  const p = page({ answers: { "file:/p/a.rb": () => answer } });
+  p.ws.update(serverA(1));
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  pop.querySelector('.ws-row[data-ws-id="file:/p/a.rb"] .ws-peek-toggle').click();
+  await tick();
+  assert.deepEqual(p.latestAsked, [true]);
+  assert.match(pop.querySelector(".ws-peek-open").textContent, /Open the timeline · 3 reads, 1 edit/, "the answer's counts, not its events'");
+
+  // Another file's read: the open item's signature is the same, nothing asked.
+  p.ws.update({ items: [...serverA(1).items, { kind: "file", key: "/p/b.rb", state: "live", tokens: 2, ops: ["read"], count: 1 }], at: 9 });
+  await tick();
+  assert.equal(p.asked.length, 1);
+  // A new read of it raises its count: asked again, drawn.
+  answer = { kind: "file", key: "/p/a.rb", events: [readEvent("t4", 10, 12)], counts: { read: 4, edit: 1 }, latest: true };
+  p.ws.update(serverA(2));
+  await tick();
+  assert.equal(p.asked.length, 2);
+  assert.match(pop.querySelector(".ws-peek-t").textContent, /latest · read 10–12/);
+  p.ws.popover.close();
+  p.cleanup();
+});
+
+test("an older answer is dropped within one running turn, and taken at running → idle", async () => {
+  const answers = [
+    { kind: "file", key: "/p/a.rb", events: [readEvent("t4", 10, 12)], running: true, turn_id: "T", at: 20 },
+    { kind: "file", key: "/p/a.rb", events: [readEvent("t1", 1, 3)], running: true, turn_id: "T", at: 12 },
+    { kind: "file", key: "/p/a.rb", events: [readEvent("t5", 5, 6)], running: false, at: 8 },
+  ];
+  let n = 0;
+  const p = page({ answers: { "file:/p/a.rb": () => answers[n++] } });
+  p.ws.update(serverA(1));
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  const lines = () => [...reader.querySelectorAll(".wsr-card .read-line")].map((l) => l.dataset.line);
+  assert.deepEqual(lines(), ["10", "11", "12"]);
+  p.ws.update(serverA(2));
+  await tick();
+  assert.deepEqual(lines(), ["10", "11", "12"], "at 12 < 20 in turn T: dropped");
+  p.ws.update(serverA(3));
+  await tick();
+  assert.deepEqual(lines(), ["5", "6"], "the idle answer is taken though its at is lower");
+  p.preview.close();
+  p.cleanup();
+});
+
+test("the reader asks again on a GET answer or an event only when the open item's signature changed", async () => {
+  const p = page({ serverSet: () => ({ ...serverA(1), at: 40 }) });
+  p.ws.update(serverA(1));
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  assert.equal(p.asked.length, 1);
+  p.ws.update({ ...serverA(1), at: 30 });
+  p.ws.seed([]);
+  await tick();
+  await tick();
+  assert.equal(p.asked.length, 1, "same signature: an event and a GET answer ask nothing");
+  p.ws.update(serverA(1, { tokens: 1 }));
+  await tick();
+  assert.equal(p.asked.length, 2, "its tokens changed (a forget): asked again");
+  p.preview.close();
+  p.cleanup();
+});
+
+test("the reader opened by a key no row has (a full URL) still asks again when the server's item changes", async () => {
+  const url = `https://example.com/${"long/".repeat(30)}page`;
+  const urlSet = (count) => ({ items: [{ kind: "url", key: url, state: "live", tokens: 9, ops: ["fetch"], count }], at: 4 + count });
+  const p = page();
+  p.ws.update(urlSet(1));
+  p.preview.open({ kind: "url", key: url });
+  await tick();
+  assert.equal(p.asked.length, 1);
+  p.ws.update({ ...urlSet(1), at: 30 });
+  await tick();
+  assert.equal(p.asked.length, 1, "unchanged: nothing asked");
+  p.ws.update(urlSet(2));
+  await tick();
+  assert.equal(p.asked.length, 2, "a new fetch of it: asked again");
+  p.preview.close();
   p.cleanup();
 });
 

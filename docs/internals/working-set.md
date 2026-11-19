@@ -161,9 +161,27 @@ Engine emits only a set that differs from the last one), and the GET builds from
 does one from an older worker without the field, its answer then behind the turn's events, which the page keeps.
 
 **An item's timeline while a turn runs** (`GET …/working_set/item`, [Timeline](#timeline-what-the-model-has-of-one-item))
-has no such event to answer: it always builds from the snapshot's messages, so mid-turn it lags the turn's runs
-(the running turn's reads of the item are not in it yet). Accepted for v1: the page asks again on each
-`:working_set_updated` while its reader or a peek is open, and the turn's end brings the messages up to date.
+is the running turn's as of its last step, the moment the rows are from. At every `:generation_started`, on the turn's
+thread and before the event goes out, `EventFanout#keep_turn_view` keeps a `TurnView`: a shallow copy of the running
+turn's conversation (`conversation.map(&:dup)`, a new Array and each entry Hash dup'ed, strings shared), its size
+(`at`), the set's strategy, the session's folder and the turn's id. Every step, not only when the set changed (an edit
+or a forget changes what the model has without changing the rows). A copy, because the turn's thread writes entries in
+place (`LLMContextEdit.store`'s `:edits`) while a Bridge thread reads; shallow is enough because every in-turn writer
+changes top-level keys only (`LLMContextEdit.store`/`.remove`, the forget store, ChatLoop's `:interrupted`; KernelLoop
+appends or pops; `spec/engine_working_set_spec.rb` pins it). Cost: about 0.02 ms and 32 KB for 200 entries, 0.03 ms and
+82 KB for 500, one copy kept. `EventFanout#turn_view` hands it out only while its turn id is the running turn's (the
+guard `Engine#live_conversation` uses), so a view left from another turn is never read; `Engine#end_turn` also drops
+it (`EventFanout#drop_turn_view`) under the event lock as it puts the kept messages in place, before its
+`:working_set_updated` and before the turn has ended, so no answer in that gap is the running view. `Engine#working_set_view` is
+the conversation the set is built from now (that view, else a copy of the session's messages: a starting turn shares
+their entries and writes them in place), read by `Engine#working_set_item`
+(the Bridge's `GET working_set/item`, feature `working_set_item`: chi web asks a worker with it for just the item and an
+older worker for its snapshot, as the route below says) and by `/working-set`'s listing (mid-turn the copy holds the
+sent note, so no op is pending). The answer carries `at`, `running` and, mid-turn, `turn_id`. The page asks again only
+when the open item's server signature changed (its `count`, `ops`, `tokens`, `state`, `has_drop`, `pinned`; a re-read
+raises `count`), at the peek's refresh on an event and the reader's `onServer`; it drops an answer with a lower `at`
+only within one running turn (`at` can go down at a turn's end, which keeps less). The peek asks `latest=1`
+(`Timeline#peek_h`: only the events `peekOf` picks and the per-op `counts`); the reader the whole timeline.
 
 ## Steering: drop and undrop
 
@@ -290,7 +308,9 @@ the query encoded with `URI.encode_www_form`, so a key with spaces or `&` arrive
 `502 bridge_error`: the page marks its ask failed and asks again at the next event, instead of drawing lagging messages
 it would not ask again for. An older worker without the feature, or one answering 404 (no such route), is read as
 before: `working_set_source` over its snapshot's messages; with no live worker the file's (no Bridge call). Either way
-the session's strategy and folder. Its texts
+the session's strategy and folder. `&latest=1` (the peek) answers `Timeline#peek_h` instead: only the events
+`ws_timeline.js peekOf` picks (the latest edit with a diff and the newest event after it, else the newest run that isn't
+an edit), the per-op `counts` (`read`, `edit`) and `latest: true`. Its texts
 are whole (about 1.7k lines at the most seen in real sessions): the tool limits bound them (`read.truncate_at_bytes`,
 the ToolRunner cap), so the page asks this route, never a row's `output` (a 2000-char `ToolOutputCut::WEB_PREVIEW_CHARS`
 preview for a long one). 400 without a known `kind` and a `key`.

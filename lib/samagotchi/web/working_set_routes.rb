@@ -45,7 +45,7 @@ module Samagotchi
         json_response(200, shown.merge("running" => set[:running] == true))
       end
 
-      # GET /api/sessions/:id/working_set/item?kind=&key=[&now=1]: what the
+      # GET /api/sessions/:id/working_set/item?kind=&key=[&now=1][&latest=1]: what the
       # model has of one item, its timeline (WorkingSet.timeline_of: every
       # run of it, in conversation order), the reader's and the popover
       # peek's. Owner only. A live worker with the feature
@@ -58,15 +58,19 @@ module Samagotchi
       # the file's. Whole texts: the tool limits bound them (read's
       # truncate_at_bytes, the ToolRunner cap). +now+ (a memory): what its
       # latest read would answer now and the diff (WorkingSet.memory_now).
+      # +latest+ (the peek): only the events it draws and the counts
+      # (WorkingSet::Timeline#peek_h).
       def handle_working_set_item(req, id)
         kind = req.GET["kind"].to_s
         key = req.GET["key"].to_s
         return error_response(400, "invalid_item", WorkingSet::INVALID_ITEM) unless WorkingSet::KINDS.include?(kind) && !key.strip.empty?
 
+        latest = req.GET["latest"] == "1"
         features = WorkerLink.live_features(id, state_dir: default_state_dir)
         if Array(features).include?(WorkingSet::ITEM_FEATURE)
           query = { kind: kind, key: key }
           query[:now] = "1" if req.GET["now"] == "1"
+          query[:latest] = "1" if latest
           status, answer = bridge_get(id, "working_set/item?#{URI.encode_www_form(query)}")
           return json_response(200, answer) if status == 200 && answer.is_a?(Hash)
           # No answer, or a failed one: the page marks its ask failed and asks again at the next event, rather than
@@ -79,7 +83,7 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         source = working_set_source(features && bridge_get_json(id, "snapshot"), session)
         timeline = WorkingSet.timeline_of(source.messages, kind: kind, key: key, strategy: source.strategy, cwd: source.cwd)
-        body = timeline.to_h
+        body = latest ? timeline.peek_h : timeline.to_h
         if req.GET["now"] == "1" && kind == WorkingSet::MEMORY
           body[:now] = WorkingSet.memory_now(source.messages, key: key, strategy: source.strategy, cwd: source.cwd,
                                              root: MemoryPaths.system_dir)&.to_h
