@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   ends, instead of running on after a one-shot or worker exit.
 - chi web: the working set's peek and reader show a running turn's reads while it runs, not only once the turn has
   ended; they ask again only when the open item changed.
+- `chi sessions restart` (and the web's restart) of a session being deleted says "the session is being deleted"
+  instead of "its worker is still starting".
 
 ## [0.177.1] - 2026-11-19
 

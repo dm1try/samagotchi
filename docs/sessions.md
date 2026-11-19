@@ -559,4 +559,5 @@ Ctrl-Z: `ps` state `T`) answers neither the ask nor a TERM, so a restart
 refuses it at once, before asking, with its pid and `kill -CONT PID`. A
 session whose stop is marked (stopped, or its worker being stopped) is refused
 before any of this (`stop_marked`: no successor would come).
+A session being deleted is refused the same way (`deleting`).
 The web restart route behaves the same way.

@@ -17,7 +17,7 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
   vocabulary = {
     delivery: %i[go wait gone owned deleting],
     resume: %i[go gone owned_by_tui live starting],
-    restart: %i[go gone owned_by_tui starting not_running fallback stop_marked],
+    restart: %i[go gone owned_by_tui starting not_running fallback stop_marked deleting],
     stop: %i[go gone owned_by_tui],
     archive: %i[go gone owned_by_tui starting],
     delete: %i[go owned_by_tui worker_running],

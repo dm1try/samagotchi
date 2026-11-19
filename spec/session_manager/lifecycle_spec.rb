@@ -401,6 +401,19 @@ RSpec.describe Samagotchi::SessionManager do
         .to raise_error(described_class::RestartRefused) { |error| expect(error.reason).to eq(:stop_marked) }
     end
 
+    it "refuses a session being deleted before asking its worker" do
+      allow(described_class).to receive(:session_owner).and_return(
+        Samagotchi::OwnerLock::Owner.new(pid: 1, kind: Samagotchi::OwnerLock::DELETING)
+      )
+      expect(Samagotchi::BridgeClient).not_to receive(:for_sidecar)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |error|
+          expect(error.reason).to eq(:deleting)
+          expect(error.message).to include("the session is being deleted")
+        }
+    end
+
     it "is refused for a worker from before restarts, which it never asks" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar.with(features: [])))
       allow(client).to receive(:request_exit)

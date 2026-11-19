@@ -41,7 +41,7 @@ These are reader labels, not stored values:
 |---|---|
 | `absent` | No session file; a leftover sidecar directory may still exist (its facts are ignored). |
 | `tui_owned` | `owner.lock` held with kind `tui` (a one-shot `chi -p --non-interactive` owns it): an in-process one-turn host, not a worker. Wins over a stop, a start, an archive. |
-| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). Every delivery is refused (`WakePolicy`'s `:deleting`). |
+| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). Every delivery is refused (`WakePolicy`'s `:deleting`); restart refuses it (`deleting`). |
 | `stopping` | A worker holds the lock and the `stopped` marker exists, whatever its link. |
 | `skew` | A worker holds the lock and its sidecar speaks a newer protocol (`WorkerLink::Skew`). |
 | `leaving` | The worker closed its Bridge and still holds the lock (`leaving_at`, `WorkerLink::Leaving`). |
@@ -97,7 +97,7 @@ Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outs
 
 `restart_session` is the first decider migrated to the table: its lifecycle precheck is `SessionLifecycle.read` (the
 owner read through `session_owner`) and `ALLOWED[:restart]`: `owned_by_tui` raises `OwnedByTUI`, a refusal cell
-raises `RestartRefused` with it as the reason (`starting`, `not_running`, `stop_marked`), `fallback` goes to
+raises `RestartRefused` with it as the reason (`starting`, `not_running`, `stop_marked`, `deleting`), `fallback` goes to
 `restart_fallback` (skew, a stuck start) and `go` asks the live worker. Its op-local checks stay where they were: the
 SIGSTOP check (`:stopped`, the worker's pid: a different condition with its own words, before the table's refusal),
 the worker's `restart` feature, the Bridge's reply and the fallback's holds. The matrix still drives it, so its
