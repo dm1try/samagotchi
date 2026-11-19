@@ -37,6 +37,13 @@ module Samagotchi
     FILE = "file"
     MEMORY = "memory"
     URL = "url"
+    KINDS = [FILE, MEMORY, URL].freeze
+    # An item route's refusal of a kind not in KINDS or a blank key (chi
+    # web's and the Bridge's alike).
+    INVALID_ITEM = "expected kind (file, memory or url) and key"
+    # The Bridge feature: GET working_set/item answers one item's timeline
+    # from the worker (the running turn's view mid-turn).
+    ITEM_FEATURE = "working_set_item"
     LIVE = "live"
     STALE = "stale"
     FORGOTTEN = "forgotten"

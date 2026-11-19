@@ -740,6 +740,7 @@ module Samagotchi
         revises = @verify_anchors.stamp_opening(kept, turn, outcome)
         kept_range!(event, turn, kept)
         replace_session_messages(turn.session, kept) if kept
+        @event_fanout.drop_turn_view
         verdict = @verify_anchors.record_verdict(turn, outcome)
         event[:verdict] = verdict if verdict
         event[:revises] = revises.to_h if revises

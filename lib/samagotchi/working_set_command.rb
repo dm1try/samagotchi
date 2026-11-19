@@ -33,7 +33,7 @@ module Samagotchi
                  WorkingSetSteer::ADD => "added", WorkingSetSteer::UNADD => "unadded" }.freeze
     PIN_OPS = [WorkingSetSteer::PIN, WorkingSetSteer::UNPIN].freeze
 
-    # @param engine [Engine] #session, #working_set_strategy, #prompt_memories,
+    # @param engine [Engine] #session, #working_set_strategy, #working_set_view, #prompt_memories,
     #   #clone_messages, #replace_messages
     # @param save [#call] saves the session after a change
     def initialize(engine:, save:)
@@ -77,14 +77,17 @@ module Samagotchi
       [lines.join("\n"), changed, done.positive? ? :ok : :error]
     end
 
-    # The set under the strategy the next turn runs, and the pending ops.
+    # The set as the model has it now (Engine#working_set_view: the running
+    # turn's as of its last request, else the session's under the next
+    # turn's strategy), and the pending ops (mid-turn the turn's copy holds
+    # the sent note, so none are).
     def listing
       session = @engine.session
-      return Session::NONE_YET unless session
+      view = session && @engine.working_set_view
+      return Session::NONE_YET unless view
 
-      messages = Array(session.messages)
-      items = WorkingSet.build(messages, cwd: session.working_directory, strategy: @engine.working_set_strategy,
-                               pins: session.working_set_pins).items
+      messages = view.conversation
+      items = WorkingSet.build(messages, cwd: view.cwd, strategy: view.strategy, pins: session.working_set_pins).items
       return "working set: empty (the files, memories and URLs the turns read show here)\n#{USAGE}" if items.empty?
 
       rows = items.map { |item| [WorkingSetSteer.quote(name(item, session.working_directory)), words(item)] }
