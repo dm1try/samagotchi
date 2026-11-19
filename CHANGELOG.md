@@ -13,6 +13,11 @@ and commands may change between minor versions. How releases are made:
 - chi no longer reads a guardrail approvals.json list written by chi 0.166 and before (set aside with a warning; allow
   again what you need), or a session's cards.json from before 0.151.0 (earlier cards don't show).
 
+### Fixed
+
+- A background task's leftover process holding its log is stopped even when chi exits just after the task's shell
+  ends, instead of running on after a one-shot or worker exit.
+
 ## [0.177.1] - 2026-11-19
 
 ### Fixed
