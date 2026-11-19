@@ -213,7 +213,9 @@ module Samagotchi
       def log_paths(record)
         return [] unless record
 
-        [record.output_path, record.stderr_path].filter_map { |log| log.to_s unless log.to_s.empty? }
+        # A relative log (create_task's output_path) is read under the
+        # thread's root (TaskFiles.with_root); the record keeps it as is.
+        [record.output_path, record.stderr_path].filter_map { |log| TaskFiles.rooted(log.to_s) unless log.to_s.empty? }
       end
 
       # The one line task_get, task_wait (and the finish note) and task_list
@@ -323,7 +325,7 @@ module Samagotchi
 
       def list_records
         ensure_tasks_dir
-        task_dirs = Dir.glob(File.join(TaskFiles::TASKS_DIR, "*"))
+        task_dirs = Dir.glob(File.join(TaskFiles.tasks_dir, "*"))
                        .select { |path| File.directory?(path) }
 
         task_dirs.map do |task_dir|
@@ -521,7 +523,7 @@ module Samagotchi
       def record_json(record) = JSON.pretty_generate(record.to_file) + "\n"
 
       def ensure_tasks_dir
-        FileUtils.mkdir_p(TaskFiles::TASKS_DIR)
+        FileUtils.mkdir_p(TaskFiles.tasks_dir)
       end
 
       def generate_task_id

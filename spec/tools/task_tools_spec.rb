@@ -350,6 +350,60 @@ RSpec.describe "task tools" do
       expect(described_class.get_record(record.id).first).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
     end
 
+    describe "from another root (TaskFiles.with_root)" do
+      let(:root) { Dir.pwd }
+      let(:files) { Samagotchi::TaskFiles }
+
+      def from_elsewhere(&)
+        session_root = root # read before the chdir
+        Dir.mktmpdir("samagotchi-elsewhere") do |elsewhere|
+          Dir.chdir(elsewhere) { files.with_root(session_root, &) }
+          expect(Dir.children(elsewhere)).to be_empty
+        end
+      end
+
+      it "stops a session's task from another cwd, writing only under the root" do
+        record, = described_class.create_task("sleep 30")
+        stopped = nil
+
+        from_elsewhere { stopped, = described_class.stop_task(record.id, by: "user") }
+
+        expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+        expect(described_class.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+        expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(false)
+      end
+
+      it "stops a leftover group (the shell gone, a child holding the log) by the root's log" do
+        stub_const("#{described_class}::LEFTOVER_GRACE_SEC", 30)
+        record, = described_class.create_task("sleep 30.97 & echo pid=$!")
+        wait_for("the task's shell to exit", timeout: 10) { !Samagotchi::ProcessGroup.alive?(record.pid) }
+        expect(described_class.get_record(record.id).first).to be_running
+        stopped = nil
+
+        from_elsewhere { stopped, = described_class.stop_task(record.id, by: "user") }
+
+        expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+        expect(Samagotchi::ProcessGroup.group_alive?(record.pid)).to be(false)
+      end
+
+      it "takes a nil or empty root as none: the cwd's relative paths" do
+        [nil, ""].each do |none|
+          files.with_root(none) { expect(files.metadata_path("x")).to eq("tmp/tasks/x/task.json") }
+        end
+      end
+
+      it "keeps the root to its own thread" do
+        seen = Queue.new
+        files.with_root("/somewhere/else") do
+          join!(Thread.new { seen << files.metadata_path("x") }, "the other thread")
+          expect(files.metadata_path("x")).to eq("/somewhere/else/tmp/tasks/x/task.json")
+        end
+
+        expect(seen.pop).to eq("tmp/tasks/x/task.json")
+        expect(files.metadata_path("x")).to eq("tmp/tasks/x/task.json")
+      end
+    end
+
     describe "a record whose pid isn't a process group chi started" do
       # Every Process.kill is recorded; one aimed at pid 0 or 1 (chi's own
       # group, every process of the user) never reaches the kernel.
