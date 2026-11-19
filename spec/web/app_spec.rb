@@ -2435,7 +2435,7 @@ RSpec.describe Samagotchi::Web::App do
         FileUtils.rm_rf(state_dir) if state_dir
       end
 
-      it "places a stopped session's cards from its session file, version 2 and version 1; ?cards=1 carries the bodies alone" do
+      it "places version 2 cards from a stopped session; an old version 1 file shows none" do
         state_dir = Dir.mktmpdir
         path = File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE)
         store = Samagotchi::Bridge::CardStore.new(path: path)
@@ -2455,7 +2455,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(bodies).not_to have_key("turns_since")
 
         File.write(path, JSON.generate({ version: 1, turns: 3, entries: [{ type: "card", id: "old", in_turn: false, turns: 1 }] }))
-        expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"].first).to include("id" => "old", "turns_since" => 2)
+        expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]).to eq([])
       ensure
         FileUtils.rm_rf(state_dir) if state_dir
       end

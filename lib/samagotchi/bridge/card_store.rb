@@ -61,8 +61,8 @@ module Samagotchi
     # new worker's turn). A card shown between turns (github-pr's offer,
     # btw, coordinator) keeps its buttons.
     #
-    # A file from before the log (version 1) keeps its places: each entry's
-    # count becomes +base_since+, and new openings add to it (#seed_v1).
+    # A file from before the log (version 1) is no longer read; its earlier
+    # cards do not show. Version 2 files saved since can still include readable +base_since+ places.
     class CardStore
       CAPACITY = 20
       FORMAT_VERSION = 2
@@ -256,8 +256,6 @@ module Samagotchi
           @turn_log = data[:turn_log].grep(String)
           @failed_turn = data[:failed_turn] if data[:failed_turn].is_a?(String)
           @entries = seeded(document.entries.map { |entry| entry.to_h.transform_keys(&:to_sym) })
-        elsif data[:turns].is_a?(Integer)
-          seed_v1(data)
         end
       rescue StateFormat::InvalidDocument => e
         @format_read_only = true
@@ -267,21 +265,6 @@ module Samagotchi
       rescue StandardError
         @turn_log = []
         @entries = []
-      end
-
-      # A file from before the turn log: each entry's place by the count it was
-      # saved with, killed turn included (nothing in it can say where a drifted
-      # card was). New openings add to it. The next save keeps +base_since+.
-      # Can go a retention period after the release that wrote version 2
-      # (compat shim cards_v1_seed: Compat::SHIMS).
-      def seed_v1(data)
-        killed_in_turn = data[:running] == true
-        turns_done = data[:turns] + (killed_in_turn ? 1 : 0)
-        olds = data[:entries].select { |entry| entry.is_a?(Hash) && entry[:turns].is_a?(Integer) }
-        @entries = seeded(olds.map do |entry|
-          turns = entry[:during] && killed_in_turn ? turns_done : entry[:turns]
-          entry.except(:turns).merge(base_since: [turns_done - turns - (entry[:in_turn] ? 1 : 0), 0].max)
-        end)
       end
 
       def seeded(entries)
