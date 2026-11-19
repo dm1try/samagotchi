@@ -211,6 +211,62 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "running background tasks (chi --remote sessions delete|archive [--stop-tasks])" do
+    let(:tasks) do
+      { running: [{ session_id: "s", id: "20261120120000-3f9a2c1d", command: "npm run dev" }],
+        unverified: [{ session_id: "d", id: "20261001120000-0badf00d", command: "rspec" }], unreadable: [] }
+    end
+
+    it "names the feature chi web lists (Web::App::STOP_TASKS_FEATURE), and that chi web lists it" do
+      expect(described_class::STOP_TASKS_FEATURE).to eq(Samagotchi::Web::App::STOP_TASKS_FEATURE)
+      expect(Samagotchi::Web::App::INFO_FEATURES).to include(described_class::STOP_TASKS_FEATURE)
+    end
+
+    it "raises a 409 tasks_running as DeleteRefused or ArchiveRefused by its op, the words made here" do
+      access, = scripted([409, { error: "tasks_running", reason: "tasks_running", op: "delete", session_id: "s",
+                                 tasks: tasks, worker_stopped: true, message: "chi web's words" }],
+                         [409, { error: "tasks_running", reason: "tasks_running", op: "archive", session_id: "s",
+                                 tasks: tasks, worker_stopped: false }])
+
+      expect { access.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect(e).to have_attributes(reason: :tasks_running, worker_stopped: true)
+        expect(e.tasks.running.map(&:command)).to eq(["npm run dev"])
+        expect(e.message).to eq("background tasks it started are still running: npm run dev; its delegate d's " \
+                                "background tasks are still running: task 0badf00d (may still be running); its worker was stopped")
+      }
+      named, = scripted([409, { error: "tasks_running", op: "delete", session_id: "s", tasks: tasks, worker_stopped: true,
+                                stopped_worker: "bbbb2222-0000" }])
+      expect { named.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect([e.stopped_worker, e.message]).to match(["bbbb2222-0000", a_string_ending_with("; bbbb2222's worker was stopped")])
+      }
+      expect { access.archive("s") }.to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |e|
+        expect(e.reason).to eq(:tasks_running)
+        expect(e.tasks.unverified.map(&:session_id)).to eq(["d"])
+      }
+    end
+
+    it "sends stop_tasks (the query for a delete, the body for an archive) and reads the stopped tasks" do
+      stopped = [{ session_id: "s", id: "t1", command: "npm run dev" }]
+      access, calls = scripted([200, { session_id: "s", stopped: true, tasks_stopped: stopped }],
+                               [200, { session_id: "s", archived: ["s"], tasks_stopped: stopped, tasks_not_stopped: [] }],
+                               info: { app: "chi-web", version: "9.9.9", features: %w[session_commands stop_tasks] })
+
+      expect(access.delete("s", force: false, stop_tasks: true)[:tasks_stopped].map(&:command)).to eq(["npm run dev"])
+      expect(access.archive("s", stop_tasks: true).tasks_stopped.map(&:id)).to eq(["t1"])
+      expect(calls[1]).to eq([:delete, "/api/sessions/s", { query: { force: nil, stop_tasks: true } }])
+      expect(calls[2]).to eq([:post, "/api/sessions/s/archive", { body: { stop_tasks: true } }])
+    end
+
+    it "never sends --stop-tasks to an older chi web: RemoteTooOld, nothing done" do
+      old, calls = scripted([200, {}])
+
+      expect { old.delete("s", force: false, stop_tasks: true) }.to raise_error(Samagotchi::SessionAccess::RemoteTooOld)
+      expect { old.archive("s", stop_tasks: true) }.to raise_error(Samagotchi::SessionAccess::RemoteTooOld)
+      expect { old.delete_chain("s", force: false, stop_tasks: true) }.to raise_error(Samagotchi::SessionAccess::RemoteTooOld)
+      expect(calls.map(&:first)).to eq([:get])
+    end
+  end
+
   describe "a bound invite (chi share --identity)" do
     let(:participant) do
       { id: "p_0000beef", session_id: "s", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",

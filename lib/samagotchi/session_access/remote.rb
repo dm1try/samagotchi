@@ -318,6 +318,8 @@ module Samagotchi
       BOUND_FEATURE = "bound_grants"
       # Web::App::CHAIN_DELETE_FEATURE: DELETE …/chain.
       CHAIN_DELETE_FEATURE = "chain_delete"
+      # Web::App::STOP_TASKS_FEATURE: delete and archive take stop_tasks.
+      STOP_TASKS_FEATURE = "stop_tasks"
 
       # The header that chi web names the signed-in user in (GET
       # /api/info's proxy), nil when it has no such proxy, or is a chi
@@ -478,12 +480,23 @@ module Samagotchi
       end
 
       # @return [SessionManager::ArchiveResult] the reply's lists coerced to arrays
-      def archive(id)
-        reply = request(:post, "#{session_path(id)}/archive")
+      # @raise [RemoteTooOld] +stop_tasks+ and a chi web without STOP_TASKS_FEATURE
+      def archive(id, stop_tasks: false)
+        require_feature!(STOP_TASKS_FEATURE) if stop_tasks
+        reply = request(:post, "#{session_path(id)}/archive", body: ({ stop_tasks: true } if stop_tasks))
         raise_refusal(reply) unless reply.status == 200
 
         SessionManager::ArchiveResult.new(id: reply.json["session_id"] || id, archived: Array(reply.json["archived"]),
-                                          stopped: Array(reply.json["stopped"]), discarded: Array(reply.json["discarded"]))
+                                          stopped: Array(reply.json["stopped"]), discarded: Array(reply.json["discarded"]),
+                                          **task_fields(reply.json))
+      end
+
+      # The 200's tasks_stopped, tasks_not_stopped and tasks_ended as
+      # RunningTasks::RunningTask lists ([] from a chi web without them).
+      private def task_fields(json)
+        %w[tasks_stopped tasks_not_stopped tasks_ended].to_h do |key|
+          [key.to_sym, Array(json[key]).map { |task| SessionManager::RunningTasks::RunningTask.from_wire(task) }]
+        end
       end
 
       # @return [Hash] {id:, unarchived:}
@@ -498,26 +511,31 @@ module Samagotchi
       # A chi web before chain_delete answers without unarchived,
       # moved_back, deleted and left_running (no revive, no undo, no D7
       # there): each reads as [].
-      def delete(id, force:)
-        reply = request(:delete, session_path(id), query: { force: (true if force) })
+      # @raise [RemoteTooOld] +stop_tasks+ and a chi web without STOP_TASKS_FEATURE
+      def delete(id, force:, stop_tasks: false)
+        require_feature!(STOP_TASKS_FEATURE) if stop_tasks
+        reply = request(:delete, session_path(id), query: { force: (true if force), stop_tasks: (true if stop_tasks) })
         raise_refusal(reply) unless reply.status == 200
 
         { id: reply.json["session_id"] || id, stopped: reply.json["stopped"] == true,
           unarchived: ids_of(reply.json["unarchived"]), moved_back: ids_of(reply.json["moved_back"]),
-          deleted: ids_of(reply.json["deleted"]), left_running: ids_of(reply.json["left_running"]) }
+          deleted: ids_of(reply.json["deleted"]), left_running: ids_of(reply.json["left_running"]),
+          **task_fields(reply.json) }
       end
 
       # DELETE …/chain there (SessionManager.delete_chain's result).
       # @raise [RemoteTooOld] a chi web without it (an older one would answer 404)
-      def delete_chain(id, force:)
+      def delete_chain(id, force:, stop_tasks: false)
         require_feature!(CHAIN_DELETE_FEATURE)
-        reply = request(:delete, "#{session_path(id)}/chain", query: { force: (true if force) })
+        require_feature!(STOP_TASKS_FEATURE) if stop_tasks
+        reply = request(:delete, "#{session_path(id)}/chain", query: { force: (true if force), stop_tasks: (true if stop_tasks) })
         raise_refusal(reply) unless reply.status == 200
 
         json = reply.json
         { id: json["session_id"] || id, deleted: ids_of(json["deleted"]), left: ids_of(json["left"]),
           left_running: ids_of(json["left_running"]), unarchived: ids_of(json["unarchived"]),
-          stopped: ids_of(json["stopped"]), cut_off: json["cut_off"] == true, refusal: json["refusal"] }
+          stopped: ids_of(json["stopped"]), cut_off: json["cut_off"] == true, refusal: json["refusal"],
+          **task_fields(json) }
       end
 
       private def ids_of(value) = Array(value).select { |id| Session.valid_id?(id) }
@@ -786,6 +804,7 @@ module Samagotchi
         when "worker_running", "still_stopping", "scheduled", "continuing", "delegate_unmovable", "chain_scheduled"
           raise SessionManager::DeleteRefused.new(sid, reason || error.to_sym, message: message, ids: ids_of(json["ids"]),
                                                                                schedule_id: json["schedule_id"])
+        when "tasks_running" then raise tasks_refusal(json, sid)
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
         when "continued", "open_children", "folder_gone"
@@ -812,6 +831,20 @@ module Samagotchi
         end
         raise RemoteFailed, "#{@entry.label} answered #{reply.status}#{" #{error}" unless error.empty?}" \
                             "#{": #{message}" if message}"
+      end
+
+      # A 409 tasks_running as the refusal Local's callee raises, by its op;
+      # the words are made here from the listing (one place for them).
+      def tasks_refusal(json, sid)
+        tasks = SessionManager::RunningTasks::Listing.from_wire(json["tasks"])
+        # Whose worker was stopped (an older chi web sends only the Boolean).
+        stopped = Session.valid_id?(json["stopped_worker"]) ? json["stopped_worker"] : json["worker_stopped"] == true
+        if json["op"] == "archive"
+          SessionManager::ArchiveRefused.new(sid, :tasks_running, tasks: tasks, worker_stopped: stopped)
+        else
+          SessionManager::DeleteRefused.new(sid, :tasks_running, tasks: tasks, worker_stopped: stopped,
+                                                                 links: ids_of(json["links"]))
+        end
       end
 
       def create_body(spec)

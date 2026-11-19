@@ -14,6 +14,8 @@ require "samagotchi/bridge"
 require "samagotchi/web/session_hub"
 require "samagotchi/session"
 require_relative "../support/worker_links"
+require "samagotchi/tools/task_runtime"
+require "support/task_dirs"
 
 # Emulates SessionManager#read_responses over an in-memory response list,
 # optionally filtering by mtime threshold using a parallel +times+ array.
@@ -4092,6 +4094,73 @@ RSpec.describe Samagotchi::Web::App do
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).status).not_to eq("stopped")
     end
 
+    describe "a session whose background task still runs (409 tasks_running, stop_tasks)" do
+      include TaskDirs
+
+      let(:runtime) { Samagotchi::Tools::TaskRuntime }
+
+      # The session's folder is the tasks' root (its working_directory is Dir.pwd).
+      around { |example| with_task_dir { example.run } }
+
+      def start_task(command)
+        record, error = runtime.create_task(command)
+        raise error if error
+
+        session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+        session.save(state_dir: state_dir)
+        record
+      end
+
+      def call(path, method:, body: nil)
+        status, _headers, out = app.call(env_for(path, method: method, body: body))
+        [status, JSON.parse(out.first)]
+      end
+
+      it "answers a delete 409 tasks_running with the tasks, and ?stop_tasks=true stops them and deletes" do
+        record = start_task("sleep 30.51")
+
+        status, json = call("/api/sessions/#{session.id}?force=true", method: "DELETE")
+        expect(status).to eq(409)
+        expect(json).to include("error" => "tasks_running", "reason" => "tasks_running", "op" => "delete",
+                                "session_id" => session.id, "worker_stopped" => false,
+                                "detail" => "background tasks it started are still running: sleep 30.51")
+        expect(json["tasks"]).to eq("running" => [{ "session_id" => session.id, "id" => record.id, "command" => "sleep 30.51" }],
+                                    "unverified" => [], "unreadable" => [])
+        expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: state_dir))).to be(true)
+
+        status, json = call("/api/sessions/#{session.id}?force=true&stop_tasks=true", method: "DELETE")
+        expect(status).to eq(200)
+        expect(json["tasks_stopped"]).to eq([{ "session_id" => session.id, "id" => record.id, "command" => "sleep 30.51" }])
+        expect(json).to include("tasks_not_stopped" => [], "tasks_ended" => [])
+        expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+      end
+
+      it "answers an archive 409 tasks_running (not busy), and {stop_tasks: true} in the body stops them and archives" do
+        record = start_task("sleep 30.52")
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST")
+        expect(status).to eq(409)
+        expect(json).to include("error" => "tasks_running", "op" => "archive")
+        expect(json.dig("tasks", "running", 0, "id")).to eq(record.id)
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST", body: JSON.generate(stop_tasks: true))
+        expect(status).to eq(200)
+        expect(json["tasks_stopped"].map { |t| t["id"] }).to eq([record.id])
+        expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(true)
+      end
+
+      it "takes stop_tasks on the chain delete's query too" do
+        record = start_task("sleep 30.53")
+
+        status, json = call("/api/sessions/#{session.id}/chain", method: "DELETE")
+        expect([status, json["error"]]).to eq([409, "tasks_running"])
+
+        status, json = call("/api/sessions/#{session.id}/chain?stop_tasks=1", method: "DELETE")
+        expect(status).to eq(200)
+        expect(json["tasks_stopped"].map { |t| t["id"] }).to eq([record.id])
+      end
+    end
+
     describe "POST /api/sessions/:id/archive and /unarchive" do
       def archived? = Samagotchi::ArchiveStore.archived?(session_dir)
 
@@ -4100,7 +4169,7 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(status).to eq(200)
         expect(JSON.parse(body.first)).to eq("status" => "archived", "session_id" => session.id, "archived" => [session.id],
-                                             "stopped" => [], "discarded" => [])
+                                             "stopped" => [], "discarded" => [], "tasks_stopped" => [], "tasks_not_stopped" => [], "tasks_ended" => [])
         expect(archived?).to be(true)
         _status, _headers, list = app.call(env_for("/api/sessions"))
         expect(JSON.parse(list.first).map { |s| [s["id"], s["archived"]] }).to eq([[session.id, true]])
@@ -4171,7 +4240,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(status).to eq(200)
         expect(JSON.parse(body.first)).to eq("status" => "deleted", "session_id" => session.id, "stopped" => false,
                                              "unarchived" => [], "moved_back" => [], "deleted" => [session.id],
-                                             "left_running" => [])
+                                             "left_running" => [], "tasks_stopped" => [], "tasks_not_stopped" => [], "tasks_ended" => [])
         expect(File.exist?(session_file)).to be false
         expect(Dir.exist?(session_dir)).to be false
       end
@@ -4274,7 +4343,8 @@ RSpec.describe Samagotchi::Web::App do
         expect(JSON.parse(body.first)).to include("stopped" => true)
         expect(Samagotchi::SessionManager).to have_received(:delete_session)
           .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS,
-                            revive_previous: true, refuse_continuing: true, expect: nil)
+                            revive_previous: true, refuse_continuing: true, expect: nil,
+                            running_tasks: Samagotchi::SessionManager::RunningTasks::Policy::REFUSE)
         expect(File.exist?(session_file)).to be false
       end
 

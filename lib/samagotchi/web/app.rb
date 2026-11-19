@@ -1109,8 +1109,12 @@ module Samagotchi
       # DELETE …/chain, and the plain delete's revive and undo (D2/D5): chi
       # --remote sessions delete --chain asks for this first.
       CHAIN_DELETE_FEATURE = "chain_delete"
+      # Delete and archive refuse on running background tasks (409
+      # tasks_running) and take stop_tasks: chi --remote sessions
+      # delete|archive --stop-tasks asks for this first.
+      STOP_TASKS_FEATURE = "stop_tasks"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and

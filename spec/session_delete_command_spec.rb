@@ -8,6 +8,8 @@ require "spec_helper"
 require "samagotchi/session_delete_command"
 require "samagotchi/owner_lock"
 require "samagotchi/schedules"
+require "samagotchi/tools/task_runtime"
+require "support/task_dirs"
 require_relative "support/remote_backend"
 
 RSpec.describe Samagotchi::SessionDeleteCommand do
@@ -188,9 +190,57 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
       expect(err.string).to include("unknown option --everything")
     end
 
+    describe "a session whose background task still runs" do
+      include TaskDirs
+
+      let(:runtime) { Samagotchi::Tools::TaskRuntime }
+
+      around { |example| with_task_dir { |root| @root = root and example.run } }
+
+      def with_task(command)
+        session = make(id: "aaaa1111-0000")
+        record, error = runtime.create_task(command)
+        raise error if error
+
+        session.working_directory = @root
+        session.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }]
+        session.save(state_dir: state_dir)
+        [session, record]
+      end
+
+      it "refuses, naming it, and exits 1" do
+        session, record = with_task("sleep 30.42")
+
+        expect(run(session.id)).to eq(1)
+
+        expect(out.string).to eq("aaaa1111  refused: background tasks it started are still running: sleep 30.42 " \
+                                 "(--stop-tasks stops them first)\n")
+        expect(gone?(session)).to be(false)
+        expect(runtime.load_record(record.id)).to be_running
+      end
+
+      it "with --stop-tasks stops it, then deletes, and says so" do
+        session, record = with_task("sleep 30.43")
+
+        expect(run("--stop-tasks", session.id)).to eq(0)
+
+        expect(out.string).to eq("aaaa1111  deleted (stopped 1 background task)  fix the bug in the parser\n")
+        expect(gone?(session)).to be(true)
+        expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+      end
+
+      it "with --stop-tasks still refuses a live worker without --force" do
+        session, = with_task("sleep 30.44")
+        locks << Samagotchi::OwnerLock.acquire(dir_of(session), kind: "worker")
+
+        expect(run("--stop-tasks", session.id)).to eq(1)
+        expect(out.string).to eq("aaaa1111  refused: its worker is running (--force stops it first)\n")
+      end
+    end
+
     it "prints its usage for --help and exits 0" do
       expect(run("--help")).to eq(0)
-      expect(out.string).to include("Usage: chi sessions delete [--force] [--chain] (ID|PREFIX)...")
+      expect(out.string).to include("Usage: chi sessions delete [--force] [--chain] [--stop-tasks] (ID|PREFIX)...")
     end
   end
 

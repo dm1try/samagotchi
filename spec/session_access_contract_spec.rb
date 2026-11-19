@@ -9,6 +9,7 @@ require "samagotchi/note_command"
 require "samagotchi/context_command"
 require "samagotchi/sessions_command"
 require "samagotchi/session_delete_command"
+require "samagotchi/session_archive_command"
 require "samagotchi/share_command"
 require "samagotchi/run_options"
 
@@ -31,6 +32,7 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
     **Samagotchi::ContextCommand::SUBCOMMANDS.to_h { |sub| ["context #{sub}", Samagotchi::ContextCommand::FLAGS.fetch(sub)] },
     **Samagotchi::SessionsCommand::SUBCOMMANDS.to_h { |sub| ["sessions #{sub}", Samagotchi::SessionsCommand::FLAGS[sub]] },
     "sessions delete" => Samagotchi::SessionDeleteCommand::FLAGS,
+    "sessions archive" => Samagotchi::SessionArchiveCommand::FLAGS,
     "share" => Samagotchi::ShareCommand::FLAGS,
     **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] }
   }

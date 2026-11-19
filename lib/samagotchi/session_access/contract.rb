@@ -113,10 +113,14 @@ module Samagotchi
         "sessions stop" => SUPPORTED,
         "sessions restart" => SUPPORTED,
         "sessions archive" => SUPPORTED,
+        # A chi web without stop_tasks (Remote#archive and #delete check its
+        # feature) refuses with RemoteTooOld.
+        "sessions archive --stop-tasks" => SUPPORTED,
         "sessions unarchive" => SUPPORTED,
         "sessions delete" => SUPPORTED,
         "sessions delete --force" => SUPPORTED,
         "sessions delete --chain" => SUPPORTED,
+        "sessions delete --stop-tasks" => SUPPORTED,
         "sessions prune" => LOCAL_ONLY,
         "sessions clean" => LOCAL_ONLY,
         "sessions stats" => LOCAL_ONLY,
