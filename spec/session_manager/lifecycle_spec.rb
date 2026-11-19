@@ -162,6 +162,29 @@ RSpec.describe Samagotchi::SessionManager do
       Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
     end
 
+    # A group leader this example started (a live task's shell), killed after it.
+    def live_leader
+      @live_leader ||= Process.spawn("sleep", "31.83", pgroup: true)
+    end
+
+    after do
+      next unless @live_leader
+
+      # Not Process.kill: these examples stub it.
+      system("kill", "-KILL", @live_leader.to_s, err: File::NULL)
+      Process.wait(@live_leader)
+    end
+
+    # A task.json the session's transcript names (+raw+: the file's text).
+    def task_record(raw: nil, **fields)
+      task_id = "20261027123456-abcdef01"
+      session.working_directory = tmpdir
+      session.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{task_id}" }]
+      task_dir = File.join(tmpdir, Samagotchi::TaskFiles::TASKS_DIR, task_id)
+      FileUtils.mkdir_p(task_dir)
+      File.write(File.join(task_dir, Samagotchi::TaskFiles::METADATA_FILENAME), raw || JSON.generate(fields))
+    end
+
     before do
       allow(described_class).to receive(:session_owner).and_return(worker)
       # The worker's secret goes with its port, from the same sidecar.
@@ -279,12 +302,7 @@ RSpec.describe Samagotchi::SessionManager do
           Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), prompt: "queued")
         end,
         background_tasks: lambda do
-          task_id = "20261027123456-abcdef01"
-          session.working_directory = tmpdir
-          session.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{task_id}" }]
-          task_dir = File.join(tmpdir, Samagotchi::TaskFiles::TASKS_DIR, task_id)
-          FileUtils.mkdir_p(task_dir)
-          File.write(File.join(task_dir, Samagotchi::TaskFiles::METADATA_FILENAME), JSON.generate(status: "running"))
+          task_record(status: "running", pid: live_leader, pid_started: Samagotchi::ProcessGroup.start_time(live_leader))
         end
       }
 
@@ -303,6 +321,52 @@ RSpec.describe Samagotchi::SessionManager do
           }
       end
       expect(Process).not_to have_received(:kill)
+    end
+
+    describe "a background task the session started (RunningTasks)" do
+      before do
+        allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+        allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+        allow(Process).to receive(:kill)
+        allow(described_class).to receive(:wait_for_owner_release).and_return(true)
+        allow(described_class).to receive(:resume_session)
+        allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+      end
+
+      def held_by_tasks?
+        described_class.restart_session(session.id, state_dir: tmpdir, wait: 0)
+        false
+      rescue described_class::RestartRefused => e
+        expect(e.reason).to eq(:fallback_held)
+        e.holds.include?(:background_tasks)
+      end
+
+      it "holds the fallback for a live task" do
+        task_record(status: "running", pid: live_leader, pid_started: Samagotchi::ProcessGroup.start_time(live_leader))
+        session.save(state_dir: tmpdir)
+
+        expect(held_by_tasks?).to be(true)
+      end
+
+      it "holds it for an unreadable record, logged as session_task_check_failed" do
+        task_record(raw: "{not json")
+        session.save(state_dir: tmpdir)
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+        expect(held_by_tasks?).to be(true)
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:worker, "session_task_check_failed", hash_including(sid: session.id, task_id: "20261027123456-abcdef01"))
+      end
+
+      it "doesn't hold it for a record left running whose pid is gone (a crashed worker's)" do
+        dead = Process.spawn("true", pgroup: true)
+        Process.wait(dead)
+        task_record(status: "running", pid: dead, pid_started: "Thu Jan  1 00:00:00 2026")
+        session.save(state_dir: tmpdir)
+
+        expect(held_by_tasks?).to be(false)
+        expect(described_class).to have_received(:resume_session)
+      end
     end
 
     it "waits FALLBACK_STOP_WAIT for the TERMed owner, long enough for its recap on leave" do

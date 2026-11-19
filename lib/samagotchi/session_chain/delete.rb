@@ -147,7 +147,11 @@ module Samagotchi
       # @raise [SessionManager::DeleteRefused] :continuing, :scheduled,
       #   :delegate_unmovable, :worker_running, :still_stopping
       # @raise [SessionManager::OwnedByTUI]
-      def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:, expect: nil)
+      # @param running_tasks [SessionManager::RunningTasks::Policy] for the
+      #   link and the delegates that go with it (check_link!, then each
+      #   one's removal under its lock)
+      def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:, expect: nil,
+               running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         ContinueIntent.hold(id, state_dir: state_dir) do |held|
           raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
 
@@ -155,11 +159,15 @@ module Samagotchi
           unless chained?(id, links)
             raise SessionManager::DeleteRefused.new(id, :plan_changed) unless expect.nil?
 
-            return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait))
+            return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait,
+                                                        running_tasks: running_tasks))
           end
 
           plan = link_plan(id, state_dir: state_dir, links: links, undo: revive_previous)
-          return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect) unless plan.previous
+          unless plan.previous
+            return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect,
+                                     running_tasks: running_tasks)
+          end
 
           # Taken before the link's file goes: after it, a continue of the
           # previous link would no longer be refused. The plan is made again
@@ -168,7 +176,8 @@ module Samagotchi
             raise SessionManager::DeleteRefused.new(plan.previous, :continuing) unless previous_held
 
             again = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: true)
-            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait, expect: expect)
+            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait, expect: expect,
+                                      running_tasks: running_tasks)
           end
         end
       end
@@ -184,12 +193,17 @@ module Samagotchi
       # The refusals a link's delete makes before anything changes (the
       # sheet's too): a schedule's target, anchor or head, on the link or a
       # delegate that would go; a moved delegate that can't go back; a
-      # delegate that would go in a one-turn run.
+      # delegate that would go in a one-turn run; with REFUSE, a background
+      # task the link or such a delegate started that still runs.
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
-      def check_link!(plan, state_dir)
+      def check_link!(plan, state_dir, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         SessionManager.refuse_scheduled!(plan.id, state_dir)
         refuse_unmovable!(plan.id, plan.moved, state_dir)
         precheck!(plan.delegates.delete, state_dir)
+        SessionManager::RunningTasks.check!([*plan.delegates.delete, plan.id], state_dir: state_dir,
+                                                                              policy: running_tasks) do |listing|
+          SessionManager::DeleteRefused.new(plan.id, :tasks_running, tasks: listing)
+        end
       end
 
       # Every refusal first (check_link!), then the link's worker stopped,
@@ -199,29 +213,52 @@ module Samagotchi
       # files. So a refusal (a schedule on a delegate, a one-turn run, a
       # worker that took the link or a delegate after the checks) leaves
       # every session in place.
-      def delete_link(plan, state_dir:, stop:, wait:, expect: nil)
+      def delete_link(plan, state_dir:, stop:, wait:, expect: nil,
+                      running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         raise SessionManager::DeleteRefused.new(plan.id, :plan_changed) if !expect.nil? && expect != digest(plan)
 
         id = plan.id
-        check_link!(plan, state_dir)
+        check_link!(plan, state_dir, running_tasks: running_tasks)
         stopped = SessionManager.release_for_delete!(id, state_dir: state_dir, stop: stop, wait: wait)
         path = Session.session_file(id, state_dir: state_dir)
         dir = Session.session_dir(id, state_dir: state_dir)
         doomed = [*plan.delegates.delete, id]
-        removed = locked(doomed, state_dir) do
-          remove_locked(plan.delegates.delete, state_dir)
-          if plan.previous
-            SessionContinue.undo_deleted_link(from: plan.previous, link: id, moved: plan.moved, state_dir: state_dir) do
-              SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true)
+        # REFUSE lists the whole batch once under its locks, before any of it
+        # goes; the removals then don't check again (a later id's refusal
+        # would leave the earlier ones gone).
+        each = SessionManager::RunningTasks.after_check(running_tasks)
+        removed = begin
+          locked(doomed, state_dir) do
+            refuse_tasks!(doomed, plan.id, state_dir, running_tasks)
+            remove_locked(plan.delegates.delete, state_dir, running_tasks: each)
+            if plan.previous
+              SessionContinue.undo_deleted_link(from: plan.previous, link: id, moved: plan.moved, state_dir: state_dir) do
+                SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true,
+                                                           running_tasks: each)
+              end
+            else
+              SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true,
+                                                         running_tasks: each)
             end
-          else
-            SessionManager.remove_files(id, path, dir, state_dir: state_dir, purge_runs: false, locked: true)
           end
+        rescue SessionManager::DeleteRefused => e
+          raise e unless stopped && e.reason == :tasks_running
+
+          # The worker stopped was the link's, whichever id refused.
+          raise e.with_worker_stopped(id)
         end
         SessionManager.purge_removal_stores(doomed, state_dir: state_dir)
         unarchived = plan.revive.select { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
         { id: id, removed: removed, stopped: stopped, unarchived: unarchived, moved_back: plan.moved,
-          deleted: doomed, left_running: plan.delegates.leave }
+          deleted: doomed, left_running: plan.delegates.leave, **running_tasks.result_fields }
+      end
+
+      # REFUSE's last check of a batch under its locks (+ids+ all held):
+      # DeleteRefused :tasks_running for +id+ before any of them goes.
+      def refuse_tasks!(ids, id, state_dir, running_tasks, links: [])
+        SessionManager::RunningTasks.refuse_batch!(ids, state_dir: state_dir, policy: running_tasks) do |listing|
+          SessionManager::DeleteRefused.new(id, :tasks_running, tasks: listing, links: links)
+        end
       end
 
       # The refusals of every id a batch would delete, before the first
@@ -269,10 +306,10 @@ module Samagotchi
       # +ids+' files, in order, each locked by the caller (#locked); the
       # session logs are the caller's to purge, once.
       # @return [Array<String>] the paths removed
-      def remove_locked(ids, state_dir)
+      def remove_locked(ids, state_dir, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         ids.flat_map do |sid|
           SessionManager.remove_files(sid, Session.session_file(sid, state_dir: state_dir), Session.session_dir(sid, state_dir: state_dir),
-                                      state_dir: state_dir, purge_runs: false, locked: true)
+                                      state_dir: state_dir, purge_runs: false, locked: true, running_tasks: running_tasks)
         end
       end
 
@@ -335,26 +372,32 @@ module Samagotchi
       #   earlier ones; refusal: the message of a part-way refusal, or nil)
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       #   nothing was deleted
-      def chain(id, state_dir:, stop:, wait:, expect: nil)
+      # @param running_tasks [SessionManager::RunningTasks::Policy] for every
+      #   link and delegate that goes: REFUSE refuses up front (check_chain!)
+      #   and again under each link's locks; a stop runs link by link
+      # @return also tasks_stopped:, tasks_not_stopped:, tasks_ended:
+      def chain(id, state_dir:, stop:, wait:, expect: nil, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         links = Links.new(state_dir: state_dir)
         plan = chain_plan(id, state_dir: state_dir, links: links)
         raise SessionManager::DeleteRefused.new(plan.id, :plan_changed) if !expect.nil? && expect != digest(plan)
 
-        check_chain!(plan, state_dir, stop: stop)
+        check_chain!(plan, state_dir, stop: stop, running_tasks: running_tasks)
         hold_all(plan.links, state_dir) do
           stopped = plan.links.select do |link|
             SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
           end
-          delete_links(plan, links, state_dir).merge(stopped: stopped, cut_off: plan.cut_off)
+          delete_links(plan, links, state_dir, running_tasks: running_tasks)
+            .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
         end
       end
 
       # The refusals a chain's delete makes before anything goes (the
       # sheet's too): a schedule on the chain, a link in a one-turn run,
       # without +stop+ a link with a worker, then every delegate that would
-      # go (precheck!: a schedule on one, a one-turn run).
+      # go (precheck!: a schedule on one, a one-turn run), then with REFUSE
+      # a background task any of them started that still runs.
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
-      def check_chain!(plan, state_dir, stop:)
+      def check_chain!(plan, state_dir, stop:, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         schedule = Schedules.new(state_dir: state_dir).for_chain(plan.id).first
         raise SessionManager::DeleteRefused.new(plan.id, :chain_scheduled, schedule_id: schedule.id) if schedule
 
@@ -364,6 +407,10 @@ module Samagotchi
           raise SessionManager::DeleteRefused.new(link, :worker_running) if !stop && (presence.owned? || presence.starting?)
         end
         precheck!(plan.delegates.values.flat_map(&:delete), state_dir)
+        doomed = [*plan.links, *plan.delegates.values.flat_map(&:delete)]
+        SessionManager::RunningTasks.check!(doomed, state_dir: state_dir, policy: running_tasks) do |listing|
+          SessionManager::DeleteRefused.new(plan.id, :tasks_running, tasks: listing, links: plan.links)
+        end
       end
 
       # The block inside a shared continue hold of every id.
@@ -380,7 +427,7 @@ module Samagotchi
 
       # Each link with its delegates under their locks, newest first; a
       # refused one keeps it and every earlier link whole.
-      def delete_links(plan, links, state_dir)
+      def delete_links(plan, links, state_dir, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
         done = { id: plan.id, deleted: [], left: [], left_running: [], unarchived: [], refusal: nil }
         newest_first = plan.links.reverse
         record = nil
@@ -389,7 +436,10 @@ module Samagotchi
           batch = [*delegates.delete, link]
           deleted_record = ContinuedFrom.read(link, state_dir: state_dir)
           begin
-            locked(batch, state_dir) { remove_locked(batch, state_dir) }
+            locked(batch, state_dir) do
+              refuse_tasks!(batch, link, state_dir, running_tasks)
+              remove_locked(batch, state_dir, running_tasks: SessionManager::RunningTasks.after_check(running_tasks))
+            end
           rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, Session::NotFound => e
             raise if done[:deleted].empty?
 

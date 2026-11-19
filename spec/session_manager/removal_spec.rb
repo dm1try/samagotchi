@@ -11,6 +11,8 @@ require "samagotchi/schedules"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
+require "samagotchi/tools/task_runtime"
+require "support/task_dirs"
 
 RSpec.describe Samagotchi::SessionManager do
   include_context "session manager files"
@@ -337,6 +339,266 @@ RSpec.describe Samagotchi::SessionManager do
       expect { described_class.delete_ids([first.id, held.id, last.id], state_dir: tmpdir) }
         .to raise_error(described_class::DeleteRefused) { |e| expect(e.session_id).to eq(held.id) }
       expect([file?(first), file?(held), file?(last)]).to eq([false, true, true])
+    end
+  end
+
+  # The background tasks a deleted or archived session started
+  # (RunningTasks): asked about, or stopped, or left (IGNORE).
+  describe "running background tasks" do
+    include TaskDirs
+
+    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+    let(:policies) { described_class::RunningTasks::Policy }
+
+    around { |example| with_task_dir { |root| @root = root and example.run } }
+
+    before { @spawned = [] }
+
+    after do
+      @spawned.each do |pid|
+        Process.kill("KILL", -pid)
+      rescue Errno::ESRCH, Errno::EPERM
+        nil
+      ensure
+        begin
+          Process.wait(pid)
+        rescue Errno::ECHILD
+          nil
+        end
+      end
+    end
+
+    def task_session(parent: nil)
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: @root,
+                                      parent_id: parent&.id).tap { |s| s.save(state_dir: tmpdir) }
+    end
+
+    # A task the session started (its id in a tool_response, as task_create's result has it).
+    def started(session, record)
+      session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+      session.save(state_dir: tmpdir)
+      record
+    end
+
+    def start_task(session, command = "sleep 30")
+      record, error = runtime.create_task(command)
+      raise error if error
+
+      started(session, record)
+    end
+
+    # A record written by hand: +pid+, no pid_started unless given.
+    def hand_record(session, pid:, pid_started: nil, command: "sleep 40")
+      data = { "id" => runtime.generate_task_id, "command" => command, "status" => "running", "pid" => pid,
+               "pid_started" => pid_started, "created_at" => "2026-10-01T00:00:00Z",
+               "exit_code_path" => File.join(@root, "no-exit-code") }
+      record = Samagotchi::Tools::TaskRecord.from_file(data)
+      runtime.write_record(record)
+      started(session, record)
+    end
+
+    # A group leader this spec started, recorded for the cleanup.
+    def group_leader
+      Process.spawn("sleep", "31.81", pgroup: true).tap { |pid| @spawned << pid }
+    end
+
+    def gone?(session) = !File.exist?(Samagotchi::Session.session_file(session.id, state_dir: tmpdir))
+    def status_of(record) = runtime.load_record(record.id)&.status
+
+    it "deletes a session with no running task as before" do
+      session = task_session
+      done, = runtime.create_task("true")
+      started(session, done)
+      wait_for("the task to finish") { !runtime.get_record(done.id).first.running? }
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE)
+
+      expect(result.keys).to eq(%i[id removed stopped])
+      expect(gone?(session)).to be(true)
+    end
+
+    it "refuses with REFUSE while a task runs, naming it, and changes nothing" do
+      session = task_session
+      record = start_task(session, "sleep 30.11")
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE) }
+        .to raise_error(described_class::DeleteRefused) { |e|
+          expect(e.reason).to eq(:tasks_running)
+          expect(e.tasks.running.map(&:id)).to eq([record.id])
+          expect(e.worker_stopped).to be(false)
+          expect(e.message).to eq("background tasks it started are still running: sleep 30.11")
+        }
+      expect(gone?(session)).to be(false)
+      expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(true)
+    end
+
+    it "leaves the task running with IGNORE (today's delete)" do
+      session = task_session
+      record = start_task(session)
+
+      described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect(gone?(session)).to be(true)
+      expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(true)
+    end
+
+    it "stops the task with a stop, then deletes, and the result names it" do
+      session = task_session
+      record = start_task(session)
+      policy = policies.stop(by: "user")
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policy)
+
+      expect(gone?(session)).to be(true)
+      expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+      expect(result[:tasks_stopped].map(&:id)).to eq([record.id])
+      expect(result).to include(tasks_not_stopped: [], tasks_ended: [])
+    end
+
+    it "lists no record whose pid is gone (a crashed worker's leftover record)" do
+      session = task_session
+      pid = Process.spawn("true", pgroup: true)
+      Process.wait(pid)
+      hand_record(session, pid: pid, pid_started: "Thu Jan  1 00:00:00 2026")
+
+      expect(described_class::RunningTasks.of([session.id], state_dir: tmpdir)).to be_empty
+      described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE)
+      expect(gone?(session)).to be(true)
+    end
+
+    it "lists a record with no start time whose pid leads a group as unverified, and never signals it" do
+      session = task_session
+      pid = group_leader
+      record = hand_record(session, pid: pid)
+      listing = described_class::RunningTasks.of([session.id], state_dir: tmpdir)
+      expect(listing.unverified.map(&:id)).to eq([record.id])
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE) }
+        .to raise_error(described_class::DeleteRefused, /task #{record.id[-8..]} \(may still be running\)/)
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user"))
+
+      expect(gone?(session)).to be(true)
+      expect(Process.wait2(pid, Process::WNOHANG)).to be_nil
+      expect(result[:tasks_not_stopped].map(&:id)).to eq([record.id])
+      expect(result[:tasks_stopped]).to eq([])
+    end
+
+    it "refuses on an unreadable record, and a stop deletes and reports it not stopped" do
+      session = task_session
+      id = runtime.generate_task_id
+      FileUtils.mkdir_p(File.join(@root, "tmp", "tasks", id))
+      File.write(File.join(@root, "tmp", "tasks", id, "task.json"), "{not json")
+      started(session, Samagotchi::Tools::TaskRecord.from_file("id" => id))
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE) }
+        .to raise_error(described_class::DeleteRefused, /task #{id[-8..]} \(record unreadable\)/)
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:worker, "session_task_check_failed", hash_including(sid: session.id, task_id: id)).at_least(:once)
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user"))
+      expect(gone?(session)).to be(true)
+      expect(result[:tasks_not_stopped].map(&:id)).to eq([id])
+    end
+
+    it "deletes a folder whose session file is gone under REFUSE" do
+      session = task_session
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(dir)
+      FileUtils.rm_f(Samagotchi::Session.session_file(session.id, state_dir: tmpdir))
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE)
+
+      expect(result[:removed]).to eq([dir])
+    end
+
+    it "keeps the deleting lock through the stop: a worker can't take the session meanwhile" do
+      session = task_session
+      record = start_task(session)
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(dir)
+      taken = :not_tried
+      allow(described_class::RunningTasks).to receive(:stop!).and_wrap_original do |original, *args, **kwargs|
+        taken = Samagotchi::OwnerLock.acquire(dir, kind: "worker", wait: 0)
+        original.call(*args, **kwargs)
+      end
+
+      described_class.delete_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user"))
+
+      expect(taken).to be_nil
+      expect(gone?(session)).to be(true)
+      expect(status_of(record)).to eq("stopped")
+    end
+
+    it "refuses a task started since the check, under the lock, with the worker stopped" do
+      session = task_session
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(dir)
+      spawn_owner_for(dir)
+      allow(described_class).to receive(:stop_session).and_wrap_original do |original, *args, **kwargs|
+        start_task(session, "sleep 30.12")
+        original.call(*args, **kwargs)
+      end
+
+      expect do
+        described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 5, running_tasks: policies::REFUSE)
+      end.to raise_error(described_class::DeleteRefused) { |e|
+        expect(e).to have_attributes(reason: :tasks_running, worker_stopped: true)
+        expect(e.message).to end_with("sleep 30.12; its worker was stopped")
+      }
+      expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: tmpdir))).to be(true)
+      expect(Dir.exist?(dir)).to be(true)
+    end
+
+    it "names whose worker was stopped: the refused session's own, or the one the op stopped" do
+      listing = described_class::RunningTasks::Listing.new(
+        running: [described_class::RunningTasks::RunningTask.new(session_id: "dddd1111-0", id: "t-1", command: "rspec")]
+      )
+      refusal = described_class::DeleteRefused.new("dddd1111-0", :tasks_running, tasks: listing)
+
+      expect(refusal.with_worker_stopped.message).to end_with("rspec; its worker was stopped")
+      by_link = refusal.with_worker_stopped("bbbb2222-0")
+      expect(by_link.message).to end_with("rspec; bbbb2222's worker was stopped")
+      expect([by_link.worker_stopped, by_link.stopped_worker]).to eq([true, "bbbb2222-0"])
+    end
+
+    def spawn_owner_for(dir)
+      @owner_pid = spawn_lock_holder(dir)
+    end
+
+    describe "archive" do
+      it "refuses for a delegate's task, naming the delegate, and changes nothing" do
+        session = task_session
+        child = task_session(parent: session)
+        start_task(child, "rspec spec/foo_spec.rb")
+
+        expect { described_class.archive_session(session.id, state_dir: tmpdir, running_tasks: policies::REFUSE) }
+          .to raise_error(described_class::ArchiveRefused) { |e|
+            expect(e.reason).to eq(:tasks_running)
+            expect(e.message).to eq("its delegate #{child.id[0, 8]}'s background tasks are still running: rspec spec/foo_spec.rb")
+          }
+        expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))).to be(false)
+      end
+
+      it "with a stop: waits for the worker to let go, stops the tasks, then archives" do
+        session = task_session
+        record = start_task(session)
+        dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+        FileUtils.mkdir_p(dir)
+        spawn_owner_for(dir)
+        owner_seen = :unread
+        allow(described_class::RunningTasks).to receive(:stop!).and_wrap_original do |original, *args, **kwargs|
+          owner_seen = described_class.session_owner(session.id, state_dir: tmpdir)
+          original.call(*args, **kwargs)
+        end
+
+        result = described_class.archive_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user"))
+
+        expect(owner_seen).to be_nil
+        expect(result.tasks_stopped.map(&:id)).to eq([record.id])
+        expect(result.archived).to eq([session.id])
+        expect(status_of(record)).to eq("stopped")
+      end
     end
   end
 end
