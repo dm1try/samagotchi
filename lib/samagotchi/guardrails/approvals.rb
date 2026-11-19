@@ -190,10 +190,6 @@ module Samagotchi
       def parse(text)
         data = JSON.parse(text)
         case data
-        when Array
-          # compat shim approvals_bare_list
-          document = FORMAT.read({ COLLECTION => data }, collection: COLLECTION)
-          [document.entries.map(&:raw).select { |e| e.is_a?(Hash) }, document]
         when Hash
           raise JSON::ParserError, "#{COLLECTION} is not a list" unless data.fetch(COLLECTION, []).is_a?(Array)
 

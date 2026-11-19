@@ -345,17 +345,12 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
       expect(warnings).to be_empty
     end
 
-    it "reads a bare list (0.166 and before) and writes it as a versioned store" do
+    it "sets aside a bare list with one warning and matches nothing" do
       write_store([entry])
-      expect(store.entries).to eq([entry])
-      expect(warnings).to be_empty
-
-      store.add(ask(command: "git push origin other"), "session")
-      expect(stored).to include("version" => 1)
-      expect(stored["approvals"].map { |approval| approval["key"] })
-        .to eq([entry["key"], "execute:git push origin other"])
-      expect(warnings).to be_empty
-      expect(Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")]).to be_empty
+      expect(store.match(ask)).to be_nil
+      expect(store.entries).to eq([])
+      expect(warnings.size).to eq(1)
+      expect(Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")].size).to eq(1)
     end
   end
 end

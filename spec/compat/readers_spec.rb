@@ -356,18 +356,19 @@ RSpec.describe "the recorded compatibility corpus" do
     end
   end
 
-  # 0.165.0 and 0.166.0 wrote approvals.json as a list; chi reads those
-  # entries and converts the file to the versioned format on its next write.
-  %w[0.165.0 0.166.0].each do |list_version|
-    it "reads #{list_version}'s approvals list without setting it aside" do
+  it "sets aside the 0.165.0 and 0.166.0 approvals lists with one warning" do
+    %w[0.165.0 0.166.0].each do |list_version|
       recorded = File.join(compat_root, list_version, "guardrails", Samagotchi::Guardrails::Approvals::FILE)
       Dir.mktmpdir("chi-compat-approvals-") do |dir|
         FileUtils.cp(recorded, File.join(dir, Samagotchi::Guardrails::Approvals::FILE))
         warnings = []
         approvals = Samagotchi::Guardrails::Approvals.new(dir: dir, warn: ->(msg) { warnings << msg })
-        expect(approvals.entries).to eq(JSON.parse(File.read(recorded)))
-        expect(warnings).to be_empty
-        expect(Dir[File.join(dir, "#{Samagotchi::Guardrails::Approvals::FILE}.corrupt-*")]).to be_empty
+        expect(approvals.entries).to eq([])
+        expect(warnings.size).to eq(1)
+        expect(warnings.first).to include("unreadable")
+        aside = Dir[File.join(dir, "#{Samagotchi::Guardrails::Approvals::FILE}.corrupt-*")]
+        expect(aside.size).to eq(1)
+        expect(JSON.parse(File.read(aside.first))).to be_a(Array)
       end
     end
   end
