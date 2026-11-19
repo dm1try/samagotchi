@@ -39,6 +39,7 @@ module Samagotchi
       # signals, since two held? probes at once read each other as holders.
       LEFTOVER_GRACE_SEC = Leftovers::GRACE_SEC
       LEFTOVER_STOP_GRACE_SEC = 1.0
+      SETTLE_ON_EXIT_SECONDS = LEFTOVER_GRACE_SEC + LEFTOVER_STOP_GRACE_SEC + ProcessGroup::KILL_WAIT_SEC + 0.5
       REFRESH_STOP_GRACE_SEC = 0.5
       REFRESH_KILL_WAIT_SEC = 0.5
       HELD_RECHECK_SEC = 0.05
@@ -148,7 +149,7 @@ module Samagotchi
           forget_waiter(task_id, Thread.current)
         end
         thread.name = EXIT_STATUS_THREAD
-        remember_waiter(task_id, thread, started&.pid)
+        remember_waiter(task_id, thread, started&.pid, waiter)
         thread
       end
 
@@ -167,8 +168,8 @@ module Samagotchi
         end
       end
 
-      def remember_waiter(task_id, thread, pid)
-        @waiters_lock.synchronize { @waiters[task_id] = [thread, pid] if thread.alive? }
+      def remember_waiter(task_id, thread, pid, detach)
+        @waiters_lock.synchronize { @waiters[task_id] = [thread, pid, detach] if thread.alive? }
       end
 
       def forget_waiter(task_id, thread)
@@ -232,6 +233,22 @@ module Samagotchi
 
       # record_exit_status's threads' name.
       EXIT_STATUS_THREAD = "task_exit_status"
+
+      # Join this process's already-reaped tasks, sharing one timeout. A
+      # shell that exits after the snapshot is not included.
+      # @return [Array<Thread>] the selected waiters still alive at the deadline
+      def settle_pending!(timeout:)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        threads = @waiters_lock.synchronize do
+          @waiters.values.filter_map do |thread, _pid, detach|
+            thread if thread != Thread.current && thread.alive? && (!detach.alive? || thread[SETTLING])
+          end
+        end
+        threads.each { |thread| thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max) }
+        alive = threads.select(&:alive?)
+        Log.warn(:turn, "task_leftovers_unsettled", count: alive.size) unless alive.empty?
+        alive
+      end
 
       # Joins every live EXIT_STATUS_THREAD, for up to +timeout+ s in all: a
       # spec calls it (with_task_dir) after stopping its tasks and before it

@@ -29,6 +29,7 @@ require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "reprefill_meter"
 require_relative "tools/builtins"
+require_relative "tools/task_runtime"
 require_relative "tools/tool_index"
 require_relative "tools/tool_surface"
 require_relative "peer_sources"
@@ -674,8 +675,9 @@ module Samagotchi
     # The session's worker (or a one-shot run) is leaving (/exit, an idle
     # exit, a crash, TERM): stop the idle jobs, give the running anytime commands
     # up to +join_timeout+ seconds to finish (their command_ran is
-    # announced), then stop the plugins' services, newest first. Once;
-    # later calls do nothing.
+    # announced), and settle already-reaped tasks under a shared deadline
+    # of at least TaskRuntime::SETTLE_ON_EXIT_SECONDS. Then stop the plugins'
+    # services, newest first. Once; later calls do nothing.
     # @return [self]
     def shutdown(join_timeout: SHUTDOWN_JOIN_SECONDS)
       threads = @lifecycle_mutex.synchronize do
@@ -689,12 +691,15 @@ module Samagotchi
       # callers haven't stopped it already.
       @idle_scheduler&.stop
       @prompt_warmup.stop
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + join_timeout
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      deadline = started + join_timeout
       threads.each do |thread|
         next if thread == Thread.current
 
         thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
       end
+      settle_deadline = started + [join_timeout, Tools::TaskRuntime::SETTLE_ON_EXIT_SECONDS].max
+      Tools::TaskRuntime.settle_pending!(timeout: [settle_deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
       @side_judgments.join(SIDE_JUDGMENTS_JOIN_SECONDS)
       # The warm-up's answer is dropped anyway.
       @toolkit_suggestion.stop_warmup

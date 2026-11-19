@@ -76,6 +76,54 @@ RSpec.describe "a background task's leftover processes" do
     wait_for("the task's shell to exit", timeout: 10) { !Samagotchi::ProcessGroup.alive?(record.pid) }
   end
 
+  it "settles a reaped shell's leftovers before returning" do
+    stub_const("#{runtime}::LEFTOVER_GRACE_SEC", 1.5)
+    record, = runtime.create_task("sleep 30 & echo pid=$!")
+    pid = child_pid(record.output_path)
+    shell_gone(record)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    expect(runtime.settle_pending!(timeout: 5)).to eq([])
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4)
+    expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
+    expect(Samagotchi::ProcessGroup.group_alive?(record.pid)).to be(false)
+    expect(gone?(pid)).to be(true)
+  end
+
+  it "includes a reaped shell before its waiter marks itself settling and reports a timeout" do
+    entered = Queue.new
+    gate = Queue.new
+    allow(runtime).to receive(:leftovers_after_exit).and_wrap_original do |original, *args|
+      entered << true
+      SpecWaiting.pop!(gate, "the example to release the waiter", timeout: 30)
+      original.call(*args)
+    end
+    record, = runtime.create_task("sleep 30 & echo pid=$!")
+    pid = child_pid(record.output_path)
+    pop!(entered, "the waiter to reach the shell's exit")
+    waiter = runtime.waiter_for(record.id)
+    expect(waiter[runtime::SETTLING]).to be_nil
+    expect(Samagotchi::Log).to receive(:warn).with(:turn, "task_leftovers_unsettled", count: 1)
+
+    expect(runtime.settle_pending!(timeout: 0.05)).to eq([waiter])
+    gate << true
+    expect(runtime.settle_pending!(timeout: 5)).to eq([])
+    expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
+    expect(gone?(pid)).to be(true)
+  ensure
+    gate << true if gate
+  end
+
+  it "does not wait for or stop a shell that is still running" do
+    record, = runtime.create_task("sleep 30")
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    expect(runtime.settle_pending!(timeout: 5)).to eq([])
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1)
+    expect(runtime.load_record(record.id)).to be_running
+    expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(true)
+  end
+
   it "stops a child left holding the log after the grace, keeps the shell's exit code, and every result says so" do
     record, = runtime.create_task("sleep 30.91 & echo pid=$!")
     pid = child_pid(record.output_path)

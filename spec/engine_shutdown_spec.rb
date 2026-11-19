@@ -48,6 +48,11 @@ RSpec.describe "Engine#shutdown" do
     engine.shutdown
   end
 
+  it "settles pending task leftovers on shutdown" do
+    expect(Samagotchi::Tools::TaskRuntime).to receive(:settle_pending!).with(timeout: a_value > 0).and_call_original
+    engine.shutdown
+  end
+
   it "stops the idle jobs, and runs once" do
     scheduler = engine.instance_variable_get(:@idle_scheduler)
     add_service("a")
