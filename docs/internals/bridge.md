@@ -488,7 +488,7 @@ The Bridge exposes:
   `cards` (`CardStore#list`; a card an earlier worker showed during a turn comes back read-only, with no
   actions: its turn no longer runs), `event_seq`, `event_id`, all taken in one event-log hold; no message
   list, so it costs the same however long the session is. `?turn_id=` answers that turn's answer
-  (an unknown or missing id: the newest); the only route that reads its query.
+  (an unknown or missing id: the newest). A handler in `Bridge::QUERY_HANDLERS` gets the query string; no other one does.
 - No browser: only chi's own clients talk to a Bridge. A request with an `Origin` header, a `Sec-Fetch-Site`
   other than `none`, or a `Host` that isn't loopback (a DNS-rebound page) is `403 cross_origin`
   (`Bridge#browser_request?`, before any route); there is no CORS and no `OPTIONS` route. The browser reaches a

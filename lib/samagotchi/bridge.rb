@@ -835,6 +835,9 @@ module Samagotchi
       %w[GET tail] => :handle_tail
     }.freeze
     ROUTE_PATH = %r{\A/session/([^/]+)/(.+)\z}u
+    # The handlers that take the request's query string as a third
+    # argument (#dispatch); every other one gets the id and the body only.
+    QUERY_HANDLERS = %i[handle_tail].freeze
 
     # @return [Array(Symbol, String), nil] the handler and the session id, or
     #   nil when no route takes this method and path
@@ -848,10 +851,10 @@ module Samagotchi
     # #own_session?), and a handler that raises answers 500 bridge_error,
     # logged (the connection thread doesn't report).
     # @return [Array(Hash, Integer, Hash)] headers, status, body
-    # Only GET tail takes the request's +query+.
+    # Only a QUERY_HANDLERS handler takes the request's +query+.
     def dispatch(handler, session_id, body, query = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-      return handle_tail(session_id, body, query) if handler == :handle_tail
+      return send(handler, session_id, body, query) if QUERY_HANDLERS.include?(handler)
 
       send(handler, session_id, body)
     rescue StandardError => e
@@ -1538,8 +1541,8 @@ module Samagotchi
     end
 
     # The page's light re-read (#tail_frame): no message list. `?turn_id=`:
-    # that turn's answer (a queued turn's page re-reads late). The one
-    # handler that gets the query (#dispatch); an older worker's route
+    # that turn's answer (a queued turn's page re-reads late). A handler
+    # that gets the query (QUERY_HANDLERS); an older worker's route
     # ignores it and sends the newest answer.
     def handle_tail(_session_id, _body = nil, query = nil)
       turn_id = query && URI.decode_www_form(query).to_h["turn_id"].to_s
