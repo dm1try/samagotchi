@@ -21,12 +21,11 @@ module LifecycleMatrixFindings
   # one entry; an entry that names none fails (it is stale).
   KNOWN_DIFFERENCES = [
     # F1: owner-first deciders (WakePolicy, resume, archive, delete) answer the lock; these read the stop first.
-    KnownDifference.new(op: :sched_chain, when: ->(row) { stop_first.include?(row.owner) && row.stop },
+    KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :tui && row.stop },
                         reason: "F1: Schedules#busy_reason reads the stop marker before the owner: a one-turn " \
-                                "run's or a deleter's session with a stop answers stopped"),
-    KnownDifference.new(op: :sched_same, when: ->(row) { stop_first.include?(row.owner) && row.stop },
-                        reason: "F1: as chain mode, the stop marker first: stopped where the lock's holder decides " \
-                                "elsewhere"),
+                                "run's session with a stop answers stopped"),
+    KnownDifference.new(op: :sched_same, when: ->(row) { row.owner == :tui && row.stop },
+                        reason: "F1: as chain mode, the stop marker first: stopped under a one-turn run's lock"),
     KnownDifference.new(op: :attach, when: ->(row) { stop_first.include?(row.owner) && row.stop },
                         reason: "F1: LocalLink#live_worker reads Session.stopped_marker? before the link: " \
                                 "gone_stopped under a one-turn run's or a deleter's lock"),

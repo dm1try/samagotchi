@@ -632,6 +632,47 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "skips a session being deleted before a stop marker in both schedule modes" do
+    [described_class::CHAIN, described_class::SAME].product([false, true]).each do |mode, stopped|
+      Dir.mktmpdir("schedules-deleting") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: mode)
+        Samagotchi::Session.mark_stopped(anchor, state_dir: dir) if stopped
+        owner = Samagotchi::OwnerLock::Owner.new(pid: Process.pid, kind: Samagotchi::OwnerLock::DELETING)
+        allow(Samagotchi::SessionManager).to receive(:session_owner).and_return(owner)
+
+        outcome = schedules.tick(now: Time.now + 120).outcomes.first
+
+        expect(outcome).to have_attributes(status: "skipped", detail: "the session is being deleted")
+      end
+    end
+  end
+
+  it "skips a worker on a newer chi in both schedule modes" do
+    [described_class::CHAIN, described_class::SAME].each do |mode|
+      Dir.mktmpdir("schedules-newer") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: mode)
+        owner = Samagotchi::OwnerLock::Owner.new(pid: 4242, kind: "worker", started_at: Time.now.iso8601(3))
+        allow(Samagotchi::SessionManager).to receive(:session_owner).and_return(owner)
+        Samagotchi::WorkerSidecar.new(
+          port: 45_678, pid: 4242, features: %w[restart activity], version: Samagotchi::VERSION, epoch: "spec",
+          started_at: "2020-01-01T00:00:00Z", protocol: Samagotchi::WorkerLink::PROTOCOL + 1
+        ).write(Samagotchi::Session.session_dir(anchor, state_dir: dir))
+
+        outcome = schedules.tick(now: Time.now + 120).outcomes.first
+
+        expect(outcome).to have_attributes(
+          status: "skipped", detail: "its worker runs a newer chi: restart chi web or update this chi"
+        )
+      end
+    end
+  end
+
   it "leaves next_due alone when the target is busy, and disables after max_skips" do
     Dir.mktmpdir("schedules-skip") do |root|
       dir = File.join(root, "sessions")

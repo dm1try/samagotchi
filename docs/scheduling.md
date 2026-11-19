@@ -107,8 +107,12 @@ time zones.
 
 A cron tick cannot read a worker's memory, so the tick has two paths.
 
+**Being deleted** (a deleter holds the owner lock) comes before a stop marker.
+The skip is "the session is being deleted", and the next tick finds the session
+gone.
+
 **Stopped by its owner** (`chi sessions stop`, the web's Stop: the stop marker,
-`WorkerPresence#stop_marked?`) comes first, in both modes: a skip ("the session is
+`WorkerPresence#stop_marked?`) comes next, in both modes: a skip ("the session is
 stopped; only its owner's message starts it again"), never a restart. A stop that
 lands between the check and a same-mode firing is the same skip: `deliver_turn`
 refuses a schedule's wake of a stopped session (a schedule is no person,
@@ -139,6 +143,9 @@ the tick says to restart that worker.
   to ask: `chi sessions restart ID`" — chi's usual rule for an older worker:
   refuse with a restart, never silently degrade. `same` mode, which only queues a
   turn, may use the file checks.
+- A worker whose chi is newer than the ticker's (its Bridge speaks a newer
+  protocol) can't be asked. The skip is "its worker runs a newer chi: restart chi
+  web or update this chi", in both modes.
 
 A `chi send --wait` or a parent's `delegate` wait is **not** busy: `ReplyWait::Poll`
 reads the session files and `GET /session/:id/state`, never `open_stream`, so a

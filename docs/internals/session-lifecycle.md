@@ -41,9 +41,9 @@ These are reader labels, not stored values:
 |---|---|
 | `absent` | No session file; a leftover sidecar directory may still exist (its facts are ignored). |
 | `tui_owned` | `owner.lock` held with kind `tui` (a one-shot `chi -p --non-interactive` owns it): an in-process one-turn host, not a worker. Wins over a stop, a start, an archive. |
-| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). Every delivery is refused (`WakePolicy`'s `:deleting`); restart refuses it (`deleting`). |
+| `deleting` | `owner.lock` held with kind `deleting` while the session's files go (`WorkerLink` reads it as `Starting`). Every delivery is refused (`WakePolicy`'s `:deleting`); restart refuses it (`deleting`); a schedule skips it ("the session is being deleted"). |
 | `stopping` | A worker holds the lock and the `stopped` marker exists, whatever its link. |
-| `skew` | A worker holds the lock and its sidecar speaks a newer protocol (`WorkerLink::Skew`). |
+| `skew` | A worker holds the lock and its sidecar speaks a newer protocol (`WorkerLink::Skew`); a schedule skips it with Skew's short words. |
 | `leaving` | The worker closed its Bridge and still holds the lock (`leaving_at`, `WorkerLink::Leaving`). |
 | `booting_stuck` | A worker has held the lock past `WorkerLink::START_LIMIT` without its sidecar (`Starting`, stuck). |
 | `booting` | A worker holds the lock without its matching sidecar yet (`Starting`); also an owner of unknown kind (a lock record still blank after `OWNER_READ_ATTEMPTS`). |
@@ -88,7 +88,8 @@ state. A cell is `:go`, `:wait` or the decider's own refusal reason; `SessionLif
 - **Literal columns** (`LITERAL`): resume (`resume_session`), restart (`restart_session`: `stop_marked` in every
   state with the stop marked: stopping, stopped, stopped_starting), stop (`stop_session`),
   archive (`archivable!`), delete (`release_for_delete!`, without a stop), sched_chain and sched_same
-  (`Schedules#busy_reason`; `worker_busy` is "its worker is starting or leaving") and attach
+  (`Schedules#busy_reason`; `worker_busy` is "its worker is starting or leaving", `deleting` the delivery's "the
+  session is being deleted", `worker_newer` `WorkerLink::Skew#short_message`) and attach
   (`TerminalUI::LocalLink#live_worker`: `gone_stopped`, `gone_worker_newer`). They assume neutral op-local facts: not
   scratch, saved status idle, no `input/`, no question or offer, not SIGSTOPped, features restart and activity, an idle
   worker with no streams. Absent's delete and schedule cells are unreachable (a gone session is refused first).
@@ -118,11 +119,13 @@ code can't make (a one-turn run's lock with a stop) is marked `reachable: false`
 Every answer must equal `ALLOWED[op][state]` (for the session hub, `SHOWN[state]`: `Web::SessionSummary.build`'s
 status and bridge_up, its `SessionRow`'s live), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
 over the row, a plain reason); an entry that names no mismatch fails as stale. The entries are the findings for the
-owner, not fixed: stop-first schedule and attach checks under a one-turn run's, a deleter's or an unknown owner's lock;
-chain mode's starting check before any one-turn-run check; a start marked after the stop holding a resume off;
+owner, not fixed: stop-first schedule checks under a one-turn run's or an unknown owner's lock, and attach's under a
+one-turn run's, a deleter's or an unknown owner's; chain mode's starting check before any one-turn-run check; a start
+marked after the stop holding a resume off;
 `wake_for_report` reporting a worker's `:live` as `:owned`; the hub's bridge_up, live and status overlay. (Restart
-never reading the stop and `busy_reason`'s live branch falling through to the starting check were fixed: their
-entries went stale and were removed.) The delivery columns are
+never reading the stop, the restart and schedule reading a deleter as starting, the schedule's Skew words, and
+`busy_reason`'s live branch falling through to the starting check were fixed: their entries went stale and were
+removed.) The delivery columns are
 generated from `WakePolicy::ROWS`, so for deliveries the matrix proves the states are drawn right (decide is a function
 of the state), not what WakePolicy does; the literal columns and `SHOWN` are goldens.
 
