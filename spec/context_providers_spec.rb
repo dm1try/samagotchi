@@ -119,17 +119,18 @@ RSpec.describe Samagotchi::ContextProviders do
         .to eq("#{Shellwords.escape(RbConfig.ruby)} #{Shellwords.escape(dir)}/scripts/pr.rb x")
     end
 
-    # Pinned as they are today; the plan's V2 rows D7 and D8 change them on purpose.
-    it "lets a manifest.json that doesn't parse raise JSON::ParserError (D7, as today)" do
+    it "refuses a bundle whose manifest.json doesn't parse, with the verdict's reason (D7)" do
       dir = install
       File.write(File.join(dir, "manifest.json"), "{")
-      expect { described_class.command_for(source) }.to raise_error(JSON::ParserError)
+      expect { described_class.command_for(source) }
+        .to raise_error(described_class::Invalid, /\Abundle prs: manifest\.json is unreadable: /)
     end
 
-    it "runs the command of a bundle whose manifest.json isn't an object: no scripts to check (D8, as today)" do
+    it "refuses a bundle whose manifest.json isn't an object, with the verdict's reason (D8)" do
       dir = install
       File.write(File.join(dir, "manifest.json"), "[]")
-      expect(described_class.command_for(source)).to eq("ruby #{Shellwords.escape(dir)}/scripts/pr.rb x")
+      expect { described_class.command_for(source) }
+        .to raise_error(described_class::Invalid, "bundle prs: manifest.json is not an object")
     end
 
     it "leaves a source with no provider as it is" do

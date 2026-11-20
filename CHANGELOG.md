@@ -18,6 +18,11 @@ and commands may change between minor versions. How releases are made:
   the installed one (reinstall the bundle)". A rule with no recorded sha256 now says so instead of "differs", and
   `chi bundle status NAME` shows such a plugin `[unrecorded]` instead of `[modified]`.
 
+### Fixed
+
+- A context source from a bundle whose manifest.json doesn't read, or isn't an object, now fails its fetch with a clear
+  reason, instead of an internal error or running its command unchecked.
+
 ## [0.179.0] - 2026-11-20
 
 ### Added

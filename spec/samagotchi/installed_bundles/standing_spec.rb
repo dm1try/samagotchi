@@ -70,9 +70,12 @@ RSpec.describe "InstalledBundles' usability verdict" do
       expect(Samagotchi::InstalledBundles.standing("one", dir: dir)).to be_too_new
     end
 
-    it "lets a record that doesn't parse raise, as Dir#record does (kept for the plan's D7)" do
+    it "reads a record that doesn't parse as unreadable, in the walk's words" do
       record("broken", "{")
-      expect { Samagotchi::InstalledBundles.standing("broken", dir: dir) }.to raise_error(JSON::ParserError)
+      standing = Samagotchi::InstalledBundles.standing("broken", dir: dir)
+      expect(standing).to be_unreadable
+      expect(standing.refusal.text).to eq(Samagotchi::InstalledBundles.standings(dir: dir).first.refusal.text)
+      expect(standing.refusal.text).to start_with("manifest.json is unreadable: ")
     end
   end
 

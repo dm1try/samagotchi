@@ -16,6 +16,10 @@ module Samagotchi
   # removing a bundle is MemoryBundle's, which builds on this and never the
   # reverse (docs/internals/bundles.md).
   module InstalledBundles
+    # What reading a manifest.json may raise: it doesn't parse, it holds a
+    # key that isn't UTF-8 (which can't be a symbol), or it can't be read.
+    UNREADABLE = [JSON::ParserError, EncodingError, SystemCallError].freeze
+
     def self.dir
       MemoryPaths.bundles_dir
     end
@@ -41,10 +45,8 @@ module Samagotchi
 
         begin
           data = JSON.parse(File.read(mjson), symbolize_names: true)
-        rescue JSON::ParserError, EncodingError, SystemCallError => e # a key that isn't UTF-8 can't be a symbol
-          if holding.nil? || ::Dir.exist?(File.join(dir, name, holding.to_s))
-            yield name, Record.unreadable(name, "manifest.json is unreadable: #{e.message}")
-          end
+        rescue *UNREADABLE => e
+          yield name, unreadable(name, e) if holding.nil? || ::Dir.exist?(File.join(dir, name, holding.to_s))
           next
         end
         next if holding && !(data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?)
@@ -63,14 +65,21 @@ module Samagotchi
       each(holding: holding, dir: dir) { |name, record| yield Standing.of(name, record) }
     end
 
-    # One installed bundle's Standing, by name (one record read, no walk).
+    # One installed bundle's Standing, by name (one record read, no walk); a
+    # manifest.json that doesn't read is :unreadable, in .each's words.
     # @return [Standing, nil] nil when it isn't installed
-    # @raise [JSON::ParserError] manifest.json doesn't parse (as Dir#record:
-    #   ContextProviders.command_for lets it out today, the plan's D7)
     def self.standing(name, dir: InstalledBundles.dir)
-      record = Dir.new(name: name, dir: dir).record
+      record = begin
+        Dir.new(name: name, dir: dir).record
+      rescue *UNREADABLE => e
+        unreadable(name, e)
+      end
       record && Standing.of(name, record)
     end
+
+    # The one record of a manifest.json that raised +error+ when read.
+    def self.unreadable(name, error) = Record.unreadable(name, "manifest.json is unreadable: #{error.message}")
+    private_class_method :unreadable
 
     # The other installed bundles of +scope+ whose record lists the memory
     # file +file_key+, by name (a manifest that doesn't read is left out).
