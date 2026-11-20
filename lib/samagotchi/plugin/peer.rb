@@ -4,6 +4,7 @@ require "digest"
 require "fileutils"
 require "json"
 require "open3"
+require "securerandom"
 require "tempfile"
 require "time"
 require_relative "../paths"
@@ -25,8 +26,9 @@ module Samagotchi
     # part inline, or a long one's file under the bundle's data dir
     # (sessions/<id>/, removed with the session), named in the message
     # (`payload: <path>`). The tool's row carries the same id as a `peer`
-    # ref (derived from the call's args, so it is there before the call
-    # runs: also on a send that then didn't happen). The tool is declared whether or not the peer is
+    # ref (derived from the call's args and its run's tool id, so it is
+    # there before the call runs: also on a send that then didn't happen;
+    # an equal resend is a run of its own, so an id of its own). The tool is declared whether or not the peer is
     # paired, so pairing never changes the tools (no prompt rebuild); without
     # a paired peer it fails with how to pair.
     #
@@ -91,21 +93,30 @@ module Samagotchi
       end
 
       # A send's id, from what the caller gave (before the title is cut):
-      # `s-` and 6 hex of SHA-256 over +kind+, +title+ and +text+. Equal
-      # args give the same id (the tool row's ref is computed from them
-      # before the call runs); the peer's answer names it (`re`).
-      def self.send_id(kind, title, text) = "s-#{Digest::SHA256.hexdigest([kind, title, text].join("\0"))[0, 6]}"
+      # `s-` and 6 hex of SHA-256 over +kind+, +title+, +text+ and +salt+,
+      # the send's own: the tool's run id (its row's ref is computed before
+      # the call runs, so from the args and the run, ctx.tool_id), a random
+      # one for a /<peer> command's. A nil +salt+ is the id over the three
+      # alone, what a send before 0.181.0 got (and a run with no id): its
+      # log and answers still name it. The peer's answer names it (`re`).
+      def self.send_id(kind, title, text, salt = nil)
+        parts = salt.nil? ? [kind, title, text] : [kind, title, text, salt.to_s]
+        "s-#{Digest::SHA256.hexdigest(parts.join("\0"))[0, 6]}"
+      end
 
       def register(chi)
         peer = self.class
-        refs = lambda do |args|
-          id = Peer.send_id(args["kind"].to_s, args["title"].to_s, args["text"].to_s)
+        # Two args: the run's tool id salts the send id, the same one the
+        # block's deliver gets (ctx.tool_id).
+        refs = lambda do |args, tool_id = nil|
+          id = Peer.send_id(args["kind"].to_s, args["title"].to_s, args["text"].to_s, tool_id)
           [{ kind: "peer", target: { id: id }, label: "#{peer::NAME} · #{args["kind"].to_s[0, 40]}" }]
         end
         chi.tool peer::TOOL, peer::TOOL_DESCRIPTION, params: peer::TOOL_PARAMS, label: "sent to #{peer::NAME}",
                                                      preview: ->(args) { "#{args["kind"]}: #{args["title"]}" },
                                                      refs: refs do |args, ctx|
-          sent = deliver(ctx, kind: args["kind"].to_s, title: args["title"].to_s, text: args["text"].to_s)
+          sent = deliver(ctx, kind: args["kind"].to_s, title: args["title"].to_s, text: args["text"].to_s,
+                              salt: ctx.tool_id)
           "#{sent}. #{follow_up(args["kind"].to_s)}"
         rescue SendError => e
           "Error: #{e.message}"
@@ -132,18 +143,19 @@ module Samagotchi
       end
 
       # Sends +text+ to the paired peer: the header, the `ref:` line
-      # (.send_id of the args as given), then the text inline or a payload
-      # file's path. Records it as the last send, with its id.
+      # (.send_id of the args as given and +salt+: the tool row's, so the
+      # row and the line name the same send), then the text inline or a
+      # payload file's path. Records it as the last send, with its id.
       # @return [String] what was sent ("sent to Claude: validate · title")
       # @raise [SendError]
-      def deliver(ctx, kind:, title:, text:, by: "model")
+      def deliver(ctx, kind:, title:, text:, by: "model", salt: nil)
         raise SendError, "kind must be one of #{KINDS.join(", ")}" unless KINDS.include?(kind)
         raise SendError, "nothing to send: the text is empty" if text.strip.empty?
         if text.length > MAX_CHARS
           raise SendError, "the text is #{text.length} chars, over #{MAX_CHARS}: send a part, not a session"
         end
 
-        send_id = Peer.send_id(kind, title, text)
+        send_id = Peer.send_id(kind, title, text, salt)
         id = ctx.session_id or raise SendError, "this session has no id yet: send after its first turn"
         hint = peer_hint!(ctx)
         title = one_line(title.strip.empty? ? text.strip.lines.first : title)
@@ -249,11 +261,15 @@ module Samagotchi
       end
 
       def send_text(ctx, kind, text)
-        "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user")}; #{self.class::NAME}'s answer comes as the " \
+        "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user", salt: command_salt)}; #{self.class::NAME}'s answer comes as the " \
           "#{self.class::OUTBOX} context"
       rescue SendError => e
         "#{self.class::COMMAND}: #{e.message}"
       end
+
+      # A /<peer> command send's salt (.send_id): it has no tool row to agree
+      # with, so a random one keeps an equal resend's id its own.
+      def command_salt = SecureRandom.hex(4)
 
       # A typed text's title: its first line, past a web quote's label line
       # (`From your thinking:`) and the `> ` of a quoted line.
@@ -268,7 +284,8 @@ module Samagotchi
         command = self.class::COMMAND
         return "#{command} last: no completed answer to send yet (the last turn has none); #{command} context <text> sends a text" unless answer
 
-        deliver(ctx, kind: "context", title: "chi's last answer: #{answer.strip.lines.first}", text: answer, by: "user")
+        deliver(ctx, kind: "context", title: "chi's last answer: #{answer.strip.lines.first}", text: answer, by: "user",
+                     salt: command_salt)
       rescue SendError => e
         "#{command}: #{e.message}"
       end

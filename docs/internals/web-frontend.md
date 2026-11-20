@@ -688,7 +688,7 @@ send's id as its `peer` ref, a peer's answer note its `peer` hash (`peer`, `labe
 - `peer_data.js` (state): `listPeers` (an older chi web's 404 is an empty list) and `createPeers`, the page's one model
   of the open session's peers (app.js `peers`, made only with the `context` capability, so a participant's page has
   none): its own closure holds the last read for the open session (`createLatest`: an older read, or one for a
-  session left, is dropped); `exchange(id)` (a resend's newest), `answer(name, serial, re)`. It reads only when the
+  session left, is dropped); `exchange(id)` (the newest of an id: each send has its own, but an older chi's resend shared one), `answer(name, serial, re)`. It reads only when the
   session has a peer (a context row with `peer`, a drawn send or answer), so a session without one makes no request.
   Read again on: the session drawn (`session_view.js renderSessionView`, through `peerLinks.drawn()`), a
   `context_added` with `peer`, a `tool_call_completed` with a peer ref, `command_ran` (a `/claude validate`), window
@@ -708,7 +708,7 @@ send's id as its `peer` ref, a peer's answer note its `peer` hash (`peer`, `labe
   slot's title), an answer's ↑ (`.peer-up-slot`) and "Read the full answer" (`.peer-full-slot`), each marked
   `data-peer-slot`, which `history_shape.js` leaves out (an offscreen reload has no model). `peer_links.js` is the
   controller: on the model's `onChange` and after each session draw it renders, with lit, the pill into every slot in
-  the history and the stage (two rows of one id show the same newest exchange; an id the read doesn't have reads "not
+  the history and the stage (two rows of one id, an older chi's resend, show the same newest exchange; an id the read doesn't have reads "not
   sent" when its row failed, or once its turn has ended when its peer's list is under the server's cap of 20
   (`EXCHANGES_CAP`) or holds a send drawn before it; else it is unknown and gets no pill, as are the sends of a peer
   the read doesn't name), the ↑ into each answer (none for an answer no send claims) and "Read the full

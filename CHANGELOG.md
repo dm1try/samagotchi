@@ -12,6 +12,11 @@ and commands may change between minor versions. How releases are made:
 
 - `chi bundle status NAME` reports a rule or script with no recorded sha256 as `[unrecorded]`, not `[modified]`.
 
+### Fixed
+
+- Sending a peer the same part twice no longer marks the first, answered send "not sent" in the web: each send has
+  its own id.
+
 ## [0.180.0] - 2026-11-20
 
 ### Added

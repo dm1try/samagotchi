@@ -62,7 +62,7 @@ test("a read: the newest exchange of an id, an answer by its serial or its re, o
   assert.equal(peers.exchange("s-1"), null);
 });
 
-test("a resend keeps one id: the newest exchange of it wins", async () => {
+test("an older chi's resend kept one id: the newest exchange of it wins", async () => {
   const older = { ...answered, at: "2026-11-20T09:00:00Z" };
   const newer = { ...waiting, id: "s-1", at: "2026-11-20T11:00:00Z" };
   const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, win: fakeWin(),

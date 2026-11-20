@@ -86,6 +86,15 @@ RSpec.describe Samagotchi::Plugin::Peer do
     expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir)).to be_empty
   end
 
+  it "gives two equal command sends ids of their own" do
+    pair
+    2.times { plugin.send(:run_command, "validate check this", ctx) }
+    ids = Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir).map { |line| line["id"] }
+    expect(ids.uniq.length).to eq(2)
+    expect(ids).not_to include(described_class.send_id("validate", "check this", "check this"))
+    expect(plugin.posted.map { |_, text| text.lines[1] }).to eq(ids.map { |id| "ref: #{id}\n" })
+  end
+
   it "records a command send as a user send and keeps sending if the log is unavailable" do
     pair
     plugin.send(:run_command, "validate check this", ctx)
@@ -127,6 +136,17 @@ RSpec.describe Samagotchi::Plugin::Peer do
               described_class.send_id("validate", "t", "x2")]).to all(satisfy { |other| other != id })
     end
 
+    it "is today's id for a nil salt and its own for each salt" do
+      id = described_class.send_id("validate", "t", "x")
+
+      expect(described_class.send_id("validate", "t", "x", nil)).to eq(id)
+      salted = [described_class.send_id("validate", "t", "x", "t1"), described_class.send_id("validate", "t", "x", "t2")]
+      expect(salted).to all(match(/\As-[0-9a-f]{6}\z/))
+      expect(salted.uniq.length).to eq(2)
+      expect(salted).not_to include(id)
+      expect(described_class.send_id("validate", "t", "x", "t1")).to eq(salted.first)
+    end
+
     it "takes a parse_output re" do
       fetched = Samagotchi::ContextSources.parse_output(
         JSON.generate(text: "ok", re: described_class.send_id("validate", "t", "x"))
@@ -160,6 +180,38 @@ RSpec.describe Samagotchi::Plugin::Peer do
       expect(refs).to eq([{ kind: "peer", target: { id: described_class.send_id("validate", "step 2", "is it right?") },
                             label: "Echo · validate" }])
       expect(Samagotchi::Ref.from(refs.first).to_h).to eq(refs.first.merge(actions: []))
+    end
+
+    # The block runs on ToolRunner's thread with the run's id as ctx.tool_id
+    # (ToolIds.with_current): here as ToolRunner#dispatch sets it.
+    def run_tool(args, tool_id)
+      ref = chi.tools["echo_send"][:refs].call(args, tool_id).first.dig(:target, :id)
+      Samagotchi::ToolIds.with_current(tool_id) { chi.tools["echo_send"][:block].call(args, ctx) }
+      [ref, plugin.posted.last.last.lines[1]]
+    end
+
+    it "gives two equal calls of their own runs ids of their own, each the ref: line its send carried" do
+      pair
+      args = { "kind" => "validate", "title" => "step 2", "text" => "is it right?" }
+
+      first_ref, first_line = run_tool(args, "t3")
+      second_ref, second_line = run_tool(args, "t5")
+
+      expect(first_ref).not_to eq(second_ref)
+      expect(first_line).to eq("ref: #{first_ref}\n")
+      expect(second_line).to eq("ref: #{second_ref}\n")
+      expect([first_ref, second_ref]).to eq([described_class.send_id("validate", "step 2", "is it right?", "t3"),
+                                             described_class.send_id("validate", "step 2", "is it right?", "t5")])
+      expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir).map { |line| line["id"] })
+        .to eq([first_ref, second_ref])
+    end
+
+    it "keeps today's content id, on the row and the ref: line, for a run with no tool id" do
+      pair
+      args = { "kind" => "validate", "title" => "step 2", "text" => "is it right?" }
+
+      expect(run_tool(args, nil)).to eq([described_class.send_id("validate", "step 2", "is it right?"),
+                                         "ref: #{described_class.send_id("validate", "step 2", "is it right?")}\n"])
     end
 
     it "names the id the posted message carries, also for a title deliver cuts" do

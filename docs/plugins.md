@@ -1461,10 +1461,12 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
    `APP`, `COMMAND`, `USAGE`, `OUTBOX` and `SCRIPTS_DIRS`. These constants are
-   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text)` (`s-` and 6 hex
-   of SHA-256 over the args as given) is the message's second line (`ref: <id>`), the tool row's `peer` ref
-   (display only, no actions; computed from the args before the call runs, so a send that then fails has it too)
-   and the last send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
+   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text, salt)` (`s-` and 6 hex
+   of SHA-256 over the args as given and the send's salt: the tool run's `ctx.tool_id`, a random one for a
+   `/<peer>` command's, so each send has its own id; a nil salt gives an older chi's id, over the args alone) is the
+   message's second line (`ref: <id>`), the tool row's `peer` ref (display only, no actions; computed from the args
+   and the run's id before the call runs, a two-arg `refs:`, so a send that then fails has it too) and the last
+   send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
    Successful sends and transport failures are recorded in the session's peer exchange log; answer pushes add
    summaries, not answer texts. The log does not enter the model's context.
    See the [claude-peer](bundles.md#the-claude-peer-bundle) and

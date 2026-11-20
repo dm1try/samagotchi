@@ -31,8 +31,19 @@ RSpec.describe "The claude-peer plugin", :bundle do
   let(:socket) { File.join(tmpdir, "inbox.sock") }
   let(:data_dir) { File.join(state_home, "samagotchi", "plugins", "claude-peer") }
 
-  # The message's second line: the send id of the args as given.
-  def ref(kind, title, text) = "ref: #{Samagotchi::Plugin::Peer.send_id(kind, title, text)}"
+  # A /<peer> command send's random salt (Peer#command_salt), fixed so its
+  # id is known.
+  let(:command_salt) { "c0ffee00" }
+
+  before do
+    allow(SecureRandom).to receive(:hex).and_call_original
+    allow(SecureRandom).to receive(:hex).with(4).and_return(command_salt)
+  end
+
+  # The message's second line: the send id of the args as given (a tool
+  # call's, run with no tool id here), or of a command send's (+salt+).
+  def ref(kind, title, text, salt = nil) = "ref: #{Samagotchi::Plugin::Peer.send_id(kind, title, text, salt)}"
+  def command_ref(kind, title, text) = ref(kind, title, text, command_salt)
 
   # Every UI's events of the session: from the plugin, they are cards.
   def cards = bundle.cards
@@ -268,10 +279,10 @@ RSpec.describe "The claude-peer plugin", :bundle do
       result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
       expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-outbox context")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
-      expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
+      expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
       _, content = sent_content("context we chose Redis")
-      expect(content).to eq("chi #{short} · context · we chose Redis\n#{ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
+      expect(content).to eq("chi #{short} · context · we chose Redis\n#{command_ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
     end
 
     it "titles a pill's quote by its first quoted line, not the From …: label" do
@@ -280,7 +291,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
       result, content = sent_content("validate\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
       expect(result).to start_with("sent to Claude: validate · the key stays;")
       quote = "From your thinking:\n>   the key stays\n> two\n\nis it?"
-      expect(content).to eq("chi #{short} · validate · the key stays\n#{ref("validate", "the key stays", quote)}\n#{quote}")
+      expect(content).to eq("chi #{short} · validate · the key stays\n#{command_ref("validate", "the key stays", quote)}\n#{quote}")
 
       _, content = sent_content("validate\n> an answer line\n\nok?")
       expect(content.lines.first).to eq("chi #{short} · validate · an answer line\n")
@@ -311,7 +322,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
         expect(result).to eq("sent to Claude: context · chi's last answer: The plan: three steps.")
         expect(content).to eq("chi #{short} · context · chi's last answer: The plan: three steps.\n" \
-                              "#{ref("context", "chi's last answer: The plan: three steps.", "The plan: three steps.")}\nThe plan: three steps.")
+                              "#{command_ref("context", "chi's last answer: The plan: three steps.", "The plan: three steps.")}\nThe plan: three steps.")
       end
 
       it "mid-turn, sends the answer before the running turn, not the turn's partial text" do

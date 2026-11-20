@@ -59,12 +59,19 @@ RSpec.describe "Peer bundle goldens", :bundle do
   let(:out) { +"" }
   let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
 
-  # Under the sandbox, the paths the goldens hold: <TMP>/home, its state.
-  # The sandbox puts ENV back.
+  # A /<peer> command send's random salt (Peer#command_salt), fixed so the
+  # goldens' ids stay put.
+  let(:command_salt) { "c0ffee00" }
+
   before do
+    allow(SecureRandom).to receive(:hex).and_call_original
+    allow(SecureRandom).to receive(:hex).with(4).and_return(command_salt)
     ENV.update("HOME" => home, "XDG_STATE_HOME" => state_home)
     %w[CLAUDE_CONFIG_DIR CODEX_HOME CODEX].each { |key| ENV.delete(key) }
   end
+
+  # Under the sandbox, the paths the goldens hold: <TMP>/home, its state.
+  # The sandbox puts ENV back.
 
   # Set ENV for the block (nil unsets), then put it back.
   def with_vars(vars)
