@@ -159,6 +159,13 @@ RSpec.describe Samagotchi::ContextSources do
       expect(described_class::Snapshot.empty.to_h).not_to have_key("re")
     end
 
+    it "validates a snapshot's re on reload" do
+      [{}, "x" * 33, "bad ref"].each do |bad|
+        expect(described_class::Snapshot.from_h("re" => bad).re).to be_nil
+      end
+      expect(described_class::Snapshot.from_h("re" => "s-ab12cd").re).to eq("s-ab12cd")
+    end
+
     it "summarises a plain-text change by its line counts" do
       loc.record_text("a", fetched("a\nb\nc\n"))
       expect(loc.snapshot("a").summary).to eq("3 lines of text")
@@ -431,6 +438,12 @@ RSpec.describe Samagotchi::ContextSources do
   end
 
   describe ".parse_output (the contract)" do
+    it "logs malformed peer refs without logging the answer" do
+      expect(Samagotchi::Log).to receive(:debug).with(:context, "invalid_peer_ref").once
+      described_class.parse_output(JSON.generate(text: "private answer", re: { x: 1 }))
+      described_class.parse_output(JSON.generate(text: "private answer", re: nil))
+    end
+
     it "takes plain text whole" do
       expect(described_class.parse_output("line 1\nline 2\n"))
         .to eq(fetched("line 1\nline 2\n"))

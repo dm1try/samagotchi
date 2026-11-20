@@ -329,6 +329,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/peers\z}, :handle_peers, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
@@ -1443,6 +1444,7 @@ module Samagotchi
                                                             state_dir: default_state_dir)
                                                .map { |candidate, status| candidate.to_h.merge("name" => candidate.name, "status" => status) }
         end
+
         json_response(200, body)
       end
 

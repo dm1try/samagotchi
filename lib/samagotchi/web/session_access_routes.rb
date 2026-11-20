@@ -6,6 +6,7 @@ require_relative "../session_inbox"
 require_relative "../reply_wait"
 require_relative "../pending_question"
 require_relative "../context_sources"
+require_relative "../peer_exchanges"
 require_relative "../context_command"
 require_relative "../send_command"
 require_relative "../launch_mode"
@@ -455,6 +456,25 @@ module Samagotchi
         json_response(200, { status: result.status.to_s, session_id: id, id: result.id, queued: result.queued })
       rescue SessionInbox::NoteRejected => e
         error_response(400, "note_rejected", e.message)
+      end
+
+      # GET /api/sessions/:id/peers: the owner's peer exchanges from files.
+      def handle_peers(_req, id)
+        @session_class.load(id, state_dir: default_state_dir)
+        own = ContextSources.session_location(id, state_dir: default_state_dir)
+        entries = PeerExchanges.read(id, state_dir: default_state_dir).group_by { |entry| entry["peer"] }
+        peers = {}
+        own.sources.each do |source|
+          next unless source.push?
+
+          peer, leg = ContextSources.peer_leg(source.name)
+          next unless peer
+
+          row = (peers[peer] ||= { name: peer, label: ContextSources.peer_label(peer), inbox: false, outbox: false })
+          row[leg.to_sym] = true
+        end
+        peers.each_value { |row| row[:exchanges] = PeerExchanges.joined(entries.fetch(row[:name], [])) }
+        json_response(200, { peers: peers.values })
       end
 
       # POST /api/sessions/:id/context/:name/push {text, summary, wake,

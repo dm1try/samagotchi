@@ -35,10 +35,12 @@ RSpec.describe Samagotchi::SessionStores do
 
   it "marks a cross-version store for the corpus or explains why it cannot be recorded" do
     expect(described_class.corpus_stores.reject { |store| store.corpus_dir || store.corpus_exception? }).to be_empty
-    exception = described_class.corpus_stores.find(&:corpus_exception?)
+    exception = described_class.corpus_stores.find { |store| store.file == "starting" }
     expect(exception).to have_attributes(
       file: "starting",
       corpus_exception: "the corpus marker would always be stale, so it cannot pin the live-start handshake"
     )
+    expect(described_class.corpus_stores.find { |store| store.file == "peer_exchanges.jsonl" })
+      .to have_attributes(corpus_exception: "older readers do not read peer exchange metadata")
   end
 end

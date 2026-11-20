@@ -40,6 +40,35 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
     location.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: false, hint: nil))
   end
 
+  it "lists own pushed peers and their joined exchanges without a worker" do
+    add(own, "claude-outbox")
+    add(own, "codex-inbox")
+    add(project, "review-outbox")
+    add(own, "other-outbox", cmd: "echo x")
+    Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-a", kind: "validate",
+                                                   title: "plan", by: "model" }, state_dir: state_dir)
+    status, body = call("/api/sessions/#{session.id}/peers")
+    expect(status).to eq(200)
+    expect(body["peers"]).to contain_exactly(
+      include("name" => "claude", "label" => "Claude", "inbox" => false, "outbox" => true,
+              "exchanges" => [include("id" => "s-a", "state" => "waiting")]),
+      include("name" => "codex", "inbox" => true, "outbox" => false, "exchanges" => [])
+    )
+    expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/peers").first).to eq(404)
+  end
+
+  it "joins a pushed answer's serial and ref to its send without exposing the answer text" do
+    add(own, "claude-outbox")
+    Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-a", kind: "validate",
+                                                   title: "plan", by: "model" }, state_dir: state_dir)
+    path = "/api/sessions/#{session.id}/context/claude-outbox/push"
+    expect(call(path, method: "POST", body: { text: "private answer", summary: "VERDICT OK", re: "s-a", wake: false }).first).to eq(200)
+    row = call("/api/sessions/#{session.id}/peers").last.fetch("peers").first.fetch("exchanges").first
+    expect(row).to include("id" => "s-a", "state" => "answered",
+                           "answer" => include("serial" => own.snapshot("claude-outbox").serial, "verdict" => "OK"))
+    expect(JSON.generate(row)).not_to include("private answer")
+  end
+
   it "lists the sources with what the chips show, never a command" do
     add(own, "pr-1", why: "the PR", hint: "https://x/1")
     push(own, "pr-1", "body", summary: "2 new comments")

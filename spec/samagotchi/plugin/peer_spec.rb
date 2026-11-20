@@ -67,6 +67,34 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
   def last_send = JSON.parse(File.read(File.join(ctx.data_dir, "sessions", session.id, "last-send.json")))
 
+  it "logs successful sends and transport failures without the text" do
+    pair
+    plugin.deliver(ctx, kind: "validate", title: "t", text: "private")
+    allow(plugin).to receive(:post).and_raise(described_class::SendError, "offline")
+    expect { plugin.deliver(ctx, kind: "question", title: "q", text: "secret", by: "user") }
+      .to raise_error(described_class::SendError, "offline")
+    lines = Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir)
+    expect(lines).to match([include("t" => "sent", "peer" => "echo", "by" => "model", "chars" => 7),
+                            include("t" => "send_failed", "peer" => "echo", "error" => "offline")])
+    expect(JSON.generate(lines)).not_to include("private", "secret")
+  end
+
+  it "does not log a payload write failure" do
+    pair
+    allow(plugin).to receive(:write_payload).and_raise(described_class::SendError, "disk")
+    expect { plugin.deliver(ctx, kind: "context", title: "t", text: "x" * 4001) }.to raise_error(described_class::SendError)
+    expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir)).to be_empty
+  end
+
+  it "records a command send as a user send and keeps sending if the log is unavailable" do
+    pair
+    plugin.send(:run_command, "validate check this", ctx)
+    expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir).last).to include("by" => "user")
+    allow(Samagotchi::PeerExchanges).to receive(:append).and_raise(Errno::EACCES)
+    expect(ctx.log).to receive(:warn).with("peer_exchange_not_saved", error: anything)
+    expect(plugin.deliver(ctx, kind: "validate", title: "t", text: "ok")).to eq("sent to Echo: validate · t")
+  end
+
   it "looks for the last send without leaving a session folder" do
     expect(plugin.send(:last_send, ctx)).to be_nil
     expect(File).not_to exist(File.join(ctx.data_dir, "sessions", session.id))
@@ -120,6 +148,11 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
     before { plugin.register(chi) }
 
+    it "caps a tool ref's untrusted kind label" do
+      ref = chi.tools["echo_send"][:refs].call("kind" => "x" * 200).first
+      expect(ref[:label]).to eq("Echo · #{"x" * 40}")
+    end
+
     it "is one inert peer ref (no actions) naming the send id of the call's args, labelled by peer and kind" do
       args = { "kind" => "validate", "title" => "step 2", "text" => "is it right?" }
       refs = chi.tools["echo_send"][:refs].call(args)
@@ -164,6 +197,7 @@ RSpec.describe Samagotchi::Plugin::Peer do
     expect { plugin.deliver(ctx, kind: "validate", title: "t", text: "x") }
       .to raise_error(described_class::SendError, "bad hint elsewhere")
     expect(plugin.posted).to be_nil
+    expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir)).to be_empty
   end
 
   it "titles a typed text past a web quote's label and the quote marker" do

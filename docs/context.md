@@ -338,7 +338,8 @@ did. That holds for a declared peer source, with the loop on or off.
 **Outside the worker it is by name.** chi web and the CLI load no plugins,
 so where they show a pairing (a context row's `peer`, `leg` and `label`) a
 pushed source of the session's own named `<word>-inbox` or `<word>-outbox` is
-taken for one: `review-outbox` gets a peer chip too. That is display only:
+taken for one: `review-outbox` gets a peer chip too, and changed pushes to it
+are logged as answers. That is display and logging only:
 what is a peer's answer, and what may wake chi and how, is still the bundle's
 declaration in the worker, as above.
 
@@ -705,6 +706,13 @@ sessions/<id>/candidates/<name>.json          a source a plugin proposed here ({
 The candidates' log, `context_candidates.jsonl`, sits one level up, beside
 the sessions folder (`$XDG_STATE_HOME/samagotchi/`; see
 [The log and the report](#the-log-and-the-report)).
+
+Peer exchange metadata lives separately in the session sidecar at
+`$XDG_STATE_HOME/samagotchi/sessions/<id>/peer_exchanges.jsonl`. It records
+sends, transport failures and answer summaries, not answer text. It is
+append-only and uncapped; a continue starts a new log with its new pairing.
+An unchanged text is not a new revision, even if its `re` changes, so it
+does not add an answer to the log.
 
 Deleting a session deletes its folder. A source and its snapshot go with
 `chi context rm`; its `.lock` stays (a fetch may still hold it).

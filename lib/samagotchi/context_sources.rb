@@ -9,6 +9,7 @@ require_relative "memory_paths"
 require_relative "paths"
 require_relative "session_paths"
 require_relative "session"
+require_relative "log"
 
 module Samagotchi
   # Attached context: named external sources a session keeps fresh (a PR, a
@@ -122,7 +123,7 @@ module Samagotchi
         new(text: data["text"], summary: data["summary"], revision: data["revision"], serial: serial,
             fetched_at: data["fetched_at"], checked_at: data["checked_at"] || data["fetched_at"], wake: wake,
             wake_serial: data["wake_serial"]&.to_i || (serial if wake), hint: data["hint"], error: data["error"],
-            error_since: data["error_since"], re: data["re"])
+            error_since: data["error_since"], re: ContextSources.send_ref(data["re"]))
       end
 
       def text? = !text.nil?
@@ -743,6 +744,7 @@ module Samagotchi
       raw = raw.to_s.dup.force_encoding(Encoding::UTF_8).scrub
       data = json_object(raw)
       fetched = if data.is_a?(Hash) && data["text"].is_a?(String)
+                  Log.debug(:context, "invalid_peer_ref") if !data["re"].nil? && !send_ref(data["re"])
                   Fetched.new(text: data["text"].scrub, summary: one_line(data["summary"], SUMMARY_MAX_CHARS),
                               wake: data["wake"] == true, hint: one_line(data["hint"], LINE_MAX_CHARS),
                               re: send_ref(data["re"]))
