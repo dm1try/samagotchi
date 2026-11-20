@@ -53,4 +53,27 @@ RSpec.describe Samagotchi::TurnStages::Objectives do
     expect(stage.announce(session, view: view)).to be_nil
     expect(stage.announce(session, view: changed_view)).to include(items: [])
   end
+
+  describe "a list that goes away" do
+    let(:session) { Struct.new(:id, :messages).new("s1", []) }
+    let(:view) { { items: [{ id: "O1" }], pending: false } }
+
+    it "announces it once, without items, and nothing after" do
+      stage.announce(session, view: view)
+
+      expect(stage.announce(session, view: nil)).to eq(type: :objectives_updated, session_id: "s1", items: nil)
+      expect(stage.announce(session, view: nil)).to be_nil
+    end
+
+    it "announces nothing for a session that never had a list" do
+      expect(stage.announce(session, view: nil)).to be_nil
+    end
+
+    it "announces the same list again once it is back" do
+      stage.announce(session, view: view)
+      stage.announce(session, view: nil)
+
+      expect(stage.announce(session, view: view)).to eq(type: :objectives_updated, session_id: "s1", **view)
+    end
+  end
 end

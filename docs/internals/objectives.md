@@ -171,8 +171,10 @@ any call. An add's text can't split on ` | `. The body names the line, for a ter
 `Objectives.view` (`List#to_view`) is what the page draws: the items, each with its last move, and `pending`, whether
 the newest list is a file still waiting. The session read (`objectives`, no key with no list) and the live
 `:objectives_updated` carry it. `Engine#announce_objectives` (under the event lock, `TurnStages::Objectives#announce` giving the event) emits when the view differs from the last: after an edit,
-once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A session
-with no list emits nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
+once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A list
+that goes away (a rollback, or a canceled or failed turn's kept messages, past the note that set it) emits one event
+with `items: nil`, and the strip's `take` clears (an N-1 page's too); a session with no list before and after emits
+nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
 `ParticipantView::DROPPED`.
 
 Idle, an edit lands at once: the worker's anytime path wakes the loop (`@waker.wake`, one extra pass for any anytime

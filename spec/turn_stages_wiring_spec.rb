@@ -344,6 +344,19 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
     expect(announced).to be_empty
   end
 
+  it "announces the list going away when a rollback between turns drops its note" do
+    session = new_session
+    engine.session = session
+    engine.announce_objectives(session)
+    pop!(announced, "the list's announce")
+
+    engine.rollback_to([])
+
+    event, = pop!(announced, "the cleared list")
+    expect(event).to include(type: :objectives_updated, session_id: session.id, items: nil)
+    expect(announced).to be_empty
+  end
+
   it "logs a failing objectives announce instead of raising, between turns and at a turn's end" do
     session = new_session
     allow(Samagotchi::Log).to receive(:warn).and_call_original
