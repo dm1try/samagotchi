@@ -471,7 +471,7 @@ module Samagotchi
         return error_response(400, "missing_fields", "text is required") unless body["text"].is_a?(String)
 
         fetched = begin
-          ContextSources.parse_output(JSON.generate(body.slice("text", "summary", "wake", "hint")))
+          ContextSources.parse_output(JSON.generate(body.slice("text", "summary", "wake", "hint", "re")))
         rescue ContextSources::Invalid => e
           return error_response(400, "invalid_text", e.message)
         end

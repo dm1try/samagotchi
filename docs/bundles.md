@@ -1008,13 +1008,19 @@ Claude pairs; without one the bundle costs one tool declaration.
      refreshes it) and `claude-outbox`, and lists the session's context. A
      re-pair keeps Claude's last answer.
   3. Claude answers a validate or a question with a JSON push to
-     `claude-outbox` (`text`, `summary`, `wake: true`), which wakes chi, the
-     first answer too (on chi 0.62 the first one arrives as a note without
-     waking); the model reads it with `context_read claude-outbox`.
+     `claude-outbox` (`text`, `summary`, `wake: true`, and `re`: the `ref:`
+     line of the message it answers), which wakes chi, the first answer too
+     (on chi 0.62 the first one arrives as a note without waking); the model
+     reads it with `context_read claude-outbox`. In chi's own records the
+     answer's note names the send (`re`); an older skill's answer has none and
+     works as before.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
-  starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
-  characters follows inline; a longer one goes to a file,
+  starts with a header, `chi <id> · <kind> · <title>`, and a second line,
+  `ref: <send id>` (`s-` and 6 hex, from the kind, title and text as given:
+  the same part sent again has the same id), which Claude's answer gives back
+  so chi can tie it to its send; the tool's row in the web carries the id too.
+  A text up to 4,000 characters follows inline; a longer one goes to a file,
   `$XDG_STATE_HOME/samagotchi/plugins/claude-peer/sessions/<id>/<HHMMSS>-<slug>.md`
   (removed with the session), and the message names it (`payload: <path>`).
   The tool is declared whether or not a Claude is paired, so pairing doesn't
@@ -1195,8 +1201,9 @@ skill install card) works the same.
   `sh <bundle>/scripts/pair` attaches `codex-inbox` (the thread id as its
   hint, pushed so a re-pair refreshes it) and `codex-outbox`. Run outside
   Codex (no `CODEX_THREAD_ID`) it refuses. Codex replies with one JSON push
-  to `codex-outbox` (`text`, `summary`, `wake: true`), which wakes chi, the
-  first answer too (that needs chi 0.63.0; the bundle's `requires_chi` is `>= 0.70.0`).
+  to `codex-outbox` (`text`, `summary`, `wake: true`, `re`: the message's `ref:`
+  line), which wakes chi, the first answer too (that needs chi 0.63.0; the bundle's
+  `requires_chi` is `>= 0.70.0`).
 - **Peer messages are user turns in Codex.** Claude Code marks an inbox
   message as from another session; `codex queue` lands as a plain user
   message. So Codex's skill starts with the rule: a message whose first line

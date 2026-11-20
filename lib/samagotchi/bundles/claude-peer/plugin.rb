@@ -17,10 +17,10 @@ require "samagotchi/plugin/peer"
 # takes: {"type":"user","message":{"role":"user","content":"…"}}. It is
 # undocumented (found in Claude Code 2.1.296), and a line it can't parse is
 # dropped silently, so the format lives in one place: #line. The message
-# starts with a header, `chi <id> · <kind> · <title>`; a short part follows
-# inline, a long one goes to a file under the bundle's data dir
-# (sessions/<id>/, removed with the session) and the message names it
-# (`payload: <path>`). No auth line: optional on macOS and Linux; native
+# starts with a header, `chi <id> · <kind> · <title>`, and `ref: <send id>`
+# (the answer's re); a short part follows inline, a long one goes to a file
+# under the bundle's data dir (sessions/<id>/, removed with the session) and
+# the message names it (`payload: <path>`). No auth line: optional on macOS and Linux; native
 # Windows, which needs one, isn't supported.
 #
 # The tool is declared whether or not Claude is paired, so pairing never

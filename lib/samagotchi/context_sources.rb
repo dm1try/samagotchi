@@ -95,18 +95,23 @@ module Samagotchi
     # doesn't hide a wake asked since the session's last one.
     # +fetched_at+ is the last success, +checked_at+ the last try (the
     # poller's clock: a failing source isn't run again every tick).
+    # +re+ comes with the revision too: the send a peer's answer names
+    # (Plugin::Peer.send_id; nil for none, an older snapshot's or skill's).
     Snapshot = Data.define(:text, :summary, :revision, :serial, :fetched_at, :checked_at, :wake, :wake_serial, :hint,
-                           :error, :error_since) do
+                           :error, :error_since, :re) do
+      def initialize(text:, summary:, revision:, serial:, fetched_at:, checked_at:, wake:, wake_serial:, hint:, error:,
+                     error_since:, re: nil) = super
+
       def self.empty
         new(text: nil, summary: nil, revision: nil, serial: 0, fetched_at: nil, checked_at: nil, wake: false,
-            wake_serial: nil, hint: nil, error: nil, error_since: nil)
+            wake_serial: nil, hint: nil, error: nil, error_since: nil, re: nil)
       end
 
       def to_h
         { "text" => text, "summary" => summary, "revision" => revision, "serial" => serial,
           "fetched_at" => fetched_at, "checked_at" => checked_at, "wake" => (wake ? true : nil),
           "wake_serial" => wake_serial, "hint" => hint,
-          "error" => error, "error_since" => error_since }.compact
+          "error" => error, "error_since" => error_since, "re" => re }.compact
       end
 
       # A snapshot 0.32.0 wrote has no wake_serial: its wake is the latest
@@ -117,7 +122,7 @@ module Samagotchi
         new(text: data["text"], summary: data["summary"], revision: data["revision"], serial: serial,
             fetched_at: data["fetched_at"], checked_at: data["checked_at"] || data["fetched_at"], wake: wake,
             wake_serial: data["wake_serial"]&.to_i || (serial if wake), hint: data["hint"], error: data["error"],
-            error_since: data["error_since"])
+            error_since: data["error_since"], re: data["re"])
       end
 
       def text? = !text.nil?
@@ -151,7 +156,10 @@ module Samagotchi
     end
 
     # What a command printed or a push sent (the contract, ContextSources.parse_output).
-    Fetched = Data.define(:text, :summary, :wake, :hint)
+    # +re+ (optional: a command, an older caller) is the send a peer's answer names.
+    Fetched = Data.define(:text, :summary, :wake, :hint, :re) do
+      def initialize(text:, summary:, wake:, hint:, re: nil) = super
+    end
 
     # A source a plugin proposed for a session, not attached
     # (ctx.context.propose): its spec (+url+, through an installed bundle's
@@ -276,7 +284,7 @@ module Samagotchi
                     Snapshot.new(text: fetched.text, revision: revision, serial: previous.serial + 1, fetched_at: stamp,
                                  checked_at: stamp, summary: fetched.summary || ContextSources.plain_summary(previous.text, fetched.text),
                                  wake: fetched.wake, wake_serial: fetched.wake ? previous.serial + 1 : previous.wake_serial,
-                                 hint: fetched.hint || previous.hint, error: nil, error_since: nil)
+                                 hint: fetched.hint || previous.hint, error: nil, error_since: nil, re: fetched.re)
                   end
         write_snapshot(name, written)
       end
@@ -421,8 +429,8 @@ module Samagotchi
       # only words the note, PeerSources decides what a peer is); nil for
       # any other.
       def peer
-        match = why == :pushed && PEER_NAME.match(name)
-        match ? match[1].capitalize : nil
+        leg = why == :pushed && ContextSources.peer_leg(name)
+        leg ? ContextSources.peer_label(leg.first) : nil
       end
 
       def inbox? = name.end_with?("-inbox")
@@ -438,7 +446,10 @@ module Samagotchi
       def self.from_h(data) = new(name: data["name"].to_s, hint: data["hint"]&.to_s, from: data["from"]&.to_s)
     end
 
-    PEER_NAME = /\A([a-z][a-z0-9]*)-(?:inbox|outbox)\z/
+    # A peer pairing's source name, by name only (ContextSources.peer_leg).
+    PEER_NAME = /\A([a-z][a-z0-9]*)-(inbox|outbox)\z/
+    # A push's re (the send a peer's answer names).
+    RE_RE = /\A[a-z0-9-]{1,32}\z/
 
     # What ContextSources.move did: the names it took to the new session
     # (+moved+) and the sources it left (+stayed+, Stayed).
@@ -710,9 +721,22 @@ module Samagotchi
 
     def revision_of(text) = Digest::SHA256.hexdigest(text.to_s)
 
+    # The peer and the leg of a <peer>-inbox / <peer>-outbox name
+    # (["claude", "outbox"]); nil for any other. By name only, for where no
+    # plugin is loaded (a move, chi web): it words and labels, PeerSources
+    # in the worker decides what is a peer's (and what may wake chi).
+    def peer_leg(name)
+      match = PEER_NAME.match(name.to_s)
+      match && [match[1], match[2]]
+    end
+
+    # The peer's name as chi words it ("Claude" for claude).
+    def peer_label(peer) = peer.to_s.capitalize
+
     # The contract: stdout that parses as a JSON object with a string "text"
-    # is {text, summary, wake, hint}; anything else is all text. Unknown
-    # keys are ignored; summary and hint become one line, cut.
+    # is {text, summary, wake, hint, re}; anything else is all text. Unknown
+    # keys are ignored; summary and hint become one line, cut; re (a peer's
+    # answer naming its send) is kept only when it is RE_RE.
     # @return [Fetched]
     # @raise [Invalid] nothing to keep (empty, or over TEXT_MAX_BYTES)
     def parse_output(raw)
@@ -720,7 +744,8 @@ module Samagotchi
       data = json_object(raw)
       fetched = if data.is_a?(Hash) && data["text"].is_a?(String)
                   Fetched.new(text: data["text"].scrub, summary: one_line(data["summary"], SUMMARY_MAX_CHARS),
-                              wake: data["wake"] == true, hint: one_line(data["hint"], LINE_MAX_CHARS))
+                              wake: data["wake"] == true, hint: one_line(data["hint"], LINE_MAX_CHARS),
+                              re: send_ref(data["re"]))
                 else
                   Fetched.new(text: raw, summary: nil, wake: false, hint: nil)
                 end
@@ -731,6 +756,9 @@ module Samagotchi
 
       fetched
     end
+
+    # A push's re: a String of RE_RE, else nil.
+    def send_ref(value) = value.is_a?(String) && value.match?(RE_RE) ? value : nil
 
     def json_object(raw)
       return nil unless raw.lstrip.start_with?("{")

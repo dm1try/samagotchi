@@ -15,31 +15,32 @@ Error: that Claude session is gone (no inbox at <TMP>/inbox.sock): pair again fr
 === validate
 sent to Claude: validate · Step 2: the cache key. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
-{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"}}
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · Step 2: the cache key\nref: s-76bb1c\nIs the key stable?\nsee lib/a.rb"}}
 
 === context
 sent to Claude: context · background. Claude takes it in; it answers only if something in it is wrong.
 === posted
-{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · background\nsome background"}}
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · background\nref: s-ebc80d\nsome background"}}
 
 === question
 sent to Claude: question · why this name?. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
-{"type":"user","message":{"role":"user","content":"chi <SHORT> · question · why this name?\nwhy?"}}
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · question · why this name?\nref: s-d8121a\nwhy?"}}
 
 === no title
 sent to Claude: validate · check this. Claude's answer comes as an update of the claude-outbox context; don't wait or poll.
 === posted
-{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · check this\ncheck this\nand that"}}
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · check this\nref: s-ab182b\ncheck this\nand that"}}
 
 === payload
 sent to Claude: context · The whole plan, r3! (the text in <TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md). Claude takes it in; it answers only if something in it is wrong.
 === posted
-{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · The whole plan, r3!\npayload: <TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"}}
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · The whole plan, r3!\nref: s-b3e10d\npayload: <TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"}}
 
 === last send
 {
   "at": "<AT>",
+  "id": "s-b3e10d",
   "kind": "context",
   "title": "The whole plan, r3!",
   "chars": 5103,

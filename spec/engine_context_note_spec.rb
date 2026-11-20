@@ -58,6 +58,16 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       expect(updated[:items].first).to include("id" => "O1", "status" => "done")
     end
 
+    it "keeps a peer's answer's hash on the note and its :context_added, the content as without it" do
+      peer = { "name" => "Claude", "re" => "s-ab12cd", "summary" => "t: VERDICT OK", "serial" => 1, "agreed" => true }
+
+      message = engine.add_context_note(session, note.merge(peer: peer, context_source: "claude-outbox"))
+
+      expect(message[:peer]).to eq(peer)
+      expect(message[:content]).to eq("[CONTEXT NOTE from slack, 14:02]\ndeploy frozen\n[END NOTE]")
+      expect(events.find { |e| e[:type] == :context_added }).to include(peer: peer, context_source: "claude-outbox")
+    end
+
     it "skips a note the conversation already holds (a re-read after a crash)" do
       engine.add_context_note(session, note)
       expect(engine.add_context_note(session, note)).to be_nil

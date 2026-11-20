@@ -49,7 +49,7 @@ module Samagotchi
           announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
                      label: ContextNote.label_of(message), from_session: note[:from_session],
                      from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
-                     created_at: note[:created_at], objectives: entry }.compact)
+                     created_at: note[:created_at], objectives: entry, peer: note[:peer] }.compact)
           announce_objectives(session) if entry
           @objectives_stage.note(session, note, recorder: system_one_recorder, state_dir: session_state_dir)
           message

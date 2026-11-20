@@ -47,7 +47,7 @@ comment is the file map and [../context.md](../context.md#storage) lists it for 
 - **Records** (`Data`/value objects): `Source` (definition; `cmd` nil = pushed; `movable` nil derives from
   `push?`), `Snapshot` (last good text, `revision` = SHA-256 of the text, `serial` counting revisions, `error` and
   `error_since`, `wake_serial` = the newest revision that asked to wake, `fetched_at` last success, `checked_at` last
-  try), `Subscription` (what one session has had: `seen`/`seen_serial`, `read`, `error_seen`, `wakes_at`),
+  try, `re` = the send a peer's answer names, with the revision: nil for none, an older snapshot's too), `Subscription` (what one session has had: `seen`/`seen_serial`, `read`, `error_seen`, `wakes_at`),
   `Candidate`, `Left`, `Moved`/`Stayed`.
 - **Locations.** A `Location` is a folder of sources: a project's (`projects/<project_key>/`, shared by the
   project's workers) or a session's (`sessions/<id>/`, which also holds `subscriptions.json`, the `muted/` and
@@ -61,8 +61,11 @@ comment is the file map and [../context.md](../context.md#storage) lists it for 
   still running finds its source gone (`ContextFetch` then writes nothing). Removing a *session* source leaves a
   `declined/<name>` marker (hint inside), which is what stops an auto-attach from bringing it back.
 - **The output contract** is `ContextSources.parse_output` (JSON object with a string `text` is
-  `{text, summary, wake, hint}`; anything else is all text; empty or over `TEXT_MAX_BYTES` is `Invalid`), the same for
-  a command's stdout and a push. `ContextProviders` resolves a URL to a command source from an installed bundle's
+  `{text, summary, wake, hint, re}`; anything else is all text; empty or over `TEXT_MAX_BYTES` is `Invalid`), the same for
+  a command's stdout and a push. `re` is kept only as a String of `RE_RE`. `Fetched` and `Snapshot` default `re:` to
+  nil, so a caller (a spec, a bundle's) that builds them without it keeps working; the push carries it in three seats
+  that change together: `parse_output`, chi web's push route (`SessionAccessRoutes#handle_context_push`'s slice) and
+  `SessionAccess::Remote#context_push`'s body (an older chi web drops it: the answer arrives unlinked). `ContextProviders` resolves a URL to a command source from an installed bundle's
   manifest `context_providers:` (read from its provenance, so the CLI and chi web resolve without loading plugins);
   `{url}` is filled at attach, `{bundle_dir}` and `{ruby}` when the command runs.
 - **Protected.** The root is a `ProtectedPaths` entry: the file tools cannot write it, because a source's command
@@ -116,6 +119,16 @@ stopped wake turn is rolled back (`unmark_wake`) to a plain note.
 as a peer's answers; `peer_label` then needs `context.peer_turns` > 0. A peer delivery has no 10-minute window; its
 budget is `WorkerWakes#peer_open?` (reset only by typed input), and an answer whose summary ends in `VERDICT OK`
 (`peer_agrees?`) wakes once with the closing line, counted toward `session.max_wakes` only.
+
+**Whose answer a note is.** A text note (and its wake note) of a source `PeerSources` marks as a peer's (`peer_name`:
+a pushed source of the session's own that a loaded bundle declared; *not* gated on `context.peer_turns`, and nil for an
+absorber built without peer sources, `ContextCandidates.deliver_notes`') carries `peer: {name, re, summary, serial,
+verdict, agreed}` (`peer_note`; string keys, nils dropped): `re` the snapshot's, `verdict` the summary's last
+`VERDICT` match when one of `VERDICTS`, `agreed` `peer_agrees?` directly. It is display data, as `objectives` is:
+`ContextNote::KEYS` keeps it (the key-by-key copier is `ChatLoop#plain`), `:context_added` carries it, the reload's note
+items (`Web::MessageDisplay`) carry it with `context_source`, and no wire sends it (role and content only), so the
+note's content, what the model reads, is the same byte for byte. `peer_label` and `Delivery#peer` keep deciding the
+wakes.
 
 ## Candidates
 
@@ -221,7 +234,7 @@ Keys, all in [../configuration.md](../configuration.md): `context.every_seconds`
 | File | Written by | Read by |
 |---|---|---|
 | `context/{projects/<key>,sessions/<id>}/<name>.json` | `chi context add`, a provider, a plugin (`ctx.context.attach`), `ContextCandidates.attach`, `ContextMove` | poller, absorber, `context_read`, chi web |
-| `<name>.snapshot.json` | `ContextFetch`, `chi context push`, `ContextMove` | absorber, `context_read`, chi web chips |
+| `<name>.snapshot.json` (a push's `re` too) | `ContextFetch`, `chi context push`, `ContextMove` | absorber, `context_read`, chi web chips |
 | `<name>.lock` | `ContextFetch` / `Location#locked` | same |
 | `sessions/<id>/subscriptions.json` | the worker (`commit`, `context_read`) only | absorber, chi web (unread dot) |
 | `sessions/<id>/{muted,declined}/<name>` | `chi context mute`, a removal, `ContextMove` | poller, absorber, candidates |

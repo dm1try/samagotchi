@@ -1335,7 +1335,21 @@ RSpec.describe Samagotchi::Web::App do
       app = build_app(state_dir: Dir.mktmpdir)
 
       expect(app.send(:messages_for_display, [note]))
-        .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", at: message_at, turn_start: true, turn_id: "T2" }])
+        .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", at: message_at, context_source: "pr-1",
+                  turn_start: true, turn_id: "T2" }])
+    end
+
+    it "gives a reloaded context note its chip's name and a peer's answer its peer hash, as the live event does" do
+      peer = { "name" => "Claude", "re" => "s-ab12cd", "summary" => "t: VERDICT OK", "serial" => 2, "verdict" => "OK",
+               "agreed" => true }
+      note = Samagotchi::ContextNote.message(note_id: "ctx-claude-outbox-2-ab", text: "Updated: claude-outbox.",
+                                             source: "context claude-outbox", context_source: "claude-outbox", peer: peer)
+      saved = JSON.parse(JSON.generate(note))
+      app = build_app(state_dir: Dir.mktmpdir)
+
+      expect(app.send(:messages_for_display, [saved]))
+        .to eq([{ role: "note", content: "Updated: claude-outbox.", label: "context claude-outbox", at: message_at,
+                  context_source: "claude-outbox", peer: peer }])
     end
 
     it "leaves out KernelLoop's recovery line (a row of its turn, shown live as nothing) and passes an id-less opening's opening_id" do

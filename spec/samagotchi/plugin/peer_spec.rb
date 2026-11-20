@@ -3,6 +3,8 @@
 require "spec_helper"
 require "tmpdir"
 require "json"
+require "digest"
+require "samagotchi/ref"
 require "samagotchi/plugin/context"
 require "samagotchi/context_sources"
 require "samagotchi/plugin/peer"
@@ -72,12 +74,72 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
   it "posts a short part inline to the inbox's hint, in the subclass's words, and records it" do
     pair
+    id = described_class.send_id("validate", "step  2\n", "is it right?")
 
     result = plugin.deliver(ctx, kind: "validate", title: "step  2\n", text: "is it right?")
 
+    # The result (what the model reads) is as it was before the ref line.
     expect(result).to eq("sent to Echo: validate · step 2")
-    expect(plugin.posted).to eq([["echo:1", "chi #{session.id[0, 8]} · validate · step 2\nis it right?"]])
-    expect(last_send).to include("kind" => "validate", "title" => "step 2", "chars" => 12, "payload" => nil)
+    expect(plugin.posted).to eq([["echo:1", "chi #{session.id[0, 8]} · validate · step 2\nref: #{id}\nis it right?"]])
+    expect(last_send).to include("id" => id, "kind" => "validate", "title" => "step 2", "chars" => 12, "payload" => nil)
+  end
+
+  describe ".send_id" do
+    it "is s- and 6 hex of SHA-256 over kind, title and text as given" do
+      expect(described_class.send_id("validate", "step  2\n", "is it right?"))
+        .to eq("s-#{Digest::SHA256.hexdigest("validate\0step  2\n\0is it right?")[0, 6]}")
+      expect(described_class.send_id("validate", "t", "x")).to match(/\As-[0-9a-f]{6}\z/)
+    end
+
+    it "is the same for equal args and differs by kind, title or text" do
+      id = described_class.send_id("validate", "t", "x")
+
+      expect(described_class.send_id("validate", "t", "x")).to eq(id)
+      expect([described_class.send_id("question", "t", "x"), described_class.send_id("validate", "t2", "x"),
+              described_class.send_id("validate", "t", "x2")]).to all(satisfy { |other| other != id })
+    end
+
+    it "takes a parse_output re" do
+      fetched = Samagotchi::ContextSources.parse_output(
+        JSON.generate(text: "ok", re: described_class.send_id("validate", "t", "x"))
+      )
+      expect(fetched.re).to eq(described_class.send_id("validate", "t", "x"))
+    end
+  end
+
+  describe "the tool's refs" do
+    # A chi that keeps the tool's keywords and ignores the rest of #register.
+    let(:chi) do
+      Class.new do
+        def tools = (@tools ||= {})
+        def tool(name, _description, **keywords, &block) = tools[name] = keywords.merge(block: block)
+        def method_missing(*, **) = nil
+        def respond_to_missing?(*) = true
+      end.new
+    end
+
+    before { plugin.register(chi) }
+
+    it "is one inert peer ref (no actions) naming the send id of the call's args, labelled by peer and kind" do
+      args = { "kind" => "validate", "title" => "step 2", "text" => "is it right?" }
+      refs = chi.tools["echo_send"][:refs].call(args)
+
+      expect(refs).to eq([{ kind: "peer", target: { id: described_class.send_id("validate", "step 2", "is it right?") },
+                            label: "Echo · validate" }])
+      expect(Samagotchi::Ref.from(refs.first).to_h).to eq(refs.first.merge(actions: []))
+    end
+
+    it "names the id the posted message carries, also for a title deliver cuts" do
+      pair
+      args = { "kind" => "question", "title" => "  a  long\ntitle ", "text" => "why?" }
+      id = chi.tools["echo_send"][:refs].call(args).first.dig(:target, :id)
+
+      result = chi.tools["echo_send"][:block].call(args, ctx)
+
+      expect(plugin.posted.last.last.lines[1]).to eq("ref: #{id}\n")
+      expect(result).to eq("sent to Echo: question · a long title. Echo's answer comes as an update of the " \
+                           "echo-outbox context; don't wait or poll.")
+    end
   end
 
   it "writes a long part to a payload file and posts its path" do
@@ -86,7 +148,9 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
     result = plugin.deliver(ctx, kind: "context", title: "", text: text)
 
-    path = plugin.posted.last.last[/payload: (\S+) \(3000 lines, 6000 chars\)\z/, 1]
+    lines = plugin.posted.last.last.lines
+    expect(lines[1]).to eq("ref: #{described_class.send_id("context", "", text)}\n")
+    path = lines[2][/\Apayload: (\S+) \(3000 lines, 6000 chars\)\z/, 1]
     expect(File.read(path)).to eq(text)
     expect(result).to eq("sent to Echo: context · x (the text in #{path})")
     expect(last_send["payload"]).to eq(path)

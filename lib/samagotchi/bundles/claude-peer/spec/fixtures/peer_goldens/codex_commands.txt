@@ -15,6 +15,7 @@ confirm (a quote)
 === last send
 {
   "at": "<AT>",
+  "id": "s-bf574f",
   "kind": "validate",
   "title": "the cache key is stable",
   "chars": 53,
@@ -27,10 +28,11 @@ confirm (a quote)
 === last send
 {
   "at": "<AT>",
+  "id": "s-9858d8",
   "kind": "context",
   "title": "chi's last answer: The fix is in lib/a.rb.",
   "chars": 41,
   "payload": null
 }
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · the cache key is stable\nFrom your thinking:\n> the cache key is stable\nconfirm", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · some background\nsome background", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · chi's last answer: The fix is in lib/a.rb.\nThe fix is in lib/a.rb.\nIt keeps the key."]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · the cache key is stable\nref: s-bf574f\nFrom your thinking:\n> the cache key is stable\nconfirm", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · some background\nref: s-94ec55\nsome background", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · chi's last answer: The fix is in lib/a.rb.\nref: s-9858d8\nThe fix is in lib/a.rb.\nIt keeps the key."]

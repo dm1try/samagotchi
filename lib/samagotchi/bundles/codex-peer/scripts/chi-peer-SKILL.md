@@ -78,11 +78,13 @@ for validation" or "give Codex this as context", or type
 
 ```
 chi <id> · validate · <short title>
+ref: <send id>
 <the part, and what to check>
 ```
 
-or, for a long part, `payload: <path> (N lines, M chars)` in place of the
-text: read that file.
+The second line, `ref: <id>`, names this send: your answer gives it back
+(below). For a long part, a `payload: <path> (N lines, M chars)` line follows
+the `ref:` line in place of the text: read that file.
 
 - Read the part (and anything it points to: files, a diff range, a plan file).
   Don't pull in the whole chi session; you got the part on purpose.
@@ -107,14 +109,17 @@ the note chi sees a summary, and `wake` starts a chi turn only when chi is
 waiting on it (chi 0.63.0 or later wakes on the first answer too):
 
 ```sh
-ruby -rjson -e 'puts JSON.generate(text: STDIN.read, summary: ARGV[0], wake: ARGV[1] == "wake")' \
-  "validate <title>: VERDICT CHANGES, 2 issues" wake <<'EOF' | chi context push codex-outbox <id>
+ruby -rjson -e 'puts JSON.generate(text: STDIN.read, summary: ARGV[0], wake: ARGV[1] == "wake", re: ARGV[2])' \
+  "validate <title>: VERDICT CHANGES, 2 issues" wake s-ab12cd <<'EOF' | chi context push codex-outbox <id>
 <the full answer>
 EOF
 ```
 
-- `wake` for a validate or a question (chi asked and is waiting); no `wake`
-  for a reply to context.
+- The second argument is always `wake` or `nowake`: `wake` for a validate or
+  a question (chi asked and is waiting), `nowake` for a reply to context.
+- The third is the `ref:` value of the message you answer (`s-ab12cd` above),
+  so chi ties the answer to its send; leave it out when the message had no
+  `ref:` line.
 - Each answer replaces the last (chi keeps the latest one), so start the
   summary with the title you are answering, and end it with your verdict
   (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): an OK wakes chi once

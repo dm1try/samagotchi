@@ -27,26 +27,27 @@ Error: Codex didn't take the message in 0.3 s (codex queue was stopped): try aga
 === validate
 sent to Codex: validate · Step 2: the cache key. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · Step 2: the cache key\nref: s-76bb1c\nIs the key stable?\nsee lib/a.rb"]
 === context
 sent to Codex: context · background. Codex takes it in; it answers only if something in it is wrong.
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · background\nsome background"]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · background\nref: s-ebc80d\nsome background"]
 === question
 sent to Codex: question · why this name?. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · question · why this name?\nwhy?"]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · question · why this name?\nref: s-d8121a\nwhy?"]
 === no title
 sent to Codex: validate · check this. Codex's answer comes as an update of the codex-outbox context; don't wait or poll.
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · check this\ncheck this\nand that"]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · check this\nref: s-ab182b\ncheck this\nand that"]
 === payload
 sent to Codex: context · The whole plan, r3! (the text in <TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md). Codex takes it in; it answers only if something in it is wrong.
 === queued
-["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · The whole plan, r3!\npayload: <TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"]
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · The whole plan, r3!\nref: s-b3e10d\npayload: <TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"]
 === last send
 {
   "at": "<AT>",
+  "id": "s-b3e10d",
   "kind": "context",
   "title": "The whole plan, r3!",
   "chars": 5103,

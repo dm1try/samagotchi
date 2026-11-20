@@ -123,6 +123,12 @@ module Samagotchi
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
             note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m), **time_of(m) }
+            # The chip it is about and, for a peer's answer, whose (as the
+            # live :context_added carries them).
+            context_source = Samagotchi::ContextNote.fetch(m, :context_source)
+            note[:context_source] = context_source.to_s if context_source
+            peer = Samagotchi::ContextNote.fetch(m, :peer)
+            note[:peer] = peer if peer.is_a?(Hash)
             payload = Samagotchi::ContextNote.fetch(m, :objectives)
             entry = payload && Samagotchi::Objectives.entry(payload, before: objectives)
             if entry

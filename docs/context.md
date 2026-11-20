@@ -56,7 +56,10 @@ Its output is either:
   ```
   `summary` (one line, up to 200 characters) goes into the update note;
   `wake: true` asks for a turn ([Waking](#waking)); `hint` replaces the
-  source's hint until a later output gives another. Unknown keys are ignored.
+  source's hint until a later output gives another. `re` (optional: a peer's
+  answer naming the send it answers, [Peer sources](#peer-sources-the-peer-loop))
+  is kept with the revision when it is a short id (`a-z`, `0-9`, `-`, up to 32),
+  else dropped; a revision without one clears it. Unknown keys are ignored.
 
 A non-zero exit, a timeout, more than 1 MiB or empty output is a failed
 fetch: the last good text stays, and the agent hears once, at the first
@@ -325,6 +328,19 @@ tells you what was agreed, and doesn't send again:
 lower.) Every other source keeps the line above. `context.peer_turns: 0` turns
 the loop off: a peer source then wakes like any other. `context_read` names a
 peer source in its header (`Peer: your peer agent Codex's answers …`).
+
+Each message chi sends a peer carries a `ref: <id>` line, and the peer's
+answer gives it back as `re` ([the contract](#the-command-contract)). The
+answer's note keeps whose answer it is (the peer, `re`, its summary and
+verdict) for the web to tie it to its send; the model's note reads as it
+did. That holds for a declared peer source, with the loop on or off.
+
+**Outside the worker it is by name.** chi web and the CLI load no plugins,
+so where they show a pairing (a context row's `peer`, `leg` and `label`) a
+pushed source of the session's own named `<word>-inbox` or `<word>-outbox` is
+taken for one: `review-outbox` gets a peer chip too. That is display only:
+what is a peer's answer, and what may wake chi and how, is still the bundle's
+declaration in the worker, as above.
 
 ## Movable context
 

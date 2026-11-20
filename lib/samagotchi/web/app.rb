@@ -1581,9 +1581,20 @@ module Samagotchi
                 why: source.why, hint: snapshot.hint || source.hint, summary: snapshot.summary, error: snapshot.error,
                 fetched_at: snapshot.fetched_at, has_text: snapshot.text?, muted: own.muted?(source.name),
                 unread: snapshot.text? && subs[source.name]&.read != snapshot.revision }
+        row.merge!(context_peer(attached))
         return row unless full
 
         row.merge(source: source.to_h, snapshot: snapshot.to_h.except("text", :text), shadowed: attached.shadowed)
+      end
+
+      # A pushed session source named <peer>-inbox / -outbox: the pairing's
+      # peer ("claude"), its leg and label, by name (docs/context.md, Peer
+      # sources); {} for any other.
+      def context_peer(attached)
+        return {} unless attached.source.push? && attached.location.session?
+
+        peer, leg = ContextSources.peer_leg(attached.name)
+        peer ? { peer: peer, leg: leg, label: ContextSources.peer_label(peer) } : {}
       end
 
       def handle_stream(req, id)

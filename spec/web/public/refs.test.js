@@ -873,3 +873,20 @@ test("bindRowRefs: a live row redrawn (its status changed) keeps its title and t
   assert.deepEqual(ids(refActions(refTarget(title), PHONE)), ["url:open", "url:board", "more:0:open"]);
   cleanup(root);
 });
+
+test("bindRowRefs: a peer send's ref (no actions) is inert: no target, no link, no menu", () => {
+  const sendRow = { ...ticketRow, key: "1:9", tool: "claude_send", refs: [{ kind: "peer", target: { id: "s-ab12cd" }, label: "Claude · validate" }] };
+  const root = mount(toolRowHtml(sendRow));
+  const title = bindRowRefs(root.querySelector(".activity-row"), sendRow);
+  assert.equal(title.dataset.refKind, "peer");
+  assert.deepEqual(refActions(refTarget(title), viewer), []);
+  assert.deepEqual(refActions(refTarget(title), PHONE), []);
+  const calls = installed(root, () => viewer);
+  title.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+  click(title);
+  key(title, "ArrowDown");
+  assert.deepEqual(calls, []);
+  assert.equal(title.dataset.refMain, undefined);
+  assert.equal(title.dataset.refMore, undefined);
+  cleanup(root);
+});

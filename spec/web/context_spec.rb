@@ -60,6 +60,23 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
     expect(JSON.generate(body)).not_to include("secret-token-cmd")
   end
 
+  it "says which peer a pushed session source named <peer>-inbox / -outbox is a pairing's, by name only" do
+    add(own, "claude-inbox", hint: "/tmp/sock")
+    add(own, "claude-outbox")
+    add(own, "review-outbox")
+    add(own, "notes")
+    add(project, "codex-outbox")
+    add(own, "x-inbox", cmd: "echo hi")
+
+    rows = call("/api/sessions/#{session.id}/context")[1]["sources"].to_h { |row| [row["name"], row] }
+
+    expect(rows["claude-inbox"]).to include("peer" => "claude", "leg" => "inbox", "label" => "Claude")
+    expect(rows["claude-outbox"]).to include("peer" => "claude", "leg" => "outbox", "label" => "Claude")
+    expect(rows["review-outbox"]).to include("peer" => "review", "leg" => "outbox", "label" => "Review")
+    expect([rows["notes"], rows["codex-outbox"], rows["x-inbox"]]).to all(satisfy { |row| !row.key?("peer") && !row.key?("leg") })
+    expect(call("/api/sessions/#{session.id}/context/claude-outbox")[1]).to include("peer" => "claude", "leg" => "outbox")
+  end
+
   it "shows one source's text, and 404s an unknown or bad name and an unknown session" do
     add(own, "notes")
     push(own, "notes", "the text")
