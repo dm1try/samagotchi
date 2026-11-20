@@ -116,7 +116,8 @@ module AffectedSpecs
       specs: %w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb],
       why: "the attached TUI prints their turn-end and continue words" },
     { match: %w[lib/samagotchi/memory_bundle.rb lib/samagotchi/memory_bundle/**/*.rb lib/samagotchi/memory_index/**/*.rb
-                lib/samagotchi/bundle_command.rb
+                lib/samagotchi/bundle_command.rb lib/samagotchi/installed_bundles.rb lib/samagotchi/installed_bundles/**/*.rb
+                lib/samagotchi/bundle_manifest.rb
                 lib/samagotchi/model_overlay.rb lib/samagotchi/memory_paths.rb spec/fixtures/bundle_states/**/*
                 spec/samagotchi/memory_bundle/file_state_corpus/*.rb],
       specs: %w[spec/samagotchi/memory_bundle/file_state_corpus/*_spec.rb spec/samagotchi/memory_bundle/file_state_spec.rb
