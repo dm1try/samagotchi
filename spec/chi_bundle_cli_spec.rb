@@ -1325,18 +1325,24 @@ Removed: hooks/guardrails.rb\n\z})
       FileUtils.mkdir_p(File.join(src, "guardrails"))
       FileUtils.mkdir_p(File.join(src, "scripts"))
       File.write(File.join(src, "guardrails", "r.yml"), "rules: []\n")
+      File.write(File.join(src, "guardrails", "n.yml"), "rules: []\n")
       File.write(File.join(src, "scripts", "s.sh"), "#!/bin/sh\n")
       File.write(File.join(src, "manifest.yml"), YAML.dump("name" => "assets", "version" => "1.0.0", "scope" => "system",
                                                            "scripts" => { "s.sh" => "" }))
       expect(chi("install", src)[2]).to eq(0)
       dir = File.join(memories, ".bundles", "assets")
+      record_path = File.join(dir, "manifest.json")
+      record = JSON.parse(File.read(record_path))
+      record.fetch("guardrails")["n.yml"] = nil
+      File.write(record_path, JSON.generate(record))
       File.write(File.join(dir, "guardrails", "r.yml"), "rules: [mine]\n")
       File.delete(File.join(dir, "scripts", "s.sh"))
 
       out, = chi("status", "assets")
-      expect(out).to include("  Rules (1):\n    r.yml [modified] (edited after install: not loaded; reinstall the bundle)\n  " \
+      expect(out).to include("  Rules (2):\n    n.yml [unrecorded] (no sha256 recorded: not loaded; reinstall the bundle)\n    " \
+                             "r.yml [modified] (edited after install: not loaded; reinstall the bundle)\n  " \
                              "Scripts (1):\n    s.sh [missing]\n")
-      expect(chi("status")[0].lines.grep(/assets/)).to eq(["  assets v1.0.0 scope=system files=0 issues=2\n"])
+      expect(chi("status")[0].lines.grep(/assets/)).to eq(["  assets v1.0.0 scope=system files=0 issues=3\n"])
       diff, = chi("diff", "assets")
       expect(diff).to include("=== guardrails/r.yml ===\n--- recorded sha256=#{Digest::SHA256.hexdigest("rules: []\n")} " \
                               "current sha256=#{Digest::SHA256.hexdigest("rules: [mine]\n")} (edited after install")

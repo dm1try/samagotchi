@@ -626,7 +626,10 @@ module Samagotchi
       return if states.empty?
 
       @stdout.puts "  #{heading} (#{states.size}):"
-      states.each { |file, state| @stdout.puts "    #{file} [#{state}]#{modified if state == "modified"}" }
+      states.each do |file, state|
+        note = state == "unrecorded" ? PLUGIN_NOTES.fetch(state) : (modified if state == "modified")
+        @stdout.puts "    #{file} [#{state}]#{note}"
+      end
     end
 
     # "Manifest: [kept]", or "[from the install record]", and what its case
