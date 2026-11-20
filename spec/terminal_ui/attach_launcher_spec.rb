@@ -279,7 +279,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect { connect(scratch: true) }.to raise_error(described_class::Error, /did not start its Bridge/)
       expect(Samagotchi::SessionManager).to have_received(:delete_session)
-        .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT)
+        .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT,
+                          running_tasks: have_attributes(mode: :stop, by: "scratch"))
     end
 
     it "gives up when the worker's Bridge doesn't come up" do
@@ -375,7 +376,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
       expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(scratch: true))
       expect(Samagotchi::SessionManager).to have_received(:delete_session)
         .with("s-scratch", state_dir: Samagotchi::Session.default_state_dir, stop: true,
-                           wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT)
+                           wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT,
+                           running_tasks: have_attributes(mode: :stop, by: "scratch"))
       expect(out.string).to eq("#{described_class::SCRATCH_BANNER}\n#{described_class::SCRATCH_DELETED}\n")
     end
 

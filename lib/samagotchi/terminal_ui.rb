@@ -378,9 +378,12 @@ module Samagotchi
     def delete_scratch(session)
       @owner_lock&.release
       @owner_lock = nil
-      SessionManager.delete_session(session.id)
+      policy = SessionManager::RunningTasks::Policy.stop(by: "scratch")
+      SessionManager.delete_session(session.id, running_tasks: policy)
     rescue StandardError => e # degrade-ok: the line says how to delete it by hand
       warn "Scratch session #{session.id} was not deleted (#{e.message}): chi sessions delete #{session.id}"
+    ensure
+      SessionManager::RunningTasks.log_automatic!(policy) if policy
     end
 
     # The session's cards.json and pending_card.json, kept as a worker's
