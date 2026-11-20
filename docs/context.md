@@ -56,7 +56,10 @@ Its output is either:
   ```
   `summary` (one line, up to 200 characters) goes into the update note;
   `wake: true` asks for a turn ([Waking](#waking)); `hint` replaces the
-  source's hint until a later output gives another. Unknown keys are ignored.
+  source's hint until a later output gives another. `re` (optional: a peer's
+  answer naming the send it answers, [Peer sources](#peer-sources-the-peer-loop))
+  is kept with the revision when it is a short id (`a-z`, `0-9`, `-`, up to 32),
+  else dropped; a revision without one clears it. Unknown keys are ignored.
 
 A non-zero exit, a timeout, more than 1 MiB or empty output is a failed
 fetch: the last good text stays, and the agent hears once, at the first

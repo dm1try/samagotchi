@@ -139,6 +139,26 @@ RSpec.describe Samagotchi::ContextSources do
       expect(loc.snapshot("a")).to eq(second)
     end
 
+    it "keeps a new revision's re, clears it with a revision without one, and keeps it for the same text" do
+      first = loc.record_text("a", described_class::Fetched.new(text: "one", summary: nil, wake: true, hint: nil, re: "s-ab12cd"))
+      expect(JSON.parse(File.read(File.join(loc.dir, "a.snapshot.json")))).to include("re" => "s-ab12cd")
+      same = loc.record_text("a", fetched("one"))
+      second = loc.record_text("a", fetched("two"))
+
+      expect(first.re).to eq("s-ab12cd")
+      expect(same.re).to eq("s-ab12cd")
+      expect(second.re).to be_nil
+      expect(JSON.parse(File.read(File.join(loc.dir, "a.snapshot.json")))).not_to have_key("re")
+    end
+
+    it "reads an older snapshot (no re) with none, and builds Fetched and Snapshot without re" do
+      old = { "text" => "t", "summary" => "s", "revision" => "r", "serial" => 1 }
+      expect(described_class::Snapshot.from_h(old).re).to be_nil
+      expect(described_class::Snapshot.empty.re).to be_nil
+      expect(described_class::Fetched.new(text: "t", summary: nil, wake: false, hint: nil).re).to be_nil
+      expect(described_class::Snapshot.empty.to_h).not_to have_key("re")
+    end
+
     it "summarises a plain-text change by its line counts" do
       loc.record_text("a", fetched("a\nb\nc\n"))
       expect(loc.snapshot("a").summary).to eq("3 lines of text")
@@ -412,6 +432,16 @@ RSpec.describe Samagotchi::ContextSources do
       raw = JSON.generate(text: "PR body", summary: "2 new\ncomments  ", wake: true, hint: "https://x", other: 1)
       expect(described_class.parse_output(raw)).to eq(fetched("PR body", summary: "2 new comments", wake: true, hint: "https://x"))
       expect(described_class.parse_output(JSON.generate(text: "t", wake: "yes")).wake).to be(false)
+    end
+
+    it "keeps re only when it is a short id string (a peer's answer naming its send)" do
+      re = ->(value) { described_class.parse_output(JSON.generate(text: "t", re: value)).re }
+
+      expect(re.call("s-ab12cd")).to eq("s-ab12cd")
+      expect([re.call(nil), re.call(12), re.call(["s-ab12cd"]), re.call("S-AB12CD"), re.call("s ab"), re.call(""),
+              re.call("s-#{"a" * 31}"), re.call("s-1\n")]).to all(be_nil)
+      expect(described_class.parse_output(JSON.generate(text: "t")).re).to be_nil
+      expect(described_class.parse_output("plain").re).to be_nil
     end
 
     it "cuts a long summary at 200 chars" do
