@@ -3,9 +3,9 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
-require "samagotchi/memory_bundle/index_size"
+require "samagotchi/memory_index/size"
 
-RSpec.describe Samagotchi::MemoryBundle::IndexSize do
+RSpec.describe Samagotchi::MemoryIndex::Size do
   let(:tmpdir) { Dir.mktmpdir("index-size-") }
   let(:config_home) { File.join(tmpdir, "config") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }

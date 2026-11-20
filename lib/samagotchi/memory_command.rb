@@ -7,7 +7,7 @@ require_relative "cli/flags"
 require_relative "memory_paths"
 require_relative "system_prompt"
 require_relative "tools/memory"
-require_relative "memory_bundle/index_updater"
+require_relative "memory_index/updater"
 require_relative "memory_bundle/provenance"
 require_relative "memory_usage"
 
@@ -155,7 +155,7 @@ module Samagotchi
     end
 
     def self.entry(name, scope, path, line, file, overlay_keys, owners)
-      source = line && MemoryBundle::IndexUpdater.extract_source(line)
+      source = line && MemoryIndex::Updater.extract_source(line)
       source ||= owners.find { |_, bundle| bundle.effective_scope == scope && bundle.owns?("#{name}.md") }&.first
       Entry.new(
         name: name, scope: scope, path: path, bytes: file ? File.size(path) : nil,

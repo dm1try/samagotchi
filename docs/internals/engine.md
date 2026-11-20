@@ -284,7 +284,7 @@ long as the Engine (tools, hooks, the gate). The rules an edit gets wrong:
   `tool_refs` (`ToolResponse::SAVED_KEYS`, never sent) and `MessageParts#tool_part` re-checks them
   (`RowRefs.for_display`).
 - An unknown tool gets `ToolSurface#unknown_tool_error` ("Error: no such tool ...", never repeating the wrong name).
-- Edit and write: the file is diffed, and a memory's index line refreshed (`MemoryBundle::IndexSync`). At most
+- Edit and write: the file is diffed, and a memory's index line refreshed (`MemoryIndex::Sync`). At most
   `MAX_IMAGES_PER_RESULT` images per result. Non-UTF-8 bytes are scrubbed.
 - The output cap (`max_tool_output_chars`, a `memory_read`'s `memory.read_max_chars`) cuts by the tool's
   `ToolOutputCut` policy; an execute's whole output is saved by `ToolOutputFiles` in `TurnContext#session_dir`. See

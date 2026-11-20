@@ -165,8 +165,8 @@ module Samagotchi
 
         facts = { name: entry[:name], scope: entry[:scope] }
         if targets.memory_remove?
-          require_relative "../memory_bundle/index_updater"
-          description = MemoryBundle::IndexUpdater.description_for(entry[:scope], entry[:name])
+          require_relative "../memory_index/updater"
+          description = MemoryIndex::Updater.description_for(entry[:scope], entry[:name])
           facts[:description] = description unless description.to_s.strip.empty?
         end
         facts

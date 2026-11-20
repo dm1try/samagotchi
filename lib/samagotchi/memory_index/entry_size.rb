@@ -1,19 +1,19 @@
 # frozen_string_literal: true
 
 require_relative "../config"
-require_relative "index_size"
-require_relative "index_sync"
-require_relative "index_updater"
+require_relative "size"
+require_relative "sync"
+require_relative "updater"
 require_relative "../model_overlay"
 require_relative "../tools/memory"
 
 module Samagotchi
-  module MemoryBundle
+  module MemoryIndex
     # The size of one memory's text, which each memory_read of it pays
     # (memory_read is not cut by max_tool_output_chars). memory_write and
     # write/edit on a memory compare the size before and after a write
     # against memory.entry_warn_tokens (#crossing_note); `chi self` lists
-    # the memories over it (SelfReport). tokens is the estimate IndexSize
+    # the memories over it (SelfReport). tokens is the estimate Size
     # uses (characters / context.chars_per_token, rounded up).
     #
     # A memory that didn't exist before a write counts as 0 tokens. Not
@@ -22,7 +22,7 @@ module Samagotchi
     EntrySize = Data.define(:name, :scope, :tokens) do
       # @param text [String, nil] the memory's text
       # @return [EntrySize]
-      def self.of_text(name, scope, text, chars_per_token: IndexSize.chars_per_token)
+      def self.of_text(name, scope, text, chars_per_token: Size.chars_per_token)
         new(name: name.to_s, scope: scope.to_s, tokens: (text.to_s.length / chars_per_token).ceil)
       end
 
@@ -30,7 +30,7 @@ module Samagotchi
       # model note).
       def self.counted?(name)
         name = name.to_s
-        !name.casecmp?(IndexUpdater::MEMORY_INDEX) && !name.start_with?(Tools::MODEL_NOTES_PREFIX)
+        !name.casecmp?(Updater::MEMORY_INDEX) && !name.start_with?(Tools::MODEL_NOTES_PREFIX)
       end
 
       # The memory file at +path+ as it is now (0 tokens when it isn't
@@ -42,7 +42,7 @@ module Samagotchi
         return nil unless warn_limit.positive?
 
         path = File.expand_path(path.to_s)
-        scope = IndexSync.memory_scope(path)
+        scope = Sync.memory_scope(path)
         name = File.basename(path, ".md")
         return nil unless scope && counted?(name) && !ModelOverlay.overlay_file?(path)
 

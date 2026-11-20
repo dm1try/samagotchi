@@ -22,8 +22,8 @@ require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/manifest"
 require_relative "memory_bundle/system_bundle"
-require_relative "memory_bundle/index_size"
-require_relative "memory_bundle/entry_size"
+require_relative "memory_index/size"
+require_relative "memory_index/entry_size"
 require_relative "desktop"
 require_relative "live_versions"
 require_relative "web/lan"
@@ -122,8 +122,8 @@ module Samagotchi
     # context.chars_per_token from Config, which reads the process's ENV
     # and config.yml as the rest of chi self's settings (web.port) do.
     def memory_index_summary(env)
-      limit = MemoryBundle::IndexSize.warn_limit
-      %w[system project].map { |scope| MemoryBundle::IndexSize.of_scope(scope, env: env).summary(limit) }.join(", ")
+      limit = MemoryIndex::Size.warn_limit
+      %w[system project].map { |scope| MemoryIndex::Size.of_scope(scope, env: env).summary(limit) }.join(", ")
     rescue StandardError => e
       "(unreadable: #{e.message})"
     end
@@ -138,13 +138,13 @@ module Samagotchi
     # tighten). "none" when there are none, "off" with the limit 0. A scope
     # that can't be read is named instead.
     def big_memories_summary(env)
-      limit = MemoryBundle::EntrySize.warn_limit
+      limit = MemoryIndex::EntrySize.warn_limit
       return "off (memory.entry_warn_tokens 0)" unless limit.positive?
 
       big = []
       unreadable = []
       %w[system project].each do |scope|
-        big.concat(MemoryBundle::EntrySize.over_limit(scope, limit: limit, env: env))
+        big.concat(MemoryIndex::EntrySize.over_limit(scope, limit: limit, env: env))
       rescue StandardError => e
         unreadable << "#{scope} memories unreadable: #{e.message}"
       end
@@ -157,9 +157,9 @@ module Samagotchi
     def big_memory(size, env)
       owner = MemoryBundle::Provenance.claimants("#{size.name}.md", scope: size.scope, dir: MemoryPaths.bundles_dir(env: env)).first
       where = [size.scope, ("from #{owner}" if owner)].compact.join(", ")
-      "#{size.name} ~#{MemoryBundle::IndexSize.count_text(size.tokens)} tokens (#{where})"
+      "#{size.name} ~#{MemoryIndex::Size.count_text(size.tokens)} tokens (#{where})"
     rescue StandardError
-      "#{size.name} ~#{MemoryBundle::IndexSize.count_text(size.tokens)} tokens (#{size.scope})"
+      "#{size.name} ~#{MemoryIndex::Size.count_text(size.tokens)} tokens (#{size.scope})"
     end
 
     def with_presence(path)

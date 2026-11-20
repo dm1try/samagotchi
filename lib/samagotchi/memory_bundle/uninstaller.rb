@@ -6,7 +6,7 @@ require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "asset_state"
 require_relative "file_actions"
-require_relative "index_updater"
+require_relative "../memory_index/updater"
 require_relative "trash"
 require_relative "../model_overlay"
 
@@ -118,8 +118,8 @@ module Samagotchi
           end
           # Remove index line (not fatal: a warning says so)
           begin
-            IndexUpdater.remove_index(target_scope, file_key_str.delete_suffix(".md"), target_dir: target_dir)
-            IndexUpdater.remove_index(target_scope, file_key_str, target_dir: target_dir) # legacy "name.md" line
+            MemoryIndex::Updater.remove_index(target_scope, file_key_str.delete_suffix(".md"), target_dir: target_dir)
+            MemoryIndex::Updater.remove_index(target_scope, file_key_str, target_dir: target_dir) # legacy "name.md" line
           rescue StandardError => e
             @warnings << "index.md: line for #{file_key_str.delete_suffix(".md")} not removed (#{e.message})"
           end
@@ -177,7 +177,7 @@ module Samagotchi
       # folder the file lives in, which for an install interrupted before its
       # record is the journal's target dir, not the current folder's.
       def retag(scope, path, file_key, bundle, target_dir:)
-        IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle, target_dir: target_dir)
+        MemoryIndex::Updater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle, target_dir: target_dir)
       rescue StandardError => e
         @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not updated (#{e.message})"
       end

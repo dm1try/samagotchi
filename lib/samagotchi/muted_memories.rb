@@ -9,7 +9,7 @@ module Samagotchi
   # guard). Nothing on disk changes: a muted memory keeps its file and its
   # index line.
   module MutedMemories
-    # A managed index line (IndexUpdater.managed_line), plus the legacy
+    # A managed index line (MemoryIndex::Updater.managed_line), plus the legacy
     # `- **name**: desc` and `- **name.md** ·` shapes still found in indexes.
     INDEX_LINE = /\A- \*\*(.+?)\*\*[ \t]*(?:[·•].*|:.*)?\z/
 

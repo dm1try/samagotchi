@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
-require_relative "../memory_bundle/index_size"
+require_relative "../memory_index/size"
 
 module Samagotchi
   class TerminalUI
@@ -26,7 +26,7 @@ module Samagotchi
 
       # "6.0k in / 40 out": the row's prompt and completion sums.
       def model_segment_tokens_text(row)
-        count = ->(key) { MemoryBundle::IndexSize.count_text(segment_value(row, key).to_i) }
+        count = ->(key) { MemoryIndex::Size.count_text(segment_value(row, key).to_i) }
         "#{count.call(:prompt_sum)} in / #{count.call(:completion_sum)} out"
       end
 
@@ -66,7 +66,7 @@ module Samagotchi
         return "" unless tokens.positive?
 
         cost = cost_text(segment_value(row, :prefill_cost_estimate))
-        "switch prefill #{MemoryBundle::IndexSize.count_text(tokens)} uncached prompt#{" ≈#{cost}" unless cost.empty?}"
+        "switch prefill #{MemoryIndex::Size.count_text(tokens)} uncached prompt#{" ≈#{cost}" unless cost.empty?}"
       end
 
       private
@@ -87,8 +87,8 @@ module Samagotchi
            [model_segment_tokens_text(row), speed, model_segment_cost_text(row)].reject(&:empty?).join("  ")]
         end
         total = ["total", "", turns_text(turns),
-                 "#{MemoryBundle::IndexSize.count_text(tokens[:prompt_sum].to_i)} in / " \
-                 "#{MemoryBundle::IndexSize.count_text(tokens[:completion_sum].to_i)} out " \
+                 "#{MemoryIndex::Size.count_text(tokens[:prompt_sum].to_i)} in / " \
+                 "#{MemoryIndex::Size.count_text(tokens[:completion_sum].to_i)} out " \
                  "(all requests, #{token_src_label}#{token_breakdown_text(tokens)})"]
         widths = (0..2).map { |i| (cells + [total]).map { |cell| cell[i].length }.max }
         row_text = ->(cell) { cell.each_with_index.map { |text, i| i < 3 ? text.ljust(widths[i]) : text }.join("  ") }

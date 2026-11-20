@@ -115,12 +115,12 @@ module Samagotchi
       # @raise [ArgumentError] what memory_write refused
       def write_memory(name, content, scope: "system", description: nil, source: nil, cwd: nil)
         require_relative "../tools/memory"
-        require_relative "../memory_bundle/index_updater"
+        require_relative "../memory_index/updater"
         in_dir(cwd) do
           result = Tools::MemoryWrite.call(content, path: name, scope: scope, description: description)
           raise ArgumentError, result if result.start_with?("Error")
 
-          MemoryBundle::IndexUpdater.update_index(scope, name, content.bytesize, description, source: source) if source
+          MemoryIndex::Updater.update_index(scope, name, content.bytesize, description, source: source) if source
         end
         File.join(memory_dir(scope, cwd: cwd || Dir.pwd), "#{name}.md")
       end

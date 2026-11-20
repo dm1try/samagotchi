@@ -362,7 +362,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         end
 
         it "says when an index line couldn't be written, and installs anyway" do
-          allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:update_index).and_raise(Errno::EACCES, "index.md")
+          allow(Samagotchi::MemoryIndex::Updater).to receive(:update_index).and_raise(Errno::EACCES, "index.md")
           bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
           installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
           installer.run
@@ -893,7 +893,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     it "removes a stale overlay line an earlier install wrote" do
       install({ "tips.md" => "# Tips\n", "tips.#{key}.md" => "DeepSeek only\n" })
-      Samagotchi::MemoryBundle::IndexUpdater.update_index("system", "tips.#{key}", 14, source: "ovl-bundle")
+      Samagotchi::MemoryIndex::Updater.update_index("system", "tips.#{key}", 14, source: "ovl-bundle")
       install({ "tips.md" => "# Tips\n", "tips.#{key}.md" => "DeepSeek only, v2\n" }, upgrade: true)
       expect(File.read(index_path)).not_to include("tips.#{key}")
       expect(File.read(index_path)).to include("- **tips** · system")

@@ -411,7 +411,7 @@ RSpec.describe "Tool host characterization" do
 
     run = completed.find { |event| event[:tool] == "memory_read" }
     expect(run).to include(output_truncated: true)
-    half = (32_768 * Samagotchi::MemoryBundle::IndexSize.chars_per_token / 2).floor
+    half = (32_768 * Samagotchi::MemoryIndex::Size.chars_per_token / 2).floor
     kept = sent_text(requests_on(:native).last)[/\[cut: (\d+) of 80014 chars; the rest is in the memory's \.md file/, 1]
     expect(kept.to_i).to be_between(half - 1000, half)
   end

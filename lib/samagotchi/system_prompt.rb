@@ -12,7 +12,7 @@ require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "model_notes"
 require_relative "bundle_needs"
-require_relative "memory_bundle/index_size"
+require_relative "memory_index/size"
 require_relative "thinking"
 require_relative "prompt_files"
 require_relative "plugin/prompt_sections"
@@ -142,7 +142,7 @@ module Samagotchi
     end
 
     # The memory indexes the prompt #build returned last holds, per scope
-    # ({ system: { tokens:, lines: }, project: { … } }; MemoryBundle::IndexSize
+    # ({ system: { tokens:, lines: }, project: { … } }; MemoryIndex::Size
     # of the text after the session's mutes and the model notes' lines), nil
     # before a build. Measured when the prompt is built: a memory write
     # during the session changes neither the prompt nor this.
@@ -653,9 +653,9 @@ module Samagotchi
     # the prompt holds; nil when they can't be measured.
     def measure_indexes(indexes)
       Degrade.call(:prompt, "index_size_failed") do
-        chars_per_token = MemoryBundle::IndexSize.chars_per_token
+        chars_per_token = MemoryIndex::Size.chars_per_token
         %i[system project].to_h do |scope|
-          [scope, MemoryBundle::IndexSize.of_text(scope, indexes[scope], chars_per_token: chars_per_token).figures]
+          [scope, MemoryIndex::Size.of_text(scope, indexes[scope], chars_per_token: chars_per_token).figures]
         end
       end
     end

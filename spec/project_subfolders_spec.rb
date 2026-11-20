@@ -108,12 +108,12 @@ RSpec.describe Samagotchi::ProjectSubfolders do
     let(:sub) { File.join(notes, "sub").tap { |dir| FileUtils.mkdir_p(dir) } }
 
     def index_line(name, desc = nil)
-      Samagotchi::MemoryBundle::IndexUpdater.managed_line(name, "project", 1, desc)
+      Samagotchi::MemoryIndex::Updater.managed_line(name, "project", 1, desc)
     end
 
     def merge(found) = described_class.merge(found, target: target, env: env)
 
-    before { require "samagotchi/memory_bundle/index_updater" }
+    before { require "samagotchi/memory_index/updater" }
 
     it "moves each entry with its overlays and index line, and removes the emptied folder (no link)" do
       dir = memories(sub, "a.md" => "a", "a.claude-x.md" => "o", "b.md" => "b",
@@ -141,7 +141,7 @@ RSpec.describe Samagotchi::ProjectSubfolders do
     end
 
     it "removes a folder whose index.md holds only the header and dangling managed lines" do
-      header = Samagotchi::MemoryBundle::IndexUpdater.auto_index_header
+      header = Samagotchi::MemoryIndex::Updater.auto_index_header
       dir = memories(sub, "a.md" => "a", "index.md" => "#{header}\n\n#{index_line("a")}\n#{index_line("gone")}\n")
 
       expect(merge(find([row(sub)])).last).to eq("removed the emptied #{dir}")
@@ -172,7 +172,7 @@ RSpec.describe Samagotchi::ProjectSubfolders do
 
     it "keeps a bundle's entry and names files that aren't memories" do
       dir = memories(sub, "a.md" => "a", "notes.txt" => "x",
-                          "index.md" => "#{Samagotchi::MemoryBundle::IndexUpdater.managed_line("a", "project", 1, nil, "kit")}\n")
+                          "index.md" => "#{Samagotchi::MemoryIndex::Updater.managed_line("a", "project", 1, nil, "kit")}\n")
 
       expect(merge(find([row(sub)]))).to eq(["kept in #{dir}: a (from bundle kit)",
                                              "#{dir} keeps files that aren't memories: notes.txt"])

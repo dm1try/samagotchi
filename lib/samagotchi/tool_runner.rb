@@ -17,9 +17,9 @@ require_relative "tools/tool_path"
 require_relative "tools/tool_surface"
 require_relative "tools/memory"
 require_relative "config"
-require_relative "memory_bundle/index_sync"
-require_relative "memory_bundle/index_size"
-require_relative "memory_bundle/entry_size"
+require_relative "memory_index/sync"
+require_relative "memory_index/size"
+require_relative "memory_index/entry_size"
 
 module Samagotchi
   # One call's result from ToolRunner#run, read by ToolResponse (the loops'
@@ -141,7 +141,7 @@ module Samagotchi
       end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       index_before = before.equal?(NOT_AN_EDIT) ? nil : memory_index_size(call)
-      entry_before = before.equal?(NOT_AN_EDIT) ? nil : MemoryBundle::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path]))
+      entry_before = before.equal?(NOT_AN_EDIT) ? nil : MemoryIndex::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path]))
       elapsed_ms = nil
       if verdict.deny?
         result = denied(call, verdict, context)
@@ -302,7 +302,7 @@ module Samagotchi
         window = @window ? @window.call(settings) : (@kernel.tool_output_window(settings) if @kernel.respond_to?(:tool_output_window))
         return nil unless window&.tokens&.positive? && window.source != :default
 
-        (window.tokens * MemoryBundle::IndexSize.chars_per_token / 2).floor
+        (window.tokens * MemoryIndex::Size.chars_per_token / 2).floor
       end
     end
 
@@ -353,20 +353,20 @@ module Samagotchi
     end
 
     # A write/edit that changed a memory's file refreshes its index line,
-    # as memory_write does (MemoryBundle::IndexSync; a no-op elsewhere).
+    # as memory_write does (MemoryIndex::Sync; a no-op elsewhere).
     def refresh_memory_index(call)
-      MemoryBundle::IndexSync.refresh(Tools::ToolPath.normalize(call[:path]))
+      MemoryIndex::Sync.refresh(Tools::ToolPath.normalize(call[:path]))
     end
 
     # The index size of the memory scope an edit/write's path is in
-    # (MemoryBundle::IndexSize), nil for any other path, or when
+    # (MemoryIndex::Size), nil for any other path, or when
     # memory.index_warn_tokens is off: other writes cost nothing.
     def memory_index_size(call)
       Degrade.call(:memory, "index_size_unreadable") do
-        scope = MemoryBundle::IndexSync.memory_scope(Tools::ToolPath.normalize(call[:path]))
-        return nil unless scope && MemoryBundle::IndexSize.warn_limit.positive?
+        scope = MemoryIndex::Sync.memory_scope(Tools::ToolPath.normalize(call[:path]))
+        return nil unless scope && MemoryIndex::Size.warn_limit.positive?
 
-        MemoryBundle::IndexSize.measure(scope)
+        MemoryIndex::Size.measure(scope)
       end
     end
 
@@ -375,17 +375,17 @@ module Samagotchi
     def with_index_note(result, before, call)
       return result unless before
 
-      note = MemoryBundle::IndexSize.crossing_note(before, memory_index_size(call))
+      note = MemoryIndex::Size.crossing_note(before, memory_index_size(call))
       note ? result.merge(output: "#{result[:output]}\n\n#{note}") : result
     end
 
     # +result+ with the note a write/edit gets when it took the memory over
-    # memory.entry_warn_tokens (MemoryBundle::EntrySize). It is apart from
+    # memory.entry_warn_tokens (MemoryIndex::EntrySize). It is apart from
     # the index's: that one is off with index_warn_tokens at 0, this one isn't.
     def with_entry_note(result, before, call)
       return result unless before
 
-      note = MemoryBundle::EntrySize.crossing_note(before, MemoryBundle::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path])))
+      note = MemoryIndex::EntrySize.crossing_note(before, MemoryIndex::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path])))
       note ? result.merge(output: "#{result[:output]}\n\n#{note}") : result
     end
 

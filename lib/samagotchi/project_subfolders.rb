@@ -30,7 +30,7 @@ module Samagotchi
     INDEX = "index.md"
     # What an emptied folder may still hold, none of it moved: the index
     # (removed only when #hand_written? says it holds nothing of the user's),
-    # IndexUpdater's lock, and .root: ProjectIdClash's claim, written only in
+    # MemoryIndex::Updater's lock, and .root: ProjectIdClash's claim, written only in
     # an id folder, so in a path-keyed one it is a copy's stray (a copied
     # id folder renamed by hand) that names no folder this key belongs to.
     LEFTOVERS = [INDEX, ".index.lock", ".root"].freeze
@@ -100,7 +100,7 @@ module Samagotchi
     # a folder made there again from #find.
     # @return [Array<String>] the report's lines
     def merge(found, target:, env: ENV)
-      require_relative "memory_bundle/index_updater"
+      require_relative "memory_index/updater"
       require_relative "memory_bundle/provenance"
       require_relative "tools/memory"
       lines = []
@@ -137,16 +137,16 @@ module Samagotchi
         files = [File.join(from, "#{name}.md")] + Tools::MemoryWrite.overlay_files(from, name, index_text)
         owner = MemoryBundle::Provenance.claimants("#{name}.md", scope: "project",
                                                                  dir: MemoryPaths.bundles_dir(env: env)).first ||
-                (line && MemoryBundle::IndexUpdater.extract_source(line))
+                (line && MemoryIndex::Updater.extract_source(line))
         next kept << "#{name} (from bundle #{owner})" if owner
         next kept << "#{name} (the project has one by that name)" if files.any? { |path| File.exist?(File.join(target, File.basename(path))) }
 
         FileUtils.mkdir_p(target)
         bytes = File.size(files.first)
         files.each { |path| File.rename(path, File.join(target, File.basename(path))) }
-        description = line && MemoryBundle::IndexUpdater.extract_description(line)
-        MemoryBundle::IndexUpdater.update_index("project", name, bytes, description, target_dir: target)
-        MemoryBundle::IndexUpdater.remove_index("project", name, target_dir: from)
+        description = line && MemoryIndex::Updater.extract_description(line)
+        MemoryIndex::Updater.update_index("project", name, bytes, description, target_dir: target)
+        MemoryIndex::Updater.remove_index("project", name, target_dir: from)
         moved << name
       end
 
@@ -177,7 +177,7 @@ module Samagotchi
     # managed line (memory_write keeps every other line byte for byte; a
     # dangling managed line, its file gone, may go with the folder).
     def hand_written?(text)
-      header = MemoryBundle::IndexUpdater.auto_index_header.lines.map(&:strip)
+      header = MemoryIndex::Updater.auto_index_header.lines.map(&:strip)
       text.each_line.any? do |line|
         line = line.strip
         !(line.empty? || header.include?(line) || line.match?(/\A- \*\*[^*]+\*\*[ \t]*(?:[·•].*|:.*)?\z/))

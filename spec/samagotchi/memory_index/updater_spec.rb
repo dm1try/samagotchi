@@ -3,13 +3,13 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
-require "samagotchi/memory_bundle/index_updater"
+require "samagotchi/memory_index/updater"
 require "samagotchi/muted_memories"
 require "samagotchi/tools/memory"
 
 # The managed index.md line, with the bundle a memory came from:
 # "- **name** · scope · date · bytes · from <bundle> — description".
-RSpec.describe Samagotchi::MemoryBundle::IndexUpdater do
+RSpec.describe Samagotchi::MemoryIndex::Updater do
   let(:tmpdir) { Dir.mktmpdir("index-updater-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   let(:today) { Date.today.iso8601 }

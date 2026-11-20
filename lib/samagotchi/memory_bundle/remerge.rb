@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "index_updater"
+require_relative "../memory_index/updater"
 require_relative "manifest"
 require_relative "memory_files"
 require_relative "file_actions"
@@ -171,7 +171,7 @@ module Samagotchi
       def refresh_index(key)
         return if ModelOverlay.bundle_overlay?(key, bundle_files: @record.files.keys, target_dir: @target_dir)
 
-        IndexUpdater.update_index(@scope, key.delete_suffix(".md"), File.size(view.paths(key)[:current]), nil, source: @name)
+        MemoryIndex::Updater.update_index(@scope, key.delete_suffix(".md"), File.size(view.paths(key)[:current]), nil, source: @name)
       rescue StandardError => e
         @warnings << "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
       end

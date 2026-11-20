@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/memory"
-require "samagotchi/memory_bundle/index_size"
+require "samagotchi/memory_index/size"
 require "tmpdir"
 require "fileutils"
 require "date"
@@ -620,7 +620,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
           .to eq("Error: memory 'guide' came from bundle my-bundle; `chi bundle uninstall my-bundle` removes it")
 
         described_class.call("tagged", path: "tagged", scope: "project")
-        Samagotchi::MemoryBundle::IndexUpdater.update_index("project", "tagged", 6, nil, source: "other")
+        Samagotchi::MemoryIndex::Updater.update_index("project", "tagged", 6, nil, source: "other")
         expect(described_class.call("", path: "tagged", scope: "project", remove: true))
           .to eq("Error: memory 'tagged' came from bundle other; `chi bundle uninstall other` removes it")
         expect(File.exist?(File.join(system_memories_dir, "guide.md"))).to be(true)
@@ -881,7 +881,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
   describe "the note when a write takes the index over memory.index_warn_tokens" do
     let(:note_start) { "Note: the project memory index is now ~" }
 
-    def tokens = Samagotchi::MemoryBundle::IndexSize.of_scope("project").tokens
+    def tokens = Samagotchi::MemoryIndex::Size.of_scope("project").tokens
 
     # A seeded index and a limit a few tokens above its size: the next
     # write that adds a line crosses it.
@@ -919,14 +919,14 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     it "never comes under the limit or with limit 0" do
       with_limit_above_index(500) { expect(write("first")).not_to include("Note:") }
       with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") do
-        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(Samagotchi::MemoryIndex::Size).not_to receive(:measure)
         expect(write("second", "x" * 200)).not_to include("Note:")
       end
     end
 
     it "isn't looked for on a remove, an overlay or the verbatim index write (which crosses here)" do
       with_limit_above_index do
-        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(Samagotchi::MemoryIndex::Size).not_to receive(:measure)
         overlay = described_class.call("overlay\n" * 50, path: "seed", scope: "project", current_model_only: true,
                                                          model_key: "qwen")
         expect(overlay).to start_with("Model overlay 'seed' for qwen saved")
@@ -982,7 +982,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     it "is independent of memory.index_warn_tokens, and both notes come when both limits are crossed" do
       with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write(big)).to include(note) }
       described_class.call("seed\n", path: "seed", scope: "project", description: "seed memory")
-      limit = Samagotchi::MemoryBundle::IndexSize.of_scope("project").tokens + 5
+      limit = Samagotchi::MemoryIndex::Size.of_scope("project").tokens + 5
       with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => limit.to_s) do
         both = write(big, "another", description: nil)
         expect(both).to include("Note: the project memory index is now ~")
@@ -992,7 +992,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     end
 
     it "doesn't fail the write when measuring fails" do
-      allow(Samagotchi::MemoryBundle::EntrySize).to receive(:of_text).and_raise(RuntimeError, "boom")
+      allow(Samagotchi::MemoryIndex::EntrySize).to receive(:of_text).and_raise(RuntimeError, "boom")
       expect(write(big)).to start_with("Memory 'notes' saved to project scope")
     end
   end
