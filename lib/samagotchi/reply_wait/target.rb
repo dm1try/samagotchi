@@ -18,6 +18,13 @@ module Samagotchi
         super
       end
 
+      # ReplyWait's grace for a gone worker, read when a wait is built
+      # (reply_wait.rb requires this file, so it is loaded by then).
+      def self.gone_after
+        require_relative "../reply_wait"
+        ReplyWait::GONE_AFTER
+      end
+
       # A --new session's first message: its own turn, the ack's id (a
       # file-delivered one's also names the outcome of a session command
       # that runs no turn), so a worker that dies in it and the next one's
@@ -35,7 +42,7 @@ module Samagotchi
       # @param direct_turn [String, nil] that first turn's id, for a direct
       #   start
       def self.first_message(start, delivered, direct_turn: nil)
-        reads = { cursor: start&.cursor, baseline: start&.baseline, owner_grace: ReplyWait::GONE_AFTER }
+        reads = { cursor: start&.cursor, baseline: start&.baseline, owner_grace: gone_after }
         return new(**reads) unless delivered || !direct_turn.to_s.strip.empty?
 
         return new(turn: direct_turn, report_turn_id: direct_turn, queued: true, **reads) if delivered.nil?
@@ -60,7 +67,7 @@ module Samagotchi
         queue ||= delivered.delivery == Delivery::QUEUE
         turn = delivered.enqueued_id
         new(turn: turn, report_turn_id: turn || (start.own_turn if start.running && !queue), queued: queue && !turn.nil?,
-            cursor: start.cursor, baseline: start.baseline, owner_grace: ReplyWait::GONE_AFTER)
+            cursor: start.cursor, baseline: start.baseline, owner_grace: gone_after)
       end
 
       # --wait with no message: --turn's (+requested+), or the turn running
@@ -75,7 +82,7 @@ module Samagotchi
         turn = requested || start.own_turn
         ended_before = requested ? start.last_turn_id == requested : start.settled
         new(turn: turn, report_turn_id: turn || (start.last_turn_id if start.settled), ended_before: ended_before,
-            cursor: start.cursor, baseline: start.baseline, owner_grace: start.live ? ReplyWait::GONE_AFTER : nil)
+            cursor: start.cursor, baseline: start.baseline, owner_grace: start.live ? gone_after : nil)
       end
 
       # chi answer: the turn the question is about (start's own_turn: the
@@ -83,7 +90,7 @@ module Samagotchi
       # reply.
       def self.answer(start)
         new(turn: start.own_turn, report_turn_id: start.own_turn, cursor: start.cursor, baseline: start.baseline,
-            owner_grace: ReplyWait::GONE_AFTER)
+            owner_grace: gone_after)
       end
 
       # A participant's --wait -m: their review turn just queued (+turn+),

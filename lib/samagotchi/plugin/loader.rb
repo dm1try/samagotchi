@@ -71,9 +71,10 @@ module Samagotchi
       # @return [Array<String>] the bundles whose plugin loaded
       def load_installed(registries, failures: nil, guardrail_failures: nil, settings: {})
         loaded = []
-        InstalledBundles.each(holding: :plugin) do |bundle_name, bundle|
-          ok = load_bundle(bundle_name, bundle, registries, failures: failures, guardrail_failures: guardrail_failures,
-                                                            settings: settings[bundle_name.to_s] || {})
+        InstalledBundles.standings(holding: :plugin) do |standing|
+          bundle_name = standing.name
+          ok = load_bundle(bundle_name, standing.record, registries, failures: failures, guardrail_failures: guardrail_failures,
+                                                                     settings: settings[bundle_name.to_s] || {}, standing: standing)
           loaded << bundle_name if ok
         end
         loaded
@@ -83,16 +84,24 @@ module Samagotchi
         loaded || []
       end
 
+      # Whether it may load is the verdict's (InstalledBundles::Standing, then
+      # Dir#file_refusal(:plugin)); what a refusal does is the loader's: a
+      # failure, required for a guardrail plugin.
+      # @param standing [InstalledBundles::Standing] the bundle's (built from
+      #   +bundle+ when not given)
       # @return [Boolean] whether the plugin loaded
-      def load_bundle(bundle_name, bundle, registries, failures: nil, guardrail_failures: nil, settings: {})
-        file = InstalledBundles::Dir.new(name: bundle_name).plugin_path(bundle) unless bundle.error?
+      def load_bundle(bundle_name, bundle, registries, failures: nil, guardrail_failures: nil, settings: {},
+                      standing: nil)
+        standing ||= InstalledBundles::Standing.of(bundle_name, bundle)
+        installed = InstalledBundles::Dir.new(name: bundle_name)
+        file = installed.plugin_path(bundle) unless standing.unreadable?
         basename = file ? File.basename(file) : "plugin"
         # Known before it registers anything: a guardrail that fails to load
         # (its sha, requires_chi, a raise) denies every tool call.
-        required = bundle.error? ? unreadable_required?(bundle_name) : bundle.manifest.plugin_required
+        required = standing.unreadable? ? unreadable_required?(bundle_name) : bundle.manifest.plugin_required
         into = required ? guardrail_failures || failures : failures
-        reason = bundle.error || unloadable_reason(file, bundle)
-        return failed(bundle_name, basename, reason, into, required: required) if reason
+        refusal = standing.refusal || installed.file_refusal(:plugin, bundle.plugin&.file, bundle.plugin&.sha256)
+        return failed(bundle_name, basename, refusal.text, into, required: required) if refusal
 
         api = register_file(bundle_name, file, registries, settings: settings)
         warn_unrequired(bundle_name, basename) if api.fail_closed? && !required
@@ -142,15 +151,6 @@ module Samagotchi
       # What a plugin's hooks, notices and failures are named by.
       def label(bundle_name, basename) = "#{basename} (bundle #{bundle_name})"
 
-      # Why the installed file can't be loaded, or nil.
-      def unloadable_reason(file, bundle)
-        failure = bundle.manifest.requires_chi_failure
-        return failure if failure
-        return "the file is missing" unless file && File.file?(file)
-
-        sha_mismatch(file, bundle.plugin.sha256)
-      end
-
       # Decide from the last readable manifest whether an unreadable record
       # might have been a required guardrail; unknown evidence fails closed.
       def unreadable_required?(bundle_name)
@@ -164,21 +164,6 @@ module Samagotchi
         kept.plugin[:required] == true
       rescue StandardError # degrade-ok: unreadable kept manifests must be treated as required
         true
-      end
-
-      # Why +file+ doesn't match the sha256 recorded at install (+recorded+,
-      # "sha256:<hex>" or bare hex), or nil. None recorded is a mismatch;
-      # InstalledBundles::Sha.unchecked? (a dev install) is none.
-      def sha_mismatch(file, recorded)
-        return nil if InstalledBundles::Sha.unchecked?(recorded)
-
-        expected = InstalledBundles::Sha.recorded(recorded)
-        return "no sha256 recorded for it (reinstall the bundle)" if expected.empty?
-
-        actual = InstalledBundles::Sha.of_file(file)
-        return nil if actual == expected
-
-        "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"
       end
 
       # The (lazily created) namespace module for a bundle, under

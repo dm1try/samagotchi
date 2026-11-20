@@ -108,7 +108,7 @@ A guardrail plugin (`plugin:` `required: true`) is known from `InstalledBundles:
 unparsable kept manifest.yml never drops it (an older chi's `PluginRef` ignores the key):
 its failure goes to the hook failures as required (`ExtensionLoad#load_plugins` passes them as `guardrail_failures:`),
 where the gate denies every tool call; a `chi.on(on_error: :fail_closed)` hook is wrapped `Hooks.wrap(policy: :deny)`.
-The checks live in `Plugin::Loader.load_bundle` (its `.sha_mismatch`; `.namespace_for` is the bundle's
+`Plugin::Loader.load_bundle` asks the verdict (`InstalledBundles::Standing`, then `Dir#file_refusal(:plugin, …)`) and reacts (`.namespace_for` is the bundle's
 `Samagotchi::Bundles::<bundle>` module); the loading itself is `Plugin::Loader.register_file` (one
 plugin file: build, `register`, `commit!`), which raises instead of logging: the bundle test kit
 (`Samagotchi::Testing::Bundle`) loads a bundle's source through them, unchecked. `Samagotchi::Testing::Install` is the

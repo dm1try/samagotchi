@@ -427,20 +427,23 @@ RSpec.describe Samagotchi::Plugin::Loader do
     end
   end
 
-  describe ".sha_mismatch" do
-    let(:file) { File.join(tmpdir, "plugin.rb").tap { |path| File.write(path, "class Plugin; end\n") } }
+  # The plugin's file check is the verdict's (InstalledBundles::Dir#file_refusal);
+  # its words are the loader's, unchanged.
+  describe "the plugin file check it asks" do
+    let(:installed) { Samagotchi::InstalledBundles::Dir.new(name: "plug", dir: tmpdir) }
+    let(:file) { File.join(tmpdir, "plug", "plugin", "plugin.rb").tap { |path| FileUtils.mkdir_p(File.dirname(path)) && File.write(path, "class Plugin; end\n") } }
     let(:sha) { Digest::SHA256.file(file).hexdigest }
 
     it "is nil for the recorded sha, bare or prefixed, and for a dev install's" do
-      expect(described_class.sha_mismatch(file, sha)).to be_nil
-      expect(described_class.sha_mismatch(file, "sha256:#{sha}")).to be_nil
-      expect(described_class.sha_mismatch(file, Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
+      expect(installed.file_refusal(:plugin, File.basename(file), sha)).to be_nil
+      expect(installed.file_refusal(:plugin, File.basename(file), "sha256:#{sha}")).to be_nil
+      expect(installed.file_refusal(:plugin, File.basename(file), Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
     end
 
     it "says the file changed since install, or that no sha was recorded" do
-      expect(described_class.sha_mismatch(file, "0" * 64))
+      expect(installed.file_refusal(:plugin, File.basename(file), "0" * 64).text)
         .to eq("its sha256 #{sha[0, 12]}… differs from the installed #{"0" * 12}… (edited after install? reinstall the bundle)")
-      expect(described_class.sha_mismatch(file, nil)).to eq("no sha256 recorded for it (reinstall the bundle)")
+      expect(installed.file_refusal(:plugin, File.basename(file), nil).text).to eq("no sha256 recorded for it (reinstall the bundle)")
     end
   end
 end

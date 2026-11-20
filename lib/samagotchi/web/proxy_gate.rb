@@ -124,6 +124,7 @@ module Samagotchi
 
           return proxy_refuse(req, "owner token with identity #{shown}#{identity_hint(req)}")
         end
+        require_relative "../grants"
         grant_tokens = given.select { |value| Grants.token?(value) }
         return proxy_refuse(req, "no token (identity #{shown})") if grant_tokens.empty?
 
