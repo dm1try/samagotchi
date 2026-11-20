@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - A guardrail plugin (`plugin: required: true`) whose bundle's manifest.json doesn't read now denies tool calls,
   as its rules would, instead of only being reported.
+- A reloaded turn keeps an answered question and an asking card (check-in's) in the order they showed live: a card
+  that stopped asking mid-turn no longer moves back into its first step, and one still asking no longer jumps above
+  the question answered after it.
 
 ## [0.178.0] - 2026-11-20
 
