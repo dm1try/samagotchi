@@ -596,6 +596,8 @@ refused. Its first line says it is a scratch session.
   session (`Scratch session deleted.`). `/archive` is refused. The lines typed
   are not added to the prompt history. With `-p … --non-interactive` it is one
   turn in this process, and the session is deleted as the run ends.
+- Cleanup stops the background tasks it started when their process identity can
+  be verified; unverifiable or unreadable tasks are left alone and logged.
 - The worker deletes the session too once its terminal is gone (no terminal
   stream left for about 28 s, twice the terminal's reconnect retries, so a
   dropped stream that reconnects keeps it; or none came within 30 s), so a

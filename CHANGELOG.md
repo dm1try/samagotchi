@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The retention sweep, and a `chi scratch` session's cleanup, stop the background tasks a deleted session started
+  (logged per task); the sweep now runs off chi web's session list lock.
+
 ### Fixed
 
 - A guardrail plugin (`plugin: required: true`) whose bundle's manifest.json doesn't read now denies tool calls,
