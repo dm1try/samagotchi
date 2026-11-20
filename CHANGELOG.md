@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi bundle status NAME` reports a rule or script with no recorded sha256 as `[unrecorded]`, not `[modified]`.
+
 ## [0.180.0] - 2026-11-20
 
 ### Added

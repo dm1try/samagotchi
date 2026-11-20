@@ -82,7 +82,7 @@ module Samagotchi
       def self.digest_or_nil(digest) = digest == :unreadable ? nil : digest
       private_class_method :digest_or_nil
 
-      # Each recorded rule or script: "missing" (not there), "modified" (its
+      # Each recorded rule or script: "unrecorded" (no sha256), "missing" (not there), "modified" (its
       # AssetState is edited: the next install replaces it, a copy kept in
       # the trash; an edited rule doesn't load) or "ok"; {} for none.
       # @return [Hash{String => String}]
@@ -90,6 +90,7 @@ module Samagotchi
         recorded.keys.sort.to_h do |name|
           asset = AssetState.of(File.join(dir, name), kind_of_file: kind_of_file, recorded: recorded[name], name: name)
           [name, if asset.state == :missing then "missing"
+                 elsif recorded[name].to_s.empty? then "unrecorded"
                  elsif asset.edited? then "modified"
                  else "ok"
                  end]

@@ -31,10 +31,10 @@ rule_edited_sha:
 rule_edited_no_sha:
   install: {do: wrote_incoming, save_first: true, recorded: disk, word: Installed, label: "r.yml [ok]", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   upgrade: {do: wrote_incoming, save_first: true, recorded: disk, word: Updated, label: "r.yml [ok]", warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "r.yml [modified] (edited after install: not loaded; reinstall the bundle)", warns: ["Would copy to the trash first: guardrails/r.yml"]}
+  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "r.yml [unrecorded] (no sha256 recorded: not loaded; reinstall the bundle)", warns: ["Would copy to the trash first: guardrails/r.yml"]}
   uninstall: {do: removed, save_first: true, recorded: none, word: null, label: not installed, warns: ["Copied to the trash first: guardrails/r.yml (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
-  status: {label: "r.yml [modified] (edited after install: not loaded; reinstall the bundle)"}
+  status: {label: "r.yml [unrecorded] (no sha256 recorded: not loaded; reinstall the bundle)"}
 rule_dev_link:
   install: {do: kept (link), save_first: false, recorded: dev, word: Up to date, label: "r.yml [ok]", warns: []}
   upgrade: {do: refused, save_first: false, recorded: dev, word: null, label: "r.yml [ok]", warns: ["demo is a dev install of <src>/v2/demo: it follows its source already (to leave dev mode: chi bundle uninstall demo, then chi bundle install without --dev)"]}
@@ -143,10 +143,10 @@ script_edited_sha:
 script_edited_no_sha:
   install: {do: wrote_incoming, save_first: true, recorded: disk, word: Installed, label: "s.sh [ok]", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   upgrade: {do: wrote_incoming, save_first: true, recorded: disk, word: Updated, label: "s.sh [ok]", warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "s.sh [modified] (edited after install: the next install replaces it, a copy kept in the trash)", warns: ["Would copy to the trash first: scripts/s.sh"]}
+  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "s.sh [unrecorded] (no sha256 recorded: not loaded; reinstall the bundle)", warns: ["Would copy to the trash first: scripts/s.sh"]}
   uninstall: {do: removed, save_first: true, recorded: none, word: null, label: not installed, warns: ["Copied to the trash first: scripts/s.sh (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
-  status: {label: "s.sh [modified] (edited after install: the next install replaces it, a copy kept in the trash)"}
+  status: {label: "s.sh [unrecorded] (no sha256 recorded: not loaded; reinstall the bundle)"}
 script_dev_link:
   install: {do: kept (link), save_first: false, recorded: dev, word: Up to date, label: "s.sh [ok]", warns: []}
   upgrade: {do: refused, save_first: false, recorded: dev, word: null, label: "s.sh [ok]", warns: ["demo is a dev install of <src>/v2/demo: it follows its source already (to leave dev mode: chi bundle uninstall demo, then chi bundle install without --dev)"]}

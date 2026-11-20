@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   ageText, chipModel, chipsTemplate, createContextChips, hintUrl, popoverTemplate,
 } from "../../../lib/samagotchi/web/public/context_chips.js";
+import { createPeers } from "../../../lib/samagotchi/web/public/peer_data.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template drawn into a fresh element, and its markup (lit's marker
@@ -311,6 +312,25 @@ const stubPeers = (exchanges = []) => {
   const calls = { refresh: 0 };
   return { calls, model: { refresh: () => { calls.refresh += 1; }, peer: (name) => (name === "claude" ? { name, exchanges } : null) } };
 };
+
+test("chips load reuses the conversation's in-flight peers read", async () => {
+  let finish;
+  const response = new Promise((resolve) => { finish = resolve; });
+  let fetches = 0;
+  const model = createPeers({ sessionId: () => "s1", hasPeer: () => true, win: { addEventListener() {} },
+                              list: () => { fetches += 1; return response; } });
+  const conversationRead = model.refresh();
+  const c = chipsControl({ list: async () => ({ sources: [leg("inbox"), leg("outbox")] }), peers: () => model });
+
+  await c.ctl.load("s1");
+  assert.equal(fetches, 1);
+  finish({ peers: [{ name: "claude", exchanges: [] }] });
+  await conversationRead;
+  await model.refresh({ reuse: true });
+  assert.equal(model.loaded(), true);
+  assert.equal(fetches, 1);
+  c.done();
+});
 
 test("a peer's two sources draw one chip, before the ordinary ones; those stay as they were", async () => {
   const p = stubPeers([{ id: "s1", kind: "validate", title: "plan", at: new Date(NOW_MS - 120_000).toISOString(), state: "waiting" }]);

@@ -98,7 +98,7 @@ RSpec.describe "The mcp bundle's client" do
     initialize!
     pid = client.pid
     client.close
-    expect(alive?(pid)).to be(false)
+    expect(gone_soon?(pid)).to be(true)
     expect(exits.size).to eq(0)
   end
 
@@ -111,7 +111,7 @@ RSpec.describe "The mcp bundle's client" do
     pid = client.pid
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     client.close
-    expect(alive?(pid)).to be(false)
+    expect(gone_soon?(pid)).to be(true)
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
   end
 
@@ -149,7 +149,7 @@ RSpec.describe "The mcp bundle's client" do
     expect(alive?(server)).to be(true)
     Process.kill("KILL", holder_pid)
     Process.wait(holder_pid)
-    wait_for("the watchdog to stop the server", timeout: 6) { !alive?(server) }
+    expect(gone_soon?(server, timeout: 6)).to be(true)
   ensure
     out&.close
     if holder_pid
