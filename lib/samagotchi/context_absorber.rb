@@ -236,15 +236,16 @@ module Samagotchi
     end
 
     # A peer's answer note's payload, whose answer it is (the UIs draw it;
-    # the model's content doesn't carry it): the peer's +name+, +re+ (the
+    # the model's content doesn't carry it): the peer's +peer+ and +label+, +re+ (the
     # send it names), +summary+, +serial+, +verdict+ (the summary's last,
     # one of VERDICTS) and +agreed+ (.peer_agrees?, also with the peer loop
     # off); string keys, nils dropped. Nil for any other source.
     def peer_note(attached)
-      name = peer_name(attached) or return nil
+      label = peer_name(attached) or return nil
+      peer = ContextSources.peer_leg(attached.name)&.first || label.downcase
       snapshot = attached.snapshot
       verdict = snapshot.summary.to_s.scan(VERDICT).last&.first
-      { "name" => name, "re" => snapshot.re, "summary" => snapshot.summary, "serial" => snapshot.serial,
+      { "peer" => peer, "label" => label, "re" => snapshot.re, "summary" => snapshot.summary, "serial" => snapshot.serial,
         "verdict" => (verdict if VERDICTS.include?(verdict)),
         "agreed" => self.class.peer_agrees?(snapshot.summary) }.compact
     end

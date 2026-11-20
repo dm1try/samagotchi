@@ -355,7 +355,7 @@ RSpec.describe Samagotchi::ContextAbsorber do
         push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT CHANGES, 2 issues", re: "s-ab12cd")
 
         first = deliveries.first
-        expect(first.note[:peer]).to eq("name" => "Codex", "re" => "s-ab12cd", "summary" => "plan: VERDICT CHANGES, 2 issues",
+        expect(first.note[:peer]).to eq("peer" => "codex", "label" => "Codex", "re" => "s-ab12cd", "summary" => "plan: VERDICT CHANGES, 2 issues",
                                         "serial" => 1, "verdict" => "CHANGES", "agreed" => false)
         expect(first.wake_note[:peer]).to eq(first.note[:peer])
 
@@ -367,7 +367,7 @@ RSpec.describe Samagotchi::ContextAbsorber do
         add(own, "codex-outbox")
         push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT MAYBE", re: nil)
 
-        expect(deliveries.first.note[:peer]).to eq("name" => "Codex", "summary" => "plan: VERDICT MAYBE", "serial" => 1,
+        expect(deliveries.first.note[:peer]).to eq("peer" => "codex", "label" => "Codex", "summary" => "plan: VERDICT MAYBE", "serial" => 1,
                                                    "agreed" => false)
       end
 
@@ -414,7 +414,7 @@ RSpec.describe Samagotchi::ContextAbsorber do
 
           delivery = deliveries.first
           expect(delivery).to have_attributes(peer: nil, agreed: false)
-          expect(delivery.note[:peer]).to include("name" => "Codex", "re" => "s-ab12cd", "verdict" => "OK", "agreed" => true)
+          expect(delivery.note[:peer]).to include("peer" => "codex", "label" => "Codex", "re" => "s-ab12cd", "verdict" => "OK", "agreed" => true)
           expect(delivery.wake_note[:text]).to end_with(described_class::WAKE_LAST_LINE)
         end
       end

@@ -62,7 +62,8 @@ comment is the file map and [../context.md](../context.md#storage) lists it for 
   `declined/<name>` marker (hint inside), which is what stops an auto-attach from bringing it back.
 - **The output contract** is `ContextSources.parse_output` (JSON object with a string `text` is
   `{text, summary, wake, hint, re}`; anything else is all text; empty or over `TEXT_MAX_BYTES` is `Invalid`), the same for
-  a command's stdout and a push. `re` is kept only as a String of `RE_RE`. `Fetched` and `Snapshot` default `re:` to
+  a command's stdout and a push. `re` is kept only as a String of `RE_RE`, including when a snapshot is reloaded;
+  malformed non-null refs are debug-logged without the answer. `Fetched` and `Snapshot` default `re:` to
   nil, so a caller (a spec, a bundle's) that builds them without it keeps working; the push carries it in three seats
   that change together: `parse_output`, chi web's push route (`SessionAccessRoutes#handle_context_push`'s slice) and
   `SessionAccess::Remote#context_push`'s body (an older chi web drops it: the answer arrives unlinked). `ContextProviders` resolves a URL to a command source from an installed bundle's
@@ -122,13 +123,20 @@ budget is `WorkerWakes#peer_open?` (reset only by typed input), and an answer wh
 
 **Whose answer a note is.** A text note (and its wake note) of a source `PeerSources` marks as a peer's (`peer_name`:
 a pushed source of the session's own that a loaded bundle declared; *not* gated on `context.peer_turns`, and nil for an
-absorber built without peer sources, `ContextCandidates.deliver_notes`') carries `peer: {name, re, summary, serial,
+absorber built without peer sources, `ContextCandidates.deliver_notes`') carries `peer: {peer, label, re, summary, serial,
 verdict, agreed}` (`peer_note`; string keys, nils dropped): `re` the snapshot's, `verdict` the summary's last
 `VERDICT` match when one of `VERDICTS`, `agreed` `peer_agrees?` directly. It is display data, as `objectives` is:
 `ContextNote::KEYS` keeps it (the key-by-key copier is `ChatLoop#plain`), `:context_added` carries it, the reload's note
 items (`Web::MessageDisplay`) carry it with `context_source`, and no wire sends it (role and content only), so the
 note's content, what the model reads, is the same byte for byte. `peer_label` and `Delivery#peer` keep deciding the
 wakes.
+
+**Exchange log.** `Plugin::Peer` appends successful sends and transport failures;
+`SessionAccess::Local#context_push` appends changed session outbox answers under the
+source lock, without nesting another lock. Appending failure is logged and does not
+fail a send or push. `PeerExchanges` joins by time and ref, falling back to the
+latest unanswered validate or question for an old skill. An owner-only chi web
+route reads it without a worker; no event or model-visible text changes.
 
 ## Candidates
 
@@ -241,5 +249,6 @@ Keys, all in [../configuration.md](../configuration.md): `context.every_seconds`
 | `sessions/<id>/candidates/<name>.json` | `ctx.context.propose` | candidates, judge, `/context` |
 | `sessions/<id>/left.json` | `ContextMove` (continue) | `ctx.context.left_behind` |
 | `context_candidates.jsonl` (beside `sessions/`) | `ContextCandidatesLog` | judge (`due?`), choice (`carded?`), `chi context report` |
+| `sessions/<id>/peer_exchanges.jsonl` (session sidecar, not context root) | `Plugin::Peer`, `SessionAccess::Local` | `GET /api/sessions/:id/peers` |
 
 Specs: `spec/context_*_spec.rb`; a store under test uses an isolated `XDG_STATE_HOME`.

@@ -172,6 +172,10 @@ module Samagotchi
       # @return [String, nil] the session's id (nil before the first one)
       def session_id = @host.session_id.call
 
+      # @api private
+      # The session store's root, as used by the host.
+      def session_state_dir = @host.state_dir&.call || Session.default_state_dir
+
       # @return [String, nil] the model the session runs on now: its
       #   resolved ref ("host:id"), right after /model too
       def model = @host.model_name&.call

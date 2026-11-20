@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     %i[serve_index handle_list handle_create handle_info handle_models handle_events handle_stream
        handle_output handle_cancel handle_stop handle_session_holds handle_stop_holds handle_archive handle_unarchive handle_turn
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
-       handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render
+       handle_show handle_delete handle_context_list handle_peers handle_context_show handle_context_delete handle_render
        handle_resolve handle_summaries handle_wait_prepare handle_wait handle_notes handle_context_add
        handle_context_push handle_verify_fresh]
   end
@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     routes = [["GET", "stream"], ["GET", "output"], ["POST", "cancel"], ["POST", "stop"], ["POST", "archive"],
               ["POST", "unarchive"], ["POST", "turn"], ["POST", "answer"], ["POST", "question/dismiss"],
               ["POST", "command"], ["POST", "images"], ["GET", "images/abc.png"], ["GET", nil], ["DELETE", nil],
-              ["GET", "context"], ["GET", "context/pr-1"], ["DELETE", "context/pr-1"], ["POST", "wait/prepare"],
+              ["GET", "context"], ["GET", "peers"], ["GET", "context/pr-1"], ["DELETE", "context/pr-1"], ["POST", "wait/prepare"],
               ["POST", "wait"], ["POST", "notes"], ["POST", "context"], ["POST", "context/pr-1/push"]]
     ["..", "..%2Fx", "%2Ftmp", "a%00b", "a%2Fb", "x.json"].each do |id|
       routes.each do |method, tail|
@@ -112,6 +112,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["POST", "/api/sessions/s1/images"] => %w[handle_image_upload s1],
       ["GET", "/api/sessions/s1/images/abc.png"] => ["handle_image", "s1", "abc.png"],
       ["GET", "/api/sessions/s1/context"] => %w[handle_context_list s1],
+      ["GET", "/api/sessions/s1/peers"] => %w[handle_peers s1],
       ["GET", "/api/sessions/s1/context/pr-1"] => %w[handle_context_show s1 pr-1],
       ["DELETE", "/api/sessions/s1/context/pr-1"] => %w[handle_context_delete s1 pr-1],
       ["GET", "/api/sessions/s1"] => %w[handle_show s1],

@@ -60,6 +60,80 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(true)
     end
 
+    it "logs each changed session outbox answer without its text, not unchanged or project pushes" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      project = Samagotchi::ContextSources.project_location_for(tmpdir, state_dir: tmpdir)
+      push_source(own, "claude-outbox")
+      push_source(project, "codex-outbox", scope: "project")
+      allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(false)
+      answer = fetched("secret", wake: false).with(summary: "VERDICT OK", re: "s-abc123")
+      access.context_push(context_target(session.id), "claude-outbox", answer)
+      access.context_push(context_target(session.id), "claude-outbox", answer)
+      access.context_push(context_target(session.id), "claude-outbox", answer.with(text: "other"))
+      access.context_push(context_target(session.id), "codex-outbox", answer)
+      lines = Samagotchi::PeerExchanges.read(session.id, state_dir: tmpdir)
+      expect(lines).to match([include("t" => "answer", "peer" => "claude", "re" => "s-abc123", "serial" => 1),
+                              include("t" => "answer", "serial" => 2)])
+      expect(JSON.generate(lines)).not_to include("secret", "other")
+    end
+
+    it "records once if a refused delivery retries after its block ran" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(own, "claude-outbox")
+      refused = double(refused?: true)
+      allow(Samagotchi::SessionInbox).to receive(:deliver) { |*_args, **_kwargs, &block| block.call; refused }
+      access.context_push(context_target(session.id), "claude-outbox", fetched("answer", wake: false))
+      expect(Samagotchi::PeerExchanges.read(session.id, state_dir: tmpdir).size).to eq(1)
+    end
+
+    it "keeps a successful push if appending its exchange fails" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(own, "claude-outbox")
+      allow(Samagotchi::PeerExchanges).to receive(:append).and_raise(Errno::EACCES)
+      expect(Samagotchi::Log).to receive(:exception).with(:context, "peer_exchange_not_saved", an_instance_of(Errno::EACCES),
+                                                          sid: session.id, source: "claude-outbox")
+      expect(access.context_push(context_target(session.id), "claude-outbox", fetched("answer", wake: false)).status).to eq(:pushed)
+      expect(own.snapshot("claude-outbox").text).to eq("answer")
+    end
+
+    it "does not log command sources named like outboxes" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-outbox", cmd: "echo ok", every_seconds: 60,
+                                                     why: nil, hint: nil, scope: "session", added_by: "spec", created_at: nil))
+      expect(access.context_push(context_target(session.id), "claude-outbox", fetched("answer")).status).to eq(:not_push)
+      expect(Samagotchi::PeerExchanges.read(session.id, state_dir: tmpdir)).to be_empty
+    end
+
+    it "does not deadlock when a push waits for the outbox lock" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      push_source(own, "claude-outbox")
+      locked = Queue.new
+      release = Queue.new
+      started = Queue.new
+      holder = Thread.new { own.locked("claude-outbox") { locked << true; release.pop } }
+      locked.pop
+      pushing = Thread.new do
+        started << true
+        access.context_push(context_target(session.id), "claude-outbox", fetched("answer", wake: false))
+      end
+      started.pop
+      expect(pushing.join(0.1)).to be_nil
+      release << true
+      expect(pushing.join(3)).not_to be_nil
+      expect(pushing.value.status).to eq(:pushed)
+      expect(Samagotchi::PeerExchanges.read(session.id, state_dir: tmpdir).size).to eq(1)
+    ensure
+      release << true if holder&.alive?
+      holder&.join
+      pushing&.kill if pushing&.alive?
+      pushing&.join
+    end
+
     it "wakes for a changed session-scoped push that asks" do
       session = saved_session
       location = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)

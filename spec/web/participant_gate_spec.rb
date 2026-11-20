@@ -66,6 +66,12 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
   def audit = File.readlines(File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir),
                                        Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
 
+  it "does not grant participants the owner's peer exchange route" do
+    expect(json("/api/sessions/#{session.id}/peers")).to eq(
+      [403, { "error" => "not_permitted", "detail" => Samagotchi::ParticipantMessages::NOT_PERMITTED }]
+    )
+  end
+
   describe "who a request is" do
     it "is the owner for the owner's token, whatever grants exist" do
       token

@@ -8,6 +8,7 @@ require "tempfile"
 require "time"
 require_relative "../paths"
 require_relative "../session"
+require_relative "../peer_exchanges"
 
 module Samagotchi
   module Plugin
@@ -99,7 +100,7 @@ module Samagotchi
         peer = self.class
         refs = lambda do |args|
           id = Peer.send_id(args["kind"].to_s, args["title"].to_s, args["text"].to_s)
-          [{ kind: "peer", target: { id: id }, label: "#{peer::NAME} · #{args["kind"]}" }]
+          [{ kind: "peer", target: { id: id }, label: "#{peer::NAME} · #{args["kind"].to_s[0, 40]}" }]
         end
         chi.tool peer::TOOL, peer::TOOL_DESCRIPTION, params: peer::TOOL_PARAMS, label: "sent to #{peer::NAME}",
                                                      preview: ->(args) { "#{args["kind"]}: #{args["title"]}" },
@@ -135,7 +136,7 @@ module Samagotchi
       # file's path. Records it as the last send, with its id.
       # @return [String] what was sent ("sent to Claude: validate · title")
       # @raise [SendError]
-      def deliver(ctx, kind:, title:, text:)
+      def deliver(ctx, kind:, title:, text:, by: "model")
         raise SendError, "kind must be one of #{KINDS.join(", ")}" unless KINDS.include?(kind)
         raise SendError, "nothing to send: the text is empty" if text.strip.empty?
         if text.length > MAX_CHARS
@@ -152,7 +153,13 @@ module Samagotchi
                         path = write_payload(ctx, title, text)
                         ["payload: #{path} (#{text.lines.size} lines, #{text.length} chars)", path]
                       end
-        post(hint, "chi #{id[0, 8]} · #{kind} · #{title}\nref: #{send_id}\n#{body}")
+        begin
+          post(hint, "chi #{id[0, 8]} · #{kind} · #{title}\nref: #{send_id}\n#{body}")
+        rescue SendError => e
+          exchange(ctx, t: "send_failed", id: send_id, kind: kind, title: title, error: e.message)
+          raise
+        end
+        exchange(ctx, t: "sent", id: send_id, kind: kind, title: title, chars: text.length, by: by)
         record(ctx, id: send_id, kind: kind, title: title, chars: text.length, payload: where == "inline" ? nil : where)
         "sent to #{self.class::NAME}: #{kind} · #{title}#{" (the text in #{where})" unless where == "inline"}"
       end
@@ -242,7 +249,7 @@ module Samagotchi
       end
 
       def send_text(ctx, kind, text)
-        "#{deliver(ctx, kind: kind, title: text_title(text), text: text)}; #{self.class::NAME}'s answer comes as the " \
+        "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user")}; #{self.class::NAME}'s answer comes as the " \
           "#{self.class::OUTBOX} context"
       rescue SendError => e
         "#{self.class::COMMAND}: #{e.message}"
@@ -261,7 +268,7 @@ module Samagotchi
         command = self.class::COMMAND
         return "#{command} last: no completed answer to send yet (the last turn has none); #{command} context <text> sends a text" unless answer
 
-        deliver(ctx, kind: "context", title: "chi's last answer: #{answer.strip.lines.first}", text: answer)
+        deliver(ctx, kind: "context", title: "chi's last answer: #{answer.strip.lines.first}", text: answer, by: "user")
       rescue SendError => e
         "#{command}: #{e.message}"
       end
@@ -460,6 +467,13 @@ module Samagotchi
         @lock.synchronize { File.write(File.join(ctx.session_dir, LAST_SEND), JSON.generate(entry)) }
       rescue SystemCallError => e
         ctx.log.info(:last_send_not_saved, error: e.message)
+      end
+
+      def exchange(ctx, **entry)
+        peer = ContextSources.peer_leg(self.class::INBOX)&.first || self.class::NAME.downcase
+        PeerExchanges.append(ctx.session_id, { peer: peer, **entry }, state_dir: ctx.session_state_dir)
+      rescue SystemCallError, IOError, JSON::GeneratorError => e
+        ctx.log.warn("peer_exchange_not_saved", error: e.message)
       end
 
       def slug(title)

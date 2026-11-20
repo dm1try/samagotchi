@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   chi-peer skills give it back as `re` in their reply (reinstall the skill with `/claude install-skill` or
   `/codex install-skill`), and chi keeps it on the answer's note and the send's row for the web to tie them. The
   model reads the same text as before; an older skill's answer works as before, unlinked.
+- A per-session peer exchange log records sends, transport failures and answer summaries for the owner's web view,
+  without storing answer texts.
 
 ### Changed
 

@@ -14,6 +14,7 @@ require_relative "../image_store"
 require_relative "../context_candidates"
 require_relative "../worker_inbound"
 require_relative "../context_sources"
+require_relative "../peer_exchanges"
 require_relative "../archive_store"
 require_relative "../session_chain"
 require_relative "../send_command/busy"
@@ -345,7 +346,14 @@ module Samagotchi
 
         record = lambda do
           attached.location.locked(name) do
-            [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
+            before = attached.location.snapshot(name).revision
+            written = attached.location.record_text(name, fetched)
+            peer, leg = ContextSources.peer_leg(name)
+            if !target.project? && attached.location.session? && attached.source.scope == "session" &&
+               leg == "outbox" && before != written.revision
+              record_peer_answer(target.session_id, peer, written)
+            end
+            [before, written]
           end
         end
         unless !target.project? && attached.location.session? && attached.source.scope == "session"
@@ -518,6 +526,13 @@ module Samagotchi
         # Its session file is gone (:gone): the source's folder takes it, as before.
         before, written = record.call if delivered&.refused?
         ContextPush.new(status: :pushed, before: before, revision: written.revision, wake: asked ? delivered&.wake : nil)
+      end
+
+      def record_peer_answer(session_id, peer, snapshot)
+        PeerExchanges.append(session_id, { t: "answer", peer: peer, re: snapshot.re, summary: snapshot.summary,
+                                           serial: snapshot.serial, wake: snapshot.wake }, state_dir: state_dir!)
+      rescue SystemCallError, IOError, JSON::GeneratorError => e
+        Log.exception(:context, "peer_exchange_not_saved", e, sid: session_id, source: "#{peer}-outbox")
       end
 
       def context_wake_allowed?(location, name)

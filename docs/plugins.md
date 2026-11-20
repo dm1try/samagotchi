@@ -1460,6 +1460,8 @@ that calls it, or for a real external bundle that does. No method on the chance 
    of SHA-256 over the args as given) is the message's second line (`ref: <id>`), the tool row's `peer` ref
    (display only, no actions; computed from the args before the call runs, so a send that then fails has it too)
    and the last send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
+   Successful sends and transport failures are recorded in the session's peer exchange log; answer pushes add
+   summaries, not answer texts. The log does not enter the model's context.
    See the [claude-peer](bundles.md#the-claude-peer-bundle) and
    [codex-peer](bundles.md#the-codex-peer-bundle) bundles.
 3. `Samagotchi::Tools::ToolIndex::Tool` and `Samagotchi::Tools::ToolIndex::Group`

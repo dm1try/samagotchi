@@ -1013,7 +1013,8 @@ Claude pairs; without one the bundle costs one tool declaration.
      (on chi 0.62 the first one arrives as a note without waking); the model
      reads it with `context_read claude-outbox`. In chi's own records the
      answer's note names the send (`re`); an older skill's answer has none and
-     works as before.
+     works as before. The session's peer exchange log keeps sends and answer
+     summaries, not answer texts; a new pairing starts a new log.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`, and a second line,
@@ -1203,7 +1204,8 @@ skill install card) works the same.
   Codex (no `CODEX_THREAD_ID`) it refuses. Codex replies with one JSON push
   to `codex-outbox` (`text`, `summary`, `wake: true`, `re`: the message's `ref:`
   line), which wakes chi, the first answer too (that needs chi 0.63.0; the bundle's
-  `requires_chi` is `>= 0.70.0`).
+  `requires_chi` is `>= 0.70.0`). The session's peer exchange log keeps sends
+  and answer summaries, not answer texts.
 - **Peer messages are user turns in Codex.** Claude Code marks an inbox
   message as from another session; `codex queue` lands as a plain user
   message. So Codex's skill starts with the rule: a message whose first line
