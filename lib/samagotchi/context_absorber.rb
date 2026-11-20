@@ -57,6 +57,8 @@ module Samagotchi
     # A peer's verdict in its answer's summary (`<title>: VERDICT OK`); a
     # copied template's `VERDICT OK|CHANGES` is none.
     VERDICT = /\bVERDICT:?\s*([A-Z]+)(?![A-Za-z|])/
+    # The verdicts a note's peer hash names (#peer_note); another word is none.
+    VERDICTS = %w[OK CHANGES UNSURE].freeze
 
     # @param project_root [String, nil] Session#project_root
     # @param project_id [String, nil] Session#project_id
@@ -172,18 +174,19 @@ module Samagotchi
       peer = peer_label(attached)
       agreed = agreed?(peer, snapshot)
       waking = { peer: peer, turns: peer && @peer_turns.call, agreed: agreed }
+      about = peer_note(attached)
       if sub.seen.nil?
         args = { name: name, hint: hint, why: attached.source.why, summary: snapshot.summary }
-        found = delivery(name, text_note_id(name, snapshot), self.class.attached_text(**args), now, seen(sub, snapshot))
-                .with(peer: peer, agreed: agreed)
+        found = delivery(name, text_note_id(name, snapshot), self.class.attached_text(**args), now, seen(sub, snapshot),
+                         peer: about).with(peer: peer, agreed: agreed)
         return found unless first_text_wakes?(attached, sub)
 
         return found.with(wake_note: found.note.merge(text: self.class.attached_text(**args, **waking, wake: true)))
       end
       if sub.seen != snapshot.revision
         args = { name: name, hint: hint, summary: snapshot.summary, changes: snapshot.serial - sub.seen_serial }
-        found = delivery(name, text_note_id(name, snapshot), self.class.updated_text(**args), now, seen(sub, snapshot))
-                .with(peer: peer, agreed: agreed)
+        found = delivery(name, text_note_id(name, snapshot), self.class.updated_text(**args), now, seen(sub, snapshot),
+                         peer: about).with(peer: peer, agreed: agreed)
         # Any revision since the one the session last saw may have asked.
         return found unless snapshot.wake_serial.to_i > sub.seen_serial
 
@@ -220,6 +223,32 @@ module Samagotchi
 
     def agreed?(peer, snapshot) = !peer.nil? && self.class.peer_agrees?(snapshot.summary)
 
+    # The peer's name when +attached+ is a peer's answers by PeerSources (a
+    # pushed source in the session's own location a loaded bundle
+    # declared), whatever context.peer_turns says: it only labels the note
+    # (#peer_note); #peer_label decides the wakes. Nil without peer sources
+    # (ContextCandidates.deliver_notes' absorber).
+    def peer_name(attached)
+      return nil unless @peer_sources
+      return nil unless attached.source.push? && attached.location.session?
+
+      @peer_sources.label_for(attached.name)
+    end
+
+    # A peer's answer note's payload, whose answer it is (the UIs draw it;
+    # the model's content doesn't carry it): the peer's +name+, +re+ (the
+    # send it names), +summary+, +serial+, +verdict+ (the summary's last,
+    # one of VERDICTS) and +agreed+ (.peer_agrees?, also with the peer loop
+    # off); string keys, nils dropped. Nil for any other source.
+    def peer_note(attached)
+      name = peer_name(attached) or return nil
+      snapshot = attached.snapshot
+      verdict = snapshot.summary.to_s.scan(VERDICT).last&.first
+      { "name" => name, "re" => snapshot.re, "summary" => snapshot.summary, "serial" => snapshot.serial,
+        "verdict" => (verdict if VERDICTS.include?(verdict)),
+        "agreed" => self.class.peer_agrees?(snapshot.summary) }.compact
+    end
+
     # A subscription whose source is gone: detached when the session was
     # told of it, dropped quietly otherwise.
     def detached(sub, now)
@@ -229,9 +258,9 @@ module Samagotchi
       delivery(sub.name, "ctx-#{sub.name}-detached-#{sub.seen[0, 12]}", text, now, nil)
     end
 
-    def delivery(name, note_id, text, now, subscription)
+    def delivery(name, note_id, text, now, subscription, peer: nil)
       note = { note_id: note_id, text: text, source: "context #{name}", context_source: name,
-               created_at: now.iso8601 }
+               created_at: now.iso8601, peer: peer }.compact
       Delivery.new(name: name, note: note, subscription: subscription)
     end
 

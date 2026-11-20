@@ -17,8 +17,10 @@ module Samagotchi
     # (ContextAbsorber), so the UIs can tie it to its chip. A note's wall
     # time (MessageTime::KEY) is every entry's, kept beside these.
     # objectives: the list an objectives note carries (Objectives), string
-    # keys inside.
-    KEYS = %i[kind note_id source from_session from_cwd context_source objectives].freeze
+    # keys inside. peer: whose answer a peer's note is (ContextAbsorber
+    # #peer_note: name, re, summary, serial, verdict, agreed), string keys
+    # inside; the content doesn't carry it.
+    KEYS = %i[kind note_id source from_session from_cwd context_source objectives peer].freeze
     HEADER = "CONTEXT NOTE"
     # A finished background task's note (TaskFinishNote): a header of its own.
     TASK_HEADER = "TASK FINISHED"
@@ -39,12 +41,13 @@ module Samagotchi
     # delegate report does (Steer.turn_prompt?). +header+: the frame's
     # (HEADERS), not kept as a key: the content carries it. Its wall time
     # (MessageTime::KEY) is +created_at+'s, else now. +objectives+: an
-    # objectives note's payload (Objectives::List#to_payload).
+    # objectives note's payload (Objectives::List#to_payload); +peer+: a
+    # peer's answer's (ContextAbsorber#peer_note).
     # @return [Hash] the conversation message
     def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil,
-                turn_start: nil, turn_id: nil, header: HEADER, objectives: nil, **)
+                turn_start: nil, turn_id: nil, header: HEADER, objectives: nil, peer: nil, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,
-        from_cwd: from_cwd, context_source: context_source, objectives: objectives,
+        from_cwd: from_cwd, context_source: context_source, objectives: objectives, peer: peer,
         turn_start: (true if turn_start == true), turn_id: turn_id,
         content: frame(text, source: source, created_at: created_at, from_session: from_session,
                              from_cwd: from_cwd, header: header),

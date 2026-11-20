@@ -344,6 +344,82 @@ RSpec.describe Samagotchi::ContextAbsorber do
       expect(deliveries.first).to have_attributes(peer: nil)
     end
 
+    describe "the note's peer hash (whose answer it is: the UIs', not the model's)" do
+      def push_re(location, name, text, summary:, re:, wake: true)
+        location.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: wake,
+                                                                           hint: nil, re: re))
+      end
+
+      it "names the peer, the send it answers, the summary, serial, verdict and agreed, on the note and the wake note" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT CHANGES, 2 issues", re: "s-ab12cd")
+
+        first = deliveries.first
+        expect(first.note[:peer]).to eq("name" => "Codex", "re" => "s-ab12cd", "summary" => "plan: VERDICT CHANGES, 2 issues",
+                                        "serial" => 1, "verdict" => "CHANGES", "agreed" => false)
+        expect(first.wake_note[:peer]).to eq(first.note[:peer])
+
+        push_re(own, "codex-outbox", "v2", summary: "plan: VERDICT CHANGES then VERDICT OK", re: "s-cd34ef")
+        expect(deliveries.first.note[:peer]).to include("re" => "s-cd34ef", "serial" => 2, "verdict" => "OK", "agreed" => true)
+      end
+
+      it "drops a missing re (an older skill) and a verdict that isn't one of the three words" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT MAYBE", re: nil)
+
+        expect(deliveries.first.note[:peer]).to eq("name" => "Codex", "summary" => "plan: VERDICT MAYBE", "serial" => 1,
+                                                   "agreed" => false)
+      end
+
+      it "leaves the text the model reads as it is: the same note but for peer, with or without re" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT OK", re: "s-ab12cd")
+        with_re = deliveries.first
+        plain = described_class.new(session_id: session_id, state_dir: state_dir, project_root: root,
+                                    peer_sources: peer_sources, peer_turns: -> { turns })
+        own.write_subscriptions({})
+        push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT OK", re: nil)
+        without_re = plain.pending(now: now).deliveries.first
+
+        expect(with_re.note.except(:peer)).to eq(without_re.note.except(:peer))
+        expect(with_re.wake_note.except(:peer)).to eq(without_re.wake_note.except(:peer))
+        expect(with_re.note[:text]).to eq(described_class.attached_text(name: "codex-outbox", hint: nil, why: nil,
+                                                                        summary: "plan: VERDICT OK"))
+        expect(Samagotchi::ContextNote.message(**with_re.note)[:content])
+          .to eq(Samagotchi::ContextNote.message(**with_re.note.except(:peer))[:content])
+      end
+
+      it "is none for an ordinary pushed source, a project-scope peer name, and an absorber without peer sources" do
+        add(own, "ci")
+        push_re(own, "ci", "v1", summary: "VERDICT OK", re: "s-ab12cd")
+        expect(deliveries.first.note).not_to have_key(:peer)
+
+        add(project, "codex-outbox")
+        push_re(project, "codex-outbox", "v1", summary: "VERDICT OK", re: "s-ab12cd")
+        expect(deliveries.find { |d| d.name == "codex-outbox" }.note).not_to have_key(:peer)
+
+        project.remove("codex-outbox")
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", "v2", summary: "VERDICT OK", re: "s-ab12cd")
+        bare = described_class.new(session_id: session_id, state_dir: state_dir, project_root: root)
+        expect(bare.pending(now: now).deliveries.find { |d| d.name == "codex-outbox" }.note).not_to have_key(:peer)
+      end
+
+      context "with context.peer_turns 0 (no peer loop)" do
+        let(:turns) { 0 }
+
+        it "still names the peer, with agreed and verdict right, while the wakes stay as any source's" do
+          add(own, "codex-outbox")
+          push_re(own, "codex-outbox", "v1", summary: "plan: VERDICT OK", re: "s-ab12cd")
+
+          delivery = deliveries.first
+          expect(delivery).to have_attributes(peer: nil, agreed: false)
+          expect(delivery.note[:peer]).to include("name" => "Codex", "re" => "s-ab12cd", "verdict" => "OK", "agreed" => true)
+          expect(delivery.wake_note[:text]).to end_with(described_class::WAKE_LAST_LINE)
+        end
+      end
+    end
+
     context "with context.peer_turns 0" do
       let(:turns) { 0 }
 
