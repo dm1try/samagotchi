@@ -158,10 +158,13 @@ module Samagotchi
       # Worker#leave_scratch, or any other way out), now the lock is free.
       # Its terminal may have deleted it first.
       private def delete_left_scratch(session_id, state_dir:)
-        SessionManager.delete_session(session_id, state_dir: state_dir)
+        policy = SessionManager::RunningTasks::Policy.stop(by: "scratch")
+        SessionManager.delete_session(session_id, state_dir: state_dir, running_tasks: policy)
         Log.info(:worker, "scratch_deleted", sid: session_id)
       rescue SessionManager::DeleteRefused, ArgumentError, SystemCallError => e
         Log.info(:worker, "scratch_kept", sid: session_id, error: e.class.name, msg: e.message)
+      ensure
+        SessionManager::RunningTasks.log_automatic!(policy) if policy
       end
 
       # Delete a session its worker left empty. Checked again now the lock is

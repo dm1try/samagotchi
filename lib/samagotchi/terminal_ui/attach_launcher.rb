@@ -169,12 +169,16 @@ module Samagotchi
       # Stop the scratch session's worker and delete the session; its worker
       # may have deleted it first (it found no client left).
       def end_scratch(session_id, state_dir:, quiet: false, out: $stdout, err: $stderr)
-        SessionManager.delete_session(session_id, state_dir: state_dir, stop: true, wait: LocalLink::DELETE_WAIT)
+        policy = SessionManager::RunningTasks::Policy.stop(by: "scratch")
+        SessionManager.delete_session(session_id, state_dir: state_dir, stop: true, wait: LocalLink::DELETE_WAIT,
+                                                   running_tasks: policy)
         out.puts(SCRATCH_DELETED) unless quiet
       rescue ArgumentError
         out.puts(SCRATCH_DELETED) unless quiet
       rescue SessionManager::DeleteRefused, SystemCallError => e
         err.puts("Scratch session #{session_id} was not deleted (#{e.message}): chi sessions delete #{session_id}")
+      ensure
+        SessionManager::RunningTasks.log_automatic!(policy) if policy
       end
 
       # This TUI's client id: tui:PID, or the connector's own (a remote one

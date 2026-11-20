@@ -41,6 +41,7 @@ RSpec.describe Samagotchi::Web::App do
     Dir.mktmpdir("web-scope") do |tmp|
       @tmp = File.realpath(tmp)
       example.run
+      hub.stop
     end
   end
 

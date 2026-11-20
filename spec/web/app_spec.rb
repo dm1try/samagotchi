@@ -539,7 +539,10 @@ RSpec.describe Samagotchi::Web::App do
     let(:installed) { Struct.new(:newest).new(nil) }
     let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed) }
 
-    after { FileUtils.rm_rf(state_dir) }
+    after do
+      hub.stop
+      FileUtils.rm_rf(state_dir)
+    end
 
     def events_app(hub: self.hub, manager: Samagotchi::SessionManager, **kw)
       described_class.new(manager: manager, session_class: Samagotchi::Session, state_dir: state_dir,
@@ -1001,7 +1004,10 @@ RSpec.describe Samagotchi::Web::App do
                           bridge_wait_timeout: 0, hub: hub)
     end
 
-    after { FileUtils.rm_rf(state_dir) }
+    after do
+      hub.stop
+      FileUtils.rm_rf(state_dir)
+    end
 
     def saved_session(status: "idle")
       Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
@@ -1056,12 +1062,12 @@ RSpec.describe Samagotchi::Web::App do
       other.project_root = "/repo/other"
       other.save(state_dir: state_dir)
       hub.scan
-      allow(Samagotchi::SessionManager).to receive(:retention_sweep_if_due)
+      allow(hub).to receive(:sweep_if_due)
 
       _, _, body = app.call(env_for("/api/sessions?dir=#{URI.encode_www_form_component(git_repo)}"))
 
       expect(JSON.parse(body.first).map { |s| s["id"] }).to eq([mine.id])
-      expect(Samagotchi::SessionManager).to have_received(:retention_sweep_if_due).with(state_dir: state_dir)
+      expect(hub).to have_received(:sweep_if_due).once
     end
 
     it "answers 400 invalid_model for a model whose host isn't configured" do
@@ -3698,7 +3704,10 @@ RSpec.describe Samagotchi::Web::App do
     let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
     let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session, hub: hub) }
 
-    after { FileUtils.rm_rf(state_dir) }
+    after do
+      hub.stop
+      FileUtils.rm_rf(state_dir)
+    end
 
     def saved_session(status)
       Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
@@ -3965,6 +3974,7 @@ RSpec.describe Samagotchi::Web::App do
 
     after do
       @lock&.release
+      hub.stop
       FileUtils.rm_rf(state_dir)
     end
 

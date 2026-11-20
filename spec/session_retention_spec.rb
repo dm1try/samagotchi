@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/session_retention"
 require "samagotchi/owner_lock"
 require "samagotchi/schedules"
+require_relative "support/task_dirs"
 
 RSpec.describe Samagotchi::SessionRetention do
   let(:root) { Dir.mktmpdir("session-retention-spec") }
@@ -14,6 +15,81 @@ RSpec.describe Samagotchi::SessionRetention do
   after { FileUtils.rm_rf(root) }
 
   describe ".apply" do
+    context "background tasks" do
+      include TaskDirs
+
+      around { |example| with_task_dir { |dir| @task_root = dir and example.run } }
+
+      def session_with_task(record)
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: @task_root)
+        session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+        session.save(state_dir: tmpdir)
+        session
+      end
+
+      it "stops an expired session's verified task and logs its id without its command" do
+        runtime = Samagotchi::Tools::TaskRuntime
+        record, error = runtime.create_task("sleep 30 # private-command")
+        raise error if error
+
+        session = session_with_task(record)
+        path = Samagotchi::Session.session_file(session.id, state_dir: tmpdir)
+        data = JSON.parse(File.read(path))
+        data["updated_at"] = (Time.now - (20 * 86_400)).iso8601(3)
+        File.write(path, JSON.generate(data))
+        allow(Samagotchi::Log).to receive(:info).and_call_original
+
+        result = described_class.sweep_if_due(state_dir: tmpdir)
+
+        expect(result[:deleted]).to include(session.id)
+        expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_retention")
+        expect(Samagotchi::Log).to have_received(:info)
+          .with(:worker, "retention_task_stopped", sid: session.id, task_id: record.id).once
+        expect(Samagotchi::Log).to have_received(:info)
+          .with(:worker, "retention_pruned", hash_including(echo: include("stopped 1 background tasks"))).once
+      end
+
+      it "leaves an unverified task alive and logs why it was not stopped" do
+        runtime = Samagotchi::Tools::TaskRuntime
+        pid = Process.spawn("sleep", "30", pgroup: true)
+        record = Samagotchi::Tools::TaskRecord.from_file(
+          "id" => runtime.generate_task_id, "command" => "private-command", "status" => "running", "pid" => pid
+        )
+        runtime.write_record(record)
+        session = session_with_task(record)
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+        result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)
+
+        expect(result[:deleted]).to include(session.id)
+        expect(Process.waitpid(pid, Process::WNOHANG)).to be_nil
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:worker, "retention_task_not_stopped", sid: session.id, task_id: record.id, why: :unverified).once
+      ensure
+        if pid
+          Process.kill("KILL", -pid) rescue nil
+          Process.wait(pid) rescue nil
+        end
+        FileUtils.rm_f(Samagotchi::TaskFiles.metadata_path(record.id)) if record
+      end
+
+      it "never logs malformed task record contents while checking retention" do
+        id = Samagotchi::Tools::TaskRuntime.generate_task_id
+        FileUtils.mkdir_p(Samagotchi::TaskFiles.task_dir_for(id))
+        File.write(Samagotchi::TaskFiles.metadata_path(id), '{"command":SECRET_PRIVATE_COMMAND}')
+        session = session_with_task(Samagotchi::Tools::TaskRecord.from_file("id" => id))
+        warnings = []
+        allow(Samagotchi::Log).to receive(:warn) { |*args, **fields| warnings << [args, fields] }
+
+        listing = Samagotchi::SessionManager::RunningTasks.of([session.id], state_dir: tmpdir)
+        described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)
+
+        expect(warnings.inspect).not_to include("SECRET_PRIVATE_COMMAND")
+        expect(listing.unreadable.map(&:id)).to eq([id])
+        expect(warnings.map { |args, _| args.last }).to include("retention_task_not_stopped")
+      end
+    end
+
     it "purges session-scoped logs once for a batch of deleted sessions" do
       sessions = Array.new(3) do
         Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
@@ -401,7 +477,8 @@ RSpec.describe Samagotchi::SessionRetention do
         expect(result[:deleted]).to eq([id])
         expect(Dir.exist?(dir)).to be(false)
         expect(Samagotchi::SessionManager).to have_received(:remove_files)
-          .with(id, File.join(tmpdir, "#{id}.json"), dir, state_dir: tmpdir, purge_runs: false, still: Proc)
+          .with(id, File.join(tmpdir, "#{id}.json"), dir, state_dir: tmpdir, purge_runs: false, still: Proc,
+                running_tasks: have_attributes(mode: :stop, by: "retention"))
         expect(Samagotchi::SessionManager).to have_received(:purge_removal_stores).with([id], state_dir: tmpdir)
       end
     end

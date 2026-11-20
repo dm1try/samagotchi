@@ -23,7 +23,11 @@ RSpec.describe Samagotchi::Web::SessionHub do
   let(:events) { [] }
 
   before { hub.subscribe(->(event) { events << event }) }
-  after { FileUtils.rm_rf(root) }
+
+  after do
+    hub.stop
+    FileUtils.rm_rf(root)
+  end
 
   def save_session(prompt: "hi", working_directory: "/tmp/proj", project_root: :from_dir, status: "idle")
     Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: working_directory).tap do |s|
@@ -53,6 +57,27 @@ RSpec.describe Samagotchi::Web::SessionHub do
   end
 
   describe "#scan" do
+    it "runs at most one retention sweep outside the projection lock" do
+      entered = Queue.new
+      release = Queue.new
+      manager = double("manager", session_owner: nil)
+      allow(manager).to receive(:retention_sweep_if_due) { entered << true; release.pop }
+      local_hub = described_class.new(state_dir: state_dir, manager: manager, installed_versions: installed)
+      session = save_session
+
+      scanner = Thread.new { local_hub.scan }
+      expect(entered.pop(timeout: 2)).to be(true)
+      expect(scanner.join(2)).not_to be_nil
+      expect(local_hub.snapshot.map { |s| s[:id] }).to include(session.id)
+      local_hub.touch(session.id)
+      local_hub.sweep_if_due
+      expect(manager).to have_received(:retention_sweep_if_due).once
+    ensure
+      release << true if release
+      join!(scanner, "retention scan") if scanner
+      local_hub&.stop
+    end
+
     it "builds the projection from the files on the first scan and tells subscribers of each session" do
       a = save_session(prompt: "first")
       b = save_session(prompt: "second")
@@ -489,10 +514,12 @@ RSpec.describe Samagotchi::Web::SessionHub do
 
       expect(manager).to receive(:retention_sweep_if_due).with(state_dir: state_dir).twice
       hub.scan
+      hub.instance_variable_get(:@sweep_thread).join
       clock[0] += 1.0
       hub.scan
       clock[0] += described_class::FULL_PROBE_INTERVAL
       hub.scan
+      hub.stop
     end
   end
 
