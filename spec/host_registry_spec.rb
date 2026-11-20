@@ -249,6 +249,28 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(configured.entries["box"].client.first_token_timeout).to eq(200)
     end
 
+    it "limits a stream's idle time on remote hosts only (120 s), unless configured" do
+      expect(registry.entries.transform_values(&:stream_idle_limit)).to eq("box" => nil, "oai" => nil, "fw" => 120)
+      expect(registry.adapter_for(registry.entries["fw"]).stream_idle_timeout).to eq(120)
+      expect(registry.adapter_for(registry.entries["oai"]).stream_idle_timeout).to be_nil
+      expect(registry.entries["box"].client.stream_idle_timeout).to be_nil
+    end
+
+    it "takes the host's stream_idle_timeout, then server.stream_idle_timeout; 0 turns it off" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("server.stream_idle_timeout").and_return(45)
+      configured = described_class.new(hosts_config: {
+        "box" => { name: "box", host: "box.test", port: 8081, stream_idle_timeout: 300 },
+        "oai" => { name: "oai", host: "oai.test", port: 8000, api: :openai },
+        "fw" => { name: "fw", host: "api.example.test", port: 443, scheme: "https", api: :openai,
+                  url: "https://api.example.test/v1", api_key_env: "FW_KEY", stream_idle_timeout: 0 }
+      })
+
+      expect(configured.entries.transform_values(&:stream_idle_limit)).to eq("box" => 300, "oai" => 45, "fw" => nil)
+      expect(configured.entries["box"].client.stream_idle_timeout).to eq(300)
+      expect(configured.adapter_for(configured.entries["oai"]).stream_idle_timeout).to eq(45)
+    end
+
     it "reuses a host's list within its TTL unless forced" do
       registry.list_all_models
       clock[0] += 120

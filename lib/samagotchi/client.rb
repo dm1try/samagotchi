@@ -126,6 +126,8 @@ module Samagotchi
     # @param scheme [String, nil] "https" for a TLS server (default http)
     # @param first_token_timeout [Numeric, nil] seconds a completion may take
     #   to stream its first text (LLM::HTTP); nil: no limit
+    # @param stream_idle_timeout [Numeric, nil] seconds a completion that
+    #   streamed text may go without more (LLM::HTTP); nil: no limit
     # @param name [String, nil] the host's config name, for error lines
     #   (default: LABEL)
     # @param api_key_env [String, nil] the variable holding the host's API
@@ -135,7 +137,7 @@ module Samagotchi
     #   HostEntry#auth_scheme), nil: Bearer
     # @param env [Hash] where the key variable is read
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, sleeper: nil, scheme: nil,
-                   first_token_timeout: nil, name: nil, api_key_env: nil, auth: nil, env: ENV)
+                   first_token_timeout: nil, stream_idle_timeout: nil, name: nil, api_key_env: nil, auth: nil, env: ENV)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       @host          = host || Samagotchi::Config.get("server.host")
       @port          = (port || Samagotchi::Config.get("server.port")).to_i
@@ -150,15 +152,20 @@ module Samagotchi
       @props_failures = @props_entry[:failures]
       @props_mutex = @props_entry[:mutex]
       @first_token_timeout = first_token_timeout
+      @stream_idle_timeout = stream_idle_timeout
       @host_name = name
       @label = name.to_s.empty? ? LABEL : name.to_s
       @http = LLM::HTTP.new(label: @label, open_timeout: @open_timeout, read_timeout: @read_timeout,
                             sleeper: sleeper, first_token_timeout: first_token_timeout,
+                            stream_idle_timeout: stream_idle_timeout,
                             api_key: LLM::ApiKey.for(api_key_env, host: @label, env: env, scheme: auth))
     end
 
     # Seconds a completion may take to stream its first text, or nil.
     attr_reader :first_token_timeout
+
+    # Seconds a completion that streamed text may go without more, or nil.
+    attr_reader :stream_idle_timeout
 
     # The host's config name, or nil when built without one.
     attr_reader :host_name

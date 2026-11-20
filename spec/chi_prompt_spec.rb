@@ -121,6 +121,29 @@ RSpec.describe "chi -p --non-interactive" do
     server&.stop
   end
 
+  # A stream that showed a chunk and then went quiet (held open) fails at
+  # server.stream_idle_timeout, not the 600 s read timeout: the error, the
+  # --resume line, exit 1 (retry.max 0: not asked again).
+  it "fails a stalled stream with the stalled error and the --resume line" do
+    server = FakeProviderServer.start
+    server.default("/completion", sse: ["data: #{JSON.generate(content: "half an ans", stop: false)}\n\n"], hold: true)
+    Dir.mktmpdir do |dir|
+      env = chi_env(dir, server).merge("SAMAGOTCHI_SERVER_STREAM_IDLE_TIMEOUT" => "1")
+      out, err, status = run_or_fork_chi("-p", "go on", "--non-interactive", spawn: false, env: env, chdir: dir)
+
+      expect(status.exitstatus).to eq(1), err
+      expect(out).to eq("")
+      id = err[/\ASession: (\S+)/, 1]
+      lines = err.lines.map(&:chomp)
+      expect(lines[1]).to start_with("Error: the model's stream stalled on host ")
+      expect(lines[1]).to include("no output for 1s (stream_idle_timeout); try again later or pick another model (/model)")
+      expect(lines.last).to eq("chi: the session is kept with your prompt; continue it with: chi --resume #{id}")
+      expect(server.requests.count { |r| r.path == "/completion" }).to eq(1)
+    end
+  ensure
+    server&.stop
+  end
+
   # A failed first turn: the session line comes first, then the error, then
   # how to go on; the session is kept with the prompt, so --resume retries.
   it "says before the error which session it is, and after it that the session is kept" do

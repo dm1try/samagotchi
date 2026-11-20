@@ -15,7 +15,7 @@ ChatLoop::Run#generate
           → AnthropicWire.translate         # system blocks + messages, cache_control placed
           → AnthropicWire.tools             # function schemas → {name, description, input_schema},
                                             #   a deferred one with defer_loading: true
-      → POST {base}/v1/messages             # LLM::HTTP: retries, cancel, first-token limit
+      → POST {base}/v1/messages             # LLM::HTTP: retries, cancel, first-token and stream-idle limits
       → AnthropicAssembly#add per SSE event # → ChatResponse (text, reasoning, tool_calls, usage,
                                             #   finish_reason, provider_content)
       → a signature 400 (Claude 5.x preserved thinking): AnthropicBindingRecovery#advance, then the same
@@ -90,8 +90,9 @@ A stream is read from its `data:` lines alone (a gateway that drops the `event:`
 index: `message_start` (served model, usage), `content_block_start` (text, thinking, redacted_thinking, tool_use),
 `content_block_delta` (`text_delta`, `thinking_delta`, `signature_delta`, `input_json_delta`), `message_delta`
 (stop reason, `stop_details`, usage). `AnthropicMessages#chat_streamed` passes every event but `ping` to `on_delta`,
-`message_start` and `message_delta` with the usage so far attached (`#with_usage`); a block's start or delta counts as shown for the first-token limit
-(`.shows?`). A 200 whose body is a JSON error instead of a stream raises that error (`LLM::AdapterCommon#raise_plain_error`, shared with the OpenAI adapter).
+`message_start` and `message_delta` with the usage so far attached (`#with_usage`); a block's start or delta counts as shown for the first-token and stream-idle limits
+(`.shows?`); `message_delta` and `message_stop` restart the stream-idle clock without counting as shown (`.ending?`), so a
+slow end of a complete answer doesn't stall it. A 200 whose body is a JSON error instead of a stream raises that error (`LLM::AdapterCommon#raise_plain_error`, shared with the OpenAI adapter).
 
 `#response` is a `ChatResponse`:
 

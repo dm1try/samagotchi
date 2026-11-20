@@ -495,6 +495,29 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(response.text).to eq("Hello! How can I help you today?")
       expect(waits.sum).to eq(3.0)
     end
+
+    # message_delta restarts the stream-idle clock (LLM::HTTP's
+    # shown.call(ending: true)): a message_stop that comes later than the
+    # limit after the last text, but within it after message_delta, keeps
+    # the complete answer.
+    it "keeps an answer whose message_stop comes slowly after its message_delta, under a stream-idle limit" do
+      idle = described_class.new(base_url: server.root_url, host_name: "msg", env: env, sleeper: ->(_seconds) {},
+                                 stream_idle_timeout: 0.8)
+      event = ->(type, data) { "event: #{type}\ndata: #{JSON.generate(data.merge(type: type))}\n\n" }
+      server.enqueue("/v1/messages", delay: 0.5, sse: [
+        event.call("message_start", message: { id: "m1", model: "m", content: [], usage: { input_tokens: 5, output_tokens: 0 } }) +
+          event.call("content_block_start", index: 0, content_block: { type: "text", text: "" }) +
+          event.call("content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" }),
+        event.call("content_block_stop", index: 0) +
+          event.call("message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 }),
+        event.call("message_stop", {})
+      ])
+
+      response = idle.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 9 })
+
+      expect(response.text).to eq("hi")
+      expect(response.finish_reason).to eq("stop")
+    end
   end
 
   describe "the fireworks dialect" do

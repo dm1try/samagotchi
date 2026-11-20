@@ -17,7 +17,8 @@ module Samagotchi
 
       # A host entry's adapter (its api, API base, name, key and remoteness).
       # @param entry [HostRegistry::HostEntry]
-      # @param options [Hash] more adapter options (models_ttl:, first_token_timeout:, ...)
+      # @param options [Hash] more adapter options (models_ttl:, first_token_timeout:,
+      #   stream_idle_timeout:, ...)
       # @raise [ArgumentError] the entry's api has no chat adapter
       def self.for(entry, **)
         adapter_class(entry.api).for(entry, **)

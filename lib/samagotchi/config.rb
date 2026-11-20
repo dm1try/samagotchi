@@ -112,6 +112,11 @@ module Samagotchi
       # or tool call, for every host; 0 = off. Unset: 120 on remote hosts,
       # off on local ones. hosts.<name>.first_token_timeout wins.
       Entry.new(key: "server.first_token_timeout", yaml_path: %w[server first_token_timeout], type: :integer, default: nil,          expose: %i[env config], lifecycle: :worker_start),
+      # Seconds a streamed answer that showed something may go without
+      # showing more (keep-alives don't count), for every host; 0 = off.
+      # Unset: 120 on remote hosts, off on local ones.
+      # hosts.<name>.stream_idle_timeout wins.
+      Entry.new(key: "server.stream_idle_timeout", yaml_path: %w[server stream_idle_timeout], type: :integer, default: nil,          expose: %i[env config], lifecycle: :worker_start),
 
       # Both session-settable (chi --set recap.enabled=false): RecapSetup reads them through the session's layer.
       Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config], lifecycle: :worker_start,
@@ -431,7 +436,7 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (HostConfig.all, ModelSettings.all).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout vision sampling thinking
+      "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout stream_idle_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze

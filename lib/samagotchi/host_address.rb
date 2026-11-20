@@ -48,5 +48,12 @@ module Samagotchi
     rescue StandardError # degrade-ok: no configured limit; the host's own or the remote default applies
       nil
     end
+
+    # server.stream_idle_timeout, or nil when unset or unreadable.
+    def self.configured_stream_idle_timeout
+      Config.get("server.stream_idle_timeout")
+    rescue StandardError # degrade-ok: no configured limit; the host's own or the remote default applies
+      nil
+    end
   end
 end

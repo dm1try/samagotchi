@@ -90,7 +90,8 @@ module Samagotchi
       # limit holds less. 32k leaves room for any one step's answer.
       OPENROUTER_MAX_TOKENS = 32_768
 
-      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :default_max_tokens
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :stream_idle_timeout,
+                  :default_max_tokens
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **)
@@ -147,16 +148,20 @@ module Samagotchi
       # @param remote [Boolean] a provider on the network, not a local server
       # @param first_token_timeout [Numeric, nil] seconds a streamed answer
       #   may take to show something (LLM::HTTP); nil: no limit
+      # @param stream_idle_timeout [Numeric, nil] seconds a streamed answer
+      #   that showed something may go without more (LLM::HTTP); nil: no limit
       # @param default_max_tokens [Integer, nil] max_tokens for a request
       #   whose options name none (OPENROUTER_MAX_TOKENS); nil sends none
       def initialize(base_url:, host_name:, api_key_env: nil, auth: nil, stream: true, retries: true, timeout: nil,
                      env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
-                     first_token_timeout: nil, purpose: "chat", default_max_tokens: nil, open_timeout: nil)
+                     first_token_timeout: nil, stream_idle_timeout: nil, purpose: "chat", default_max_tokens: nil,
+                     open_timeout: nil)
         @remote = remote
         @default_max_tokens = default_max_tokens
         # What its requests are for, in the log (LLM::HTTP::LOGGED_PURPOSES).
         @purpose = purpose
         @first_token_timeout = first_token_timeout
+        @stream_idle_timeout = stream_idle_timeout
         @base_url = base_url.to_s.chomp("/")
         @host_name = host_name.to_s
         @api_key_env = api_key_env
@@ -164,6 +169,7 @@ module Samagotchi
         init_model_listing(models_ttl)
         @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
                            sleeper: sleeper, first_token_timeout: first_token_timeout,
+                           stream_idle_timeout: stream_idle_timeout,
                            api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth))
       end
 
@@ -189,7 +195,11 @@ module Samagotchi
         stream_assembled(request, cancel_controller, on_retry, log_fields, assembly_class: Assembly,
                                                                            what: "stream chunk") do |assembly, payload, shown|
           content, reasoning = assembly.add(payload)
-          shown.call if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
+          if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
+            shown.call
+          elsif Assembly.ending?(payload)
+            shown.call(ending: true)
+          end
           on_delta&.call(content: content, reasoning: reasoning, payload: payload)
         end
       end
@@ -341,6 +351,13 @@ module Samagotchi
         def self.tool_call_delta?(payload)
           choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
           choice.is_a?(Hash) && choice["delta"].is_a?(Hash) && !Array(choice["delta"]["tool_calls"]).empty?
+        end
+
+        # The chunk ends the answer (a finish reason, the usage): it restarts
+        # the stream-idle clock without counting as shown.
+        def self.ending?(payload)
+          choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
+          payload["usage"].is_a?(Hash) || (choice.is_a?(Hash) && !choice["finish_reason"].nil?)
         end
 
         def initialize

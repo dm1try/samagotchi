@@ -169,6 +169,121 @@ RSpec.describe Samagotchi::LLM::HTTP do
       end
     end
 
+    context "with a stream-idle limit" do
+      def idle_limited(seconds, first_token: nil)
+        described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                            sleeper: ->(seconds_slept) { sleeps << seconds_slept }, first_token_timeout: first_token,
+                            stream_idle_timeout: seconds)
+      end
+      let(:keep_alives) { Array.new(40) { ": OPENROUTER PROCESSING\n\n" } }
+
+      def show_data(lines)
+        lambda do |line, shown|
+          lines << line
+          shown.call if line.start_with?("data:")
+        end
+      end
+
+      def elapsed_since(started) = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      # Keep-alives reset the read timeout: only the idle limit ends a
+      # stream that showed something and then went quiet behind them.
+      it "fails a stream that showed a chunk and then sends only keep-alives, as StreamStalled, without a retry" do
+        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"] + keep_alives, delay: 0.05, hold: true)
+        lines = []
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect { idle_limited(0.3).stream_lines(uri, post_request, &show_data(lines)) }
+          .to raise_error(Samagotchi::LLM::StreamStalled) { |error|
+            expect(error).to be_a(Samagotchi::LLM::RetryExhausted)
+            expect(error.kind).to eq(:stream_stalled)
+            expect(error.limit).to eq(0.3)
+            expect(error.attempts).to eq(1)
+            expect(error.message).to eq("fake: the model's stream stalled: no output for 0.3s")
+            expect(error.summary).to eq("the model's stream stalled on host fake: no output for 0.3s " \
+                                        "(stream_idle_timeout); try again later or pick another model (/model)")
+          }
+        # not the keep-alives' 2 s and the 5 s read timeout after them: the limit ended it
+        expect(elapsed_since(started)).to be < time_bound(4, below: 7)
+        expect(lines.first).to eq("data: 1")
+        expect(server.requests.size).to eq(1)
+        expect(sleeps).to be_empty
+      end
+
+      it "fails a stream that goes silent after a chunk before the read timeout" do
+        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"], hold: true)
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect { idle_limited(0.3).stream_lines(uri, post_request, &show_data([])) }
+          .to raise_error(Samagotchi::LLM::StreamStalled)
+        expect(elapsed_since(started)).to be < time_bound(3, below: 5)
+        expect(server.requests.size).to eq(1)
+      end
+
+      it "lets a stream whose chunks keep coming within the limit finish, however long it runs" do
+        server.enqueue("/v1/chat/completions", sse: Array.new(5) { |i| "data: #{i}\n\n" }, delay: 0.2)
+        lines = []
+
+        idle_limited(0.8).stream_lines(uri, post_request, &show_data(lines))
+
+        expect(lines.reject(&:empty?)).to eq(Array.new(5) { |i| "data: #{i}" })
+      end
+
+      it "is off with 0 or nil" do
+        [0, nil].each do |limit|
+          server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"] + ([": PROCESSING\n\n"] * 4) + ["data: ok\n\n"],
+                                                 delay: 0.1)
+          lines = []
+
+          idle_limited(limit).stream_lines(uri, post_request, &show_data(lines))
+
+          expect(lines.reject(&:empty?).last).to eq("data: ok"), "expected #{limit.inspect} to be off"
+        end
+      end
+
+      it "lets a cancel win over the limit" do
+        controller = Samagotchi::CancellationController.new
+        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"] + keep_alives, delay: 0.05, hold: true)
+
+        expect do
+          # A limit with headroom over the keep-alives' latency: the cancel comes first.
+          idle_limited(2).stream_lines(uri, post_request, cancel_controller: controller) do |line, shown|
+            shown.call if line == "data: 1"
+            controller.cancel!(:ctrl_c) if line.start_with?(":")
+          end
+        end.to raise_error(Samagotchi::LLM::RequestCancelled)
+      end
+
+      # The first-token limit watches until the first shown chunk, the idle
+      # one after it: chunks past the first-token limit don't fail it, and
+      # the silence after them is a stall, not a first-token timeout.
+      it "hands over from the first-token limit to the idle one" do
+        server.enqueue("/v1/chat/completions", sse: [": queued\n\n", "data: 1\n\n", "data: 2\n\n", "data: 3\n\n"],
+                                               delay: 0.15, hold: true)
+        lines = []
+
+        expect { idle_limited(0.5, first_token: 0.4).stream_lines(uri, post_request, &show_data(lines)) }
+          .to raise_error(Samagotchi::LLM::StreamStalled)
+        expect(lines.reject(&:empty?)).to eq([": queued", "data: 1", "data: 2", "data: 3"])
+      end
+
+      # A complete answer's trailing usage chunk can come slowly: the end of
+      # the answer (a finish reason) restarts the clock without counting as
+      # shown, so the gap after the last text doesn't void it.
+      it "restarts the clock on an end-of-answer chunk (shown.call(ending: true))" do
+        server.enqueue("/v1/chat/completions", sse: ["data: text\n\n", "data: finish\n\n", "data: usage\n\n"], delay: 0.6)
+        lines = []
+
+        idle_limited(1.0).stream_lines(uri, post_request) do |line, shown|
+          lines << line
+          shown.call if line == "data: text"
+          shown.call(ending: true) if line == "data: finish"
+        end
+
+        expect(lines.reject(&:empty?)).to eq(["data: text", "data: finish", "data: usage"])
+      end
+    end
+
     context "with a cancel" do
       let(:controller) { Samagotchi::CancellationController.new }
 
@@ -500,6 +615,18 @@ RSpec.describe Samagotchi::LLM::HTTP do
       server.release
 
       expect(http_records.map { |r| [r.level, r.event] }).to eq([%w[ERROR first_token_timeout]])
+    end
+
+    it "writes an ERROR for a stalled stream, with its limit" do
+      limited = described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                                    sleeper: ->(seconds) { sleeps << seconds }, stream_idle_timeout: 0.2)
+      server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"], hold: true)
+
+      expect { limited.stream_lines(uri, post_request, log_fields: chat) { |_line, shown| shown.call } }
+        .to raise_error(Samagotchi::LLM::StreamStalled)
+      server.release
+
+      expect(http_records.map { |r| [r.level, r.event, r.fields["idle_s"]] }).to eq([["ERROR", "stream_stalled", "0.2"]])
     end
 
     it "writes a cancelled request as INFO" do

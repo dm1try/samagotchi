@@ -151,7 +151,7 @@ or `chi web` restart.
 | `default.input`, `no_default_input`, `no_interrupt` | Next CLI run | These set up that run's first prompt or turn limit. |
 | `default.max_tokens`, `max_tool_output_chars`, `memory.read_max_chars`, `read.*`, `execute.*` except `execute.description`, `image.*` | Next matching request or tool use | An operation already in progress keeps its resolved limits. |
 | `server.host`, `server.port`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. Commands (`chi self`, `chi models`, the session lists) and chi web (its model picker, the session cards) read `hosts:` as it is now; a running worker keeps the hosts it started with until it restarts. |
-| `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
+| `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout`, `server.stream_idle_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
 | `model_aliases` | Next model lookup | A session keeps its resolved model unless it is explicitly switched. |
 | `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
 | Other `models.<key>.*` settings | Next turn or model lookup | Sampling, thinking, vision, context, window, price and steer settings are resolved from the file for their next use. |
@@ -352,8 +352,8 @@ doesn't end in a local suffix (`gpu.example.com`). A name without a dot (`box`)
 or ending in `localhost`, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`,
 `.intranet`, `.localdomain`, `.private`, `.corp`, `.test`, `.box` (`fritz.box`)
 or `.ts.net` (Tailscale) is local: chi doesn't look names up. A remote
-host keeps its model list for 10 minutes, gets a 120-second first-token limit,
-and isn't asked for llama.cpp's `/props` (its context window and served model
+host keeps its model list for 10 minutes, gets a 120-second first-token limit
+and a 120-second stream-idle limit, and isn't asked for llama.cpp's `/props` (its context window and served model
 come from its model list and each turn). A local `api: openai` host has no
 `/props`, so `chi self` GETs its `/models` with the same short probe timeouts
 and reports up/down with the ids it serves. `remote: true` or `remote: false` on a
@@ -919,6 +919,24 @@ hosts:
 which applies to every host. With neither set, remote hosts (see "Remote or local" above) get 120 seconds and local
 servers no limit: a long prompt evaluation is normal there, and the read timeout catches a dead server.
 
+Once a stream has shown something, a **stream-idle limit** watches the rest: the seconds it may go without showing
+more text, reasoning or a tool call. Keep-alive comments don't count, so an answer that stops mid-way is no longer
+held open until the read timeout. A stalled stream is closed and asked again like a dropped one (`↻ retrying
+(stream dropped) …`, its partial output dropped; see "Retries" below); once those run out the turn fails with `the
+model's stream stalled on host <name>: no output for 120s (stream_idle_timeout); …`. The end of an answer (a finish
+reason, the usage chunk, Anthropic's `message_delta` and `message_stop`) restarts the clock too, so a slow trailing
+usage chunk doesn't void a complete answer.
+
+```yaml
+hosts:
+  openrouter:
+    stream_idle_timeout: 300   # seconds; 0 = off
+```
+
+`hosts.<name>.stream_idle_timeout` wins over `server.stream_idle_timeout` (`SAMAGOTCHI_SERVER_STREAM_IDLE_TIMEOUT`),
+which applies to every host. With neither set, remote hosts get 120 seconds and local servers no limit: a local
+server may stream nothing while it buffers a long tool call's arguments.
+
 Every chat request carries the session's id as a `Session-Id` header (next to `User-Agent: chi/<version>`). A
 gateway that spreads requests over several providers can key on it to keep one conversation on one provider, so
 prompt caches hit and every turn is answered by the same model. Servers that don't know the header ignore it.
@@ -1114,7 +1132,8 @@ Transient network failures are retried automatically with exponential backoff.
   chat loop (an OpenAI-compatible host) drops the partial reply and asks again for the whole step, from the same
   conversation, at most twice (at most `retry.max` times when that is smaller: `retry.max: 0` turns it off), after
   the same backoff, reported as a retry (`↻ retrying (stream dropped) …`); once those run out the turn fails with
-  the error, as before. A refusal, a first-token timeout, a provider error and a cancel are never retried this way.
+  the error, as before. A stream that stalled past its `stream_idle_timeout` is asked again the same way. A refusal,
+  a first-token timeout, a provider error and a cancel are never retried this way.
 - Cancellation (`Ctrl-C`) is never retried.
 
 Configuration:
@@ -2247,6 +2266,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `server.open_timeout` | `10` | yes | Connection timeout, seconds. |
 | `server.read_timeout` | `600` | yes | Read timeout, seconds. |
 | `server.first_token_timeout` | 120 remote, off local | | Seconds to the first token; `0` = off. `hosts.<name>.first_token_timeout` wins. |
+| `server.stream_idle_timeout` | 120 remote, off local | | Seconds a stream that showed something may go without more; `0` = off. `hosts.<name>.stream_idle_timeout` wins. |
 | `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. Per session too: `--set recap.enabled=false`, or `/recap off` in the session (see "Per-session settings"). |
 | `recap.model` | session's | yes | Model that writes the recap: an id, alias or `host:model` (the host then picks where to ask; a bare id goes where a bare `--model` goes). |
 | `recap.host_ref` | session's | yes | A `hosts:` name to ask (`host:` is accepted too, also a host name, not a model ref). |

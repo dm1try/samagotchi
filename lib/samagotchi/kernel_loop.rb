@@ -511,7 +511,8 @@ module Samagotchi
 
     # One generation's request, asking again on a mid-stream drop (LLM::HTTP
     # raises RetryExhausted once a stream that already showed something
-    # fails, where a retry would repeat output) up to MAX_STREAM_DROPS
+    # fails, where a retry would repeat output; StreamStalled, one that went
+    # quiet past stream_idle_timeout, is one) up to MAX_STREAM_DROPS
     # times after the transport's backoff: the partial reply is dropped and
     # the step restarts from the same conversation, as generation_retrying
     # with restarted: true. A cancel (before or during the wait) never
@@ -573,7 +574,7 @@ module Samagotchi
         if count.drops >= limit || !streamed_any
           raise if count.requests == e.attempts.to_i
 
-          raise LLM::RetryExhausted.new(attempts: count.requests, last_error: e.last_error, label: e.host)
+          raise e.recounted(count.requests)
         end
 
         count.drops += 1

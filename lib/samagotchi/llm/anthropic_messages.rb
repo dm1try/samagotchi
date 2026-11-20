@@ -100,7 +100,7 @@ module Samagotchi
       DROPPED_OPTIONS = %i[reasoning_effort chat_template_kwargs stream_options prompt_cache_key logprobs top_logprobs
                            max_completion_tokens].freeze
 
-      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :dialect
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :stream_idle_timeout, :dialect
 
       # The Messages API root a base URL names: without a trailing / and a
       # trailing /v1 (as ANTHROPIC_BASE_URL), so requests never go to
@@ -120,11 +120,12 @@ module Samagotchi
       # The rest as OpenAIChat#initialize takes them.
       def initialize(base_url:, host_name:, api_key_env: nil, auth: nil, dialect: nil, stream: true, retries: true,
                      timeout: nil, env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
-                     first_token_timeout: nil, purpose: "chat", open_timeout: nil)
+                     first_token_timeout: nil, stream_idle_timeout: nil, purpose: "chat", open_timeout: nil)
         @dialect = Dialect.for(dialect)
         @remote = remote
         @purpose = purpose
         @first_token_timeout = first_token_timeout
+        @stream_idle_timeout = stream_idle_timeout
         @base_url = base_url.to_s.chomp("/")
         @host_name = host_name.to_s
         @api_key_env = api_key_env
@@ -136,6 +137,7 @@ module Samagotchi
         @binding = AnthropicBindingRecovery.new(refusals: @refusals, host_name: @host_name, budget_form: method(:budget_form?))
         @http = build_http(timeout: timeout, open_timeout: open_timeout, retries: retries, retry_policy: retry_policy,
                            sleeper: sleeper, first_token_timeout: first_token_timeout,
+                           stream_idle_timeout: stream_idle_timeout,
                            api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth),
                            diagnosis_header: AnthropicBindingRecovery::DIAGNOSIS_HEADER)
       end
@@ -463,6 +465,8 @@ module Samagotchi
           if AnthropicAssembly.shows?(event)
             shown.call
             on_shown&.call
+          elsif AnthropicAssembly.ending?(event)
+            shown.call(ending: true)
           end
           on_delta&.call(content: content, reasoning: reasoning, payload: assembly.with_usage(event)) unless event["type"] == "ping"
         end
