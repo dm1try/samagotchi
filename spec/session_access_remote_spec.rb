@@ -341,6 +341,15 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       }
     end
 
+    it "carries a deleting refusal as its own reason, in the words of this machine's chi" do
+      session = make(owner: Samagotchi::OwnerLock::DELETING)
+
+      expect { remote.restart(session.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |error|
+        expect(error.reason).to eq(:deleting)
+        expect(error.message).to eq(Samagotchi::SessionManager::RestartRefused.words(session.id, :deleting))
+      }
+    end
+
     it "carries fallback holds and prints the remote stop command" do
       session = make
       refusal = Samagotchi::SessionManager::RestartRefused.new(session.id, :fallback_held, holds: [:turn_running])

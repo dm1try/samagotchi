@@ -17,12 +17,12 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
   vocabulary = {
     delivery: %i[go wait gone owned deleting],
     resume: %i[go gone owned_by_tui live starting],
-    restart: %i[go gone owned_by_tui starting not_running fallback stop_marked],
+    restart: %i[go gone owned_by_tui starting not_running fallback stop_marked deleting],
     stop: %i[go gone owned_by_tui],
     archive: %i[go gone owned_by_tui starting],
     delete: %i[go owned_by_tui worker_running],
-    sched_chain: %i[go stopped worker_busy],
-    sched_same: %i[go stopped worker_busy],
+    sched_chain: %i[go stopped worker_busy deleting worker_newer],
+    sched_same: %i[go stopped worker_busy deleting worker_newer],
     attach: %i[go wait gone_stopped gone_worker_newer]
   }.freeze
   define_method(:vocabulary) { |op| vocabulary.fetch(rows.key?(op) ? :delivery : op) }
@@ -86,6 +86,9 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     expect(sm::OwnedByTUI).to be < StandardError
     schedules = File.read(File.expand_path("../../lib/samagotchi/schedules.rb", __dir__))
     expect(schedules).to include('"its worker is starting or leaving"')
+    short_message = Samagotchi::WorkerLink::Skew.new(sidecar: nil, owner: nil, reason: :protocol).short_message
+    expect(short_message).to be_a(String)
+    expect(schedules).to include("short_message")
     expect(sm::DeliverResult::STOPPED["detail"]).to be_a(String)
   end
 

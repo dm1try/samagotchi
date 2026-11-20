@@ -964,19 +964,24 @@ module Samagotchi
     end
 
     # Two paths (FR7): a live worker is asked through its Bridge; with no
-    # worker the files say what the tick can know. A session its owner
-    # stopped is a skip first, in both modes: a schedule restarts nothing
-    # the owner stopped (deliver_turn would refuse a same-mode firing too,
-    # SessionManager::DeliverResult::STOPPED, in the same words).
+    # worker the files say what the tick can know. A session being deleted
+    # is a skip first, then one its owner stopped, in both modes: a schedule
+    # restarts nothing the owner stopped (deliver_turn would refuse a same-mode
+    # firing too, SessionManager::DeliverResult::STOPPED, in the same words).
     def busy_reason(entry, links, target)
       dir = Session.session_dir(target, state_dir: @state_dir)
       owner = SessionManager.session_owner(target, state_dir: @state_dir)
       presence = WorkerPresence.read(target, state_dir: @state_dir, owner: owner, link: :look)
+      return [:skip, SessionManager::DeliverResult::DELETING["detail"]] if presence.deleting?
       return [:skip, SessionManager::DeliverResult::STOPPED["detail"]] if presence.stop_marked?
 
       link = presence.link
 
       if presence.worker_owned?
+        # A newer worker's Bridge cannot be asked; updating chi or restarting
+        # chi web fixes it, and max_skips still bounds a stuck schedule.
+        return [:skip, link.short_message] if link.is_a?(WorkerLink::Skew)
+
         # A worker that has not published its Bridge yet (or is closing it):
         # nothing can be read from it, and firing now would race with it.
         return [:skip, "its worker is starting or leaving"] unless presence.live?

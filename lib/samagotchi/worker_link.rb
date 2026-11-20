@@ -109,11 +109,19 @@ module Samagotchi
       def live? = false
       def worker_owned? = true
 
+      def short_message(via: ChiInvocation::HERE)
+        "its worker runs a newer chi: #{remedy(via)}"
+      end
+
       def message(session_id, via: ChiInvocation::HERE)
         "session #{session_id}'s worker runs chi #{sidecar.version || "?"} (protocol #{sidecar.protocol}), " \
           "newer than this chi #{Samagotchi::VERSION} (protocol #{PROTOCOL}): restart " \
-          "#{via.remote? ? via.web : "chi web"} or update this chi"
+          "#{remedy(via)}"
       end
+
+      private
+
+      def remedy(via) = "restart #{via.remote? ? via.web : "chi web"} or update this chi"
     end
 
     module_function

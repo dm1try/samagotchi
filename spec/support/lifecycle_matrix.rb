@@ -33,6 +33,8 @@ module LifecycleMatrix
   # text fails (a copy edit shows up here, on purpose).
   REASONS = {
     Samagotchi::SessionManager::DeliverResult::STOPPED["detail"] => :stopped,
+    Samagotchi::SessionManager::DeliverResult::DELETING["detail"] => :deleting,
+    Samagotchi::WorkerLink::Skew.new(sidecar: nil, owner: nil, reason: :protocol).short_message => :worker_newer,
     "its worker is starting or leaving" => :worker_busy
   }.freeze
 

@@ -188,6 +188,21 @@ RSpec.describe Samagotchi::WorkerLink do
     end
   end
 
+  describe "Skew#short_message" do
+    it "names the short reason and works without a sidecar" do
+      link = described_class::Skew.new(sidecar: nil, owner: nil, reason: :protocol)
+
+      expect(link.short_message).to eq("its worker runs a newer chi: restart chi web or update this chi")
+    end
+
+    it "names the remote's web when invoked remotely" do
+      link = described_class::Skew.new(sidecar: nil, owner: nil, reason: :protocol)
+      via = Samagotchi::ChiInvocation.new(remote: "studio")
+
+      expect(link.short_message(via: via)).to eq("its worker runs a newer chi: restart chi web on studio or update this chi")
+    end
+  end
+
   describe ".client" do
     it "is a client for the Live worker (its port and secret), else nil" do
       write_sidecar(5001, secret: "5e" * 32)

@@ -23,19 +23,22 @@ module Samagotchi
     # What each literal operation answers in each state today, with neutral
     # op-local facts (not scratch, saved status idle, no input/, no question
     # or offer, not SIGSTOPped, features restart and activity, an idle worker
-    # with no streams). worker_busy is a schedule's "its worker is starting
-    # or leaving"; resume's live is "a worker holds it"; restart's fallback
-    # is its unresponsive-worker path, its stop_marked a stop marked (it
-    # reads this table: restart_session's precheck); attach's gone_* are LocalLink's
-    # [:gone, why]. absent's delete and schedule cells are unreachable (a
-    # gone session is refused before the gate). Resolution (a chain's head,
-    # a continue's successor) stays outside: these are the link's own.
+    # with no streams). For schedules, worker_busy is "its worker is starting
+    # or leaving", deleting is DeliverResult::DELETING's detail, and
+    # worker_newer is WorkerLink::Skew#short_message. Resume's live is "a
+    # worker holds it"; restart's fallback is its unresponsive-worker path,
+    # its stop_marked a stop marked and its deleting a deleter holds the lock
+    # (it reads this table: restart_session's precheck); attach's gone_* are
+    # LocalLink's [:gone, why]. absent's delete and schedule cells are
+    # unreachable (a gone session is refused before the gate). Resolution (a
+    # chain's head, a continue's successor) stays outside: these are the
+    # link's own.
     LITERAL = {
       absent: %i[gone gone gone gone go go go wait],
       tui_owned: %i[owned_by_tui owned_by_tui owned_by_tui owned_by_tui owned_by_tui go go wait],
-      deleting: %i[live starting go go worker_running worker_busy worker_busy wait],
+      deleting: %i[live deleting go go worker_running deleting deleting wait],
       stopping: %i[live stop_marked go go worker_running stopped stopped gone_stopped],
-      skew: %i[live fallback go go worker_running worker_busy worker_busy gone_worker_newer],
+      skew: %i[live fallback go go worker_running worker_newer worker_newer gone_worker_newer],
       leaving: %i[live not_running go go worker_running worker_busy worker_busy wait],
       booting_stuck: %i[live fallback go go worker_running worker_busy worker_busy wait],
       booting: %i[live starting go go worker_running worker_busy worker_busy wait],

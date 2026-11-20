@@ -25,7 +25,8 @@ module Samagotchi
     # :fallback_held (disk-visible work blocks an unresponsive-worker restart),
     # :stopped (its worker, +pid+, is SIGSTOPped: neither the ask nor a TERM
     # reaches it until it is continued), :stop_marked (the session is stopped,
-    # or being stopped: `chi sessions stop`, no successor would come), or
+    # or being stopped: `chi sessions stop`, no successor would come),
+    # :deleting (a deleter holds the lock: the session is going), or
     # :failed (the worker answered something else or didn't release).
     class RestartRefused < StandardError
       attr_reader :session_id, :reason, :version, :holds, :pid
@@ -63,6 +64,8 @@ module Samagotchi
             "a restart: continue it#{" with `kill -CONT #{pid}`" if pid}#{where}, then restart again"
         when :stop_marked
           "session #{session_id} can't restart: #{DeliverResult::STOPPED["detail"]} (on the newest chi)"
+        when :deleting
+          "session #{session_id} can't restart: #{DeliverResult::DELETING["detail"]}"
         when :not_running
           "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
         when :unsupported
