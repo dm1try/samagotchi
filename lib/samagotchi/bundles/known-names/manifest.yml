@@ -1,6 +1,6 @@
 ---
 name: known-names
-version: 0.2.0
+version: 0.2.1
 requires_chi: ">= 0.150.0"
 scope: system
 description: Catches a near-miss of a protected name (home folder, login, git name, repo name, names from config) in a tool call and rejects it with the right spelling; mode ask / correct optional
@@ -9,6 +9,6 @@ files:
   known_names.md: sha256:d5348b95b6c655017b541910b36e384220da280818160201f6ec9a50e1e4287c
 plugin:
   file: plugin.rb
-  sha256: sha256:d140612e6c34a9d2d205bf818a2a0797ad1e133829481f354aaa9e56698017e3
+  sha256: sha256:f519ec42023a6857f87fba9ff8a8db5d261dccfd88e3a9b58310ae3293b3cbdc
 # config.yml bundles: known-names: (another key warns; an older chi ignores this)
 settings: [names, ignore, mode, derive, min_length, max_distance]

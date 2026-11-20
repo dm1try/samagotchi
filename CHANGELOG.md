@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The known-names guardrail no longer flags a project's class name in backticks
+  (`CoffeeAssistant` for `coffee_assistant`) as a typo.
 - A streamed answer that stops mid-way (no text, reasoning or tool call for `stream_idle_timeout` seconds; default
   120 on remote hosts, off on local) is closed and asked again like a dropped stream, then fails with `the model's
   stream stalled …`, instead of waiting on keep-alives until the read timeout.

@@ -24,9 +24,10 @@ class KnownNames
   DERIVATIONS = %w[home user git repo].freeze
   DEFAULT_MIN_LENGTH = 6
   # Splits a command or path into tokens; each token's [-_.] parts are
-  # candidates too. "#" and "~" split: in "~name" (that user's home) the
-  # name after it is what is checked.
-  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~#]+}
+  # candidates too. Backticks, "$" and "!" split: shell/markdown wrappers
+  # and prefixes, not part of a name. "#" and "~" split: in "~name" (that
+  # user's home) the name after it is what is checked.
+  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~#!$`]+}
   PART_SPLIT = /[-_.]+/
   # Separators at a token's start or end, dropped before it is compared.
   EDGE_SEPARATORS = /\A[-_.]+|[-_.]+\z/

@@ -129,6 +129,23 @@ RSpec.describe "The known-names bundle" do
       expect(notices).to be_empty
     end
 
+    it "lets through the class name in backticks" do
+      expect(shell("echo `CoffeeAssistant::HttpError`")).to be_allow
+    end
+
+    it "still rejects a typo in backticks" do
+      expect(shell("echo `coffee_asistant`").reason)
+        .to include('"coffee_asistant" in the command is 1 edit away from the known name "coffee_assistant"')
+    end
+
+    it "lets through the class name after a shell variable prefix" do
+      expect(shell("echo $CoffeeAssistant")).to be_allow
+    end
+
+    it "lets through the class name after a shell negation prefix" do
+      expect(shell("echo !CoffeeAssistant")).to be_allow
+    end
+
     it "still rejects the name with other separators or none" do
       { "cd coffee-assistant" => ["coffee-assistant", "1 edit"], "ls coffeeassistant" => ["coffeeassistant", "1 edit"],
         "echo CofeeAssistant" => ["CofeeAssistant", "2 edits"] }.each do |command, (miss, edits)|
