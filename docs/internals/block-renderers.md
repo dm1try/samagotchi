@@ -25,8 +25,8 @@ model. The TUI is untouched: it shows a fence as source.
    the first that `claims` the block's language draws it, and a language none claims is left alone. The contract
    (`claims`, `needsDraw`, `draw`, its `reconsider`, `sessionChanged`) is in the module's header. The shared DOM
    helpers live there too: `failBlock` and its `.block-note` (a click copies it), `holdingView`, `rejoin`, the
-   toggle's listener; frames, the cache, hang marks, size checks, the zoom and the theme redraw stay in
-   `block_host.js`. One `MutationObserver` per turn root,
+   toggle's listener; frames, the cache, hang marks, size checks, the click that opens the picture viewer and the theme
+   redraw stay in `block_host.js`. One `MutationObserver` per turn root,
    filtered to `TEXTS` (`text_roots.js`), so cards, a lead-in bubble, question replies and delegate reports never draw, and
    every path that adds a block to a root is seen the same way. One `IntersectionObserver` per scroller, with an explicit `root`
    (with `root: null`, `rootMargin` doesn't pass an `overflow: auto` in between). Closed `<details>` fire on open. **A
@@ -42,9 +42,12 @@ model. The TUI is untouched: it shows a fence as source.
    shows, never markup, and not in the bubble's `textContent`, which the page's dedupe and an annotation read (`copy.js`'s rule). CSS content can't be selected, so a click on the line copies its words.
    The toggle has an icon and an `aria-label`, no text (`copy.js`'s rule). A jump into the source shows it (`revealInHistory`).
    For a screen reader: the hidden `<pre>` isn't read, so the `<img>`'s alt names the toggle that shows it ("mermaid
-   diagram, its source under the Show the source button"). The natural size, a click on the picture, is also a
-   `.block-zoom` button (icon, `aria-label`, `aria-pressed`) for the keyboard: before the toggle, shown on keyboard focus
-   only, and taking no pointer while hidden, so the mouse's view is as it was.
+   diagram, its source under the Show the source button"). In the answer the picture is always fitted to the column. A
+   click on it opens the page's picture viewer (`createBlockHost`'s `openPicture`, app.js's `picture_viewer.js`;
+   [web-frontend.md](web-frontend.md#picture-viewer)) with its `data:` URL and its size from the viewBox, zoomable and
+   movable there; without `openPicture` (an older app.js) a click does nothing. The same is a `.block-zoom` button
+   ("Open in the viewer": icon, `aria-label`) for the keyboard: before the toggle, shown on keyboard focus only, and
+   taking no pointer while hidden; Esc in the viewer gives it the focus back.
 6. Cache: a `Map` on `lang + theme + source`, about 200 entries, holding the `data:` URL; a later `bubble.innerHTML` wipes the
    figure and the observer redraws in the same pass. No `crypto.subtle`: it's undefined on a plain-http LAN address. A system
    theme change redraws through the figure (a hidden `<pre>` never intersects).
@@ -57,7 +60,7 @@ model. The TUI is untouched: it shows a fence as source.
    from `DOMParser`, never a regex over model-influenced XML (exponents, a comment holding `<svg`, a `>` in an attribute, entities and
    prefixes all fooled one), and a vast one isn't decoded. Then the decoded size is checked: over the maximum, or a width or
    height of 0 (WebKit's 0 x 150 for a viewBox it can't hold), the block stays source with its line. `.block-img`'s CSS
-   `max-height` and natural `max-width` say the same number, a backstop whatever the parsing gets wrong. The decode is bounded too
+   `max-height` says the same number, a backstop whatever the parsing gets wrong. The decode is bounded too
    (15 s, the mark on until it ends). A very wide picture stays at least 120 px tall and scrolls sideways instead of a sliver.
 
 ## Security model

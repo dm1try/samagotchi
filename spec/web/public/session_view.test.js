@@ -70,6 +70,7 @@ function fakePage({ read = async () => ({}) } = {}) {
     markdownTip: { show: rec("markdownTip.show") },
     workingSet: null,
     wsPreview: { reset: rec("wsPreview.reset") },
+    pictures: { close: rec("pictures.close") },
     gapClock: createGapClock(),
     bubbles: {
       makeUserBubble, addEndBubble: rec("addEndBubble"), showGuardrailWarning: rec("showGuardrailWarning"),
@@ -149,7 +150,7 @@ test("renderSessionView of an empty session says so; a pending question and a co
   assert.equal(count(page, "questionCards.renderContinue"), 1);
 });
 
-test("forgetSession starts the page over; keepVerify (the same session again) keeps Verify and Revise", () => {
+test("forgetSession starts the page over; keepVerify (the same session again) keeps Verify, Revise, the reader and the picture viewer", () => {
   const { page, store, view } = fakePage();
   store.update({ current: { model: "qwen" } });
   view.forgetSession({ keepVerify: true });
@@ -163,8 +164,10 @@ test("forgetSession starts the page over; keepVerify (the same session again) ke
 
   // The same session again keeps the reader; another one (or the start page) resets it.
   assert.equal(count(page, "wsPreview.reset"), 0);
+  assert.equal(count(page, "pictures.close"), 0);
   view.forgetSession();
   assert.equal(count(page, "wsPreview.reset"), 1);
+  assert.equal(count(page, "pictures.close"), 1, "another session closes the picture viewer");
   assert.equal(count(page, "ownerVerify.clear"), 1);
   assert.deepEqual(page.calls.find((c) => c[0] === "setReviseAnchor"), ["setReviseAnchor", null]);
 });

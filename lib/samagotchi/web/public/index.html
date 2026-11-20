@@ -29,7 +29,7 @@
 /* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor); the image icon is composer.css's. */
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
 /* The phone's safe areas (the notch, the status bar, the home indicator; 0 elsewhere): main's padding, the bottom
-   sheets, the update sheet, the toast and the lightbox keep clear of them. One name per side, so the e2e can set them. */
+   sheets, the update sheet, the toast and the picture viewer keep clear of them. One name per side, so the e2e can set them. */
 :root{--safe-t:env(safe-area-inset-top,0px);--safe-r:env(safe-area-inset-right,0px);--safe-b:env(safe-area-inset-bottom,0px);--safe-l:env(safe-area-inset-left,0px)}
 *{box-sizing:border-box;margin:0;padding:0}
 /* No iOS text autosizing: it grows text in a box sized for the text as written (it clipped the session cards). */
@@ -795,10 +795,28 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 16px + var(-
 .thumb{max-height:120px;max-width:200px;border-radius:6px;border:1px solid var(--border-strong);cursor:zoom-in;object-fit:contain;background:var(--bg)}
 .activity-row .thumbs{flex-basis:100%;margin-left:var(--row-gutter)}
 @media(max-width:600px){.activity-row .thumbs{margin-left:0}}
-/* The image keeps clear of the notch and the home indicator (its padding: the safe areas; 0 on a desktop). */
-#lightbox{position:fixed;inset:0;z-index:50;background:var(--backdrop);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l)}
+/* The picture viewer (picture_viewer.js): an opaque surface in the page's background (a diagram's ink is the theme's text colour, which a dark backdrop hides on the light theme). Its padding is the safe areas, read as the fit's insets; the picture is placed at 0,0 by its box's size and translate, not by flex. touch-action:none: the page under it never scrolls or zooms. */
+#lightbox{position:fixed;inset:0;z-index:50;background:var(--bg);overflow:hidden;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none;box-sizing:border-box;padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l)}
+#lightbox.dragging{cursor:grabbing}
 #lightbox[hidden]{display:none}
-#lightbox img{max-width:min(96vw,100%);max-height:min(94vh,100%);border-radius:6px}
+#lightbox .pv-pic{position:absolute;left:0;top:0}
+#lightbox .pv-pic.waiting{visibility:hidden}
+/* No native image drag (it would cancel the pointer) and no iOS long-press sheet during a slow pan. */
+#lightbox img{display:block;width:100%;height:100%;-webkit-user-drag:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;pointer-events:none}
+/* ✕ top right, the bar bottom centre, glass cards a little more solid than the page's (they sit over any picture, a white screenshot too), both clear of the notch, the side insets and the home indicator; the standalone phone app's ✕ also clears iOS's blurred band under the clock. */
+#lightbox .pv-close{position:absolute;top:calc(var(--safe-t) + 10px);right:calc(var(--safe-r) + 10px)}
+@media (display-mode:standalone) and (max-width:600px){#lightbox .pv-close{top:calc(var(--safe-t) + 22px)}}
+#lightbox .pv-bar{position:absolute;left:calc((100% + var(--safe-l) - var(--safe-r)) / 2);bottom:calc(var(--safe-b) + 14px);transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:3px;cursor:default}
+#lightbox .pv-close,#lightbox .pv-bar{z-index:1;border-radius:12px;background:color-mix(in srgb,var(--bg-panel) 88%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+@media (prefers-reduced-transparency:reduce){#lightbox .pv-close,#lightbox .pv-bar{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass #lightbox :is(.pv-close,.pv-bar){background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
+#lightbox .pv-btn{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 8px;border-radius:9px;background:transparent;color:var(--text);font-size:13px}
+#lightbox .pv-fit{color:var(--text-2)}
+#lightbox .pv-btn svg{display:block}
+@media (pointer:coarse){#lightbox .pv-btn{min-width:44px;height:44px}}
+@media(hover:hover){#lightbox .pv-btn:hover{background:var(--bg-raised);filter:none}}
+#lightbox .pv-pct{min-width:52px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-2)}
+#lightbox .pv-sep{width:1px;height:18px;margin:0 3px;background:var(--border-strong)}
 /* The model picker (the start page, and a fresh chain link: start_page.js syncModelPick): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
 /* The start page's row stays one row (Start never wraps): the model name gives way first, down to its min-width, then the override chips ellipsize (100000x their shrink weight: at 1000x their share of the shrink was still a fraction of a pixel, enough for an ellipsis). Scoped off the session composer and a fresh link's button. */

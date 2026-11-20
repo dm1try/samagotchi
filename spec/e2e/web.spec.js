@@ -2517,7 +2517,9 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     await expect(drawn).toBeHidden();
     await expect(img).toBeVisible();
     // By keyboard: the picture's name says where its source is, and the zoom
-    // button, left of the toggle, shows on its focus and zooms on Enter.
+    // button, left of the toggle, shows on its focus and opens the picture
+    // viewer on Enter: its + zooms, a mouse drag moves the picture (no native
+    // image drag), Esc closes it and gives the focus back.
     await expect(img).toHaveAccessibleName("e2e-draw diagram, its source under the Show the source button");
     const figure = output.locator("figure.block-drawn");
     const zoom = figure.locator(".block-zoom");
@@ -2526,10 +2528,26 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     await expect(zoom).toBeFocused();
     await expect(zoom).toHaveCSS("opacity", "1");
     await page.keyboard.press("Enter");
-    await expect(figure).toHaveClass(/\bnatural\b/);
-    await expect(zoom).toHaveAttribute("aria-pressed", "true");
-    await page.keyboard.press("Enter");
-    await expect(figure).not.toHaveClass(/\bnatural\b/);
+    const viewer = page.getByRole("dialog", { name: "Picture viewer" });
+    await expect(viewer).toBeVisible();
+    const shown = viewer.locator("img");
+    await expect(shown).toHaveAttribute("src", src);
+    await expect(viewer.locator(".pv-pic")).not.toHaveClass(/\bwaiting\b/);
+    const fitted = await shown.boundingBox();
+    await viewer.getByRole("button", { name: "Zoom in" }).click();
+    await expect.poll(async () => (await shown.boundingBox()).width).toBeGreaterThan(fitted.width);
+    // Zoomed past the screen, so the drag isn't undone by the centring.
+    for (let i = 0; i < 6; i++) await viewer.getByRole("button", { name: "Zoom in" }).click();
+    const before = await shown.boundingBox();
+    const vp = page.viewportSize();
+    await page.mouse.move(vp.width / 2, vp.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(vp.width / 2 - 80, vp.height / 2 - 40, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await shown.boundingBox()).x).toBeLessThan(before.x - 40);
+    await viewer.press("Escape");
+    await expect(page.locator("#lightbox")).toBeHidden();
+    await expect(zoom).toBeFocused();
   };
   script("block_renderer");
   await send(page, "Draw it");
@@ -2643,6 +2661,12 @@ test("the image button: picked images are chips, a non-image stays out with a to
   await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await turnEnded(page, 1);
   await expect(page.locator("#chips")).toBeHidden();
+  // A click on the thumbnail opens it in the picture viewer; Esc closes it.
+  await page.locator(`${H} .bubble.user img.thumb`).last().click();
+  await expect(page.locator("#lightbox")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Picture viewer" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#lightbox")).toBeHidden();
 });
 
 // A's turn-end re-read (?tail=1) lands after B started: B keeps its own
