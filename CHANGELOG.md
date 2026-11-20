@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The terminal shows a peer's answer note as `Claude answered · <summary>` (`Codex answered · …`) instead of `note from context claude-outbox: …`.
+
 ## [0.179.0] - 2026-11-20
 
 ### Added
