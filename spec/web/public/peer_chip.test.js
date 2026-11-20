@@ -66,6 +66,7 @@ test("peerChipModel: each state's words, and the first that applies wins", () =>
   const remote = peerGroups([leg("codex", "outbox", { unread: true })]).peers[0];
   const r = peerChipModel(remote, [failed], NOW);
   assert.deepEqual([r.label, r.state, r.dot, r.key, r.name, r.peer], ["Codex · answers only", "answers-only", false, "peer:codex", "peer:codex", true]);
+  assert.equal(r.title, "no inbox attached here: it answers, chi can't send to it");
 });
 
 test("no exchanges (an older chi web, a peer the read doesn't name, a send not in the list): never can't send", () => {
@@ -115,7 +116,7 @@ test("peerPopoverTemplate: the head, the two ways, the exchanges newest first, t
 test("peerPopoverTemplate: answers only, a failed last send, no status command, the text read, no exchanges", () => {
   const remote = peerGroups([leg("codex", "outbox")]).peers[0];
   const a = drawn(peerPopoverTemplate(remote, [], { now: NOW }));
-  assert.equal(a.querySelector(".peer-pop-legs > div > span:last-child").textContent, "can't: paired through a remote");
+  assert.equal(a.querySelector(".peer-pop-legs > div > span:last-child").textContent, "can't: no inbox attached here");
   assert.ok(a.querySelector(".peer-pop-list") === null);
   assert.ok(a.querySelector('[data-act="status"]') === null);
   assert.equal(a.querySelector('[data-act="unpair"]').title, "Detach codex-outbox");
