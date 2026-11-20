@@ -148,9 +148,17 @@
   .wsr-bar{height:8px}
   .wsr-body{padding:10px 0;gap:10px}
   .wsr-card{border-left:0;border-right:0;border-radius:0}
+  .wsr-card-h{flex-wrap:nowrap;gap:6px;padding:6px 8px}
+  .wsr-card-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wsr-card-m,.wsr-pill{display:none}
+  .wsr-card-h .wsr-call{flex:none;margin-left:0;white-space:nowrap}
   .wsr-lines{font-size:11.5px;line-height:18px}
   .wsr-card .read-lines code{min-width:max-content}
-  .wsr-view button{min-width:44px;min-height:44px;padding:1px 6px;font-size:12.5px}
+  .wsr-view{flex:none;gap:0}
+  .wsr-view button{position:relative;min-width:44px;width:44px;min-height:44px;height:44px;padding:0;border:0;background:transparent;line-height:44px;font-size:12.5px}
+  .wsr-view button::before{content:"";position:absolute;inset:13px 0;border:1px solid transparent;border-radius:999px}
+  .wsr-view button.on{border:0;background:transparent}
+  .wsr-view button.on::before{border-color:var(--border-strong);background:var(--bg-inset)}
   .wsr-md{padding:10px 14px}
   .wsr-banner,.wsr-tabs{margin:10px 12px 0}
   .wsr-tabs{max-width:none}
