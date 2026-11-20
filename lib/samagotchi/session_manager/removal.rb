@@ -426,7 +426,7 @@ module Samagotchi
       # worker takes the session in the middle; the starting marker is read
       # again under it (a resume that claimed the start since the caller's
       # check keeps the session; one after it sees the lock held). Taken
-      # without waiting: one that took it since the check keeps the session.
+      # briefly, so a worker that took it since the check keeps the session.
       # The lock file goes with the directory; a worker starting after that
       # makes a new one, and finds no session (Session.load). The delete and
       # the retention sweep and failed-continue cleanup use #remove_files.
@@ -443,7 +443,7 @@ module Samagotchi
       #   refused after another of the batch went).
       def remove_session_files(id, path, dir, state_dir:, still: nil, locked: false,
                                running_tasks: RunningTasks::Policy::IGNORE)
-        lock = !locked && Dir.exist?(dir) ? OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: 0) : nil
+        lock = !locked && Dir.exist?(dir) ? OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: OwnerLock::PROBE_WAIT) : nil
         raise DeleteRefused.new(id, :worker_running) if !locked && Dir.exist?(dir) && lock.nil?
         raise DeleteRefused.new(id, :worker_running) if StartingMarker.fresh?(id, state_dir: state_dir)
         raise DeleteRefused.new(id, :changed) if still && !still.call

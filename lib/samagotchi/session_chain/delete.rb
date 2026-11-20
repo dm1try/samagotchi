@@ -280,11 +280,11 @@ module Samagotchi
         end
       end
 
-      # The block under the owner lock (kind deleting, taken without
-      # waiting) of every id with a folder, the starting marker read again
-      # under each, held until the block returns: a worker that holds one,
-      # or a start claimed meanwhile, refuses before anything goes, and
-      # none takes one midway.
+      # The block under the owner lock (kind deleting, with a brief
+      # probe-sized wait) of every id with a folder, the starting marker
+      # read again under each, held until the block returns: a worker that
+      # holds one, or a start claimed meanwhile, refuses before anything
+      # goes, and none takes one midway.
       # @raise [SessionManager::DeleteRefused] :worker_running
       def locked(ids, state_dir)
         locks = []
@@ -292,7 +292,7 @@ module Samagotchi
           dir = Session.session_dir(sid, state_dir: state_dir)
           next unless Dir.exist?(dir)
 
-          lock = OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: 0)
+          lock = OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: OwnerLock::PROBE_WAIT)
           raise SessionManager::DeleteRefused.new(sid, :worker_running) unless lock
 
           locks << lock

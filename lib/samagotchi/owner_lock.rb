@@ -26,6 +26,8 @@ module Samagotchi
     # The kind a deleter holds the lock as while a session's files go.
     DELETING = "deleting"
     RETRY_INTERVAL = 0.05
+    # Let a delete retry past an owner's momentary shared-lock probe.
+    PROBE_WAIT = 2 * RETRY_INTERVAL
     OWNER_READ_ATTEMPTS = 10
     # Seconds .await_release waits past a leaving worker's own budget: its
     # last save, the task watch's absorb, its exit.
