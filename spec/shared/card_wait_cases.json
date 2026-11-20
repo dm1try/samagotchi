@@ -1,0 +1,15 @@
+{
+  "description": "An in-turn plugin card's wait kind: Bridge::CardWait.kind and card_kinds.js cardWait(card, { inTurn: true }).kind agree on each case.",
+  "cases": [
+    { "name": "check-in asking", "card": { "id": "c", "title": "3 tool calls", "level": "info", "actions": [{ "label": "Nudge", "command": "/checkin nudge" }] }, "kind": "asks" },
+    { "name": "check-in settled (no actions)", "card": { "id": "c", "title": "check-in", "level": "info", "actions": [] }, "kind": null },
+    { "name": "no actions field", "card": { "id": "c", "title": "t" }, "kind": null },
+    { "name": "an action without a command", "card": { "id": "c", "actions": [{ "label": "Open" }] }, "kind": null },
+    { "name": "an empty command", "card": { "id": "c", "actions": [{ "label": "x", "command": "" }] }, "kind": null },
+    { "name": "a null action", "card": { "id": "c", "actions": [null, { "label": "y", "command": "/go" }] }, "kind": "asks" },
+    { "name": "a warning", "card": { "id": "w", "level": "warn", "title": "Careful" }, "kind": "warn" },
+    { "name": "a warning that asks (asks first)", "card": { "id": "w", "level": "warn", "actions": [{ "label": "Stop", "command": "/stop" }] }, "kind": "asks" },
+    { "name": "a warning cleared to info", "card": { "id": "w", "level": "info", "title": "Fine" }, "kind": null },
+    { "name": "an error level", "card": { "id": "e", "level": "error" }, "kind": null }
+  ]
+}

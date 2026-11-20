@@ -168,14 +168,26 @@ async function resyncTo(page, show) {
 // the stageShape fields (and "history") that differ. A build
 // that brings one back lists it here with its reason.
 const EXPECTED = {
-  // Live, the answered approval went into the history under its lead-in
-  // while check-in's card still waited in the stage (handed off at the end);
-  // a reload puts the question before the answer, after the drawn turn's
-  // check-in card. The reload can't tell when a card stopped asking (a card
-  // tapped Keep going/Nudge leaves the stage earlier; TurnAccumulator's
-  // fold_card keeps only its first arrival). Follow-up: a server-side record
-  // of where a card stopped asking, or questions as drawing parts.
-  "checkin_approval/turn end": ["history"],
+  // At a turn's end none: a drawn turn's pieces beside its block come back
+  // in the order live left them (turn_settle.js, the drawing's part_settled
+  // and question events).
+  // Mid-turn (a reload or a join while the turn runs: the stage draws the
+  // running turn, a follow-up). The reload can't tell when a card stopped
+  // waiting (a join replays without cards: the snapshot's come after).
+  // A card that settled in a turn a docking card opened: live the turn stays
+  // opened in the history with the card at its end; the reload has nothing
+  // waiting and draws the turn in the stage (the card a row of a step).
+  "checkin_settled/settled": ["block", "history", "prompt"],
+  "checkin_settled_then_approval/settled": ["block", "history", "prompt"],
+  "checkin_merged_line/settled": ["block", "history", "prompt"],
+  // Settled after the answered approval, the turn opened: live the card goes
+  // under the answered question; the reload (a replay without cards, then
+  // the snapshot's) draws it as a row of the running step, above the lead-in.
+  "approval_then_checkin_settled/settled": ["history"],
+  "warn_card_cleared/cleared": ["history"],
+  // The stage's extras: live the warn card (first) then the approval; the
+  // reload upserts the snapshot's cards after the replay's question.
+  "warn_card_cleared/both": ["cards"],
 };
 
 const changed = (live, reloaded) => Object.keys(live).filter((k) => JSON.stringify(live[k]) !== JSON.stringify(reloaded[k]));

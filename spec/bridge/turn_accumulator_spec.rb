@@ -553,6 +553,49 @@ exit: 0"
       expect(described_class.join_events(current_turn: turn).map { |e| e[:type] }).not_to include(:card)
       expect(described_class.messages_of(turn)).to eq([{ role: "user", content: "hi", turn_id: "t1" }])
     end
+
+    describe "a settle part (where it stopped waiting)" do
+      let(:asking) { card.merge(in_turn: true, title: "3 tool calls", actions: [{ label: "Nudge", command: "/checkin nudge" }]) }
+      let(:read) { { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", params: "a" } }
+
+      def kinds = acc.current_turn[:parts].map { |part| part[:kind] }
+      def settles = acc.current_turn[:parts].select { |part| part[:kind] == "settle" }
+
+      it "marks the place an update ends its asking, after the card replaced in place" do
+        feed({ type: :turn_started, prompt: "hi" }, { type: :generation_started, iteration: 1 }, asking, read,
+             card.merge(in_turn: true, title: "check-in"))
+
+        expect(kinds).to eq(%w[generation card tool settle])
+        expect(settles).to eq([{ kind: "settle", of: "card", id: "check-in", was: "asks", now: nil }])
+        expect(acc.current_turn[:parts][1][:event][:title]).to eq("check-in")
+      end
+
+      it "writes one per change of wait kind: none for a title-only update, one asks → warn, one warn → none" do
+        feed({ type: :turn_started, prompt: "hi" }, asking, asking.merge(title: "4 tool calls"), asking.merge(title: "5 tool calls"),
+             card.merge(in_turn: true, level: "warn"), card.merge(in_turn: true, level: "warn", title: "still"),
+             card.merge(in_turn: true, level: "info"))
+
+        expect(settles.map { |part| part.slice(:was, :now) }).to eq([{ was: "asks", now: "warn" }, { was: "warn", now: nil }])
+      end
+
+      it "writes none for a card that never waited, nor for one that starts waiting later" do
+        feed({ type: :turn_started, prompt: "hi" }, card.merge(in_turn: true), card.merge(in_turn: true, body: "x"), asking)
+
+        expect(settles).to eq([])
+      end
+
+      it "replays as a part_settled at its place, with or without cards, and never a message" do
+        feed({ type: :turn_started, prompt: "hi", turn_id: "t1" }, { type: :generation_started, iteration: 1 }, asking, read,
+             card.merge(in_turn: true))
+        turn = acc.current_turn
+        settled = { type: :part_settled, of: "card", id: "check-in", was: "asks", now: nil }
+
+        expect(described_class.replay_events(turn, cards: true).map { |e| e[:type] }).to eq(%i[turn_started generation_started card tool_call_started part_settled])
+        expect(described_class.replay_events(turn, cards: true).last).to eq(settled)
+        expect(described_class.replay_events(turn).last).to eq(settled)
+        expect(described_class.messages_of(turn)).to eq([{ role: "user", content: "hi", turn_id: "t1" }])
+      end
+    end
   end
 
   it "keeps the last idle recap until the next turn starts" do

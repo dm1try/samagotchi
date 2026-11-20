@@ -6,6 +6,7 @@ require_relative "../steer"
 require_relative "../tool_output_cut"
 require_relative "../tool_row_fields"
 require_relative "../turn_origin"
+require_relative "card_wait"
 require_relative "turn_notice"
 
 module Samagotchi
@@ -149,8 +150,8 @@ module Samagotchi
       # tool_call_started and, once finished, its tool_call_completed (with
       # the live activity: action, tool, params, status), a merged_input
       # (the one synthetic type) per merged prompt, a steer-only
-      # pending_input_merged per steer, a reminder_injected, and a notice
-      # part's own event. Card parts only with +cards+ (a finished turn's
+      # pending_input_merged per steer, a reminder_injected, a notice
+      # part's own event, and a part_settled per settle part. Card parts only with +cards+ (a finished turn's
       # drawing, chi web's unfold of it): a running turn's join gets its cards
       # from CardStore's snapshot.
       # @param started_at [String, nil] the turn's start, on turn_started
@@ -204,6 +205,11 @@ module Samagotchi
 
             close_text.call
             events << part[:event].merge(type: :card, in_turn: true)
+          when "settle"
+            # Where a card stopped waiting (#fold_card). A join without
+            # cards gets it too: a page with no such card ignores it. A
+            # mark, not a row: an open text stays open.
+            events << { type: :part_settled, of: part[:of], id: part[:id], was: part[:was], now: part[:now] }
           end
         end
         events
@@ -477,11 +483,23 @@ module Samagotchi
       private_constant :CARD_FIELDS
 
       # A card the turn shows in its step; one with an earlier card's id
-      # replaces that part where it was.
+      # replaces that part where it was (its arrival). When that update
+      # ends a wait (CardWait: asking, a warning) for another (none, a
+      # warning), a settle part marks the place it stopped waiting, where
+      # live moved it (cards_place.js upsertCard): { kind: "settle", of:
+      # "card", id:, was:, now: }. A card that starts waiting later gets
+      # none (live doesn't move it back). A question needs no mark: its own
+      # notice parts (question_requested, question_answered /
+      # question_cancelled) are its arrival and its settle.
       def fold_card(parts, event)
         card = { kind: "card", id: event[:id], event: Marshal.load(Marshal.dump(event.slice(*CARD_FIELDS))) }
         index = parts.index { |part| part[:kind] == "card" && part[:id] == card[:id] }
-        index ? parts[index] = card : parts << card
+        return parts << card unless index
+
+        was = CardWait.kind(parts[index][:event])
+        parts[index] = card
+        now = CardWait.kind(card[:event])
+        parts << { kind: "settle", of: "card", id: card[:id], was: was, now: now } if was && was != now && now != "asks"
       end
 
       # The turn's final fold to the hook (#initialize's on_turn_end).

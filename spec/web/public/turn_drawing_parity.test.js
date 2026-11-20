@@ -48,6 +48,10 @@ function drawnShape(show) {
   document.body.innerHTML = '<div id="history"></div>';
   const historyEl = document.getElementById("history");
   historyEl.append(turnHistoryNodes(show.messages, {}, { thumbs: () => null, drawings: show.turn_drawings }));
+  // The live page here draws no question cards (livePage() without
+  // questions): the reload's question slots go as placeSnapshotCards drops
+  // a slot no question came for.
+  historyEl.querySelectorAll("[data-question-slot]").forEach((el) => el.remove());
   const ids = Object.keys(show.turn_drawings || {});
   const last = ids[ids.length - 1];
   return historyShape([...historyEl.children].filter((el) => el.dataset.drawn === last));

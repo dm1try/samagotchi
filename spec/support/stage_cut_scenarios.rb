@@ -50,9 +50,13 @@ module StageCutScenarios
   # prompt, then each step's reply (+words+) with its calls (tool_call: the
   # name, the JSON arguments, the tool's output and the event's tool id) and
   # their responses, then the answer.
+  # A step's +merged+ lines (texts) are user lines merged into the turn
+  # before its reply (Steer::INPUT_KIND, as the engine saves them;
+  # Web::MessageDisplay reads them as merged: true at that step).
   def turn_messages(id, steps, answer)
     [user("do it", id), *steps.flat_map do |step|
-      [model(step[:words], step[:calls]),
+      [*Array(step[:merged]).map { |line| { role: "user", kind: "input", content: line, at: AT } },
+       model(step[:words], step[:calls]),
        *step[:calls].map { |c| { role: "tool_response", content: c[:output], tool_call_id: c[:id], tool_ids: [c[:tool_id]] } }]
     end, model(answer)]
   end
@@ -69,6 +73,52 @@ module StageCutScenarios
 
   def tool_call(name, arguments, output, tool_id, id = "c#{tool_id.delete_prefix("t")}")
     { id: id, name: name, arguments: arguments, output: output, tool_id: tool_id }
+  end
+
+  # A line sent from another tab while the turn runs (its queued bubble on
+  # every page), merged into the turn at +iteration+'s boundary.
+  def merged(iteration, line, enqueued_id = "e2")
+    [{ type: :turn_enqueued, enqueued_id: enqueued_id, client_id: "web:other", prompt: line },
+     { type: :input_merged, origins: [{ client_id: "web:other", enqueued_id: enqueued_id }] },
+     { type: :pending_input_merged, iteration: iteration, count: 1, content: line, steers: [] }]
+  end
+
+  # check-in's card: asking (its actions), or settled (redrawn without them,
+  # as the bundle's close_card does).
+  CHECKIN_ACTIONS = [{ label: "Nudge", command: "/checkin nudge" }, { label: "Keep going", command: "/checkin later" },
+                     { label: "Stop", command: "/checkin stop" }].freeze
+
+  def checkin_asks(id = "check-in-1")
+    { type: :card, id: id, source: "check-in", title: "3 tool calls, no answer yet", body: "Still on it?", level: "info",
+      actions: CHECKIN_ACTIONS, in_turn: true }
+  end
+
+  def checkin_settled(id = "check-in-1")
+    { type: :card, id: id, source: "check-in", title: "check-in", body: "Nudged.", level: "info", actions: [], in_turn: true }
+  end
+
+  # A step that reads +path+ (tool id +tool_id+), its call and its events.
+  def read_step(iteration, path, tool_id, words: "")
+    events = [gen(iteration), *(words.empty? ? [] : [text(iteration, words)]),
+              call_started(iteration, "read", "path=\"#{path}\"", tool_id), call_done(iteration, "read", "path=\"#{path}\"", tool_id, "[read]\n#{path}")]
+    [events, tool_call("read", "{\"path\":\"#{path}\"}", "[read]\n#{path}", tool_id)]
+  end
+
+  # +list+: the turn's events with [:cut, label] markers where a page
+  # reloads (a cut's +at+ is the count of events before its marker).
+  def cut_list(list)
+    events = []
+    cuts = []
+    list.each { |e| e.is_a?(Array) && e.first == :cut ? cuts << { at: events.size, label: e.last } : events << e }
+    [events, cuts]
+  end
+
+  # A turn in +steps+ (the messages' steps) ended by "Done." at +last+'s
+  # step, from +list+ (events and cut markers; the start, the answer's step
+  # and the end added here).
+  def settle_turn(description, id:, list:, steps:, last:)
+    events, cuts = cut_list([started(id, "do it"), *list, gen(last), text(last, "Done."), done(last), completed(id, "Done.")])
+    with_turn_end({ description: description, prompt: "do it", turn_id: id, events: events, cuts: cuts }, turn_messages(id, steps, "Done."))
   end
 
   def asked(pending) = { type: :question_requested, pending_question: pending.merge(status: "pending") }
@@ -145,6 +195,83 @@ module StageCutScenarios
                                     { words: "Running the command.", calls: [tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t2")] }], "Done.")
       with_turn_end({ description: "check-in's card still open, then an approval: two cards wait.", prompt: "do it", turn_id: id, events: events,
                       cuts: [{ at: 5, label: "checkin" }, { at: 10, label: "both" }, { at: 14, label: "approval answered" }] }, messages)
+    },
+    # The cards that settle: check-in's card redrawn without its actions, a
+    # warning redrawn at info. An approval asks after its call's
+    # tool_call_started (ToolRunner#run: the gate votes first, the ask comes
+    # after the row), as in checkin_approval.
+    checkin_settled: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      r2, c2 = read_step(2, "b", "t2")
+      settle_turn("check-in's card asks, then is redrawn without its actions; the turn goes on.", id: "turn-cs", last: 3,
+                  steps: [{ words: "", calls: [c1] }, { words: "", calls: [c2] }],
+                  list: [*r1, checkin_asks, [:cut, "checkin"], done(1), *r2, checkin_settled, [:cut, "settled"], done(2)])
+    },
+    checkin_settled_then_approval: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      r2, c2 = read_step(2, "b", "t2")
+      cmd = 'command="echo ok"'
+      run = tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t3")
+      settle_turn("check-in's card settles, then an approval is asked and answered.", id: "turn-csa", last: 4,
+                  steps: [{ words: "", calls: [c1] }, { words: "", calls: [c2] }, { words: "Running the command.", calls: [run] }],
+                  list: [*r1, checkin_asks, [:cut, "checkin"], done(1), *r2, checkin_settled, [:cut, "settled"], done(2),
+                         gen(3), text(3, "Running the command."), call_started(3, "execute", cmd, "t3"), asked(approval("a1")), [:cut, "approval waiting"],
+                         answered("a1", "Allow once"), call_done(3, "execute", cmd, "t3", "[execute]\nok"),
+                         done(3), [:cut, "approval answered"]])
+    },
+    approval_then_checkin_settled: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      r3, c3 = read_step(3, "b", "t3")
+      cmd = 'command="echo ok"'
+      run = tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t2")
+      settle_turn("An approval answered while check-in's card asks, then the card settles.", id: "turn-acs", last: 4,
+                  steps: [{ words: "", calls: [c1] }, { words: "Running the command.", calls: [run] }, { words: "", calls: [c3] }],
+                  list: [*r1, checkin_asks, [:cut, "checkin"], done(1), gen(2), text(2, "Running the command."),
+                         call_started(2, "execute", cmd, "t2"), asked(approval("a1")), [:cut, "both"], answered("a1", "Allow once"),
+                         call_done(2, "execute", cmd, "t2", "[execute]\nok"), done(2), [:cut, "approval answered"],
+                         *r3, checkin_settled, [:cut, "settled"], done(3)])
+    },
+    question_no_leadin_with_checkin: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      params = 'question="Which one?"'
+      ask = tool_call("ask_user_question", '{"question":"Which one?"}', "A", "t2")
+      question = { id: "q1", kind: "question", question: "Which one?", options: [{ label: "A" }, { label: "B" }] }
+      settle_turn("A question with no lead-in (its step has no text), asked and answered while check-in's card asks.", id: "turn-qnc", last: 3,
+                  steps: [{ words: "", calls: [c1] }, { words: "", calls: [ask] }],
+                  list: [*r1, checkin_asks, [:cut, "checkin"], done(1), gen(2), call_started(2, "ask_user_question", params, "t2"),
+                         asked(question), [:cut, "both"], answered("q1", "A"), call_done(2, "ask_user_question", params, "t2", "A"),
+                         done(2), [:cut, "question answered"]])
+    },
+    checkin_merged_line: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      r2, c2 = read_step(2, "b", "t2")
+      settle_turn("A line merged into the turn between check-in's card arriving and settling.", id: "turn-cml", last: 3,
+                  steps: [{ words: "", calls: [c1] }, { merged: ["also check b"], words: "", calls: [c2] }],
+                  list: [*r1, checkin_asks, [:cut, "checkin"], done(1), *merged(2, "also check b")[0, 1], [:cut, "queued"], *merged(2, "also check b")[1..], [:cut, "merged"],
+                         *r2, checkin_settled, [:cut, "settled"], done(2)])
+    },
+    merged_then_approval: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      cmd = 'command="echo ok"'
+      run = tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t2")
+      settle_turn("A line merged into a turn nothing opened, then an approval under its lead-in: the turn opens first.", id: "turn-mta", last: 3,
+                  steps: [{ words: "", calls: [c1] }, { merged: ["also check b"], words: "Running the command.", calls: [run] }],
+                  list: [*r1, done(1), *merged(2, "also check b"), gen(2), text(2, "Running the command."),
+                         call_started(2, "execute", cmd, "t2"), asked(approval("a1")), [:cut, "approval waiting"],
+                         answered("a1", "Allow once"), call_done(2, "execute", cmd, "t2", "[execute]\nok"), done(2), [:cut, "approval answered"]])
+    },
+    warn_card_cleared: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      r3, c3 = read_step(3, "b", "t3")
+      cmd = 'command="echo ok"'
+      run = tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t2")
+      warn = { type: :card, id: "spend", source: "cost-cap", title: "Near the cost cap", body: "$4.80 of $5.00.", level: "warn", in_turn: true }
+      settle_turn("A warn card, then an approval (the waiting cut), then the card redrawn at info.", id: "turn-wc", last: 4,
+                  steps: [{ words: "", calls: [c1] }, { words: "Running the command.", calls: [run] }, { words: "", calls: [c3] }],
+                  list: [*r1, warn, done(1), gen(2), text(2, "Running the command."), call_started(2, "execute", cmd, "t2"), asked(approval("a1")), [:cut, "both"],
+                         answered("a1", "Allow once"), call_done(2, "execute", cmd, "t2", "[execute]\nok"),
+                         done(2), [:cut, "approval answered"], *r3, warn.merge(level: "info", body: "Spend back under the cap."),
+                         [:cut, "cleared"], done(3)])
     },
     two_approvals: lambda {
       id = "turn-2a"

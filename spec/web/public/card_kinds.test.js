@@ -6,6 +6,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 for (const k of ["MutationObserver", "CustomEvent", "localStorage", "sessionStorage", "getSelection"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
@@ -99,6 +100,29 @@ for (const [name, card] of Object.entries(PLUGIN)) {
     assert.equal(wait.kind, waitingKind(el));
     assert.equal(wait.approval, false);
     if (wait.kind) assert.equal(wait.summary, domText(el));
+  });
+}
+
+test("cardWait inTurn: a card's own in_turn unless the caller says", () => {
+  const actions = [{ label: "Go", command: "/go" }];
+  // Between turns with actions: waits as nothing (or its warning) by default.
+  assert.equal(cardWait({ id: "b", actions }).kind, null);
+  assert.equal(cardWait({ id: "b", level: "warn", actions }).kind, "warn");
+  // The caller knows it asks by its actions alone (an update, a drawing's card).
+  assert.equal(cardWait({ id: "b", actions }, { inTurn: true }).kind, "asks");
+  assert.equal(cardWait({ id: "b", level: "warn", actions }, { inTurn: true }).kind, "asks");
+  // And the other way: an in-turn card read as not in a turn.
+  assert.equal(cardWait({ id: "c", in_turn: true, actions }, { inTurn: false }).kind, null);
+  // No command: never asks, whatever the turn.
+  assert.equal(cardWait({ id: "d", actions: [{ label: "x" }] }, { inTurn: true }).kind, null);
+  assert.equal(cardWait({ id: "e" }, { inTurn: true }).kind, null);
+});
+
+// The Ruby twin (Bridge::CardWait) reads the same cases (spec/bridge/card_wait_spec.rb).
+const CASES = JSON.parse(readFileSync(new URL("../../shared/card_wait_cases.json", import.meta.url), "utf8")).cases;
+for (const c of CASES) {
+  test(`cardWait, the shared case "${c.name}": ${c.kind}`, () => {
+    assert.equal(cardWait(c.card, { inTurn: true }).kind, c.kind);
   });
 }
 

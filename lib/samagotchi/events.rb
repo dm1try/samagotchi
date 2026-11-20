@@ -14,13 +14,14 @@ module Samagotchi
     TURN_KEPT = %i[turn_completed turn_canceled].freeze
     # The kinds of a running turn's parts (Bridge::TurnAccumulator), which a
     # joining UI replays as live events (a card part only in a finished
-    # turn's drawing: a join takes its cards from CardStore).
-    PART_KINDS = %w[generation thinking text tool input steer reminder notice card].freeze
+    # turn's drawing: a join takes its cards from CardStore; a settle part,
+    # where a card stopped waiting).
+    PART_KINDS = %w[generation thinking text tool input steer reminder notice card settle].freeze
     # Types no Engine emits that a UI handles: the Bridge's stream frames
-    # and the one synthetic replay event (a prompt merged into the turn,
-    # TurnAccumulator.replay_events).
+    # and the synthetic replay events (TurnAccumulator.replay_events: a
+    # prompt merged into the turn, a settle part's mark).
     STREAM_FRAMES = %i[snapshot reset stream_closed].freeze
-    SYNTHETIC = %i[merged_input].freeze
+    SYNTHETIC = %i[merged_input part_settled].freeze
 
     # The client-facing lifetime of each event. Rows are drawn in the
     # conversation and survive reload; state updates the live UI; transient

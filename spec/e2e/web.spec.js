@@ -2228,6 +2228,28 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(reloaded.locator(".steer-text")).toContainText("You've made 3 tool calls in this turn");
 });
 
+// check-in's card still asking, then an approval asked and answered: live,
+// the answered approval sits under its lead-in, check-in's card after it
+// (handed off at the end); a reload keeps that order (turn_settle.js, the
+// drawing's question events).
+test("check-in still asking and an answered approval: a reload keeps the order live left them in", async ({ page, script }) => {
+  script("check_in_approval");
+  await send(page, "Look through the README, then run the command");
+  const approval = page.locator(`${H} .bubble.question.approval`);
+  await expect(approval.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
+  await expect(page.locator(`${HC} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" })).toHaveCount(1);
+  const first = approval.locator(".question-option input").first();
+  await first.check();
+  await first.press("Enter");
+  await expect(answer(page)).toHaveText("The approved command ran.");
+  const order = () => page.locator("#history > .bubble.question.approval, #history > .plugin-card")
+    .evaluateAll((els) => els.map((el) => (el.matches(".plugin-card") ? "check-in" : "approval")));
+  await ended(1)(page);
+  expect(await order()).toEqual(["approval", "check-in"]);
+  await expectSameAfterReload(page, ended(1));
+  expect(await order()).toEqual(["approval", "check-in"]);
+});
+
 // loop-guard's thinking watch: the first generation's thinking goes round in
 // a 3-sentence cycle (it would stream for ~11 s); loop-guard cuts it with a
 // warn notice, the loop asks again (held 3 s), and the retry answers. The
