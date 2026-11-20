@@ -317,7 +317,8 @@ preview for a long one). 400 without a known `kind` and a `key`.
 
 ## The page's overlay
 
-The page keeps its row-derived items and their `at` ordinals (the step tags' jump path), and overlays the server's
+The page keeps its row-derived items and their `at` (first entry) and `last` (newest touch) ordinals (the step
+tags' jump path; `itemsOfTurn` moves `last` at every touch, `sessionItems` keeps the latest turn's), and overlays the server's
 `state` and `tokens` by key (`working_set.js overlay`):
 - files by absolute path (the row's `ref.path`; a title fallback won't match, so it stays live);
 - memories by name;
@@ -356,16 +357,30 @@ passes `working_set_updated` to it, and does nothing when the flag is off. A new
 session lens; a footprint (`footClick`) and the rail (`openTurn`) open the lens on their turn. In a turn lens
 (`working_set.js turnLens`, `lensItem`) the rows the turn touched are `lit` and the rest `dim` (`opacity:
 var(--ws-lens-dim)`, a `:root` token in both palettes). A lit row is the session item's state, tokens and actions with
-the turn item's `at`, ops and count (its step tag is the turn's, `s3`; a dimmed row keeps the session's, `t1·s3`): the
+the turn item's `at`, ops and count (its step tag is the turn's, `s3`; a dimmed row keeps the session's, its last
+touch, `t1·s3`; `rowTemplate` picks by the lens class, since a lit row carries the session's `last` too): the
 turn item is passed through, the session item is never overwritten. The header's `session | ‹ turn N ›` steps over the
 finished turns and the running one (`lastTurn()`), `‹` and `›` disabled at the ends; the line under it reads "turn N
 touched A · B new" (new: the session set's first `at` is this turn's, a prompt memory never). A folded inner group
 (`labelsTemplate`) shows its lit members while folded. A new seed that leaves the lens past the last turn, or a reset
 that drops the running turn, puts it back to the session.
 
+**The list's order** (`ws_order.js`). The popover's list only: the rail, the footprints and the reader's side list
+(`items()`) keep the set's entry order. `recencyOrder` sorts the items newest `last` (else `at`: an older page's item)
+first, by turn, step, row, stable on ties; an item with neither (a preloaded memory never read, a used memory no row
+explains) goes after the rest in its order, so without parts too those memories end the memories. The order is
+taken when the list opens (`show` with `opening`: the item keys, `openKeys`) and held while it is open
+(`heldOrder`): an item not among them comes in on top, newest first, the others stay where they were drawn, one that
+left the set is gone. The lens buttons, a refresh, a seed's redraw keep it; a footprint or the rail clicked while it
+is open opens it again (`popover.open`), which takes it again; a close drops it. `bodySections` filters by kind and
+`fold` puts a group at its first member's place, so a folded directory group stands at its newest member's place,
+and a new file in a folder already grouped brings the group to the top (accepted: the group moves as one). A turn lens keeps
+the order (lit rows light where they stand). The session lens's step tag (and a dimmed row's) is the last touch:
+its text, its jump and its title ("last touched at turn N (prompt), step S"); a lit row's is the turn's entry.
+
 **The head view: sections** (`ws_sections.js headSections`, drawn by `working_set_view.js headTemplate`). With the
 session's `prompt_parts` (the worker's sizes of its system prompt; `promptParts` on the page) the list is what is in
-chi's head, in three sections:
+chi's head, in three sections, drawn as Read, Conversation, From the start (every reader finds a section by its key):
 - **From the start** (`start`): every part in prompt order, the tools part first. A memory part (identity, a model
   note, a preload) IS a memory row: merged with the session set's rows of the same memory, else a row of its own
   (identity: the set never lists it). **The match is scope + name** (`same`): the names match (`memoryName`, which
@@ -390,7 +405,9 @@ chi's head, in three sections:
   the tool schemas out, so without server usage the rest can go negative and the row hides); the "~" says so.
 
 **Held twice.** A start memory row whose ops include `read` is held twice: in the prompt and in a read's output. The
-session lens tags it `held twice` (warn tokens); a turn lens whose items read it lights it amber with a note under it:
+session lens tags it `held twice` (warn tokens), and the start header counts them, folded or open (`· N held
+twice`, the section's `twice`, in `--warn-text`: a span of its own after the meta, so on a phone the meta's ellipsis
+cuts the meta first); a turn lens whose items read it lights it amber with a note under it:
 "read again in this turn: already in the prompt, held twice (+X)". A lens lights a merged row by any of its merged
 keys (`lensTouched`), and a part-only start row (no merged item, e.g. `x@system`) by its bare name too: a turn's rows
 come from tool titles, which carry no scope, so in a turn lens a project `x` read lights a system `x`'s own row (lit,
@@ -401,7 +418,9 @@ drop strikes the row where it stands (today's state words); the server knows an 
 changed it, so a turn lens has no forget count.
 
 **Section folds.** Each section header folds (`data-ws="section"`), per session (`chi_ws_sections_folded:<session>`,
-`session_prefs.js`); none stored: all open. Conversation has no header to fold: a stored `talk` (an older page's) is
+`session_prefs.js`); none stored: From the start folded, the rest open (`foldedSections(null)`; the view reads the pref
+with no fallback, so nothing stored is told from a stored `[]`, which is all open). A stored list is used as it is, so
+a session folded or opened by hand keeps that. Conversation has no header to fold: a stored `talk` (an older page's) is
 ignored (`foldedSections`) and the next toggle writes the list without it. Folded, a section shows only the rows the lens lights (the read section's
 lit members flat, without their inner groups). The header carries no size (the name, the lens, the ring
 and ×: one line on a phone at 390 px); the line under it does. The session lens's: "in chi's head now · ~X of Y"
