@@ -213,6 +213,9 @@ module Samagotchi
     def no_installed_bundle(bundle) = "no installed bundle #{bundle}"
     def takes_keys(bundle, keys) = keys.empty? ? "#{bundle} takes no settings" : "#{bundle} takes #{keys.join(", ")}"
     def wrong_type(bundle, key, what, value) = "#{bundle} takes #{what} for #{key}, not #{value.inspect}"
+    # A bundle the verdict refuses as a whole (InstalledBundles::Standing:
+    # requires_chi), +reason+ its refusal's text.
+    def unusable(bundle, reason) = "#{bundle} is installed but this chi can't use it: #{reason}"
 
     # --set's values parsed and checked (.parse, .check!) against the
     # installed bundles (.availability).

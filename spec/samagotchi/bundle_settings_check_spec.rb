@@ -48,6 +48,14 @@ RSpec.describe Samagotchi::BundleSettingsCheck do
       .to raise_error(Samagotchi::SessionConfig::Error, "--set typed.limit: typed takes a number (or off) for limit, not \"five\"")
   end
 
+  it "warns on a bundle this chi is too old for, with the verdict's reason, and checks none of its keys" do
+    install("future", "requires_chi: \">= 99.0\"\nsettings: [cap]\n")
+    expect(warnings("future" => { "cap" => 1, "typo" => 1 })).to eq([
+      "config.yml bundles: future: future is installed but this chi can't use it: " \
+      "it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})"
+    ])
+  end
+
   it "takes settings: [] as none at all" do
     install("none", "settings: []\n")
     expect(warnings("none" => { "x" => 1 })).to eq(["config.yml bundles: none.x: none takes no settings"])

@@ -14,7 +14,8 @@ module Samagotchi
   # value's type a manifest's settings: rules out. A config file only warns:
   # the rest of it still runs, and `chi --set` is what refuses
   # (SessionConfig.check!, in the same words). A manifest with no settings:
-  # (a record from before them too) has its keys left alone. A digest of the
+  # (a record from before them too) has its keys left alone; one this chi is
+  # too old for (requires_chi) gets one line saying why. A digest of the
   # lines last shown is stamped in $XDG_STATE_HOME/samagotchi/bundles_warned.
   module BundleSettingsCheck
     STAMP_FILE = "bundles_warned"
@@ -30,8 +31,10 @@ module Samagotchi
       section.flat_map do |name, values|
         standing = installed[name]
         next ["config.yml bundles: #{name}: #{SessionConfig.no_installed_bundle(name)}#{near(name, installed.keys)}"] unless standing
-        # A bundle too new for this chi is still checked (the plan's D1).
         next [] if standing.unreadable?
+        # One this chi is too old for isn't used: its keys aren't checked
+        # against a manifest this chi may not read right.
+        next ["config.yml bundles: #{name}: #{SessionConfig.unusable(name, standing.refusal.text)}"] if standing.too_new?
 
         record_warnings(standing.record.manifest, values)
       end
