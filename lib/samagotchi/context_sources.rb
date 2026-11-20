@@ -429,8 +429,8 @@ module Samagotchi
       # only words the note, PeerSources decides what a peer is); nil for
       # any other.
       def peer
-        match = why == :pushed && PEER_NAME.match(name)
-        match ? match[1].capitalize : nil
+        leg = why == :pushed && ContextSources.peer_leg(name)
+        leg ? ContextSources.peer_label(leg.first) : nil
       end
 
       def inbox? = name.end_with?("-inbox")
@@ -446,7 +446,8 @@ module Samagotchi
       def self.from_h(data) = new(name: data["name"].to_s, hint: data["hint"]&.to_s, from: data["from"]&.to_s)
     end
 
-    PEER_NAME = /\A([a-z][a-z0-9]*)-(?:inbox|outbox)\z/
+    # A peer pairing's source name, by name only (ContextSources.peer_leg).
+    PEER_NAME = /\A([a-z][a-z0-9]*)-(inbox|outbox)\z/
     # A push's re (the send a peer's answer names).
     RE_RE = /\A[a-z0-9-]{1,32}\z/
 
@@ -719,6 +720,18 @@ module Samagotchi
     end
 
     def revision_of(text) = Digest::SHA256.hexdigest(text.to_s)
+
+    # The peer and the leg of a <peer>-inbox / <peer>-outbox name
+    # (["claude", "outbox"]); nil for any other. By name only, for where no
+    # plugin is loaded (a move, chi web): it words and labels, PeerSources
+    # in the worker decides what is a peer's (and what may wake chi).
+    def peer_leg(name)
+      match = PEER_NAME.match(name.to_s)
+      match && [match[1], match[2]]
+    end
+
+    # The peer's name as chi words it ("Claude" for claude).
+    def peer_label(peer) = peer.to_s.capitalize
 
     # The contract: stdout that parses as a JSON object with a string "text"
     # is {text, summary, wake, hint, re}; anything else is all text. Unknown

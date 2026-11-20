@@ -422,6 +422,14 @@ RSpec.describe Samagotchi::ContextSources do
     expect(Dir.exist?(loc.dir)).to be(false)
   end
 
+  it "names a <peer>-inbox / -outbox name's peer and leg, and words the peer as chi does" do
+    expect(described_class.peer_leg("claude-outbox")).to eq(%w[claude outbox])
+    expect(described_class.peer_leg("codex-inbox")).to eq(%w[codex inbox])
+    expect([described_class.peer_leg("notes"), described_class.peer_leg("claude-outbox-2"), described_class.peer_leg(nil)])
+      .to all(be_nil)
+    expect(described_class.peer_label("claude")).to eq("Claude")
+  end
+
   describe ".parse_output (the contract)" do
     it "takes plain text whole" do
       expect(described_class.parse_output("line 1\nline 2\n"))
