@@ -252,7 +252,8 @@ RSpec.describe Samagotchi::SessionManager do
     it "refuses, removing nothing, when a worker took the lock after its check" do
       fill_session_dir
       allow(Samagotchi::OwnerLock).to receive(:acquire).and_call_original
-      allow(Samagotchi::OwnerLock).to receive(:acquire).with(session_dir, kind: "deleting", wait: 0).and_return(nil)
+      allow(Samagotchi::OwnerLock).to receive(:acquire)
+        .with(session_dir, kind: "deleting", wait: Samagotchi::OwnerLock::PROBE_WAIT).and_return(nil)
 
       expect { described_class.delete_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }

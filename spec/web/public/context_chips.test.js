@@ -322,14 +322,17 @@ test("chips load reuses the conversation's in-flight peers read", async () => {
   const conversationRead = model.refresh();
   const c = chipsControl({ list: async () => ({ sources: [leg("inbox"), leg("outbox")] }), peers: () => model });
 
-  await c.ctl.load("s1");
-  assert.equal(fetches, 1);
-  finish({ peers: [{ name: "claude", exchanges: [] }] });
-  await conversationRead;
-  await model.refresh({ reuse: true });
-  assert.equal(model.loaded(), true);
-  assert.equal(fetches, 1);
-  c.done();
+  try {
+    await c.ctl.load("s1");
+    assert.equal(fetches, 1);
+    finish({ peers: [{ name: "claude", exchanges: [] }] });
+    await conversationRead;
+    await model.refresh({ reuse: true });
+    assert.equal(model.loaded(), true);
+    assert.equal(fetches, 1);
+  } finally {
+    c.done();
+  }
 });
 
 test("a peer's two sources draw one chip, before the ordinary ones; those stay as they were", async () => {

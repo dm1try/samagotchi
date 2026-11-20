@@ -59,9 +59,27 @@ RSpec.describe Samagotchi::OwnerLock do
 
   it "conflicts within one process too (a second open file description)" do
     first = described_class.acquire(dir, kind: "tui")
-    expect(described_class.acquire(dir, kind: "worker", wait: 0)).to be_nil
+    expect(described_class.acquire(dir, kind: described_class::DELETING, wait: described_class::PROBE_WAIT)).to be_nil
     expect(described_class.owner(dir)).to have_attributes(kind: "tui")
     first.release
+  end
+
+  it "waits out an owner's shared probe for a delete lock" do
+    ready = Queue.new
+    probe = Thread.new do
+      File.open(described_class.path(dir), File::RDWR | File::CREAT, 0o644) do |file|
+        file.flock(File::LOCK_SH)
+        ready << true
+        sleep(0.03) # sleep-ok: hold the shared probe for about 30 ms
+      end
+    end
+    ready.pop
+    lock = described_class.acquire(dir, kind: described_class::DELETING, wait: described_class::PROBE_WAIT)
+
+    expect(lock).not_to be_nil
+  ensure
+    lock&.release
+    join!(probe, "the owner probe") if probe
   end
 
   it "is not inherited by a detached grandchild that outlives the owner" do
