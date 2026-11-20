@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.180.0] - 2026-11-20
+
 ### Added
 
 - In the web, a send to a paired peer (Claude, Codex) and its answer link to each other: the send's row says
@@ -6574,7 +6576,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.179.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.180.0...HEAD
+[0.180.0]: https://github.com/dm1try/samagotchi/compare/v0.179.0...v0.180.0
 [0.179.0]: https://github.com/dm1try/samagotchi/compare/v0.178.0...v0.179.0
 [0.178.0]: https://github.com/dm1try/samagotchi/compare/v0.177.1...v0.178.0
 [0.177.1]: https://github.com/dm1try/samagotchi/compare/v0.177.0...v0.177.1

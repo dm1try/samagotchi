@@ -794,6 +794,40 @@
     "rowModel",
     "untilText"
   ],
+  "peer_chip.js": [
+    "POPOVER_EXCHANGES",
+    "cantSend",
+    "exchangeState",
+    "peerChipModel",
+    "peerGroups",
+    "peerKey",
+    "peerPopoverTemplate",
+    "peerShown",
+    "peerStatusCommand"
+  ],
+  "peer_data.js": [
+    "EXCHANGES_CAP",
+    "WAITING_TICK_MS",
+    "createPeers",
+    "listPeers"
+  ],
+  "peer_exchange.js": [
+    "peerRef",
+    "pillTemplate",
+    "spanText",
+    "stateText",
+    "verdictWord"
+  ],
+  "peer_links.js": [
+    "createPeerLinks",
+    "fullTemplate",
+    "upTemplate"
+  ],
+  "peer_note.js": [
+    "peerNoteTemplate",
+    "peerSummaryText",
+    "verdictTemplate"
+  ],
   "plain_line.js": [
     "plainLine"
   ],
