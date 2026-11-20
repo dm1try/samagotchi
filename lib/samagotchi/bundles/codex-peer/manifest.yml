@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.3.6
+version: 0.4.0
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-outbox context; /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -17,4 +17,6 @@ scripts:
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
+# The skill's `re` (the answered send) needs nothing newer: an older chi
+# ignores the unknown key, and sends no `ref:` line for the skill to echo.
 requires_chi: ">= 0.70.0"

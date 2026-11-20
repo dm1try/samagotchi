@@ -8,6 +8,7 @@ require "samagotchi/web/auto_update"
 require "samagotchi/web/update_check"
 require "samagotchi/web/update_ops"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 
 RSpec.describe Samagotchi::Web::AutoUpdate do
   def op_result(state, rows) = Samagotchi::Web::UpdateOps::Result.new(state: state, rows: rows)

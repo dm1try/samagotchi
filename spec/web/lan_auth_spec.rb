@@ -7,6 +7,7 @@ require "rack/mock"
 
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/web/token"
 require "samagotchi/grants"
 require "samagotchi/web/link_codes"
@@ -43,6 +44,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
   end
 
   after do
+    stop_session_hubs
     FileUtils.remove_entry(state_dir)
     FileUtils.remove_entry(public_dir)
   end

@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "samagotchi/web/update_ops"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require_relative "../support/worker_fixtures"
 
 # The operations the routes (app_spec) and AutoUpdate ask for, asked directly.

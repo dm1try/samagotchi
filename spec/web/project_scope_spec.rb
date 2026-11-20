@@ -9,6 +9,7 @@ require "rack/mock"
 
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/session"
 require "samagotchi/session_manager"
 
