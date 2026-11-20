@@ -283,24 +283,6 @@ module Samagotchi
         File.exist?(base_path) && file_sha(path) == file_sha(base_path)
       end
 
-      # The record's mirror of the manifest keys (InstalledBundle::MIRROR_KEYS)
-      # as #write records them from its kwargs: what an older chi reads, and
-      # what #adopt_manifest holds a source's manifest against.
-      def self.mirror_fields(trust_level:, requires_chi:, needs:, context_providers:, block_renderers:, session_settings:,
-                             session_setting_types:, settings:, setting_types:)
-        fields = {}
-        fields["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
-        fields["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
-        fields["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
-        fields["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
-        fields["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
-        fields["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
-        fields["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
-        fields["settings"] = settings.map(&:to_s) unless settings.nil?
-        fields["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
-        fields
-      end
-
       # Writes provenance for an installation: merges into existing manifest.json
       # and saves base snapshots. Stale base snapshots (files removed from bundle)
       # are pruned.
@@ -420,10 +402,10 @@ module Samagotchi
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end
-        manifest_data.merge!(self.class.mirror_fields(trust_level: trust_level, requires_chi: requires_chi, needs: needs,
-                                                      context_providers: context_providers, block_renderers: block_renderers,
-                                                      session_settings: session_settings, session_setting_types: session_setting_types,
-                                                      settings: settings, setting_types: setting_types))
+        manifest_data.merge!(mirror_fields(trust_level: trust_level, requires_chi: requires_chi, needs: needs,
+                                           context_providers: context_providers, block_renderers: block_renderers,
+                                           session_settings: session_settings, session_setting_types: session_setting_types,
+                                           settings: settings, setting_types: setting_types))
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
         unless scripts_files.empty?
           manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
@@ -741,6 +723,25 @@ module Samagotchi
       end
       private :parsed
 
+      # The record's mirror of the manifest keys (InstalledBundle::MIRROR_KEYS)
+      # as #write records them from its kwargs: what an older chi reads, and
+      # what #adopt_manifest holds a source's manifest against.
+      def mirror_fields(trust_level:, requires_chi:, needs:, context_providers:, block_renderers:, session_settings:,
+                        session_setting_types:, settings:, setting_types:)
+        fields = {}
+        fields["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        fields["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
+        fields["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
+        fields["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        fields["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
+        fields["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
+        fields["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
+        fields["settings"] = settings.map(&:to_s) unless settings.nil?
+        fields["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
+        fields
+      end
+      private :mirror_fields
+
       # The SINCE entry of a mirrored key whose shape a newer chi reads.
       MIRROR_SINCE = { "session_setting_types" => "session_settings.types", "setting_types" => "settings.types" }.freeze
 
@@ -751,7 +752,7 @@ module Samagotchi
       # no longer load, and the source can't list any (Manifest::HooksRetired).
       def manifest_difference(bundle, manifest)
         recorded = plain(bundle.mirror)
-        source = plain(self.class.mirror_fields(
+        source = plain(mirror_fields(
           trust_level: manifest.trust_level, requires_chi: manifest.requires_chi, needs: manifest.needs,
           context_providers: manifest.context_providers, block_renderers: manifest.block_renderers,
           session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
