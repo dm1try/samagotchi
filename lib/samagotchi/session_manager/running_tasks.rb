@@ -206,6 +206,19 @@ module Samagotchi
         tally
       end
 
+      # Automatic cleanup logs only ids and outcome categories, never commands
+      # or error text, which can contain secrets.
+      def log_automatic!(policy)
+        policy.tally.outcomes.each do |outcome|
+          task = outcome.task
+          if outcome.outcome == :stopped
+            Log.info(:worker, "#{policy.by}_task_stopped", sid: task.session_id, task_id: task.id)
+          elsif Tally::NOT_STOPPED.include?(outcome.outcome)
+            Log.warn(:worker, "#{policy.by}_task_not_stopped", sid: task.session_id, task_id: task.id, why: outcome.outcome)
+          end
+        end
+      end
+
       # One task's stop, its outcome into +tally+.
       def stop_thread(task, by, tally)
         Thread.new do
@@ -286,7 +299,7 @@ module Samagotchi
       rescue Session::NotFound
         nil
       rescue ArgumentError, SystemCallError => e
-        Log.warn(:worker, CHECK_FAILED, sid: sid, error: e.class.name, msg: e.message.to_s[0, 200])
+        Log.warn(:worker, CHECK_FAILED, sid: sid, error: e.class.name)
         nil
       end
 
@@ -304,7 +317,7 @@ module Samagotchi
         kind = liveness(record)
         kind && [kind, RunningTask.new(session_id: sid, id: id, command: record.command.to_s, root: root)]
       rescue JSON::ParserError, SystemCallError => e
-        Log.warn(:worker, CHECK_FAILED, sid: sid, task_id: id, error: e.class.name, msg: e.message.to_s[0, 200])
+        Log.warn(:worker, CHECK_FAILED, sid: sid, task_id: id, error: e.class.name)
         [:unreadable, RunningTask.new(session_id: sid, id: id, root: root)]
       end
 

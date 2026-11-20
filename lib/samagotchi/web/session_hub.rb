@@ -47,6 +47,7 @@ module Samagotchi
       # opened an old session without saving it has no file signal until its first save).
       FULL_PROBE_INTERVAL = 10.0
       SCHEDULE_TICK_STOP_WAIT = 5.0
+      SWEEP_STOP_WAIT = 5.0
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
@@ -111,6 +112,7 @@ module Samagotchi
         @next_schedule_tick = nil
         @schedule_tick_in_flight = false
         @schedule_tick_thread = nil
+        @sweep_thread = nil
         @wakeup = Queue.new # stop wakes the tick thread out of its sleep
         @thread = nil
         @stopped = false
@@ -135,6 +137,8 @@ module Samagotchi
         thread&.join(@scan_interval + 1.0)
         schedule_thread = @monitor.synchronize { @schedule_tick_thread }
         schedule_thread&.join(SCHEDULE_TICK_STOP_WAIT)
+        sweep_thread = @monitor.synchronize { @sweep_thread }
+        sweep_thread&.join(SWEEP_STOP_WAIT)
         nil
       end
 
@@ -147,18 +151,30 @@ module Samagotchi
       # gives the retention sweep its chance (it used to run on
       # GET /api/sessions, which the page no longer calls).
       def scan
-        @monitor.synchronize do
+        full = @monitor.synchronize do
           full = full_probe_due?
           SessionContinue.repair_interrupted(state_dir: @state_dir)
           scan_files
           @sessions.each_key { |id| refresh(id, probe: full) }
           if full
-            sweep
             check_installed
           end
+          full
         end
+        sweep_if_due if full
         # Outside the projection's lock: a firing can wait for a recap.
         schedule_tick
+        nil
+      end
+
+      # Launch at most one sweep; neither projection readers nor requests
+      # wait for its per-session task stops.
+      def sweep_if_due
+        @monitor.synchronize do
+          return if @stopped || @sweep_thread&.alive?
+
+          @sweep_thread = Thread.new { sweep }
+        end
         nil
       end
 
@@ -337,8 +353,8 @@ module Samagotchi
 
       def sweep
         @manager.retention_sweep_if_due(state_dir: @state_dir)
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Log.warn(:web, "retention_sweep_failed", error: e.class.name, msg: e.message)
       end
 
       # chi web can be the scheduler when the user opts in (schedule.auto_tick):

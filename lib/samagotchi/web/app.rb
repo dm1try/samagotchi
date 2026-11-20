@@ -1010,7 +1010,7 @@ module Samagotchi
 
         root = dir && ProjectScope.root_for(dir)
         # Lazy retention sweep (once per 24h)
-        Degrade.call(:web, "retention_sweep_failed") { @manager.retention_sweep_if_due(state_dir: @state_dir) }
+        @hub.sweep_if_due
         limit = sanitize_limit(req.GET["limit"])
         offset = sanitize_offset(req.GET["offset"])
         all = @hub.snapshot(project_root: root, sort: sanitize_sort(req.GET["sort"]), order: sanitize_order(req.GET["order"]))

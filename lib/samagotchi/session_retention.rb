@@ -93,8 +93,10 @@ module Samagotchi
         next if owned?(name, state_dir) || starting?(name, state_dir)
 
         unless dry_run
+          policy = SessionManager::RunningTasks::Policy.stop(by: "retention")
           SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false,
-                                                       still: -> { orphan_dir?(path, dir) })
+                                                       still: -> { orphan_dir?(path, dir) }, running_tasks: policy)
+          SessionManager::RunningTasks.log_automatic!(policy)
         end
         name
       rescue SessionManager::DeleteRefused, SystemCallError
@@ -145,7 +147,9 @@ module Samagotchi
       sweep_runs(sd)
       FileUtils.touch(marker)
       if result[:deleted].any?
-        Log.info(:worker, "retention_pruned", echo: "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})", deleted: result[:deleted].size, kept: result[:kept].size)
+        stops = result[:tasks_stopped].to_i
+        suffix = stops.positive? ? "; stopped #{stops} background tasks" : ""
+        Log.info(:worker, "retention_pruned", echo: "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})#{suffix}", deleted: result[:deleted].size, kept: result[:kept].size)
       end
       result
     rescue StandardError => e
@@ -228,6 +232,7 @@ module Samagotchi
       kept = []
       skipped = []
       purge_ids = []
+      tasks_stopped = 0
       passed_over = 0
 
       all.each_with_index do |session, idx|
@@ -316,22 +321,26 @@ module Samagotchi
         elsif scheduled_targets.include?(session.id)
           kept << session.id
         else
+          policy = SessionManager::RunningTasks::Policy.stop(by: "retention")
           begin
             # Under the owner lock, the start read again (as a delete).
             SessionManager.remove_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir,
-                                        purge_runs: false)
+                                        purge_runs: false, running_tasks: policy)
             deleted << session.id
             purge_ids << session.id
           rescue SessionManager::DeleteRefused
             kept << session.id
           rescue StandardError
             skipped << session.id
+          ensure
+            SessionManager::RunningTasks.log_automatic!(policy)
+            tasks_stopped += policy.tally.stopped.size
           end
         end
       end
 
       SessionManager.purge_removal_stores(purge_ids, state_dir: state_dir)
-      { deleted: deleted, kept: kept, skipped: skipped }
+      { deleted: deleted, kept: kept, skipped: skipped, tasks_stopped: tasks_stopped }
     end
   end
 end
