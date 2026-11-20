@@ -11,7 +11,7 @@ module Samagotchi
     # <system memories>/.bundles/.trash/<bundle>-<YYYYmmdd-HHMMSS>/, one dir
     # per operation (-2, -3… when one already has that name). A file about to
     # be overwritten is copied there instead (#copy). A dot dir, so
-    # Provenance.each_installed never reads it as a bundle.
+    # InstalledBundles.each never reads it as a bundle.
     #
     # `chi bundle trash` lists and empties the trash.
     class Trash
@@ -117,7 +117,7 @@ module Samagotchi
         return false if File.symlink?(path) || !File.file?(path)
         return false if incoming && File.file?(incoming) && FileUtils.identical?(incoming, path)
 
-        Provenance.recorded_sha(recorded).empty? || !Provenance.sha_matches?(path, recorded)
+        InstalledBundles::Sha.recorded(recorded).empty? || !InstalledBundles::Sha.matches?(path, recorded)
       end
 
       # What #copy_edits would copy (read-only), as <label>/<its path in dir>.

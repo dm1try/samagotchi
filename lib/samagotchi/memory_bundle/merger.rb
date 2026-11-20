@@ -2,8 +2,8 @@
 
 require "digest"
 require_relative "../atomic_file"
-require_relative "file_digest"
-require_relative "installed_bundle"
+require_relative "../installed_bundles/file_digest"
+require_relative "../installed_bundles/record"
 require_relative "file_actions"
 
 module Samagotchi
@@ -59,7 +59,7 @@ module Samagotchi
       ALREADY_MERGED = Outcome.new(status: :keep, base: :incoming)
 
       # What an upgrade would do to the files asked about, by what callers say
-      # of them. merged: file names; behind: FileStanding::Behind.
+      # of them. merged: file names; behind: InstalledBundles::FileStanding::Behind.
       Forecast = Data.define(:merged, :behind) do
         def conflicts = behind.map(&:file)
       end
@@ -115,20 +115,20 @@ module Samagotchi
         # possible, and what the bundle changed that the file doesn't get. A base
         # that may be the user's own text (an older mark) can't say what changed.
         # @param version [String, nil] the version the file stays behind
-        # @return [FileStanding::Behind]
+        # @return [InstalledBundles::FileStanding::Behind]
         def behind(file_key, outcome, version)
-          why = outcome.why && FileStanding.no_merge(outcome.why)
+          why = outcome.why && InstalledBundles::FileStanding.no_merge(outcome.why)
           base = paths(file_key)[:base]
-          if InstalledBundle.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
-            return FileStanding::Behind.new(file: file_key, version: version, why: why || FileStanding::LEGACY_CONFLICT)
+          if InstalledBundles::Record.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
+            return InstalledBundles::FileStanding::Behind.new(file: file_key, version: version, why: why || InstalledBundles::FileStanding::LEGACY_CONFLICT)
           end
-          return FileStanding::Behind.new(file: file_key, version: version, why: why) unless File.exist?(base)
+          return InstalledBundles::FileStanding::Behind.new(file: file_key, version: version, why: why) unless File.exist?(base)
 
           sides = paths(file_key)
           headings, unnamed = TextMerge.changed_sections(File.binread(base), File.binread(sides[:incoming]), File.binread(sides[:current]))
           # Only the places under no heading: the others are named.
           places = unnamed ? [outcome.merge&.hunks&.count { |hunk| !hunk.union? && hunk.heading.nil? }.to_i, 1].max : 0
-          FileStanding::Behind.new(file: file_key, version: version, why: why, missed: headings, places: places)
+          InstalledBundles::FileStanding::Behind.new(file: file_key, version: version, why: why, missed: headings, places: places)
         end
 
         # @return [Hash{Symbol => String}] the file's :base, :current, :incoming
@@ -154,7 +154,7 @@ module Samagotchi
           # A file the bundle doesn't own, the user's: there is no base to merge from.
           when :skip then no_base(state)
           # It can't be read: the read raises, as the merge would.
-          when :refuse then FileDigest.hex(paths(file_key)[:current])
+          when :refuse then InstalledBundles::FileDigest.hex(paths(file_key)[:current])
           else raise ArgumentError, "no outcome for #{action.do.inspect} (#{file_key})"
           end
         end
@@ -162,9 +162,9 @@ module Samagotchi
         # No base to merge from: the file stays behind. With none on disk
         # TextMerge::NO_BASE says why; one the checksum contradicts (the file
         # equals it, yet is edited) may be the user's own text, as an older
-        # chi's can (FileStanding::LEGACY_BASE).
+        # chi's can (InstalledBundles::FileStanding::LEGACY_BASE).
         def no_base(state)
-          why = state.digests.base.nil? ? TextMerge::NO_BASE : FileStanding::LEGACY_BASE
+          why = state.digests.base.nil? ? TextMerge::NO_BASE : InstalledBundles::FileStanding::LEGACY_BASE
           CONFLICT.with(merge: TextMerge.failed(why))
         end
 
@@ -179,7 +179,7 @@ module Samagotchi
           sides = paths(file_key)
           return FAST_FORWARD unless Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
 
-          unproved.call ? CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) : FAST_FORWARD
+          unproved.call ? CONFLICT.with(merge: TextMerge.failed(InstalledBundles::FileStanding::LEGACY_BASE)) : FAST_FORWARD
         end
       end
 
@@ -207,7 +207,7 @@ module Samagotchi
         result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
         return CONFLICT.with(merge: result) unless result.clean?
         return ALREADY_MERGED if result.text.b == ours.b
-        return CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) if removes_lines?(ours, result.text) && unproved.call
+        return CONFLICT.with(merge: TextMerge.failed(InstalledBundles::FileStanding::LEGACY_BASE)) if removes_lines?(ours, result.text) && unproved.call
 
         Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
       end
@@ -251,7 +251,7 @@ module Samagotchi
 
       # The file's digest, nil when there is none.
       def self.digest(path)
-        FileDigest.hex(path)
+        InstalledBundles::FileDigest.hex(path)
       end
     end
   end

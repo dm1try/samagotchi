@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "source"
 require_relative "provenance"
 require_relative "system_bundle"
@@ -16,7 +16,7 @@ module Samagotchi
     module Listing
       # error is set (and the rest nil) when the provenance manifest.json
       # can't be read; includes is a profile's recorded members, else nil;
-      # behind is its files that stay behind (InstalledBundle#behind_files).
+      # behind is its files that stay behind (InstalledBundles::Record#behind_files).
       Installed = Struct.new(:name, :version, :scope, :files, :installed_at, :upgrade, :error, :includes, :behind, keyword_init: true)
       # source is the name `chi bundle install` takes (the shipped dir's
       # name); includes is a profile's members ([] for a plain bundle).
@@ -32,11 +32,11 @@ module Samagotchi
         Dir.children(dir).sort.filter_map do |source|
           next unless File.file?(File.join(dir, source, "manifest.yml"))
 
-          m = Manifest.read(dir: File.join(dir, source))
+          m = BundleManifest.read(dir: File.join(dir, source))
           next if m.name == SystemBundle::BUNDLE_NAME
 
           Shipped.new(name: m.name, source: source, version: m.version, description: m.description, includes: m.includes)
-        rescue Manifest::ValidationError, Psych::Exception
+        rescue BundleManifest::ValidationError, Psych::Exception
           nil
         end.sort_by(&:name)
       end
@@ -44,7 +44,7 @@ module Samagotchi
       # @return [Array<Installed>] by name; upgrade is the Shipped when it is newer
       def installed(shipped: self.shipped)
         by_name = shipped.to_h { |s| [s.name, s] }
-        Provenance.each_installed.map do |name, bundle|
+        InstalledBundles.each.map do |name, bundle|
           next Installed.new(name: name, error: "manifest.json unreadable") if bundle.error?
 
           ship = by_name[name]

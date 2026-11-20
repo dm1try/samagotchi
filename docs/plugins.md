@@ -1473,7 +1473,7 @@ that calls it, or for a real external bundle that does. No method on the chance 
    and [bundles.md](bundles.md) document them — `name`, `version`, `scope`, `description`, `files`, `hooks`,
    `trust_level`, `plugin`, `requires_chi`, `requires_chi_next` (shipped bundles only: the release tooling
    reads it, chi doesn't), `needs`, `scripts`, `context_providers`, `block_renderers`, `includes`,
-   `session_settings`, `settings`. Those are `Manifest::KEYS`; `Manifest::SINCE` is the chi release each
+   `session_settings`, `settings`. Those are `BundleManifest::KEYS`; `BundleManifest::SINCE` is the chi release each
    key or shape first worked in, and the docs don't copy it — the code is its truth.
    - A key keeps its meaning. A new key gets a `SINCE` entry and a CHANGELOG line, and an older chi says
      it ignores it (`unknown-key`).

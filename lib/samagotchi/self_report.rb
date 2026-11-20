@@ -19,8 +19,8 @@ require_relative "host_keys"
 require_relative "llm/adapters"
 require_relative "tools/memory"
 require_relative "hooks/loader"
-require_relative "memory_bundle/provenance"
-require_relative "memory_bundle/manifest"
+require_relative "installed_bundles"
+require_relative "bundle_manifest"
 require_relative "memory_bundle/system_bundle"
 require_relative "memory_index/size"
 require_relative "memory_index/entry_size"
@@ -155,7 +155,7 @@ module Samagotchi
     end
 
     def big_memory(size, env)
-      owner = MemoryBundle::Provenance.claimants("#{size.name}.md", scope: size.scope, dir: MemoryPaths.bundles_dir(env: env)).first
+      owner = InstalledBundles.claimants("#{size.name}.md", scope: size.scope, dir: MemoryPaths.bundles_dir(env: env)).first
       where = [size.scope, ("from #{owner}" if owner)].compact.join(", ")
       "#{size.name} ~#{MemoryIndex::Size.count_text(size.tokens)} tokens (#{where})"
     rescue StandardError
@@ -490,14 +490,14 @@ module Samagotchi
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
     def bundles_summary
       shipped = Degrade.call(:memory, "shipped_bundle_unreadable") do
-        MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
+        BundleManifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
       end
-      installed = MemoryBundle::Provenance.each_installed.map do |name, bundle|
+      installed = InstalledBundles.each.map do |name, bundle|
         version = bundle.version || "?"
         label = "#{name} #{version}"
         label += " (shipped #{shipped})" if name == MemoryBundle::SystemBundle::BUNDLE_NAME
         behind = bundle.behind_files
-        label += " (#{MemoryBundle::FileStanding.behind_count(behind.size, unsure: behind.any?(&:unsure))})" if behind.any?
+        label += " (#{InstalledBundles::FileStanding.behind_count(behind.size, unsure: behind.any?(&:unsure))})" if behind.any?
         label
       end
       installed.empty? ? "(none installed; shipped system bundle #{shipped || "?"})" : installed.join(", ")

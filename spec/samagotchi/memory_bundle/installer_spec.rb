@@ -224,7 +224,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         again.run
         expect(again.results["identity.md"].word).to eq(:kept_own)
-        expect(again.warnings).to eq(["Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"])
+        expect(again.warnings).to eq(["Skipped identity.md (already exists; #{Samagotchi::InstalledBundles::FileStanding::FORCE_TAKES})"])
         expect(again.summary).to include("chi bundle upgrade test-bundle")
       end
 
@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         expect(again.summary).to include("Updated: plain.md").and include("Skipped: mine.md")
         # write_bundle's sha is fake: the fast-forward of plain.md is checked (U7).
         expect(again.warnings.grep(/Checksum mismatch/)).to eq(["Checksum mismatch for plain.md: expected fake..., got #{Digest::SHA256.hexdigest("# Plain v2\n")[0..7]}..."])
-        expect(again.warnings.grep_v(/Checksum mismatch/)).to eq(["Skipped mine.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"])
+        expect(again.warnings.grep_v(/Checksum mismatch/)).to eq(["Skipped mine.md (already exists; #{Samagotchi::InstalledBundles::FileStanding::FORCE_TAKES})"])
         expect(File.read(File.join(system_memories_dir, "plain.md"))).to eq("# Plain v2\n")
         expect(File.read(File.join(system_memories_dir, "mine.md"))).to eq("# Mine, edited\n")
         provenance = Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle")
@@ -724,7 +724,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
 
     def warning(key)
-      Samagotchi::MemoryBundle::Manifest.unknown_key_line(key) +
+      Samagotchi::BundleManifest.unknown_key_line(key) +
         "; a newer chi reads it from the installed manifest (chi update, then chi bundle status future-bundle " \
         "says whether it needs chi bundle upgrade future-bundle)"
     end
@@ -1218,7 +1218,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
   end
 
   describe "class-file hooks (retired)" do
-    let(:words) { Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS }
+    let(:words) { Samagotchi::BundleManifest::HooksRetired::WORDS }
 
     def source_with(dir, manifest: {}, files: {})
       FileUtils.mkdir_p(dir)
@@ -1493,8 +1493,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     it "lets the unreadable FileState refusal run before trying to journal the target" do
       install(pc_source("1.0.0"))
       FileUtils.mkdir_p(system_memories_dir)
-      allow(Samagotchi::MemoryBundle::FileDigest).to receive(:hex).and_call_original
-      allow(Samagotchi::MemoryBundle::FileDigest).to receive(:hex).with(memory).and_raise(Errno::EACCES, memory)
+      allow(Samagotchi::InstalledBundles::FileDigest).to receive(:hex).and_call_original
+      allow(Samagotchi::InstalledBundles::FileDigest).to receive(:hex).with(memory).and_raise(Errno::EACCES, memory)
       allow(Samagotchi::MemoryBundle::FileActions).to receive(:for).and_call_original
 
       expect { install(pc_source("2.0.0"), upgrade: true) }.to raise_error(described_class::InstallError, /Permission denied/)
@@ -1844,7 +1844,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(system("tar", "-czf", tar, "-C", dir, ".")).to be(true)
 
       expect { installer_for(source: tar, name: "linky", scope: "system").run }
-        .to raise_error(described_class::InstallError, "hooks/evil.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}")
+        .to raise_error(described_class::InstallError, "hooks/evil.rb: #{Samagotchi::BundleManifest::HooksRetired::WORDS}")
       expect(Dir.exist?(File.join(bundles_dir, "linky"))).to be false
       expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
     end

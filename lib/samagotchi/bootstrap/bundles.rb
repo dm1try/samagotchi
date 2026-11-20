@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../memory_bundle/manifest"
+require_relative "../bundle_manifest"
 require_relative "../memory_bundle/profile"
 require_relative "../memory_bundle/source"
 require_relative "../memory_bundle/system_bundle"
@@ -26,7 +26,7 @@ module Samagotchi
 
       # The members installing +profile+ would install now.
       def to_install(profile)
-        MemoryBundle::Profile.to_install(MemoryBundle::Manifest.read(dir: dir(profile)))
+        MemoryBundle::Profile.to_install(BundleManifest.read(dir: dir(profile)))
       end
 
       private

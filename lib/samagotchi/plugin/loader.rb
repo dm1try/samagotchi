@@ -7,8 +7,8 @@ require_relative "../hooks"
 require_relative "../log"
 require_relative "../guardrails/load_failures"
 require_relative "../version"
-require_relative "../memory_bundle/manifest"
-require_relative "../memory_bundle/provenance"
+require_relative "../bundle_manifest"
+require_relative "../installed_bundles"
 
 module Samagotchi
   # Where installed bundles' plugin code is evaluated: one module per
@@ -51,7 +51,7 @@ module Samagotchi
     # A failure is logged and added to +failures+ (not required: tool calls
     # still run), which the Engine announces once. A guardrail plugin's
     # (the manifest's plugin: required: true, read from the kept manifest:
-    # InstalledManifest#plugin_required) goes to +guardrail_failures+ as
+    # InstalledBundles::Manifest#plugin_required) goes to +guardrail_failures+ as
     # required instead: every tool call is denied, as for a fail-closed
     # config hook. A bundle whose manifest.json doesn't read counts as
     # required unless its kept manifest.yml reads and names no plugin or a
@@ -71,7 +71,7 @@ module Samagotchi
       # @return [Array<String>] the bundles whose plugin loaded
       def load_installed(registries, failures: nil, guardrail_failures: nil, settings: {})
         loaded = []
-        MemoryBundle::Provenance.each_installed(holding: :plugin) do |bundle_name, bundle|
+        InstalledBundles.each(holding: :plugin) do |bundle_name, bundle|
           ok = load_bundle(bundle_name, bundle, registries, failures: failures, guardrail_failures: guardrail_failures,
                                                             settings: settings[bundle_name.to_s] || {})
           loaded << bundle_name if ok
@@ -85,7 +85,7 @@ module Samagotchi
 
       # @return [Boolean] whether the plugin loaded
       def load_bundle(bundle_name, bundle, registries, failures: nil, guardrail_failures: nil, settings: {})
-        file = MemoryBundle::Provenance.new(name: bundle_name).plugin_path(bundle) unless bundle.error?
+        file = InstalledBundles::Dir.new(name: bundle_name).plugin_path(bundle) unless bundle.error?
         basename = file ? File.basename(file) : "plugin"
         # Known before it registers anything: a guardrail that fails to load
         # (its sha, requires_chi, a raise) denies every tool call.
@@ -154,10 +154,10 @@ module Samagotchi
       # Decide from the last readable manifest whether an unreadable record
       # might have been a required guardrail; unknown evidence fails closed.
       def unreadable_required?(bundle_name)
-        path = MemoryBundle::Provenance.new(name: bundle_name).kept_manifest_path
+        path = InstalledBundles::Dir.new(name: bundle_name).kept_manifest_path
         return true unless path && File.file?(path)
 
-        kept, problems = MemoryBundle::Manifest.tolerant(path: path)
+        kept, problems = BundleManifest.tolerant(path: path)
         return true if problems.key?("plugin")
         return false unless kept.plugin
 
@@ -168,14 +168,14 @@ module Samagotchi
 
       # Why +file+ doesn't match the sha256 recorded at install (+recorded+,
       # "sha256:<hex>" or bare hex), or nil. None recorded is a mismatch;
-      # Provenance.unchecked? (a dev install) is none.
+      # InstalledBundles::Sha.unchecked? (a dev install) is none.
       def sha_mismatch(file, recorded)
-        return nil if MemoryBundle::Provenance.unchecked?(recorded)
+        return nil if InstalledBundles::Sha.unchecked?(recorded)
 
-        expected = MemoryBundle::Provenance.recorded_sha(recorded)
+        expected = InstalledBundles::Sha.recorded(recorded)
         return "no sha256 recorded for it (reinstall the bundle)" if expected.empty?
 
-        actual = MemoryBundle::Provenance.file_sha(file)
+        actual = InstalledBundles::Sha.of_file(file)
         return nil if actual == expected
 
         "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"

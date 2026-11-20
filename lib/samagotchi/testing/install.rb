@@ -3,7 +3,7 @@
 require_relative "../extension_load"
 require_relative "../guardrails/load_failures"
 require_relative "../memory_bundle/installer"
-require_relative "../memory_bundle/provenance"
+require_relative "../installed_bundles"
 require_relative "../hooks"
 require_relative "bundle"
 require_relative "sandbox"
@@ -52,7 +52,7 @@ module Samagotchi
 
         sandbox ||= Sandbox.current
         dir = File.expand_path(dir)
-        name = MemoryBundle::Manifest.read(dir: dir).name
+        name = BundleManifest.read(dir: dir).name
         sandbox.config("bundles" => { name => settings })
         installer = MemoryBundle::Installer.new(source: dir, name: name, scope: "system", force: force)
         installer.run
@@ -74,7 +74,7 @@ module Samagotchi
           init: ->(_bundle, label, _plugin_label, **, &_block) { inits << { label: label } }
         )
         extension.load_plugins(registries, failures: plugin_failures)
-        installed = File.join(MemoryBundle::Provenance.bundles_dir, name)
+        installed = File.join(InstalledBundles.dir, name)
         Result.new(name: name, warnings: warnings.dup,
                    plugin_failures: own(plugin_failures, name, installed, dir),
                    hook_failures: own(hook_failures, name, installed, dir),

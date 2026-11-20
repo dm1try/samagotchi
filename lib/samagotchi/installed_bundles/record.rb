@@ -7,12 +7,12 @@ require_relative "bundle_hook"
 require_relative "plugin_ref"
 
 module Samagotchi
-  module MemoryBundle
+  module InstalledBundles
     # Only what reports on an edited file needs it.
     autoload :FileStanding, File.expand_path("file_standing", __dir__)
-    autoload :InstalledManifest, File.expand_path("installed_manifest", __dir__)
+    autoload :Manifest, File.expand_path("manifest", __dir__)
 
-    # An installed bundle's record, as Provenance#write keeps it in
+    # An installed bundle's record, as MemoryBundle::Provenance#write keeps it in
     # <bundles>/<name>/manifest.json: identity, shas, files and marks.
     # Reading is tolerant: an older record lacks keys a newer chi writes,
     # and a key that is missing or of the wrong shape reads as empty (nil
@@ -25,7 +25,7 @@ module Samagotchi
     #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark;
     #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?);
     #               why, missed, missed_places: FileStanding::Behind's, nil on an older mark;
-    #               merged_version, merged_at, merged_trash: a merge no report has shown (Provenance#note_merged)
+    #               merged_version, merged_at, merged_trash: a merge no report has shown (MemoryBundle::Provenance#note_merged)
     #   hooks       basename => BundleHook (sha256; other legacy fields ignored)
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
@@ -33,28 +33,28 @@ module Samagotchi
     #   includes    a profile's recorded members, nil for a plain bundle
     #   mirror      the record's frozen copy of the manifest keys (MIRROR_KEYS,
     #               string keys, the values as recorded), which only
-    #               InstalledManifest reads: requires_chi, trust_level, needs,
+    #               Manifest reads: requires_chi, trust_level, needs,
     #               context_providers, block_renderers, session_settings,
     #               session_setting_types, settings, setting_types. A key a
     #               later manifest gains is never mirrored
     #   dev         a dev install (`chi bundle install --dev`): its source is
-    #               the folder it links to and its files carry Provenance::DEV_SHA
-    #   manifest_sha  the kept manifest.yml's recorded sha256 (Provenance::DEV_SHA
+    #               the folder it links to and its files carry Sha::DEV
+    #   manifest_sha  the kept manifest.yml's recorded sha256 (Sha::DEV
     #               for a dev install's link), nil on a record written before
     #               chi kept it, or rewritten since by a chi that doesn't
     #   installed_by  the chi VERSION that wrote the record with its kept
     #               manifest, nil when manifest_sha is
-    #   dir         its .bundles/<name> folder (.read, Provenance.each_installed),
+    #   dir         its .bundles/<name> folder (.read, InstalledBundles.each),
     #               nil for a record parsed alone or one that doesn't read
     #   error       why manifest.json couldn't be read (the rest empty), else nil
-    class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :source_commit, :files, :hooks,
-                                        :guardrails, :scripts, :plugin, :includes, :dev, :mirror, :manifest_sha,
-                                        :installed_by, :dir, :error)
+    class Record < Data.define(:name, :version, :scope, :source, :installed_at, :source_commit, :files, :hooks,
+                               :guardrails, :scripts, :plugin, :includes, :dev, :mirror, :manifest_sha,
+                               :installed_by, :dir, :error)
       OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, source_commit: nil, files: {}, hooks: {},
                    guardrails: {}, scripts: {}, plugin: nil, includes: nil, dev: false, mirror: {}, manifest_sha: nil,
                    installed_by: nil, dir: nil, error: nil }.freeze
 
-      # The manifest keys a record mirrors, as Provenance#write records them.
+      # The manifest keys a record mirrors, as MemoryBundle::Provenance#write records them.
       MIRROR_KEYS = %w[requires_chi trust_level needs context_providers block_renderers session_settings
                        session_setting_types settings setting_types].freeze
 
@@ -110,20 +110,20 @@ module Samagotchi
 
       def error? = !error.nil?
 
-      # Its kept manifest.yml (Provenance#kept_manifest_path), nil with no dir.
+      # Its kept manifest.yml (Dir#kept_manifest_path), nil with no dir.
       def kept_manifest_path = dir && File.join(dir, "manifest.yml")
 
-      # Whether it lacks a kept manifest.yml chi can read (Provenance#adopt_manifest
+      # Whether it lacks a kept manifest.yml chi can read (MemoryBundle::Provenance#adopt_manifest
       # keeps one): an older chi's record has no manifest_sha (with or without a
-      # file there, InstalledManifest's legacy and :stale), or the file it
+      # file there, Manifest's legacy and :stale), or the file it
       # recorded is gone (:missing). false with no dir.
       def manifest_unkept? = !dir.nil? && (manifest_sha.to_s.empty? || !File.file?(kept_manifest_path))
 
       # What its manifest says (requires_chi, needs, providers,
       # renderers, settings…): the one way to read manifest data of an
       # installed bundle.
-      # @return [InstalledManifest]
-      def manifest = InstalledManifest.of(self)
+      # @return [Manifest]
+      def manifest = Manifest.of(self)
 
       # The scope its files went to: "system" when none is recorded.
       def effective_scope = scope.to_s.strip.empty? ? "system" : scope

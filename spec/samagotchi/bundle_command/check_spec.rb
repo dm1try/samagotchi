@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
   end
 
   it "hooks-retired: a manifest that lists hooks, or hooks/*.rb with no key, and the run stops there (exit 1)" do
-    words = Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS
+    words = Samagotchi::BundleManifest::HooksRetired::WORDS
     fix = "(fix: hook the events from plugin.rb with chi.on, then remove hooks/ and the manifest's hooks:)"
     FileUtils.mkdir_p(File.join(dir, "hooks"))
     File.write(File.join(dir, "hooks", "watch.rb"), "class Watch; end\n")

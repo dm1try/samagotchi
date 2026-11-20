@@ -136,11 +136,11 @@ module Samagotchi
         @text = File.read(path("manifest.yml"))
         Dir.mktmpdir("chi-bundle-check-") do |tmp|
           File.write(File.join(tmp, "manifest.yml"), MemoryBundle::Shas.parseable(@text))
-          MemoryBundle::Manifest.read(dir: tmp)
-        rescue MemoryBundle::Manifest::HooksRetired => e
+          BundleManifest.read(dir: tmp)
+        rescue BundleManifest::HooksRetired => e
           add(:error, :"hooks-retired", "manifest.yml", e.message, line: manifest_line("hooks"), fix: hooks_fix)
           nil
-        rescue MemoryBundle::Manifest::ValidationError => e
+        rescue BundleManifest::ValidationError => e
           add(:error, :manifest, "manifest.yml", e.message.gsub(tmp, display(@dir)))
           nil
         end
@@ -149,10 +149,10 @@ module Samagotchi
       # A source with hooks/*.rb (listed or not) can't be installed: the run
       # stops there, as after a manifest error (Manifest::HooksRetired.refuse_source_files).
       def hooks_retired?
-        files = MemoryBundle::Manifest::HooksRetired.files_in(@dir)
+        files = BundleManifest::HooksRetired.files_in(@dir)
         return false if files.empty?
 
-        add(:error, :"hooks-retired", "hooks/", MemoryBundle::Manifest::HooksRetired.for_files(files).message, fix: hooks_fix)
+        add(:error, :"hooks-retired", "hooks/", BundleManifest::HooksRetired.for_files(files).message, fix: hooks_fix)
         true
       end
 
@@ -173,7 +173,7 @@ module Samagotchi
       # only the unknown-key line, as check_floor's call floor does today.
       def check_keys(manifest)
         manifest.unknown_keys.each do |key|
-          add(:warn, :"unknown-key", "manifest.yml", MemoryBundle::Manifest.unknown_key_line(key), line: manifest_line(key),
+          add(:warn, :"unknown-key", "manifest.yml", BundleManifest.unknown_key_line(key), line: manifest_line(key),
               fix: "update chi, or remove #{key}: if it's a typo")
         end
         check_key_floor(manifest) unless @installed
@@ -268,7 +268,7 @@ module Samagotchi
 
       def check_requires_chi(manifest)
         line = manifest_line("requires_chi")
-        if (failure = MemoryBundle::Manifest.requires_chi_failure(manifest.requires_chi, VERSION))
+        if (failure = BundleManifest.requires_chi_failure(manifest.requires_chi, VERSION))
           @too_new = true
           add(:error, :"requires-chi", "manifest.yml", "this chi can't load it: #{failure}", line: line,
                                                                                             fix: "chi update, or lower requires_chi")
@@ -338,11 +338,11 @@ module Samagotchi
       end
 
       # The installed same-named bundle's record; an unreadable one as
-      # InstalledBundle.unreadable.
+      # InstalledBundles::Record.unreadable.
       def installed_record(name)
         MemoryBundle::Provenance.new(name: name).record
       rescue JSON::ParserError, SystemCallError => e
-        MemoryBundle::InstalledBundle.unreadable(name, "#{e.class}: #{e.message.lines.first&.strip}")
+        InstalledBundles::Record.unreadable(name, "#{e.class}: #{e.message.lines.first&.strip}")
       end
 
       def unreadable_clash(name, error)
@@ -373,7 +373,7 @@ module Samagotchi
         # The loaders refuse a bundle requires_chi rules out: that's the requires-chi error.
         result.failures.each { |failure| install_failure(failure) unless @too_new && failure.reason.include?("it requires chi") }
         report_registered(manifest, result.registered)
-      rescue MemoryBundle::Installer::InstallError, MemoryBundle::Manifest::ValidationError => e
+      rescue MemoryBundle::Installer::InstallError, BundleManifest::ValidationError => e
         add(:error, :install, "manifest.yml", e.message)
       rescue StandardError => e
         # Whatever else the install or the load raised: one finding, not a trace.

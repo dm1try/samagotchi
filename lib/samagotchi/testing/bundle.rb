@@ -12,7 +12,7 @@ require_relative "../peer_sources"
 require_relative "../toolkit"
 require_relative "../guardrails/gate"
 require_relative "../turn_context"
-require_relative "../memory_bundle/manifest"
+require_relative "../bundle_manifest"
 require_relative "../memory_bundle/source"
 require_relative "../session_setup"
 require_relative "sandbox"
@@ -109,7 +109,7 @@ module Samagotchi
 
       # @return [String] the bundle's name (manifest.yml)
       attr_reader :name
-      # @return [MemoryBundle::Manifest]
+      # @return [BundleManifest]
       attr_reader :manifest
       # @return [Plugin::Registries]
       attr_reader :registries
@@ -143,7 +143,7 @@ module Samagotchi
 
       def initialize(dir, settings: {}, host: {}, session_settings: {}, sandbox: nil)
         @dir = File.expand_path(dir)
-        @manifest = MemoryBundle::Manifest.read(dir: @dir)
+        @manifest = BundleManifest.read(dir: @dir)
         @name = @manifest.name
         @settings = stringify(settings || {})
         @session_moves = 1

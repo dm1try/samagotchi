@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
   end
 
   it "has no needs for a bundle that declares none" do
-    expect(described_class.needs_status(Samagotchi::MemoryBundle::InstalledBundle.new(name: "none"))).to eq([])
+    expect(described_class.needs_status(Samagotchi::InstalledBundles::Record.new(name: "none"))).to eq([])
   end
 
   it "formats one line per need" do

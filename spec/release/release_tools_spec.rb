@@ -794,7 +794,7 @@ RSpec.describe ReleaseTools do
       expect(described_class.consistency_problems(tmp)).to eq([])
     end
 
-    it "names the manifest keys still waiting in Manifest::SINCE's Unreleased comment, in the same words" do
+    it "names the manifest keys still waiting in BundleManifest::SINCE's Unreleased comment, in the same words" do
       write(ReleaseTools::MANIFEST_KEYS, <<~RUBY)
         SINCE = {
           "includes" => "0.8.0"
@@ -804,7 +804,7 @@ RSpec.describe ReleaseTools do
       git("add", ".")
       git("commit", "-q", "-m", "unreleased key")
       expect(described_class.consistency_problems(tmp)).to eq(
-        ["#{ReleaseTools::MANIFEST_KEYS}: Manifest::SINCE's Unreleased comment still names block_renderers: " \
+        ["#{ReleaseTools::MANIFEST_KEYS}: BundleManifest::SINCE's Unreleased comment still names block_renderers: " \
          "give each \"0.2.0\" in SINCE and drop the comment"]
       )
 

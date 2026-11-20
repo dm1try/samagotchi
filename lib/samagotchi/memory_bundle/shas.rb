@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 
 module Samagotchi
   module MemoryBundle
@@ -99,7 +99,7 @@ module Samagotchi
 
       def digest(dir, file)
         path = File.join(dir, file)
-        hex = FileDigest.hex(path)
+        hex = InstalledBundles::FileDigest.hex(path)
         raise Error, "#{File.basename(dir)}/manifest.yml names #{file}, which isn't there" if hex.nil?
 
         hex

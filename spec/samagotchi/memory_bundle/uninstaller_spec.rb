@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
       src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "hidden")
       install_bundle(src, "hidden")
       described_class.new(name: "hidden").run
-      expect(Samagotchi::MemoryBundle::Provenance.each_installed.map(&:first)).to eq([])
+      expect(Samagotchi::InstalledBundles.each.map(&:first)).to eq([])
     end
   end
 

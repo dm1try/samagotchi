@@ -10,7 +10,7 @@ require "samagotchi/context_sources"
 require "samagotchi/continue_intent"
 require "samagotchi/grants"
 require "samagotchi/guardrails"
-require "samagotchi/memory_bundle/installed_bundle"
+require "samagotchi/installed_bundles/record"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/objectives_check"
 require "samagotchi/objectives_track"
@@ -124,7 +124,7 @@ RSpec.describe "the recorded compatibility corpus" do
     end
 
     manifest_path = File.join(root, ".bundles", "compat", "manifest.json")
-    record = Samagotchi::MemoryBundle::InstalledBundle.read("compat", manifest_path)
+    record = Samagotchi::InstalledBundles::Record.read("compat", manifest_path)
     expect(record).to have_attributes(name: "compat", version: version, scope: "system", source: "compat-fixture")
 
     expect_live_files_read(sessions_dir, session_dir, version, since)

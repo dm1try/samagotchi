@@ -36,7 +36,7 @@ module BundleStateCorpus
         st = Samagotchi::MemoryBundle::FileState.of(
           kase.key, record: record, provenance: provenance, target_dir: BundleStateCorpus.memories_dir,
                     source_dir: source ? source_for(sandbox, kase, flavor) : nil,
-                    claimants: ->(key) { Samagotchi::MemoryBundle::Provenance.claimants(key, scope: "system", except: provenance.name) }
+                    claimants: ->(key) { Samagotchi::InstalledBundles.claimants(key, scope: "system", except: provenance.name) }
         )
         outcome = decide_outcome(st, record, provenance, sandbox, kase, flavor) if source
         yield st, outcome if block_given?

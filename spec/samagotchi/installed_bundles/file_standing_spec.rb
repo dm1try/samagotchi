@@ -14,7 +14,7 @@ require "samagotchi/memory_bundle/uninstaller"
 
 # What chi says of a bundle file that stays behind, and what the record keeps
 # for it to say that.
-RSpec.describe Samagotchi::MemoryBundle::FileStanding do
+RSpec.describe Samagotchi::InstalledBundles::FileStanding do
   let(:behind) { described_class::Behind }
 
   describe "the words" do

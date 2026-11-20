@@ -13,7 +13,7 @@ module Samagotchi
   # (RecapSetup). Its
   # bundles part: {bundle => {key => value}}, string keys, scalar values
   # (.typed). A bundle offers the keys a session may set in its manifest's
-  # session_settings: (recorded at install, InstalledManifest#session_settings);
+  # session_settings: (recorded at install, InstalledBundles::Manifest#session_settings);
   # any other bundle or key is refused, so a typo isn't saved, and so is a
   # value of another type than the manifest gives the key (session_settings:
   # {cap: number}). The session keeps them (Session#settings, SessionSetup)
@@ -22,7 +22,7 @@ module Samagotchi
     # A refused --set (or request field): the message says why.
     class Error < ArgumentError; end
 
-    # A bundle name (MemoryBundle::Manifest::BUNDLE_NAME) and a setting key.
+    # A bundle name (BundleManifest::BUNDLE_NAME) and a setting key.
     BUNDLE = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
     KEY = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
     # The values a setting may take.
@@ -84,7 +84,7 @@ module Samagotchi
       def initialize(offered:, notes:, types: {}) = super
     end
 
-    # What each type (MemoryBundle::Manifest::SESSION_SETTING_TYPES) takes,
+    # What each type (BundleManifest::SESSION_SETTING_TYPES) takes,
     # as a value .typed gives it, and how a refusal names it. A number may
     # be off (false), as a bundle's own settings are turned off.
     TYPES = {
@@ -295,13 +295,13 @@ module Samagotchi
     # them) gets a note on refreshing it.
     # @return [Availability]
     def availability(dir: nil, shipped_dir: SHIPPED_DIR)
-      require_relative "memory_bundle/provenance"
-      require_relative "memory_bundle/manifest"
-      dir ||= MemoryBundle::Provenance.bundles_dir
+      require_relative "installed_bundles"
+      require_relative "bundle_manifest"
+      dir ||= InstalledBundles.dir
       offered = {}
       notes = {}
       types = {}
-      MemoryBundle::Provenance.each_installed(dir: dir) do |name, bundle|
+      InstalledBundles.each(dir: dir) do |name, bundle|
         next if bundle.error?
 
         if (reason = unloadable(dir, name, bundle))
@@ -380,8 +380,8 @@ module Samagotchi
       return nil unless bundle.plugin
 
       require_relative "plugin/loader"
-      # +dir+, not Provenance#plugin_path's bundles_dir: a spec's records live elsewhere.
-      Plugin::Loader.unloadable_reason(File.join(dir, name, "plugin", bundle.plugin.file.to_s), bundle)
+      # +dir+, not the global bundles dir: a spec's records live elsewhere.
+      Plugin::Loader.unloadable_reason(InstalledBundles::Dir.new(name: name, dir: dir).plugin_path(bundle), bundle)
     end
 
     # Whether chi ships a bundle +name+ whose manifest lists session_settings.

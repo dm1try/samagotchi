@@ -1,19 +1,19 @@
 # frozen_string_literal: true
 
-require_relative "installed_bundle"
+require_relative "../installed_bundles/record"
 require_relative "installer"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "provenance"
 require_relative "source"
 
 module Samagotchi
   module MemoryBundle
     # The one owner of the words for an installed bundle's manifest.yml, as
-    # InstalledManifest read it (chi bundle status's Manifest: line, chi
+    # InstalledBundles::Manifest read it (chi bundle status's Manifest: line, chi
     # update's row), and of keeping it for a record an older chi wrote
     # (.keep: Provenance#adopt_manifest from where it came from). The cases:
     #   :kept     read from the kept file; a line only when chi +installed_by+
-    #             predates a key it uses (Manifest::SINCE): newer than its installer
+    #             predates a key it uses (BundleManifest::SINCE): newer than its installer
     #   :legacy   no kept file, no manifest_sha: a chi before the kept manifest installed it
     #   :stale    a kept file, no manifest_sha: such a chi rewrote the record since
     #   :missing  a manifest_sha, no kept file
@@ -31,7 +31,7 @@ module Samagotchi
 
       module_function
 
-      # @param bundle [InstalledBundle]
+      # @param bundle [InstalledBundles::Record]
       # @return [Symbol, nil] the case, nil for a record with no dir or that doesn't read
       def state(bundle)
         return nil if bundle.error? || bundle.dir.nil?
@@ -80,8 +80,8 @@ module Samagotchi
         end
 
         dir = File.join(SourceNormalizer::SHIPPED_DIR, File.basename(source.chomp("/")))
-        File.file?(File.join(dir, "manifest.yml")) && Manifest.read(dir: dir).version == bundle.version.to_s ? dir : nil
-      rescue Manifest::ValidationError, Psych::Exception
+        File.file?(File.join(dir, "manifest.yml")) && BundleManifest.read(dir: dir).version == bundle.version.to_s ? dir : nil
+      rescue BundleManifest::ValidationError, Psych::Exception
         nil
       end
 

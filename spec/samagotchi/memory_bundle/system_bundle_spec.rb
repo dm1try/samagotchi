@@ -9,7 +9,7 @@ require "samagotchi/version"
 RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
   describe "shipped bundle manifest" do
     let(:dir) { described_class::GEM_BUNDLE_DIR }
-    let(:manifest) { Samagotchi::MemoryBundle::Manifest.read(dir: dir) }
+    let(:manifest) { Samagotchi::BundleManifest.read(dir: dir) }
 
     it "lists every bundled memory file" do
       shipped = Dir.glob(File.join(dir, "*.md")).map { |p| File.basename(p) }.sort
@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       dir = File.join(@tmp, "gem-#{version}", "lib", "samagotchi", "bundles", "system")
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "identity.md"), identity)
-      Samagotchi::MemoryBundle::Manifest.write(
+      Samagotchi::BundleManifest.write(
         dir: dir, name: described_class::BUNDLE_NAME, version: version, scope: "system",
         files: { "identity.md" => "sha256:#{Digest::SHA256.hexdigest(identity)}" }
       )
@@ -273,7 +273,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           mark_old(text(intro: "my intro"))
           dir = described_class::GEM_BUNDLE_DIR
           File.write(File.join(dir, "gone.md"), "gone\n")
-          Samagotchi::MemoryBundle::Manifest.write(
+          Samagotchi::BundleManifest.write(
             dir: dir, name: described_class::BUNDLE_NAME, version: "0.1.10", scope: "system",
             files: { "identity.md" => { "sha256" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "tail\nnew tail"))}" },
                      "gone.md" => { "sha256" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}", "description" => "What gone is" } }
@@ -334,8 +334,8 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         described_class.sync
         File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
         ship("0.1.10", "new\n")
-        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
-                                                 version: "0.1.10", scope: "system", files: {})
+        Samagotchi::BundleManifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                         version: "0.1.10", scope: "system", files: {})
 
         expect(described_class.sync(dry_run: true).kept).to eq([])
         expect(described_class.sync.kept).to eq(["identity.md"])
@@ -353,9 +353,9 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         ship("0.1.6", "old\n")
         described_class.sync
         File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
-        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
-                                                 version: "0.1.6", scope: "system",
-                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+        Samagotchi::BundleManifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                         version: "0.1.6", scope: "system",
+                                         files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
 
         expect(described_class.sync(dry_run: true)).to have_attributes(
           status: :restored,
@@ -372,9 +372,9 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
 
       it "shows a checksum mismatch in a dry plan for a fresh install, as the install itself warns" do
         ship("0.1.6", "old\n")
-        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
-                                                 version: "0.1.6", scope: "system",
-                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+        Samagotchi::BundleManifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                         version: "0.1.6", scope: "system",
+                                         files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
         mismatch = "Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("old\n")[0..7]}..."
 
         expect(described_class.sync(dry_run: true)).to have_attributes(status: :installed, to: "0.1.6", warnings: [mismatch])
@@ -388,9 +388,9 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         ship("0.1.6", "old\n")
         described_class.sync
         ship("0.1.10", "new\n")
-        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
-                                                 version: "0.1.10", scope: "system",
-                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+        Samagotchi::BundleManifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                         version: "0.1.10", scope: "system",
+                                         files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
 
         expect(described_class.sync(dry_run: true)).to have_attributes(
           status: :updated,
@@ -402,7 +402,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     end
 
     describe "a record an older chi wrote, without the kept manifest" do
-      let(:bundle_dir) { File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, described_class::BUNDLE_NAME) }
+      let(:bundle_dir) { File.join(Samagotchi::InstalledBundles.dir, described_class::BUNDLE_NAME) }
       let(:kept) { File.join(bundle_dir, "manifest.yml") }
 
       def record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))

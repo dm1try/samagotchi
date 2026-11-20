@@ -3,10 +3,10 @@
 require "spec_helper"
 require "tmpdir"
 require "json"
-require "samagotchi/memory_bundle/installed_bundle"
+require "samagotchi/installed_bundles/record"
 
-RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
-  let(:hook) { Samagotchi::MemoryBundle::BundleHook }
+RSpec.describe Samagotchi::InstalledBundles::Record do
+  let(:hook) { Samagotchi::InstalledBundles::BundleHook }
 
   describe ".parse" do
     it "reads a full record (string keys, as manifest.json holds them)" do
@@ -26,7 +26,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
         files: { "a.md" => { checksum: "aa", conflict: true, description: "A" } },
         hooks: { "g.rb" => hook.new(sha256: "sha256:hh") },
         guardrails: { "r.yml" => "sha256:rr" }, scripts: { "s.rb" => "sha256:ss" },
-        plugin: Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb", sha256: "sha256:pp"), includes: %w[a b],
+        plugin: Samagotchi::InstalledBundles::PluginRef.new(file: "p.rb", sha256: "sha256:pp"), includes: %w[a b],
         mirror: { "trust_level" => "reviewed", "requires_chi" => ">= 0.50", "needs" => [{ "command" => "gh" }],
                   "context_providers" => [{ "match" => "x" }], "session_settings" => ["cap"] }
       )
@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
   end
 end
 
-RSpec.describe Samagotchi::MemoryBundle::PluginRef do
+RSpec.describe Samagotchi::InstalledBundles::PluginRef do
   it "parses the plugin mapping, nil without a file" do
     expect(described_class.parse("file" => "p.rb", "sha256" => "sha256:x")).to eq(described_class.new(file: "p.rb", sha256: "sha256:x"))
     expect(described_class.parse(file: "p.rb")).to eq(described_class.new(file: "p.rb", sha256: ""))

@@ -8,7 +8,7 @@ require_relative "guardrails"
 require_relative "guardrails/parent_approvals"
 require_relative "guardrails/parent_policy"
 require_relative "model_match"
-require_relative "memory_bundle/manifest"
+require_relative "bundle_manifest"
 require_relative "version"
 require_relative "hooks"
 require_relative "edit_preview"
@@ -220,9 +220,9 @@ module Samagotchi
     # chi doesn't meet isn't read (its rules may use keys this chi doesn't
     # know): the rules last loaded from it stay (#too_new_bundle_rules).
     def bundle_rules
-      require_relative "memory_bundle/provenance"
+      require_relative "installed_bundles"
       rules = []
-      MemoryBundle::Provenance.each_installed(holding: :guardrails) do |bundle_name, bundle|
+      InstalledBundles.each(holding: :guardrails) do |bundle_name, bundle|
         if bundle.error?
           Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{bundle.error}", bundle: bundle_name)
           @failures.add("rules (bundle #{bundle_name})", bundle.error, required: true, group: :rules)
@@ -233,7 +233,7 @@ module Samagotchi
           rules.concat(too_new_bundle_rules(bundle_name, manifest, too_new))
           next
         end
-        dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
+        dir = InstalledBundles::Dir.new(name: bundle_name).guardrails_dir
         loaded = []
         whole = true
         bundle.guardrails.sort.each do |basename, sha|
@@ -242,7 +242,7 @@ module Samagotchi
           begin
             raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
 
-            unless MemoryBundle::Provenance.sha_matches?(path, sha)
+            unless InstalledBundles::Sha.matches?(path, sha)
               raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
             end
 
@@ -268,13 +268,13 @@ module Samagotchi
 
     def protected_paths
       @protected ||= begin
-        require_relative "memory_bundle/provenance"
+        require_relative "installed_bundles"
         require_relative "context_sources"
         require_relative "chi_home"
         require_relative "chi_shim"
         Guardrails::ProtectedPaths.new(
           store_dir: File.dirname(@approvals.path),
-          bundles_dir: MemoryBundle::Provenance.bundles_dir,
+          bundles_dir: InstalledBundles.dir,
           config_path: Samagotchi::ConfigFile.global_path,
           hooks_dir: Hooks::Loader.hooks_dir,
           context_dir: ContextSources.root,
@@ -533,7 +533,7 @@ module Samagotchi
     # load the new ones). Never loaded (a chi older than the bundle it
     # starts with): none, and a required load failure, as the hook loader
     # does for a guardrail hook, so the calls aren't quietly unguarded.
-    # @param manifest [MemoryBundle::InstalledManifest]
+    # @param manifest [InstalledBundles::Manifest]
     def too_new_bundle_rules(bundle_name, manifest, reason)
       kept = @loaded_bundle_rules[bundle_name]
       unless kept
@@ -565,9 +565,9 @@ module Samagotchi
     # manifest.json, kept manifest.yml (its requires_chi is read from there)
     # and guardrails/ file.
     def rules_stamp
-      require_relative "memory_bundle/provenance"
+      require_relative "installed_bundles"
       paths = [Samagotchi::ConfigFile.global_path] +
-              Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "{manifest.json,manifest.yml,guardrails/*}")]
+              Dir[File.join(InstalledBundles.dir, "*", "{manifest.json,manifest.yml,guardrails/*}")]
       paths.compact.sort.map do |path|
         stat = File.stat(path)
         [path, stat.mtime.to_r, stat.size]

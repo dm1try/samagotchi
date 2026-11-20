@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
   end
 
   def install(dir, **opts) = described_class.install(dir, shipped_dir: shipped, chi_version: "1.0.0", **opts)
-  def installed = prov.each_installed.map { |name, _| name }
+  def installed = Samagotchi::InstalledBundles.each.map { |name, _| name }
   def recorded(name) = prov.new(name: name).read[:includes]
   def plain_install(dir) = Samagotchi::MemoryBundle::Installer.new(source: dir, name: File.basename(dir), scope: "system").run
 
@@ -111,7 +111,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
 
       expect(install(core)).to have_attributes(installed: [], already: [], skipped: {}, failed: {})
       expect(File.read(File.join(system_dir, ".bundles", "core", "manifest.json"))).to eq(record)
-      expect(described_class.to_install(Samagotchi::MemoryBundle::Manifest.read(dir: core))).to eq([])
+      expect(described_class.to_install(Samagotchi::BundleManifest.read(dir: core))).to eq([])
     end
 
     it "keeps a member the user uninstalled out, and installs only a bundle new to the profile" do
@@ -120,7 +120,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       Samagotchi::MemoryBundle::Uninstaller.new(name: "b").run
 
       core2 = ship_meta("core", %w[a b c], version: "0.2.0")
-      expect(described_class.to_install(Samagotchi::MemoryBundle::Manifest.read(dir: core2))).to eq(%w[c])
+      expect(described_class.to_install(Samagotchi::BundleManifest.read(dir: core2))).to eq(%w[c])
       result = install(core2)
 
       expect(result.installed).to eq(%w[c])
@@ -297,7 +297,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
     it "knows a meta by its recorded includes, or by a shipped source whose manifest is a meta" do
       ship("a")
       core = ship_meta("core", %w[a])
-      record = ->(name, **raw) { Samagotchi::MemoryBundle::InstalledBundle.parse(name, raw) }
+      record = ->(name, **raw) { Samagotchi::InstalledBundles::Record.parse(name, raw) }
       expect(described_class.installed_meta?("core", record.call("core", includes: []), shipped_dir: shipped)).to be(true)
       expect(described_class.installed_meta?("core", record.call("core", source: core), shipped_dir: shipped)).to be(true)
       expect(described_class.installed_meta?("core", record.call("core", source: "/tmp/core"), shipped_dir: shipped)).to be(false)

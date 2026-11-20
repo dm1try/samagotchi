@@ -3,7 +3,7 @@
 require "digest"
 
 module Samagotchi
-  module MemoryBundle
+  module InstalledBundles
     # The one digest of a file on disk, so the sha256 written by a record and
     # the one read back at load time come from the same code.
     #

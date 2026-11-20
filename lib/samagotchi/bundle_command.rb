@@ -282,10 +282,10 @@ module Samagotchi
     # @return [Array(MemoryBundle::PreparedSource, String), nil]
     def prepare_or_fail(expanded_source, word)
       prepared = Samagotchi::MemoryBundle::PreparedSource.prepare(expanded_source)
-      Samagotchi::MemoryBundle::Manifest::HooksRetired.refuse_source_files(prepared.dir)
-      named = [prepared, Samagotchi::MemoryBundle::Manifest.read(dir: prepared.dir).name]
+      Samagotchi::BundleManifest::HooksRetired.refuse_source_files(prepared.dir)
+      named = [prepared, Samagotchi::BundleManifest.read(dir: prepared.dir).name]
     rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError,
-           Samagotchi::MemoryBundle::Manifest::ValidationError => e
+           Samagotchi::BundleManifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
     ensure
       # Any failure (an unexpected error too) removes the extract.
@@ -305,7 +305,7 @@ module Samagotchi
       identity = Samagotchi::MemoryBundle::SourceIdentity.of(expanded_source)
       return false unless identity
 
-      other, = Samagotchi::MemoryBundle::Provenance.each_installed.find do |name, bundle|
+      other, = Samagotchi::InstalledBundles.each.find do |name, bundle|
         name != bundle_name && !bundle.error? && Samagotchi::MemoryBundle::SourceIdentity.of(bundle.source) == identity
       end
       return false unless other
@@ -343,13 +343,13 @@ module Samagotchi
       return unless plugin && manifest&.plugin
 
       # Installed with --force past its requires_chi: the Engine won't load it.
-      failure = Samagotchi::MemoryBundle::Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
+      failure = Samagotchi::BundleManifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
       @stdout.puts "Plugin: #{manifest.plugin[:file]} (#{failure ? "won't load on this chi: #{failure}" : "loads at the next chi start"})"
     end
 
     # @return [Integer] 0
     def print_provenance(bundle_name, manifest)
-      @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
+      @stdout.puts "Provenance written to: #{Samagotchi::InstalledBundles.dir}/#{bundle_name}/" if manifest
       0
     end
 
@@ -370,9 +370,9 @@ module Samagotchi
     # result, with how many sessions and the command for each. Nothing when the
     # plugin is unchanged or there never was one, nothing with no worker that
     # can be restarted.
-    # @param before [InstalledBundle, nil] the bundle's record as it was before
+    # @param before [InstalledBundles::Record, nil] the bundle's record as it was before
     #   the run (an uninstall deletes it, so take it first)
-    # @param manifest [MemoryBundle::Manifest, nil] the manifest this run
+    # @param manifest [BundleManifest, nil] the manifest this run
     #   installed; nil for an uninstall
     # @param installer [Installer, nil] the run, for what it wrote to the plugin
     def restart_hint(before, manifest = nil, installer = nil)
@@ -402,7 +402,7 @@ module Samagotchi
 
     # @return [Integer] 0 all resolved, CONFLICTS_KEPT kept some edits
     def upgrade_conflicts(installer, bundle_name, expanded_source, agent)
-      standing = Samagotchi::MemoryBundle::FileStanding
+      standing = Samagotchi::InstalledBundles::FileStanding
       @stdout.puts "\n#{standing.stay_behind(installer.behind.size)}: #{installer.behind.map(&:file).join(", ")}"
       launch = if agent.nil? && @stdin.tty?
                  @stdout.print "Launch an interactive agent to merge them? [y/N] "
@@ -444,7 +444,7 @@ module Samagotchi
       marked, clean = changed.partition { |_, info| merger.markers?(info[:current]) }
       settled = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(clean.to_h)
       gone = clean.map(&:first) - settled
-      standing = Samagotchi::MemoryBundle::FileStanding
+      standing = Samagotchi::InstalledBundles::FileStanding
       untouched.each { |key, _| @stdout.puts standing.still_behind(:untouched, key) }
       marked.each { |key, _| @stdout.puts standing.still_behind(:markers, key) }
       gone.each { |key| @stdout.puts standing.still_behind(:incoming_gone, key) }
@@ -508,7 +508,7 @@ module Samagotchi
       lines.each { |line| @stdout.puts "  #{line}" }
       @stdout.puts "(dry-run: no changes written)" if dry_run
       result.failed? ? 1 : 0
-    rescue Samagotchi::MemoryBundle::Manifest::ValidationError => e
+    rescue Samagotchi::BundleManifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
       1
     end
@@ -558,7 +558,7 @@ module Samagotchi
         else
           @stdout.puts "Target: #{st.target_dir}"
         end
-        standing = Samagotchi::MemoryBundle::FileStanding
+        standing = Samagotchi::InstalledBundles::FileStanding
         st.files.each do |k, info|
           next @stdout.puts("  #{k}: unchecked") if info[:unchecked]
 
@@ -595,7 +595,7 @@ module Samagotchi
           @stdout.puts "  includes #{member} [#{state}]"
         end
       else
-        bundles = Samagotchi::MemoryBundle::Provenance.each_installed.to_a
+        bundles = Samagotchi::InstalledBundles.each.to_a
         @stdout.puts "No installed bundles." if bundles.empty?
         bundles.each do |bname, record|
           next @stdout.puts("  #{bname} (manifest.json unreadable)") if record.error?
@@ -708,9 +708,9 @@ module Samagotchi
     # A rule or script keeps no base text: its recorded and current sha256.
     def diff_asset(asset)
       @stdout.puts "=== #{asset.label} ==="
-      current = File.file?(asset.path) ? Samagotchi::MemoryBundle::Provenance.file_sha(asset.path) : "(missing)"
+      current = File.file?(asset.path) ? Samagotchi::InstalledBundles::Sha.of_file(asset.path) : "(missing)"
       edited = asset.edited? ? " (edited after install: the next install replaces it, a copy kept in the trash)" : ""
-      @stdout.puts "--- recorded sha256=#{Samagotchi::MemoryBundle::Provenance.recorded_sha(asset.recorded)} current sha256=#{current}#{edited}"
+      @stdout.puts "--- recorded sha256=#{Samagotchi::InstalledBundles::Sha.recorded(asset.recorded)} current sha256=#{current}#{edited}"
     end
 
     # The base and the file; a marked one also the bundle's text it stays
@@ -779,7 +779,7 @@ module Samagotchi
                  "#{b.includes ? profile_members(b.includes, installed) : "files=#{b.files}"}  installed=#{b.installed_at || "?"}"
           line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
           if b.behind&.any?
-            count = Samagotchi::MemoryBundle::FileStanding.behind_count(b.behind.size, unsure: b.behind.any?(&:unsure))
+            count = Samagotchi::InstalledBundles::FileStanding.behind_count(b.behind.size, unsure: b.behind.any?(&:unsure))
             line += "  (#{count}: chi bundle status #{b.name})"
           end
           @stdout.puts line
@@ -1068,7 +1068,7 @@ module Samagotchi
     # A dev install is refused (it already follows its source), and a record
     # whose source is relative, empty or gone says so. nil after such a
     # refusal, written to stderr.
-    # @return [Array(String, InstalledBundle, nil), nil] [the source, the
+    # @return [Array(String, InstalledBundles::Record, nil), nil] [the source, the
     #   record that named it (nil for a source as given)]
     def upgrade_source(source)
       normalizer = Samagotchi::MemoryBundle::SourceNormalizer

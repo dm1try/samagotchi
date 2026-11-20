@@ -4,7 +4,7 @@ require_relative "asset_installer"
 require_relative "asset_state"
 require_relative "installer"
 require_relative "listing"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "manifest_standing"
 require_relative "merger"
 require_relative "profile"
@@ -50,7 +50,7 @@ module Samagotchi
       # :up_to_date, :skipped, :failed. note says why for skipped/failed,
       # what a retry at the same version warned of, and an update's Checksum
       # mismatch warnings. merged and replaced are file
-      # names, behind FileStanding::Behind; under plan they are what apply would
+      # names, behind InstalledBundles::FileStanding::Behind; under plan they are what apply would
       # merge, replace or leave behind.
       # added_files is the new version's memory files the bundle didn't own
       # before; adds is nil but for a profile: the members it installs.
@@ -59,7 +59,7 @@ module Samagotchi
       # trash_copy is nil but under apply when it saved edited files
       # (Installer#trash_copy_line).
       # earlier: the merge notes on its record when the plan read it
-      # (FileStanding::MergeNote): this run's own merges aren't among them.
+      # (InstalledBundles::FileStanding::MergeNote): this run's own merges aren't among them.
       # manifest: what a row at the shipped version says of its manifest.yml
       # (ManifestStanding.keep's line: would keep or kept it, or why not and
       # the command), nil when nothing.
@@ -94,7 +94,7 @@ module Samagotchi
       # The installed bundles chi doesn't update (plan's "not from chi"), for
       # chi update's re-check: not a profile (no code of its own, its members
       # are chi's), nor one whose record doesn't read (its row says so).
-      # @return [Array<InstalledBundle>]
+      # @return [Array<InstalledBundles::Record>]
       def external(shipped_dir: SourceNormalizer::SHIPPED_DIR)
         shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
         installed.filter_map { |name, bundle| bundle unless bundle.error? || bundle.profile? || from_chi?(bundle, shipped[name]) }
@@ -175,9 +175,9 @@ module Samagotchi
         end
       end
 
-      # [name, InstalledBundle] for each installed bundle but the system one, by name.
+      # [name, InstalledBundles::Record] for each installed bundle but the system one, by name.
       def installed
-        Provenance.each_installed.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
+        InstalledBundles.each.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
       end
 
       # Whether it is the bundle chi ships as +ship+ (nil: none of its name).
@@ -198,14 +198,14 @@ module Samagotchi
         return profile_row(row, bundle, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
         return same_version_row(row, bundle) unless Listing.newer?(row.to, row.from)
 
-        manifest = Manifest.read(dir: row.source_dir)
-        if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
+        manifest = BundleManifest.read(dir: row.source_dir)
+        if BundleManifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
-        # The upgrade would refuse it (Manifest::HooksRetired.refuse_source_files).
-        hooks = Manifest::HooksRetired.files_in(row.source_dir)
-        return skip(row, Manifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
+        # The upgrade would refuse it (BundleManifest::HooksRetired.refuse_source_files).
+        hooks = BundleManifest::HooksRetired.files_in(row.source_dir)
+        return skip(row, BundleManifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
@@ -263,15 +263,15 @@ module Samagotchi
       end
 
       def profile_row(row, bundle, shipped_dir, chi_version)
-        manifest = Manifest.read(dir: row.source_dir)
+        manifest = BundleManifest.read(dir: row.source_dir)
         newer = Listing.newer?(row.to, row.from)
-        if newer && Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
+        if newer && BundleManifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
         row.adds = Profile.to_install(manifest, bundle).reject do |member|
-          Manifest.requires_chi_failure(Manifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
-        rescue Manifest::ValidationError, Psych::Exception
+          BundleManifest.requires_chi_failure(BundleManifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
+        rescue BundleManifest::ValidationError, Psych::Exception
           false # apply reports it failing
         end
         row.to = nil unless newer
@@ -333,9 +333,9 @@ module Samagotchi
 
       # Whether the file differs from its recorded sha (none recorded: no).
       def edited?(path, recorded)
-        return false if Provenance.recorded_sha(recorded).empty? || !File.file?(path)
+        return false if InstalledBundles::Sha.recorded(recorded).empty? || !File.file?(path)
 
-        !Provenance.sha_matches?(path, recorded)
+        !InstalledBundles::Sha.matches?(path, recorded)
       end
     end
   end

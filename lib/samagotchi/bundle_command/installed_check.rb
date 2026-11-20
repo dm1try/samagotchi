@@ -24,7 +24,7 @@ module Samagotchi
 
       module_function
 
-      # @param bundle [MemoryBundle::InstalledBundle]
+      # @param bundle [InstalledBundles::Record]
       # @return [Array<Found>] its warnings and errors; never raises for the bundle
       def run(bundle)
         $stdout.flush
@@ -59,7 +59,7 @@ module Samagotchi
 
       # What the child sends: an edited file, which the copy's own shas can't
       # tell, a manifest key that doesn't parse (the copy holds the mirror's
-      # value or none: InstalledManifest#key_problems), and Check's warnings
+      # value or none: InstalledBundles::Manifest#key_problems), and Check's warnings
       # and errors, naming the installed bundle's folder rather than the copy's.
       def answer_of(bundle)
         edited = MemoryBundle::ShippedUpdate.edited_executables(bundle.name, bundle).map do |file|

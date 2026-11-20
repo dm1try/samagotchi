@@ -5,7 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "yaml"
 require "samagotchi/memory_bundle/memory_files"
-require "samagotchi/memory_bundle/manifest"
+require "samagotchi/bundle_manifest"
 
 RSpec.describe Samagotchi::MemoryBundle::MemoryFiles do
   describe ".repo_meta?" do
@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::MemoryBundle::MemoryFiles do
       raw = { "name" => "b", "version" => "1.0.0" }
       raw["files"] = listed.to_h { |f| [f, "sha256:x"] } if listed
       File.write(File.join(dir, "manifest.yml"), YAML.dump(raw))
-      [dir, Samagotchi::MemoryBundle::Manifest.read(dir: dir)]
+      [dir, Samagotchi::BundleManifest.read(dir: dir)]
     end
 
     it "selects no symlinked *.md (outside the bundle or not) and names them in .symlinks" do

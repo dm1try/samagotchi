@@ -5,11 +5,11 @@ require "json"
 require "tmpdir"
 require "fileutils"
 require "digest"
-require "samagotchi/memory_bundle/installed_bundle"
-require "samagotchi/memory_bundle/installed_manifest"
+require "samagotchi/installed_bundles/record"
+require "samagotchi/installed_bundles/manifest"
 
-RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
-  let(:installed) { Samagotchi::MemoryBundle::InstalledBundle }
+RSpec.describe Samagotchi::InstalledBundles::Manifest do
+  let(:installed) { Samagotchi::InstalledBundles::Record }
 
   def record(raw) = installed.parse("b", JSON.parse(JSON.generate(raw)))
 
@@ -254,9 +254,9 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     def manifest_readers
       Dir.mktmpdir do |dir|
         File.write(File.join(dir, "manifest.yml"), "name: t\nversion: 1.0.0\n")
-        manifest = Samagotchi::MemoryBundle::Manifest.read(dir: dir)
-        Samagotchi::MemoryBundle::Manifest.public_instance_methods(false).select do |name|
-          Samagotchi::MemoryBundle::Manifest.instance_method(name).arity.zero? && manifest.instance_variables.include?(:"@#{name}")
+        manifest = Samagotchi::BundleManifest.read(dir: dir)
+        Samagotchi::BundleManifest.public_instance_methods(false).select do |name|
+          Samagotchi::BundleManifest.instance_method(name).arity.zero? && manifest.instance_variables.include?(:"@#{name}")
         end
       end
     end

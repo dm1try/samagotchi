@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "digest"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require "fileutils"
 require "tmpdir"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "placeholder"
 require_relative "../memory_paths"
 require_relative "../model_overlay"
@@ -16,7 +16,7 @@ module Samagotchi
     # record's hooks/ isn't built).
     #
     # Inverse of Installer: reads from the resolved scope directory,
-    # computes SHA256 checksums, writes manifest.yml via Manifest.write,
+    # computes SHA256 checksums, writes manifest.yml via BundleManifest.write,
     # and optionally zips/tars the staging directory.
     class Builder
       class BuildError < StandardError; end
@@ -26,7 +26,7 @@ module Samagotchi
 
       # What a build takes from the installed bundle of the same name (its
       # record and its dir), else from the scope dir:
-      #   record      the InstalledBundle, nil when none is installed (or
+      #   record      the InstalledBundles::Record, nil when none is installed (or
       #               it doesn't read)
       #   rules       guardrails/*.yml paths
       #   plugin      the installed plugin file, nil without one
@@ -139,7 +139,7 @@ module Samagotchi
       end
 
       # The installed bundle's guardrail rules, plugin, scripts, context
-      # providers and block renderers (its InstalledManifest's). Without
+      # providers and block renderers (its InstalledBundles::Manifest's). Without
       # rules in a record, the scope dir's guardrails/*.yml (building from a
       # raw bundle dir that is also the memories dir).
       # @return [InstalledParts]
@@ -187,7 +187,7 @@ module Samagotchi
       end
 
       # manifest.yml for the staged bundle: requires_chi, needs, session_settings and settings (typed) and the
-      # file descriptions come from the installed bundle's manifest (InstalledManifest), the
+      # file descriptions come from the installed bundle's manifest (InstalledBundles::Manifest), the
       # trust_level and description from the CLI else that manifest. A key of its kept manifest.yml
       # this chi doesn't know is carried as installed (the build is the bundle again), with a warning.
       def write_manifest(staging, name, version, files_map, parts)
@@ -195,7 +195,7 @@ module Samagotchi
         trust_level = @trust_level
         trust_level = manifest.trust_level if (trust_level.nil? || trust_level.empty?) && manifest&.trust_level
         description = @description.empty? && manifest&.description ? manifest.description : @description
-        Manifest.write(
+        BundleManifest.write(
           dir: staging,
           name: name,
           version: version,
@@ -203,11 +203,11 @@ module Samagotchi
           description: description,
           files: files_map,
           trust_level: trust_level,
-          plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: FileDigest.sha256(parts.plugin),
+          plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: InstalledBundles::FileDigest.sha256(parts.plugin),
                                     required: manifest&.plugin_required },
           requires_chi: manifest&.requires_chi,
           needs: manifest&.needs,
-          scripts: parts.scripts.transform_values { |src| FileDigest.sha256(src) },
+          scripts: parts.scripts.transform_values { |src| InstalledBundles::FileDigest.sha256(src) },
           context_providers: parts.context_providers,
           block_renderers: parts.block_renderers,
           file_descriptions: manifest ? manifest.file_descriptions.slice(*files_map.keys) : {},
@@ -224,7 +224,7 @@ module Samagotchi
         kept = YAML.load_file(record.kept_manifest_path) || {}
         File.write(path, YAML.dump(YAML.load_file(path).merge(kept.slice(*manifest.unknown_keys))))
         manifest.unknown_keys.each do |key|
-          @warnings << "#{Manifest.unknown_key_line(key)}; the build carries it as installed"
+          @warnings << "#{BundleManifest.unknown_key_line(key)}; the build carries it as installed"
         end
       end
 
@@ -258,10 +258,10 @@ module Samagotchi
         return unless Profile.installed_meta?(name, record)
 
         shipped = File.join(SourceNormalizer::SHIPPED_DIR, name)
-        members = Profile.recorded(record, File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil)
+        members = Profile.recorded(record, File.file?(File.join(shipped, "manifest.yml")) ? BundleManifest.read(dir: shipped) : nil)
         raise BuildError, "#{name} is an installed profile (includes: #{members.join(", ")}): it ships only its includes, " \
                           "so a build can't remake it; pick another --name for these memories"
-      rescue JSON::ParserError, SystemCallError, Manifest::ValidationError
+      rescue JSON::ParserError, SystemCallError, BundleManifest::ValidationError
         nil
       end
 
@@ -280,7 +280,7 @@ module Samagotchi
       def leave_out_owned(candidates, name)
         require_relative "provenance"
         owners = candidates.to_h do |path|
-          [path, Provenance.claimants(File.basename(path), scope: @scope, except: name)]
+          [path, InstalledBundles.claimants(File.basename(path), scope: @scope, except: name)]
         end
         left_out = owners.reject { |_, names| names.empty? }
         left_out.each do |path, names|

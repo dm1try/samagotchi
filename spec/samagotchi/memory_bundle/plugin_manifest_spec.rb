@@ -49,7 +49,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
     installer
   end
 
-  describe Samagotchi::MemoryBundle::Manifest do
+  describe Samagotchi::BundleManifest do
     it "reads plugin: {file:, sha256:} and requires_chi:" do
       manifest = described_class.read(dir: write_source(requires_chi: ">= 0.1.0"))
       expect(manifest.plugin).to eq(file: "plugin.rb", sha256: "sha256:#{Digest::SHA256.hexdigest(plugin_source)}")
@@ -292,7 +292,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
 
     it "lists it among the installed bundles with a plugin" do
       install(write_source)
-      expect(Samagotchi::MemoryBundle::Provenance.each_installed(holding: :plugin).to_a.map(&:first)).to eq(["plug"])
+      expect(Samagotchi::InstalledBundles.each(holding: :plugin).to_a.map(&:first)).to eq(["plug"])
     end
 
     it "is removed with the bundle" do
@@ -331,7 +331,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       out = File.join(tmpdir, "built")
       Samagotchi::MemoryBundle::Builder.new(scope: "system", name: "plug", out: out).run
       expect(File.read(File.join(out, "plugin.rb"))).to eq(plugin_source)
-      manifest = Samagotchi::MemoryBundle::Manifest.read(dir: out)
+      manifest = Samagotchi::BundleManifest.read(dir: out)
       expect(manifest.plugin).to eq(file: "plugin.rb", sha256: "sha256:#{Digest::SHA256.hexdigest(plugin_source)}")
       expect(manifest.requires_chi).to eq(">= 0.1.0")
     end
@@ -340,7 +340,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       install(write_source(plugin: { "file" => "plugin.rb", "required" => true }))
       out = File.join(tmpdir, "built")
       Samagotchi::MemoryBundle::Builder.new(scope: "system", name: "plug", out: out).run
-      expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).plugin).to include(required: true)
+      expect(Samagotchi::BundleManifest.read(dir: out).plugin).to include(required: true)
     end
   end
 

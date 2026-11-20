@@ -5,9 +5,9 @@ require "tmpdir"
 require "fileutils"
 require "yaml"
 require "digest"
-require "samagotchi/memory_bundle/manifest"
+require "samagotchi/bundle_manifest"
 
-RSpec.describe Samagotchi::MemoryBundle::Manifest do
+RSpec.describe Samagotchi::BundleManifest do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-manifest-") }
 
   after { FileUtils.rm_rf(tmpdir) }
@@ -119,7 +119,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
     it "raises on missing required fields" do
       File.write(File.join(tmpdir, "manifest.yml"), YAML.dump({}))
       expect { described_class.new(path: File.join(tmpdir, "manifest.yml")) }
-        .to raise_error(Samagotchi::MemoryBundle::Manifest::ValidationError, /name/)
+        .to raise_error(Samagotchi::BundleManifest::ValidationError, /name/)
     end
 
     it "ignores empty file keys" do
@@ -138,14 +138,14 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
 
     it "raises when no manifest.yml in dir" do
       expect { described_class.read(dir: tmpdir) }
-        .to raise_error(Samagotchi::MemoryBundle::Manifest::ValidationError, /not found/)
+        .to raise_error(Samagotchi::BundleManifest::ValidationError, /not found/)
     end
 
     # Every manifest problem is a ValidationError (the CLI prints it as
     # "<word> failed: …"), never a Psych error with a backtrace.
     it "raises a ValidationError for a manifest.yml that isn't valid YAML or isn't a mapping" do
       path = File.join(tmpdir, "manifest.yml")
-      error = Samagotchi::MemoryBundle::Manifest::ValidationError
+      error = Samagotchi::BundleManifest::ValidationError
 
       File.write(path, "name: [x\n")
       expect { described_class.read(dir: tmpdir) }

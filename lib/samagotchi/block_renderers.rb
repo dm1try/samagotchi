@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "installed_bundles"
+
 module Samagotchi
+  autoload :BundleManifest, File.expand_path("bundle_manifest", __dir__)
   autoload :InlineWidgets, File.expand_path("inline_widgets", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
   autoload :VERSION, File.expand_path("version", __dir__)
-  module MemoryBundle
-    autoload :Manifest, File.expand_path("memory_bundle/manifest", __dir__)
-    autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
-  end
 
   # Declarative block renderers (docs/plugins.md, docs/internals/block-renderers.md):
   # a bundle's manifest maps a fenced block's language to the scripts/ files the
@@ -70,7 +69,7 @@ module Samagotchi
       raise Invalid, "block_renderers: #{lang} is drawn by chi itself; a bundle can't render it" if RESERVED.include?(lang)
 
       load = data["load"]
-      unless load.is_a?(Array) && !load.empty? && load.all? { |file| file.is_a?(String) && file.match?(MemoryBundle::Manifest::SCRIPT_FILE) }
+      unless load.is_a?(Array) && !load.empty? && load.all? { |file| file.is_a?(String) && file.match?(BundleManifest::SCRIPT_FILE) }
         raise Invalid, "block_renderers: #{lang}'s load must be a non-empty list of file names in scripts/, not #{load.inspect}"
       end
 
@@ -83,7 +82,7 @@ module Samagotchi
     # @return [Array<Installed>]
     def for_installed
       taken = {}
-      MemoryBundle::Provenance.each_installed do |bundle, record|
+      InstalledBundles.each do |bundle, record|
         manifest = record.manifest
         next if manifest.requires_chi_failure(VERSION)
 
@@ -104,7 +103,7 @@ module Samagotchi
     def script_path(bundle, file)
       return nil unless for_installed.any? { |renderer| renderer.bundle == bundle && renderer.files.include?(file) }
 
-      provenance = MemoryBundle::Provenance.new(name: bundle)
+      provenance = InstalledBundles::Dir.new(name: bundle)
       failure = provenance.script_failure(file, provenance.record&.scripts&.fetch(file, nil))
       raise Invalid, failure if failure
 

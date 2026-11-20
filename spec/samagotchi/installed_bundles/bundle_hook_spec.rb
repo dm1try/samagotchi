@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "samagotchi/memory_bundle/bundle_hook"
+require "samagotchi/installed_bundles/bundle_hook"
 
-RSpec.describe Samagotchi::MemoryBundle::BundleHook do
+RSpec.describe Samagotchi::InstalledBundles::BundleHook do
   describe ".parse" do
     it "keeps only the sha from a legacy record and prefixes a bare value" do
       hook = described_class.parse("sha256" => "abc", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => "10")

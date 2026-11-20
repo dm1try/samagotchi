@@ -156,7 +156,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   chi reads the key from it with no reinstall, and `chi update`'s re-check names it too), `requires-chi` (this chi doesn't satisfy it:
   error; missing on a bundle with code: warn), `requires-chi-floor` (warn: the plugin calls an API newer than the
   oldest chi `requires_chi` admits, from `Plugin::Api::SINCE`, or the manifest itself uses a key newer than it, from
-  `Manifest::SINCE`; an installed bundle gets the unknown-key row but never the floor, as it's the author's fix),
+  `BundleManifest::SINCE`; an installed bundle gets the unknown-key row but never the floor, as it's the author's fix),
   `trust` (warn: `trust_level: reviewed|trusted` on a
   bundle chi doesn't ship), `clash` (warn: a name chi ships, or one installed from elsewhere; the sandboxed install
   then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin load failure at

@@ -228,10 +228,10 @@ module BundleStateCorpus
       now = after[:sha]
       return "none" if now.nil?
       return "empty" if now.empty?
-      return "dev" if Samagotchi::MemoryBundle::Provenance.unchecked?(now)
+      return "dev" if Samagotchi::InstalledBundles::Sha.unchecked?(now)
       return "old" if now == was
 
-      hex = Samagotchi::MemoryBundle::Provenance.recorded_sha(now)
+      hex = Samagotchi::InstalledBundles::Sha.recorded(now)
       return "disk" if after[:bytes] && hex == BundleStateCorpus.sha(after[:bytes])
       return "incoming" if @case.incoming && hex == BundleStateCorpus.sha(@case.incoming)
 

@@ -31,7 +31,7 @@ module LegacyHooksRecord
   module_function
 
   # @return [String] the bundle's directory
-  def legacy_hooks_record(name, hooks:, edited: [], bundles_dir: Samagotchi::MemoryBundle::Provenance.bundles_dir)
+  def legacy_hooks_record(name, hooks:, edited: [], bundles_dir: Samagotchi::InstalledBundles.dir)
     bundle_dir = File.join(bundles_dir, name)
     manifest_path = File.join(bundle_dir, "manifest.json")
     record = if File.exist?(manifest_path)
