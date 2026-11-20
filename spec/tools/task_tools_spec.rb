@@ -21,6 +21,53 @@ RSpec.describe "task tools" do
   around { |example| with_task_dir { example.run } }
 
   describe Samagotchi::Tools::TaskCreate do
+    describe "git exclusion" do
+      it "excludes task folders once, including nested folders" do
+        expect(system("git", "init", "-q", Dir.pwd)).to be(true)
+        exclude = File.join(Dir.pwd, ".git", "info", "exclude")
+        2.times { expect(described_class.call("true")).to include("task_id:") }
+        expect(File.readlines(exclude).count { |line| line.chomp == "/tmp/tasks/" }).to eq(1)
+        expect(`git status --porcelain`).not_to include("tmp/")
+
+        FileUtils.mkdir_p("nested [work]")
+        Dir.chdir("nested [work]") do
+          expect(described_class.call("true")).to include("task_id:")
+          expect(`git status --porcelain`).not_to include("nested [work]/")
+          quiesce_tasks!
+        end
+        expect(File.readlines(exclude)).to include("/nested \\[work\\]/tmp/tasks/\n")
+      end
+
+      it "does not write a git exclusion outside a repository" do
+        expect(described_class.call("true")).to include("task_id:")
+        expect(File).not_to exist(".git")
+      end
+
+      it "writes to the common exclusion file in a linked worktree" do
+        expect(system("git", "init", "-q", Dir.pwd)).to be(true)
+        expect(system("git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                      "commit", "-q", "--allow-empty", "-m", "initial")).to be(true)
+        Dir.mktmpdir("task-worktree") do |dir|
+          expect(system("git", "worktree", "add", "-q", "-b", "task-test", dir)).to be(true)
+          Dir.chdir(dir) do
+            expect(described_class.call("true")).to include("task_id:")
+            quiesce_tasks!
+          end
+          expect(File.readlines(".git/info/exclude")).to include("/tmp/tasks/\n")
+          expect(system("git", "worktree", "remove", "--force", dir)).to be(true)
+          FileUtils.mkdir_p(dir)
+        end
+      end
+
+      it "logs exclusion errors without preventing task creation" do
+        expect(system("git", "init", "-q", Dir.pwd)).to be(true)
+        allow(File).to receive(:open).and_call_original
+        allow(File).to receive(:open).with(%r{info/exclude\z}, anything, anything).and_raise(Errno::EACCES)
+        expect(Samagotchi::Log).to receive(:warn).with(:turn, "task_exclude_failed", hash_including(error: "Errno::EACCES"))
+        expect(described_class.call("true")).to include("task_id:")
+      end
+    end
+
     it "creates a running task and returns metadata with output path" do
       result = described_class.call("ruby -e 'puts \"hello\"'")
 
