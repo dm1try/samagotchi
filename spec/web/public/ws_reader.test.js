@@ -465,15 +465,17 @@ test("an .md file: a whole read renders (its band still jumps to it); a slice st
 
 test("the peek of a memory: today's lines while pending, then the whole text rendered once the HTML comes", async () => {
   const md = renderer();
-  const p = page({ answers: { "memory:style": memoryAnswer("# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
+  const p = page({ answers: { "memory:style": memoryAnswer("---\nname: style\n---\n# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
   p.ws.popover.open(document.querySelector(".ws-chip"));
   const pop = p.ws.popover.pop;
   pop.querySelector(".ws-row.memory .ws-peek-toggle").click();
   await tick();
   assert.match(pop.querySelector(".ws-peek-b .wsr-text").textContent, /# Style/, "pending: the text's first lines");
+  assert.doesNotMatch(pop.querySelector(".ws-peek-b .wsr-text").textContent, /name: style/, "pending: no front matter");
   await md.release();
   assert.equal(pop.querySelector(".ws-peek-b .wsr-md h1").textContent, "Style", "redrawn when the HTML came");
   assert.ok(pop.querySelector(".ws-peek-b .wsr-text") === null);
+  assert.ok(pop.querySelector(".ws-peek-b .wsr-front") === null, "rendered: no front matter");
   assert.ok(pop.querySelector('[data-wsr="view"]') === null, "no switch in the peek");
   p.ws.popover.close();
   p.cleanup();
