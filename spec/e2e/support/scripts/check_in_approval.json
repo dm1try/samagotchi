@@ -1,0 +1,10 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "Reading the README.", "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 1}}]},
+    {"tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 2, "end_line": 2}}]},
+    {"tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 3, "end_line": 3}}]},
+    {"hold": 1, "text": "Running the command that needs approval.", "tools": [{"name": "execute", "arguments": {"command": "echo E2E_APPROVED"}}]},
+    {"text": "The approved command ran."}
+  ]
+}
