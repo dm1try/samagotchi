@@ -10,10 +10,10 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as the codex-outbox context"
 plugin:
   file: plugin.rb
-  sha256: sha256:e71efb40d8864d5324c25e3c0dea14e9ec62625a19d7790315513f016412b768
+  sha256: sha256:a9cad05555a9152ec08ce3b507a190fc5c2d4864259898d45c1a9986d1635c47
 scripts:
   pair: sha256:a61c3d311ce3f3e5386e90f0f867f649a39763a5883877e731e43d84dd9c85aa
-  chi-peer-SKILL.md: sha256:cbcc12f27b99d0cd40744b86d98e2b0ad55ff63697304a652ebe5ed36fe686d1
+  chi-peer-SKILL.md: sha256:eacf5ecc986fbf40d8fd58c3c6a89510396883448cb9cbc2ed171d7fb9c5ffdb
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.

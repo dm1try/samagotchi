@@ -15,9 +15,10 @@ require "samagotchi/plugin/peer"
 # finding) with `codex queue --thread <uuid> --message <text>`, which wakes
 # an idle Codex TUI: the text runs there as a new user turn (checked on
 # Codex 0.162.1). Plain text, no wire format. The message starts with a
-# header, `chi <id> · <kind> · <title>`; a short part follows inline, a
-# long one goes to a file under the bundle's data dir (sessions/<id>/,
-# removed with the session) and the message names it (`payload: <path>`).
+# header, `chi <id> · <kind> · <title>`, and `ref: <send id>` (the
+# answer's re); a short part follows inline, a long one goes to a file
+# under the bundle's data dir (sessions/<id>/, removed with the session) and
+# the message names it (`payload: <path>`).
 # `codex` is CODEX, else codex on the PATH; a queue that takes over
 # QUEUE_SECONDS is killed (its process group), so a send never hangs.
 #

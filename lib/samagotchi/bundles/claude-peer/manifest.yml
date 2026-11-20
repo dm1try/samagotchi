@@ -10,10 +10,10 @@ files:
     description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as the claude-outbox context"
 plugin:
   file: plugin.rb
-  sha256: sha256:1e730c4d0531f46181a714b9d7715290e4b37d2ea93de334a08eba66ebd5e027
+  sha256: sha256:09b7e0c5dd97a5ed24f1dd641967c3dad28a8d7bc86e65a82ea032e62782ed6b
 scripts:
   pair: sha256:d85023acf109ca61eabbdec2dc3ad452da84493b604643cb1006d9f21958f5bc
-  chi-peer-SKILL.md: sha256:e279f484f21833180f5328f8a775d96d6a09fc2f8a02063a1d30ead2eaf365ca
+  chi-peer-SKILL.md: sha256:8db54ef42b4b008cab5ff27acf579a6da00b381549feb33c441fa9ebde6d32ad
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
