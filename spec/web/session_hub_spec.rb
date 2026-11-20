@@ -422,6 +422,10 @@ RSpec.describe Samagotchi::Web::SessionHub do
     let(:clock) { [0.0] }
     let(:hub) { described_class.new(state_dir: state_dir, now: -> { clock.first }) }
 
+    # A full scan starts the retention sweep, whose owner probe briefly holds each
+    # owner.lock shared; acquire's wait: 0 would lose to it. The owner reads stay real.
+    before { allow(Samagotchi::SessionManager).to receive(:retention_sweep_if_due) }
+
     def lock_dir(session)
       session_dir(session)
     end
