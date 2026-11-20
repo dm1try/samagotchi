@@ -102,6 +102,11 @@ test("historyShape reads a step's steers, rows, notices and cards in order", () 
 
 // The id is on its own as well as in the text: the reload check keeps only a
 // turn's own cards by it (reload_check.js).
+test("a drawn turn's empty question slot reads as a question (reload_check.js drops them with the cards)", () => {
+  const shape = historyShape(historyOf('<div class="bubble user">q</div><div class="question-slot" data-question-slot="a1"></div>'));
+  assert.deepEqual(shape.map((it) => it.kind), ["prompt", "question"]);
+});
+
 test("a card item carries its card id; another id at the same place is a difference", () => {
   const one = historyShape(historyOf('<div class="plugin-card" data-card-id="c-1"><span class="card-title">Warn</span></div>'));
   const other = historyShape(historyOf('<div class="plugin-card" data-card-id="c-2"><span class="card-title">Warn</span></div>'));

@@ -168,34 +168,12 @@ async function resyncTo(page, show) {
 // the stageShape fields (and "history") that differ. A build
 // that brings one back lists it here with its reason.
 const EXPECTED = {
-  // Live, the answered approval went into the history under its lead-in
-  // while check-in's card still waited in the stage (handed off at the end);
-  // a reload puts the question before the answer, after the drawn turn's
-  // check-in card. The reload can't tell when a card stopped asking (a card
-  // tapped Keep going/Nudge leaves the stage earlier; TurnAccumulator's
-  // fold_card keeps only its first arrival). Follow-up: a server-side record
-  // of where a card stopped asking, or questions as drawing parts.
-  "checkin_approval/turn end": ["history"],
-  // The same gap, at the turn's end (plans/turn-settle-order.md P1). Live, a
-  // card that asked leaves the stage for the history's end when it settles
-  // (cards_place.js upsertCard → settleWaiting/settleCards) or, still asking,
-  // last at the hand-off; an answered question sits under its lead-in, one
-  // without a lead-in at its answer. The drawing keeps a card where it first
-  // arrived (fold_card), so a reload puts a card that settled as a row of
-  // its arrival step, and one still asking before the answered question.
-  // check-in settled in step 2: live beside the block, reload in step 1.
-  "checkin_settled/turn end": ["history"],
-  "checkin_settled_then_approval/turn end": ["history"],
-  "checkin_merged_line/turn end": ["history"],
-  // Settled after the approval's answer: live card after the question.
-  "approval_then_checkin_settled/turn end": ["history"],
-  // A question without a lead-in answered while check-in asks: live the
-  // question, then check-in (handed off at the end); reload the reverse.
-  "question_no_leadin_with_checkin/turn end": ["history"],
-  // A warn card cleared to info in a turn the approval opened: live it went
-  // to the history's end at its redraw, reload it is a row of step 1.
-  "warn_card_cleared/turn end": ["history"],
-  // Mid-turn (a reload or a join while the turn runs; not in P3's scope).
+  // At a turn's end none: a drawn turn's pieces beside its block come back
+  // in the order live left them (turn_settle.js, the drawing's part_settled
+  // and question events).
+  // Mid-turn (a reload or a join while the turn runs: the stage draws the
+  // running turn, a follow-up). The reload can't tell when a card stopped
+  // waiting (a join replays without cards: the snapshot's come after).
   // A card that settled in a turn a docking card opened: live the turn stays
   // opened in the history with the card at its end; the reload has nothing
   // waiting and draws the turn in the stage (the card a row of a step).

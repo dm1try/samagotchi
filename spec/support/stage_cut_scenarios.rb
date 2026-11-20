@@ -250,6 +250,16 @@ module StageCutScenarios
                   list: [*r1, checkin_asks, [:cut, "checkin"], done(1), *merged(2, "also check b")[0, 1], [:cut, "queued"], *merged(2, "also check b")[1..], [:cut, "merged"],
                          *r2, checkin_settled, [:cut, "settled"], done(2)])
     },
+    merged_then_approval: lambda {
+      r1, c1 = read_step(1, "a", "t1")
+      cmd = 'command="echo ok"'
+      run = tool_call("execute", '{"command":"echo ok"}', "[execute]\nok", "t2")
+      settle_turn("A line merged into a turn nothing opened, then an approval under its lead-in: the turn opens first.", id: "turn-mta", last: 3,
+                  steps: [{ words: "", calls: [c1] }, { merged: ["also check b"], words: "Running the command.", calls: [run] }],
+                  list: [*r1, done(1), *merged(2, "also check b"), gen(2), text(2, "Running the command."),
+                         call_started(2, "execute", cmd, "t2"), asked(approval("a1")), [:cut, "approval waiting"],
+                         answered("a1", "Allow once"), call_done(2, "execute", cmd, "t2", "[execute]\nok"), done(2), [:cut, "approval answered"]])
+    },
     warn_card_cleared: lambda {
       r1, c1 = read_step(1, "a", "t1")
       r3, c3 = read_step(3, "b", "t3")

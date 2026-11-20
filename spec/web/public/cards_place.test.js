@@ -191,10 +191,9 @@ test("a step's reply goes to its first question only, as live (stage_asking.js a
   assert.deepEqual(questionCards.said, [["a1", "first"], ["q1", ""], ["q2", "second"]]);
 });
 
-// Where a drawn turn's card stopped asking is not in the read: a finished
-// turn's question goes before the answer, after the drawn card
-// (stage_cuts_parity.test.js EXPECTED: checkin_approval/turn end).
-test("an answered question goes before the answer, after a drawn turn's card (the read can't say when the card stopped asking)", () => {
+// A turn drawn without its question's slot (an old drawing without question
+// events): the question goes before the answer, after the drawn card.
+test("without a slot, an answered question goes before the answer, after a drawn turn's card", () => {
   const h = history('<div class="bubble user" data-turn-id="T1" data-drawn="T1">one</div>'
     + '<details class="turn-work" data-drawn="T1"><summary>s</summary><div class="gen"><div class="gen-text">asks</div></div></details>'
     + '<div class="plugin-card" data-card-id="check-in" data-drawn="T1">check-in</div><div class="bubble output" data-drawn="T1">a1</div>');
@@ -328,4 +327,21 @@ test("a drawn turn's own in-turn entries are left to its drawing; its card's bod
   assert.doesNotMatch(h.textContent, /asking again/);
   assert.equal(h.querySelectorAll(".plugin-card").length, 1);
   assert.equal(h.querySelector(".plugin-card .card-body p")?.textContent, "rendered");
+});
+
+// A drawn turn's question slot (turn_block.js drawnTurnNodes, the order live
+// left its pieces in: turn_settle.js): the resolved card takes its place,
+// with its lead-in as before; a slot whose question never came goes.
+test("a drawn turn's answered question replaces its slot, before a card still asking; a stray slot goes", () => {
+  const h = history('<div class="bubble user" data-turn-id="T1" data-drawn="T1">one</div>'
+    + '<details class="turn-work" data-drawn="T1"><summary>s</summary><div class="gen"><div class="gen-text">asks</div></div></details>'
+    + '<div class="question-slot" data-question-slot="a1" data-drawn="T1"></div>'
+    + '<div class="plugin-card" data-card-id="check-in" data-drawn="T1">check-in</div>'
+    + '<div class="question-slot" data-question-slot="gone" data-drawn="T1"></div><div class="bubble output" data-drawn="T1">a1</div>');
+  const questionCards = recordingQuestions(h);
+  const { cards } = harness(h, { questionCards });
+  cards.placeSnapshotCards([{ type: "question", pending_question: { id: "a1" }, answer: "yes", iteration: 1 }]);
+  assert.deepEqual([...h.children].map((el) => el.className || el.tagName), ["bubble user", "turn-work", "bubble question", "plugin-card", "bubble output"]);
+  assert.deepEqual(questionCards.said, [["a1", "asks"]]);
+  assert.equal(h.querySelector(".bubble.question").dataset.drawn, "T1");
 });
