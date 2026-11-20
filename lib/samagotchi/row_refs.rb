@@ -27,17 +27,20 @@ module Samagotchi
     module_function
 
     # Runs +fn+ (the tool's refs: lambda, as ToolSpec#per_call wraps it: call →
-    # a list of {kind:, target:, label:, actions:}) on +call+. Never
+    # a list of {kind:, target:, label:, actions:}) on +call+, and on
+    # +tool_id+ too when it takes two args (#call_with_id). Never
     # raises: a lambda that raises or returns something other than a list
     # gives none, and a bad ref is dropped; both are logged (warn, not
     # echoed: the turn's live region is on screen).
     # @param cwd [String, nil] the session's folder
+    # @param tool_id [String, nil] the run's id (ToolIds), the one its
+    #   handler reads (ToolIds.current, a plugin's ctx.tool_id)
     # @return [Array<Hash>] Ref#to_h each, deduped, at most MAX_REFS
-    def for(fn, call, cwd:)
+    def for(fn, call, cwd:, tool_id: nil)
       return [] unless fn
 
       tool = call[:name].to_s
-      raw = fn.call(call)
+      raw = call_with_id(fn, call, tool_id)
       return [] if raw.nil?
       raise ArgumentError, "refs: returned #{raw.class}, not a list" unless raw.is_a?(Array)
 
@@ -45,6 +48,14 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:plugins, "tool_refs_failed", tool: tool, error: "#{e.class}: #{e.message}")
       []
+    end
+
+    # +fn+ on +first+, and on +tool_id+ too when it takes two args (arity
+    # 2, or one required and more optional): a one-arg lambda is called as
+    # before. ToolSpec's refs: wrapper and #for share it.
+    def call_with_id(fn, first, tool_id)
+      arity = fn.respond_to?(:arity) ? fn.arity : fn.method(:call).arity
+      arity >= 2 || arity <= -2 ? fn.call(first, tool_id) : fn.call(first)
     end
 
     # Stored refs (+raw+, a saved tool_refs entry), each rebuilt and

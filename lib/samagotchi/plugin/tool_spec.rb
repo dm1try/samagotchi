@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../tools/args"
+require_relative "../row_refs"
 
 module Samagotchi
   module Plugin
@@ -137,7 +138,8 @@ module Samagotchi
 
       # Registry#register's keywords for it: its block wrapped as a handler
       # (typed args, the Context), preview, targets (in the entry's form,
-      # (call, surface): a plugin's reads the call only), refs (call only).
+      # (call, surface): a plugin's reads the call only), refs ((call,
+      # tool_id): a plugin's two-arg refs: lambda gets the run's id too).
       def entry_fields(context)
         block = self.block
         parameters = schema[:parameters]
@@ -151,7 +153,7 @@ module Samagotchi
           },
           preview: preview && ->(call, _surface = nil) { preview.call(call)&.to_s },
           targets: targets && ->(call, _surface = nil) { targets.call(call) },
-          refs: per_call(refs, parameters)
+          refs: refs_per_call(parameters)
         }
       end
 
@@ -162,6 +164,15 @@ module Samagotchi
       # without one.
       def per_call(fn, parameters)
         fn && ->(call) { fn.call(ToolSpec.args_of(call, parameters)) }
+      end
+
+      # The refs: lambda as (call, tool_id) → refs: one that takes two args
+      # (args, tool_id) gets the run's id (ToolIds, nil when the run has
+      # none), the one its handler reads as ctx.tool_id; a one-arg one the
+      # args only (RowRefs.call_with_id).
+      def refs_per_call(parameters)
+        fn = refs
+        fn && ->(call, tool_id = nil) { RowRefs.call_with_id(fn, ToolSpec.args_of(call, parameters), tool_id) }
       end
     end
   end

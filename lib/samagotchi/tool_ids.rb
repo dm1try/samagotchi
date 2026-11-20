@@ -34,6 +34,10 @@ module Samagotchi
   module ToolIds
     PATTERN = /\At(\d+)\z/
     DERIVED_PREFIX = "e"
+    # Thread.current key: the id of the run whose tool handler runs on
+    # this thread (ToolRunner#dispatch, #with_current), what a plugin's
+    # handler reads as ctx.tool_id.
+    CURRENT = :samagotchi_current_tool_id
 
     # One run's id in an entry: the id, the run's position (0-based) and
     # whether it was derived.
@@ -42,6 +46,21 @@ module Samagotchi
     end
 
     module_function
+
+    # The id of the run whose handler runs on this thread (#with_current),
+    # nil outside one: another thread, a run with no id.
+    # @return [String, nil]
+    def current = Thread.current[CURRENT]
+
+    # Run +block+ with #current as +id+ (nil too), the previous one back
+    # after it.
+    def with_current(id)
+      previous = Thread.current[CURRENT]
+      Thread.current[CURRENT] = id
+      yield
+    ensure
+      Thread.current[CURRENT] = previous
+    end
 
     # +count+ ids for runs about to go on +conversation+.
     # @return [Array<String>]

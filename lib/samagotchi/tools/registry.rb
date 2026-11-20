@@ -32,8 +32,9 @@ module Samagotchi
       # @!attribute targets [#call, nil] (call, surface) → what guardrail
       #   rules match. #register takes a one-argument preview or targets
       #   (call only, a plugin's) and gives it this form (.per_call)
-      # @!attribute refs [#call, nil] call → the row's refs (a plugin's
-      #   refs:, RowRefs checks what it gives)
+      # @!attribute refs [#call, nil] call (and the run's tool id, when it
+      #   takes two args: RowRefs.call_with_id) → the row's refs (a
+      #   plugin's refs:, RowRefs checks what it gives)
       # @!attribute source [String] "core", or the bundle that added it
       # @!attribute layer [Symbol, nil] the LLM context layer the tool
       #   belongs to (LLMContextStrategy): offered only in a turn running

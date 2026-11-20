@@ -8,6 +8,7 @@ require_relative "../session_metrics/usage"
 require_relative "../guardrails/context"
 require_relative "../hook_question"
 require_relative "../idle_client"
+require_relative "../tool_ids"
 require_relative "../cache_confirm"
 require_relative "service"
 require_relative "side_question"
@@ -171,6 +172,14 @@ module Samagotchi
 
       # @return [String, nil] the session's id (nil before the first one)
       def session_id = @host.session_id.call
+
+      # The id of the tool run whose handler runs now (chi's ToolIds,
+      # "t41"), the one the tool's two-arg refs: lambda got for its row:
+      # what ties a row to what the handler did. Only on the handler's own
+      # thread while it runs; nil elsewhere (a hook, a command, a thread
+      # the handler started) and for a run with no id.
+      # @return [String, nil]
+      def tool_id = ToolIds.current
 
       # @api private
       # The session store's root, as used by the host.

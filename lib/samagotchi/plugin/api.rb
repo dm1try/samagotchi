@@ -161,7 +161,10 @@ module Samagotchi
       #   command) and cwd:, each optional
       # @param refs [#call, nil] args → the call's row's refs, display only:
       #   a list of {kind:, target:, label:, actions:} (RowRefs, Ref). Run
-      #   once per call on the tool path, so it must be cheap (no I/O)
+      #   once per call on the tool path, so it must be cheap (no I/O). One
+      #   that takes two args, (args, tool_id), gets the run's id too (nil
+      #   when it has none): the block reads the same one as ctx.tool_id,
+      #   so an id made from it is the row's and the handler's alike
       def tool(name, description, **, &)
         spec = ToolSpec.build(name, description, **, &)
         if (taken = @registries.tools[spec.name])
