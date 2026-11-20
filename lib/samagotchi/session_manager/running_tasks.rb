@@ -109,9 +109,9 @@ module Samagotchi
 
       # The words restart's hold and the refusals lead with.
       LEAD = "background tasks it started are still running"
-      # How many tasks the words name before "+N more" (stop_sheet.js MAX_NAMED).
+      # How many tasks the words name before "+N more" (running_tasks.js NAMED_MAX).
       MAX_NAMED = 3
-      # A task's command is cut to this many characters (stop_sheet.js itemWords).
+      # A task's command is cut to this many characters (running_tasks.js cutCommand).
       COMMAND_CHARS = 42
       # The log tag of a session file or task.json the check can't read.
       CHECK_FAILED = "session_task_check_failed"
@@ -269,7 +269,7 @@ module Samagotchi
         command = task.command.to_s.strip.gsub(/\s+/, " ")
         return "task #{short_task(task.id)}" if command.empty?
 
-        command.length > COMMAND_CHARS ? "#{command[0, COMMAND_CHARS - 1]}…" : command
+        command.length > COMMAND_CHARS ? "#{command[0, COMMAND_CHARS]}…" : command
       end
 
       # A task id's hex part (20261027123456-3f9a2c1d → 3f9a2c1d).

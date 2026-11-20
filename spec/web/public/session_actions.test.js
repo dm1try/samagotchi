@@ -25,6 +25,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
   const toasts = [];
   const alerts = [];
   const opened = [];
+  // Each confirm's text; +confirms+ is the answer, or one per confirm in turn.
+  const asked = [];
   const wrap = (name, fallback) => async (...args) => {
     calls.push([name, ...args]);
     return (api[name] || fallback)(...args);
@@ -58,11 +60,79 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     closeLiveStream: () => log.push("closeLiveStream"),
     workerGone: (id) => log.push(`workerGone ${id} stopping=${actions.stoppingId()}`),
     alert: (text) => alerts.push(text),
-    confirm: () => confirms,
+    confirm: (text) => { asked.push(text); return Array.isArray(confirms) ? confirms.shift() : confirms; },
     stopSheet: sheet ?? { open: (id, held) => { opened.push([id, held]); return Array.isArray(held) && held.length > 0; } },
   });
-  return { actions, world, log, calls, toasts, alerts, opened };
+  return { actions, world, log, calls, toasts, alerts, opened, asked };
 }
+
+// The 409 a delete or an archive answers while background tasks it would
+// take still run (SessionManager::RunningTasks).
+const TASKS = { running: [{ session_id: "s1aaaaaaaa", id: "20261120-3f9a2c1d", command: "npm run dev" },
+                          { session_id: "s1aaaaaaaa", id: "20261120-0badf00d", command: "rspec" }],
+                unverified: [], unreadable: [] };
+const tasksRunning = (op) => failure(409, "tasks_running", "background tasks it started are still running: npm run dev, rspec",
+                                      { error: "tasks_running", op, tasks: TASKS });
+const STOPPED = { tasks_stopped: TASKS.running, tasks_not_stopped: [] };
+
+test("plainDelete: no task running is one confirm and no toast, as before", async () => {
+  const h = harness();
+  await h.actions.confirmDelete("s1aaaaaaaa");
+  assert.equal(h.asked.length, 1);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("plainDelete: running tasks ask a second confirm naming them; OK stops them and deletes, with a toast", async () => {
+  let first = true;
+  const h = harness({ api: { deleteSession: async () => { if (first) { first = false; throw tasksRunning("delete"); } return STOPPED; } } });
+  await h.actions.confirmDelete("s1aaaaaaaa");
+
+  assert.equal(h.asked[1], "Session s1aaaaaa started 2 background tasks that are still running:\n" +
+                            "npm run dev · rspec\nStop them and delete the session?");
+  assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"], ["deleteSession", "s1aaaaaaaa", { stopTasks: true }]]);
+  assert.deepEqual(h.toasts.map((t) => t.text), ["Stopping 2 background tasks…", "Deleted s1aaaaaa · stopped 2 background tasks"]);
+  assert.deepEqual(h.world.sessions, []);
+  assert.deepEqual(h.alerts, []);
+});
+
+test("plainDelete: Cancel on the second confirm changes nothing", async () => {
+  const h = harness({ confirms: [true, false], api: { deleteSession: async () => { throw tasksRunning("delete"); } } });
+  await h.actions.confirmDelete("s1aaaaaaaa");
+
+  assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.world.sessions.map((s) => s.id), ["s1aaaaaaaa"]);
+  assert.deepEqual([h.toasts, h.alerts], [[], []]);
+});
+
+test("setArchived: the confirm only on a 409 tasks_running; OK archives again stopping them, with Undo", async () => {
+  let first = true;
+  const h = harness({ api: { archiveSession: async (id) => {
+    if (first) { first = false; throw tasksRunning("archive"); }
+    return { archived: [id], stopped: [], ...STOPPED, tasks_not_stopped: [{ session_id: "s1aaaaaaaa", id: "x-0badf00d", command: "rspec" }] };
+  } } });
+  await h.actions.setArchived("s1aaaaaaaa", true);
+
+  assert.equal(h.asked.length, 1);
+  assert.match(h.asked[0], /Stop them and archive the session\?$/);
+  assert.deepEqual(h.calls, [["archiveSession", "s1aaaaaaaa"], ["archiveSession", "s1aaaaaaaa", { stopTasks: true }]]);
+  assert.deepEqual(h.toasts.map((t) => t.text),
+                   ["Stopping 2 background tasks…", "Archived s1aaaaaa · stopped 2 background tasks · 1 not stopped: rspec"]);
+  assert.equal(h.toasts[1].action.label, "Undo");
+
+  const plain = harness();
+  await plain.actions.setArchived("s1aaaaaaaa", true);
+  assert.deepEqual(plain.asked, []);
+});
+
+test("archiveOne: a batch's archive never retries; the 409 is its answer", async () => {
+  const h = harness({ api: { archiveSession: async () => { throw tasksRunning("archive"); } } });
+  const answer = await h.actions.archiveOne("s1aaaaaaaa", true);
+
+  assert.equal(answer.ok, false);
+  assert.equal(answer.error.code, "tasks_running");
+  assert.deepEqual(h.calls, [["archiveSession", "s1aaaaaaaa"]]);
+  assert.deepEqual(h.asked, []);
+});
 
 test("confirmDelete: after a confirm the list drops it, and the open session goes to the start page", async () => {
   const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }] });
