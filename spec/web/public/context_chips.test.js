@@ -157,6 +157,25 @@ test("view text shows the row's text in the popover; a refresh keeps it", async 
   c.done();
 });
 
+test("showText: a peer answer's 'Read the full answer' opens that source's popover on its text, after the click", async () => {
+  const c = chipsControl({ list: async () => ({ sources: [row(), row({ name: "claude-outbox", peer: "claude", leg: "outbox" })] }) });
+  await c.ctl.load("s1");
+  c.ctl.showText("claude-outbox");
+  // Not in the asking click's task: the document's outside-click close would take it.
+  assert.equal(c.pop.hidden, true);
+  await c.settle();
+  await c.settle();
+  assert.equal(c.pop.hidden, false);
+  assert.equal(c.el.querySelector(".ctx-chip.open").dataset.name, "claude-outbox");
+  assert.equal(c.pop.querySelector(".ctx-pop-text").textContent, "the text");
+  // A source the session doesn't have: nothing opens.
+  c.ctl.close();
+  c.ctl.showText("codex-outbox");
+  await c.settle();
+  assert.equal(c.pop.hidden, true);
+  c.done();
+});
+
 test("a source inserted before the focused chip: the focus stays on the same source's chip", async () => {
   let sources = [row({ name: "b" })];
   const c = chipsControl({ list: async () => ({ sources, can_add_url: true }) });

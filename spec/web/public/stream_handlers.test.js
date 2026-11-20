@@ -624,3 +624,26 @@ test("recap_ready passes the recap's created_at (its label's time)", () => {
   handlers.recap_ready({ recap: "r", created_at: "2026-10-24T12:32:00Z" });
   assert.deepEqual(page.calls.find((c) => c[0] === "showRecap"), ["showRecap", "r", 0, "2026-10-24T12:32:00Z"]);
 });
+
+test("a peer's note, send and command read the peers again; an ordinary note or tool row doesn't", async () => {
+  const { page, deps } = fakePage();
+  const handlers = createStreamHandlers({ ...deps, peers: { refresh: () => page.calls.push(["peers.refresh"]), touch: () => page.calls.push(["peers.touch"]) } });
+  const peer = { peer: "claude", label: "Claude", re: "s-1", summary: "A: VERDICT OK", serial: 3, verdict: "OK", agreed: true };
+  handlers.context_added({ type: "context_added", label: "context claude-outbox", text: "Updated: …", context_source: "claude-outbox", peer });
+  const note = page.calls.find((c) => c[0] === "addNoteBubble")[1];
+  assert.deepEqual(note.peer, peer);
+  assert.equal(note.context_source, "claude-outbox");
+  assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 1);
+  page.calls.length = 0;
+  handlers.context_added({ type: "context_added", label: "context ci", text: "n", context_source: "ci" });
+  handlers.tool_call_completed({ type: "tool_call_completed", tool: "read", output: "ok" });
+  assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 0);
+  handlers.tool_call_completed({ type: "tool_call_completed", tool: "claude_send", output: "sent", refs: [{ kind: "peer", target: { id: "s-1" } }] });
+  assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 1);
+  await handlers.command_ran({ line: "/claude validate x", output: "sent to Claude", client_id: ME });
+  assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 2);
+  // A turn's end redraws the sends' state without a fetch.
+  await handlers.turn_completed({ type: "turn_completed", turn_id: "T1" });
+  assert.equal(page.calls.filter((c) => c[0] === "peers.touch").length, 1);
+  assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 2);
+});

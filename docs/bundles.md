@@ -1015,6 +1015,22 @@ Claude pairs; without one the bundle costs one tool declaration.
      answer's note names the send (`re`); an older skill's answer has none and
      works as before. The session's peer exchange log keeps sends and answer
      summaries, not answer texts; a new pairing starts a new log.
+- **In the web** (the owner's page), a send and its answer link to each
+  other. The send's row ("sent to Claude · validate: title") says where the
+  exchange is: `waiting 2m`, `changes · answered after 6m` (the verdict's
+  word: `ok`, `changes`, `unsure`), `answered after 6m`, or `not sent` (the
+  send didn't go out); a tap on an answered one jumps down to the answer. The
+  row's line of advice to the model is its hover instead. The answer stays
+  where it arrived, as a bubble from Claude: "Claude answered", the send it
+  answers (a tap jumps back up to that row, opening a folded turn), its
+  verdict (`VERDICT OK` with "round closed" when Claude agreed), its summary,
+  and chi's instruction to the model folded under "what chi told the agent".
+  The newest answer also has "Read the full answer", which opens the
+  `claude-outbox` chip on its text (the outbox keeps one text, so older
+  answers have only their summary). An answer from an older skill (no `re`)
+  links to the last waiting validate or question; one that answers no send
+  has no link back. A `/claude validate …` you type gets no link in the
+  conversation (command bubbles aren't kept), its answer still names it.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`, and a second line,
@@ -1153,7 +1169,7 @@ session: chi sends the Codex session you work with a part of the work to
 validate or as context, and Codex's answer comes back into chi. It is a copy
 of claude-peer with the transport swapped; what differs is below, the rest
 (kinds, payload files, the last send, `/codex last`, the status card, the
-skill install card) works the same.
+skill install card, the web's linked send and answer: "Codex answered") works the same.
 
 - **Sending is `codex queue`.** `codex_send(kind, title, text)` and
   `/codex validate|context <text>` run

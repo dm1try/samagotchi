@@ -191,6 +191,36 @@ test("noteBubbleTemplate: who sent the context note, then its text, both escaped
   assert.equal(noteHtml({ content: "x" }), '<div class="bubble note"><div class="note-line">note</div><div class="note-text">x</div></div>');
 });
 
+test("a peer send's row: an empty slot after its params with the id, the output its hover, not a line", () => {
+  const row = { key: "1:1", tool: "claude_send", status: "ok", title: "validate: phase A", output: "sent to Claude: validate · phase A. Its answer comes …",
+                refs: [{ kind: "peer", target: { id: "s-ab12cd" }, label: "Claude · validate" }] };
+  const html = toolRowHtml(row);
+  assert.match(html, /<span class="activity-params ref"[^>]*>validate: phase A<\/span><span class="peer-slot" data-peer-ref="s-ab12cd" title="sent to Claude: validate · phase A\. Its answer comes …"><\/span>/);
+  assert.doesNotMatch(html, /activity-output/);
+  // While it runs: the slot, no output yet.
+  assert.match(toolRowHtml({ ...row, status: "running", output: "" }), /<span class="peer-slot" data-peer-ref="s-ab12cd"><\/span>/);
+});
+
+test("a failed peer send draws its Error: output as today; a row without a peer ref has no slot", () => {
+  const refs = [{ kind: "peer", target: { id: "s-ab12cd" } }];
+  assert.match(toolRowHtml({ key: "1:1", tool: "claude_send", status: "error", title: "validate: x", output: "Error: no paired Claude", refs }),
+    /<div class="activity-output" title="Error: no paired Claude">Error: no paired Claude<\/div>/);
+  assert.match(toolRowHtml({ key: "1:1", tool: "claude_send", status: "ok", title: "validate: x", output: "Error: the text is empty", refs }),
+    /activity-output/);
+  const plain = toolRowHtml({ key: "1:2", tool: "read", status: "ok", title: "a.rb", output: "[read]\nok" });
+  assert.doesNotMatch(plain, /peer-slot/);
+  assert.match(plain, /activity-output/);
+});
+
+test("noteBubbleTemplate: a note with peer is the peer's bubble; one without stays the plain note, a wake's opening too", () => {
+  assert.match(noteHtml({ content: "Updated: claude-outbox …", context_source: "claude-outbox", peer: { peer: "claude", label: "Claude", summary: "A: VERDICT OK", serial: 2, verdict: "OK" } }),
+    /^<div class="bubble note peer-answer"[^>]*><div class="peer-head"><span class="peer-who">Claude answered<\/span>/);
+  assert.equal(noteHtml({ label: "context ci", content: "x", context_source: "ci" }),
+    '<div class="bubble note"><div class="note-line">note from context ci</div><div class="note-text">x</div></div>');
+  assert.equal(noteHtml({ label: "context ci", content: "x", turn_start: true, turn_id: "t1" }),
+    '<div class="bubble note turn-start" data-opening-id="t1"><div class="note-line">note from context ci</div><div class="note-text">x</div></div>');
+});
+
 test("answerBubbleTemplate only uses explicitly rendered assistant HTML, set whole (no lit markers inside)", () => {
   assert.equal(answerBubbleHtml({ role: "assistant", content: "**safe**", html: "<strong>safe</strong>" }, { at: 3 }),
     '<div class="bubble output markdown" data-answer-at="3" data-copy-source="**safe**"><strong>safe</strong></div>');

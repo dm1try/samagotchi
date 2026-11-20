@@ -238,6 +238,9 @@ The web's session bar shows a chip per source (name · age; a dot when the
 agent hasn't read a change, red after a failed refresh). A chip opens the
 summary, the hint's link, the text and detach (or mute here, for a project
 source). The web attaches nothing itself: `chi context add <URL>` does.
+A peer's answer (a note with `peer`, [Peer sources](#peer-sources-the-peer-loop)) is not drawn as a context note but
+as a bubble from the peer, linked to the send it answers
+([bundles.md](bundles.md#the-claude-peer-bundle), In the web).
 
 ## Waking
 

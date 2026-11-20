@@ -7,6 +7,7 @@ import { ACCEPTED, KINDS, compareShapes, historyShape } from "../../../lib/samag
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { drawnHistory } from "./drawn_history.js";
+import { elementOf, noteBubbleTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 
 const NOW = Date.parse("2026-10-02T00:00:00Z");
 
@@ -158,4 +159,21 @@ test("ACCEPTED: each entry has an id and a reason; only the deliberate ones are 
     assert.equal(typeof entry.match, "function");
   }
   assert.deepEqual(ACCEPTED.filter((entry) => entry.closedBy), []);
+});
+
+test("a peer's answer is a note, live and on reload: the slots peer_links.js fills later aren't read", () => {
+  const note = { content: "Updated: claude-outbox …", context_source: "claude-outbox", turn_start: true, turn_id: "t3",
+                 peer: { peer: "claude", label: "Claude", re: "s-1", summary: "A: VERDICT CHANGES", serial: 2, verdict: "CHANGES" } };
+  const reload = document.createElement("div");
+  reload.append(elementOf(noteBubbleTemplate(note)));
+  // Live: the controller filled the ↑ and "Read the full answer".
+  const live = document.createElement("div");
+  const drawn = elementOf(noteBubbleTemplate(note));
+  drawn.querySelector(".peer-up-slot").innerHTML = '<button class="peer-up">validate · A ↑</button>';
+  drawn.querySelector(".peer-full-slot").innerHTML = '<button class="peer-full">Read the full answer</button>';
+  live.append(drawn);
+  const shape = historyShape(live);
+  assert.deepEqual(shape.map((it) => it.kind), ["note"]);
+  assert.doesNotMatch(shape[0].text, /↑|Read the full answer/);
+  assert.equal(compareShapes(shape, historyShape(reload)).same, true);
 });
