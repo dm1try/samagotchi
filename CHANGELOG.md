@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- In the web, the working set's reader and peek show a memory and a whole read of a `.md` file as rendered
+  markdown, with a `rendered | source` switch on the reader's cards; a slice of a file stays numbered source.
 - `chi bundle status NAME` reports a rule or script with no recorded sha256 as `[unrecorded]`, not `[modified]`.
 
 ### Fixed
