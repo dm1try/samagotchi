@@ -76,11 +76,17 @@ module Samagotchi
     # file +file_key+, by name (a manifest that doesn't read is left out).
     # A project-scoped record doesn't say which project: one from another
     # repo counts too, which errs on keeping the file.
-    # A record that doesn't read is skipped off the record itself: a claimant
-    # check reads no manifest (Standing's requires_chi is no question here).
+    # A record that doesn't read is skipped off the record itself (warned of
+    # once, as Standing.of does): a claimant check reads no manifest
+    # (Standing's requires_chi is no question here).
     def self.claimants(file_key, scope:, except: nil, dir: InstalledBundles.dir)
       each(dir: dir).filter_map do |name, record|
-        next if name == except || record.error?
+        next if name == except
+
+        if record.error?
+          Standing.warn_unreadable(name, record.error)
+          next
+        end
         next unless record.effective_scope == scope.to_s && record.owns?(file_key)
 
         name

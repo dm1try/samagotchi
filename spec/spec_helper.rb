@@ -241,6 +241,8 @@ RSpec.configure do |config|
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
     # BlockRenderers logs each bad block_renderers: list once per process.
     Samagotchi::BlockRenderers.reset_warnings! if defined?(Samagotchi::BlockRenderers)
+    # InstalledBundles warns of a record that doesn't read once per process.
+    Samagotchi::InstalledBundles::Standing.reset_warnings! if defined?(Samagotchi::InstalledBundles::Standing)
     # EffectiveModel::Unresolved warns once per process for each failure.
     Samagotchi::EffectiveModel::Unresolved.reset! if defined?(Samagotchi::EffectiveModel::Unresolved)
     # The process's shared HostRegistry (HostRegistry.current): one per example.

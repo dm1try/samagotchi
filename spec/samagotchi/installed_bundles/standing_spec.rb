@@ -43,6 +43,19 @@ RSpec.describe "InstalledBundles' usability verdict" do
       expect(standings[3].refusal.text).to eq("it requires chi >= 999.0 (this is chi #{Samagotchi::VERSION})")
     end
 
+    it "warns once per process per bundle of a record that doesn't read, whichever reader asks (D4)" do
+      record("b-broken", "{")
+      record("c-list", "[]")
+      notices = []
+      allow(Samagotchi::Log).to receive(:warn) { |tag, event, fields| notices << [tag, event, fields] }
+
+      3.times { Samagotchi::InstalledBundles.standings(dir: dir).to_a }
+      Samagotchi::InstalledBundles.claimants("a.md", scope: "system", dir: dir)
+      expect(notices.map { |tag, event, fields| [tag, event, fields[:bundle]] })
+        .to eq([[:memory, "bundle_unreadable", "b-broken"], [:memory, "bundle_unreadable", "c-list"]])
+      expect(notices.last[2][:msg]).to eq("manifest.json is not an object")
+    end
+
     it "walks as .each does with holding:" do
       record("a-plain", "version" => "1.0.0")
       record("b-plug", "version" => "1.0.0", "plugin" => { "file" => "plugin.rb" })
