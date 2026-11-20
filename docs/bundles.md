@@ -1013,8 +1013,11 @@ Claude pairs; without one the bundle costs one tool declaration.
      waking); the model reads it with `context_read claude-outbox`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
-  starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
-  characters follows inline; a longer one goes to a file,
+  starts with a header, `chi <id> · <kind> · <title>`, and a second line,
+  `ref: <send id>` (`s-` and 6 hex, from the kind, title and text as given:
+  the same part sent again has the same id), which Claude's answer gives back
+  so chi can tie it to its send; the tool's row in the web carries the id too.
+  A text up to 4,000 characters follows inline; a longer one goes to a file,
   `$XDG_STATE_HOME/samagotchi/plugins/claude-peer/sessions/<id>/<HHMMSS>-<slug>.md`
   (removed with the session), and the message names it (`payload: <path>`).
   The tool is declared whether or not a Claude is paired, so pairing doesn't

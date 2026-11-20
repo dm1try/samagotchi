@@ -1456,7 +1456,11 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
    `APP`, `COMMAND`, `USAGE`, `OUTBOX` and `SCRIPTS_DIRS`. These constants are
-   read as `self.class::X`. See the [claude-peer](bundles.md#the-claude-peer-bundle) and
+   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text)` (`s-` and 6 hex
+   of SHA-256 over the args as given) is the message's second line (`ref: <id>`), the tool row's `peer` ref
+   (display only, no actions; computed from the args before the call runs, so a send that then fails has it too)
+   and the last send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
+   See the [claude-peer](bundles.md#the-claude-peer-bundle) and
    [codex-peer](bundles.md#the-codex-peer-bundle) bundles.
 3. `Samagotchi::Tools::ToolIndex::Tool` and `Samagotchi::Tools::ToolIndex::Group`
    values, `Samagotchi::Tools::ToolIndex.schema_note` and

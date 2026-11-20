@@ -15,6 +15,7 @@ confirm (a quote)
 === last send
 {
   "at": "<AT>",
+  "id": "s-bf574f",
   "kind": "validate",
   "title": "the cache key is stable",
   "chars": 53,
@@ -27,6 +28,7 @@ confirm (a quote)
 === last send
 {
   "at": "<AT>",
+  "id": "s-9858d8",
   "kind": "context",
   "title": "chi's last answer: The fix is in lib/a.rb.",
   "chars": 41,

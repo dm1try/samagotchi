@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 require "json"
 require "open3"
@@ -18,10 +19,13 @@ module Samagotchi
     # its answers come back as pushes that wake chi.
     #
     # The `<peer>_send` tool sends a part of the work (a plan step, a diff, a
-    # finding): a header, `chi <id> · <kind> · <title>`, then a short part
-    # inline, or a long one's file under the bundle's data dir
+    # finding): a header, `chi <id> · <kind> · <title>`, a `ref: <send id>`
+    # line (.send_id: the peer's answer echoes it as `re`), then a short
+    # part inline, or a long one's file under the bundle's data dir
     # (sessions/<id>/, removed with the session), named in the message
-    # (`payload: <path>`). The tool is declared whether or not the peer is
+    # (`payload: <path>`). The tool's row carries the same id as a `peer`
+    # ref (derived from the call's args, so it is there before the call
+    # runs: also on a send that then didn't happen). The tool is declared whether or not the peer is
     # paired, so pairing never changes the tools (no prompt rebuild); without
     # a paired peer it fails with how to pair.
     #
@@ -85,10 +89,21 @@ module Samagotchi
         @last_answer = nil
       end
 
+      # A send's id, from what the caller gave (before the title is cut):
+      # `s-` and 6 hex of SHA-256 over +kind+, +title+ and +text+. Equal
+      # args give the same id (the tool row's ref is computed from them
+      # before the call runs); the peer's answer names it (`re`).
+      def self.send_id(kind, title, text) = "s-#{Digest::SHA256.hexdigest([kind, title, text].join("\0"))[0, 6]}"
+
       def register(chi)
         peer = self.class
+        refs = lambda do |args|
+          id = Peer.send_id(args["kind"].to_s, args["title"].to_s, args["text"].to_s)
+          [{ kind: "peer", target: { id: id }, label: "#{peer::NAME} · #{args["kind"]}" }]
+        end
         chi.tool peer::TOOL, peer::TOOL_DESCRIPTION, params: peer::TOOL_PARAMS, label: "sent to #{peer::NAME}",
-                                                     preview: ->(args) { "#{args["kind"]}: #{args["title"]}" } do |args, ctx|
+                                                     preview: ->(args) { "#{args["kind"]}: #{args["title"]}" },
+                                                     refs: refs do |args, ctx|
           sent = deliver(ctx, kind: args["kind"].to_s, title: args["title"].to_s, text: args["text"].to_s)
           "#{sent}. #{follow_up(args["kind"].to_s)}"
         rescue SendError => e
@@ -115,8 +130,9 @@ module Samagotchi
         end
       end
 
-      # Sends +text+ to the paired peer: the header, then the text inline or
-      # a payload file's path. Records it as the last send.
+      # Sends +text+ to the paired peer: the header, the `ref:` line
+      # (.send_id of the args as given), then the text inline or a payload
+      # file's path. Records it as the last send, with its id.
       # @return [String] what was sent ("sent to Claude: validate · title")
       # @raise [SendError]
       def deliver(ctx, kind:, title:, text:)
@@ -126,6 +142,7 @@ module Samagotchi
           raise SendError, "the text is #{text.length} chars, over #{MAX_CHARS}: send a part, not a session"
         end
 
+        send_id = Peer.send_id(kind, title, text)
         id = ctx.session_id or raise SendError, "this session has no id yet: send after its first turn"
         hint = peer_hint!(ctx)
         title = one_line(title.strip.empty? ? text.strip.lines.first : title)
@@ -135,8 +152,8 @@ module Samagotchi
                         path = write_payload(ctx, title, text)
                         ["payload: #{path} (#{text.lines.size} lines, #{text.length} chars)", path]
                       end
-        post(hint, "chi #{id[0, 8]} · #{kind} · #{title}\n#{body}")
-        record(ctx, kind: kind, title: title, chars: text.length, payload: where == "inline" ? nil : where)
+        post(hint, "chi #{id[0, 8]} · #{kind} · #{title}\nref: #{send_id}\n#{body}")
+        record(ctx, id: send_id, kind: kind, title: title, chars: text.length, payload: where == "inline" ? nil : where)
         "sent to #{self.class::NAME}: #{kind} · #{title}#{" (the text in #{where})" unless where == "inline"}"
       end
 

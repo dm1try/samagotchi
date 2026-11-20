@@ -31,6 +31,9 @@ RSpec.describe "The claude-peer plugin", :bundle do
   let(:socket) { File.join(tmpdir, "inbox.sock") }
   let(:data_dir) { File.join(state_home, "samagotchi", "plugins", "claude-peer") }
 
+  # The message's second line: the send id of the args as given.
+  def ref(kind, title, text) = "ref: #{Samagotchi::Plugin::Peer.send_id(kind, title, text)}"
+
   # Every UI's events of the session: from the plugin, they are cards.
   def cards = bundle.cards
 
@@ -95,7 +98,8 @@ RSpec.describe "The claude-peer plugin", :bundle do
     expect(lines.first).to end_with("\n")
     expect(JSON.parse(lines.first)).to eq(
       "type" => "user",
-      "message" => { "role" => "user", "content" => "chi #{short} · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb" }
+      "message" => { "role" => "user", "content" => "chi #{short} · validate · Step 2: the cache key\n#{ref("validate", "Step 2: the cache key", "Is the key stable?\nsee lib/a.rb")}\n" \
+                                                       "Is the key stable?\nsee lib/a.rb" }
     )
   end
 
@@ -106,8 +110,9 @@ RSpec.describe "The claude-peer plugin", :bundle do
     result, lines = received_lines(kind: "context", title: "The whole plan, r3!", text: text)
 
     content = JSON.parse(lines.first).dig("message", "content")
-    header, payload = content.lines.map(&:chomp)
+    header, ref_line, payload = content.lines.map(&:chomp)
     expect(header).to eq("chi #{short} · context · The whole plan, r3!")
+    expect(ref_line).to eq(ref("context", "The whole plan, r3!", text))
     path = payload[/\Apayload: (\S+) \(301 lines, #{text.length} chars\)\z/, 1]
     expect(path).to match(%r{\A#{Regexp.escape(File.join(data_dir, "sessions", session.id))}/\d{6}-the-whole-plan-r3\.md\z})
     expect(File.read(path)).to eq(text)
@@ -262,10 +267,11 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
       result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
       expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-outbox context")
-      expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\nStep 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
+      text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
+      expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
       _, content = sent_content("context we chose Redis")
-      expect(content).to eq("chi #{short} · context · we chose Redis\nwe chose Redis")
+      expect(content).to eq("chi #{short} · context · we chose Redis\n#{ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
     end
 
     it "titles a pill's quote by its first quoted line, not the From …: label" do
@@ -273,7 +279,8 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
       result, content = sent_content("validate\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
       expect(result).to start_with("sent to Claude: validate · the key stays;")
-      expect(content).to eq("chi #{short} · validate · the key stays\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
+      quote = "From your thinking:\n>   the key stays\n> two\n\nis it?"
+      expect(content).to eq("chi #{short} · validate · the key stays\n#{ref("validate", "the key stays", quote)}\n#{quote}")
 
       _, content = sent_content("validate\n> an answer line\n\nok?")
       expect(content.lines.first).to eq("chi #{short} · validate · an answer line\n")
@@ -303,7 +310,8 @@ RSpec.describe "The claude-peer plugin", :bundle do
         result, content = sent_content("last")
 
         expect(result).to eq("sent to Claude: context · chi's last answer: The plan: three steps.")
-        expect(content).to eq("chi #{short} · context · chi's last answer: The plan: three steps.\nThe plan: three steps.")
+        expect(content).to eq("chi #{short} · context · chi's last answer: The plan: three steps.\n" \
+                              "#{ref("context", "chi's last answer: The plan: three steps.", "The plan: three steps.")}\nThe plan: three steps.")
       end
 
       it "mid-turn, sends the answer before the running turn, not the turn's partial text" do
