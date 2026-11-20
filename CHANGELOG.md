@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
 
 - The objectives strip no longer shows an empty 0/0 bar when every objective is dropped, and disappears at once when
   the list goes away.
+- A continue no longer starts with an empty Objectives bubble when every objective was dropped.
 - Deleting a session no longer sometimes refuses it as in use while chi web is checking it.
 - The peer chip says when no inbox is attached, rather than blaming a remote.
 - Sending a peer the same part twice no longer marks the first, answered send "not sent" in the web: each send has

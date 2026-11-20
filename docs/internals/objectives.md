@@ -242,7 +242,7 @@ command), which absorbs the file. It no longer waits for the fallback tick.
 - **Continue**: `Objectives.carry`, in `SessionContinue`'s `before_spawn`, writes a second note file in the new link,
   after the carry note and any moved context's note, so the list reads as the latest word. It is not in
   `SessionChain.note_text` (capped; the last answer gets what the recap leaves). It reads the previous link fresh,
-  with its unabsorbed newest file. A failure is only logged (`continue_objectives_failed`), because it runs inside the
+  with its unabsorbed newest file; a list with nothing active or done isn't carried (`List#meant?`). A failure is only logged (`continue_objectives_failed`), because it runs inside the
   continue's rollback. The previous link's other waiting notes move after it (`NoteMove.move`, the step after: moved first, the
   carry would miss a pending edit, and the stale list would be the batch's newest); its objectives notes never move,
   and the new link's worker never adopts one from it (`NoteMove.adoption`), so a list from the archived link can't

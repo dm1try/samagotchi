@@ -236,6 +236,21 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(notes_of(continue(make.id).id).size).to eq(1)
     end
 
+    it "leave a link's note alone when every objective was dropped, with nothing logged" do
+      dropped = list.mark("O1", Samagotchi::Objectives::DROPPED).mark("O2", Samagotchi::Objectives::DROPPED)
+      allow(Samagotchi::Log).to receive(:warn)
+
+      expect(notes_of(continue(with_list(dropped).id).id).size).to eq(1)
+      expect(Samagotchi::Log).not_to have_received(:warn).with(:worker, "continue_objectives_failed", anything)
+    end
+
+    it "carry a list with one done and the rest dropped" do
+      kept = list.mark("O1", Samagotchi::Objectives::DONE).mark("O2", Samagotchi::Objectives::DROPPED)
+
+      objectives = notes_of(continue(with_list(kept).id).id).last
+      expect(Samagotchi::Objectives.from_payload(objectives[:objectives])).to eq(kept)
+    end
+
     it "carry over from an older chi's review link as from any link" do
       previous = with_list(list)
       previous.review = Samagotchi::SessionReview.new(subjects: ["a.rb"])
