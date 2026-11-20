@@ -48,6 +48,18 @@ module SpecWaiting
     (File.mtime(path) + 1).tap { |time| File.utime(time, time, path) }
   end
 
+  # Whether +pid+ (group: true, its process group) is gone within
+  # +timeout+ s (scaled), polled every 20 ms, for "stopped" after a stop
+  # returned: a stopped process can still answer kill(0) for a moment (on
+  # Linux a dying process drops its flock before it is reaped, and
+  # Leftovers.stop_group returns on the log's release). One that runs on
+  # (or a zombie nobody reaps) is still there at the deadline.
+  def gone_soon?(pid, group: false, timeout: 2)
+    wait_until(timeout: timeout, interval: 0.02) do
+      group ? !Samagotchi::ProcessGroup.group_alive?(pid) : process_gone?(pid)
+    end
+  end
+
   # #eventually's message: a matcher's that starts on its own line
   # ("\nexpected: …") stays there.
   def still_failing(waited, message)

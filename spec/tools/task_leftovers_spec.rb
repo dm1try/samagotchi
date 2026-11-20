@@ -86,7 +86,7 @@ RSpec.describe "a background task's leftover processes" do
     expect(runtime.settle_pending!(timeout: 5)).to eq([])
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4)
     expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
-    expect(Samagotchi::ProcessGroup.group_alive?(record.pid)).to be(false)
+    expect(gone_soon?(record.pid, group: true)).to be(true)
     expect(gone?(pid)).to be(true)
   end
 
@@ -108,6 +108,39 @@ RSpec.describe "a background task's leftover processes" do
     expect(runtime.settle_pending!(timeout: 0.05)).to eq([waiter])
     gate << true
     expect(runtime.settle_pending!(timeout: 5)).to eq([])
+    expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
+    expect(gone?(pid)).to be(true)
+  ensure
+    gate << true if gate
+  end
+
+  # Process.detach's thread reaps the shell and is still finishing (alive)
+  # when settle_pending! looks; SETTLING is not set yet. The shell's pid is
+  # gone (ESRCH), so the waiter is picked all the same.
+  it "includes a waiter whose shell was just reaped while its detach thread still runs" do
+    entered = Queue.new
+    gate = Queue.new
+    allow(runtime).to receive(:leftovers_after_exit).and_wrap_original do |original, *args|
+      entered << true
+      SpecWaiting.pop!(gate, "the example to release the waiter", timeout: 30)
+      original.call(*args)
+    end
+    record, = runtime.create_task("sleep 30 & echo pid=$!")
+    pid = child_pid(record.output_path)
+    pop!(entered, "the waiter to reach the shell's exit")
+    waiter = runtime.waiter_for(record.id)
+    expect(waiter[runtime::SETTLING]).to be_nil
+    expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(false)
+    still_reaping = instance_double(Thread, alive?: true)
+    runtime.instance_variable_get(:@waiters_lock).synchronize do
+      runtime.instance_variable_get(:@waiters)[record.id][2] = still_reaping
+    end
+    allow(Samagotchi::Log).to receive(:warn)
+
+    expect(runtime.settle_pending!(timeout: 0.05)).to eq([waiter])
+    gate << true
+    expect(runtime.settle_pending!(timeout: 5)).to eq([])
+    expect(waiter).not_to be_alive
     expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
     expect(gone?(pid)).to be(true)
   ensure

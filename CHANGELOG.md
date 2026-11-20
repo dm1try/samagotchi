@@ -27,6 +27,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A background task whose shell ends just as chi exits no longer stays marked running with its leftover process left behind.
 - A context source from a bundle whose manifest.json doesn't read, or isn't an object, now fails its fetch with a clear
   reason, instead of an internal error or running its command unchecked.
 

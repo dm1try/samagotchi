@@ -308,6 +308,10 @@ group and also answers them as module calls (`SpecWaiting.pop!`, for a stubbed l
 - `time_bound(seconds, below: nil)`: a wall-clock upper bound, scaled and kept under `below:` (rule 5).
 - `eventually(timeout: 5) { expect(…) }` (spec only) retries until the expectations hold, then re-raises the last
   failure prefixed `still failing after 5 s:`, so the matcher's own expected/got is in the message.
+- `gone_soon?(pid, group: false, timeout: 2)` (spec only): "stopped" after a stop returned, a pid (or with
+  `group: true` its group) gone within 2 s. Never an immediate `kill(0)`: a stopped process can answer it for a
+  moment (on Linux a dying process drops its `flock` before it is reaped, and `Leftovers.stop_group` returns on the
+  log's release).
 
 One formatter builds the failure text of `wait_for`, `join!` (which adds "to finish") and `pop!`:
 
