@@ -113,13 +113,14 @@ module Samagotchi
         "needs #{need[:command]}#{why} #{state}#{hint}"
       end
 
+      # A plugin's state word in `chi bundle status`, by its file refusal's kind.
+      PLUGIN_STATES = { nil => "ok", file_unrecorded: "unrecorded", file_missing: "missing", file_changed: "modified" }.freeze
+
       # The installed plugin: {file:, path:, state:, requires_chi:,
       # requires_failure:}; state is "ok", "unrecorded" (no sha256 recorded
       # for it), "missing" or "modified" (its sha256 differs from the
       # installed one), from the verdict (Dir#file_refusal(:plugin),
       # InstalledBundles::Standing): any but "ok" won't load. nil without one.
-      PLUGIN_STATES = { nil => "ok", file_unrecorded: "unrecorded", file_missing: "missing", file_changed: "modified" }.freeze
-
       def self.plugin_status(provenance, bundle)
         path = provenance.plugin_path(bundle)
         return nil unless path
