@@ -7,6 +7,7 @@ require "rack/mock"
 
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/session"
 
 # The web server listens on 127.0.0.1, and any page open in the desktop
@@ -40,6 +41,7 @@ RSpec.describe Samagotchi::Web::App, "cross-site gate" do
   end
 
   after do
+    stop_session_hubs
     FileUtils.remove_entry(state_dir)
     FileUtils.remove_entry(project)
   end

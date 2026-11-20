@@ -284,7 +284,9 @@ run, CI) and too long on a fast one. The contract a new spec follows:
    twice for it: a second boundary crossed between the reads moves the edge (`ModelProfile.model_warning(now:)`).
 3. **What a spec starts, it stops and waits for** before teardown: `join!(thread, what)`, `with_task_dir { … }`
    (spec/support/task_dirs.rb: a tasks' folder of its own, its tasks stopped and their exit-status recorders joined
-   with `TaskRuntime.quiesce!`), a `stop` that joins (`IdleScheduler#stop`). Never only `Thread#kill`.
+   with `TaskRuntime.quiesce!`), a `stop` that joins (`IdleScheduler#stop`), `stop_session_hubs` before removing a
+   `Web::SessionHub`'s state dir (spec/support/session_hubs.rb: its retention sweep thread writes there). Never only
+   `Thread#kill`.
 4. **"Nothing happens" is shown by counting passes** (the worker's loop rounds, spec/support/worker_loop_rounds.rb;
    a class's ticks), not by a pause.
 5. **A wall-clock bound** only as "not the full N s", with at least 5× headroom measured on the slow (x86) laptop.
@@ -399,6 +401,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `recording_surface.rb` | `RecordingSurface`: a `TerminalUI::Surface` that records commits and slots instead of drawing |
 | `remote_backend.rb` | `RemoteBackend`: `SessionAccess::Remote` against chi web's Rack app in this process (no socket, LAN token gate) |
 | `reply_wait_looks.rb` | `ReplyWaitLooks`: counts a `ReplyWait`'s polls, so a step waits for the looks instead of a delay |
+| `session_hubs.rb` | `stop_session_hubs`: stops every `Web::SessionHub` the example built (joining its sweep thread) before a teardown removes the state dir; a config-level after stops any left over |
 | `stamps.rb` | *helper*: `next_stamp`, distinct ordered times for the lib's `now:` seams; the pinned history clock |
 | `task_dirs.rb` | `with_task_dir`: a tasks' folder of its own, every task stopped and its recorders joined after |
 | `test_kernel.rb` | `TestKernel`: `test_kernel` (a real `KernelLoop` to stub `#run` on; its options are `KernelLoop::Services` fields), `attach_services` (swap some of a kernel's services), `run_context` and `test_client` for Engine specs |

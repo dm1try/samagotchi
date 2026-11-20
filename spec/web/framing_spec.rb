@@ -6,6 +6,7 @@ require "rack/mock"
 
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 
 # No page of chi web's may be framed by another page (clickjacking: a
 # same-site page could frame the owner's page and steer clicks into it):
@@ -27,6 +28,7 @@ RSpec.describe Samagotchi::Web::App, "framing" do
   let(:policy) { "frame-ancestors 'none'; frame-src 'none'" }
 
   after do
+    stop_session_hubs
     FileUtils.remove_entry(state_dir)
     FileUtils.remove_entry(public_dir)
   end

@@ -6,6 +6,7 @@ require "fileutils"
 require "json"
 
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/schedules"
 require "samagotchi/session"
 require "samagotchi/session_continue"
@@ -25,7 +26,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
   before { hub.subscribe(->(event) { events << event }) }
 
   after do
-    hub.stop
+    stop_session_hubs
     FileUtils.rm_rf(root)
   end
 
@@ -76,6 +77,34 @@ RSpec.describe Samagotchi::Web::SessionHub do
       release << true if release
       join!(scanner, "retention scan") if scanner
       local_hub&.stop
+    end
+
+    # The sweep writes into the state dir: whoever stops the hub can then
+    # remove that dir (chi web at exit, a spec's teardown).
+    it "stops only once a running sweep has ended, and starts none after" do
+      entered = Queue.new
+      release = Queue.new
+      swept = []
+      manager = double("manager", session_owner: nil)
+      allow(manager).to receive(:retention_sweep_if_due) do
+        entered << true
+        release.pop
+        swept << :done
+      end
+      local_hub = described_class.new(state_dir: state_dir, manager: manager, installed_versions: installed)
+
+      local_hub.sweep_if_due
+      expect(entered.pop(timeout: 2)).to be(true)
+      stopper = Thread.new { local_hub.stop }
+      expect(stopper.join(0.2)).to be_nil
+      release << true
+      join!(stopper, "the hub's stop")
+      expect(swept).to eq([:done])
+      local_hub.sweep_if_due
+      expect(manager).to have_received(:retention_sweep_if_due).once
+    ensure
+      release << true if release
+      join!(stopper, "the hub's stop") if stopper
     end
 
     it "builds the projection from the files on the first scan and tells subscribers of each session" do

@@ -16,6 +16,7 @@ require "samagotchi/tools/send_note"
 require "samagotchi/tools/delegate"
 require "samagotchi/tools/delegate_result"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 
 # A session id from outside (a bridge body, chi send/note arguments, a tool's
 # arguments, a file name in the sessions dir) never becomes a path unless it
@@ -26,7 +27,10 @@ RSpec.describe "session id check" do
   let(:state_dir) { File.join(root, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:bad_ids) { ["../x", "..", "/tmp/x", "a/b", "a\0b", "", " ", "-x", "a" * 129, "x.json"] }
 
-  after { FileUtils.rm_rf(root) }
+  after do
+    stop_session_hubs
+    FileUtils.rm_rf(root)
+  end
 
   def make
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/work/app", test_run: false)

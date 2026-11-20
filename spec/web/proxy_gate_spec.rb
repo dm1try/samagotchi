@@ -11,6 +11,7 @@ require "samagotchi/grants"
 require "samagotchi/web/public_url"
 require "samagotchi/web/server"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/participants"
 
 # chi web behind an auth proxy (web.public_url, Web::ProxyGate). The rows
@@ -55,6 +56,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
   let(:issued) { Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir) }
 
   after do
+    stop_session_hubs
     FileUtils.remove_entry(root)
     FileUtils.remove_entry(public_dir)
   end

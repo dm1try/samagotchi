@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "samagotchi/web/session_hub"
+require "support/session_hubs"
 require "samagotchi/web/push/client"
 require "samagotchi/web/push/crypto"
 require "samagotchi/web/push/notifier"
