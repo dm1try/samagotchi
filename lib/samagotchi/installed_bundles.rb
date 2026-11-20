@@ -6,6 +6,7 @@ require_relative "installed_bundles/file_digest"
 require_relative "installed_bundles/sha"
 require_relative "installed_bundles/record"
 require_relative "installed_bundles/dir"
+require_relative "installed_bundles/standing"
 
 module Samagotchi
   # What is installed (the records under <system memories>/.bundles/, see
@@ -52,14 +53,33 @@ module Samagotchi
       end
     end
 
+    # Each installed bundle's Standing (.each's walk and holding:, by name):
+    # whether chi may use it, before any of its files is looked at.
+    # @yieldparam standing [Standing]
+    # @return [Enumerator<Standing>] without a block
+    def self.standings(holding: nil, dir: InstalledBundles.dir)
+      return enum_for(:standings, holding: holding, dir: dir) unless block_given?
+
+      each(holding: holding, dir: dir) { |name, record| yield Standing.of(name, record) }
+    end
+
+    # One installed bundle's Standing, by name (one record read, no walk).
+    # @return [Standing, nil] nil when it isn't installed
+    # @raise [JSON::ParserError] manifest.json doesn't parse (as Dir#record:
+    #   ContextProviders.command_for lets it out today, the plan's D7)
+    def self.standing(name, dir: InstalledBundles.dir)
+      record = Dir.new(name: name, dir: dir).record
+      record && Standing.of(name, record)
+    end
+
     # The other installed bundles of +scope+ whose record lists the memory
     # file +file_key+, by name (a manifest that doesn't read is left out).
     # A project-scoped record doesn't say which project: one from another
     # repo counts too, which errs on keeping the file.
     def self.claimants(file_key, scope:, except: nil, dir: InstalledBundles.dir)
-      each(dir: dir).filter_map do |name, bundle|
-        next if name == except || bundle.error?
-        next unless bundle.effective_scope == scope.to_s && bundle.owns?(file_key)
+      each(dir: dir).filter_map do |name, record|
+        next if name == except || record.error?
+        next unless record.effective_scope == scope.to_s && record.owns?(file_key)
 
         name
       end

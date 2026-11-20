@@ -89,10 +89,11 @@ module Samagotchi
     # @raise [Invalid] the provider makes a name that isn't a source name
     def resolve(url)
       url = url.to_s.strip
-      InstalledBundles.each do |bundle, record|
-        next if record.error? || too_new?(bundle, record.manifest)
+      InstalledBundles.standings do |standing|
+        next if standing.unreadable? || too_new?(standing)
 
-        providers(bundle, record.manifest).each do |provider|
+        bundle = standing.name
+        providers(bundle, standing.record.manifest).each do |provider|
           match = provider.regexp.match(url) or next
           return resolved(bundle, provider, match)
         end
@@ -102,23 +103,25 @@ module Samagotchi
 
     # Whether an installed bundle declares a provider (the web's "+ URL").
     def any?
-      InstalledBundles.each.any? do |bundle, record|
-        !record.error? && !too_new?(bundle, record.manifest) && record.manifest.context_providers?
+      InstalledBundles.standings.any? do |standing|
+        !standing.unreadable? && !too_new?(standing) && standing.record.manifest.context_providers?
       end
     end
 
-    # A bundle this chi is too old for has no usable providers: skip it, and
-    # say so once per process per bundle and version.
+    # A bundle this chi is too old for (the verdict's :too_new) has no usable
+    # providers: skip it, and say so once per process per bundle and version,
+    # only when it declares some.
+    # @param standing [InstalledBundles::Standing]
     # @return [Boolean]
-    def too_new?(bundle, manifest)
+    def too_new?(standing)
+      bundle = standing.name
+      manifest = standing.record.manifest
       return false unless manifest.context_providers?
-
-      failure = manifest.requires_chi_failure
-      return false if failure.nil?
+      return false unless standing.too_new?
 
       if TOO_NEW_LOG_LOCK.synchronize { TOO_NEW_LOGGED.add?([bundle, manifest.version.to_s]) }
         Log.warn(:context, "providers_too_new", bundle: bundle, version: manifest.version.to_s,
-                                            requires_chi: manifest.requires_chi.to_s, msg: failure)
+                                            requires_chi: manifest.requires_chi.to_s, msg: standing.refusal.text)
       end
       true
     end
@@ -149,26 +152,27 @@ module Samagotchi
     # checked the same way).
     # @return [String]
     # @raise [Invalid] the bundle is gone, a script is gone, unrecorded or
-    #   changed (Provenance#script_failure), or this chi doesn't meet the
-    #   bundle's requires_chi
+    #   changed (InstalledBundles::Dir#file_refusal), or this chi doesn't meet
+    #   the bundle's requires_chi
+    # @raise [JSON::ParserError] the bundle's manifest.json doesn't parse (the
+    #   plan's D7: kept as it is). One that parses but isn't an object reads
+    #   as a record with no scripts, and the command runs (D8: kept too)
     def command_for(source)
       return source.cmd unless source.provider
 
-      provenance = InstalledBundles::Dir.new(name: source.provider)
-      record = provenance.record
-      raise Invalid, "bundle #{source.provider} isn't installed" unless record
+      standing = InstalledBundles.standing(source.provider)
+      raise Invalid, "bundle #{source.provider} isn't installed" unless standing
 
       # Its bundle is too new for this chi (installed with --force, or chi
       # was downgraded): its script won't run, as its plugin wouldn't load.
-      if (failure = record.manifest.requires_chi_failure)
-        raise Invalid, "bundle #{source.provider}: #{failure}"
-      end
+      raise Invalid, "bundle #{source.provider}: #{standing.refusal.text}" if standing.too_new?
 
-      record.scripts.each do |file, sha|
-        failure = provenance.script_failure(file, sha)
-        raise Invalid, failure if failure
+      installed = InstalledBundles::Dir.new(name: source.provider)
+      standing.record.scripts.each do |file, sha|
+        refusal = installed.file_refusal(:scripts, file, sha)
+        raise Invalid, refusal.text if refusal
       end
-      source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(provenance.bundle_dir) }.gsub(RUBY) { Shellwords.escape(RbConfig.ruby) }
+      source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(installed.bundle_dir) }.gsub(RUBY) { Shellwords.escape(RbConfig.ruby) }
     end
 
     def every(value)
