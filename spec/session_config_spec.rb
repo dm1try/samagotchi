@@ -246,9 +246,19 @@ RSpec.describe Samagotchi::SessionConfig do
       available = described_class.availability(dir: dir)
       expect(available.offered).to eq({})
       expect { described_class.check!(parse("future.cap=1"), bundles: available.offered, notes: available.notes) }
-        .to raise_error(described_class::Error, /\A--set future\.cap: future is installed but its plugin doesn't load: it requires chi >= 99\.0/)
+        .to raise_error(described_class::Error, /\A--set future\.cap: future is installed but this chi can't use it: it requires chi >= 99\.0/)
       expect { described_class.check!(parse("edited.cap=1"), bundles: available.offered, notes: available.notes) }
         .to raise_error(described_class::Error, /\A--set edited\.cap: edited is installed but its plugin doesn't load: its sha256 [0-9a-f]{12}… differs from the installed 000000000000…/)
+    end
+
+    it "refuses a bundle chi is too old for that has no plugin, in the same words" do
+      record("future", plugin: false, session_settings: ["cap"], requires_chi: ">= 99.0")
+
+      available = described_class.availability(dir: dir)
+      expect(available.offered).to eq({})
+      expect { described_class.check!(parse("future.cap=1"), bundles: available.offered, notes: available.notes) }
+        .to raise_error(described_class::Error, "--set future.cap: future is installed but this chi can't use it: " \
+                                                "it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")
     end
 
     it "keeps a string key's text as given: yes, 5, 1.10 and 1e3 aren't typed for it" do

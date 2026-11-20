@@ -11,7 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - The terminal shows a peer's answer note as `Claude answered · <summary>` (`Codex answered · …`) instead of `note from context claude-outbox: …`.
-- A bundle that needs a newer chi now gets a warning for its `bundles:` section in config.yml.
+- A bundle that needs a newer chi now gets a warning for its `bundles:` section in config.yml, and
+  `--set` refuses its settings saying so, whether or not it has a plugin.
 
 ## [0.179.0] - 2026-11-20
 

@@ -291,9 +291,10 @@ module Samagotchi
     def offered(dir: nil) = availability(dir: dir).offered
 
     # The installed bundles a session may set settings of: a record that
-    # doesn't read is left out, and so is one whose plugin doesn't load, as
-    # the verdict says for the loader (InstalledBundles::Standing: requires_chi;
-    # Dir#file_refusal(:plugin): the file, its sha256), with a note saying why. A record with no
+    # doesn't read is left out, and so is one this chi is too old for
+    # (InstalledBundles::Standing: requires_chi, plugin or not) or whose
+    # plugin doesn't load (Dir#file_refusal(:plugin): the file, its sha256),
+    # with a note saying why. A record with no
     # session_settings whose shipped bundle lists some (installed before
     # them) gets a note on refreshing it.
     # @return [Availability]
@@ -309,6 +310,10 @@ module Samagotchi
 
         name = standing.name
         bundle = standing.record
+        if standing.too_new?
+          notes[name] = unusable(name, standing.refusal.text)
+          next
+        end
         if (reason = unloadable(dir, standing))
           notes[name] = "#{name} is installed but its plugin doesn't load: #{reason}"
           next
@@ -379,16 +384,14 @@ module Samagotchi
         "setting#{"s" unless clashing.size == 1} (--set #{clashing.first}=… sets chi's); rename the setting or the bundle"
     end
 
-    # Why +standing+'s plugin doesn't load, as the plugin loader would refuse
-    # it (InstalledBundles' verdict), nil when it does or it has none. A bundle
-    # with no plugin is never refused here, even one too new (the plan's D2).
+    # Why a usable +standing+'s plugin doesn't load, as the plugin loader
+    # would refuse it (Dir#file_refusal(:plugin)), nil when it does or it has
+    # none.
     def unloadable(dir, standing)
       plugin = standing.record.plugin
       return nil unless plugin
 
-      refusal = standing.refusal ||
-                InstalledBundles::Dir.new(name: standing.name, dir: dir).file_refusal(:plugin, plugin.file, plugin.sha256)
-      refusal&.text
+      InstalledBundles::Dir.new(name: standing.name, dir: dir).file_refusal(:plugin, plugin.file, plugin.sha256)&.text
     end
 
     # Whether chi ships a bundle +name+ whose manifest lists session_settings.
