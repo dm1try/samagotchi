@@ -119,7 +119,7 @@ module Samagotchi
                      default_input: false, wait_at_eof: false, as_parent: false, scratch: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, now: -> { MessageTime.now },
                      delete_session: LocalLink::DELETE,
-                     archive_session: ->(id) { SessionManager.archive_session(id, wait: LocalLink::DELETE_WAIT) },
+                     archive_session: LocalLink::ARCHIVE,
                      installed_version: -> { InstalledVersions.new.newest },
                      state_dir: Session.default_state_dir,
                      children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) }, link: nil)

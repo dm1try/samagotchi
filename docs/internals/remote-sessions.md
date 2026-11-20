@@ -133,7 +133,12 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `ArgumentError` for another `not_found`, `Session::AmbiguousId`,
   `SessionManager::OwnedByTUI` / `DeleteRefused` / `ArchiveRefused` / `RestartRefused`, `SessionContinue::Refused`,
   and `ModelProfile::MissingModel` for `invalid_model` (no model there, or `--model`'s host unknown there: "could not
-  start a session: …", exit 1, as here).
+  start a session: …", exit 1, as here). A delete's or archive's `409 tasks_running` carries `op` (`delete` or
+  `archive`), `tasks` (`{running, unverified, unreadable}`), `worker_stopped`, `stopped_worker` (whose; an older chi web sends only the Boolean) and a chain's `links`: `raise_refusal`
+  rebuilds `DeleteRefused` or `ArchiveRefused` by `op`, with the `RunningTasks::Listing`, and makes the words here
+  (`RunningTasks.words`), not from chi web's `message`. Its own code, not archive's `busy`: an older client prints
+  `RemoteFailed "… answered 409 tasks_running: …"` rather than "a turn is running". `--stop-tasks` asks for the
+  `stop_tasks` feature first (`RemoteTooOld` without it).
   Checks the client would make locally come back as `SessionAccess::Refused` (`parent_answers_refused`,
   `parent_continue_refused`, `no_vision`, exit 1) or `BadRequest` (the other `invalid_*`, `missing_fields`, `bad_images`,
   exit 2, the usage-error path). That is for the routes `raise_refusal` reads (create, uploads, …). `POST …/turn` is

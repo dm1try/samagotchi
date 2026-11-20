@@ -10,11 +10,17 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Deleting or archiving a session whose background tasks still run now asks first: the web names them and offers to
+  stop them and delete/archive; `chi sessions delete|archive` (and `/archive`, `/exit --delete`) refuse and name them,
+  and `--stop-tasks` stops them first. With `--remote` this needs this chi on both ends: an older chi web can't stop
+  them, an older CLI can't delete or archive such a session there.
 - chi no longer reads a guardrail approvals.json list written by chi 0.166 and before (set aside with a warning; allow
   again what you need), or a session's cards.json from before 0.151.0 (earlier cards don't show).
 
 ### Fixed
 
+- `chi sessions restart` no longer refuses its fallback for a background task that already ended (a record a crashed
+  worker left marked running).
 - A background task's leftover process holding its log is stopped even when chi exits just after the task's shell
   ends, instead of running on after a one-shot or worker exit.
 - chi web: the working set's peek and reader show a running turn's reads while it runs, not only once the turn has

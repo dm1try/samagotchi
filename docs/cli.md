@@ -18,7 +18,7 @@
 - `chi web --web-markdown` / `--no-web-markdown` — opt in to, or opt out of, sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply (`web.markdown`, off by default; `--no-web-markdown` turns a config's `web.markdown: true` off for this run)
 - `chi web --no-web-working-set` — turns the stage view's working set off (on by default; `--web-working-set` turns a config's `web.working_set: false` back on): what each turn brought into the model's context, in the stage and under each finished turn; `?working_set=1|0` on the page URL overrides it (see [The working set](#the-working-set))
 - `chi web --web-stage-collapsed` / `--no-web-stage-collapsed` — every session's stage starts folded to its status row, or not (`web.stage_collapsed`, off by default); a session folded or unfolded by hand keeps its own fold in that browser
-- `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)); one line per session (`<id>  <state>  <ctx>  <updated_at>  <text> [flags]  ↳ …  ↪ …`) and one footer (`N session(s) (sort=… order=…)`, or the project note) for the plain list, the `--live`/`--cwd` text and `--remote`. `stats ID` prints a session's cost, tokens and progress, and its own settings (`--set`; a `settings:` line), from a live worker's `GET stats`, else its saved `analytics.json` (`--format json` one object, with `settings`), without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format`, `--scope`, `--sort` or `--order`, a `--days`, `--keep` or `--limit` that isn't a whole number) exits 2; an unknown or refused session exits 1
+- `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)); one line per session (`<id>  <state>  <ctx>  <updated_at>  <text> [flags]  ↳ …  ↪ …`) and one footer (`N session(s) (sort=… order=…)`, or the project note) for the plain list, the `--live`/`--cwd` text and `--remote`. `stats ID` prints a session's cost, tokens and progress, and its own settings (`--set`; a `settings:` line), from a live worker's `GET stats`, else its saved `analytics.json` (`--format json` one object, with `settings`), without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, `unarchive --stop-tasks`, a bad `list --format`, `--scope`, `--sort` or `--order`, a `--days`, `--keep` or `--limit` that isn't a whole number) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi broadcast [-m TEXT] [--all] [--dry-run]`, `chi broadcast log [--last N] [--format json]`, `chi broadcast deliver BROADCAST_ID (ID|PREFIX)...` — share one piece of information (TEXT or stdin) with every session it may concern, as a context note from `broadcast` (see [Broadcast](broadcast.md))
 - `chi context <add|push|ls|show|refresh|rm|mute|unmute> …` — attach live external text to sessions (a command chi runs every so often, or text pushed in); the model gets a short note when it changes and reads it with `context_read`; `chi context add <URL>` attaches a GitHub PR with the github-pr bundle; `chi context push NAME -m TEXT` (the long form is `--message TEXT`) gives a `--push` source its new text, read from stdin when no `-m` is given (see [Attached context](context.md))
@@ -763,10 +763,16 @@ a delegate's follow-up or a reminder. The web archives from the info bar
 (`archive`, before `stop`); the `archived` toggle by the all-sessions search
 finds archived sessions. `/archive` in a terminal leaves the session and
 archives it (an empty session is discarded instead; `chi scratch` refuses
-it). See
+it). A session whose background tasks (its `task_create` tasks, an `execute`
+handed over at its limit, its delegates' too) still run is refused, naming
+them (`ab12cd34  refused: background tasks it started are still running: npm
+run dev (--stop-tasks stops them first)`, exit 1); `archive --stop-tasks`
+stops them first (TERM, then KILL) and says so (`archived (stopped its
+worker; stopped 1 background task)`). `/archive` says the same and names
+`chi sessions archive --stop-tasks ID`; the web asks a second confirm. See
 [Sessions](sessions.md#archiving-a-session).
 
-`chi sessions delete [--force] [--chain] ID...` deletes sessions for good: the
+`chi sessions delete [--force] [--chain] [--stop-tasks] ID...` deletes sessions for good: the
 session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason.
 Deleting a chain's newest link undoes its continue and says so (`… deleted;
@@ -778,10 +784,20 @@ schedule on the chain refuses it. See docs/sessions.md (Session chains →
 Deleting a link). A
 session whose worker runs is refused unless `--force` stops the worker first;
 one a `--non-interactive` run has is always refused ("in use by a one-turn chi
---non-interactive run or an older chi's terminal; let it finish first"). Exit
+--non-interactive run or an older chi's terminal; let it finish first"). A
+session whose background tasks still run (its own, or a delegate's or link's
+the delete takes) is refused, naming them (`refused: background tasks it
+started are still running: npm run dev, rspec (--stop-tasks stops them
+first)`); `--stop-tasks` stops them first and the line says so (`deleted
+(stopped its worker; stopped 2 background tasks)`; one chi can't verify or
+read is never signalled: `1 not stopped: task 3f9a2c1d (may still be
+running)`). `--stop-tasks` is not `--force`: a live worker is still refused
+without it. `/exit --delete` refuses the same way and names `chi sessions
+delete --stop-tasks ID`. Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
 error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
-All sessions; it asks first and stops a live worker.
+All sessions; it asks first and stops a live worker, and asks again, naming
+them, when background tasks still run (OK stops them).
 
 `chi sessions stats ID [--format text|json]` prints a session's cost, tokens
 and progress without running a model turn — the same text `/stats` prints in
@@ -1653,6 +1669,12 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   answer ab12 --question q1 --option N`, `chi --remote studio send --wait …`),
   under `CHI_REMOTE` too, an attach as well (`chi --remote studio --attach
   ab12 shows it`, `sessions stop`'s `chi --remote studio --resume ab12`).
+- `sessions delete|archive --stop-tasks` needs a chi web there that lists the
+  `stop_tasks` feature (`GET /api/info`); an older one is refused before
+  anything is sent (update and restart chi web there), and without the flag
+  an older one deletes or archives as it always did. A new chi web answers an
+  older CLI's delete or archive of a session whose tasks run with 409
+  `tasks_running`, which that CLI prints as a failure.
 - A remote that can't be reached names itself and why (`chi send: remote
   studio (http://192.168.1.29:4567): connection refused`, exit 1; with
   `--format json` an `error` object).
