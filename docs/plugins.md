@@ -1678,7 +1678,11 @@ A plugin is Ruby code that runs inside chi with your permissions.
 gem.
 
 - The sha256 is an integrity check, not proof of who wrote the file. A file
-  edited after install is not loaded until you reinstall the bundle. A
+  edited after install is not loaded until you reinstall the bundle: the plugin,
+  a rule or a script that isn't recorded, is missing or changed is refused in one
+  wording, checked in that order (`bundle NAME's plugin/plugin.rb differs from
+  the installed one (reinstall the bundle)`), and `chi bundle status NAME` shows
+  the plugin `[unrecorded]`, `[missing]` or `[modified]`. A
   `--dev` install skips that check for its own bundle: its files are the
   source directory's, and an edit loads at the next start.
 - Install only copies the file (`--dev` links it). The code first runs at the

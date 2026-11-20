@@ -114,16 +114,18 @@ module Samagotchi
       end
 
       # The installed plugin: {file:, path:, state:, requires_chi:,
-      # requires_failure:}; state is "ok", "modified" (its sha256 differs
-      # from the installed one, or none is recorded: it won't load) or
-      # "missing", from the verdict (Dir#file_refusal(:plugin),
-      # InstalledBundles::Standing). nil without one.
+      # requires_failure:}; state is "ok", "unrecorded" (no sha256 recorded
+      # for it), "missing" or "modified" (its sha256 differs from the
+      # installed one), from the verdict (Dir#file_refusal(:plugin),
+      # InstalledBundles::Standing): any but "ok" won't load. nil without one.
+      PLUGIN_STATES = { nil => "ok", file_unrecorded: "unrecorded", file_missing: "missing", file_changed: "modified" }.freeze
+
       def self.plugin_status(provenance, bundle)
         path = provenance.plugin_path(bundle)
         return nil unless path
 
         refusal = provenance.file_refusal(:plugin, bundle.plugin.file, bundle.plugin.sha256)
-        state = { nil => "ok", file_missing: "missing" }.fetch(refusal&.kind, "modified")
+        state = PLUGIN_STATES.fetch(refusal&.kind)
         standing = InstalledBundles::Standing.of(provenance.name, bundle)
         { file: File.basename(path), path: path, state: state, requires_chi: bundle.manifest.requires_chi,
           requires_failure: standing.too_new? ? standing.refusal.text : nil }

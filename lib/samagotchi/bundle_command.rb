@@ -109,6 +109,10 @@ module Samagotchi
     STATUS_HELP = "Usage: chi bundle status [<bundle>]"
     DIFF_HELP = "Usage: chi bundle diff <bundle> [file]"
     LIST_HELP = "Usage: chi bundle list"
+    # What `chi bundle status NAME` says after a plugin's state
+    # (MemoryBundle::Status.plugin_status) that keeps it from loading.
+    PLUGIN_NOTES = { "modified" => " (edited after install: not loaded; reinstall the bundle)",
+                     "unrecorded" => " (no sha256 recorded: not loaded; reinstall the bundle)" }.freeze
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -584,7 +588,7 @@ module Samagotchi
         print_assets("Rules", st.rules, " (edited after install: not loaded; reinstall the bundle)")
         print_assets("Scripts", st.scripts, " (edited after install: the next install replaces it, a copy kept in the trash)")
         if (plugin = st.plugin)
-          note = plugin[:state] == "modified" ? " (edited after install: not loaded; reinstall the bundle)" : ""
+          note = PLUGIN_NOTES.fetch(plugin[:state], "")
           @stdout.puts "  Plugin: #{plugin[:file]} [#{plugin[:state]}]#{note}"
           @stdout.puts "    requires_chi: #{plugin[:requires_chi]}" if plugin[:requires_chi]
           @stdout.puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]

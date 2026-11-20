@@ -13,6 +13,10 @@ and commands may change between minor versions. How releases are made:
 - The terminal shows a peer's answer note as `Claude answered · <summary>` (`Codex answered · …`) instead of `note from context claude-outbox: …`.
 - A bundle that needs a newer chi now gets a warning for its `bundles:` section in config.yml, and
   `--set` refuses its settings saying so, whether or not it has a plugin.
+- A bundle's plugin, rule or script that isn't as installed is refused in one wording and one order everywhere (the
+  log, the load failures, the web's errors): "bundle NAME's plugin/FILE isn't recorded / is missing / differs from
+  the installed one (reinstall the bundle)". A rule with no recorded sha256 now says so instead of "differs", and
+  `chi bundle status NAME` shows such a plugin `[unrecorded]` instead of `[modified]`.
 
 ## [0.179.0] - 2026-11-20
 

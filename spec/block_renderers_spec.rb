@@ -277,7 +277,7 @@ RSpec.describe Samagotchi::BlockRenderers do
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scripts" => {})))
 
       expect { described_class.script_path("drawer", "draw.js") }
-        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js isn't among its installed scripts (reinstall the bundle)")
+        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js isn't recorded (reinstall the bundle)")
     end
 
     it "refuses a file that is gone" do

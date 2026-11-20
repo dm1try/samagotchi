@@ -79,39 +79,30 @@ RSpec.describe "InstalledBundles' usability verdict" do
   describe "Dir#file_refusal" do
     let(:bundle) { Samagotchi::InstalledBundles::Dir.new(name: "demo", dir: dir) }
 
-    it "checks a plugin: missing, then no sha recorded, then changed (both shas kept); a dev link passes" do
-      expect(bundle.file_refusal(:plugin, nil, nil).kind).to eq(:file_missing)
-      expect(bundle.file_refusal(:plugin, "plugin.rb", "").to_h).to eq(kind: :file_missing, text: "the file is missing", actual: nil, expected: nil)
-      file("demo", "plugin/plugin.rb", "x\n")
-      expect(bundle.file_refusal(:plugin, "plugin.rb", "").to_h)
-        .to eq(kind: :file_unrecorded, text: "no sha256 recorded for it (reinstall the bundle)", actual: nil, expected: nil)
-      expect(bundle.file_refusal(:plugin, "plugin.rb", "sha256:#{sha("x\n")}")).to be_nil
-      expect(bundle.file_refusal(:plugin, "plugin.rb", sha("x\n"))).to be_nil
-      expect(bundle.file_refusal(:plugin, "plugin.rb", Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
-      changed = bundle.file_refusal(:plugin, "plugin.rb", "0" * 64)
-      expect(changed).to have_attributes(kind: :file_changed, actual: sha("x\n"), expected: "0" * 64)
-      expect(changed.text).to eq("its sha256 #{sha("x\n")[0, 12]}… differs from the installed 000000000000… " \
-                                 "(edited after install? reinstall the bundle)")
+    # One order and one wording for every kind (the plan's D6): no sha
+    # recorded, then missing, then changed (both shas kept); a dev link passes.
+    { plugin: "plugin", scripts: "scripts", guardrails: "guardrails" }.each do |kind, folder|
+      it "checks #{folder}/: not recorded, then missing, then changed" do
+        what = "bundle demo's #{folder}/f.rb"
+        expect(bundle.file_refusal(kind, "f.rb", nil).to_h)
+          .to eq(kind: :file_unrecorded, text: "#{what} isn't recorded (reinstall the bundle)", actual: nil, expected: nil)
+        expect(bundle.file_refusal(kind, "f.rb", "").kind).to eq(:file_unrecorded)
+        expect(bundle.file_refusal(kind, "f.rb", "sha256:#{"0" * 64}").to_h)
+          .to eq(kind: :file_missing, text: "#{what} is missing (reinstall the bundle)", actual: nil, expected: nil)
+        file("demo", "#{folder}/f.rb", "x\n")
+        expect(bundle.file_refusal(kind, "f.rb", "")&.kind).to eq(:file_unrecorded)
+        expect(bundle.file_refusal(kind, "f.rb", "sha256:#{sha("x\n")}")).to be_nil
+        expect(bundle.file_refusal(kind, "f.rb", sha("x\n"))).to be_nil
+        expect(bundle.file_refusal(kind, "f.rb", Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
+        expect(bundle.file_refusal(kind, "f.rb", "0" * 64).to_h)
+          .to eq(kind: :file_changed, text: "#{what} differs from the installed one (reinstall the bundle)",
+                 actual: sha("x\n"), expected: "0" * 64)
+      end
     end
 
-    it "checks a script: no sha recorded, then missing, then changed" do
-      expect(bundle.file_refusal(:scripts, "s.rb", nil).to_h)
-        .to include(kind: :file_unrecorded, text: "bundle demo's scripts/s.rb isn't among its installed scripts (reinstall the bundle)")
-      expect(bundle.file_refusal(:scripts, "s.rb", "sha256:#{"0" * 64}").to_h)
-        .to include(kind: :file_missing, text: "bundle demo's scripts/s.rb is missing (reinstall the bundle)")
-      file("demo", "scripts/s.rb", "s\n")
-      expect(bundle.file_refusal(:scripts, "s.rb", "sha256:#{sha("s\n")}")).to be_nil
-      expect(bundle.file_refusal(:scripts, "s.rb", Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
-      expect(bundle.file_refusal(:scripts, "s.rb", "sha256:#{"0" * 64}").to_h)
-        .to include(kind: :file_changed, text: "bundle demo's scripts/s.rb differs from the installed one (reinstall the bundle)")
-    end
-
-    it "checks a rule: missing, then changed, an empty recorded sha reading as changed" do
-      expect(bundle.file_refusal(:guardrails, "r.yml", "").to_h).to include(kind: :file_missing, text: "the file is missing")
-      file("demo", "guardrails/r.yml", "rules: []\n")
-      expect(bundle.file_refusal(:guardrails, "r.yml", "sha256:#{sha("rules: []\n")}")).to be_nil
-      expect(bundle.file_refusal(:guardrails, "r.yml", "").to_h)
-        .to include(kind: :file_changed, text: "its sha256 differs from the installed one (edited after install? reinstall the bundle)")
+    it "says a plugin the record names no file of is missing" do
+      expect(bundle.file_refusal(:plugin, nil, "sha256:#{"0" * 64}").to_h)
+        .to include(kind: :file_missing, text: "bundle demo's plugin is missing (reinstall the bundle)")
     end
 
     it "knows only those three kinds" do

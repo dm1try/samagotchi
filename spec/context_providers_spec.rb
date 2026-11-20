@@ -156,7 +156,7 @@ RSpec.describe Samagotchi::ContextProviders do
       path = File.join(dir, "manifest.json")
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scripts" => { "pr.rb" => { "sha256" => "" } })))
       expect { described_class.command_for(source) }
-        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb isn't among its installed scripts (reinstall the bundle)")
+        .to raise_error(described_class::Invalid, "bundle prs's scripts/pr.rb isn't recorded (reinstall the bundle)")
     end
 
     it "refuses a script edited after a normal bundle install" do

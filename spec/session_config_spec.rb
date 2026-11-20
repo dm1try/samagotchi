@@ -248,7 +248,7 @@ RSpec.describe Samagotchi::SessionConfig do
       expect { described_class.check!(parse("future.cap=1"), bundles: available.offered, notes: available.notes) }
         .to raise_error(described_class::Error, /\A--set future\.cap: future is installed but this chi can't use it: it requires chi >= 99\.0/)
       expect { described_class.check!(parse("edited.cap=1"), bundles: available.offered, notes: available.notes) }
-        .to raise_error(described_class::Error, /\A--set edited\.cap: edited is installed but its plugin doesn't load: its sha256 [0-9a-f]{12}… differs from the installed 000000000000…/)
+        .to raise_error(described_class::Error, "--set edited.cap: edited is installed but its plugin doesn't load: bundle edited's plugin/plugin.rb differs from the installed one (reinstall the bundle)")
     end
 
     it "refuses a bundle chi is too old for that has no plugin, in the same words" do

@@ -117,7 +117,7 @@ RSpec.describe "Bundle guardrail rule files" do
       install(write_bundle("g", { "rules.yml" => push_rules }), "g")
       File.write(File.join(rules_dir("g"), "rules.yml"), YAML.dump("rules" => []))
       eng = nil
-      expect { eng = engine }.to output(/rules rules.yml \(bundle g\): its sha256 differs/).to_stderr
+      expect { eng = engine }.to output(%r{rules rules.yml \(bundle g\): bundle g's guardrails/rules.yml differs from the installed one}).to_stderr
       v = evaluate(eng, "ls")
       expect([v.decision, v.rule]).to eq([:deny, "guardrail-load"])
     end
