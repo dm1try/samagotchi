@@ -26,13 +26,14 @@ module Samagotchi
     def warnings(section, dir: InstalledBundles.dir)
       return [] if section.empty?
 
-      installed = InstalledBundles.each(dir: dir).to_h
+      installed = InstalledBundles.standings(dir: dir).to_h { |standing| [standing.name, standing] }
       section.flat_map do |name, values|
-        bundle = installed[name]
-        next ["config.yml bundles: #{name}: #{SessionConfig.no_installed_bundle(name)}#{near(name, installed.keys)}"] unless bundle
-        next [] if bundle.error?
+        standing = installed[name]
+        next ["config.yml bundles: #{name}: #{SessionConfig.no_installed_bundle(name)}#{near(name, installed.keys)}"] unless standing
+        # A bundle too new for this chi is still checked (the plan's D1).
+        next [] if standing.unreadable?
 
-        record_warnings(bundle.manifest, values)
+        record_warnings(standing.record.manifest, values)
       end
     end
 

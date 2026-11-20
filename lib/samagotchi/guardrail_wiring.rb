@@ -222,29 +222,28 @@ module Samagotchi
     def bundle_rules
       require_relative "installed_bundles"
       rules = []
-      InstalledBundles.each(holding: :guardrails) do |bundle_name, bundle|
-        if bundle.error?
-          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{bundle.error}", bundle: bundle_name)
-          @failures.add("rules (bundle #{bundle_name})", bundle.error, required: true, group: :rules)
+      InstalledBundles.standings(holding: :guardrails) do |standing|
+        bundle_name = standing.name
+        bundle = standing.record
+        if standing.unreadable?
+          why = standing.refusal.text
+          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{why}", bundle: bundle_name)
+          @failures.add("rules (bundle #{bundle_name})", why, required: true, group: :rules)
           next
         end
-        manifest = bundle.manifest
-        if (too_new = manifest.requires_chi_failure)
-          rules.concat(too_new_bundle_rules(bundle_name, manifest, too_new))
+        if standing.too_new?
+          rules.concat(too_new_bundle_rules(bundle_name, bundle.manifest, standing.refusal.text))
           next
         end
-        dir = InstalledBundles::Dir.new(name: bundle_name).guardrails_dir
+        installed = InstalledBundles::Dir.new(name: bundle_name)
         loaded = []
         whole = true
         bundle.guardrails.sort.each do |basename, sha|
           what = "rules #{basename} (bundle #{bundle_name})"
-          path = File.join(dir, basename)
+          path = File.join(installed.guardrails_dir, basename)
           begin
-            raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
-
-            unless InstalledBundles::Sha.matches?(path, sha)
-              raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
-            end
+            refusal = installed.file_refusal(:guardrails, basename, sha)
+            raise Guardrails::Rules::ParseError, refusal.text if refusal
 
             doc = YAML.safe_load_file(path)
             raise Guardrails::Rules::ParseError, "expected a mapping with rules:" unless doc.is_a?(Hash)
