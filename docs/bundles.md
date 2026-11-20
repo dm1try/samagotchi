@@ -1026,11 +1026,26 @@ Claude pairs; without one the bundle costs one tool declaration.
   verdict (`VERDICT OK` with "round closed" when Claude agreed), its summary,
   and chi's instruction to the model folded under "what chi told the agent".
   The newest answer also has "Read the full answer", which opens the
-  `claude-outbox` chip on its text (the outbox keeps one text, so older
+  Claude chip on the outbox's text (the outbox keeps one text, so older
   answers have only their summary). An answer from an older skill (no `re`)
   links to the last waiting validate or question; one that answers no send
   has no link back. A `/claude validate …` you type gets no link in the
   conversation (command bubbles aren't kept), its answer still names it.
+- **The session bar** has one chip for the pairing, `Claude · …`, first among
+  the context chips, in place of `claude-inbox` and `claude-outbox`: `paired`;
+  `waiting 2m` (a validate or question has no answer yet, its age the send's);
+  `answered 3m` with the unread dot (an answer the agent hasn't read);
+  `can't send` (the last send didn't go through: the Claude session ended or
+  restarted, pair again from Claude, which ends it; chi web can't probe the
+  socket, so a dead inbox shows only after a send hits it); `answers only`, dashed (no inbox: a
+  pairing through a remote). Its popover (a bottom sheet on a phone) says how
+  chi sends and where it answers, lists the last exchanges (time, kind ·
+  title, `waiting 2m` / `changes · 11m` / `ok · 4m` / `answered · 4m` / `no
+  answer expected` / `not sent`; a tap jumps to that send's row when it is in
+  the conversation), and has View latest answer, Status card (runs `/claude`)
+  and Unpair (detaches both sources after one confirm; if one can't be
+  detached it stops there and says which). codex-peer's is the
+  same, `Codex · …`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`, and a second line,
