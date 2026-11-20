@@ -65,11 +65,12 @@ RSpec.describe Samagotchi::BundleNeeds do
         "- **other** · system · 2026-09-26 · 40\n- **legacy.md** · old line\r\n"
     end
 
-    def install(name, scope:, files:, needs:)
+    def install(name, scope:, files:, needs:, **fields)
       dir = File.join(bundles_dir, name)
       FileUtils.mkdir_p(dir)
       data = { "name" => name, "scope" => scope, "files" => files.to_h { |f| [f, { "checksum" => "x" }] } }
       data["needs"] = needs if needs
+      data.merge!(fields.transform_keys(&:to_s))
       File.write(File.join(dir, "manifest.json"), JSON.generate(data))
     end
 
@@ -122,6 +123,11 @@ RSpec.describe Samagotchi::BundleNeeds do
       expect(annotate).to equal(index)
       install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
       expect(annotate).to include("gh_helper** · system · 2026-09-26 · 120 — GitHub via gh [needs chi-nope")
+    end
+
+    it "still marks the memories of a bundle this chi is too old for: they are read (D5)" do
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }], requires_chi: ">= 999.0")
+      expect(annotate).to include("GitHub via gh [needs chi-nope: not found on PATH]")
     end
 
     it "skips a bundle whose stored needs don't parse" do
