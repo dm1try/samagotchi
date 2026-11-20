@@ -7,6 +7,7 @@ require "samagotchi/session_continue"
 require "samagotchi/session_chain/delete"
 require "samagotchi/schedules"
 require "samagotchi/child_reports"
+require "samagotchi/tools/task_runtime"
 
 # A user's delete of a chain link (D2/D5/D7) and of the whole chain (D4).
 RSpec.describe Samagotchi::SessionChain::Delete do
@@ -397,6 +398,133 @@ RSpec.describe Samagotchi::SessionChain::Delete do
       result = manager.delete_chain(c.id, state_dir: tmpdir, stop: true)
 
       expect(result).to include(deleted: [c.id], cut_off: true)
+      expect(exists?(a.id)).to be(true)
+    end
+  end
+
+  # The background tasks the deleted links and delegates started
+  # (SessionManager::RunningTasks).
+  describe "running background tasks" do
+    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+    let(:policies) { manager::RunningTasks::Policy }
+    let(:folder) { File.realpath(Dir.mktmpdir("chain-delete-tasks")) }
+    let(:tasks) { [] }
+
+    # The tasks run in the sessions' folder, as a worker's would.
+    around { |example| Dir.chdir(folder) { example.run } }
+
+    after do
+      tasks.each { |record| runtime.stop_task(record.id, by: "model") }
+      runtime.quiesce!(timeout: 5)
+    end
+
+    def all_ids = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).sort
+
+    # A real task (this group's Process.spawn stands in only for a worker's).
+    def start_task(session, command = "sleep 30")
+      allow(Process).to receive(:spawn).and_call_original
+      record, error = runtime.create_task(command)
+      allow(Process).to receive(:spawn).and_return(12_345)
+      raise error if error
+
+      session = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+      session.save(state_dir: tmpdir)
+      tasks << record
+      record
+    end
+
+    def status_of(record) = runtime.load_record(record.id).status
+
+    it "refuses a link for a task its D7 delegate started, before anything goes" do
+      a = make
+      b = continue(a.id)
+      d = make(parent: b)
+      start_task(d, "rspec spec/slow_spec.rb")
+      before = all_ids
+
+      expect { delete(b.id, running_tasks: policies::REFUSE) }
+        .to raise_error(manager::DeleteRefused) { |e|
+          expect([e.reason, e.session_id]).to eq([:tasks_running, b.id])
+          expect(e.message).to eq("its delegate #{d.id[0, 8]}'s background tasks are still running: rspec spec/slow_spec.rb")
+        }
+      expect(all_ids).to eq(before)
+    end
+
+    # The last check lists the whole batch once under its locks: a task that
+    # starts on the link after check_link! refuses before its delegate goes.
+    it "keeps the link and its delegate when a task starts on the link after the up-front check" do
+      a = make
+      b = continue(a.id)
+      d = make(parent: b)
+      allow(described_class).to receive(:check_link!).and_wrap_original do |original, *args, **kw|
+        original.call(*args, **kw).tap { start_task(b, "sleep 30.25") }
+      end
+
+      expect { delete(b.id, running_tasks: policies::REFUSE) }
+        .to raise_error(manager::DeleteRefused) { |e| expect([e.reason, e.session_id]).to eq([:tasks_running, b.id]) }
+      expect([exists?(b.id), exists?(d.id)]).to eq([true, true])
+      expect(archived?(a.id)).to be(true)
+    end
+
+    it "keeps a chain whole when a task starts on its newest link after the up-front check" do
+      a = make
+      b = continue(a.id)
+      d = make(parent: b)
+      allow(described_class).to receive(:check_chain!).and_wrap_original do |original, *args, **kw|
+        original.call(*args, **kw).tap { start_task(b, "sleep 30.26") }
+      end
+
+      expect { manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies::REFUSE) }
+        .to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:tasks_running) }
+      expect([exists?(a.id), exists?(b.id), exists?(d.id)]).to eq([true, true, true])
+    end
+
+    it "refuses a chain delete up front for a task an earlier link started, naming that link" do
+      a = make
+      b = continue(a.id)
+      start_task(a, "npm run dev")
+      before = all_ids
+
+      expect { manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies::REFUSE) }
+        .to raise_error(manager::DeleteRefused, "link #{a.id[0, 8]}'s background tasks are still running: npm run dev")
+      expect(all_ids).to eq(before)
+    end
+
+    it "stops a chain's tasks link by link, newest first, each under its link's lock" do
+      a = make
+      b = continue(a.id)
+      in_a = start_task(a, "sleep 30.21")
+      in_b = start_task(b, "sleep 30.22")
+      order = []
+      allow(manager::RunningTasks).to receive(:stop!).and_wrap_original do |original, listing, **kw|
+        order.concat(listing.running.map(&:id))
+        original.call(listing, **kw)
+      end
+
+      result = manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user"))
+
+      expect(order).to eq([in_b.id, in_a.id])
+      expect(result[:tasks_stopped].map(&:id)).to contain_exactly(in_a.id, in_b.id)
+      expect([status_of(in_a), status_of(in_b)]).to eq(%w[stopped stopped])
+      expect([exists?(a.id), exists?(b.id)]).to eq([false, false])
+    end
+
+    it "keeps a link refused part-way whole with its task running; the later link's task is stopped" do
+      a = make
+      b = continue(a.id)
+      in_a = start_task(a, "sleep 30.23")
+      in_b = start_task(b, "sleep 30.24")
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, dir, **kw|
+        next nil if dir == dir_of(a.id) && kw[:kind] == Samagotchi::OwnerLock::DELETING
+
+        original.call(dir, **kw)
+      end
+
+      result = manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user"))
+
+      expect(result).to include(deleted: [b.id], left: [a.id])
+      expect([status_of(in_b), status_of(in_a)]).to eq(%w[stopped running])
       expect(exists?(a.id)).to be(true)
     end
   end

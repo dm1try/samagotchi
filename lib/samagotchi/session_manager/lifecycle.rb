@@ -11,10 +11,8 @@ require_relative "../reminder_carry"
 require_relative "../session"
 require_relative "../session_inbox"
 require_relative "../session_lifecycle"
-require_relative "../task_files"
-require_relative "../tools/task_record"
-require_relative "../task_transcript"
 require_relative "../worker_link"
+require_relative "running_tasks"
 
 module Samagotchi
   class SessionManager
@@ -50,7 +48,7 @@ module Samagotchi
         reminders: "it has reminders, which its worker's older chi can't carry over a restart",
         command_running: "a /btw (or another command) is still running",
         relays_open: "a delegate's approval relayed here is open or just answered",
-        background_tasks: "background tasks it started are still running",
+        background_tasks: RunningTasks::LEAD,
         scratch: "a chi scratch session's worker ends with its terminal"
       }.merge(WorkerIdleExit::LEAVING_WORDS).freeze
 
@@ -166,7 +164,7 @@ module Samagotchi
         Log.info(:worker, "restart_fallback", sid: session_id, why: why, error: error&.class&.name, msg: error&.message)
         dir = Session.session_dir(session_id, state_dir: state_dir)
         session = Session.load(session_id, state_dir: state_dir)
-        holds = restart_fallback_holds(session, dir)
+        holds = restart_fallback_holds(session, dir, state_dir)
         raise RestartRefused.new(session_id, :fallback_held, holds: holds) unless holds.empty?
         raise RestartRefused.new(session_id, :failed, version: sidecar&.version) unless (owner&.pid || 0).to_i.positive?
 
@@ -198,31 +196,16 @@ module Samagotchi
         Restarted.new(session_id: session_id, from_version: sidecar&.version, version: (fresh.version if changed))
       end
 
-      private def restart_fallback_holds(session, session_dir)
+      # A task that may still run holds it (RunningTasks.of: a live one, one
+      # chi can't verify, an unreadable record); a record left marked
+      # running by a crashed worker whose pid is gone doesn't.
+      private def restart_fallback_holds(session, session_dir, state_dir)
         holds = []
         holds << :turn_running if session.status == Session::STATUS_RUNNING
         holds << :question_pending if session.pending_question
         holds << :input_queued unless SessionInbox.find_new_input_files(session_dir).empty?
-        holds << :background_tasks if running_created_task?(session)
+        holds << :background_tasks unless RunningTasks.of([session.id], state_dir: state_dir).empty?
         holds
-      end
-
-      private def running_created_task?(session)
-        root = session.working_directory.to_s
-        return false if root.empty?
-
-        TaskTranscript.created_ids_in(session.messages).any? do |id|
-          next false unless TaskFiles::TASK_ID.match?(id)
-
-          path = File.join(root, TaskFiles::TASKS_DIR, id, TaskFiles::METADATA_FILENAME)
-          next false unless File.file?(path)
-
-          Tools::TaskRecord.from_file(JSON.parse(File.read(path)))&.running?
-        rescue JSON::ParserError, SystemCallError => e
-          Log.warn(:worker, "restart_task_check_failed", sid: session.id, task_id: id,
-                                                             error: e.class.name, msg: e.message)
-          true
-        end
       end
 
       # Stop a session by sending TERM (then CONT, for a stopped one) to its process.

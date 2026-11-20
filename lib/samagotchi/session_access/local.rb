@@ -286,7 +286,9 @@ module Samagotchi
       def restart(id) = SessionManager.restart_session(id, **dir)
 
       # @return [SessionManager::ArchiveResult]
-      def archive(id) = SessionManager.archive_session(id, **dir)
+      # @param stop_tasks [Boolean] stop the background tasks it or a
+      #   delegate started that still run (else ArchiveRefused :tasks_running)
+      def archive(id, stop_tasks: false) = SessionManager.archive_session(id, running_tasks: tasks_policy(stop_tasks), **dir)
 
       # @return [Hash] SessionManager.unarchive_session's
       def unarchive(id) = SessionManager.unarchive_session(id, **dir)
@@ -295,13 +297,23 @@ module Samagotchi
       # @return [Hash] SessionManager.delete_session's
       # A user's delete: SessionManager.delete_session's revive_previous: and
       # refuse_continuing: (D2/D5), on unless told otherwise.
-      def delete(id, force:, revive_previous: true, refuse_continuing: true)
+      # @param stop_tasks [Boolean] stop the background tasks the deleted
+      #   sessions started that still run (else DeleteRefused :tasks_running)
+      def delete(id, force:, stop_tasks: false, revive_previous: true, refuse_continuing: true)
         SessionManager.delete_session(id, stop: force, revive_previous: revive_previous,
-                                          refuse_continuing: refuse_continuing, **dir)
+                                          refuse_continuing: refuse_continuing, running_tasks: tasks_policy(stop_tasks), **dir)
       end
 
       # Every link of the chain (SessionManager.delete_chain).
-      def delete_chain(id, force:) = SessionManager.delete_chain(id, stop: force, **dir)
+      def delete_chain(id, force:, stop_tasks: false)
+        SessionManager.delete_chain(id, stop: force, running_tasks: tasks_policy(stop_tasks), **dir)
+      end
+
+      # A user's delete or archive: REFUSE, or a stop by "user".
+      private def tasks_policy(stop_tasks)
+        policies = SessionManager::RunningTasks::Policy
+        stop_tasks ? policies.stop(by: "user") : policies::REFUSE
+      end
 
       # --- context (a session's sources, or a project's: local only)
       #

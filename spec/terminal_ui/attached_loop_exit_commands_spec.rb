@@ -7,6 +7,8 @@ require_relative "../support/worker_links"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
+require_relative "../support/remote_backend"
+require "samagotchi/session_access/remote"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
   let(:screen) { RecordingSurface.new(columns: 80) }
@@ -282,8 +284,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     it "deletes with the shared default: a user's delete, revive and continue refusal on" do
       expect(Samagotchi::SessionManager).to receive(:delete_session)
         .with("s-9", stop: true, wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT, revive_previous: true,
-                     refuse_continuing: true)
+                     refuse_continuing: true, running_tasks: Samagotchi::SessionManager::RunningTasks::Policy::REFUSE)
       Samagotchi::TerminalUI::LocalLink::DELETE.call("s-9")
+    end
+
+    it "archives with the shared default, refusing on running background tasks" do
+      expect(Samagotchi::SessionManager).to receive(:archive_session)
+        .with("s-9", wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT,
+                     running_tasks: Samagotchi::SessionManager::RunningTasks::Policy::REFUSE)
+      Samagotchi::TerminalUI::LocalLink::ARCHIVE.call("s-9")
     end
 
     ["/exit --delete", "/quit --delete", "exit --delete", "EXIT --DELETE"].each do |line|
@@ -436,6 +445,71 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
 
       expect(screen.lines.last).to eq("Detached; session s-1234 was not archived (a turn is running; wait for it or " \
                                       "cancel it first). Re-attach with: chi --attach s-1234")
+    end
+
+    describe "refused for background tasks still running" do
+      let(:tasks) do
+        Samagotchi::SessionManager::RunningTasks::Listing.new(
+          running: [Samagotchi::SessionManager::RunningTasks::RunningTask.new(session_id: "s-1234", id: "t-1", command: "npm run dev")]
+        )
+      end
+
+      # The refusal chi web's 409 makes on a remote (SessionAccess::Remote's
+      # raise_refusal), from the body chi web sends.
+      def remote_refusal(op)
+        body = { error: "tasks_running", reason: "tasks_running", op: op, session_id: "s-1234", tasks: tasks.to_wire }
+        transport = lambda do |_method, path, **|
+          info = { app: "chi-web", version: "9.9.9", features: %w[session_commands stop_tasks] }
+          next Samagotchi::SessionAccess::HTTPTransport::Reply.of(200, JSON.generate(info)) if path == "/api/info"
+
+          Samagotchi::SessionAccess::HTTPTransport::Reply.of(409, JSON.generate(body))
+        end
+        remote = Samagotchi::SessionAccess::Remote.new(RemoteBackend.entry(name: "pod"), transport: transport, sleeper: ->(_s) {})
+        op == "archive" ? remote.archive("s-1234") : remote.delete("s-1234", force: true)
+      rescue Samagotchi::SessionManager::ArchiveRefused, Samagotchi::SessionManager::DeleteRefused => e
+        e
+      end
+
+      # The loop over a link whose archive or delete raises +error+, its
+      # follow-up commands spelled for +remote+ (nil: this machine).
+      def refused_line(line, error, remote: nil)
+        allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+        raising = ->(_id) { raise error }
+        link = Samagotchi::TerminalUI::LocalLink.new(client: client, delete_session: raising, archive_session: raising)
+        link.define_singleton_method(:via) { Samagotchi::ChiInvocation.new(remote: remote) }
+        loop_ui = described_class.new(screen: screen, client_id: "tui:1", link: link)
+        allow(client).to receive(:follow) do |**, &block|
+          block.call("type" => "snapshot", "snapshot" => idle)
+          stream
+        end
+        inputs = [line]
+        loop_ui.run(input: ->(_prompt, _prefill) { inputs.shift })
+        screen.lines.last
+      end
+
+      it "/archive names them and how to stop them, the same line locally and from chi web's refusal" do
+        local = Samagotchi::SessionManager::ArchiveRefused.new("s-1234", :tasks_running, tasks: tasks)
+
+        expect(refused_line("/archive", local))
+          .to eq("Detached; session s-1234 was not archived (background tasks it started are still running: npm run dev; " \
+                 "chi sessions archive --stop-tasks s-1234 stops them first). Re-attach with: chi --attach s-1234")
+        expect(refused_line("/archive", remote_refusal("archive"), remote: "pod"))
+          .to eq("Detached; session s-1234 was not archived (background tasks it started are still running: npm run dev; " \
+                 "chi --remote pod sessions archive --stop-tasks s-1234 stops them first). " \
+                 "Re-attach with: chi --remote pod --attach s-1234")
+      end
+
+      it "/exit --delete names them and how to stop them, locally and remotely alike" do
+        local = Samagotchi::SessionManager::DeleteRefused.new("s-1234", :tasks_running, tasks: tasks)
+        words = "background tasks it started are still running: npm run dev"
+
+        expect(refused_line("/exit --delete", local))
+          .to eq("Detached; the worker is stopping, but session s-1234 was not deleted (#{words}; " \
+                 "chi sessions delete --stop-tasks s-1234 stops them first).")
+        expect(refused_line("/exit --delete", remote_refusal("delete"), remote: "pod"))
+          .to eq("Detached; the worker is stopping, but session s-1234 was not deleted (#{words}; " \
+                 "chi --remote pod sessions delete --stop-tasks s-1234 stops them first).")
+      end
     end
 
     it "archives nothing when the exit request fails" do

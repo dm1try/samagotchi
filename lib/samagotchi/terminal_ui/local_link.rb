@@ -28,9 +28,17 @@ module Samagotchi
       DELETE_WAIT = 10
       # /exit --delete on this machine (LocalLink's and AttachedLoop's
       # default): a user's delete, so a chain's newest link is undone and the
-      # previous one comes back (SessionManager.delete_session's keywords).
+      # previous one comes back (SessionManager.delete_session's keywords),
+      # and background tasks still running refuse it (RunningTasks REFUSE:
+      # the line names chi sessions delete --stop-tasks).
       DELETE = lambda do |id|
-        SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT, revive_previous: true, refuse_continuing: true)
+        SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT, revive_previous: true, refuse_continuing: true,
+                                          running_tasks: SessionManager::RunningTasks::Policy::REFUSE)
+      end
+      # /archive on this machine (LocalLink's and AttachedLoop's default):
+      # refused while background tasks it or a delegate started still run.
+      ARCHIVE = lambda do |id|
+        SessionManager.archive_session(id, wait: DELETE_WAIT, running_tasks: SessionManager::RunningTasks::Policy::REFUSE)
       end
 
       attr_reader :client
@@ -44,7 +52,7 @@ module Samagotchi
       # @param children_counts [#call] session id -> ChildrenStatus::Counts
       def initialize(client:, state_dir: Session.default_state_dir,
                      delete_session: DELETE,
-                     archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
+                     archive_session: ARCHIVE,
                      installed_version: -> { InstalledVersions.new.newest },
                      children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) })
         @client = client

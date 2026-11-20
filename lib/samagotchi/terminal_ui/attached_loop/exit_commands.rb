@@ -104,6 +104,11 @@ module Samagotchi
         rescue SystemCallError, IOError => e
           detach("#{ExitLines.exit_failed_line(e.message, via: via, session_id: id)} Not deleted.")
         rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e
+          if e.is_a?(SessionManager::DeleteRefused) && e.reason == :tasks_running
+            return detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}; " \
+                          "#{SessionManager::RunningTasks.hint(via, "delete", id)}).")
+          end
+
           detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): " \
                  "#{via.command("sessions delete #{id}")}")
         end
@@ -147,7 +152,8 @@ module Samagotchi
         rescue SystemCallError, IOError => e
           detach("#{ExitLines.exit_failed_line(e.message, via: via, session_id: id)} Not archived.")
         rescue SessionManager::ArchiveRefused, SessionManager::OwnedByTUI, ArgumentError => e
-          detach("Detached; session #{id} was not archived (#{e.message}). Re-attach with: #{via.attach(id)}")
+          hint = "; #{SessionManager::RunningTasks.hint(via, "archive", id)}" if e.is_a?(SessionManager::ArchiveRefused) && e.reason == :tasks_running
+          detach("Detached; session #{id} was not archived (#{e.message}#{hint}). Re-attach with: #{via.attach(id)}")
         end
       end
     end

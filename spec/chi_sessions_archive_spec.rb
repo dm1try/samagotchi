@@ -6,6 +6,8 @@ require "json"
 require "spec_helper"
 require "samagotchi/session_archive_command"
 require "samagotchi/owner_lock"
+require "samagotchi/tools/task_runtime"
+require "support/task_dirs"
 require_relative "support/remote_backend"
 
 # `chi sessions archive|unarchive ID...` and `chi sessions list --archived`.
@@ -93,7 +95,50 @@ RSpec.describe "chi sessions archive" do
 
     it "prints its usage for no ids" do
       expect(run("archive")).to eq(2)
-      expect(err.string).to include("Usage: chi sessions archive (ID|PREFIX)...")
+      expect(err.string).to include("Usage: chi sessions archive [--stop-tasks] (ID|PREFIX)...")
+    end
+
+    it "exits 2 for unarchive --stop-tasks" do
+      session = make("back", id: "aaaa1111-0000")
+
+      expect(run("unarchive", "--stop-tasks", session.id)).to eq(2)
+      expect(err.string).to include("chi sessions unarchive: unknown option --stop-tasks")
+    end
+
+    describe "a session whose background task still runs" do
+      include TaskDirs
+
+      let(:runtime) { Samagotchi::Tools::TaskRuntime }
+
+      around { |example| with_task_dir { |root| @root = root and example.run } }
+
+      def with_task(prompt, id:, command: "sleep 30")
+        session = make(prompt, id: id)
+        record, error = runtime.create_task(command)
+        raise error if error
+
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+          s.working_directory = @root
+          s.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }]
+          s.save(state_dir: state_dir)
+        end
+        [session, record]
+      end
+
+      it "refuses, naming it, and exits 1; --stop-tasks stops it and archives" do
+        session, record = with_task("busy", id: "aaaa1111-0000", command: "sleep 30.41")
+
+        expect(run("archive", session.id)).to eq(1)
+        expect(out.string).to eq("aaaa1111  refused: background tasks it started are still running: sleep 30.41 " \
+                                 "(--stop-tasks stops them first)\n")
+        expect(archived?(session)).to be(false)
+        expect(runtime.load_record(record.id)).to be_running
+
+        expect(run("archive", "--stop-tasks", session.id)).to eq(0)
+        expect(out.string).to end_with("aaaa1111  archived (stopped 1 background task)\n")
+        expect(archived?(session)).to be(true)
+        expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
+      end
     end
 
     # One run is a real bin/chi; the rest fork it (ChiCli#fork_chi).

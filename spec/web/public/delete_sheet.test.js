@@ -87,6 +87,20 @@ test("scene 3B: a moved delegate that can't go back offers the stop only when th
                    { title: "Not deleted", text: "a continue of 3f2a91c0 is under way; try again in a moment", stop: null });
 });
 
+test("tasks_running: the sheet names the tasks the delete takes and offers to stop them", () => {
+  const tasks = { running: [{ session_id: B, id: "20261120-3f9a2c1d", command: "npm run dev" },
+                            { session_id: C, id: "20261120-0badf00d", command: "rspec" }],
+                  unverified: [{ session_id: B, id: "20261001-11112222", command: "rails s" }], unreadable: [] };
+  const model = refusalModel({ reason: "tasks_running", tasks, sessionId: B }, A);
+
+  assert.equal(model.title, "Background tasks still running");
+  assert.equal(model.text, "3 background tasks this delete takes are still running: " +
+                           "npm run dev · 9d0e1f2a: rspec · task 11112222 (may still be running). Nothing was deleted.");
+  assert.equal(model.stop.label, "Stop them and delete");
+  assert.equal(model.stop.line, "They are stopped (TERM, then KILL after 3 s), then the session goes.");
+  assert.match(markupOf(refusalTemplate(model)), /data-act="del:stop"/);
+});
+
 test("scene 5: a gap before the link: the whole-chain choice says the earlier links are kept", () => {
   const plan = newest();
   plan.cut_off = true;
@@ -209,6 +223,32 @@ test("the flow: a refusal shows in place; Stop then delete retries only once the
   flow.act("stop");
   await tick(); await tick();
   assert.deepEqual(calls, ["delete", `stop ${C}`, `stop ${C}`, "delete", "done"]);
+});
+
+test("the flow: tasks_running's Stop them and delete sends the same choice and digest again, stopping the tasks", async () => {
+  const host = fakeHost();
+  const tasks = { running: [{ session_id: B, id: "20261120-3f9a2c1d", command: "npm run dev" }], unverified: [], unreadable: [] };
+  const running = Object.assign(new Error("background tasks it started are still running: npm run dev"),
+                                { code: "tasks_running", body: { error: "tasks_running", op: "delete", tasks } });
+  const calls = [];
+  const done = [];
+  const plan = { ...newest(), chain: { ...newest().chain, digest: "chain-digest" } };
+  const api = {
+    deletePlan: async () => plan,
+    deleteChain: async (id, opts) => { calls.push([id, opts]); if (calls.length === 1) throw running; return { deleted: [B] }; },
+    stopSession: async () => { calls.push("stop"); return { released: true }; },
+  };
+  const flow = runDeleteFlow({ id: B, session, host, api, done: (...args) => done.push(args), plain: () => {}, failed: () => {} });
+  await tick();
+  flow.act("chain");
+  await tick(); await tick();
+  assert.match(host.shown.at(-1), /Background tasks still running/);
+  assert.match(host.shown.at(-1), /1 background task this delete takes is still running: npm run dev\. Nothing was deleted\./);
+
+  flow.act("stop");
+  await tick(); await tick();
+  assert.deepEqual(calls, [[B, { expect: "chain-digest" }], [B, { expect: "chain-digest", stopTasks: true }]]);
+  assert.equal(done[0][0], "chain");
 });
 
 test("the flow: plan_changed re-reads and redraws the changed plan before another confirmation", async () => {

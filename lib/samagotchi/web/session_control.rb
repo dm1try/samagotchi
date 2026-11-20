@@ -499,12 +499,17 @@ module Samagotchi
       # POST /api/sessions/:id/archive: hide it (and its delegates) from the
       # lists, keep it for good. A live idle worker is stopped first; a turn
       # running in it or a delegate, a one-turn chi run's session and a scratch one
-      # are refused (409).
-      def handle_archive(_req, id)
-        result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
+      # are refused (409). Background tasks it or a delegate started that
+      # still run: 409 tasks_running, unless the body says {stop_tasks: true}
+      # (then stopped first; the 200 names them, #task_fields).
+      def handle_archive(req, id)
+        body = parse_json(request_body(req, 4096))
+        result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS,
+                                              running_tasks: running_tasks_policy(body.is_a?(Hash) && body["stop_tasks"]))
         (result.archived + result.discarded).each { |sid| @hub&.touch(sid) }
         json_response(200, { status: "archived", session_id: result.id, archived: result.archived,
-                             stopped: result.stopped, discarded: result.discarded })
+                             stopped: result.stopped, discarded: result.discarded,
+                             **task_fields(result.to_h) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_one_shot(id, e)
       rescue SessionManager::ArchiveRefused => e
@@ -522,30 +527,36 @@ module Samagotchi
       # force a live worker is stopped first (the page sends it: its confirm
       # says so); without it a live worker's session is refused, 409
       # worker_running, as chi sessions delete without --force. A one-turn chi run's
-      # session is always refused.
+      # session is always refused. Background tasks the delete's sessions
+      # started that still run: 409 tasks_running, unless ?stop_tasks=true
+      # (then stopped first; the 200 names them, #task_fields).
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
                                              wait: STOP_WAIT_SECONDS, revive_previous: true, refuse_continuing: true,
-                                             expect: req.GET["expect"])
+                                             expect: req.GET["expect"],
+                                             running_tasks: running_tasks_policy(req.GET["stop_tasks"]))
         touch_deleted(result[:id], result)
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped],
                              unarchived: Array(result[:unarchived]), moved_back: Array(result[:moved_back]),
-                             deleted: Array(result[:deleted] || [result[:id]]), left_running: Array(result[:left_running]) })
+                             deleted: Array(result[:deleted] || [result[:id]]), left_running: Array(result[:left_running]),
+                             **task_fields(result) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_one_shot(id, e)
       rescue SessionManager::DeleteRefused => e
         delete_refused(e)
       end
 
-      # DELETE /api/sessions/:id/chain?force=: every link of the chain with
-      # their delegates (SessionManager.delete_chain). Query-only.
+      # DELETE /api/sessions/:id/chain?force=&stop_tasks=: every link of the
+      # chain with their delegates (SessionManager.delete_chain). Query-only.
       def handle_delete_chain(req, id)
         result = @manager.delete_chain(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
-                                           wait: STOP_WAIT_SECONDS, expect: req.GET["expect"])
+                                           wait: STOP_WAIT_SECONDS, expect: req.GET["expect"],
+                                           running_tasks: running_tasks_policy(req.GET["stop_tasks"]))
         touch_deleted(id, result)
         json_response(200, { status: "deleted", session_id: id, deleted: result[:deleted], left: result[:left],
                              left_running: result[:left_running], unarchived: result[:unarchived],
-                             stopped: result[:stopped], cut_off: result[:cut_off], refusal: result[:refusal] })
+                             stopped: result[:stopped], cut_off: result[:cut_off], refusal: result[:refusal],
+                             **task_fields(result) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_one_shot(e.session_id, e)
       rescue SessionManager::DeleteRefused => e
@@ -574,9 +585,34 @@ module Samagotchi
         ids.compact.uniq.each { |sid| @hub.touch(sid) }
       end
 
+      # A user's delete or archive: refused on running tasks (REFUSE), or,
+      # asked to (+stop_tasks+: the page's second confirm, --stop-tasks),
+      # stopped by "user".
+      def running_tasks_policy(stop_tasks)
+        policies = SessionManager::RunningTasks::Policy
+        truthy_param?(stop_tasks) ? policies.stop(by: "user") : policies::REFUSE
+      end
+
+      # The 200's tasks_stopped, tasks_not_stopped and tasks_ended (each
+      # [{session_id, id, command}], empty unless the tasks were stopped).
+      def task_fields(result)
+        %i[tasks_stopped tasks_not_stopped tasks_ended].to_h { |key| [key, Array(result[key]).map(&:to_wire)] }
+      end
+
+      # The 409 tasks_running's own fields: +op+ ("delete" or "archive"),
+      # the tasks ({running, unverified, unreadable}), whether the worker
+      # was stopped, a chain's links (the words name them).
+      def tasks_running_fields(error, op)
+        links = error.respond_to?(:links) ? error.links : []
+        { op: op, tasks: error.tasks.to_wire, worker_stopped: error.worker_stopped, stopped_worker: error.stopped_worker,
+          links: (links unless links.empty?) }
+      end
+
       # 409 with the refusal's reason as its code, and what a remote client
-      # raises it again from (ids, the schedule).
+      # raises it again from (ids, the schedule; tasks_running's tasks).
       def delete_refused(error)
+        return delete_tasks_refused(error) if error.reason == :tasks_running
+
         detail = error.reason == :still_stopping ? "#{error.message}; try again in a moment" : error.message
         # A moved delegate that can't go back: whether the page can stop it
         # (its "Stop its worker, then delete"), as the refusal saw it.
@@ -587,6 +623,11 @@ module Samagotchi
         refusal_response(409, error.reason.to_s, error, detail: detail, session_id: error.session_id,
                                                         reason: error.reason.to_s, ids: error.ids.empty? ? nil : error.ids,
                                                         schedule_id: error.schedule_id, stoppable: stoppable)
+      end
+
+      def delete_tasks_refused(error)
+        refusal_response(409, "tasks_running", error, session_id: error.session_id, reason: "tasks_running",
+                                                      **tasks_running_fields(error, "delete"))
       end
 
       # 409 owned_by_tui in the words a refused archive, delete or continue
@@ -605,10 +646,17 @@ module Samagotchi
         refusal_response(409, "owned_by_tui", error, session_id: error.session_id, scratch: scratch)
       end
 
-      # 409 scratch or busy (every other reason: a turn, a queued prompt, an
-      # open step-limit question, in it or a delegate, +busy_id+), with the
-      # reason for a remote client.
+      # 409 scratch, tasks_running (#tasks_running_fields) or busy (every
+      # other reason: a turn, a queued prompt, an open step-limit question,
+      # in it or a delegate, +busy_id+), with the reason for a remote client.
+      # tasks_running, not busy: an older chi --remote then says chi web's
+      # words, not "a turn is running".
       def archive_refused(error)
+        if error.reason == :tasks_running
+          return refusal_response(409, "tasks_running", error, session_id: error.session_id, reason: "tasks_running",
+                                                               **tasks_running_fields(error, "archive"))
+        end
+
         refusal_response(409, error.reason == :scratch ? "scratch" : "busy", error, session_id: error.session_id,
                                                                                   reason: error.reason.to_s, busy_id: error.busy_id)
       end

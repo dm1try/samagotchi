@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../session_stores"
+require_relative "running_tasks"
 
 module Samagotchi
   class SessionManager
@@ -14,16 +15,33 @@ module Samagotchi
     # delegate the deleted link's continue moved can't go back: +ids+,
     # +detail+ says why), :chain_scheduled (a schedule is on the chain a
     # chain delete would take: +schedule_id+), :plan_changed (the plan no
-    # longer matches the digest the caller confirmed).
+    # longer matches the digest the caller confirmed), :tasks_running
+    # (background tasks it or a session the delete takes started still run:
+    # +tasks+, a RunningTasks::Listing; +worker_stopped+ when a worker was
+    # stopped before the last check found them, +stopped_worker+ whose:
+    # +worker_stopped:+ takes true for this session's or that session's id;
+    # +links+ the chain's other links, for the words).
     class DeleteRefused < StandardError
-      attr_reader :session_id, :reason, :schedule_id, :ids
+      attr_reader :session_id, :reason, :schedule_id, :ids, :tasks, :stopped_worker, :links
 
-      def initialize(session_id, reason, message: nil, schedule_id: nil, ids: [], detail: nil)
+      def initialize(session_id, reason, message: nil, schedule_id: nil, ids: [], detail: nil,
+                     tasks: RunningTasks::EMPTY, worker_stopped: false, links: [])
         @session_id = session_id
         @reason = reason
         @schedule_id = schedule_id
         @ids = ids
+        @tasks = tasks
+        @stopped_worker = RunningTasks.stopped_worker(session_id, worker_stopped)
+        @links = links
         super(message || refused_message(detail))
+      end
+
+      def worker_stopped = !@stopped_worker.nil?
+
+      # This refusal, saying the op stopped +worker_id+'s worker (this
+      # session's by default) before the check under the lock refused.
+      def with_worker_stopped(worker_id = @session_id)
+        DeleteRefused.new(@session_id, @reason, tasks: @tasks, worker_stopped: worker_id, links: @links)
       end
 
       private
@@ -42,22 +60,30 @@ module Samagotchi
             "#{": #{detail}" if detail}"
         when :chain_scheduled then "an enabled schedule runs on this chain#{cancel}"
         when :plan_changed then "what this delete would do changed since it was shown; review the new plan and try again"
+        when :tasks_running
+          "#{RunningTasks.words(@session_id, @tasks, links: @links)}#{RunningTasks.worker_words(@session_id, @stopped_worker)}"
         else "session #{@session_id} can't be deleted now (#{@reason})"
         end
       end
     end
 
     # An archive that can't happen now: a turn runs in the session or in one
-    # of its children (+busy_id+ names which), or it is a scratch session.
+    # of its children (+busy_id+ names which), it is a scratch session, or
+    # (:tasks_running) background tasks it or a delegate started still run
+    # (+tasks+, a RunningTasks::Listing).
     class ArchiveRefused < StandardError
-      attr_reader :session_id, :reason, :busy_id
+      attr_reader :session_id, :reason, :busy_id, :tasks, :stopped_worker
 
-      def initialize(session_id, reason, busy_id: nil)
+      def initialize(session_id, reason, busy_id: nil, tasks: RunningTasks::EMPTY, worker_stopped: false)
         @session_id = session_id
         @reason = reason
         @busy_id = busy_id
+        @tasks = tasks
+        @stopped_worker = RunningTasks.stopped_worker(session_id, worker_stopped)
         super(archive_refused_message)
       end
+
+      def worker_stopped = !@stopped_worker.nil?
 
       private
 
@@ -71,6 +97,7 @@ module Samagotchi
         when :offer_child then "its delegate #{@busy_id[0, 8]} waits for an answer to its step-limit question; answer it first"
         when :starting then "its worker is starting; try again in a moment"
         when :starting_child then "its delegate #{@busy_id[0, 8]}'s worker is starting; try again in a moment"
+        when :tasks_running then "#{RunningTasks.words(@session_id, @tasks)}#{RunningTasks.worker_words(@session_id, @stopped_worker)}"
         else "a turn is running; wait for it or cancel it first"
         end
       end
@@ -78,8 +105,14 @@ module Samagotchi
 
     # What one archive did: id: the session it was asked for; archived: the
     # ids (it and its delegates) now hidden for good; stopped: the live
-    # workers stopped first; discarded: empty sessions its stopping worker deleted.
-    ArchiveResult = Data.define(:id, :archived, :stopped, :discarded)
+    # workers stopped first; discarded: empty sessions its stopping worker
+    # deleted; tasks_stopped / tasks_not_stopped / tasks_ended: what a
+    # running_tasks: stop did (RunningTasks::RunningTask lists, empty
+    # otherwise).
+    ArchiveResult = Data.define(:id, :archived, :stopped, :discarded, :tasks_stopped, :tasks_not_stopped,
+                                :tasks_ended) do
+      def initialize(id:, archived:, stopped:, discarded:, tasks_stopped: [], tasks_not_stopped: [], tasks_ended: []) = super
+    end
 
     # Every store with session-scoped state. Deletion, retention and failed
     # continuation cleanup all pass through this registry.
@@ -101,19 +134,29 @@ module Samagotchi
       #   continue past the step limit, or it is a scratch session
       # @param except [Array<String>] descendants left alone with their own
       #   subtrees (delegates a continue moves to the chain's new link)
-      def archive_session(id_or_prefix, state_dir: nil, wait: 5, except: [])
+      # @param running_tasks [RunningTasks::Policy] the background tasks the
+      #   tree started that still run: IGNORE (left running), REFUSE
+      #   (ArchiveRefused :tasks_running before anything changes), or a stop
+      #   (after the workers let go, or the wait ran out: their own waiters
+      #   then record the stop from the flag on disk), before the marker
+      def archive_session(id_or_prefix, state_dir: nil, wait: 5, except: [], running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir || Session.default_state_dir
         id = archive_target(id_or_prefix, sd)
         tree, owners = archivable!(id, sd, except: except)
+        RunningTasks.check!(tree, state_dir: sd, policy: running_tasks) do |listing|
+          ArchiveRefused.new(id, :tasks_running, tasks: listing)
+        end
         stopped = tree.select { |sid| owners[sid] }
+        # With +wait+, stop_session waits for the owner to let go.
         stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
+        RunningTasks.stop!(RunningTasks.of(tree, state_dir: sd), policy: running_tasks) if running_tasks.stop?
         archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
         # A restart's reminders hand-off no successor took (the stop above
         # removes a live one's): archived sessions keep no reminders.
         archived.each { |sid| ReminderCarry.remove(Session.session_dir(sid, state_dir: sd)) }
         # D8: an archive ends the review (unarchiving doesn't restore it).
         Participants.end_sessions(archived, by: "archive", state_dir: sd)
-        ArchiveResult.new(id: id, archived: archived, stopped: stopped, discarded: discarded)
+        ArchiveResult.new(id: id, archived: archived, stopped: stopped, discarded: discarded, **running_tasks.result_fields)
       end
 
       # The session and its descendants, with their owners, when they can be
@@ -198,9 +241,14 @@ module Samagotchi
       # @param still [#call, nil] the caller's own check, read again under
       #   the deleting lock (#remove_files; DeleteRefused :changed when it no
       #   longer holds): an empty session's discard. Not with the chain keywords.
+      # @param running_tasks [RunningTasks::Policy] the background tasks the
+      #   deleted sessions started that still run: IGNORE (left running),
+      #   REFUSE (DeleteRefused :tasks_running) or a stop, under the
+      #   deleting lock (#remove_session_files). The result then also has
+      #   tasks_stopped:, tasks_not_stopped: and tasks_ended:
       def delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true,
                          allow_scheduled: false, revive_previous: false, refuse_continuing: false, expect: nil,
-                         still: nil)
+                         still: nil, running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         # Only a plain id: anything else could name a path outside the state dir.
@@ -215,11 +263,12 @@ module Samagotchi
         if revive_previous || refuse_continuing
           require_relative "../session_chain/delete"
           return SessionChain::Delete.link(id, state_dir: sd, stop: stop, wait: wait, revive_previous: revive_previous,
-                                               refuse_continuing: refuse_continuing, expect: expect)
+                                               refuse_continuing: refuse_continuing, expect: expect,
+                                               running_tasks: running_tasks)
         end
 
         delete_resolved(id, state_dir: sd, stop: stop, wait: wait, purge_runs: purge_runs, allow_scheduled: allow_scheduled,
-                            still: still)
+                            still: still, running_tasks: running_tasks)
       end
 
       # Delete every link of +id+'s chain with their delegates
@@ -230,7 +279,8 @@ module Samagotchi
       # @return [Hash] SessionChain::Delete.chain's
       # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
       # @raise [DeleteRefused, OwnedByTUI] nothing was deleted
-      def delete_chain(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, expect: nil)
+      def delete_chain(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, expect: nil,
+                       running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir || Session.default_state_dir
         given = id_or_prefix.to_s
         raise Session::NotFound, given unless Session.valid_id?(given)
@@ -239,23 +289,35 @@ module Samagotchi
         raise Session::NotFound, given unless Session.exist?(id, state_dir: sd)
 
         require_relative "../session_chain/delete"
-        SessionChain::Delete.chain(id, state_dir: sd, stop: stop, wait: wait, expect: expect)
+        SessionChain::Delete.chain(id, state_dir: sd, stop: stop, wait: wait, expect: expect, running_tasks: running_tasks)
       end
 
       # #delete_session's checks and removal for a full id that exists:
       # the schedule refusal, the one-turn run, the worker (stopped with
       # +stop+), then #remove_files. SessionChain::Delete's last step.
-      # @return [Hash] {id:, removed:, stopped:}
+      # The running-tasks refusal comes before the worker is stopped; the
+      # check under the lock is the last word (+worker_stopped+ then).
+      # @return [Hash] {id:, removed:, stopped:, tasks_stopped:, tasks_not_stopped:, tasks_ended:}
       def delete_resolved(id, state_dir:, stop: false, wait: STOP_WAIT, purge_runs: true, allow_scheduled: false,
-                          still: nil)
+                          still: nil, running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir
         path = Session.session_file(id, state_dir: sd)
         dir = Session.session_dir(id, state_dir: sd)
         refuse_scheduled!(id, sd) unless allow_scheduled
+        RunningTasks.check!([id], state_dir: sd, policy: running_tasks) do |listing|
+          DeleteRefused.new(id, :tasks_running, tasks: listing)
+        end
 
         held = release_for_delete!(id, state_dir: sd, stop: stop, wait: wait)
-        removed = remove_files(id, path, dir, state_dir: sd, purge_runs: purge_runs, still: still)
-        { id: id, removed: removed, stopped: held }
+        begin
+          removed = remove_files(id, path, dir, state_dir: sd, purge_runs: purge_runs, still: still,
+                                                running_tasks: running_tasks)
+        rescue DeleteRefused => e
+          raise e unless held && e.reason == :tasks_running
+
+          raise e.with_worker_stopped
+        end
+        { id: id, removed: removed, stopped: held, **running_tasks.result_fields }
       end
 
       # +id+ free for a delete: a one-turn run refuses, a worker that owns it
@@ -284,12 +346,15 @@ module Samagotchi
       # @return [Array<Hash>] #delete_session's result for each
       # @raise [DeleteRefused, OwnedByTUI, Session::NotFound] the first
       #   refusal; the ids before it are deleted
-      def delete_ids(ids, state_dir: nil, stop: false, wait: STOP_WAIT)
+      # @param running_tasks [RunningTasks::Policy] for every id (a stop's
+      #   tally is the batch's: each result's task fields count so far).
+      #   Schedules#prune keeps IGNORE.
+      def delete_ids(ids, state_dir: nil, stop: false, wait: STOP_WAIT, running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir || Session.default_state_dir
         results = []
         # Not a map: the ids deleted before a refusal must reach the ensure's purge.
         ids.each do |id| # rubocop:disable Style/MapIntoArray
-          results << delete_session(id, state_dir: sd, stop: stop, wait: wait, purge_runs: false)
+          results << delete_session(id, state_dir: sd, stop: stop, wait: wait, purge_runs: false, running_tasks: running_tasks)
         end
         results
       ensure
@@ -320,12 +385,15 @@ module Samagotchi
       # @raise [DeleteRefused] see #remove_session_files
       # @param locked [Boolean] the caller holds +id+'s owner lock (kind
       #   deleting) already: SessionChain::Delete, across its undo
-      def remove_files(id, path, dir, state_dir:, purge_runs: true, still: nil, locked: false)
+      # @param running_tasks [RunningTasks::Policy] see #remove_session_files
+      def remove_files(id, path, dir, state_dir:, purge_runs: true, still: nil, locked: false,
+                       running_tasks: RunningTasks::Policy::IGNORE)
         removed = []
         SESSION_STATE_STORES.each do |store|
           case store
           when :session_files
-            removed.concat(remove_session_files(id, path, dir, state_dir: state_dir, still: still, locked: locked))
+            removed.concat(remove_session_files(id, path, dir, state_dir: state_dir, still: still, locked: locked,
+                                                                running_tasks: running_tasks))
           when :plugin_session_state
             PluginSessionState.remove(id)
           when :context_sources
@@ -362,14 +430,30 @@ module Samagotchi
       # The lock file goes with the directory; a worker starting after that
       # makes a new one, and finds no session (Session.load). The delete and
       # the retention sweep and failed-continue cleanup use #remove_files.
+      # The background tasks +id+ started are read again here, on the final
+      # file, under the lock (+running_tasks+): REFUSE refuses on any, a stop
+      # stops them (RunningTasks.stop!, up to about 4 s with the lock held:
+      # meanwhile a send, a schedule or a resume is refused as deleting).
       # @return [Array<String>] the paths removed
       # @raise [DeleteRefused] a worker took the lock, or a start was
-      #   claimed, after the caller's check, or +still+ no longer holds
-      def remove_session_files(id, path, dir, state_dir:, still: nil, locked: false)
+      #   claimed, after the caller's check, or +still+ no longer holds, or
+      #   (:tasks_running, REFUSE) a task started since the op's check.
+      #   SessionChain::Delete lists its whole batch under its locks first
+      #   and passes RunningTasks.after_check (no re-check here, so no id is
+      #   refused after another of the batch went).
+      def remove_session_files(id, path, dir, state_dir:, still: nil, locked: false,
+                               running_tasks: RunningTasks::Policy::IGNORE)
         lock = !locked && Dir.exist?(dir) ? OwnerLock.acquire(dir, kind: OwnerLock::DELETING, wait: 0) : nil
         raise DeleteRefused.new(id, :worker_running) if !locked && Dir.exist?(dir) && lock.nil?
         raise DeleteRefused.new(id, :worker_running) if StartingMarker.fresh?(id, state_dir: state_dir)
         raise DeleteRefused.new(id, :changed) if still && !still.call
+
+        unless running_tasks.ignore?
+          listing = RunningTasks.of([id], state_dir: state_dir)
+          raise DeleteRefused.new(id, :tasks_running, tasks: listing) if running_tasks.refuse? && !listing.empty?
+
+          RunningTasks.stop!(listing, policy: running_tasks) if running_tasks.stop?
+        end
 
         removed = []
         if File.exist?(path)
