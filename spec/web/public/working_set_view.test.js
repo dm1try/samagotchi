@@ -795,11 +795,20 @@ function headView({ parts = PARTS, ctxTokens = 20000, ctxWindow = 128000, sessio
   return { ws, pop, current, open, heads, sec, names, foots, done, setSession: (s) => { id = s; } };
 }
 
-test("the head view: three sections in order, the parts first with their tokens, read-only; the read section without the prompt's memories", () => {
+test("the head view: read, conversation, start; start folded by default with its held-twice count; its parts in prompt order, read-only", () => {
   const v = headView();
   try {
     v.open();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"], "Conversation is a row, not a section header");
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"], "Conversation is a row, not a section header");
+    assert.deepEqual([...v.pop.querySelectorAll(".ws-sec")].map((el) => el.classList[1]), ["read", "talk", "start"]);
+    const startHead = v.sec("start").querySelector(".ws-sec-head");
+    assert.equal(startHead.getAttribute("aria-expanded"), "false", "nothing stored: start folded");
+    assert.deepEqual(v.names("start"), []);
+    assert.equal(startHead.querySelector(".n").textContent, "5 parts · in every turn");
+    assert.equal(startHead.querySelector(".w").textContent, "· 1 held twice", "its own span: the meta's ellipsis cuts the meta first");
+    assert.ok(localStorage.getItem("chi_ws_sections_folded:h1") === null, "the default is not written");
+    startHead.click();
+    assert.equal(v.sec("start").querySelector(".ws-sec-head .w").textContent, "· 1 held twice", "open, the count stays");
     assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
     const tools = v.sec("start").querySelector('.ws-row.part[data-ws-part^="tools"]');
     assert.equal(tools.querySelector(".st").textContent, "31 declared");
@@ -873,6 +882,7 @@ test("the size line: the session lens without the context's tokens (or without p
 test("held twice: the session lens tags the re-read prompt memory, its tokens the part's + the read's; the turn that read it gets the note", () => {
   const v = headView();
   try {
+    localStorage.setItem("chi_ws_sections_folded:h1", "[]");
     v.open();
     const note = () => v.sec("start").querySelector('[data-ws-id="memory:model_notes_style"]');
     assert.equal(note().querySelector(".ws-twice").textContent, "held twice");
@@ -897,13 +907,13 @@ test("held twice: the session lens tags the re-read prompt memory, its tokens th
   } finally { v.done(); }
 });
 
-test("section folds: per session; folded, a section shows only the rows the lens lights", () => {
+test("section folds: per session, start folded until set by hand; folded, a section shows only the rows the lens lights", () => {
   const v = headView();
   try {
     v.open();
-    v.sec("start").querySelector(".ws-sec-head").click();
     assert.equal(v.sec("start").querySelector(".ws-sec-head").getAttribute("aria-expanded"), "false");
     assert.deepEqual(v.names("start"), [], "folded, the session lens lights nothing");
+    assert.equal(v.sec("read").querySelector(".ws-sec-head").getAttribute("aria-expanded"), "true");
     v.sec("read").querySelector(".ws-sec-head").click();
     assert.deepEqual(v.names("read"), []);
     // Turn 2's lens: the folded start shows the note it read, the folded read its c.rb.
@@ -912,7 +922,7 @@ test("section folds: per session; folded, a section shows only the rows the lens
     assert.deepEqual(v.names("start"), ["model_notes_style"]);
     assert.equal(v.sec("start").querySelector(".ws-note").textContent, "read again in this turn: already in the prompt, held twice (+400)");
     assert.deepEqual(v.names("read"), ["c.rb"]);
-    // Kept for this session; another session's list opens unfolded.
+    // Kept for this session; another session's list opens on the default (start folded, read open).
     v.ws.popover.close();
     v.open();
     assert.deepEqual(v.names("start"), []);
@@ -920,13 +930,19 @@ test("section folds: per session; folded, a section shows only the rows the lens
     v.ws.popover.close();
     v.setSession("h2");
     v.open();
-    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
-    // Opened again: the key's list loses it.
+    assert.deepEqual(v.names("start"), []);
+    assert.deepEqual(v.names("read"), ["c.rb", "a.rb"]);
+    // Opened by hand: the key's list loses it, and an empty list stays open.
     v.setSession("h1");
     v.ws.popover.close();
     v.open();
     v.sec("start").querySelector(".ws-sec-head").click();
     assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["read"]');
+    v.sec("read").querySelector(".ws-sec-head").click();
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), "[]");
+    v.ws.popover.close();
+    v.open();
+    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"], "a stored [] is not the default");
   } finally { v.done(); }
 });
 
@@ -956,7 +972,7 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     // Parts come (a turn end's re-read), still no context tokens: the sections, no line, no Conversation.
     v.current.promptParts = PARTS;
     v.ws.sessionChanged();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"]);
     v.pop.querySelector('[data-ws="lens"][data-lens="session"]').click();
     assert.ok(v.pop.querySelector(".ws-head-line") === null);
     // The tokens come: the line, no window: no "of Y".
@@ -964,7 +980,7 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     v.current.ctxWindow = null;
     v.ws.sessionChanged();
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~30k");
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"]);
     assert.equal(v.sec("talk").querySelector(".ws-row.talk .tk").textContent, "~15k");
   } finally { v.done(); }
 });

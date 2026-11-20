@@ -22,6 +22,10 @@ const file = (key, at, extra = {}) => ({ kind: "file", key, label: key.split("/"
 const mem = (key, at, extra = {}) => ({ kind: "memory", key, label: key, ops: ["read"], at, count: 1, state: "live", ...extra });
 const at = (turn, step = 0) => ({ turn, step, row: 0 });
 
+// The sections by key (every reader finds one by its key; the drawn order is
+// read, talk, start).
+const byKey = (sections) => Object.fromEntries(sections.map((s) => [s.key, s]));
+
 function setOf({ turns = [], notes = [], preloaded = [], used = [], server = null } = {}) {
   const set = sessionItems({ turns, notes, preloaded, used });
   return { items: overlay(set.items, server), muted: set.muted };
@@ -36,7 +40,7 @@ test("headSections: no parts (an old session or worker, a participant) is null, 
 
 test("headSections: the parts in prompt order, the tools part first; part rows a label, a sub, their tokens", () => {
   const set = setOf({ notes: [{ name: "model_notes_style" }], turns: [[file("/p/a.rb", at(0))]] });
-  const [start, read] = headSections(set, 6, { parts: PARTS, turns: 1 });
+  const { start, read } = byKey(headSections(set, 6, { parts: PARTS, turns: 1 }));
   assert.equal(start.key, "start");
   assert.equal(start.title, "From the start");
   assert.equal(start.meta, "8 parts · in every turn");
@@ -50,7 +54,7 @@ test("headSections: the parts in prompt order, the tools part first; part rows a
   assert.equal(read.key, "read");
   assert.deepEqual(read.inner.map((s) => s.key), ["files"]);
   // A turn lens: the meta drops the count.
-  assert.equal(headSections(set, 6, { parts: PARTS, inTurn: true })[0].meta, "in every turn");
+  assert.equal(byKey(headSections(set, 6, { parts: PARTS, inTurn: true })).start.meta, "in every turn");
 });
 
 test("headSections: a memory part IS the memory row: merged with the set's row (note), its own row (identity), system/x is x", () => {
@@ -61,7 +65,7 @@ test("headSections: a memory part IS the memory row: merged with the set's row (
     turns: [[mem("x", at(0, 1)), file("/p/a.rb", at(0))]],
     server: { items: [{ kind: "memory", key: "x", state: "live", tokens: 80 }], at: 3 },
   });
-  const [start, read] = headSections(set, 6, { parts });
+  const { start, read } = byKey(headSections(set, 6, { parts }));
   const x = start.rows.find((r) => r.label === "x");
   assert.equal(x.kind, "memory");
   assert.equal(x.key, "x", "the read one's key: a steer line names it");
@@ -87,7 +91,7 @@ test("held twice: a start memory row read again; its tokens the part's + the rea
     notes: [{ name: "model_notes_style" }], turns: [[mem("model_notes_style", at(0, 2))]],
     server: { items: [{ kind: "memory", key: "model_notes_style", state: "live", tokens: 400 }], at: 3 },
   });
-  const [start] = headSections(set, 6, { parts: PARTS });
+  const { start } = byKey(headSections(set, 6, { parts: PARTS }));
   const note = start.rows.find((r) => r.label === "model_notes_style");
   const identity = start.rows.find((r) => r.label === "identity");
   assert.equal(heldTwice(note), true);
@@ -113,7 +117,7 @@ const readX = (scope, extra = {}) => setOf({
 test("scope match: a project x read beside a system x preloaded is two rows, no held twice", () => {
   const set = readX("project");
   const sections = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
-  const [start, read] = sections;
+  const { start, read } = byKey(sections);
   const own = start.rows.find((r) => r.label === "x");
   assert.equal(own.key, "x@system", "its own key: never the read item's");
   assert.deepEqual([own.ops, own.mergedKeys, own.preloaded], [[], [], true]);
@@ -135,7 +139,7 @@ test("scope match: a project x read beside a system x preloaded is two rows, no 
 
 test("scope match: a system x read beside a system x preloaded is one row, held twice", () => {
   const set = readX("system");
-  const [start, read] = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
+  const { start, read } = byKey(headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] }));
   const x = start.rows.find((r) => r.label === "x");
   assert.equal(x.key, "x");
   assert.deepEqual(x.mergedKeys, ["memory:x"]);
@@ -147,7 +151,7 @@ test("scope match: a system x read beside a system x preloaded is one row, held 
 
 test("scope match: a scope either side lacks falls back to the name alone (an older worker's part or item)", () => {
   for (const [partScope, itemScope] of [[null, "project"], ["system", null], [null, null]]) {
-    const [start] = headSections(readX(itemScope), 6, { parts: [scoped("preloads", "x", 50, partScope)] });
+    const { start } = byKey(headSections(readX(itemScope), 6, { parts: [scoped("preloads", "x", 50, partScope)] }));
     const x = start.rows.find((r) => r.label === "x");
     assert.equal(x.key, "x", `${partScope}/${itemScope}`);
     assert.equal(heldTwice(x), true, `${partScope}/${itemScope}`);
@@ -168,12 +172,12 @@ test("same: follows the shared prompt-memory scope-and-name cases", () => {
 test("scope match: a project x note and a system x preload are two rows, each its own size", () => {
   const set = setOf({ notes: [{ name: "x" }] });
   const parts = [scoped("notes", "x", 30, "project"), scoped("preloads", "x", 50, "system")];
-  const [start] = headSections(set, 6, { parts });
+  const { start } = byKey(headSections(set, 6, { parts }));
   const rows = start.rows.filter((r) => r.label === "x");
   assert.deepEqual(rows.map((r) => [r.key, r.partKind, r.partTokens]), [["x", "notes", 30], ["x@system", "preloads", 50]]);
   assert.equal(new Set(rows.map((r) => `memory:${r.key}`)).size, 2, "never two rows of one key");
   // One scope in two parts (a note also preloaded): one row, both sizes.
-  const [one] = headSections(set, 6, { parts: [scoped("notes", "x", 30, "system"), scoped("preloads", "x", 50, "system")] });
+  const { start: one } = byKey(headSections(set, 6, { parts: [scoped("notes", "x", 30, "system"), scoped("preloads", "x", 50, "system")] }));
   assert.deepEqual(one.rows.filter((r) => r.label === "x").map((r) => r.partTokens), [80]);
 });
 
@@ -212,7 +216,7 @@ test("lensTouched: a row with a merged read lights by its items' keys only; the 
   // System x preloaded and read (the page's system/x item), project x read too.
   const set = { items: [mem("system/x", at(0), { preloaded: true, scope: "system" }), mem("x", at(1), { scope: "project", tokens: 80 })], muted: [] };
   const sections = headSections(set, 6, { parts: [scoped("preloads", "x", 50, "system")] });
-  const row = sections[0].rows.find((r) => r.label === "x");
+  const row = byKey(sections).start.rows.find((r) => r.label === "x");
   assert.deepEqual([row.key, row.mergedKeys], ["system/x", ["memory:system/x"]]);
   // A turn that read project x: the merged row stays unlit, no held-twice note.
   const turnX = mem("x", at(1));
@@ -245,8 +249,8 @@ test("the conversation row: the context's tokens minus the parts' and the held i
   });
   const parts = [part("tools", "3 declared", 2000), part("base", "base prompt", 1000)];
   const sections = headSections(set, 6, { parts, ctxTokens: 10000, turns: 2 });
-  assert.deepEqual(sections.map((s) => s.key), ["start", "read", "talk"]);
-  const [, read, talk] = sections;
+  assert.deepEqual(sections.map((s) => s.key), ["read", "talk", "start"]);
+  const [read, talk] = sections;
   assert.equal(read.meta, "2 held · 1 out");
   assert.equal(read.tokens, 1500, "the forgotten one isn't sent");
   assert.equal(talk.title, "Conversation");
@@ -254,11 +258,11 @@ test("the conversation row: the context's tokens minus the parts' and the held i
   assert.deepEqual([talk.rows[0].label, talk.rows[0].sub, talk.rows[0].partTokens], ["conversation", "2 turns", 5500]);
   // A start memory's read counts as held too.
   const withNote = setOf({ notes: [{ name: "n" }], turns: [[mem("n", at(0))]], server: { items: [{ kind: "memory", key: "n", state: "live", tokens: 300 }], at: 1 } });
-  const t = headSections(withNote, 6, { parts: [part("notes", "n", 100, "n")], ctxTokens: 1000, turns: 1 }).at(-1);
+  const t = byKey(headSections(withNote, 6, { parts: [part("notes", "n", 100, "n")], ctxTokens: 1000, turns: 1 })).talk;
   assert.deepEqual([t.key, t.tokens, t.rows[0].sub], ["talk", 600, "1 turn"]);
   // Unknown context, or nothing left over: no row.
-  assert.deepEqual(headSections(set, 6, { parts, ctxTokens: null }).map((s) => s.key), ["start", "read"]);
-  assert.deepEqual(headSections(set, 6, { parts, ctxTokens: 4500 }).map((s) => s.key), ["start", "read"]);
+  assert.deepEqual(headSections(set, 6, { parts, ctxTokens: null }).map((s) => s.key), ["read", "start"]);
+  assert.deepEqual(headSections(set, 6, { parts, ctxTokens: 4500 }).map((s) => s.key), ["read", "start"]);
 });
 
 test("the head line: '~X of Y', no 'of Y' without a window, nothing without the context's tokens", () => {
@@ -268,12 +272,39 @@ test("the head line: '~X of Y', no 'of Y' without a window, nothing without the 
   assert.equal(headLine(undefined, undefined), "");
 });
 
-test("foldedSections: the stored JSON list of keys; anything else folds nothing", () => {
+test("foldedSections: the stored JSON list of keys as it is, an empty one too; nothing stored or unreadable: start folded", () => {
   assert.deepEqual([...foldedSections('["start","talk"]')], ["start"], "Conversation never folds: a stored talk is ignored");
-  assert.deepEqual([...foldedSections(null)], []);
-  assert.deepEqual([...foldedSections("{")], []);
-  assert.deepEqual([...foldedSections('{"a":1}')], []);
+  assert.deepEqual([...foldedSections(null)], ["start"], "nothing stored: the default fold");
+  assert.deepEqual([...foldedSections(undefined)], ["start"]);
+  assert.deepEqual([...foldedSections("[]")], [], "a stored []: the user opened it, kept");
+  assert.deepEqual([...foldedSections('["read"]')], ["read"], "a stored list without start: start open");
+  assert.deepEqual([...foldedSections("{")], ["start"]);
+  assert.deepEqual([...foldedSections('{"a":1}')], ["start"]);
   assert.deepEqual([...foldedSections('["start",3]')], ["start"]);
+});
+
+test("headSections: drawn read, talk, start; start's twice counts the rows held twice", () => {
+  const set = setOf({
+    notes: [{ name: "n" }, { name: "m" }], turns: [[file("/p/a.rb", at(0)), mem("n", at(0, 1))]],
+    server: { items: [{ kind: "memory", key: "n", state: "live", tokens: 300 }, { kind: "file", key: "/p/a.rb", state: "live", tokens: 100 }], at: 1 },
+  });
+  const parts = [part("tools", "3 declared", 2000), part("notes", "n", 100, "n"), part("notes", "m", 100, "m")];
+  const sections = headSections(set, 6, { parts, ctxTokens: 10000, turns: 1 });
+  assert.deepEqual(sections.map((s) => s.key), ["read", "talk", "start"]);
+  assert.equal(byKey(sections).start.twice, 1, "n is in the prompt and read again; m only in the prompt");
+  assert.equal(byKey(sections).read.twice, undefined);
+  // Nothing read again: 0.
+  const plain = setOf({ notes: [{ name: "m" }], turns: [[file("/p/a.rb", at(0))]] });
+  assert.equal(byKey(headSections(plain, 6, { parts })).start.twice, 0);
+});
+
+test("headSections: the read section's rows follow the set's order (the view's, last touched first)", () => {
+  const items = [file("/p/a.rb", at(0)), file("/p/z/b.rb", at(1)), mem("u", at(1, 1)), mem("v", at(0, 2))];
+  const set = { items: [items[2], items[1], items[3], items[0]], muted: [] };
+  const { read } = byKey(headSections(set, 6, { parts: [part("tools", "3 declared", 2000)] }));
+  const keys = (key) => read.inner.find((s) => s.key === key).labels.flatMap((l) => l.members.map((m) => m.key));
+  assert.deepEqual(keys("files"), ["/p/z/b.rb", "/p/a.rb"]);
+  assert.deepEqual(keys("memories"), ["u", "v"]);
 });
 
 test("ctxTokensOf: a context_status's estimated used tokens, a chunk's total; loadedCtxTokens: the live % as tokens, else the saved count", () => {
@@ -295,12 +326,12 @@ test("a struck read is not held: no held twice, no +X, no note, not in the conve
       server: { items: [{ kind: "memory", key: "n", state, tokens: 300 }], at: 1 },
     });
     const sections = headSections(set, 6, { parts: [part("notes", "n", 100, "n")], ctxTokens: 1000, turns: 1 });
-    const row = sections[0].rows[0];
+    const row = byKey(sections).start.rows[0];
     assert.equal(row.state, state);
     assert.equal(heldTwice(row), false, state);
     assert.equal(startTokensText(row), "~100", state);
     assert.equal(heldTwiceNote(row, { ops: ["read"] }), "", state);
-    assert.equal(sections.at(-1).tokens, 900, `${state}: its tokens aren't sent`);
+    assert.equal(byKey(sections).talk.tokens, 900, `${state}: its tokens aren't sent`);
   }
 });
 
@@ -308,15 +339,15 @@ test("the conversation counts a start memory's tokens only when it was read (sta
   // Tokens without a read (the server's, on an edit-only row): not held, not counted.
   const set = setOf({ notes: [{ name: "n" }], turns: [[{ ...mem("n", at(0)), ops: ["write"] }]], server: { items: [{ kind: "memory", key: "n", state: "live", tokens: 300 }], at: 1 } });
   const sections = headSections(set, 6, { parts: [part("notes", "n", 100, "n")], ctxTokens: 1000, turns: 1 });
-  assert.equal(startTokensText(sections[0].rows[0]), "~100");
-  assert.equal(sections.at(-1).tokens, 900);
+  assert.equal(startTokensText(byKey(sections).start.rows[0]), "~100");
+  assert.equal(byKey(sections).talk.tokens, 900);
 });
 
 test("a ref-less preloads / notes part: the preloaded-only memories stay out of the read section and its count", () => {
   const set = setOf({ preloaded: ["a", "b"], notes: [{ name: "model_notes_x" }], turns: [[file("/p/a.rb", at(0)), mem("b", at(0))]],
     server: { items: [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 10 }, { kind: "memory", key: "b", state: "live", tokens: 20 }], at: 2 } });
   const parts = [part("tools", "1 declared", 10), part("preloads", "preloads", 50), part("notes", "notes", 40)];
-  const [start, read] = headSections(set, 6, { parts });
+  const { start, read } = byKey(headSections(set, 6, { parts }));
   assert.deepEqual(start.rows.map((r) => r.kind), ["part", "part", "part"]);
   const listed = read.inner.flatMap((s) => s.labels.flatMap((l) => l.members.map((m) => m.key)));
   assert.deepEqual(listed.sort(), ["/p/a.rb", "b"], "a and model_notes_x (never read) are the prompt's; b was read");
