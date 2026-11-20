@@ -2643,6 +2643,12 @@ test("the image button: picked images are chips, a non-image stays out with a to
   await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await turnEnded(page, 1);
   await expect(page.locator("#chips")).toBeHidden();
+  // A click on the thumbnail opens it in the picture viewer; Esc closes it.
+  await page.locator(`${H} .bubble.user img.thumb`).last().click();
+  await expect(page.locator("#lightbox")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Picture viewer" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#lightbox")).toBeHidden();
 });
 
 // A's turn-end re-read (?tail=1) lands after B started: B keeps its own

@@ -30,10 +30,15 @@ test("safe areas: the standalone phone app keeps content below iOS's blurred top
   assert.match(HTML, /@media \(display-mode:standalone\) and \(max-width:600px\)\{body\{padding-top:12px\}\}/);
 });
 
-test("safe areas: main pads by them, and the update sheet, the toast and the lightbox keep clear of them", () => {
+test("safe areas: main pads by them, and the update sheet, the toast and the picture viewer keep clear of them", () => {
   const main = HTML.match(/\nmain\{([^}]*)\}/)[1];
   for (const side of ["t", "r", "b", "l"]) assert.ok(main.includes(`var(--safe-${side})`), `main --safe-${side}`);
   assert.match(HTML, /#updateSheet\{position:fixed;inset:auto 8px calc\(8px \+ var\(--safe-b\)\)/);
   assert.match(HTML, /#toast\{[^}]*bottom:var\(--toast-bottom,max\(24px,calc\(var\(--safe-b\) \+ 12px\)\)\)/);
+  // The viewer's padding is the fit's insets; its ✕ and bar sit by them.
   assert.match(HTML, /#lightbox\{[^}]*padding:var\(--safe-t\) var\(--safe-r\) var\(--safe-b\) var\(--safe-l\)/);
+  assert.match(HTML, /#lightbox \.pv-close\{[^}]*top:calc\(var\(--safe-t\) \+ 10px\);right:calc\(var\(--safe-r\) \+ 10px\)/);
+  assert.match(HTML, /#lightbox \.pv-bar\{[^}]*left:calc\(\(100% \+ var\(--safe-l\) - var\(--safe-r\)\) \/ 2\);bottom:calc\(var\(--safe-b\) \+ 14px\)/);
+  // The standalone phone app's ✕ also clears iOS's blurred band under the clock.
+  assert.match(HTML, /@media \(display-mode:standalone\) and \(max-width:600px\)\{#lightbox \.pv-close\{top:calc\(var\(--safe-t\) \+ 22px\)\}\}/);
 });

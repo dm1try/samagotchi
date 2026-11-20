@@ -1172,7 +1172,9 @@ A model that can see images gets them these ways:
   the photo library, and is hidden while a turn runs). Each shows as a chip (× removes it) and is sent with the
   message; an image alone is sent as `[image: name]`. A message takes up to 20
   images of up to 20 MB each; a toast names the files left out (over a cap, or
-  not an image). Messages show thumbnails; a click opens one full size.
+  not an image). Messages show thumbnails; a click opens one in the
+  picture viewer, fitted to the screen: pinch, Ctrl/Cmd + scroll or the bar's − + zoom, a drag or scroll moves, a
+  double tap goes close and back, ✕ or Esc closes.
 - **`chi send --image PATH`** (repeatable, up to 20) with a message, from a
   script or another terminal: `chi send --image shot.png -m "why is this red?"
   3fa2`. The attached terminal and the web show it like an image typed there.
