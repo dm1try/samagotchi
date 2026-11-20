@@ -1,0 +1,1031 @@
+{
+  "description": "A question with no lead-in (its step has no text), asked and answered while check-in's card asks.",
+  "prompt": "do it",
+  "turn_id": "turn-qnc",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "do it",
+      "turn_id": "turn-qnc",
+      "at": "2026-11-12T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"a\"",
+      "tool_id": "t1"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t1",
+      "output": "[read]\na",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"a\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in-1",
+      "source": "check-in",
+      "title": "3 tool calls, no answer yet",
+      "body": "Still on it?",
+      "level": "info",
+      "actions": [
+        {
+          "label": "Nudge",
+          "command": "/checkin nudge"
+        },
+        {
+          "label": "Keep going",
+          "command": "/checkin later"
+        },
+        {
+          "label": "Stop",
+          "command": "/checkin stop"
+        }
+      ],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "ask_user_question",
+      "params": "question=\"Which one?\"",
+      "tool_id": "t2"
+    },
+    {
+      "type": "question_requested",
+      "pending_question": {
+        "id": "q1",
+        "kind": "question",
+        "question": "Which one?",
+        "options": [
+          {
+            "label": "A"
+          },
+          {
+            "label": "B"
+          }
+        ],
+        "status": "pending"
+      }
+    },
+    {
+      "type": "question_answered",
+      "id": "q1",
+      "answer": {
+        "selected": [
+          "A"
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "ask_user_question",
+      "tool_id": "t2",
+      "output": "A",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "ask_user_question",
+        "status": "ok",
+        "params": "question=\"Which one?\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "generation_started",
+      "iteration": 3
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 3,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 3
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-qnc",
+      "duration_ms": 2400,
+      "turn_summary": {
+        "output": "Done."
+      },
+      "kept_from": 1,
+      "kept_to": 7
+    }
+  ],
+  "cuts": [
+    {
+      "at": 5,
+      "label": "checkin",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ]
+              }
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-qnc",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-qnc",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-qnc",
+            "body_html": "<pre>Still on it?</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 9,
+      "label": "both",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "ask_user_question",
+              "params": "question=\"Which one?\"",
+              "status": "running",
+              "tool_id": "t2",
+              "elapsed_ms": 0
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "q1",
+                  "kind": "question",
+                  "question": "Which one?",
+                  "options": [
+                    {
+                      "label": "A"
+                    },
+                    {
+                      "label": "B"
+                    }
+                  ],
+                  "status": "pending"
+                }
+              }
+            }
+          ],
+          "pending_question": {
+            "id": "q1",
+            "kind": "question",
+            "question": "Which one?",
+            "options": [
+              {
+                "label": "A"
+              },
+              {
+                "label": "B"
+              }
+            ],
+            "status": "pending"
+          },
+          "turn_id": "turn-qnc",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-qnc",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "tool_id": "t2",
+            "params": "question=\"Which one?\"",
+            "elapsed_ms": 0
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "q1",
+              "kind": "question",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            }
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-qnc",
+            "body_html": "<pre>Still on it?</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "q1",
+              "kind": "question",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 2,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-qnc"
+          }
+        ],
+        "pending_question": {
+          "id": "q1",
+          "kind": "question",
+          "question": "Which one?",
+          "options": [
+            {
+              "label": "A"
+            },
+            {
+              "label": "B"
+            }
+          ],
+          "status": "pending"
+        },
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 12,
+      "label": "question answered",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "ask_user_question",
+              "params": "question=\"Which one?\"",
+              "status": "ok",
+              "tool_id": "t2",
+              "output": "A",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "q1",
+                  "kind": "question",
+                  "question": "Which one?",
+                  "options": [
+                    {
+                      "label": "A"
+                    },
+                    {
+                      "label": "B"
+                    }
+                  ],
+                  "status": "pending"
+                }
+              }
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_answered",
+                "id": "q1",
+                "answer": {
+                  "selected": [
+                    "A"
+                  ]
+                }
+              }
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-qnc",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-qnc",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "tool_id": "t2",
+            "params": "question=\"Which one?\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "ask_user_question",
+            "tool_id": "t2",
+            "output": "A",
+            "output_truncated": false,
+            "activity": {
+              "tool": "ask_user_question",
+              "status": "ok",
+              "params": "question=\"Which one?\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "q1",
+              "kind": "question",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            }
+          },
+          {
+            "type": "question_answered",
+            "id": "q1",
+            "answer": {
+              "selected": [
+                "A"
+              ]
+            }
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-qnc",
+            "body_html": "<pre>Still on it?</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "q1",
+              "kind": "question",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 2,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "A"
+              ]
+            },
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-qnc"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 16,
+      "label": "turn end",
+      "show": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "do it",
+            "at": "2026-11-12T10:00:00.000+01:00",
+            "turn_id": "turn-qnc",
+            "drawn": "turn-qnc"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-qnc"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-qnc"
+          },
+          {
+            "role": "assistant",
+            "content": "Done.",
+            "drawn": "turn-qnc"
+          }
+        ],
+        "turn_drawings": {
+          "turn-qnc": {
+            "events": [
+              {
+                "type": "turn_started",
+                "prompt": "do it",
+                "origin": {
+                  "client_id": "web:me"
+                },
+                "continue": false,
+                "turn_id": "turn-qnc"
+              },
+              {
+                "type": "generation_started",
+                "iteration": 1
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "params": "path=\"a\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "output": "[read]\na",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "read",
+                  "status": "ok",
+                  "params": "path=\"a\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ],
+                "type": "card",
+                "in_turn": true
+              },
+              {
+                "type": "generation_started",
+                "iteration": 2
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "ask_user_question",
+                "tool_id": "t2",
+                "params": "question=\"Which one?\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "ask_user_question",
+                "tool_id": "t2",
+                "output": "A",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "ask_user_question",
+                  "status": "ok",
+                  "params": "question=\"Which one?\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "q1",
+                  "kind": "question",
+                  "question": "Which one?",
+                  "options": [
+                    {
+                      "label": "A"
+                    },
+                    {
+                      "label": "B"
+                    }
+                  ],
+                  "status": "pending"
+                }
+              },
+              {
+                "type": "question_answered",
+                "id": "q1",
+                "answer": {
+                  "selected": [
+                    "A"
+                  ]
+                }
+              },
+              {
+                "type": "generation_started",
+                "iteration": 3
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Done.",
+                "thinking": "",
+                "iteration": 3
+              }
+            ],
+            "end": {
+              "type": "turn_completed",
+              "turn_id": "turn-qnc",
+              "duration_ms": 2400
+            }
+          }
+        },
+        "current_turn": null,
+        "replay": [],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "opening_id": "turn-qnc",
+            "current": false,
+            "of_turn": "turn-qnc",
+            "body_html": "<pre>Still on it?</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "q1",
+              "kind": "question",
+              "question": "Which one?",
+              "options": [
+                {
+                  "label": "A"
+                },
+                {
+                  "label": "B"
+                }
+              ],
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 2,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "A"
+              ]
+            },
+            "turns_since": 0,
+            "opening_id": "turn-qnc",
+            "current": false,
+            "of_turn": "turn-qnc"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    }
+  ]
+}

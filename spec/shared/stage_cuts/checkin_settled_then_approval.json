@@ -1,0 +1,1406 @@
+{
+  "description": "check-in's card settles, then an approval is asked and answered.",
+  "prompt": "do it",
+  "turn_id": "turn-csa",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "do it",
+      "turn_id": "turn-csa",
+      "at": "2026-11-12T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"a\"",
+      "tool_id": "t1"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t1",
+      "output": "[read]\na",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"a\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in-1",
+      "source": "check-in",
+      "title": "3 tool calls, no answer yet",
+      "body": "Still on it?",
+      "level": "info",
+      "actions": [
+        {
+          "label": "Nudge",
+          "command": "/checkin nudge"
+        },
+        {
+          "label": "Keep going",
+          "command": "/checkin later"
+        },
+        {
+          "label": "Stop",
+          "command": "/checkin stop"
+        }
+      ],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"b\"",
+      "tool_id": "t2"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t2",
+      "output": "[read]\nb",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"b\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in-1",
+      "source": "check-in",
+      "title": "check-in",
+      "body": "Nudged.",
+      "level": "info",
+      "actions": [],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "generation_started",
+      "iteration": 3
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 3,
+      "text": "Running the command.",
+      "thinking": ""
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 3,
+      "call_index": 1,
+      "tool": "execute",
+      "params": "command=\"echo ok\"",
+      "tool_id": "t3"
+    },
+    {
+      "type": "question_requested",
+      "pending_question": {
+        "id": "a1",
+        "kind": "approval",
+        "header": "Approve tool call?",
+        "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+        "options": [
+          "Allow once",
+          "Deny"
+        ],
+        "approval": {
+          "tool": "execute",
+          "command": "echo ok",
+          "cwd": "/work",
+          "rule": "e2e-ask",
+          "source": "config",
+          "reason": "asks",
+          "scopes": [
+            "once"
+          ]
+        },
+        "status": "pending"
+      }
+    },
+    {
+      "type": "question_answered",
+      "id": "a1",
+      "answer": {
+        "selected": [
+          "Allow once"
+        ]
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 3,
+      "call_index": 1,
+      "tool": "execute",
+      "tool_id": "t3",
+      "output": "[execute]\nok",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "execute",
+        "status": "ok",
+        "params": "command=\"echo ok\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 3
+    },
+    {
+      "type": "generation_started",
+      "iteration": 4
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 4,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 4
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-csa",
+      "duration_ms": 2400,
+      "turn_summary": {
+        "output": "Done."
+      },
+      "kept_from": 1,
+      "kept_to": 9
+    }
+  ],
+  "cuts": [
+    {
+      "at": 5,
+      "label": "checkin",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ]
+              }
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-csa",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-csa",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa",
+            "body_html": "<pre>Still on it?</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 10,
+      "label": "settled",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": []
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"b\"",
+              "status": "ok",
+              "tool_id": "t2",
+              "output": "[read]\nb",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-csa",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-csa",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "params": "path=\"b\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa",
+            "body_html": "<pre>Nudged.</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 15,
+      "label": "approval waiting",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": []
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"b\"",
+              "status": "ok",
+              "tool_id": "t2",
+              "output": "[read]\nb",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "generation",
+              "iteration": 3
+            },
+            {
+              "kind": "text",
+              "iteration": 3,
+              "text": "Running the command."
+            },
+            {
+              "kind": "tool",
+              "iteration": 3,
+              "call_index": 1,
+              "tool": "execute",
+              "params": "command=\"echo ok\"",
+              "status": "running",
+              "tool_id": "t3",
+              "elapsed_ms": 0
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "a1",
+                  "kind": "approval",
+                  "header": "Approve tool call?",
+                  "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+                  "options": [
+                    "Allow once",
+                    "Deny"
+                  ],
+                  "approval": {
+                    "tool": "execute",
+                    "command": "echo ok",
+                    "cwd": "/work",
+                    "rule": "e2e-ask",
+                    "source": "config",
+                    "reason": "asks",
+                    "scopes": [
+                      "once"
+                    ]
+                  },
+                  "status": "pending"
+                }
+              }
+            }
+          ],
+          "pending_question": {
+            "id": "a1",
+            "kind": "approval",
+            "header": "Approve tool call?",
+            "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+            "options": [
+              "Allow once",
+              "Deny"
+            ],
+            "approval": {
+              "tool": "execute",
+              "command": "echo ok",
+              "cwd": "/work",
+              "rule": "e2e-ask",
+              "source": "config",
+              "reason": "asks",
+              "scopes": [
+                "once"
+              ]
+            },
+            "status": "pending"
+          },
+          "turn_id": "turn-csa",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-csa",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "params": "path=\"b\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 3
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running the command.",
+            "thinking": "",
+            "iteration": 3
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 3,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t3",
+            "params": "command=\"echo ok\"",
+            "elapsed_ms": 0
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            }
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa",
+            "body_html": "<pre>Nudged.</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 3,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa"
+          }
+        ],
+        "pending_question": {
+          "id": "a1",
+          "kind": "approval",
+          "header": "Approve tool call?",
+          "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+          "options": [
+            "Allow once",
+            "Deny"
+          ],
+          "approval": {
+            "tool": "execute",
+            "command": "echo ok",
+            "cwd": "/work",
+            "rule": "e2e-ask",
+            "source": "config",
+            "reason": "asks",
+            "scopes": [
+              "once"
+            ]
+          },
+          "status": "pending"
+        },
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 18,
+      "label": "approval answered",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": []
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"b\"",
+              "status": "ok",
+              "tool_id": "t2",
+              "output": "[read]\nb",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "generation",
+              "iteration": 3
+            },
+            {
+              "kind": "text",
+              "iteration": 3,
+              "text": "Running the command."
+            },
+            {
+              "kind": "tool",
+              "iteration": 3,
+              "call_index": 1,
+              "tool": "execute",
+              "params": "command=\"echo ok\"",
+              "status": "ok",
+              "tool_id": "t3",
+              "output": "[execute]\nok",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "a1",
+                  "kind": "approval",
+                  "header": "Approve tool call?",
+                  "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+                  "options": [
+                    "Allow once",
+                    "Deny"
+                  ],
+                  "approval": {
+                    "tool": "execute",
+                    "command": "echo ok",
+                    "cwd": "/work",
+                    "rule": "e2e-ask",
+                    "source": "config",
+                    "reason": "asks",
+                    "scopes": [
+                      "once"
+                    ]
+                  },
+                  "status": "pending"
+                }
+              }
+            },
+            {
+              "kind": "notice",
+              "event": {
+                "type": "question_answered",
+                "id": "a1",
+                "answer": {
+                  "selected": [
+                    "Allow once"
+                  ]
+                }
+              }
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-csa",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-csa",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "params": "path=\"b\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 3
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Running the command.",
+            "thinking": "",
+            "iteration": 3
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 3,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t3",
+            "params": "command=\"echo ok\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 3,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t3",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"echo ok\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "question_requested",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            }
+          },
+          {
+            "type": "question_answered",
+            "id": "a1",
+            "answer": {
+              "selected": [
+                "Allow once"
+              ]
+            }
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa",
+            "body_html": "<pre>Nudged.</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 3,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "Allow once"
+              ]
+            },
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-csa"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 22,
+      "label": "turn end",
+      "show": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "do it",
+            "at": "2026-11-12T10:00:00.000+01:00",
+            "turn_id": "turn-csa",
+            "drawn": "turn-csa"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-csa"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-csa"
+          },
+          {
+            "role": "assistant",
+            "content": "Running the command.",
+            "drawn": "turn-csa"
+          },
+          {
+            "role": "assistant",
+            "content": "Done.",
+            "drawn": "turn-csa"
+          }
+        ],
+        "turn_drawings": {
+          "turn-csa": {
+            "events": [
+              {
+                "type": "turn_started",
+                "prompt": "do it",
+                "origin": {
+                  "client_id": "web:me"
+                },
+                "continue": false,
+                "turn_id": "turn-csa"
+              },
+              {
+                "type": "generation_started",
+                "iteration": 1
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "params": "path=\"a\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "output": "[read]\na",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "read",
+                  "status": "ok",
+                  "params": "path=\"a\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": [],
+                "type": "card",
+                "in_turn": true
+              },
+              {
+                "type": "generation_started",
+                "iteration": 2
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t2",
+                "params": "path=\"b\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t2",
+                "output": "[read]\nb",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "read",
+                  "status": "ok",
+                  "params": "path=\"b\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "generation_started",
+                "iteration": 3
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Running the command.",
+                "thinking": "",
+                "iteration": 3
+              },
+              {
+                "type": "generation_completed"
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 3,
+                "call_index": 1,
+                "tool": "execute",
+                "tool_id": "t3",
+                "params": "command=\"echo ok\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 3,
+                "call_index": 1,
+                "tool": "execute",
+                "tool_id": "t3",
+                "output": "[execute]\nok",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "execute",
+                  "status": "ok",
+                  "params": "command=\"echo ok\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "question_requested",
+                "pending_question": {
+                  "id": "a1",
+                  "kind": "approval",
+                  "header": "Approve tool call?",
+                  "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+                  "options": [
+                    "Allow once",
+                    "Deny"
+                  ],
+                  "approval": {
+                    "tool": "execute",
+                    "command": "echo ok",
+                    "cwd": "/work",
+                    "rule": "e2e-ask",
+                    "source": "config",
+                    "reason": "asks",
+                    "scopes": [
+                      "once"
+                    ]
+                  },
+                  "status": "pending"
+                }
+              },
+              {
+                "type": "question_answered",
+                "id": "a1",
+                "answer": {
+                  "selected": [
+                    "Allow once"
+                  ]
+                }
+              },
+              {
+                "type": "generation_started",
+                "iteration": 4
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Done.",
+                "thinking": "",
+                "iteration": 4
+              }
+            ],
+            "end": {
+              "type": "turn_completed",
+              "turn_id": "turn-csa",
+              "duration_ms": 2400
+            }
+          }
+        },
+        "current_turn": null,
+        "replay": [],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "opening_id": "turn-csa",
+            "current": false,
+            "of_turn": "turn-csa",
+            "body_html": "<pre>Nudged.</pre>"
+          },
+          {
+            "type": "question",
+            "pending_question": {
+              "id": "a1",
+              "kind": "approval",
+              "header": "Approve tool call?",
+              "question": "execute: echo ok\n  in /work\n  why: asks (rule e2e-ask, config)",
+              "options": [
+                "Allow once",
+                "Deny"
+              ],
+              "approval": {
+                "tool": "execute",
+                "command": "echo ok",
+                "cwd": "/work",
+                "rule": "e2e-ask",
+                "source": "config",
+                "reason": "asks",
+                "scopes": [
+                  "once"
+                ]
+              },
+              "status": "pending"
+            },
+            "in_turn": true,
+            "iteration": 3,
+            "calls": 1,
+            "answer": {
+              "selected": [
+                "Allow once"
+              ]
+            },
+            "turns_since": 0,
+            "opening_id": "turn-csa",
+            "current": false,
+            "of_turn": "turn-csa"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    }
+  ]
+}

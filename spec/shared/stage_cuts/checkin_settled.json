@@ -1,0 +1,577 @@
+{
+  "description": "check-in's card asks, then is redrawn without its actions; the turn goes on.",
+  "prompt": "do it",
+  "turn_id": "turn-cs",
+  "events": [
+    {
+      "type": "turn_started",
+      "prompt": "do it",
+      "turn_id": "turn-cs",
+      "at": "2026-11-12T10:00:00.000+01:00",
+      "origin": {
+        "client_id": "web:me"
+      }
+    },
+    {
+      "type": "generation_started",
+      "iteration": 1
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"a\"",
+      "tool_id": "t1"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 1,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t1",
+      "output": "[read]\na",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"a\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in-1",
+      "source": "check-in",
+      "title": "3 tool calls, no answer yet",
+      "body": "Still on it?",
+      "level": "info",
+      "actions": [
+        {
+          "label": "Nudge",
+          "command": "/checkin nudge"
+        },
+        {
+          "label": "Keep going",
+          "command": "/checkin later"
+        },
+        {
+          "label": "Stop",
+          "command": "/checkin stop"
+        }
+      ],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 1
+    },
+    {
+      "type": "generation_started",
+      "iteration": 2
+    },
+    {
+      "type": "tool_call_started",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "params": "path=\"b\"",
+      "tool_id": "t2"
+    },
+    {
+      "type": "tool_call_completed",
+      "iteration": 2,
+      "call_index": 1,
+      "tool": "read",
+      "tool_id": "t2",
+      "output": "[read]\nb",
+      "output_truncated": false,
+      "duration_ms": 120,
+      "activity": {
+        "tool": "read",
+        "status": "ok",
+        "params": "path=\"b\"",
+        "action": "running command"
+      }
+    },
+    {
+      "type": "card",
+      "id": "check-in-1",
+      "source": "check-in",
+      "title": "check-in",
+      "body": "Nudged.",
+      "level": "info",
+      "actions": [],
+      "in_turn": true
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 2
+    },
+    {
+      "type": "generation_started",
+      "iteration": 3
+    },
+    {
+      "type": "generation_chunk",
+      "iteration": 3,
+      "text": "Done.",
+      "thinking": ""
+    },
+    {
+      "type": "generation_completed",
+      "iteration": 3
+    },
+    {
+      "type": "turn_completed",
+      "turn_id": "turn-cs",
+      "duration_ms": 2400,
+      "turn_summary": {
+        "output": "Done."
+      },
+      "kept_from": 1,
+      "kept_to": 7
+    }
+  ],
+  "cuts": [
+    {
+      "at": 5,
+      "label": "checkin",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "3 tool calls, no answer yet",
+                "body": "Still on it?",
+                "level": "info",
+                "actions": [
+                  {
+                    "label": "Nudge",
+                    "command": "/checkin nudge"
+                  },
+                  {
+                    "label": "Keep going",
+                    "command": "/checkin later"
+                  },
+                  {
+                    "label": "Stop",
+                    "command": "/checkin stop"
+                  }
+                ]
+              }
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-cs",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-cs",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "3 tool calls, no answer yet",
+            "body": "Still on it?",
+            "level": "info",
+            "actions": [
+              {
+                "label": "Nudge",
+                "command": "/checkin nudge"
+              },
+              {
+                "label": "Keep going",
+                "command": "/checkin later"
+              },
+              {
+                "label": "Stop",
+                "command": "/checkin stop"
+              }
+            ],
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-cs",
+            "body_html": "<pre>Still on it?</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 10,
+      "label": "settled",
+      "show": {
+        "messages": [],
+        "current_turn": {
+          "prompt": "do it",
+          "origin": {
+            "client_id": "web:me"
+          },
+          "continue": false,
+          "parts": [
+            {
+              "kind": "generation",
+              "iteration": 1
+            },
+            {
+              "kind": "tool",
+              "iteration": 1,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"a\"",
+              "status": "ok",
+              "tool_id": "t1",
+              "output": "[read]\na",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            },
+            {
+              "kind": "card",
+              "id": "check-in-1",
+              "event": {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": []
+              }
+            },
+            {
+              "kind": "generation",
+              "iteration": 2
+            },
+            {
+              "kind": "tool",
+              "iteration": 2,
+              "call_index": 1,
+              "tool": "read",
+              "params": "path=\"b\"",
+              "status": "ok",
+              "tool_id": "t2",
+              "output": "[read]\nb",
+              "output_truncated": false,
+              "action": "running command",
+              "duration_ms": 120
+            }
+          ],
+          "pending_question": null,
+          "turn_id": "turn-cs",
+          "at": "2026-11-12T10:00:00.000+01:00"
+        },
+        "replay": [
+          {
+            "type": "turn_started",
+            "prompt": "do it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-cs",
+            "at": "2026-11-12T10:00:00.000+01:00"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "params": "path=\"b\""
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 2,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t2",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b\"",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "current": true,
+            "of_turn": "turn-cs",
+            "body_html": "<pre>Nudged.</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    },
+    {
+      "at": 15,
+      "label": "turn end",
+      "show": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "do it",
+            "at": "2026-11-12T10:00:00.000+01:00",
+            "turn_id": "turn-cs",
+            "drawn": "turn-cs"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-cs"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "drawn": "turn-cs"
+          },
+          {
+            "role": "assistant",
+            "content": "Done.",
+            "drawn": "turn-cs"
+          }
+        ],
+        "turn_drawings": {
+          "turn-cs": {
+            "events": [
+              {
+                "type": "turn_started",
+                "prompt": "do it",
+                "origin": {
+                  "client_id": "web:me"
+                },
+                "continue": false,
+                "turn_id": "turn-cs"
+              },
+              {
+                "type": "generation_started",
+                "iteration": 1
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "params": "path=\"a\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 1,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t1",
+                "output": "[read]\na",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "read",
+                  "status": "ok",
+                  "params": "path=\"a\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "id": "check-in-1",
+                "source": "check-in",
+                "title": "check-in",
+                "body": "Nudged.",
+                "level": "info",
+                "actions": [],
+                "type": "card",
+                "in_turn": true
+              },
+              {
+                "type": "generation_started",
+                "iteration": 2
+              },
+              {
+                "type": "tool_call_started",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t2",
+                "params": "path=\"b\""
+              },
+              {
+                "type": "tool_call_completed",
+                "iteration": 2,
+                "call_index": 1,
+                "tool": "read",
+                "tool_id": "t2",
+                "output": "[read]\nb",
+                "output_truncated": false,
+                "activity": {
+                  "tool": "read",
+                  "status": "ok",
+                  "params": "path=\"b\"",
+                  "action": "running command"
+                },
+                "duration_ms": 120
+              },
+              {
+                "type": "generation_started",
+                "iteration": 3
+              },
+              {
+                "type": "generation_chunk",
+                "text": "Done.",
+                "thinking": "",
+                "iteration": 3
+              }
+            ],
+            "end": {
+              "type": "turn_completed",
+              "turn_id": "turn-cs",
+              "duration_ms": 2400
+            }
+          }
+        },
+        "current_turn": null,
+        "replay": [],
+        "cards": [
+          {
+            "type": "card",
+            "id": "check-in-1",
+            "source": "check-in",
+            "title": "check-in",
+            "body": "Nudged.",
+            "level": "info",
+            "actions": [],
+            "updated": true,
+            "in_turn": true,
+            "iteration": 1,
+            "calls": 1,
+            "turns_since": 0,
+            "opening_id": "turn-cs",
+            "current": false,
+            "of_turn": "turn-cs",
+            "body_html": "<pre>Nudged.</pre>"
+          }
+        ],
+        "pending_question": null,
+        "continue_offer": null
+      }
+    }
+  ]
+}
