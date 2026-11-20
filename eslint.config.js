@@ -91,7 +91,7 @@ export default [
     name: "samagotchi/app-size",
     files: ["lib/samagotchi/web/public/app.js"],
     rules: {
-      "max-lines": ["error", { max: 1649, skipBlankLines: false, skipComments: false }],
+      "max-lines": ["error", { max: 1638, skipBlankLines: false, skipComments: false }],
     },
   },
   {
