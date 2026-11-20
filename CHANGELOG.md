@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
   "waiting 2m", "changes · answered after 6m" or "not sent" and jumps down to the answer; the answer is a bubble
   from the peer with its verdict and summary that jumps back up to the send, chi's instruction to the model folded
   away.
+- In the web, a paired peer is one chip in the session bar instead of its two `-inbox`/`-outbox` chips: it says
+  paired, waiting 2m, answered (with the unread dot), can't send or answers only, and opens a popover with the
+  last exchanges (a tap jumps to the send), View latest answer, the status card and Unpair (a bottom sheet on a
+  phone).
 
 ### Changed
 
