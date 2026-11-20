@@ -20,7 +20,7 @@ module Samagotchi
   # HostRegistry::HostEntry describes them, nil when unset; models:
   # {downcased id => HostModel}.
   HostConfig = Data.define(:name, :host, :port, :scheme, :url, :api, :api_key_env, :auth, :dialect, :profile,
-                           :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
+                           :first_token_timeout, :stream_idle_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
     # Every field but name may be left out: nil, models {}.
@@ -120,6 +120,7 @@ module Samagotchi
         # Kept as written; ModelProfile.resolve warns about an unknown one.
         profile: value.call(:profile).to_s.strip.downcase.then { |v| v.empty? ? nil : v },
         first_token_timeout: value.call(:first_token_timeout),
+        stream_idle_timeout: value.call(:stream_idle_timeout),
         vision: ConfigFile.vision_flag(value.call(:vision), where),
         remote: ConfigFile.bool_flag(value.call(:remote), where, "remote"),
         window_tokens: ConfigFile.window_tokens(value.call(:window_tokens), where),
@@ -132,10 +133,12 @@ module Samagotchi
         models: HostModel.parse_map(value.call(:models), name),
         llm_context_budget_tokens: LLMContextStrategy.parse_budget(value.call(LLMContextStrategy::BUDGET_KEY), where)
       }
-      timeout = fields[:first_token_timeout]
-      unless timeout.nil? || (timeout.is_a?(Numeric) && !timeout.negative?)
-        ConfigFile.warn_once "Warning: #{where}: first_token_timeout must be seconds (0 = off); using the default"
-        fields[:first_token_timeout] = nil
+      %i[first_token_timeout stream_idle_timeout].each do |key|
+        timeout = fields[key]
+        next if timeout.nil? || (timeout.is_a?(Numeric) && !timeout.negative?)
+
+        ConfigFile.warn_once "Warning: #{where}: #{key} must be seconds (0 = off); using the default"
+        fields[key] = nil
       end
       api_key_env = fields[:api_key_env]
       unless api_key_env.nil? || api_key_env.match?(ConfigFile::ENV_NAME_RE)

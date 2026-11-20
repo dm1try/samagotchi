@@ -23,13 +23,14 @@ RSpec.describe Samagotchi::LLM::Adapters do
   end
 
   it "builds a host entry's adapter from its api, url, key and options" do
-    adapter = described_class.for(registry.entries["oai"], models_ttl: 5, first_token_timeout: 7)
+    adapter = described_class.for(registry.entries["oai"], models_ttl: 5, first_token_timeout: 7, stream_idle_timeout: 9)
 
     expect(adapter).to be_a(Samagotchi::LLM::OpenAIChat)
     expect(adapter.base_url).to eq("http://10.0.0.5:8082/v1")
     expect(adapter.host_name).to eq("oai")
     expect(adapter.models_ttl).to eq(5)
     expect(adapter.first_token_timeout).to eq(7)
+    expect(adapter.stream_idle_timeout).to eq(9)
   end
 
   it "builds a Messages host's adapter from its API root, key and auth" do
@@ -107,6 +108,7 @@ RSpec.describe Samagotchi::LLM::Adapters do
 
     registry.adapter_for(registry.entries["oai"])
 
-    expect(described_class).to have_received(:for).with(registry.entries["oai"], models_ttl: 60, first_token_timeout: nil)
+    expect(described_class).to have_received(:for).with(registry.entries["oai"], models_ttl: 60, first_token_timeout: nil,
+                                                                stream_idle_timeout: nil)
   end
 end

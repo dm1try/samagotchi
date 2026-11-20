@@ -41,7 +41,7 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
   it "keeps the free-form maps silent and checks host and model entries against the keys their readers take" do
     expect(problems(<<~YAML)).to eq(["config: unknown key 'hosts.other.hots' (did you mean 'hosts.other.host'?)"])
       hosts:
-        box: {url: "http://h:1", api: openai, api_key_env: K, vision: true, first_token_timeout: 0}
+        box: {url: "http://h:1", api: openai, api_key_env: K, vision: true, first_token_timeout: 0, stream_idle_timeout: 0}
         other: {hots: h}
       models: {Any-Model: {profile: qwen36, vision: false}}
       model_aliases: {small: any-model}

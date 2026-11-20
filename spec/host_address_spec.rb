@@ -18,6 +18,16 @@ RSpec.describe Samagotchi::HostAddress do
     end
   end
 
+  describe ".configured_stream_idle_timeout" do
+    it "is server.stream_idle_timeout, nil when it can't be read" do
+      allow(Samagotchi::Config).to receive(:get).with("server.stream_idle_timeout").and_return(45)
+      expect(described_class.configured_stream_idle_timeout).to eq(45)
+
+      allow(Samagotchi::Config).to receive(:get).with("server.stream_idle_timeout").and_raise(IOError)
+      expect(described_class.configured_stream_idle_timeout).to be_nil
+    end
+  end
+
   describe ".configured_first_token_timeout" do
     it "is server.first_token_timeout, nil when it can't be read" do
       allow(Samagotchi::Config).to receive(:get).with("server.first_token_timeout").and_return(30)

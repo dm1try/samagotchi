@@ -43,6 +43,18 @@ RSpec.describe "hosts: url and api_key_env" do
     expect(result.keys).to eq(["ok"])
   end
 
+  it "reads stream_idle_timeout in seconds (0 = off) and ignores a bad one with a warning" do
+    result = nil
+    expect do
+      result = hosts("or" => { "url" => "https://or.test/v1", "stream_idle_timeout" => 90 },
+                     "off" => { "host" => "h", "stream_idle_timeout" => 0 },
+                     "bad" => { "host" => "h", "stream_idle_timeout" => -1 })
+    end.to output(/'bad': stream_idle_timeout must be seconds \(0 = off\)/).to_stderr
+    expect(result["or"].stream_idle_timeout).to eq(90)
+    expect(result["off"].stream_idle_timeout).to eq(0)
+    expect(result["bad"].stream_idle_timeout).to be_nil
+  end
+
   it "reads first_token_timeout in seconds (0 = off) and ignores a bad one with a warning" do
     result = nil
     expect do
@@ -112,6 +124,7 @@ RSpec.describe "hosts: url and api_key_env" do
         expect(lan).not_to be_remote
         expect(lan.models_ttl).to eq(Samagotchi::HostRegistry::CACHE_TTL_SECONDS)
         expect(lan.first_token_limit).to be_nil
+        expect(lan.stream_idle_limit).to be_nil
       end
 
       it "follows hosts.<name>.remote when it is set" do

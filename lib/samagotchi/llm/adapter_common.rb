@@ -25,11 +25,12 @@ module Samagotchi
       # The adapter's LLM::HTTP: the timeouts (#timeouts), one attempt when
       # +retries+ is false and no +retry_policy+ is given.
       def build_http(timeout:, open_timeout:, retries:, retry_policy:, sleeper:, first_token_timeout:, api_key:,
-                     diagnosis_header: nil)
+                     stream_idle_timeout: nil, diagnosis_header: nil)
         open_timeout, read_timeout = timeouts(timeout, open_timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout, retry_policy: policy,
-                 sleeper: sleeper, first_token_timeout: first_token_timeout, api_key: api_key,
+                 sleeper: sleeper, first_token_timeout: first_token_timeout, stream_idle_timeout: stream_idle_timeout,
+                 api_key: api_key,
                  diagnosis_header: diagnosis_header)
       end
 

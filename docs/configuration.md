@@ -151,7 +151,7 @@ or `chi web` restart.
 | `default.input`, `no_default_input`, `no_interrupt` | Next CLI run | These set up that run's first prompt or turn limit. |
 | `default.max_tokens`, `max_tool_output_chars`, `memory.read_max_chars`, `read.*`, `execute.*` except `execute.description`, `image.*` | Next matching request or tool use | An operation already in progress keeps its resolved limits. |
 | `server.host`, `server.port`, `hosts.*` | Worker start | Includes host addresses, APIs, declared models and host-level settings. Commands (`chi self`, `chi models`, the session lists) and chi web (its model picker, the session cards) read `hosts:` as it is now; a running worker keeps the hosts it started with until it restarts. |
-| `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
+| `server.open_timeout`, `server.read_timeout`, `server.first_token_timeout`, `server.stream_idle_timeout` | Worker start | The worker's clients retain the timeouts set when they were built. |
 | `model_aliases` | Next model lookup | A session keeps its resolved model unless it is explicitly switched. |
 | `models.<key>.profile` | Session start or `/model` | It is resolved when that model is selected; editing it does not switch the current model's profile by itself. |
 | Other `models.<key>.*` settings | Next turn or model lookup | Sampling, thinking, vision, context, window, price and steer settings are resolved from the file for their next use. |
@@ -2247,6 +2247,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `server.open_timeout` | `10` | yes | Connection timeout, seconds. |
 | `server.read_timeout` | `600` | yes | Read timeout, seconds. |
 | `server.first_token_timeout` | 120 remote, off local | | Seconds to the first token; `0` = off. `hosts.<name>.first_token_timeout` wins. |
+| `server.stream_idle_timeout` | 120 remote, off local | | Seconds a stream that showed something may go without more; `0` = off. `hosts.<name>.stream_idle_timeout` wins. |
 | `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. Per session too: `--set recap.enabled=false`, or `/recap off` in the session (see "Per-session settings"). |
 | `recap.model` | session's | yes | Model that writes the recap: an id, alias or `host:model` (the host then picks where to ask; a bare id goes where a bare `--model` goes). |
 | `recap.host_ref` | session's | yes | A `hosts:` name to ask (`host:` is accepted too, also a host name, not a model ref). |

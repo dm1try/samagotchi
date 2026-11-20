@@ -399,6 +399,25 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
 
       expect(adapter.chat(messages: messages, tools: [], model: "m").usage).to eq(Samagotchi::LLM::Usage.none)
     end
+
+    # The finish chunk restarts the stream-idle clock (LLM::HTTP's
+    # shown.call(ending: true)): a usage chunk that comes later than the
+    # limit after the last text, but within it after the finish, keeps the
+    # complete answer.
+    it "keeps an answer whose usage chunk comes slowly after its finish chunk, under a stream-idle limit" do
+      idle = described_class.new(base_url: server.base_url, host_name: "box", env: env, sleeper: ->(_seconds) {},
+                                 stream_idle_timeout: 0.8)
+      server.enqueue("/v1/chat/completions", delay: 0.5, sse: [
+        %(data: {"choices":[{"index":0,"delta":{"content":"hi"}}]}\n\n),
+        %(data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n),
+        %(data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\ndata: [DONE]\n\n)
+      ])
+
+      response = idle.chat(messages: messages, tools: [], model: "m")
+
+      expect(response.text).to eq("hi")
+      expect(response.usage.completion_tokens).to eq(1)
+    end
   end
 
   describe "#chat, not streamed" do

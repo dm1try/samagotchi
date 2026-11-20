@@ -28,6 +28,9 @@ module Samagotchi
     # Seconds a remote host's stream may take to show something (a queued
     # free model on OpenRouter can send only keep-alives for minutes).
     REMOTE_FIRST_TOKEN_TIMEOUT = 120
+    # Seconds a remote host's stream that showed something may go without
+    # showing more (keep-alives alone can hold it until the read timeout).
+    REMOTE_STREAM_IDLE_TIMEOUT = 120
 
     # One host's answer in list_all_models: the host it was listed from and
     # its port; models: the LLM::ModelInfo list it served ([] when it failed
@@ -42,6 +45,7 @@ module Samagotchi
     # dialect: an api: anthropic host's LLM::Dialect name (#dialect_profile), nil when unset;
     # profile: the configured prompt profile name, if any;
     # first_token_timeout: the configured first-token limit (see #first_token_limit);
+    # stream_idle_timeout: the configured stream-idle limit (see #stream_idle_limit);
     # vision: the configured true/false (VisionSupport), nil when unset;
     # sampling: the configured request parameters (SamplingSettings), nil when unset;
     # thinking: the configured level (Thinking), nil when unset;
@@ -54,7 +58,7 @@ module Samagotchi
     # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
     # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
     HostEntry = Struct.new(:name, :host, :port, :client, :api, :scheme, :url, :api_key_env, :auth, :dialect,
-                           :profile, :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
+                           :profile, :first_token_timeout, :stream_idle_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
       # Talks a chat API through an adapter (LLM::Adapters: the chat loop);
@@ -106,6 +110,18 @@ module Samagotchi
         seconds = remote? ? REMOTE_FIRST_TOKEN_TIMEOUT : nil if seconds.nil?
         seconds&.positive? ? seconds : nil
       end
+
+      # Seconds a streamed answer that showed something may go without
+      # showing more, or nil: the host's stream_idle_timeout, else
+      # server.stream_idle_timeout, else 120 for a remote host (a local
+      # server may buffer a long tool call's arguments, and read_timeout
+      # catches a dead one). 0 turns it off.
+      def stream_idle_limit
+        seconds = stream_idle_timeout
+        seconds = HostAddress.configured_stream_idle_timeout if seconds.nil?
+        seconds = remote? ? REMOTE_STREAM_IDLE_TIMEOUT : nil if seconds.nil?
+        seconds&.positive? ? seconds : nil
+      end
     end
 
     # Where a model's requests go: the host entry, the client to use and the
@@ -139,11 +155,11 @@ module Samagotchi
     # it was built from (HostConfig.all, compared as read: the YAML read is
     # mtime-cached), so a host added while chi web runs is listed on the next
     # read, and its model lists, index and adapters are kept while hosts:
-    # stay. It doesn't rebuild on server.first_token_timeout or the
-    # server.host/port fallback entry: those are read at construction. It
-    # refuses a client override (Shared). An Engine and the TerminalUI take
-    # it once, at their start: a running worker keeps the hosts it started
-    # with.
+    # stay. It doesn't rebuild on server.first_token_timeout,
+    # server.stream_idle_timeout or the server.host/port fallback entry:
+    # those are read at construction. It refuses a client override (Shared).
+    # An Engine and the TerminalUI take it once, at their start: a running
+    # worker keeps the hosts it started with.
     # For any env but the process ENV (chi self's spec envs): a fresh
     # registry on that env, never kept.
     # @return [HostRegistry]
@@ -182,7 +198,8 @@ module Samagotchi
         fields = cfg.to_h.merge(name: key.to_s.downcase, port: cfg.port.to_i, api: cfg.api&.to_sym, models: cfg.models || {})
         entry = HostEntry.new(**fields)
         entry.client = Client.new(host: cfg.host, port: cfg.port, scheme: cfg.scheme,
-                                  first_token_timeout: entry.first_token_limit, name: entry.name,
+                                  first_token_timeout: entry.first_token_limit,
+                                  stream_idle_timeout: entry.stream_idle_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, auth: entry.auth_scheme, env: env)
         @entries[entry.name] = entry
       end
@@ -272,7 +289,8 @@ module Samagotchi
     def adapter_for(entry)
       @mutex.synchronize do
         @adapters[entry.name] ||= LLM::Adapters.for(entry, models_ttl: entry.models_ttl,
-                                                           first_token_timeout: entry.first_token_limit)
+                                                           first_token_timeout: entry.first_token_limit,
+                                                           stream_idle_timeout: entry.stream_idle_limit)
       end
     end
 
