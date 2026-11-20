@@ -478,7 +478,7 @@ module Samagotchi
 
     def system_bundle_line(result, dry_run)
       version = "v#{result.to || result.from}"
-      standing = MemoryBundle::FileStanding.clauses(MemoryBundle::SystemBundle::BUNDLE_NAME, nil, merged: Array(result.merged),
+      standing = InstalledBundles::FileStanding.clauses(MemoryBundle::SystemBundle::BUNDLE_NAME, nil, merged: Array(result.merged),
                                                                                                          behind: Array(result.behind), dry_run: dry_run).join("; ")
       text = case result.status
              when :installed then dry_run ? "would install #{version}" : "#{version} installed"

@@ -20,7 +20,7 @@ module Samagotchi
     # It has no hooks: and no hooks/, whatever the record or the kept
     # manifest says: class-file hooks don't load (InstalledCheck names a
     # record's once). Every other key is the kept
-    # manifest.yml's when it is read (InstalledManifest origin :kept), so the
+    # manifest.yml's when it is read (InstalledBundles::Manifest origin :kept), so the
     # check sees its unknown keys too; else the record's mirror's.
     #
     # The shas are the files' own, so an edited plugin is checked as written.
@@ -29,7 +29,7 @@ module Samagotchi
     module InstalledCopy
       module_function
 
-      # @param bundle [InstalledBundle] a readable one, not a profile
+      # @param bundle [InstalledBundles::Record] a readable one, not a profile
       # @yieldparam dir [String] the folder, removed after the block
       def with(bundle)
         Dir.mktmpdir("chi-installed-copy-") do |tmp|
@@ -63,7 +63,7 @@ module Samagotchi
       INSTALLED_KEYS = %w[name version files hooks plugin scripts].freeze
 
       # The written manifest's INSTALLED_KEYS and +failed+ keys (the value
-      # InstalledManifest fell back to: InstalledCheck already names the
+      # InstalledBundles::Manifest fell back to: InstalledCheck already names the
       # problem, and the raw value would name it again), then the kept
       # manifest's other keys. A kept file of comments only holds none.
       def keep_manifest_keys(kept, written, failed)
@@ -102,7 +102,7 @@ module Samagotchi
 
         FileUtils.mkdir_p(File.dirname(to))
         FileUtils.cp(from, to)
-        "sha256:#{Provenance.file_sha(to)}"
+        "sha256:#{InstalledBundles::Sha.of_file(to)}"
       end
       private_class_method :copy
     end

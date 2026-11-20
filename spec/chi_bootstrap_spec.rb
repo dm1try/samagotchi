@@ -46,7 +46,7 @@ RSpec.describe "chi bootstrap" do
   it "says what stays behind in its system bundle line, whatever the bytes" do
     out = StringIO.new
     command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})
-    file = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "заметки.md".dup.force_encoding(Encoding::US_ASCII), version: "2.0.0", missed: ["## Шаги — главное".b])
+    file = Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "заметки.md".dup.force_encoding(Encoding::US_ASCII), version: "2.0.0", missed: ["## Шаги — главное".b])
     result = Samagotchi::MemoryBundle::SystemBundle::Result
 
     command.send(:system_bundle_line, result.new(from: "1.0.0", to: "2.0.0", status: :updated, merged: ["a.md"], behind: [file]), false)
@@ -542,7 +542,7 @@ RSpec.describe "chi bootstrap" do
       end.new
     end
 
-    def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
+    def installed = Samagotchi::InstalledBundles.each.map { |name, _| name }
 
     it "asks about dev and installs it on yes, and doesn't ask again once it is in" do
       # A shipped bundle's requires_chi names the next release before the

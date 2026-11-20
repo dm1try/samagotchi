@@ -130,7 +130,7 @@ module BundleStateCorpus
              elsif was["conflict"] then "cleared"
              else "none"
              end
-      legacy = Samagotchi::MemoryBundle::InstalledBundle.legacy_mark?(now&.transform_keys(&:to_sym))
+      legacy = Samagotchi::InstalledBundles::Record.legacy_mark?(now&.transform_keys(&:to_sym))
       legacy ? "#{word} (legacy)" : word
     end
 
@@ -239,7 +239,7 @@ module BundleStateCorpus
     def run_status
       installed = Samagotchi::MemoryBundle::Listing.installed(shipped: []).find { |bundle| bundle.name == NAME }
       behind = installed&.behind || []
-      list = behind.empty? ? nil : Samagotchi::MemoryBundle::FileStanding.behind_count(behind.size, unsure: behind.any?(&:unsure))
+      list = behind.empty? ? nil : Samagotchi::InstalledBundles::FileStanding.behind_count(behind.size, unsure: behind.any?(&:unsure))
       { list: list }
     end
 

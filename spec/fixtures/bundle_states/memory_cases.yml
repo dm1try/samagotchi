@@ -120,7 +120,7 @@ cases:
     incoming: abC
     mark: legacy
     fix:
-      - "40 spec/samagotchi/memory_bundle/file_standing_spec.rb: doesn't claim edits for a base it can't vouch for"
+      - "40 spec/samagotchi/installed_bundles/file_standing_spec.rb: doesn't claim edits for a base it can't vouch for"
   - id: edited
     kind: edited
     base: abc

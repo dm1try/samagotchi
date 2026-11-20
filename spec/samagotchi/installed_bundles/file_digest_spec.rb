@@ -4,11 +4,11 @@ require "spec_helper"
 require "digest"
 require "fileutils"
 require "tmpdir"
-require "samagotchi/memory_bundle/file_digest"
+require "samagotchi/installed_bundles/file_digest"
 
 # The one way to digest a file on disk: hex for a comparison, sha256:<hex> for
 # what a record writes.
-RSpec.describe Samagotchi::MemoryBundle::FileDigest do
+RSpec.describe Samagotchi::InstalledBundles::FileDigest do
   let(:tmp) { Dir.mktmpdir("file-digest-") }
 
   after { FileUtils.rm_rf(tmp) }

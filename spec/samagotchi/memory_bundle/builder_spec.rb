@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
   it "refuses a build from an installed record whose context providers don't parse, rather than dropping them" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "broken-prs")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "broken-prs", scope: "system", strict: true).run
-    record = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "broken-prs", "manifest.json")
+    record = File.join(Samagotchi::InstalledBundles.dir, "broken-prs", "manifest.json")
     FileUtils.rm_f(File.join(File.dirname(record), "manifest.yml")) # a record from before chi kept it: the mirror is read
     File.write(record, JSON.generate(JSON.parse(File.read(record)).merge("context_providers" => [{ "match" => "x" }])))
 

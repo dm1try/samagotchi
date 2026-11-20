@@ -15,7 +15,7 @@ require "samagotchi/memory_bundle/system_bundle"
 require "samagotchi/memory_bundle/shipped_update"
 require "samagotchi/memory_bundle/listing"
 require "samagotchi/memory_bundle/status"
-require "samagotchi/memory_bundle/file_standing"
+require "samagotchi/installed_bundles/file_standing"
 require "samagotchi/memory_bundle/shipped_history"
 
 # The bundle-state corpus (spec/fixtures/bundle_states): each case is one
@@ -257,7 +257,7 @@ module BundleStateCorpus
       source = flavor == :system ? same_source(kase) : source(kase)
       kept = flavor == :system ? source : first_source(kase)
       files = kase.owned ? { kase.key => kase.base && scratch_file("base-#{kase.id}", kase.base) } : {}
-      marks = kase.owned && kase.marked? ? [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: kase.key, version: "1.0.0")] : []
+      marks = kase.owned && kase.marked? ? [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: kase.key, version: "1.0.0")] : []
       incoming_dir = marks.empty? ? nil : File.dirname(scratch_file("marked-#{kase.id}/#{kase.key}", kase.marked_text))
       provenance = Samagotchi::MemoryBundle::Provenance.new(name: name)
       provenance.write(files: files, scope: "system", version: "1.0.0", source_path: source, marks: marks,
@@ -292,7 +292,7 @@ module BundleStateCorpus
       outcome = view.outcome(kase.key)
       view.behind(kase.key, outcome.conflict? ? outcome : Samagotchi::MemoryBundle::Merger::CONFLICT, "1.0.0")
     rescue SystemCallError
-      Samagotchi::MemoryBundle::FileStanding::Behind.new(file: kase.key, version: "1.0.0")
+      Samagotchi::InstalledBundles::FileStanding::Behind.new(file: kase.key, version: "1.0.0")
     end
 
     def scratch_file(name, text)

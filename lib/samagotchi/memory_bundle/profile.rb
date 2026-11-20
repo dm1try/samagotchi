@@ -54,7 +54,7 @@ module Samagotchi
       end
 
       # Whether the installed bundle +name+ (its record +bundle+, an
-      # InstalledBundle or nil) is a meta: it records includes, or it came
+      # InstalledBundles::Record or nil) is a meta: it records includes, or it came
       # from chi and chi ships it as a meta.
       def installed_meta?(name, bundle, shipped_dir: SourceNormalizer::SHIPPED_DIR)
         return false unless bundle
@@ -74,7 +74,7 @@ module Samagotchi
         bundle.includes
       end
 
-      def installed_names = Provenance.each_installed.map { |name, _| name }
+      def installed_names = InstalledBundles.each.map { |name, _| name }
 
       # What a profile's install says of a member's memory file the user
       # already had: chi bundle install says "Skipped … (already exists)",

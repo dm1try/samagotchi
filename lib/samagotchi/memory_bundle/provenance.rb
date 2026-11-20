@@ -9,8 +9,7 @@ require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "../state_format"
 require_relative "../version"
-require_relative "file_digest"
-require_relative "installed_bundle"
+require_relative "../installed_bundles"
 require_relative "../bundle_manifest"
 
 module Samagotchi
@@ -21,14 +20,10 @@ module Samagotchi
     #   bases/        — snapshots of every file as installed (for 3-way merge later)
     #   manifest.yml  — the bundle's own manifest as installed (#write's
     #                   manifest_from:), its sha in the record; read live
-    #                   through InstalledManifest
-    class Provenance
-      def self.bundles_dir
-        MemoryPaths.bundles_dir
-      end
-
-      attr_reader :name, :bundle_dir
-
+    #                   through InstalledBundles::Manifest
+    # The write side of InstalledBundles::Dir: what the runtime reads of the
+    # folder (#record, #plugin_path, #scripts_dir…) is the Dir's.
+    class Provenance < InstalledBundles::Dir
       # What a conflict mark adds to a file's entry.
       MARK_FIELDS = %w[conflict incoming_sha legacy_base why missed missed_places].freeze
       # What a merge no report has shown adds to a file's entry (#note_merged).
@@ -81,11 +76,6 @@ module Samagotchi
         ]
       )
 
-      def initialize(name:)
-        @name = name
-        @bundle_dir = File.join(self.class.bundles_dir, name)
-      end
-
       # The bundle's text a marked file missed: incoming/<file>, there until the
       # file settles, so it outlives a git or zip source's extract. Nothing globs
       # the bundle's folder for memories, and an uninstall's rm_rf sweeps it.
@@ -95,35 +85,6 @@ module Samagotchi
 
       def hooks_dir
         File.join(@bundle_dir, "hooks")
-      end
-
-      # Installed guardrail rule files (guardrails/*.yml).
-      def guardrails_dir
-        File.join(@bundle_dir, "guardrails")
-      end
-
-      # The installed plugin file's dir (plugin/<file>).
-      def plugin_dir
-        File.join(@bundle_dir, "plugin")
-      end
-
-      # The installed scripts' dir (scripts/<file>): what a context
-      # provider's command finds as {bundle_dir}/scripts.
-      def scripts_dir
-        File.join(@bundle_dir, "scripts")
-      end
-
-      # Why the installed scripts/+file+ isn't as installed, nil when it is:
-      # the record has no sha for it (+recorded+), it is gone, or it changed.
-      # The one check a provider's command and a block renderer's load make
-      # before chi runs or serves the file; a --dev install's links pass.
-      def script_failure(file, recorded)
-        path = File.join(scripts_dir, file)
-        return "bundle #{@name}'s scripts/#{file} isn't among its installed scripts (reinstall the bundle)" if self.class.recorded_sha(recorded).empty?
-        return "bundle #{@name}'s scripts/#{file} is missing (reinstall the bundle)" unless File.file?(path)
-        return nil if self.class.sha_matches?(path, recorded)
-
-        "bundle #{@name}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
       end
 
       # The intent journal of a run that has not written its record yet
@@ -172,7 +133,7 @@ module Samagotchi
         pending_files(target_dir: target_dir).each do |key, shas|
           next if files.key?(key)
 
-          disk_sha = FileDigest.hex(File.join(target_dir, key))
+          disk_sha = InstalledBundles::FileDigest.hex(File.join(target_dir, key))
           files[key] = {} if shas.include?(disk_sha)
         rescue SystemCallError
           next
@@ -180,97 +141,9 @@ module Samagotchi
         files
       end
 
-      # The bundle's manifest.yml as installed (InstalledBundle#kept_manifest_path).
-      def kept_manifest_path
-        File.join(@bundle_dir, "manifest.yml")
-      end
-
-      # The plugin file as installed, or nil when the bundle has none.
-      # @param bundle [InstalledBundle, nil] its record (read when not given)
-      def plugin_path(bundle = record)
-        file = bundle&.plugin&.file
-        file ? File.join(plugin_dir, file) : nil
-      end
-
       # The plugin's base snapshot (bases/plugin/<file>), for bundle diff.
       def plugin_base_path(file)
         File.join(@bundle_dir, "bases", "plugin", file.to_s)
-      end
-
-      # Yields [name, bundle] for each installed bundle (a dir under
-      # bundles_dir holding a manifest.json, dot dirs aside), by name. bundle
-      # is its InstalledBundle, one with error set when manifest.json doesn't
-      # parse or isn't an object; the rest still come.
-      #
-      # With holding: (:hooks, :guardrails or :plugin) only the bundles
-      # whose manifest has a non-empty mapping under that key come, and a
-      # manifest that doesn't parse comes (with error) only when its bundle
-      # has that dir (hooks/, guardrails/, plugin/): what it would load
-      # can't be checked. One that isn't an object is skipped there.
-      # @param dir [String] the bundles dir (bundles_dir by default)
-      def self.each_installed(holding: nil, dir: bundles_dir)
-        return enum_for(:each_installed, holding: holding, dir: dir) unless block_given?
-        return unless Dir.exist?(dir)
-
-        Dir.children(dir).reject { |e| e.start_with?(".") }.sort.each do |name|
-          mjson = File.join(dir, name, "manifest.json")
-          next unless File.exist?(mjson)
-
-          begin
-            data = JSON.parse(File.read(mjson), symbolize_names: true)
-          rescue JSON::ParserError, EncodingError, SystemCallError => e # a key that isn't UTF-8 can't be a symbol
-            if holding.nil? || Dir.exist?(File.join(dir, name, holding.to_s))
-              yield name, InstalledBundle.unreadable(name, "manifest.json is unreadable: #{e.message}")
-            end
-            next
-          end
-          next if holding && !(data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?)
-
-          yield name, InstalledBundle.parse(name, data, File.join(dir, name))
-        end
-      end
-
-      # The other installed bundles of +scope+ whose record lists the memory
-      # file +file_key+, by name (a manifest that doesn't read is left out).
-      # A project-scoped record doesn't say which project: one from another
-      # repo counts too, which errs on keeping the file.
-      def self.claimants(file_key, scope:, except: nil, dir: bundles_dir)
-        each_installed(dir: dir).filter_map do |name, bundle|
-          next if name == except || bundle.error?
-          next unless bundle.effective_scope == scope.to_s && bundle.owns?(file_key)
-
-          name
-        end
-      end
-
-      # The hex digest a manifest records, in either of its formats:
-      # "sha256:<hex>" (hooks, rules, the plugin) or bare <hex> (a memory
-      # file's checksum:). "" when none is recorded.
-      def self.recorded_sha(value)
-        value.to_s.delete_prefix("sha256:")
-      end
-
-      # The digest of a file, nil when it isn't there (FileDigest). Every
-      # caller checks existence first; #sha_matches? reads a missing file as
-      # not the recorded one.
-      def self.file_sha(path)
-        FileDigest.hex(path)
-      end
-
-      # What a dev install (`chi bundle install --dev`) records instead of
-      # a sha256: its files are links to the source, which change under it.
-      # Not a hex digest, so no file can be mistaken for it.
-      DEV_SHA = "sha256:dev"
-
-      # Whether +recorded+ is DEV_SHA: the file isn't checked.
-      def self.unchecked?(recorded)
-        recorded_sha(recorded) == recorded_sha(DEV_SHA)
-      end
-
-      # Whether the file's content is the one recorded (either format); a
-      # dev install's (DEV_SHA) always is.
-      def self.sha_matches?(path, recorded)
-        unchecked?(recorded) || file_sha(path) == recorded_sha(recorded)
       end
 
       # Whether a memory on disk is what the install wrote: the entry's
@@ -278,9 +151,9 @@ module Samagotchi
       # one rule a prune, an uninstall's refusal and chi bundle status read.
       def self.unchanged?(path, entry, base_path)
         recorded = entry[:checksum]
-        return sha_matches?(path, recorded) unless recorded_sha(recorded).empty?
+        return InstalledBundles::Sha.matches?(path, recorded) unless InstalledBundles::Sha.recorded(recorded).empty?
 
-        File.exist?(base_path) && file_sha(path) == file_sha(base_path)
+        File.exist?(base_path) && InstalledBundles::Sha.of_file(path) == InstalledBundles::Sha.of_file(base_path)
       end
 
       # Writes provenance for an installation: merges into existing manifest.json
@@ -301,13 +174,13 @@ module Samagotchi
       #   Engine knows it whatever becomes of the kept manifest.yml
       # @param requires_chi [String, nil] the manifest's requirement
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
-      # @param marks [Array<FileStanding::Behind>] files an upgrade left behind;
+      # @param marks [Array<InstalledBundles::FileStanding::Behind>] files an upgrade left behind;
       #   their entries get conflict: true, and what the Behind says
       # @param incoming_dir [String, nil] the bundle's source: each marked file's
       #   digest goes with the mark (incoming_sha: what Remerge retries) and its
       #   text is saved (#incoming_path), a settled file's going. A mark from an
       #   older chi that stays a mark gets legacy_base: true
-      #   (InstalledBundle.legacy_mark?)
+      #   (InstalledBundles::Record.legacy_mark?)
       # @param includes [Array<String>, nil] a profile's recorded members
       #   (MemoryBundle::Profile); nil for a plain bundle
       # @param scripts_files [Hash] file name => installed script; the
@@ -315,10 +188,10 @@ module Samagotchi
       # @param context_providers [Array<ContextProviders::Provider>]
       # @param block_renderers [Array<BlockRenderers::Renderer>]
       # @param dev [Boolean] a dev install: its files are links to the
-      #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
+      #   source, recorded as InstalledBundles::Sha::DEV (no sha256 check) with "dev": true
       # @param manifest_from [String, nil] the source dir: its manifest.yml is
       #   kept at #kept_manifest_path (a copy, a link for a dev install),
-      #   recorded as manifest_sha (DEV_SHA for dev), with installed_by: this
+      #   recorded as manifest_sha (InstalledBundles::Sha::DEV for dev), with installed_by: this
       #   chi's VERSION. nil leaves the kept file, and the record's
       #   manifest_sha and installed_by, as they are. The keys a record mirrors
       #   (requires_chi … setting_types) are still written from the kwargs:
@@ -342,7 +215,7 @@ module Samagotchi
         marked = marks.to_h { |mark| [mark.file, mark] }
 
         files.each do |file_key, file_path|
-          legacy = InstalledBundle.legacy_mark?(merged_entries[file_key])
+          legacy = InstalledBundles::Record.legacy_mark?(merged_entries[file_key])
           note = merged_entries.fetch(file_key, {}).slice(*MERGE_NOTE_FIELDS.map(&:to_sym))
           if file_path
             content = File.read(file_path)
@@ -389,7 +262,7 @@ module Samagotchi
         manifest_data["dev"] = true if dev
         if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
           manifest_data["guardrails"] = guardrails_files.sort.to_h do |basename, path|
-            [basename.to_s, { "sha256" => dev ? DEV_SHA : FileDigest.sha256(path.to_s) }]
+            [basename.to_s, { "sha256" => dev ? InstalledBundles::Sha::DEV : InstalledBundles::FileDigest.sha256(path.to_s) }]
           end
         end
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
@@ -397,7 +270,7 @@ module Samagotchi
         if plugin_file
           content = File.binread(plugin_file.to_s) # the base snapshot's bytes
           manifest_data["plugin"] = { "file" => File.basename(plugin_file.to_s),
-                                      "sha256" => dev ? DEV_SHA : FileDigest.sha256(plugin_file.to_s) }
+                                      "sha256" => dev ? InstalledBundles::Sha::DEV : InstalledBundles::FileDigest.sha256(plugin_file.to_s) }
           manifest_data["plugin"]["required"] = true if plugin_required
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
@@ -409,7 +282,7 @@ module Samagotchi
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
         unless scripts_files.empty?
           manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
-            [file.to_s, { "sha256" => dev ? DEV_SHA : FileDigest.sha256(path.to_s) }]
+            [file.to_s, { "sha256" => dev ? InstalledBundles::Sha::DEV : InstalledBundles::FileDigest.sha256(path.to_s) }]
           end
         end
         manifest_data.merge!(kept_manifest_fields(existing, manifest_from, dev))
@@ -463,9 +336,9 @@ module Samagotchi
 
       # What a retry found of files still marked: the mark says it, its digest
       # recorded if it had none (a mark made before chi kept it; legacy_base keeps
-      # that known, InstalledBundle.legacy_mark?), the bundle's text saved. The
+      # that known, InstalledBundles::Record.legacy_mark?), the bundle's text saved. The
       # rest of the manifest stays.
-      # @param marks [Array<FileStanding::Behind>]
+      # @param marks [Array<InstalledBundles::FileStanding::Behind>]
       # @param incoming_dir [String] the bundle's source
       def refresh_marks(marks, incoming_dir)
         return unless installed?
@@ -503,7 +376,7 @@ module Samagotchi
 
       # These notes go, and a later merge's on the same file stays. A note that
       # can't be cleared shows once more: nothing about it fails a report.
-      # @param notes [Array<FileStanding::MergeNote>] as #record gave them, read
+      # @param notes [Array<InstalledBundles::FileStanding::MergeNote>] as #record gave them, read
       #   before a run
       # @param files [Array<String>] files whose note goes whatever it says: the run
       #   just merged or replaced them. Another file's, a worker's meanwhile, stays.
@@ -527,7 +400,7 @@ module Samagotchi
       end
 
       # Keeps +dir+/manifest.yml for an installed bundle whose record has no
-      # usable kept manifest (InstalledBundle#manifest_unkept?: an older chi
+      # usable kept manifest (InstalledBundles::Record#manifest_unkept?: an older chi
       # wrote it, or the file is gone), when +dir+ is the source of what's
       # installed: its manifest names this bundle at the recorded version and
       # says what the record keeps (#manifest_difference), and every sha the
@@ -561,13 +434,6 @@ module Samagotchi
         e.message
       rescue JSON::ParserError, SystemCallError => e
         "#{@name}'s record can't take it: #{e.message}"
-      end
-
-      # The installed bundle's record, nil when it isn't installed.
-      # @return [InstalledBundle, nil]
-      # @raise [JSON::ParserError] manifest.json doesn't parse
-      def record
-        InstalledBundle.read(@name, File.join(@bundle_dir, "manifest.json"))
       end
 
       def ensure_supported_record_format!
@@ -669,7 +535,7 @@ module Samagotchi
       private :kept_manifest_fields
 
       # +source+ to #kept_manifest_path: a link to its realpath for a dev
-      # install (DEV_SHA), else a copy written aside and renamed (a link left
+      # install (InstalledBundles::Sha::DEV), else a copy written aside and renamed (a link left
       # by a dev install is replaced, never written through), its sha.
       # A source with no manifest.yml leaves none kept: nil.
       def keep_manifest(source, dev)
@@ -682,10 +548,10 @@ module Samagotchi
         if dev
           FileUtils.rm_f(dest)
           File.symlink(File.realpath(source), dest)
-          return DEV_SHA
+          return InstalledBundles::Sha::DEV
         end
         AtomicFile.write(dest, File.binread(source))
-        FileDigest.sha256(dest)
+        InstalledBundles::FileDigest.sha256(dest)
       end
       private :keep_manifest
 
@@ -704,8 +570,8 @@ module Samagotchi
         return "#{dir}'s manifest.yml isn't the installed one (#{key})" if key
 
         installed_shas(bundle, manifest).each do |rel, sha|
-          next if self.class.recorded_sha(sha).empty?
-          return "#{dir}'s #{rel} isn't the installed one" unless self.class.file_sha(File.join(dir, rel)) == self.class.recorded_sha(sha)
+          next if InstalledBundles::Sha.recorded(sha).empty?
+          return "#{dir}'s #{rel} isn't the installed one" unless InstalledBundles::Sha.of_file(File.join(dir, rel)) == InstalledBundles::Sha.recorded(sha)
         end
         nil
       end
@@ -723,7 +589,7 @@ module Samagotchi
       end
       private :parsed
 
-      # The record's mirror of the manifest keys (InstalledBundle::MIRROR_KEYS)
+      # The record's mirror of the manifest keys (InstalledBundles::Record::MIRROR_KEYS)
       # as #write records them from its kwargs: what an older chi reads, and
       # what #adopt_manifest holds a source's manifest against.
       def mirror_fields(trust_level:, requires_chi:, needs:, context_providers:, block_renderers:, session_settings:,
@@ -758,7 +624,7 @@ module Samagotchi
           session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
           settings: manifest.settings, setting_types: manifest.setting_types
         ))
-        InstalledBundle::MIRROR_KEYS.find do |key|
+        InstalledBundles::Record::MIRROR_KEYS.find do |key|
           next false if recorded[key] == source[key]
 
           !(recorded[key].nil? && BundleManifest::SINCE.key?(MIRROR_SINCE.fetch(key, key)))
@@ -793,7 +659,7 @@ module Samagotchi
       private :mark_fields
 
       def incoming_sha(path)
-        FileDigest.hex(path)
+        InstalledBundles::FileDigest.hex(path)
       rescue SystemCallError
         nil
       end

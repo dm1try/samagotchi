@@ -8,7 +8,7 @@ require_relative "memory_paths"
 require_relative "system_prompt"
 require_relative "tools/memory"
 require_relative "memory_index/updater"
-require_relative "memory_bundle/provenance"
+require_relative "installed_bundles"
 require_relative "memory_usage"
 
 module Samagotchi
@@ -105,7 +105,7 @@ module Samagotchi
     # name within a scope.
     # @return [Array<Entry>]
     def self.entries(scope = nil)
-      owners = MemoryBundle::Provenance.each_installed.reject { |_, bundle| bundle.error? }
+      owners = InstalledBundles.each.reject { |_, bundle| bundle.error? }
       (scope ? [scope] : SCOPES).flat_map { |s| scope_entries(s, owners) }
     end
 

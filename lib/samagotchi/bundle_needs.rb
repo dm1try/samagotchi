@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "installed_bundles"
+
 module Samagotchi
   autoload :BundleManifest, File.expand_path("bundle_manifest", __dir__)
   autoload :MutedMemories, File.expand_path("muted_memories", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
-  module MemoryBundle
-    autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
-  end
 
   # The outside commands a bundle declares in its manifest's `needs:`
   # (docs/memory.md). Advisory only: a PATH lookup in Ruby, no subprocess,
@@ -47,7 +46,7 @@ module Samagotchi
     def self.annotate_index(text, scope, path: ENV["PATH"], bundles_dir: nil)
       return text if text.nil? || text.empty?
 
-      markers = entry_markers(scope, path: path, bundles_dir: bundles_dir || MemoryBundle::Provenance.bundles_dir)
+      markers = entry_markers(scope, path: path, bundles_dir: bundles_dir || InstalledBundles.dir)
       return text if markers.empty?
 
       text.each_line.map do |line|
@@ -65,7 +64,7 @@ module Samagotchi
     # entry name → marker, for the installed bundles of +scope+ with a
     # missing need. A manifest.json or needs: that doesn't parse is skipped.
     def self.entry_markers(scope, path:, bundles_dir:)
-      MemoryBundle::Provenance.each_installed(dir: bundles_dir).each_with_object({}) do |(_name, bundle), acc|
+      InstalledBundles.each(dir: bundles_dir).each_with_object({}) do |(_name, bundle), acc|
         next if bundle.error? || bundle.effective_scope != scope.to_s
 
         needs = bundle.manifest.needs

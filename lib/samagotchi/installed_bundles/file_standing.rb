@@ -4,7 +4,7 @@ require "time"
 require_relative "file_digest"
 
 module Samagotchi
-  module MemoryBundle
+  module InstalledBundles
     # What chi says of an edited bundle file, everywhere it reports one: the one
     # owner of these words (chi update's row and --json, chi bundle list and
     # status, chi self, chi bootstrap, SystemBundle.ensure!'s echo, the Installer's
@@ -63,7 +63,7 @@ module Samagotchi
       end
 
       # A merge no report has shown yet, as the file's record keeps it
-      # (Provenance#note_merged). Every merge leaves one: a worker's reaches nothing
+      # (MemoryBundle::Provenance#note_merged). Every merge leaves one: a worker's reaches nothing
       # but its log, an automatic update's rows no person. It shows in chi bundle
       # status while it exists. A report someone reads ends it: chi update's row, for
       # what it printed (this run's merges too), and chi bundle upgrade's output. No

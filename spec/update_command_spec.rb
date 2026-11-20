@@ -307,13 +307,13 @@ RSpec.describe Samagotchi::UpdateCommand do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, note: "index.md: not updated")
     expect(command.send(:bundle_row, update).status).to eq("up to date (index.md: not updated)")
 
-    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md", version: "1", missed: ["## Steps"])])
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, behind: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md", version: "1", missed: ["## Steps"])])
     expect(command.send(:bundle_row, update)).to have_attributes(status: "a.md stays behind 1: missed ## Steps (chi bundle diff x a.md)", kept: ["a.md"], to: nil)
   end
 
   it "shows an earlier merge in the row and clears it, this run's own merged list apart" do
-    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "identity.md", version: "1", at: "2026-11-05T10:00:00Z", trash: "/long/trash")
-    stamp = Samagotchi::MemoryBundle::FileStanding.local_time(note.at)
+    note = Samagotchi::InstalledBundles::FileStanding::MergeNote.new(file: "identity.md", version: "1", at: "2026-11-05T10:00:00Z", trash: "/long/trash")
+    stamp = Samagotchi::InstalledBundles::FileStanding.local_time(note.at)
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:merge_notes).and_return([note])
     cleared = []
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:clear_merge_notes) { |notes, **| cleared << notes }
@@ -328,7 +328,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   context "with an earlier merge's note" do
-    let(:note) { Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "identity.md", version: "1", at: "2026-11-05T10:00:00Z", trash: nil) }
+    let(:note) { Samagotchi::InstalledBundles::FileStanding::MergeNote.new(file: "identity.md", version: "1", at: "2026-11-05T10:00:00Z", trash: nil) }
     let(:system) { Samagotchi::MemoryBundle::SystemBundle }
 
     before do
@@ -372,7 +372,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   it "gives --json's rows merged and earlier apart" do
-    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "old.md", version: "1", at: nil, trash: nil)
+    note = Samagotchi::InstalledBundles::FileStanding::MergeNote.new(file: "old.md", version: "1", at: nil, trash: nil)
     system = Samagotchi::MemoryBundle::SystemBundle
     allow(system).to receive(:merge_notes).and_return([note])
     allow(system).to receive(:clear_merge_notes)
@@ -387,7 +387,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   it "keeps a shipped bundle's note on a failed row, and names what that run did merge" do
-    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
+    note = Samagotchi::InstalledBundles::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", to: "2", status: :failed, note: "boom", merged: ["b.md"], behind: [], replaced: [], earlier: [note])
     expect_any_instance_of(Samagotchi::MemoryBundle::Provenance).not_to receive(:clear_merge_notes)
 
@@ -396,8 +396,8 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   it "names a note on a skip row, and clears it" do
-    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
-    behind = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "b.md", version: "1")
+    note = Samagotchi::InstalledBundles::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
+    behind = Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "b.md", version: "1")
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :skipped, note: "not from chi", merged: [], behind: [behind], replaced: [], earlier: [note])
     expect_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:clear_merge_notes).with([note], files: [])
 
@@ -406,7 +406,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   it "reads a same-version conflict as behind in the system row and the summary, with why" do
-    gone = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md", version: "1", why: Samagotchi::MemoryBundle::FileStanding.no_merge("git not found"))
+    gone = Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "identity.md", version: "1", why: Samagotchi::InstalledBundles::FileStanding.no_merge("git not found"))
     result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "1", status: :up_to_date, merged: [], behind: [gone], warnings: [])
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
     command = described_class.new(["--no-gem"], stdout: out, stderr: err)
@@ -415,13 +415,13 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(row.status).to eq("identity.md stays behind 1: no merge possible (git not found) (chi bundle diff samagotchi-system identity.md)")
     expect(command.send(:summary, [row])).to eq("1 file stays behind (see above)")
 
-    result.behind = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md", version: "1", unsure: true)]
+    result.behind = [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "identity.md", version: "1", unsure: true)]
     expect(command.send(:summary, [command.send(:system_bundle_row)])).to eq("1 file may be behind (see above)")
   end
 
   it "names merged files in a bundle's row, and what a dry run would merge" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
-      name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "b.md", version: "2", missed: ["## Steps"])], replaced: [],
+      name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], behind: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "b.md", version: "2", missed: ["## Steps"])], replaced: [],
       trash_copy: "Copied to the trash first: a.md (/t)"
     )
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
@@ -493,7 +493,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     def finding_rows(rows, name) = rows.select { |row| row["component"] == name && row["level"] }
 
     def installed_bytes
-      Dir.glob(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "**", "*")).select { |f| File.file?(f) }.to_h { |f| [f, File.binread(f)] }
+      Dir.glob(File.join(Samagotchi::InstalledBundles.dir, "**", "*")).select { |f| File.file?(f) }.to_h { |f| [f, File.binread(f)] }
     end
 
     it "warns about a stale name, says nothing of a clean bundle, and changes neither" do
@@ -515,7 +515,7 @@ RSpec.describe Samagotchi::UpdateCommand do
 
     it "names a key of the kept manifest.yml this chi doesn't know, which the record never mirrors" do
       install_external("future-one", manifest: { "card_layouts" => ["wide"] })
-      record = JSON.parse(File.read(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "future-one", "manifest.json")))
+      record = JSON.parse(File.read(File.join(Samagotchi::InstalledBundles.dir, "future-one", "manifest.json")))
       expect(record.keys).not_to include("card_layouts")
 
       _, rows = json_rows
@@ -531,7 +531,7 @@ RSpec.describe Samagotchi::UpdateCommand do
         File.write(File.join(dir, "check_note.md"), "the user's own note\n") # the install skips it: never recorded
       end
       install_external("partial", plugin: stale_plugin)
-      bundle_dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "partial")
+      bundle_dir = File.join(Samagotchi::InstalledBundles.dir, "partial")
       record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
       expect(record["files"]).to eq({})
 
@@ -544,7 +544,7 @@ RSpec.describe Samagotchi::UpdateCommand do
 
     # The kept manifest.yml rewritten by +edit+, its new sha recorded (as if installed so).
     def rewrite_kept(name)
-      dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name)
+      dir = File.join(Samagotchi::InstalledBundles.dir, name)
       kept = File.join(dir, "manifest.yml")
       File.write(kept, yield(File.read(kept)))
       record = JSON.parse(File.read(File.join(dir, "manifest.json")))
@@ -641,7 +641,7 @@ RSpec.describe Samagotchi::UpdateCommand do
       LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "watch.rb" => "class Watch; def call(_e) = nil; end\n" })
       _, rows = json_rows
       expect(finding_rows(rows, "old-hooks")).to be_empty
-      expect(File.exist?(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "old-hooks", "hooks", "watch.rb"))).to be(true)
+      expect(File.exist?(File.join(Samagotchi::InstalledBundles.dir, "old-hooks", "hooks", "watch.rb"))).to be(true)
     end
 
     it "checks a dev install's linked files" do
@@ -689,8 +689,8 @@ RSpec.describe Samagotchi::UpdateCommand do
       { "bad-cp" => { "context_providers" => [{ "match" => "x" }] }, "bad-needs" => { "needs" => "gh" } }.each do |name, extra|
         # A record from before chi kept the manifest: its mirror is what's read
         # (from git, which chi update doesn't clone to keep it).
-        FileUtils.rm_f(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.yml"))
-        path = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.json")
+        FileUtils.rm_f(File.join(Samagotchi::InstalledBundles.dir, name, "manifest.yml"))
+        path = File.join(Samagotchi::InstalledBundles.dir, name, "manifest.json")
         File.write(path, JSON.generate(JSON.parse(File.read(path)).except("manifest_sha", "installed_by")
                                            .merge(extra, "source" => "https://example.invalid/#{name}")))
       end
@@ -749,7 +749,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     end
 
     describe "a record an older chi wrote, without the kept manifest" do
-      def bundle_dir(name) = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name)
+      def bundle_dir(name) = File.join(Samagotchi::InstalledBundles.dir, name)
       def kept(name) = File.join(bundle_dir(name), "manifest.yml")
       def record(name) = JSON.parse(File.read(File.join(bundle_dir(name), "manifest.json")))
 

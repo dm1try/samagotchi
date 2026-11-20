@@ -4,7 +4,7 @@ require_relative "../memory_index/updater"
 require_relative "../bundle_manifest"
 require_relative "memory_files"
 require_relative "file_actions"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require_relative "merger"
 require_relative "provenance"
 require_relative "trash"
@@ -36,7 +36,7 @@ module Samagotchi
     #   - conflict: behind, and the mark records why, only when that changed;
     #   - fast_forward (one Merger::Upgrade#outcome lets go ahead): the next
     #     upgrade's (its save_first), behind until then;
-    #   - install: a missing file, which isn't behind (FileStanding.behind?): the
+    #   - install: a missing file, which isn't behind (InstalledBundles::FileStanding.behind?): the
     #     next upgrade or a restore puts it back, and a warning says so;
     #   - one it can't read or replace: left as it is, behind, saying why.
     #
@@ -48,14 +48,14 @@ module Samagotchi
     class Remerge
       # merged: replaced (or, in a dry run, would be). settled: their mark gone
       # with no merge. stamped: their mark was updated. behind: each file that
-      # stays behind, and why (FileStanding::Behind). work? says whether a real run
+      # stays behind, and why (InstalledBundles::FileStanding::Behind). work? says whether a real run
       # would change anything.
       Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy) do
         def work? = [merged, settled, stamped].any?(&:any?)
       end
       NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil).freeze
 
-      # @param record [InstalledBundle, nil] the bundle's record (read when not given)
+      # @param record [InstalledBundles::Record, nil] the bundle's record (read when not given)
       def initialize(name:, scope:, target_dir:, source_dir:, record: nil)
         @name = name
         @scope = scope
@@ -102,7 +102,7 @@ module Samagotchi
 
         retry_row(key, entry, state, FileActions.for(:remerge, state))
       rescue SystemCallError => e
-        stay(key, FileStanding.left_as_it_is(e.message))
+        stay(key, InstalledBundles::FileStanding.left_as_it_is(e.message))
       end
 
       # The file's REMERGE row, done. A :decide cell, and a behind one, asks
@@ -116,19 +116,19 @@ module Samagotchi
         if action.do == :merge then merge_file(key, entry, state, decision.outcome)
         elsif action.behind?
           waits = decision.outcome.status == :fast_forward
-          mark(key, entry, waits ? behind_for(key, FileStanding::WAITS_FOR_UPGRADE) : view.behind(key, decision.outcome, @record.version))
+          mark(key, entry, waits ? behind_for(key, InstalledBundles::FileStanding::WAITS_FOR_UPGRADE) : view.behind(key, decision.outcome, @record.version))
         elsif action.word == :settled then @settled << key
-        elsif state.kind == :missing then @warnings << "#{key}: #{FileStanding::FILE_MISSING}"
-        elsif state.kind == :unreadable then FileDigest.hex(state.paths[:current])
+        elsif state.kind == :missing then @warnings << "#{key}: #{InstalledBundles::FileStanding::FILE_MISSING}"
+        elsif state.kind == :unreadable then InstalledBundles::FileDigest.hex(state.paths[:current])
         end
       end
 
-      def behind_for(key, why) = FileStanding::Behind.new(file: key, version: @record.version, why: why)
+      def behind_for(key, why) = InstalledBundles::FileStanding::Behind.new(file: key, version: @record.version, why: why)
 
       # The record says it too, so chi bundle status reads as the row does. There
       # is no bundle text to save or compare with: only the words can change.
       def not_shipped(key, entry)
-        behind = behind_for(key, FileStanding::NOT_SHIPPED)
+        behind = behind_for(key, InstalledBundles::FileStanding::NOT_SHIPPED)
         @behind << behind
         @stamped << behind unless @record.behind_entry(key, entry) == behind
       end
@@ -144,12 +144,12 @@ module Samagotchi
       end
 
       def merge_file(key, entry, state, outcome)
-        warning = FileDigest.mismatch(key, state.paths[:incoming], @manifest.checksum_for(key))
+        warning = InstalledBundles::FileDigest.mismatch(key, state.paths[:incoming], @manifest.checksum_for(key))
         @warnings << warning if warning
         return @merged << key if @dry_run
         return @merged << key if Merger.write_merged(view.paths(key)[:current], outcome, @trash)
 
-        mark(key, entry, behind_for(key, FileStanding.no_merge(TextMerge::RACED)))
+        mark(key, entry, behind_for(key, InstalledBundles::FileStanding.no_merge(TextMerge::RACED)))
       end
 
       def settle

@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  module MemoryBundle
+  module InstalledBundles
     # The plugin an installed bundle's record (manifest.json) names: its
     # file under plugin/, the sha256 recorded at install ("" when none
-    # is; either "sha256:<hex>" or a bare hex, Provenance.recorded_sha
+    # is; either "sha256:<hex>" or a bare hex, Sha.recorded
     # reads both), and whether its manifest called it required (a guardrail
     # plugin: plugin: required: true; an older chi ignores the key).
     PluginRef = Data.define(:file, :sha256, :required) do

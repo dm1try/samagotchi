@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "../bundle_manifest"
@@ -50,7 +50,7 @@ module Samagotchi
 
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
-      # Each file this run left behind (FileStanding::Behind).
+      # Each file this run left behind (InstalledBundles::FileStanding::Behind).
       attr_reader :behind
 
       # prepared: the source already normalized (a PreparedSource, which the
@@ -183,8 +183,8 @@ module Samagotchi
         lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
         lines << "Would update: #{would_update.join(", ")}" unless would_update.empty?
         lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
-        lines << FileStanding.merged_line(merged, @manifest&.version) unless merged.empty?
-        lines << FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?
+        lines << InstalledBundles::FileStanding.merged_line(merged, @manifest&.version) unless merged.empty?
+        lines << InstalledBundles::FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?
         lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
         lines << "Removed (#{AssetInstaller::RETIRED}): #{retired.join(", ")}" unless retired.empty?
@@ -226,7 +226,7 @@ module Samagotchi
       # @param label [String] "a.md", "plugin plugin.rb", "script s.sh"
       # @param upgrade [Boolean] which command the hint names
       def self.mismatch_refusal(label, path, expected, upgrade:)
-        warning = FileDigest.mismatch(label, path, expected)
+        warning = InstalledBundles::FileDigest.mismatch(label, path, expected)
         warning && "#{warning}; chi bundle #{upgrade ? "upgrade" : "install"} --force installs it anyway"
       end
 
@@ -289,9 +289,9 @@ module Samagotchi
       def write_pending
         return if @dry_run || @manifest.nil?
 
-        incoming = memory_files.to_h { |key| [key, FileDigest.hex(File.join(@bundle_dir, key))] }
+        incoming = memory_files.to_h { |key| [key, InstalledBundles::FileDigest.hex(File.join(@bundle_dir, key))] }
         incoming.reject! do |key, sha|
-          sha.nil? || sha == FileDigest.hex(File.join(@target_dir, key))
+          sha.nil? || sha == InstalledBundles::FileDigest.hex(File.join(@target_dir, key))
         rescue SystemCallError
           true
         end
@@ -351,7 +351,7 @@ module Samagotchi
       # bundle's dir on a case-insensitive file system (macOS): BTW would
       # replace btw. Refused, --force too.
       def refuse_case_twin
-        twin, = Provenance.each_installed.find { |name, _| name != @name && name.casecmp?(@name) }
+        twin, = InstalledBundles.each.find { |name, _| name != @name && name.casecmp?(@name) }
         raise InstallError, "#{@name} differs only in case from the installed #{twin}" if twin
       end
 
@@ -551,7 +551,7 @@ module Samagotchi
           end
         when :skip
           @results[file_key] = result.with(note: "already exists")
-          @warnings << "Skipped #{file_key} (already exists; #{FileStanding::FORCE_TAKES})"
+          @warnings << "Skipped #{file_key} (already exists; #{InstalledBundles::FileStanding::FORCE_TAKES})"
         when :refuse then refuse_unreadable(file_key, target_path)
         else raise ArgumentError, "no install step for #{action.do.inspect} (#{file_key})" # the base would move with nothing written
         end
@@ -562,7 +562,7 @@ module Samagotchi
       # run stops (the read raises; Trash.failure_message says nothing was
       # lost).
       def refuse_unreadable(file_key, target_path)
-        FileDigest.hex(target_path)
+        InstalledBundles::FileDigest.hex(target_path)
         raise InstallError, "#{file_key} can't be read"
       end
 
@@ -574,7 +574,7 @@ module Samagotchi
         @results[file_key] = FileResult.new(word: :conflict, state: state, action: state && FileActions::BEHIND,
                                             note: behind.state(dry_run: @dry_run))
         @conflicts[file_key] = upgrade_view.paths(file_key)
-        @warnings << "#{behind.line(dry_run: @dry_run)} (#{FileStanding::FORCE_TAKES})"
+        @warnings << "#{behind.line(dry_run: @dry_run)} (#{InstalledBundles::FileStanding::FORCE_TAKES})"
       end
 
       # What merged, on the record, a run that failed later too: the file holds the
@@ -652,7 +652,7 @@ module Samagotchi
           result = @results[file_key]
           next unless result&.action&.takes_source?
 
-          warning = FileDigest.mismatch(file_key, result.state.paths[:incoming], @manifest.checksum_for(file_key))
+          warning = InstalledBundles::FileDigest.mismatch(file_key, result.state.paths[:incoming], @manifest.checksum_for(file_key))
           @warnings << warning if warning
         end
       end
@@ -708,7 +708,7 @@ module Samagotchi
       # Provenance#write rebuilds their entries, and a file it left alone has
       # missed the bundle's change as much as before (its version may move on
       # all the same). One with the incoming bytes has nothing left to miss.
-      # @return [Array<FileStanding::Behind>]
+      # @return [Array<InstalledBundles::FileStanding::Behind>]
       def held_conflict_marks
         return [] if @upgrade || @existing.nil?
 
@@ -721,11 +721,11 @@ module Samagotchi
       # so one from an older chi, which can't name sections, keeps its own words.
       def held_mark(key)
         entry = @existing.files.fetch(key)
-        return @existing.behind_entry(key, entry).with(version: @manifest.version) if InstalledBundle.legacy_mark?(entry)
+        return @existing.behind_entry(key, entry).with(version: @manifest.version) if InstalledBundles::Record.legacy_mark?(entry)
 
         upgrade_view.behind(key, Merger::CONFLICT, @manifest.version)
       rescue SystemCallError
-        FileStanding::Behind.new(file: key, version: @manifest.version)
+        InstalledBundles::FileStanding::Behind.new(file: key, version: @manifest.version)
       end
 
       # file key => the file whose content becomes its base: the one its
@@ -803,7 +803,7 @@ module Samagotchi
 
           target = File.join(target_dir, key)
           state = FileState.of(key, record: @existing, provenance: provenance, target_dir: target_dir, source_dir: @bundle_dir,
-                                    shipped: false, claimants: ->(k) { Provenance.claimants(k, scope: scope, except: @name) })
+                                    shipped: false, claimants: ->(k) { InstalledBundles.claimants(k, scope: scope, except: @name) })
           action = if state.kind == :unreadable
                      unreadable_dropped(state, target)
                    else
@@ -823,7 +823,7 @@ module Samagotchi
             remove_target_index(scope, key)
           when :kept_pruned
             @results[key] = result.with(note: "local edits preserved")
-            @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{FileStanding::FORCE_MOVES})"
+            @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{InstalledBundles::FileStanding::FORCE_MOVES})"
           end
         end
       end
@@ -836,7 +836,7 @@ module Samagotchi
         return FileActions::KEPT_SHARED if state.shared_with.any?
         return FileActions::REMOVE if @force
 
-        FileDigest.hex(target)
+        InstalledBundles::FileDigest.hex(target)
         raise InstallError, "#{state.key} can't be read"
       end
 

@@ -198,7 +198,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   end
 
   describe "a shipped bundle an older chi installed at this version, without its manifest.yml" do
-    let(:bundle_dir) { File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "btw") }
+    let(:bundle_dir) { File.join(Samagotchi::InstalledBundles.dir, "btw") }
     let(:kept) { File.join(bundle_dir, "manifest.yml") }
 
     def record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
@@ -333,7 +333,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
 
       expect(described_class.plan(shipped_dir: root).first)
         .to have_attributes(status: :would_merge, note: nil,
-                            behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "note.md", version: "2.0.0", why: "not in the bundle now, nothing to merge")])
+                            behind: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "note.md", version: "2.0.0", why: "not in the bundle now, nothing to merge")])
     end
 
     it "leaves a project-scope bundle to chi bundle upgrade in the project" do
@@ -391,7 +391,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     allow_any_instance_of(Samagotchi::MemoryBundle::Installer).to receive(:merged_files).and_return(["known_names.md"])
     allow_any_instance_of(Samagotchi::MemoryBundle::Installer).to receive(:trash_copy_line).and_return("the trash line")
     allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged)
-    rows.first.behind = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "planned.md")]
+    rows.first.behind = [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "planned.md")]
 
     row = described_class.apply(rows).first
     expect(row).to have_attributes(status: :failed, note: "the disk is full", merged: ["known_names.md"], kept: ["known_names.md"], trash_copy: "the trash line")
@@ -634,7 +634,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     end
 
     def core_row = described_class.plan(shipped_dir: root).find { |r| r.name == "core" }
-    def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
+    def installed = Samagotchi::InstalledBundles.each.map { |name, _| name }
 
     it "installs only a bundle new to the profile, never one the user uninstalled" do
       core = ship_core("0.1.0", %w[loop-guard check-in guardrails])

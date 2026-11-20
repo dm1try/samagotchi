@@ -50,7 +50,7 @@ module Samagotchi
       # :up_to_date, :skipped, :failed. note says why for skipped/failed,
       # what a retry at the same version warned of, and an update's Checksum
       # mismatch warnings. merged and replaced are file
-      # names, behind FileStanding::Behind; under plan they are what apply would
+      # names, behind InstalledBundles::FileStanding::Behind; under plan they are what apply would
       # merge, replace or leave behind.
       # added_files is the new version's memory files the bundle didn't own
       # before; adds is nil but for a profile: the members it installs.
@@ -59,7 +59,7 @@ module Samagotchi
       # trash_copy is nil but under apply when it saved edited files
       # (Installer#trash_copy_line).
       # earlier: the merge notes on its record when the plan read it
-      # (FileStanding::MergeNote): this run's own merges aren't among them.
+      # (InstalledBundles::FileStanding::MergeNote): this run's own merges aren't among them.
       # manifest: what a row at the shipped version says of its manifest.yml
       # (ManifestStanding.keep's line: would keep or kept it, or why not and
       # the command), nil when nothing.
@@ -94,7 +94,7 @@ module Samagotchi
       # The installed bundles chi doesn't update (plan's "not from chi"), for
       # chi update's re-check: not a profile (no code of its own, its members
       # are chi's), nor one whose record doesn't read (its row says so).
-      # @return [Array<InstalledBundle>]
+      # @return [Array<InstalledBundles::Record>]
       def external(shipped_dir: SourceNormalizer::SHIPPED_DIR)
         shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
         installed.filter_map { |name, bundle| bundle unless bundle.error? || bundle.profile? || from_chi?(bundle, shipped[name]) }
@@ -175,9 +175,9 @@ module Samagotchi
         end
       end
 
-      # [name, InstalledBundle] for each installed bundle but the system one, by name.
+      # [name, InstalledBundles::Record] for each installed bundle but the system one, by name.
       def installed
-        Provenance.each_installed.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
+        InstalledBundles.each.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
       end
 
       # Whether it is the bundle chi ships as +ship+ (nil: none of its name).
@@ -333,9 +333,9 @@ module Samagotchi
 
       # Whether the file differs from its recorded sha (none recorded: no).
       def edited?(path, recorded)
-        return false if Provenance.recorded_sha(recorded).empty? || !File.file?(path)
+        return false if InstalledBundles::Sha.recorded(recorded).empty? || !File.file?(path)
 
-        !Provenance.sha_matches?(path, recorded)
+        !InstalledBundles::Sha.matches?(path, recorded)
       end
     end
   end

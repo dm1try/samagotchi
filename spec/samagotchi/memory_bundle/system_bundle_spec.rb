@@ -402,7 +402,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     end
 
     describe "a record an older chi wrote, without the kept manifest" do
-      let(:bundle_dir) { File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, described_class::BUNDLE_NAME) }
+      let(:bundle_dir) { File.join(Samagotchi::InstalledBundles.dir, described_class::BUNDLE_NAME) }
       let(:kept) { File.join(bundle_dir, "manifest.yml") }
 
       def record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))

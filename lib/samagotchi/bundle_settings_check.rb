@@ -6,7 +6,7 @@ require_relative "atomic_file"
 require_relative "config"
 require_relative "paths"
 require_relative "session_config"
-require_relative "memory_bundle/provenance"
+require_relative "installed_bundles"
 
 module Samagotchi
   # config.yml `bundles:` against what's installed, for a typo that would
@@ -23,10 +23,10 @@ module Samagotchi
 
     # @param section [Hash{String => Hash}] ConfigFile.bundle_settings
     # @return [Array<String>] one line per finding
-    def warnings(section, dir: MemoryBundle::Provenance.bundles_dir)
+    def warnings(section, dir: InstalledBundles.dir)
       return [] if section.empty?
 
-      installed = MemoryBundle::Provenance.each_installed(dir: dir).to_h
+      installed = InstalledBundles.each(dir: dir).to_h
       section.flat_map do |name, values|
         bundle = installed[name]
         next ["config.yml bundles: #{name}: #{SessionConfig.no_installed_bundle(name)}#{near(name, installed.keys)}"] unless bundle
@@ -64,7 +64,7 @@ module Samagotchi
 
     # One bundle's +values+ against its manifest (an installed one's or a
     # source's); none while it declares no settings:.
-    # @param manifest [MemoryBundle::InstalledManifest, BundleManifest]
+    # @param manifest [InstalledBundles::Manifest, BundleManifest]
     #   name, settings, session_settings, setting_types
     # @return [Array<String>]
     def record_warnings(manifest, values)

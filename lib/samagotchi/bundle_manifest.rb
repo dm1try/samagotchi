@@ -188,7 +188,7 @@ module Samagotchi
     end
 
     # An installed bundle's kept manifest.yml read key by key
-    # (InstalledManifest): each key parsed as #initialize parses it, in its
+    # (InstalledBundles::Manifest): each key parsed as #initialize parses it, in its
     # own rescue and in this order, so a key that doesn't parse under this
     # chi (a newer chi tightened it, or an older one wrote it) costs only
     # that key, which reads as empty with its message in the problems:

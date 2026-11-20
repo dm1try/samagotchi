@@ -3,20 +3,20 @@
 require_relative "../context_providers"
 require_relative "../version"
 require_relative "../bundle_manifest"
-require_relative "provenance"
+require_relative "sha"
 
 module Samagotchi
   autoload :BlockRenderers, File.expand_path("../block_renderers", __dir__)
 
-  module MemoryBundle
+  module InstalledBundles
     # The one answer to "this installed bundle's manifest": what its
     # manifest.yml says, as the readers of an installed bundle take it
-    # (InstalledBundle#manifest). Identity and state stay on the record
-    # (InstalledBundle: name, version, source, the plugin's file, every
+    # (Record#manifest). Identity and state stay on the record
+    # (Record: name, version, source, the plugin's file, every
     # sha, files, marks, a profile's members); manifest data is read here.
     #
     # Read from the bundle's kept manifest.yml (.bundles/<name>/manifest.yml,
-    # Provenance#write's manifest_from:) when the record has its sha and the
+    # MemoryBundle::Provenance#write's manifest_from:) when the record has its sha and the
     # file still has it (a dev install's link is never checked): origin
     # :kept, so a key the record never mirrored (one an older chi didn't
     # know) is read. Otherwise from the record's frozen mirror of the
@@ -58,10 +58,10 @@ module Samagotchi
     #   floor_keys                  the kept manifest's BundleManifest#floor_keys (key =>
     #                               the first chi that read it), {} from the record
     #   origin                      :kept or :record
-    class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :needs,
-                                          :script_names, :context_providers, :block_renderers, :session_settings,
-                                          :session_setting_types, :settings, :setting_types, :file_descriptions,
-                                          :plugin_required, :includes, :unknown_keys, :floor_keys, :problems, :origin)
+    class Manifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :needs,
+                                 :script_names, :context_providers, :block_renderers, :session_settings,
+                                 :session_setting_types, :settings, :setting_types, :file_descriptions,
+                                 :plugin_required, :includes, :unknown_keys, :floor_keys, :problems, :origin)
       # The key problems names the kept file's standing under.
       KEPT_FILE = "manifest.yml"
       # How many manifests the cache holds before it starts again.
@@ -69,8 +69,8 @@ module Samagotchi
       @cache = {}
       @cache_lock = Mutex.new
 
-      # @param bundle [InstalledBundle]
-      # @return [InstalledManifest]
+      # @param bundle [Record]
+      # @return [Manifest]
       def self.of(bundle)
         key = [bundle, kept_stat(bundle.kept_manifest_path)]
         cached = @cache_lock.synchronize { @cache[key] }
@@ -109,7 +109,7 @@ module Samagotchi
         recorded = !bundle.manifest_sha.to_s.empty?
         return recorded ? standing(mirrored, :missing) : mirrored unless File.file?(path)
         return standing(mirrored, :stale) unless recorded
-        return standing(mirrored, :edited) unless Provenance.sha_matches?(path, bundle.manifest_sha)
+        return standing(mirrored, :edited) unless Sha.matches?(path, bundle.manifest_sha)
 
         kept, problems = BundleManifest.tolerant(path: path, fallback_scripts: bundle.scripts.keys)
         from_kept(bundle, kept, problems, mirrored)

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "installed_bundle"
+require_relative "../installed_bundles/record"
 require_relative "installer"
 require_relative "../bundle_manifest"
 require_relative "provenance"
@@ -9,7 +9,7 @@ require_relative "source"
 module Samagotchi
   module MemoryBundle
     # The one owner of the words for an installed bundle's manifest.yml, as
-    # InstalledManifest read it (chi bundle status's Manifest: line, chi
+    # InstalledBundles::Manifest read it (chi bundle status's Manifest: line, chi
     # update's row), and of keeping it for a record an older chi wrote
     # (.keep: Provenance#adopt_manifest from where it came from). The cases:
     #   :kept     read from the kept file; a line only when chi +installed_by+
@@ -31,7 +31,7 @@ module Samagotchi
 
       module_function
 
-      # @param bundle [InstalledBundle]
+      # @param bundle [InstalledBundles::Record]
       # @return [Symbol, nil] the case, nil for a record with no dir or that doesn't read
       def state(bundle)
         return nil if bundle.error? || bundle.dir.nil?

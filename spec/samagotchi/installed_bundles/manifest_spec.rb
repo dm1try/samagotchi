@@ -5,11 +5,11 @@ require "json"
 require "tmpdir"
 require "fileutils"
 require "digest"
-require "samagotchi/memory_bundle/installed_bundle"
-require "samagotchi/memory_bundle/installed_manifest"
+require "samagotchi/installed_bundles/record"
+require "samagotchi/installed_bundles/manifest"
 
-RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
-  let(:installed) { Samagotchi::MemoryBundle::InstalledBundle }
+RSpec.describe Samagotchi::InstalledBundles::Manifest do
+  let(:installed) { Samagotchi::InstalledBundles::Record }
 
   def record(raw) = installed.parse("b", JSON.parse(JSON.generate(raw)))
 

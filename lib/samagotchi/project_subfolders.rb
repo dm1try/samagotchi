@@ -101,7 +101,7 @@ module Samagotchi
     # @return [Array<String>] the report's lines
     def merge(found, target:, env: ENV)
       require_relative "memory_index/updater"
-      require_relative "memory_bundle/provenance"
+      require_relative "installed_bundles"
       require_relative "tools/memory"
       lines = []
       found.each { |item| lines.concat(merge_one(item, target, env)) }
@@ -135,7 +135,7 @@ module Samagotchi
       kept = []
       entries(from).each do |name, line|
         files = [File.join(from, "#{name}.md")] + Tools::MemoryWrite.overlay_files(from, name, index_text)
-        owner = MemoryBundle::Provenance.claimants("#{name}.md", scope: "project",
+        owner = InstalledBundles.claimants("#{name}.md", scope: "project",
                                                                  dir: MemoryPaths.bundles_dir(env: env)).first ||
                 (line && MemoryIndex::Updater.extract_source(line))
         next kept << "#{name} (from bundle #{owner})" if owner

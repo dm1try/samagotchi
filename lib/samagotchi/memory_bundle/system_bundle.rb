@@ -2,7 +2,7 @@
 
 require "fileutils"
 require_relative "installer"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require_relative "provenance"
 require_relative "../bundle_manifest"
 require_relative "../memory_index/updater"
@@ -40,7 +40,7 @@ module Samagotchi
       # :newer_installed (left as is), :skipped (SKIP_ENV or no shipped
       # bundle) or :failed (error: says why); merged lists the files a text
       # merge replaced (trash_copy says where the old ones went), behind each file
-      # that stays behind (FileStanding::Behind). ensure! says only what an upgrade
+      # that stays behind (InstalledBundles::FileStanding::Behind). ensure! says only what an upgrade
       # left behind: a file that was already behind isn't news at every start.
       Result = Struct.new(:from, :to, :status, :merged, :behind, :trash_copy, :warnings, :error, keyword_init: true) do
         def changed? = %i[installed updated restored merged].include?(status)
@@ -60,12 +60,12 @@ module Samagotchi
           with_lock { note_newer_installed(result.from, result.to) }
         end
         unless result.merged.empty?
-          note = [FileStanding.merged_line(result.merged, result.to), result.trash_copy].compact.join("; ")
+          note = [InstalledBundles::FileStanding.merged_line(result.merged, result.to), result.trash_copy].compact.join("; ")
           Log.info(:memory, "system_bundle_merged", echo: "[samagotchi-system] #{note}", files: result.merged.join(","), to: result.to.to_s)
         end
         if result.status == :updated
           result.behind.each do |file|
-            Log.info(:memory, "system_file_behind", echo: "[samagotchi-system] #{file.line} (#{FileStanding.diff_hint(BUNDLE_NAME, file.file)})", file: file.file)
+            Log.info(:memory, "system_file_behind", echo: "[samagotchi-system] #{file.line} (#{InstalledBundles::FileStanding.diff_hint(BUNDLE_NAME, file.file)})", file: file.file)
           end
         end
         result.warnings.each { |w| Log.warn(:memory, "system_bundle_warning", echo: "[samagotchi-system] #{w}") }
@@ -74,7 +74,7 @@ module Samagotchi
 
       # The merges no chi update has shown (MergeNote): ask before .sync, whose
       # own merges its caller reports itself.
-      # @return [Array<FileStanding::MergeNote>]
+      # @return [Array<InstalledBundles::FileStanding::MergeNote>]
       def merge_notes
         Provenance.new(name: BUNDLE_NAME).record&.merge_notes || []
       rescue StandardError
@@ -146,7 +146,7 @@ module Samagotchi
       # the provenance the first one wrote, instead of installing over it and
       # warning "Skipped … already exists" for every file.
       def with_lock
-        dir = Provenance.bundles_dir
+        dir = InstalledBundles.dir
         FileUtils.mkdir_p(dir)
         File.open(File.join(dir, "#{BUNDLE_NAME}.lock"), File::RDWR | File::CREAT, 0o644) do |f|
           f.flock(File::LOCK_EX)
@@ -260,7 +260,7 @@ module Samagotchi
       end
 
       def restore_mismatch(key, gem_manifest)
-        FileDigest.mismatch(key, File.join(GEM_BUNDLE_DIR, key), gem_manifest.checksum_for(key))
+        InstalledBundles::FileDigest.mismatch(key, File.join(GEM_BUNDLE_DIR, key), gem_manifest.checksum_for(key))
       end
 
       # An up-to-date bundle's marked files, retried. No marks: nothing is read.

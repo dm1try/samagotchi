@@ -470,7 +470,7 @@ module Samagotchi
         return "Error: the index can't be removed; it is kept up to date for you" if entry_name == MEMORY_INDEX
 
         require_relative "../memory_index/updater"
-        require_relative "../memory_bundle/provenance"
+        require_relative "../installed_bundles"
         require_relative "../memory_bundle/trash"
         resolved_scope = MemoryRead.normalize_scope(scope)
         dir = MemoryRead.memories_dir(resolved_scope)
@@ -479,7 +479,7 @@ module Samagotchi
         line = index_text[managed_pattern(entry_name)]
         file = File.join(dir, "#{entry_name}.md")
 
-        owner = Samagotchi::MemoryBundle::Provenance.claimants("#{entry_name}.md", scope: resolved_scope).first ||
+        owner = Samagotchi::InstalledBundles.claimants("#{entry_name}.md", scope: resolved_scope).first ||
                 (line && Samagotchi::MemoryIndex::Updater.extract_source(line))
         return "Error: memory '#{entry_name}' came from bundle #{owner}; `chi bundle uninstall #{owner}` removes it" if owner
 

@@ -3,7 +3,7 @@
 require "fileutils"
 require_relative "asset_state"
 require_relative "file_actions"
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require_relative "../bundle_manifest"
 require_relative "provenance"
 require_relative "../version"
@@ -43,7 +43,7 @@ module Samagotchi
 
       # @param source_dir [String] the normalized bundle source
       # @param manifest [BundleManifest, nil] nil for a non-strict install without one
-      # @param existing [InstalledBundle, nil] the record before this install
+      # @param existing [InstalledBundles::Record, nil] the record before this install
       # @param results, warnings, conflicts the Installer's (results and
       #   warnings are added to)
       # @param trash [Trash] the Installer's
@@ -259,7 +259,7 @@ module Samagotchi
           @results[result_key(kind_of_file, name)] = results[name]
           FileUtils.chmod(0o755, dest) if kind_of_file == :script && !@dev
           if (declared = declared_sha(kind_of_file, name)) && results[name].action.do == :write_incoming && @strict && !@dev
-            warning = FileDigest.mismatch("#{kind_of_file} #{name}", dest, declared)
+            warning = InstalledBundles::FileDigest.mismatch("#{kind_of_file} #{name}", dest, declared)
             @warnings << warning if warning
           end
           [name, dest]

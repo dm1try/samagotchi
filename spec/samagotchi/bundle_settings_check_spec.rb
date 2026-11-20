@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::BundleSettingsCheck do
   end
 
   it "reads nothing with no bundles: section" do
-    expect(Samagotchi::MemoryBundle::Provenance).not_to receive(:each_installed)
+    expect(Samagotchi::InstalledBundles).not_to receive(:each)
     expect(warnings({})).to eq([])
   end
 

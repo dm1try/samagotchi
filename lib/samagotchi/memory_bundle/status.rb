@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "file_digest"
+require_relative "../installed_bundles/file_digest"
 require_relative "provenance"
 require_relative "file_state"
 require_relative "asset_state"
@@ -20,8 +20,8 @@ module Samagotchi
       # disk, its installed plugin, and its needs
       # with what this process's PATH found. The +files+ entries and +plugin+
       # stay Hashes: their fields differ per case (an unchecked file has no
-      # paths at all). An entry's behind is its FileStanding::Behind, nil for a
-      # file that isn't; merge_note its FileStanding::MergeNote, nil without one;
+      # paths at all). An entry's behind is its InstalledBundles::FileStanding::Behind, nil for a
+      # file that isn't; merge_note its InstalledBundles::FileStanding::MergeNote, nil without one;
       # unreadable: the file is there, but this chi can't read it.
       # rules and scripts: each recorded one by name, "ok", "modified" or
       # "missing" (asset_states).
@@ -121,7 +121,7 @@ module Samagotchi
         return nil unless path
 
         state = if !File.file?(path) then "missing"
-                elsif Provenance.sha_matches?(path, bundle.plugin.sha256) then "ok"
+                elsif InstalledBundles::Sha.matches?(path, bundle.plugin.sha256) then "ok"
                 else "modified"
                 end
         manifest = bundle.manifest

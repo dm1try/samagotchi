@@ -74,7 +74,7 @@ module Samagotchi
 
         # A file another installed bundle lists too stays, edited or not.
         shared = files.keys.map(&:to_s).to_h do |key|
-          [key, Provenance.claimants(key, scope: target_scope, except: @name)]
+          [key, InstalledBundles.claimants(key, scope: target_scope, except: @name)]
         end.reject { |_, others| others.empty? }
 
         # Each file's UNINSTALL row (its source-less FileState): an edit
@@ -90,13 +90,13 @@ module Samagotchi
             next if state.shared_with.any?
 
             # Whether it was edited can't be told: the read raises (nothing lost).
-            FileDigest.hex(state.paths[:current]) if state.kind == :unreadable
+            InstalledBundles::FileDigest.hex(state.paths[:current]) if state.kind == :unreadable
             blocked << key
-            @warnings << "Skipped #{key}: local edits detected (#{FileStanding::FORCE_MOVES})"
+            @warnings << "Skipped #{key}: local edits detected (#{InstalledBundles::FileStanding::FORCE_MOVES})"
           end
         end
 
-        raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (#{FileStanding::FORCE_MOVES})" if blocked.any?
+        raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (#{InstalledBundles::FileStanding::FORCE_MOVES})" if blocked.any?
 
         save_edits(provenance, bundle)
 

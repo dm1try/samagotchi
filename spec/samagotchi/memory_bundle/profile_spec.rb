@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
   end
 
   def install(dir, **opts) = described_class.install(dir, shipped_dir: shipped, chi_version: "1.0.0", **opts)
-  def installed = prov.each_installed.map { |name, _| name }
+  def installed = Samagotchi::InstalledBundles.each.map { |name, _| name }
   def recorded(name) = prov.new(name: name).read[:includes]
   def plain_install(dir) = Samagotchi::MemoryBundle::Installer.new(source: dir, name: File.basename(dir), scope: "system").run
 
@@ -297,7 +297,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
     it "knows a meta by its recorded includes, or by a shipped source whose manifest is a meta" do
       ship("a")
       core = ship_meta("core", %w[a])
-      record = ->(name, **raw) { Samagotchi::MemoryBundle::InstalledBundle.parse(name, raw) }
+      record = ->(name, **raw) { Samagotchi::InstalledBundles::Record.parse(name, raw) }
       expect(described_class.installed_meta?("core", record.call("core", includes: []), shipped_dir: shipped)).to be(true)
       expect(described_class.installed_meta?("core", record.call("core", source: core), shipped_dir: shipped)).to be(true)
       expect(described_class.installed_meta?("core", record.call("core", source: "/tmp/core"), shipped_dir: shipped)).to be(false)

@@ -253,7 +253,7 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect_untouched(up)
       expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
-      expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: missed 1 place (#{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"))
+      expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: missed 1 place (#{Samagotchi::InstalledBundles::FileStanding::FORCE_TAKES})"))
     end
 
     it "conflicts again at the next upgrade" do
@@ -556,7 +556,7 @@ RSpec.describe "Kept edits in a bundle" do
       File.write(old, "old\n")
       File.write(incoming, "new\n")
       provenance.write(files: { "a.md" => old }, scope: "system", version: "1", source_path: "/s",
-                       marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], file_descriptions: { "a.md" => "What a is" })
+                       marks: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md")], file_descriptions: { "a.md" => "What a is" })
 
       provenance.resolve_conflicts("a.md" => { incoming: incoming, current: old })
 
@@ -659,7 +659,7 @@ RSpec.describe "Kept edits in a bundle" do
 
     it "uninstall refuses it without --force, which moves it to the trash" do
       expect { uninstall }.to raise_error(Samagotchi::MemoryBundle::Uninstaller::UninstallError,
-                                          "Uninstall blocked: a.md has local edits (#{Samagotchi::MemoryBundle::FileStanding::FORCE_MOVES})")
+                                          "Uninstall blocked: a.md has local edits (#{Samagotchi::InstalledBundles::FileStanding::FORCE_MOVES})")
       expect(File.read(target)).to eq("edited\n")
 
       uninstall(force: true)
@@ -732,7 +732,7 @@ RSpec.describe "Kept edits in a bundle" do
       run_installer
       File.write(target, "edited\n")
       provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source,
-                       marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")])
+                       marks: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md")])
     end
 
     it "stays a conflict at the next upgrade: no fast-forward over it" do

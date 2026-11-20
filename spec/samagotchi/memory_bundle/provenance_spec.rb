@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       old = make_file(src, "identity.md", "old\n")
       plugin = make_file(src, "plugin.rb", "class Plugin; end\n")
       prov.write(files: { "identity.md" => old }, scope: "system", version: "2.0.0", source_path: "/s",
-                 plugin_file: plugin, marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md")])
+                 plugin_file: plugin, marks: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "identity.md")])
       expect(prov.read[:files][:"identity.md"]).to include(conflict: true)
 
       incoming = make_file(File.join(tmpdir, "incoming"), "identity.md", "new\n")
@@ -54,14 +54,14 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       src = File.join(tmpdir, "src")
       make_file(src, "sub/keep.md", "kept text\n")
       make_file(src, "sub/settled.md", "settled text\n")
-      marks = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/keep.md"),
-               Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/settled.md")]
+      marks = [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "sub/keep.md"),
+               Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "sub/settled.md")]
       prov.write(files: {}, scope: "system", version: "1.0.0", source_path: "/s", marks: marks, incoming_dir: src)
       expect(File.exist?(prov.incoming_path("sub/settled.md"))).to be(true)
 
       # Only one is still behind: the other's saved text goes, with its dir.
       prov.write(files: {}, scope: "system", version: "1.0.1", source_path: "/s",
-                 marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/keep.md")], incoming_dir: src)
+                 marks: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "sub/keep.md")], incoming_dir: src)
       expect(File.exist?(prov.incoming_path("sub/keep.md"))).to be(true)
       expect(File.exist?(prov.incoming_path("sub/settled.md"))).to be(false)
       expect(Dir.exist?(File.join(prov.bundle_dir, "incoming", "sub"))).to be(true)
@@ -174,7 +174,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       original_bytes = File.read(path)
       incoming = make_file(File.join(tmpdir, "incoming"), "a.md", "A2\n")
       error = "manifest.json record_format 2 is newer than supported 1; update chi before writing it"
-      marks = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")]
+      marks = [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md")]
 
       [
         -> { prov.note_merged(["a.md"], version: "1.1", trash: nil) },
@@ -287,12 +287,12 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
                                              installed_by: Samagotchi::VERSION)
     end
 
-    it "links a dev install's manifest.yml to the source, recorded as DEV_SHA" do
+    it "links a dev install's manifest.yml to the source, recorded as Sha::DEV" do
       prov = described_class.new(name: "kept")
       write_kept(prov, dev: true)
       expect(File.symlink?(kept)).to be(true)
       expect(File.readlink(kept)).to eq(File.realpath(File.join(source, "manifest.yml")))
-      expect(prov.read[:manifest_sha]).to eq(described_class::DEV_SHA)
+      expect(prov.read[:manifest_sha]).to eq(Samagotchi::InstalledBundles::Sha::DEV)
     end
 
     it "replaces a dev link with a copy on a plain install, never writing through the link" do
@@ -343,7 +343,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
 
     it "keeps manifest_sha and installed_by through the in-place edits of the record" do
       prov = described_class.new(name: "kept")
-      write_kept(prov, marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], incoming_dir: source)
+      write_kept(prov, marks: [Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md")], incoming_dir: source)
       before = prov.read.slice(:manifest_sha, :installed_by)
       prov.note_merged(["a.md"], version: "1.0.0", trash: nil)
       prov.resolve_conflicts("a.md" => { incoming: File.join(source, "a.md") })
@@ -641,86 +641,6 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       described_class.new(name: "old-hooks").write(files: {}, scope: "system", version: "1.1", source_path: "/src")
       expect(described_class.new(name: "old-hooks").read[:hooks]).to eq({})
       expect(File.exist?(File.join(dir, "bases", "guard.rb"))).to be(false)
-    end
-
-    it "each_installed(holding: :hooks) yields only hook-bearing bundles" do
-      LegacyHooksRecord.legacy_hooks_record("with-hooks", hooks: { "a.rb" => "# a\n" })
-      p2 = described_class.new(name: "without-hooks")
-      p2.write(files: {}, scope: "system", version: "1.0", source_path: "/src")
-      names = []
-      described_class.each_installed(holding: :hooks) { |n, _d| names << n }
-      expect(names).to include("with-hooks")
-      expect(names).not_to include("without-hooks")
-    end
-
-    it "each_installed(holding: :hooks) yields a corrupt manifest as one with error set and keeps going" do
-      FileUtils.mkdir_p(File.join(bundles_dir, "a-broken", "hooks"))
-      File.write(File.join(bundles_dir, "a-broken", "manifest.json"), '{"hooks": {"x.rb": {}}, "hooks": ')
-      FileUtils.mkdir_p(File.join(bundles_dir, "a-broken-nohooks"))
-      File.write(File.join(bundles_dir, "a-broken-nohooks", "manifest.json"), "{")
-      FileUtils.mkdir_p(File.join(bundles_dir, "a-list"))
-      File.write(File.join(bundles_dir, "a-list", "manifest.json"), "[]")
-      LegacyHooksRecord.legacy_hooks_record("b-valid", hooks: { "k.rb" => "# k\n" })
-      seen = described_class.each_installed(holding: :hooks).to_a
-      expect(seen.map(&:first)).to eq(%w[a-broken b-valid])
-      expect(seen.first.last.error).to start_with("manifest.json is unreadable")
-      expect(seen.last.last.hooks).to include("k.rb")
-    end
-
-    it "each_installed with holding: :plugin or :guardrails yield a corrupt manifest (error set) only when the bundle has that dir" do
-      { "a-plug" => "plugin", "b-rules" => "guardrails", "c-plain" => nil }.each do |name, sub|
-        FileUtils.mkdir_p(File.join(bundles_dir, name, *sub))
-        File.write(File.join(bundles_dir, name, "manifest.json"), "{")
-      end
-      FileUtils.mkdir_p(File.join(bundles_dir, "d-list", "plugin"))
-      FileUtils.mkdir_p(File.join(bundles_dir, "d-list", "guardrails"))
-      File.write(File.join(bundles_dir, "d-list", "manifest.json"), "[]")
-      FileUtils.mkdir_p(File.join(bundles_dir, "e-none"))
-      File.write(File.join(bundles_dir, "e-none", "manifest.json"), JSON.generate("plugin" => "x", "guardrails" => {}))
-      FileUtils.mkdir_p(File.join(bundles_dir, "f-nomanifest", "plugin"))
-      File.write(File.join(bundles_dir, "g-both", "manifest.json").tap { |f| FileUtils.mkdir_p(File.dirname(f)) },
-                 JSON.generate("plugin" => { "file" => "p.rb" }, "guardrails" => { "r.yml" => { "sha256" => "sha256:x" } }))
-
-      plugins = described_class.each_installed(holding: :plugin).to_a
-      expect(plugins.map(&:first)).to eq(%w[a-plug g-both])
-      expect(plugins.first.last.error).to start_with("manifest.json is unreadable: ")
-      expect(plugins.last.last.plugin).to eq(Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb"))
-      rules = described_class.each_installed(holding: :guardrails).to_a
-      expect(rules.map(&:first)).to eq(%w[b-rules g-both])
-      expect(rules.first.last).to have_attributes(error: start_with("manifest.json is unreadable: "), version: nil, files: {})
-    end
-
-    it "each_installed yields every bundle by name, a manifest that doesn't parse or isn't an object with error set" do
-      { "a" => "{}", "a-b" => JSON.generate("version" => "1"), "bad" => "{", "list" => "[]" }.each do |name, body|
-        make_file(bundles_dir, "#{name}/manifest.json", body)
-      end
-      FileUtils.mkdir_p(File.join(bundles_dir, "no-manifest"))
-      make_file(bundles_dir, ".hidden/manifest.json", "{}")
-      File.write(File.join(bundles_dir, "samagotchi-system.lock"), "")
-      seen = described_class.each_installed.to_a
-      expect(seen.map(&:first)).to eq(%w[a a-b bad list])
-      expect(seen[1].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.new(name: "a-b", version: "1", dir: File.join(bundles_dir, "a-b")))
-      expect(seen[2].last.error).to start_with("manifest.json is unreadable: ")
-      expect(seen[3].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.unreadable("list", "manifest.json is not an object"))
-    end
-
-    it "matches a file against a recorded sha in either format" do
-      path = make_file(tmpdir, "f.rb", "x\n")
-      hex = Digest::SHA256.hexdigest("x\n")
-      expect([described_class.sha_matches?(path, hex), described_class.sha_matches?(path, "sha256:#{hex}")]).to eq([true, true])
-      expect([described_class.sha_matches?(path, "sha256:0"), described_class.sha_matches?(path, nil)]).to eq([false, false])
-      expect(described_class.recorded_sha(nil)).to eq("")
-    end
-
-    it "each_installed(holding: :hooks) is no-op for empty/absent dir" do
-      FileUtils.rm_rf(bundles_dir)
-      expect { |b| described_class.each_installed(holding: :hooks, &b) }.not_to yield_control
-      expect(described_class.each_installed(holding: :hooks).to_a).to be_empty
-    end
-
-    it "each_installed(holding: :hooks) returns enum when no block" do
-      enum = described_class.each_installed(holding: :hooks)
-      expect(enum).to be_a(Enumerator)
     end
   end
 end

@@ -338,11 +338,11 @@ module Samagotchi
       end
 
       # The installed same-named bundle's record; an unreadable one as
-      # InstalledBundle.unreadable.
+      # InstalledBundles::Record.unreadable.
       def installed_record(name)
         MemoryBundle::Provenance.new(name: name).record
       rescue JSON::ParserError, SystemCallError => e
-        MemoryBundle::InstalledBundle.unreadable(name, "#{e.class}: #{e.message.lines.first&.strip}")
+        InstalledBundles::Record.unreadable(name, "#{e.class}: #{e.message.lines.first&.strip}")
       end
 
       def unreadable_clash(name, error)

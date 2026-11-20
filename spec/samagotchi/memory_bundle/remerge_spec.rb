@@ -241,7 +241,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect_left_alone(remerge(dry_run: true))
       expect(entry).not_to have_key(:why)
       expect_left_alone(remerge)
-      expect(entry).to include(why: Samagotchi::MemoryBundle::FileStanding::NOT_SHIPPED)
+      expect(entry).to include(why: Samagotchi::InstalledBundles::FileStanding::NOT_SHIPPED)
       expect(provenance.record.behind_files.map(&:line)).to eq(["a.md stays behind 2.0.0: not in the bundle now, nothing to merge"])
       expect(remerge).not_to be_work
       expect_left_alone(remerge(dry_run: true))
@@ -307,9 +307,9 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       new_mark
       result = remerge
 
-      expect(result.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: #{Samagotchi::MemoryBundle::FileStanding::WAITS_FOR_UPGRADE}"])
+      expect(result.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: #{Samagotchi::InstalledBundles::FileStanding::WAITS_FOR_UPGRADE}"])
       expect(File.read(target)).to eq(doc)
-      expect(entry).to include(conflict: true, why: Samagotchi::MemoryBundle::FileStanding::WAITS_FOR_UPGRADE)
+      expect(entry).to include(conflict: true, why: Samagotchi::InstalledBundles::FileStanding::WAITS_FOR_UPGRADE)
       expect(trash_files).to be_empty
       expect(remerge).not_to be_work
     end
@@ -318,7 +318,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       marked_at_two(mine: doc, shipped: doc(tail: "tail two"))
       FileUtils.rm_f(target)
 
-      expect(remerge).to have_attributes(merged: [], behind: [], warnings: ["a.md: #{Samagotchi::MemoryBundle::FileStanding::FILE_MISSING}"])
+      expect(remerge).to have_attributes(merged: [], behind: [], warnings: ["a.md: #{Samagotchi::InstalledBundles::FileStanding::FILE_MISSING}"])
       expect(remerge).not_to be_work
       expect(File.exist?(target)).to be false
     end
@@ -347,7 +347,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     let(:user_text) { doc(intro: "my intro") }
     let(:live) { "#{user_text}one more edit\n" }
     let(:shipped) { doc }
-    let(:why) { "chi can't tell whether it holds edits of yours (#{Samagotchi::MemoryBundle::FileStanding::LEGACY_BASE})" }
+    let(:why) { "chi can't tell whether it holds edits of yours (#{Samagotchi::InstalledBundles::FileStanding::LEGACY_BASE})" }
 
     before { allow(Gem).to receive(:path).and_return([]) }
 
@@ -728,7 +728,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   it "stamps only an entry still marked" do
     write_source("1.0.0", doc)
     install
-    provenance.refresh_marks([Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], source)
+    provenance.refresh_marks([Samagotchi::InstalledBundles::FileStanding::Behind.new(file: "a.md")], source)
 
     expect(entry).not_to have_key(:incoming_sha)
   end

@@ -5,7 +5,7 @@ require "uri"
 require "time"
 require_relative "attention"
 require_relative "../../log"
-require_relative "../../memory_bundle/file_standing"
+require_relative "../../installed_bundles/file_standing"
 
 module Samagotchi
   module Web
@@ -82,7 +82,7 @@ module Samagotchi
 
         # " Merged the update into 1 file you edited. 2 files stay behind." ("" for none).
         def self.file_words(notes)
-          words = MemoryBundle::FileStanding.counts_sentence(merged: notes[:merged].to_i, behind: notes[:kept].to_i)
+          words = InstalledBundles::FileStanding.counts_sentence(merged: notes[:merged].to_i, behind: notes[:kept].to_i)
           words.empty? ? "" : " #{words}"
         end
 

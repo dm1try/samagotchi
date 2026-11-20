@@ -3,12 +3,11 @@
 require "rbconfig"
 require "shellwords"
 
+require_relative "installed_bundles"
+
 module Samagotchi
   autoload :ContextSources, File.expand_path("context_sources", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
-  module MemoryBundle
-    autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
-  end
 
   # Declarative context providers (attached context, §3.9): a bundle's
   # manifest maps a URL pattern to a source, so any process (the CLI, the
@@ -90,7 +89,7 @@ module Samagotchi
     # @raise [Invalid] the provider makes a name that isn't a source name
     def resolve(url)
       url = url.to_s.strip
-      MemoryBundle::Provenance.each_installed do |bundle, record|
+      InstalledBundles.each do |bundle, record|
         next if record.error? || too_new?(bundle, record.manifest)
 
         providers(bundle, record.manifest).each do |provider|
@@ -103,7 +102,7 @@ module Samagotchi
 
     # Whether an installed bundle declares a provider (the web's "+ URL").
     def any?
-      MemoryBundle::Provenance.each_installed.any? do |bundle, record|
+      InstalledBundles.each.any? do |bundle, record|
         !record.error? && !too_new?(bundle, record.manifest) && record.manifest.context_providers?
       end
     end
@@ -155,7 +154,7 @@ module Samagotchi
     def command_for(source)
       return source.cmd unless source.provider
 
-      provenance = MemoryBundle::Provenance.new(name: source.provider)
+      provenance = InstalledBundles::Dir.new(name: source.provider)
       record = provenance.record
       raise Invalid, "bundle #{source.provider} isn't installed" unless record
 

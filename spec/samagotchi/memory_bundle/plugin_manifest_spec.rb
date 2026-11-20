@@ -292,7 +292,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
 
     it "lists it among the installed bundles with a plugin" do
       install(write_source)
-      expect(Samagotchi::MemoryBundle::Provenance.each_installed(holding: :plugin).to_a.map(&:first)).to eq(["plug"])
+      expect(Samagotchi::InstalledBundles.each(holding: :plugin).to_a.map(&:first)).to eq(["plug"])
     end
 
     it "is removed with the bundle" do

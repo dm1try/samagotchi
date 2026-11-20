@@ -436,7 +436,7 @@ RSpec.describe "chi bundle (CLI)" do
       out, err, code = chi("install", src)
       expect([err, code]).to eq(["", 0])
       expect(out).to eq(["Skipped: identity.md\n" \
-                         "Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})\n" \
+                         "Skipped identity.md (already exists; #{Samagotchi::InstalledBundles::FileStanding::FORCE_TAKES})\n" \
                          "#{rewritten}; your own copies of its memories were kept " \
                          "(chi bundle upgrade sample-memory-bundle merges the bundle's changes into them)\n" \
                          "#{provenance_line("sample-memory-bundle")}"].join(""))
@@ -965,7 +965,7 @@ Removed: hooks/guardrails.rb\n\z})
       with_sandbox_env do
         expect(record("sample-plugin")).to have_attributes(dev: true, source: File.realpath(@plugin_src))
         expect(Samagotchi::Plugin::Loader.sha_mismatch(plugin, record("sample-plugin").plugin.sha256)).to be_nil
-        expect(Samagotchi::MemoryBundle::Provenance.sha_matches?(plugin, record("sample-plugin").plugin.sha256)).to be(true)
+        expect(Samagotchi::InstalledBundles::Sha.matches?(plugin, record("sample-plugin").plugin.sha256)).to be(true)
       end
     end
 

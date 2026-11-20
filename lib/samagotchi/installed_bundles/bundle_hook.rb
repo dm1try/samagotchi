@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  module MemoryBundle
+  module InstalledBundles
     # One class-file hook's sha256 in an older chi's installed record; its
     # other fields are ignored now that class-file hooks are retired.
     BundleHook = Data.define(:sha256) do

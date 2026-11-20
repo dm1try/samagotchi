@@ -537,13 +537,13 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/host_registry.rb
     - lib/samagotchi/idle_recap.rb
     - lib/samagotchi/image_store.rb
+    - lib/samagotchi/installed_bundles/manifest.rb
     - lib/samagotchi/llm_context_strategy.rb
     - lib/samagotchi/llm/chat_loop.rb
     - lib/samagotchi/llm/http.rb
     - lib/samagotchi/llm/model_listing.rb
     - lib/samagotchi/llm/openai_chat.rb
     - lib/samagotchi/log_subscriber.rb
-    - lib/samagotchi/memory_bundle/installed_manifest.rb
     - lib/samagotchi/memory_bundle/provenance.rb
     - lib/samagotchi/memory_bundle/shipped_history.rb
     - lib/samagotchi/memory_bundle/system_bundle.rb

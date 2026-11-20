@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require_relative "file_digest"
-require_relative "installed_bundle"
+require_relative "../installed_bundles/file_digest"
+require_relative "../installed_bundles/record"
 require_relative "provenance"
 
 module Samagotchi
@@ -41,7 +41,7 @@ module Samagotchi
     # from #edited? alone.
     #
     # mark: :none, :current (a mark this chi wrote) or :legacy (an older
-    # chi's, InstalledBundle.legacy_mark?).
+    # chi's, InstalledBundles::Record.legacy_mark?).
     FileState = Data.define(:key, :kind, :mark, :digests, :entry, :paths, :claimants) do
       # Provenance.unchanged?'s answer negated: the one edited rule (checksum
       # first, then the base). A file it can't read counts as edited.
@@ -63,7 +63,7 @@ module Samagotchi
       end
 
       # The other installed bundles that list the file too. Asked lazily: only
-      # a dropped file and an uninstall need it (Provenance.claimants reads
+      # a dropped file and an uninstall need it (InstalledBundles.claimants reads
       # every record).
       def shared_with = claimants.call
     end
@@ -75,12 +75,12 @@ module Samagotchi
     FileState::Digests = Data.define(:disk, :base, :incoming, :recorded, :marked_incoming)
 
     class << FileState
-      # @param record [InstalledBundle, nil] the bundle's record
+      # @param record [InstalledBundles::Record, nil] the bundle's record
       # @param provenance [Provenance] the record's (for the base path)
       # @param source_dir [String, nil] the bundle's incoming dir; nil: the
       #   source-less kinds
       # @param claimants [#call, nil] key => other bundles listing it
-      #   (Provenance.claimants), called at most once
+      #   (InstalledBundles.claimants), called at most once
       # @param shipped [Boolean] false: the bundle no longer ships the key
       #   (a dropped kind), whatever its source dir holds by that name
       # @return [FileState]
@@ -92,7 +92,7 @@ module Samagotchi
         mark = mark_of(entry)
         digests = FileState::Digests.new(
           disk: digest(paths[:current]), base: entry ? digest(paths[:base]) : nil,
-          incoming: source_dir && shipped ? digest(paths[:incoming]) : nil, recorded: entry && Provenance.recorded_sha(entry[:checksum]),
+          incoming: source_dir && shipped ? digest(paths[:incoming]) : nil, recorded: entry && InstalledBundles::Sha.recorded(entry[:checksum]),
           marked_incoming: mark == :none ? nil : entry[:incoming_sha]
         )
         if !pending.empty? && pending.include?(digests.disk)
@@ -112,11 +112,11 @@ module Samagotchi
       def mark_of(entry)
         return :none unless entry && entry[:conflict]
 
-        InstalledBundle.legacy_mark?(entry) ? :legacy : :current
+        InstalledBundles::Record.legacy_mark?(entry) ? :legacy : :current
       end
 
       def digest(path)
-        FileDigest.hex(path)
+        InstalledBundles::FileDigest.hex(path)
       rescue SystemCallError
         :unreadable
       end

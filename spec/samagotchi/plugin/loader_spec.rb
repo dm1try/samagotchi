@@ -434,7 +434,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
     it "is nil for the recorded sha, bare or prefixed, and for a dev install's" do
       expect(described_class.sha_mismatch(file, sha)).to be_nil
       expect(described_class.sha_mismatch(file, "sha256:#{sha}")).to be_nil
-      expect(described_class.sha_mismatch(file, Samagotchi::MemoryBundle::Provenance::DEV_SHA)).to be_nil
+      expect(described_class.sha_mismatch(file, Samagotchi::InstalledBundles::Sha::DEV)).to be_nil
     end
 
     it "says the file changed since install, or that no sha was recorded" do
