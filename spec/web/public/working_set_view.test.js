@@ -533,7 +533,7 @@ test("a footprint opens the turn lens: the list is the session's, the turn's row
   try {
     v.foots[1].click();
     assert.ok(v.ws.isOpen());
-    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["a.rb", "b.rb", "c.rb"], "always the session's list");
+    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["b.rb", "c.rb", "a.rb"], "always the session's list, last touched first: the lens keeps its order");
     assert.deepEqual(v.lit(), ["b.rb", "c.rb"]);
     assert.deepEqual(v.dim(), ["a.rb"]);
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
@@ -542,12 +542,56 @@ test("a footprint opens the turn lens: the list is the session's, the turn's row
     assert.equal(b.querySelector(".ws-step").textContent, "s2");
     assert.equal(b.querySelector(".ws-step").dataset.at, "1.1.0");
     assert.match(b.querySelector(".st").textContent, /edited/);
-    assert.equal(v.rows()[0].querySelector(".ws-step").textContent, "t1·s1", "an untouched row keeps the session's own tag");
-    // The session lens: no lit, no dim, no line.
+    assert.equal(b.querySelector(".ws-step").title, "entered at step 2: go to the call");
+    const a = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/a.rb");
+    assert.equal(a.querySelector(".ws-step").textContent, "t1·s1", "an untouched row keeps the session's own tag");
+    assert.equal(a.querySelector(".ws-step").title, "last touched at turn 1 (first), step 1: go to the call");
+    // The session lens: no lit, no dim, no line; b.rb's tag is its last touch (turn 2's edit), not its first read.
     v.lensBtn("session").click();
     assert.deepEqual([v.lit(), v.dim()], [[], []]);
     assert.ok(v.pop.querySelector(".ws-lens-line") === null);
-    assert.equal(v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb").querySelector(".ws-step").textContent, "t1·s1");
+    const bTag = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb").querySelector(".ws-step");
+    assert.equal(bTag.textContent, "t2·s2");
+    assert.equal(bTag.dataset.at, "1.1.0", "its jump goes to the last touch");
+    assert.equal(bTag.title, "last touched at turn 2 (second), step 2: go to the call");
+  } finally { v.done(); }
+});
+
+test("the list holds still while open: a new item lands on top, a row touched again stays; the next open takes the order again", () => {
+  const v = lensView();
+  try {
+    const names = () => v.rows().map((r) => r.querySelector(".t").textContent);
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(names(), ["b.rb", "c.rb", "a.rb"], "last touched first");
+    // The running turn reads a.rb again and d.rb for the first time.
+    v.ws.liveItems({ gens: [{ tools: [v.okRead("lib/a.rb"), v.okRead("lib/d.rb")] }] });
+    assert.deepEqual(names(), ["d.rb", "b.rb", "c.rb", "a.rb"], "the new row on top, the drawn rows where they were");
+    // The list's own lens buttons keep the held order.
+    v.lensBtn("turn").click();
+    assert.deepEqual(names(), ["d.rb", "b.rb", "c.rb", "a.rb"]);
+    assert.deepEqual(v.lit(), ["d.rb", "a.rb"]);
+    v.lensBtn("session").click();
+    assert.equal(v.rows().find((r) => r.dataset.wsId === "file:/p/lib/a.rb").querySelector(".ws-step").textContent, "t3·s1", "its tag is the new touch");
+    // A footprint while open opens it again: the order is taken again.
+    v.foots[0].click();
+    assert.deepEqual(names(), ["d.rb", "a.rb", "b.rb", "c.rb"]);
+    v.ws.popover.close();
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(names(), ["d.rb", "a.rb", "b.rb", "c.rb"]);
+    // The reader's list (items()) keeps the set's entry order; so do the footprints.
+    assert.deepEqual(v.ws.items().map((i) => i.label), ["a.rb", "b.rb", "c.rb", "d.rb"]);
+    assert.deepEqual([...v.foots[1].querySelectorAll(".l")].map((l) => l.textContent), ["c.rb", "b.rb"]);
+  } finally { v.done(); }
+});
+
+test("no parts: the list is ordered the same way; preloaded and used memories (no place) go last among the memories", () => {
+  const v = lensView({
+    state: { preloadedMemories: ["pre"], usedMemories: ["old"] },
+    turn1: { gens: [{ tools: [{ tool: "memory_read", title: "style", status: "ok" }] }] },
+  });
+  try {
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["b.rb", "a.rb", "style", "pre", "old"]);
   } finally { v.done(); }
 });
 
@@ -556,7 +600,7 @@ test("‹ › step through the turns, disabled at the ends; the turn button take
   try {
     v.foots[0].click();
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 1 touched 2 · 2 new");
-    assert.deepEqual(v.lit(), ["a.rb", "b.rb"]);
+    assert.deepEqual(v.lit(), ["b.rb", "a.rb"], "lit where they stand in the last-touched order");
     assert.equal(v.lensBtn("prev").disabled, true);
     assert.equal(v.lensBtn("next").disabled, false);
     v.lensBtn("next").click();
@@ -765,7 +809,7 @@ test("the head view: three sections in order, the parts first with their tokens,
     // identity: its own memory row (the set has none); the note: the set's row, once in the whole list.
     assert.ok(v.sec("start").querySelector('.ws-row.memory[data-ws-id="memory:identity"]'));
     assert.equal(v.pop.querySelectorAll('[data-ws-id="memory:model_notes_style"]').length, 1);
-    assert.deepEqual(v.names("read"), ["a.rb", "c.rb"]);
+    assert.deepEqual(v.names("read"), ["c.rb", "a.rb"], "last touched first");
     assert.match(v.sec("read").querySelector(".ws-sec-head .n").textContent, /^2 held$/);
     // Conversation: 20000 − 12700 (parts) − 1500 (files) − 400 (the note's read).
     assert.equal(v.sec("talk").children.length, 1, "one element: the row, no header");

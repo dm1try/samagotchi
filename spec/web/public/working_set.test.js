@@ -86,6 +86,35 @@ test("sessionItems: turns merged with the first entry kept; preloaded first (pro
   assert.deepEqual(t0[0].ops, ["read"]);
 });
 
+test("itemsOfTurn: last is the item's newest touch in the turn; at stays the first", () => {
+  const turn = turnOf(
+    [file("lib/a.rb"), memory("m1")],
+    [file("lib/b.rb"), file("lib/a.rb", "edit")],
+  );
+  const items = itemsOfTurn(turn, 2);
+  assert.deepEqual(items.map((i) => [i.key, i.at, i.last]), [
+    ["lib/a.rb", { turn: 2, step: 0, row: 0 }, { turn: 2, step: 1, row: 1 }],
+    ["m1", { turn: 2, step: 0, row: 1 }, { turn: 2, step: 0, row: 1 }],
+    ["lib/b.rb", { turn: 2, step: 1, row: 0 }, { turn: 2, step: 1, row: 0 }],
+  ]);
+});
+
+test("sessionItems: last is the latest turn's (the live turn's last), at the first entry's; a preloaded memory read takes its read's", () => {
+  const t0 = itemsOfTurn(turnOf([file("lib/a.rb")], [file("lib/a.rb", "edit")]), 0);
+  const t1 = itemsOfTurn(turnOf([file("lib/b.rb")]), 1);
+  const live = itemsOfTurn(turnOf([memory("pre")], [file("lib/a.rb")]), 2);
+  const { items } = sessionItems({ turns: [t0, t1], live, preloaded: ["pre"] });
+  assert.deepEqual(items.map((i) => [i.key, i.at, i.last]), [
+    ["pre", { turn: 2, step: 0, row: 0 }, { turn: 2, step: 0, row: 0 }],
+    ["lib/a.rb", { turn: 0, step: 0, row: 0 }, { turn: 2, step: 1, row: 0 }],
+    ["lib/b.rb", { turn: 1, step: 0, row: 0 }, { turn: 1, step: 0, row: 0 }],
+  ]);
+  assert.deepEqual(t0[0].last, { turn: 0, step: 1, row: 0 }, "the turn lists are left as they were");
+  // An older page's turn items (no last): none, the at stays.
+  const old = [{ kind: "file", key: "lib/c.rb", label: "c.rb", ops: ["read"], at: { turn: 0, step: 0, row: 0 }, count: 1, state: "live" }];
+  assert.equal(sessionItems({ turns: [old] }).items[0].last, undefined);
+});
+
 test("sessionItems: notes are prompt rows, merged with preload and reads", () => {
   const turns = itemsOfTurn(turnOf([memory("note"), memory("used")]), 0);
   const { items } = sessionItems({
