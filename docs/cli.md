@@ -1409,10 +1409,13 @@ session bar shows the `mem N` chip again.
   (`--mute`) memories included; its dot lights when the set changed since you
   last opened it.
 - **The list** the three open (a bottom sheet on a phone): always the whole
-  session's set, files grouped by folder (a group opens in place), memories
+  session's set, last touched first, files grouped by folder (a group opens in place), memories
   (used, preloaded, muted) and URLs, each with what was done to it (`read ×2`,
-  `read, edited`, `preloaded`) and a step tag (`t2·s3`, `prompt` for a preloaded
-  memory) that goes to the call. The header's `session | ‹ turn N ›` is a lens:
+  `read, edited`, `preloaded`) and a step tag (`t2·s3`: where it was last touched; `prompt` for a preloaded
+  memory) that goes to that call. The order is taken when the list opens and holds while it is open: what chi
+  touches meanwhile comes in on top, the other rows stay put. With the session's prompt parts known, "Read in
+  this session" comes first, then the conversation's row, then "From the start" (the system prompt's parts),
+  folded to one line (with its `held twice` count) until you open it; a fold you set is kept for the session. The header's `session | ‹ turn N ›` is a lens:
   the chip opens the session, a footprint or the rail opens a turn, and `‹` `›`
   step through the turns. In a turn's lens the rows that turn touched are lit,
   with that turn's words and step tag (`s3`), the others dimmed; the line under

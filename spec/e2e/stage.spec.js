@@ -924,22 +924,24 @@ test.describe("the working set", () => {
       await pop.locator('[data-lens="session"]').click();
       await expect(pop.locator(".ws-row.lit, .ws-row.dim")).toHaveCount(0);
       await expect(pop.locator(".ws-lens-line")).toHaveCount(0);
-      // The head view (the worker's prompt_parts): the prompt's parts first, the tools part leading; the reads after.
+      // The head view (the worker's prompt_parts): the reads first, the prompt's parts last, folded until opened
+      // (nothing stored for the session), the tools part leading them.
       // (No Conversation row: the fake's usage counts fewer tokens than the parts hold.)
-      await expect(pop.locator(".ws-sec-head .t")).toHaveText(["From the start", "Read in this session"]);
+      await expect(pop.locator(".ws-sec-head .t")).toHaveText(["Read in this session", "From the start"]);
       const tools = pop.locator('.ws-sec.start .ws-row.part[data-ws-part^="tools"]');
-      await expect(tools.locator(".st")).toHaveText(/^\d+ declared$/);
-      await expect(pop.locator(".ws-sec.read .ws-row.file", { hasText: "README.md" })).toBeVisible();
-      await expect(pop.locator(".ws-head-line")).toHaveText(/^in chi's head now · ~\d/);
-      // Folded, a section shows only the rows the lens lights: none in the session lens; kept on reopening.
-      await pop.locator(".ws-sec.start .ws-sec-head").click();
-      await expect(tools).toHaveCount(0);
-      await pop.locator(".ctx-pop-close").click();
-      await page.locator("#infoText .ws-chip").click();
       await expect(pop.locator(".ws-sec.start .ws-sec-head")).toHaveAttribute("aria-expanded", "false");
       await expect(tools).toHaveCount(0);
+      await expect(pop.locator(".ws-sec.read .ws-row.file", { hasText: "README.md" })).toBeVisible();
+      await expect(pop.locator(".ws-head-line")).toHaveText(/^in chi's head now · ~\d/);
+      // Opened by hand, kept on reopening; folded again, it shows only the rows the lens lights: none in the session lens.
       await pop.locator(".ws-sec.start .ws-sec-head").click();
+      await expect(tools.locator(".st")).toHaveText(/^\d+ declared$/);
+      await pop.locator(".ctx-pop-close").click();
+      await page.locator("#infoText .ws-chip").click();
+      await expect(pop.locator(".ws-sec.start .ws-sec-head")).toHaveAttribute("aria-expanded", "true");
       await expect(tools).toBeVisible();
+      await pop.locator(".ws-sec.start .ws-sec-head").click();
+      await expect(tools).toHaveCount(0);
     } finally {
       fs.rmSync(note, { force: true });
     }

@@ -533,7 +533,7 @@ test("a footprint opens the turn lens: the list is the session's, the turn's row
   try {
     v.foots[1].click();
     assert.ok(v.ws.isOpen());
-    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["a.rb", "b.rb", "c.rb"], "always the session's list");
+    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["b.rb", "c.rb", "a.rb"], "always the session's list, last touched first: the lens keeps its order");
     assert.deepEqual(v.lit(), ["b.rb", "c.rb"]);
     assert.deepEqual(v.dim(), ["a.rb"]);
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 2 touched 2 · 1 new");
@@ -542,12 +542,56 @@ test("a footprint opens the turn lens: the list is the session's, the turn's row
     assert.equal(b.querySelector(".ws-step").textContent, "s2");
     assert.equal(b.querySelector(".ws-step").dataset.at, "1.1.0");
     assert.match(b.querySelector(".st").textContent, /edited/);
-    assert.equal(v.rows()[0].querySelector(".ws-step").textContent, "t1·s1", "an untouched row keeps the session's own tag");
-    // The session lens: no lit, no dim, no line.
+    assert.equal(b.querySelector(".ws-step").title, "entered at step 2: go to the call");
+    const a = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/a.rb");
+    assert.equal(a.querySelector(".ws-step").textContent, "t1·s1", "an untouched row keeps the session's own tag");
+    assert.equal(a.querySelector(".ws-step").title, "last touched at turn 1 (first), step 1: go to the call");
+    // The session lens: no lit, no dim, no line; b.rb's tag is its last touch (turn 2's edit), not its first read.
     v.lensBtn("session").click();
     assert.deepEqual([v.lit(), v.dim()], [[], []]);
     assert.ok(v.pop.querySelector(".ws-lens-line") === null);
-    assert.equal(v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb").querySelector(".ws-step").textContent, "t1·s1");
+    const bTag = v.rows().find((r) => r.dataset.wsId === "file:/p/lib/b.rb").querySelector(".ws-step");
+    assert.equal(bTag.textContent, "t2·s2");
+    assert.equal(bTag.dataset.at, "1.1.0", "its jump goes to the last touch");
+    assert.equal(bTag.title, "last touched at turn 2 (second), step 2: go to the call");
+  } finally { v.done(); }
+});
+
+test("the list holds still while open: a new item lands on top, a row touched again stays; the next open takes the order again", () => {
+  const v = lensView();
+  try {
+    const names = () => v.rows().map((r) => r.querySelector(".t").textContent);
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(names(), ["b.rb", "c.rb", "a.rb"], "last touched first");
+    // The running turn reads a.rb again and d.rb for the first time.
+    v.ws.liveItems({ gens: [{ tools: [v.okRead("lib/a.rb"), v.okRead("lib/d.rb")] }] });
+    assert.deepEqual(names(), ["d.rb", "b.rb", "c.rb", "a.rb"], "the new row on top, the drawn rows where they were");
+    // The list's own lens buttons keep the held order.
+    v.lensBtn("turn").click();
+    assert.deepEqual(names(), ["d.rb", "b.rb", "c.rb", "a.rb"]);
+    assert.deepEqual(v.lit(), ["d.rb", "a.rb"]);
+    v.lensBtn("session").click();
+    assert.equal(v.rows().find((r) => r.dataset.wsId === "file:/p/lib/a.rb").querySelector(".ws-step").textContent, "t3·s1", "its tag is the new touch");
+    // A footprint while open opens it again: the order is taken again.
+    v.foots[0].click();
+    assert.deepEqual(names(), ["d.rb", "a.rb", "b.rb", "c.rb"]);
+    v.ws.popover.close();
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(names(), ["d.rb", "a.rb", "b.rb", "c.rb"]);
+    // The reader's list (items()) keeps the set's entry order; so do the footprints.
+    assert.deepEqual(v.ws.items().map((i) => i.label), ["a.rb", "b.rb", "c.rb", "d.rb"]);
+    assert.deepEqual([...v.foots[1].querySelectorAll(".l")].map((l) => l.textContent), ["c.rb", "b.rb"]);
+  } finally { v.done(); }
+});
+
+test("no parts: the list is ordered the same way; preloaded and used memories (no place) go last among the memories", () => {
+  const v = lensView({
+    state: { preloadedMemories: ["pre"], usedMemories: ["old"] },
+    turn1: { gens: [{ tools: [{ tool: "memory_read", title: "style", status: "ok" }] }] },
+  });
+  try {
+    v.infoEl.querySelector(".ws-chip").click();
+    assert.deepEqual(v.rows().map((r) => r.querySelector(".t").textContent), ["b.rb", "a.rb", "style", "pre", "old"]);
   } finally { v.done(); }
 });
 
@@ -556,7 +600,7 @@ test("‹ › step through the turns, disabled at the ends; the turn button take
   try {
     v.foots[0].click();
     assert.equal(v.pop.querySelector(".ws-lens-line").textContent, "turn 1 touched 2 · 2 new");
-    assert.deepEqual(v.lit(), ["a.rb", "b.rb"]);
+    assert.deepEqual(v.lit(), ["b.rb", "a.rb"], "lit where they stand in the last-touched order");
     assert.equal(v.lensBtn("prev").disabled, true);
     assert.equal(v.lensBtn("next").disabled, false);
     v.lensBtn("next").click();
@@ -751,11 +795,20 @@ function headView({ parts = PARTS, ctxTokens = 20000, ctxWindow = 128000, sessio
   return { ws, pop, current, open, heads, sec, names, foots, done, setSession: (s) => { id = s; } };
 }
 
-test("the head view: three sections in order, the parts first with their tokens, read-only; the read section without the prompt's memories", () => {
+test("the head view: read, conversation, start; start folded by default with its held-twice count; its parts in prompt order, read-only", () => {
   const v = headView();
   try {
     v.open();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"], "Conversation is a row, not a section header");
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"], "Conversation is a row, not a section header");
+    assert.deepEqual([...v.pop.querySelectorAll(".ws-sec")].map((el) => el.classList[1]), ["read", "talk", "start"]);
+    const startHead = v.sec("start").querySelector(".ws-sec-head");
+    assert.equal(startHead.getAttribute("aria-expanded"), "false", "nothing stored: start folded");
+    assert.deepEqual(v.names("start"), []);
+    assert.equal(startHead.querySelector(".n").textContent, "5 parts · in every turn");
+    assert.equal(startHead.querySelector(".w").textContent, "· 1 held twice", "its own span: the meta's ellipsis cuts the meta first");
+    assert.ok(localStorage.getItem("chi_ws_sections_folded:h1") === null, "the default is not written");
+    startHead.click();
+    assert.equal(v.sec("start").querySelector(".ws-sec-head .w").textContent, "· 1 held twice", "open, the count stays");
     assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
     const tools = v.sec("start").querySelector('.ws-row.part[data-ws-part^="tools"]');
     assert.equal(tools.querySelector(".st").textContent, "31 declared");
@@ -765,7 +818,7 @@ test("the head view: three sections in order, the parts first with their tokens,
     // identity: its own memory row (the set has none); the note: the set's row, once in the whole list.
     assert.ok(v.sec("start").querySelector('.ws-row.memory[data-ws-id="memory:identity"]'));
     assert.equal(v.pop.querySelectorAll('[data-ws-id="memory:model_notes_style"]').length, 1);
-    assert.deepEqual(v.names("read"), ["a.rb", "c.rb"]);
+    assert.deepEqual(v.names("read"), ["c.rb", "a.rb"], "last touched first");
     assert.match(v.sec("read").querySelector(".ws-sec-head .n").textContent, /^2 held$/);
     // Conversation: 20000 − 12700 (parts) − 1500 (files) − 400 (the note's read).
     assert.equal(v.sec("talk").children.length, 1, "one element: the row, no header");
@@ -829,6 +882,7 @@ test("the size line: the session lens without the context's tokens (or without p
 test("held twice: the session lens tags the re-read prompt memory, its tokens the part's + the read's; the turn that read it gets the note", () => {
   const v = headView();
   try {
+    localStorage.setItem("chi_ws_sections_folded:h1", "[]");
     v.open();
     const note = () => v.sec("start").querySelector('[data-ws-id="memory:model_notes_style"]');
     assert.equal(note().querySelector(".ws-twice").textContent, "held twice");
@@ -853,13 +907,13 @@ test("held twice: the session lens tags the re-read prompt memory, its tokens th
   } finally { v.done(); }
 });
 
-test("section folds: per session; folded, a section shows only the rows the lens lights", () => {
+test("section folds: per session, start folded until set by hand; folded, a section shows only the rows the lens lights", () => {
   const v = headView();
   try {
     v.open();
-    v.sec("start").querySelector(".ws-sec-head").click();
     assert.equal(v.sec("start").querySelector(".ws-sec-head").getAttribute("aria-expanded"), "false");
     assert.deepEqual(v.names("start"), [], "folded, the session lens lights nothing");
+    assert.equal(v.sec("read").querySelector(".ws-sec-head").getAttribute("aria-expanded"), "true");
     v.sec("read").querySelector(".ws-sec-head").click();
     assert.deepEqual(v.names("read"), []);
     // Turn 2's lens: the folded start shows the note it read, the folded read its c.rb.
@@ -868,7 +922,7 @@ test("section folds: per session; folded, a section shows only the rows the lens
     assert.deepEqual(v.names("start"), ["model_notes_style"]);
     assert.equal(v.sec("start").querySelector(".ws-note").textContent, "read again in this turn: already in the prompt, held twice (+400)");
     assert.deepEqual(v.names("read"), ["c.rb"]);
-    // Kept for this session; another session's list opens unfolded.
+    // Kept for this session; another session's list opens on the default (start folded, read open).
     v.ws.popover.close();
     v.open();
     assert.deepEqual(v.names("start"), []);
@@ -876,13 +930,19 @@ test("section folds: per session; folded, a section shows only the rows the lens
     v.ws.popover.close();
     v.setSession("h2");
     v.open();
-    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"]);
-    // Opened again: the key's list loses it.
+    assert.deepEqual(v.names("start"), []);
+    assert.deepEqual(v.names("read"), ["c.rb", "a.rb"]);
+    // Opened by hand: the key's list loses it, and an empty list stays open.
     v.setSession("h1");
     v.ws.popover.close();
     v.open();
     v.sec("start").querySelector(".ws-sec-head").click();
     assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), '["read"]');
+    v.sec("read").querySelector(".ws-sec-head").click();
+    assert.equal(localStorage.getItem("chi_ws_sections_folded:h1"), "[]");
+    v.ws.popover.close();
+    v.open();
+    assert.deepEqual(v.names("start"), ["tools", "base prompt", "identity", "model_notes_style", "AGENTS.md"], "a stored [] is not the default");
   } finally { v.done(); }
 });
 
@@ -912,7 +972,7 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     // Parts come (a turn end's re-read), still no context tokens: the sections, no line, no Conversation.
     v.current.promptParts = PARTS;
     v.ws.sessionChanged();
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"]);
     v.pop.querySelector('[data-ws="lens"][data-lens="session"]').click();
     assert.ok(v.pop.querySelector(".ws-head-line") === null);
     // The tokens come: the line, no window: no "of Y".
@@ -920,7 +980,7 @@ test("no parts (an old session or worker): today's list, the lens unchanged; no 
     v.current.ctxWindow = null;
     v.ws.sessionChanged();
     assert.equal(v.pop.querySelector(".ws-head-line").textContent, "in chi's head now · ~30k");
-    assert.deepEqual(v.heads(), ["From the start", "Read in this session"]);
+    assert.deepEqual(v.heads(), ["Read in this session", "From the start"]);
     assert.equal(v.sec("talk").querySelector(".ws-row.talk .tk").textContent, "~15k");
   } finally { v.done(); }
 });

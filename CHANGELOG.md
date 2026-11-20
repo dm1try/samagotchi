@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
 - In the web, the working set's peek and reader say an item read in the step still running shows once that step's
   tools finish, rather than "Nothing of it in the conversation yet".
 - `chi bundle status NAME` reports a rule or script with no recorded sha256 as `[unrecorded]`, not `[modified]`.
+- The web's working-set list opens on what chi touched last: "Read in this session" first, newest first (a row's
+  step tag is its last touch), the conversation's row, then "From the start", folded to one line with its
+  `held twice` count. Rows don't move while the list is open; new ones come in on top.
 
 ### Fixed
 
