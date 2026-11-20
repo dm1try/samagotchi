@@ -105,8 +105,9 @@ RSpec.describe Samagotchi::ContextFetch do
 
     expect { fetch(attached, cancelled: interrupt) }.to raise_error(Interrupt)
 
-    # kill(0) still finds a zombie: sh gone means it was reaped too.
-    expect(alive?(File.read(sh_file).to_i)).to be(false)
+    # kill(0) still finds a zombie: sh gone means it was reaped too (a
+    # bounded wait: the reap can trail the stop for a moment).
+    expect(gone_soon?(File.read(sh_file).to_i)).to be(true)
     wait_for("the child to be stopped") { !alive?(File.read(child_file).to_i) }
   end
 
@@ -119,7 +120,7 @@ RSpec.describe Samagotchi::ContextFetch do
 
     join!(thread.kill, "the killed fetch")
 
-    expect(alive?(File.read(sh_file).to_i)).to be(false)
+    expect(gone_soon?(File.read(sh_file).to_i)).to be(true)
     wait_for("the child to be stopped") { !alive?(File.read(child_file).to_i) }
   end
 

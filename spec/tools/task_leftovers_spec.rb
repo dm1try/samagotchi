@@ -86,7 +86,7 @@ RSpec.describe "a background task's leftover processes" do
     expect(runtime.settle_pending!(timeout: 5)).to eq([])
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4)
     expect(runtime.load_record(record.id)).to have_attributes(status: "completed", leftovers: "stopped")
-    expect(Samagotchi::ProcessGroup.group_alive?(record.pid)).to be(false)
+    expect(gone_soon?(record.pid, group: true)).to be(true)
     expect(gone?(pid)).to be(true)
   end
 

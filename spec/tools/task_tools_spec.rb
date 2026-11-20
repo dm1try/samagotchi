@@ -370,7 +370,7 @@ RSpec.describe "task tools" do
 
         expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
         expect(described_class.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
-        expect(Samagotchi::ProcessGroup.alive?(record.pid)).to be(false)
+        expect(gone_soon?(record.pid)).to be(true)
       end
 
       it "stops a leftover group (the shell gone, a child holding the log) by the root's log" do
@@ -383,7 +383,7 @@ RSpec.describe "task tools" do
         from_elsewhere { stopped, = described_class.stop_task(record.id, by: "user") }
 
         expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
-        expect(Samagotchi::ProcessGroup.group_alive?(record.pid)).to be(false)
+        expect(gone_soon?(record.pid, group: true)).to be(true)
       end
 
       it "takes a nil or empty root as none: the cwd's relative paths" do
@@ -935,7 +935,7 @@ RSpec.describe "task tools" do
 
       stopped, = runtime.stop_task(id, by: "user")
       expect(stopped).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
-      expect(Samagotchi::ProcessGroup.alive?(pid)).to be(false)
+      expect(gone_soon?(pid)).to be(true)
     end
 
     it "ends as the command did, from its exit_code file" do
