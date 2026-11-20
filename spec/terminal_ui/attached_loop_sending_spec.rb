@@ -215,6 +215,23 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
                                   "note from cli: #{"y" * 59}…"])
     end
 
+    it "shows a peer's answer note as who answered and its summary" do
+      peer = { "peer" => "claude", "label" => "Claude", "summary" => "CHANGES: fix the spec\nmore" }
+      feed({ type: :context_added, label: "context claude-outbox", text: "Updated: x", peer: peer },
+           { type: :context_added, label: "context claude-outbox", text: "Updated: y", peer: { "label" => "Claude" } })
+
+      expect(screen.lines).to eq(["Claude answered \u00b7 CHANGES: fix the spec",
+                                  "note from context claude-outbox: Updated: y"])
+    end
+
+    it "shows a replayed peer answer note the same way" do
+      peer = { "peer" => "codex", "label" => "Codex", "summary" => "OK" }
+      answer = Samagotchi::ContextNote.message(note_id: "n2", text: "Updated: z", source: "context codex-outbox", peer: peer)
+      join_fresh([{ role: "system", content: "sys" }, answer])
+
+      expect(screen.lines).to eq(["Codex answered \u00b7 OK"])
+    end
+
     it "shows on join the notes that came after the last exchange, not older ones" do
       allow(Samagotchi::Log).to receive(:info).and_call_original
       old = Samagotchi::ContextNote.message(note_id: "n0", text: "old news", source: "cli")

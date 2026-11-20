@@ -209,7 +209,7 @@ module Samagotchi
         return if after_exchange != !from.nil?
 
         messages[(from ? from + 1 : 0)..].select { |m| ContextNote.note?(m) }.each do |m|
-          @screen.commit(context_note_line(ContextNote.label_of(m), ContextNote.text_of(m)))
+          @screen.commit(context_note_line(ContextNote.label_of(m), ContextNote.text_of(m), ContextNote.fetch(m, :peer)))
         end
       end
 

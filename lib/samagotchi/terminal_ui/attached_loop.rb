@@ -324,7 +324,7 @@ module Samagotchi
         # line in the scrollback; the notes slot is for question choices.
         when :context_added
           mark_activity
-          @screen.commit(context_note_line(event[:label], event[:text]))
+          @screen.commit(context_note_line(event[:label], event[:text], event[:peer]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
         # The note comes with the kernel's :pending_input_merged (EventRenderer),

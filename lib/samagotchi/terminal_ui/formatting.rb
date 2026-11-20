@@ -325,8 +325,18 @@ module Samagotchi
 
       CONTEXT_NOTE_PREVIEW = 60
 
-      # "note from slack: <first line>", cut to one line.
-      def context_note_line(label, text)
+      # "note from slack: <first line>", cut to one line. A peer's answer
+      # (+peer+, the note's peer hash) reads "Claude answered · <summary>".
+      def context_note_line(label, text, peer = nil)
+        peer = peer.transform_keys(&:to_s) if peer.is_a?(Hash)
+        summary = peer && peer["summary"].to_s.strip.split("\n").first.to_s
+        who = peer && (peer["label"] || peer["peer"]).to_s.strip
+        return context_note_preview("#{who} answered \u00b7 ", summary) if summary && !summary.empty? && !who.empty?
+
+        context_note_preview("note from #{label || "?"}: ", text)
+      end
+
+      def context_note_preview(prefix, text)
         lines = text.to_s.strip.split("\n")
         first = lines.first.to_s
         if first.length > CONTEXT_NOTE_PREVIEW
@@ -334,7 +344,7 @@ module Samagotchi
         elsif lines.size > 1
           first += " \u2026"
         end
-        paint("note from #{label || "?"}: #{first}", 2)
+        paint("#{prefix}#{first}", 2)
       end
 
       # A tool call from the snapshot: it has no action text, only the tool.
