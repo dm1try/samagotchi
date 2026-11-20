@@ -98,8 +98,9 @@ RSpec.describe Samagotchi::Plugin::Loader do
       path = install_plugin("marker", hook_plugin)
       File.write(path, hook_plugin.sub("hit", "tampered"))
       eng = nil
-      expect { eng = engine }.to output(/bundle 'marker' plugin 'plugin.rb' not loaded: its sha256/).to_stderr
-      expect_not_loaded(eng, /sha256/)
+      expect { eng = engine }
+        .to output(%r{bundle 'marker' plugin 'plugin.rb' not loaded: bundle marker's plugin/plugin.rb differs from the installed one}).to_stderr
+      expect_not_loaded(eng, /differs from the installed one/)
       expect(eng.plugin_failures.message).not_to include("denied")
     end
 
@@ -428,7 +429,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
   end
 
   # The plugin's file check is the verdict's (InstalledBundles::Dir#file_refusal);
-  # its words are the loader's, unchanged.
+  # its words are the verdict's.
   describe "the plugin file check it asks" do
     let(:installed) { Samagotchi::InstalledBundles::Dir.new(name: "plug", dir: tmpdir) }
     let(:file) { File.join(tmpdir, "plug", "plugin", "plugin.rb").tap { |path| FileUtils.mkdir_p(File.dirname(path)) && File.write(path, "class Plugin; end\n") } }
@@ -442,8 +443,9 @@ RSpec.describe Samagotchi::Plugin::Loader do
 
     it "says the file changed since install, or that no sha was recorded" do
       expect(installed.file_refusal(:plugin, File.basename(file), "0" * 64).text)
-        .to eq("its sha256 #{sha[0, 12]}… differs from the installed #{"0" * 12}… (edited after install? reinstall the bundle)")
-      expect(installed.file_refusal(:plugin, File.basename(file), nil).text).to eq("no sha256 recorded for it (reinstall the bundle)")
+        .to eq("bundle plug's plugin/plugin.rb differs from the installed one (reinstall the bundle)")
+      expect(installed.file_refusal(:plugin, File.basename(file), nil).text)
+        .to eq("bundle plug's plugin/plugin.rb isn't recorded (reinstall the bundle)")
     end
   end
 end

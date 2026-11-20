@@ -17,7 +17,8 @@ model. The TUI is untouched: it shows a fence as source.
    the URL's names go through `BlockRenderers.script_path` (membership in a listed renderer's `load` before any path is
    made), then `InstalledBundles::Dir#file_refusal(:scripts, …)` (the check a context provider's scripts get too); a file with no recorded sha, a missing one or a changed one is 409
    `renderer_changed`, each with its own reason. ETag + `no-cache`, as static files. A `block_renderers:` list that
-   doesn't parse is logged once per bundle and problem (each list request and file fetch reads it).
+   doesn't parse is logged once per bundle and problem (each list request and file fetch reads it); a bundle this chi is
+   too old for (`requires_chi`) draws nothing, logged once per bundle and version (`block_renderers_too_new`).
 3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; a participant's page
    gets the core drawers only, no bundle's renderers: `block_renderers`) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an
    ordered list of drawers, core ones first (`inline_widgets.js` for `chi-ui`: [inline-widgets.md](inline-widgets.md)), then the frame drawer, which waits for `/api/block_renderers`;

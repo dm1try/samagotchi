@@ -151,21 +151,19 @@ module Samagotchi
     # installed (they run outside the guardrails gate, as a plugin loads:
     # checked the same way).
     # @return [String]
-    # @raise [Invalid] the bundle is gone, a script is gone, unrecorded or
-    #   changed (InstalledBundles::Dir#file_refusal), or this chi doesn't meet
-    #   the bundle's requires_chi
-    # @raise [JSON::ParserError] the bundle's manifest.json doesn't parse (the
-    #   plan's D7: kept as it is). One that parses but isn't an object reads
-    #   as a record with no scripts, and the command runs (D8: kept too)
+    # @raise [Invalid] the bundle is gone, its manifest.json doesn't read,
+    #   this chi doesn't meet its requires_chi, or a script is unrecorded,
+    #   gone or changed (InstalledBundles::Dir#file_refusal)
     def command_for(source)
       return source.cmd unless source.provider
 
       standing = InstalledBundles.standing(source.provider)
       raise Invalid, "bundle #{source.provider} isn't installed" unless standing
 
-      # Its bundle is too new for this chi (installed with --force, or chi
+      # Its record doesn't read (nothing to check its scripts against), or
+      # its bundle is too new for this chi (installed with --force, or chi
       # was downgraded): its script won't run, as its plugin wouldn't load.
-      raise Invalid, "bundle #{source.provider}: #{standing.refusal.text}" if standing.too_new?
+      raise Invalid, "bundle #{source.provider}: #{standing.refusal.text}" unless standing.usable?
 
       installed = InstalledBundles::Dir.new(name: source.provider)
       standing.record.scripts.each do |file, sha|

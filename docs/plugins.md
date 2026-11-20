@@ -927,7 +927,7 @@ A bundle's settings are config.yml's, for every session. A setting a session may
 say) is one the manifest lists in `session_settings:`; `chi --set BUNDLE.KEY=VALUE` and `chi send --new --set …`
 (which also take a few core keys, `--set recap.enabled=false`: see
 [Per-session settings](configuration.md#per-session-settings)) then give it to a new session, saved with it (a respawn, a fork and a continued link keep it; a delegate child
-doesn't). chi refuses a bundle that isn't installed (or whose plugin doesn't load) and a key the manifest doesn't
+doesn't). chi refuses a bundle that isn't installed (or that needs a newer chi, or whose plugin doesn't load) and a key the manifest doesn't
 list, so a typo isn't saved. A manifest that types a key (`session_settings: {cap: number}`: `number`, which
 takes off too, `boolean`, `string`, or `any`) gets only a value of that type: `--set my-bundle.cap=five` is refused,
 exit 2, as a key it doesn't list is (a mapping needs a chi newer than 0.91.0). Values are typed simply: an integer (`3`, `-1`) or a decimal (`2.5`, `.5`, `1e1`)
@@ -1678,7 +1678,11 @@ A plugin is Ruby code that runs inside chi with your permissions.
 gem.
 
 - The sha256 is an integrity check, not proof of who wrote the file. A file
-  edited after install is not loaded until you reinstall the bundle. A
+  edited after install is not loaded until you reinstall the bundle: the plugin,
+  a rule or a script that isn't recorded, is missing or changed is refused in one
+  wording, checked in that order (`bundle NAME's plugin/plugin.rb differs from
+  the installed one (reinstall the bundle)`), and `chi bundle status NAME` shows
+  the plugin `[unrecorded]`, `[missing]` or `[modified]`. A
   `--dev` install skips that check for its own bundle: its files are the
   source directory's, and an edit loads at the next start.
 - Install only copies the file (`--dev` links it). The code first runs at the

@@ -129,7 +129,7 @@ RSpec.describe "A fail-closed plugin hook" do
       eng = started
       failure = eng.guardrail_failures.required.first
       expect(failure.what).to eq("plugin plugin.rb (bundle guard)")
-      expect(failure.reason).to include("sha256")
+      expect(failure.reason).to eq("bundle guard's plugin/plugin.rb differs from the installed one (reinstall the bundle)")
       expect(eng.plugin_failures.any?).to be(false)
       expect(denied_reason(eng)).to start_with("required guardrail plugin plugin.rb (bundle guard) failed to load")
       expect(eng.guardrail_failures.message).to include("Every tool call is denied")
@@ -149,7 +149,7 @@ RSpec.describe "A fail-closed plugin hook" do
       path = install("guard", guard)
       FileUtils.rm_f(File.join(system_dir, ".bundles", "guard", "manifest.yml"))
       File.write(path, guard.sub("guard broke", "tampered"))
-      expect(denied_reason(started)).to include("sha256")
+      expect(denied_reason(started)).to include("differs from the installed one")
     end
 
     it "still denies when the kept manifest.yml was edited to drop the flag" do
@@ -157,7 +157,7 @@ RSpec.describe "A fail-closed plugin hook" do
       kept = File.join(system_dir, ".bundles", "guard", "manifest.yml")
       File.write(kept, File.read(kept).sub("required: true", "required: false"))
       File.write(path, guard.sub("guard broke", "tampered"))
-      expect(denied_reason(started)).to include("sha256")
+      expect(denied_reason(started)).to include("differs from the installed one")
     end
 
     it "denies when a required plugin's manifest.json is unreadable" do
@@ -197,7 +197,7 @@ RSpec.describe "A fail-closed plugin hook" do
     it "denies every tool call when the plugin's folder is gone" do
       path = install("guard", guard)
       FileUtils.rm_rf(File.dirname(path))
-      expect(denied_reason(started)).to include("the file is missing")
+      expect(denied_reason(started)).to include("bundle guard's plugin/plugin.rb is missing (reinstall the bundle)")
     end
 
     it "denies every tool call when #register raises (after staging the guard)" do

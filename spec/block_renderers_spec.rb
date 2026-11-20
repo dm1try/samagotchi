@@ -175,9 +175,21 @@ RSpec.describe Samagotchi::BlockRenderers do
       expect(described_class.for_installed.map(&:bundle)).to eq(["aa"])
     end
 
-    it "skips a bundle whose requires_chi this chi doesn't meet" do
+    it "skips a bundle whose requires_chi this chi doesn't meet, and says so once per process" do
       # force: installs it: the reader's skip is what this tests.
       install(source(requires_chi: ">= 999.0"), force: true)
+      expect(Samagotchi::Log).to receive(:warn)
+        .with(:web, "block_renderers_too_new", hash_including(bundle: "drawer", version: "1.0.0", requires_chi: ">= 999.0",
+                                                              msg: "it requires chi >= 999.0 (this is chi #{Samagotchi::VERSION})"))
+        .once
+
+      3.times { expect(described_class.for_installed).to eq([]) }
+      expect(described_class.script_path("drawer", "draw.js")).to be_nil
+    end
+
+    it "says nothing of a bundle too new for this chi that draws nothing" do
+      install(source(renderers: nil, requires_chi: ">= 999.0"), force: true)
+      expect(Samagotchi::Log).not_to receive(:warn).with(:web, "block_renderers_too_new", anything)
 
       expect(described_class.for_installed).to eq([])
     end
@@ -265,7 +277,7 @@ RSpec.describe Samagotchi::BlockRenderers do
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scripts" => {})))
 
       expect { described_class.script_path("drawer", "draw.js") }
-        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js isn't among its installed scripts (reinstall the bundle)")
+        .to raise_error(described_class::Invalid, "bundle drawer's scripts/draw.js isn't recorded (reinstall the bundle)")
     end
 
     it "refuses a file that is gone" do
