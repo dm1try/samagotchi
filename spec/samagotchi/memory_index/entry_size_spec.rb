@@ -3,9 +3,9 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
-require "samagotchi/memory_bundle/entry_size"
+require "samagotchi/memory_index/entry_size"
 
-RSpec.describe Samagotchi::MemoryBundle::EntrySize do
+RSpec.describe Samagotchi::MemoryIndex::EntrySize do
   let(:tmpdir) { Dir.mktmpdir("entry-size-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
 

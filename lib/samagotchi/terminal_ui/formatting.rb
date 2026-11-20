@@ -7,7 +7,7 @@ require_relative "../turn_note"
 require_relative "../steer"
 require_relative "../participant_name"
 require_relative "../steer_cut"
-require_relative "../memory_bundle/index_size"
+require_relative "../memory_index/size"
 require_relative "../prompt_note"
 require_relative "../prompt_files"
 require_relative "../session_config"
@@ -492,7 +492,7 @@ module Samagotchi
         end
         return "" if scopes.empty?
 
-        count = ->(tokens) { MemoryBundle::IndexSize.count_text(tokens) }
+        count = ->(tokens) { MemoryIndex::Size.count_text(tokens) }
         "~#{count.call(scopes.sum(&:last))} tokens in this session's prompt " \
           "(#{scopes.map { |scope, tokens| "#{scope} #{count.call(tokens)}" }.join(", ")})"
       end

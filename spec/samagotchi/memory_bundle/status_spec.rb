@@ -38,7 +38,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     mjson = File.join(system_dir, ".bundles", "sample-needs", "manifest.json")
     File.write(mjson, JSON.generate(JSON.parse(File.read(mjson)).merge("scope" => "team")))
     allow(File).to receive(:read).and_call_original
-    allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:index_path_for).and_call_original
+    allow(Samagotchi::MemoryIndex::Updater).to receive(:index_path_for).and_call_original
 
     st = described_class.bundle_status("sample-needs")
 
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     expect(st.files).not_to be_empty
     expect(st.files.values).to all(include(unchecked: true, missing: false, modified: false))
     expect(File).not_to have_received(:read).with(start_with(system_dir + "/").and(end_with(".md")))
-    expect(Samagotchi::MemoryBundle::IndexUpdater).not_to have_received(:index_path_for)
+    expect(Samagotchi::MemoryIndex::Updater).not_to have_received(:index_path_for)
   end
 
   it "has no scope_error for a scope it knows" do

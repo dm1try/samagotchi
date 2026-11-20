@@ -5,10 +5,10 @@ require "digest"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 module Samagotchi
-  module MemoryBundle
+  module MemoryIndex
     # Updates the scoped index.md for a single entry, locked and atomically.
     # Used by Installer (P3) to keep index.md in sync.
-    module IndexUpdater
+    module Updater
       MEMORY_INDEX = "index"
       LOCK_FILE = ".index.lock"
       # @param source [String, false, nil] the bundle the memory came from

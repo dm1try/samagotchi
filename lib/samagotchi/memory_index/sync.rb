@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-require_relative "index_updater"
+require_relative "updater"
 require_relative "../tools/memory"
 require_relative "../model_overlay"
 require_relative "../log"
 
 module Samagotchi
-  module MemoryBundle
+  module MemoryIndex
     # Keeps a memory's managed index.md line current when the file tools
     # (write, edit) change it, as memory_write does: the ToolRunner calls
     # .refresh after a write/edit that changed its file (one it could diff:
@@ -18,7 +18,7 @@ module Samagotchi
     # name has a dot and a sibling of the same stem reads as an overlay too,
     # a leftover ambiguity). Writes into another project's folder and
     # execute's writes aren't seen.
-    module IndexSync
+    module Sync
       SCOPES = %w[project system].freeze
 
       # @param path [String] the file write/edit changed
@@ -31,7 +31,7 @@ module Samagotchi
         name = File.basename(path, ".md")
         return false if ModelOverlay.overlay_file?(path)
 
-        IndexUpdater.update_index(scope, name, File.size(path), nil)
+        Updater.update_index(scope, name, File.size(path), nil)
       rescue StandardError => e
         Log.warn(:memory, "index_sync_failed", path: path, error: "#{e.class}: #{e.message}")
         false
@@ -48,7 +48,7 @@ module Samagotchi
         name = File.basename(path, ".md")
         return nil unless File.extname(path) == ".md"
         # Any case: on a case-insensitive disk INDEX.md is the index itself.
-        return nil if name.casecmp?(IndexUpdater::MEMORY_INDEX) || name.start_with?(".") || File.symlink?(path)
+        return nil if name.casecmp?(Updater::MEMORY_INDEX) || name.start_with?(".") || File.symlink?(path)
 
         dir = real(File.dirname(path))
         SCOPES.find { |s| real(Tools::MemoryRead.memories_dir(s)) == dir }

@@ -3,7 +3,7 @@
 require "json"
 
 require_relative "memory_paths"
-require_relative "memory_bundle/index_size"
+require_relative "memory_index/size"
 require_relative "model_notes"
 require_relative "session"
 require_relative "llm_context_stale"
@@ -115,8 +115,8 @@ module Samagotchi
     # @param root [String] the folder whose project's memories are the project scope
     # @param env [Hash] the XDG env the memories dirs resolve from
     def initialize(sessions:, entries:, scopes: SCOPES, unreadable: 0, baseline: [], root: Dir.pwd, env: ENV,
-                   chars_per_token: MemoryBundle::IndexSize.chars_per_token,
-                   warn_limit: MemoryBundle::IndexSize.warn_limit)
+                   chars_per_token: MemoryIndex::Size.chars_per_token,
+                   warn_limit: MemoryIndex::Size.warn_limit)
       @sessions = Array(sessions)
       @entries = Array(entries)
       @scopes = Array(scopes).map(&:to_s)
@@ -229,7 +229,7 @@ module Samagotchi
     # denominator nor an unread line.
     def index_row(scope, used)
       text = index_text(scope)
-      size = MemoryBundle::IndexSize.of_text(scope, text, chars_per_token: @chars_per_token)
+      size = MemoryIndex::Size.of_text(scope, text, chars_per_token: @chars_per_token)
       names = text.each_line.filter_map { |line| (match = MemoryCommand::LINE.match(line)) && match[1] }.uniq
       entries = names.select { |name| entry_for(scope, name) }
       unread = entries.count { |name| !used.include?([scope, name]) }
@@ -298,7 +298,7 @@ module Samagotchi
 
     # A read of a memory's file: [scope, name], nil for any other file. The
     # session's own project folder (MemoryPaths.key_for_root), since
-    # IndexSync.memory_scope knows only the folder chi is running in.
+    # MemoryIndex::Sync.memory_scope knows only the folder chi is running in.
     def memory_file(path, project_dir)
       return nil if path.nil? || !path.end_with?(".md")
 

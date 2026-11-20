@@ -543,15 +543,15 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/llm/model_listing.rb
     - lib/samagotchi/llm/openai_chat.rb
     - lib/samagotchi/log_subscriber.rb
-    - lib/samagotchi/memory_bundle/entry_size.rb
-    - lib/samagotchi/memory_bundle/index_size.rb
-    - lib/samagotchi/memory_bundle/index_sync.rb
-    - lib/samagotchi/memory_bundle/index_updater.rb
     - lib/samagotchi/memory_bundle/installed_manifest.rb
     - lib/samagotchi/memory_bundle/provenance.rb
     - lib/samagotchi/memory_bundle/shipped_history.rb
     - lib/samagotchi/memory_bundle/system_bundle.rb
     - lib/samagotchi/memory_bundle/trash.rb
+    - lib/samagotchi/memory_index/entry_size.rb
+    - lib/samagotchi/memory_index/size.rb
+    - lib/samagotchi/memory_index/sync.rb
+    - lib/samagotchi/memory_index/updater.rb
     - lib/samagotchi/memory_usage.rb
     - lib/samagotchi/message_parts.rb
     - lib/samagotchi/model_catalog.rb

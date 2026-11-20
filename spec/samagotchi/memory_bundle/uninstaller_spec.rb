@@ -236,7 +236,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     end
 
     it "stays (with its index line) while the other bundle is installed, then goes with the last one" do
-      Samagotchi::MemoryBundle::IndexUpdater.update_index("system", "identity", 5, nil, source: "legacy")
+      Samagotchi::MemoryIndex::Updater.update_index("system", "identity", 5, nil, source: "legacy")
       uninstaller = described_class.new(name: "legacy")
       uninstaller.run
 
@@ -266,7 +266,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
 
   it "says when an index line couldn't be removed, and uninstalls anyway" do
     install_bundle(write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "idx"), "idx")
-    allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:remove_index).and_raise(Errno::EACCES, "index.md")
+    allow(Samagotchi::MemoryIndex::Updater).to receive(:remove_index).and_raise(Errno::EACCES, "index.md")
 
     uninstaller = described_class.new(name: "idx")
     uninstaller.run

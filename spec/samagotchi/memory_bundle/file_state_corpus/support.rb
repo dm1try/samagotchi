@@ -240,7 +240,7 @@ module BundleStateCorpus
       return if kase.key.match?(Samagotchi::ModelOverlay::OVERLAY_SUFFIX_PATTERN)
 
       owner = kase.owned && kase.installed ? name : nil
-      Samagotchi::MemoryBundle::IndexUpdater.update_index("system", kase.key.delete_suffix(".md"), kase.disk.bytesize, nil, source: owner)
+      Samagotchi::MemoryIndex::Updater.update_index("system", kase.key.delete_suffix(".md"), kase.disk.bytesize, nil, source: owner)
     end
 
     def write_claimants(kase)

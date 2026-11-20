@@ -5,7 +5,7 @@ require_relative "installer"
 require_relative "file_digest"
 require_relative "provenance"
 require_relative "manifest"
-require_relative "index_updater"
+require_relative "../memory_index/updater"
 require_relative "memory_files"
 require_relative "merger"
 require_relative "remerge"
@@ -252,7 +252,7 @@ module Samagotchi
         Provenance.new(name: BUNDLE_NAME).record_restored(key, source, description: description)
         warnings = [restore_mismatch(key, gem_manifest)].compact
         begin
-          IndexUpdater.update_index(SCOPE, key.delete_suffix(".md"), File.size(target), description, source: BUNDLE_NAME)
+          MemoryIndex::Updater.update_index(SCOPE, key.delete_suffix(".md"), File.size(target), description, source: BUNDLE_NAME)
         rescue StandardError => e
           warnings << "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
         end

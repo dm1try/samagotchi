@@ -32,7 +32,7 @@ module Samagotchi
     end
 
     # "[needs gh, jq: not found on PATH]", or nil when nothing is missing.
-    # No em dash: IndexUpdater.extract_description splits on " — ".
+    # No em dash: MemoryIndex::Updater.extract_description splits on " — ".
     def self.marker(missing)
       commands = Array(missing).map { |need| need[:command] }
       return nil if commands.empty?

@@ -6,7 +6,7 @@ require_relative "file_state"
 require_relative "asset_state"
 require_relative "manifest"
 require_relative "../version"
-require_relative "index_updater"
+require_relative "../memory_index/updater"
 require_relative "../memory_paths"
 require_relative "../bundle_needs"
 require_relative "../model_overlay"
@@ -138,11 +138,11 @@ module Samagotchi
       # Index lines name the entry without ".md" (Installer#update_target_index,
       # memory_write); a legacy "name.md" line counts too.
       def self.index_has_entry?(scope, file_key)
-        path = IndexUpdater.index_path_for(scope)
+        path = MemoryIndex::Updater.index_path_for(scope)
         return false unless path && File.exist?(path)
 
         content = File.read(path)
-        [file_key.delete_suffix(".md"), file_key].uniq.any? { |name| content.match?(IndexUpdater.managed_pattern(name)) }
+        [file_key.delete_suffix(".md"), file_key].uniq.any? { |name| content.match?(MemoryIndex::Updater.managed_pattern(name)) }
       end
     end
   end

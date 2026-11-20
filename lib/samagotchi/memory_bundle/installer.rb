@@ -7,7 +7,7 @@ require_relative "provenance"
 require_relative "manifest"
 require_relative "source"
 require_relative "placeholder"
-require_relative "index_updater"
+require_relative "../memory_index/updater"
 require_relative "merger"
 require_relative "trash"
 require_relative "asset_installer"
@@ -852,8 +852,8 @@ module Samagotchi
 
       # Not fatal, like update_target_index: a warning says so.
       def remove_target_index(scope, file_key)
-        IndexUpdater.remove_index(scope, file_key.delete_suffix(".md"), target_dir: @target_dir)
-        IndexUpdater.remove_index(scope, file_key, target_dir: @target_dir) # legacy "name.md" line
+        MemoryIndex::Updater.remove_index(scope, file_key.delete_suffix(".md"), target_dir: @target_dir)
+        MemoryIndex::Updater.remove_index(scope, file_key, target_dir: @target_dir) # legacy "name.md" line
       rescue StandardError => e
         @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not removed (#{e.message})"
       end
@@ -904,10 +904,10 @@ module Samagotchi
         begin
           # Index lines use the entry name (as memory_write does); drop the
           # legacy "name.md" line older installs wrote.
-          IndexUpdater.remove_index(scope, file_key) unless entry_name == file_key
+          MemoryIndex::Updater.remove_index(scope, file_key) unless entry_name == file_key
           # A manifest's description: for the file; nil keeps the line's.
           description = owned ? @file_descriptions&.[](file_key) : nil
-          IndexUpdater.update_index(scope, entry_name, byte_count, description, source: owned ? @name : nil)
+          MemoryIndex::Updater.update_index(scope, entry_name, byte_count, description, source: owned ? @name : nil)
         rescue StandardError => e
           # Not fatal (the file is in place): a warning says so.
           @warnings << "index.md: line for #{entry_name} not updated (#{e.message})"

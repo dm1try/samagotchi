@@ -939,13 +939,13 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "refreshes a memory's index line after a write/edit that changed its file, not after one that didn't" do
       File.write(path, "a\n")
-      allow(Samagotchi::MemoryBundle::IndexSync).to receive(:refresh)
+      allow(Samagotchi::MemoryIndex::Sync).to receive(:refresh)
       run({ name: "edit", path: path, old_text: "zzz", new_text: "B" })
-      expect(Samagotchi::MemoryBundle::IndexSync).not_to have_received(:refresh)
+      expect(Samagotchi::MemoryIndex::Sync).not_to have_received(:refresh)
       run({ name: "edit", path: path, old_text: "a", new_text: "b" })
       run({ name: "write", path: path("new.md"), content: "x\n" })
-      expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path)
-      expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path("new.md"))
+      expect(Samagotchi::MemoryIndex::Sync).to have_received(:refresh).with(path)
+      expect(Samagotchi::MemoryIndex::Sync).to have_received(:refresh).with(path("new.md"))
     end
 
     describe "stamp (the file right after an ok read/edit/write, for WorkingSet)" do
@@ -982,7 +982,7 @@ RSpec.describe Samagotchi::ToolRunner do
       let(:memories) { Samagotchi::MemoryPaths.system_dir.tap { |dir| FileUtils.mkdir_p(dir) } }
       let(:note) { "Note: the system memory index is now ~" }
 
-      def tokens = Samagotchi::MemoryBundle::IndexSize.of_scope("system").tokens
+      def tokens = Samagotchi::MemoryIndex::Size.of_scope("system").tokens
 
       def write_memory(name) = run({ name: "write", path: File.join(memories, "#{name}.md"), content: "#{name}\n" })
 
@@ -1014,7 +1014,7 @@ RSpec.describe Samagotchi::ToolRunner do
         write_memory("seed")
         outside = path("outside.md").tap { |file| File.write(file, "x\n") }
         File.symlink(outside, File.join(memories, "linked.md"))
-        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(Samagotchi::MemoryIndex::Size).not_to receive(:measure)
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
           linked = run({ name: "write", path: File.join(memories, "linked.md"), content: "#{"y" * 400}\n" })
           expect(linked.output).not_to include("Note:")
@@ -1023,7 +1023,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
       it "isn't looked for on index.md written in another case, which gets no line of its own" do
         write_memory("seed")
-        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(Samagotchi::MemoryIndex::Size).not_to receive(:measure)
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
           index = File.read(File.join(memories, "index.md"))
           upper = run({ name: "write", path: File.join(memories, "INDEX.md"), content: "#{index}#{"- **z** · 1 B\n" * 40}" })
@@ -1034,7 +1034,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
       it "isn't looked for on a write outside the memories, or with limit 0" do
         write_memory("seed")
-        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(Samagotchi::MemoryIndex::Size).not_to receive(:measure)
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
           expect(run({ name: "write", path: path("new.md"), content: "x\n" }).output).not_to include("Note:")
         end
@@ -1075,7 +1075,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
       it "has both notes when both limits are crossed, the index's first" do
         write_memory("seed")
-        limit = Samagotchi::MemoryBundle::IndexSize.of_scope("system").tokens
+        limit = Samagotchi::MemoryIndex::Size.of_scope("system").tokens
         with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => limit.to_s) do
           out = write_memory("b" * 400, "other").output
           expect(out.index("Note: the system memory index")).to be < out.index("Note: memory 'other'")

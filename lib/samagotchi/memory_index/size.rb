@@ -5,7 +5,7 @@ require_relative "../tools/memory"
 require_relative "../model_notes"
 
 module Samagotchi
-  module MemoryBundle
+  module MemoryIndex
     # The size of one scope's memory index as a prompt carries it: every
     # session's system prompt holds both indexes in full, so their size is
     # paid on every request. tokens is the estimate ContextStatus uses
@@ -16,10 +16,10 @@ module Samagotchi
     # after a write against memory.index_warn_tokens (#crossing_note);
     # chi self shows it (#summary), and a session's figure comes from the
     # index text its prompt holds (SystemPrompt).
-    IndexSize = Data.define(:scope, :bytes, :lines, :tokens) do
+    Size = Data.define(:scope, :bytes, :lines, :tokens) do
       # @param text [String, nil] the index text
       # @param chars_per_token [Float]
-      # @return [IndexSize]
+      # @return [Size]
       def self.of_text(scope, text, chars_per_token: self.chars_per_token)
         text = text.to_s
         new(scope: scope.to_s, bytes: text.bytesize, lines: text.each_line.count { |line| !line.strip.empty? },
@@ -30,7 +30,7 @@ module Samagotchi
       # filters (mutes): index.md, or the file listing without one, minus
       # the model notes' lines (ModelNotes.filter_index).
       # @param env [Hash] the XDG env the memories dir resolves from
-      # @return [IndexSize]
+      # @return [Size]
       def self.of_scope(scope, chars_per_token: self.chars_per_token, env: ENV)
         text = Tools::MemoryRead.scoped_index(scope, env: env)
         of_text(scope, ModelNotes.filter_index(text, scope, env: env), chars_per_token: chars_per_token)
@@ -66,8 +66,8 @@ module Samagotchi
       # start a loop of small tightenings. Sessions sharing the dir measure
       # on their own (before and after aren't one locked step), so writes
       # in parallel sessions racing over the limit may each get it.
-      # @param before [IndexSize, nil]
-      # @param after [IndexSize, nil]
+      # @param before [Size, nil]
+      # @param after [Size, nil]
       # @return [String, nil]
       def self.crossing_note(before, after, limit = warn_limit)
         return nil unless before && after && after.over?(limit) && !before.over?(limit)

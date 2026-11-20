@@ -2,14 +2,14 @@
 
 require "pathname"
 require_relative "path_resolve"
-require_relative "../memory_bundle/index_sync"
+require_relative "../memory_index/sync"
 
 module Samagotchi
   module Guardrails
     # What `outside_repo` means (a rule's path: and git:): a path is outside
     # when it isn't in the session's repo root (the cwd outside a repo),
     # with symlinks resolved on both sides. Never outside:
-    # - a memory's file (MemoryBundle::IndexSync.memory_scope): write/edit
+    # - a memory's file (MemoryIndex::Sync.memory_scope): write/edit
     #   there is what memory_write does; index.md, the bundles dir and the
     #   rest of chi's config dir still count;
     # - a tmp dir (Dir.tmpdir, /tmp, /var/tmp), unless the session's root
@@ -29,7 +29,7 @@ module Samagotchi
         tmp = nil
         reals.any? do |real|
           next false if under_folding_existing?(real, session)
-          next false if MemoryBundle::IndexSync.memory_scope(path)
+          next false if MemoryIndex::Sync.memory_scope(path)
           next false if (tmp ||= session_tmp_roots(session)).any? { |dir| under_folding_existing?(real, dir) }
 
           true

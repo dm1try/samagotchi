@@ -316,7 +316,7 @@ module Samagotchi
 
         dir = MemoryRead.memories_dir(resolved_scope)
         FileUtils.mkdir_p(dir)
-        require_relative "../memory_bundle/index_updater"
+        require_relative "../memory_index/updater"
 
         if current_model_only && model_key
           # Overlays are only read through their base entry (same scope), so an
@@ -340,7 +340,7 @@ module Samagotchi
         # And the memory's own size, for memory.entry_warn_tokens.
         entry_before = entry_size(resolved_scope, entry_name, file_path) unless entry_name == MEMORY_INDEX
         if entry_name == MEMORY_INDEX
-          Samagotchi::MemoryBundle::IndexUpdater.locked_write(dir) { body }
+          Samagotchi::MemoryIndex::Updater.locked_write(dir) { body }
         else
           Samagotchi::AtomicFile.write(file_path, body)
         end
@@ -417,11 +417,11 @@ module Samagotchi
           "#{index_crossing_note(before, resolved_scope)}"
       end
 
-      # +scope+'s index size (MemoryBundle::IndexSize), or nil when
+      # +scope+'s index size (MemoryIndex::Size), or nil when
       # memory.index_warn_tokens is off or the index can't be read.
       def self.index_size(scope)
-        require_relative "../memory_bundle/index_size"
-        size = Samagotchi::MemoryBundle::IndexSize
+        require_relative "../memory_index/size"
+        size = Samagotchi::MemoryIndex::Size
         size.measure(scope) if size.warn_limit.positive?
       end
 
@@ -429,8 +429,8 @@ module Samagotchi
       # when memory.entry_warn_tokens is off, for a model note (its own
       # warning) or when it can't be measured.
       def self.entry_size(scope, name, file_path)
-        require_relative "../memory_bundle/entry_size"
-        size = Samagotchi::MemoryBundle::EntrySize
+        require_relative "../memory_index/entry_size"
+        size = Samagotchi::MemoryIndex::EntrySize
         return nil unless size.warn_limit.positive? && size.counted?(name)
 
         size.of_text(name, scope, File.file?(file_path) ? File.read(file_path, encoding: "UTF-8") : "")
@@ -443,7 +443,7 @@ module Samagotchi
       # (+before+: its size before the write), else "". +body+ is what was
       # written.
       def self.entry_crossing_note(before, scope, name, body)
-        size = Samagotchi::MemoryBundle::EntrySize
+        size = Samagotchi::MemoryIndex::EntrySize
         note = size.crossing_note(before, size.of_text(name, scope, body))
         note ? "\n\n#{note}" : ""
       rescue StandardError
@@ -456,7 +456,7 @@ module Samagotchi
       def self.index_crossing_note(before, scope)
         return "" unless before
 
-        note = Samagotchi::MemoryBundle::IndexSize.crossing_note(before, index_size(scope))
+        note = Samagotchi::MemoryIndex::Size.crossing_note(before, index_size(scope))
         note ? "\n\n#{note}" : ""
       end
 
@@ -469,7 +469,7 @@ module Samagotchi
       def self.remove(entry_name, scope)
         return "Error: the index can't be removed; it is kept up to date for you" if entry_name == MEMORY_INDEX
 
-        require_relative "../memory_bundle/index_updater"
+        require_relative "../memory_index/updater"
         require_relative "../memory_bundle/provenance"
         require_relative "../memory_bundle/trash"
         resolved_scope = MemoryRead.normalize_scope(scope)
@@ -480,19 +480,19 @@ module Samagotchi
         file = File.join(dir, "#{entry_name}.md")
 
         owner = Samagotchi::MemoryBundle::Provenance.claimants("#{entry_name}.md", scope: resolved_scope).first ||
-                (line && Samagotchi::MemoryBundle::IndexUpdater.extract_source(line))
+                (line && Samagotchi::MemoryIndex::Updater.extract_source(line))
         return "Error: memory '#{entry_name}' came from bundle #{owner}; `chi bundle uninstall #{owner}` removes it" if owner
 
         unless File.file?(file)
           return "Error: no memory '#{entry_name}' in #{resolved_scope} scope" unless line
 
-          Samagotchi::MemoryBundle::IndexUpdater.remove_index(resolved_scope, entry_name)
+          Samagotchi::MemoryIndex::Updater.remove_index(resolved_scope, entry_name)
           return "Memory '#{entry_name}' had no file in #{resolved_scope} scope; its dangling index line was dropped."
         end
 
         trash = Samagotchi::MemoryBundle::Trash.new("memory-#{entry_name}")
         ([file] + overlay_files(dir, entry_name, index_text)).each { |path| trash.move(path) }
-        Samagotchi::MemoryBundle::IndexUpdater.remove_index(resolved_scope, entry_name)
+        Samagotchi::MemoryIndex::Updater.remove_index(resolved_scope, entry_name)
         "Memory '#{entry_name}' removed from #{resolved_scope} scope: moved to #{trash.dir} " \
           "(`chi bundle trash` lists and empties it)#{"; index line dropped" if line}."
       end
@@ -513,30 +513,30 @@ module Samagotchi
 
       # Adds or refreshes a single managed line for `entry_name` in the given
       # scope's index.md, preserving every other byte byte-for-byte.
-      # Delegates to IndexUpdater to maintain a single source of truth.
+      # Delegates to MemoryIndex::Updater to maintain a single source of truth.
       # Returns true when an entry was written (i.e. the index was managed).
       def self.manage_index(scope, entry_name, byte_count, description = nil)
-        require_relative "../memory_bundle/index_updater"
-        Samagotchi::MemoryBundle::IndexUpdater.update_index(scope, entry_name, byte_count, description)
+        require_relative "../memory_index/updater"
+        Samagotchi::MemoryIndex::Updater.update_index(scope, entry_name, byte_count, description)
       end
 
       def self.managed_line(name, scope, byte_count, description)
-        Samagotchi::MemoryBundle::IndexUpdater.managed_line(name, scope, byte_count, description)
+        Samagotchi::MemoryIndex::Updater.managed_line(name, scope, byte_count, description)
       end
 
       # Extracts the human description from an existing managed line so that a
       # legacy `- **name**: desc` or a new-format line with a description keeps
       # its description when the entry is updated without a new one.
       def self.extract_description(line)
-        Samagotchi::MemoryBundle::IndexUpdater.extract_description(line)
+        Samagotchi::MemoryIndex::Updater.extract_description(line)
       end
 
       def self.auto_index_header
-        Samagotchi::MemoryBundle::IndexUpdater.auto_index_header
+        Samagotchi::MemoryIndex::Updater.auto_index_header
       end
 
       def self.date_str
-        Samagotchi::MemoryBundle::IndexUpdater.date_str
+        Samagotchi::MemoryIndex::Updater.date_str
       end
 
       def self.index_path_for(scope)

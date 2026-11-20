@@ -219,7 +219,8 @@ RSpec.describe AffectedSpecs::Picker do
                 spec/samagotchi/memory_bundle/file_actions_spec.rb]
     corpus.each { |path| files[path] = "" }
 
-    %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/memory_bundle.rb lib/samagotchi/bundle_command.rb
+    %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/memory_bundle.rb lib/samagotchi/memory_index/updater.rb
+       lib/samagotchi/memory_index/nested/size.rb lib/samagotchi/bundle_command.rb
        lib/samagotchi/model_overlay.rb lib/samagotchi/memory_paths.rb spec/fixtures/bundle_states/expect/upgrade.yml
        spec/samagotchi/memory_bundle/file_state_corpus/observe.rb].each do |changed|
       picked = pick(changed).ruby.select { |pick| corpus.include?(pick.path) }

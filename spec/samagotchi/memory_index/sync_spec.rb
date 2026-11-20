@@ -3,16 +3,16 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
-require "samagotchi/memory_bundle/index_sync"
+require "samagotchi/memory_index/sync"
 require "samagotchi/memory_bundle/installer"
 
 # A memory changed by write/edit gets its index line refreshed as
-# memory_write does (the ToolRunner calls IndexSync.refresh).
-RSpec.describe Samagotchi::MemoryBundle::IndexSync do
+# memory_write does (the ToolRunner calls MemoryIndex::Sync.refresh).
+RSpec.describe Samagotchi::MemoryIndex::Sync do
   let(:tmpdir) { Dir.mktmpdir("index-sync-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   # MemoryRead takes the project override as the project's own dir,
-  # IndexUpdater as the base the project key goes under: this one path is
+  # MemoryIndex::Updater as the base the project key goes under: this one path is
   # both.
   let(:project_dir) { Samagotchi::MemoryPaths.project_dir }
   let(:today) { Date.today.iso8601 }
@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::MemoryBundle::IndexSync do
   it "never raises: a failure is logged and reported as false" do
     path = File.join(project_dir, "notes.md")
     File.write(path, "x")
-    allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:update_index).and_raise(Errno::EACCES)
+    allow(Samagotchi::MemoryIndex::Updater).to receive(:update_index).and_raise(Errno::EACCES)
     expect(described_class.refresh(path)).to be(false)
   end
 end
