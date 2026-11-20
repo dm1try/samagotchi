@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- In the web, a send to a paired peer (Claude, Codex) and its answer link to each other: the send's row says
+  "waiting 2m", "changes · answered after 6m" or "not sent" and jumps down to the answer; the answer is a bubble
+  from the peer with its verdict and summary that jumps back up to the send, chi's instruction to the model folded
+  away.
+
 ### Changed
 
 - The terminal shows a peer's answer note as `Claude answered · <summary>` (`Codex answered · …`) instead of `note from context claude-outbox: …`.
