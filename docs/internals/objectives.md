@@ -185,7 +185,10 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   by `forgetSession`. Its edit list is a `chip_popover.js` shell, so a phone gets the bottom sheet and the focus rules.
   Every edit is a line on the command route with `card: true`: no echo, and `commandView` hides a good `/objectives`
   answer that came with that mark, so a tap leaves no bubble, a refusal does. The strip redraws from the event, never
-  optimistically.
+  optimistically. A list with only dropped objectives draws no strip, as no list (`stripItems` is empty), and
+  `hasList()` is false, so the history's /short button hides too. The last one dropped from inside the open edit list
+  keeps the list and its strip until the list closes (its Undo stays under the finger); the close redraws the strip
+  away. `/objectives undo <id>` brings one back meanwhile.
 - **The entry** (`objectives_entry.js`, from `turn_html.js noteBubbleTemplate`): `Objectives.entry` puts the note's items
   and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
   `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
