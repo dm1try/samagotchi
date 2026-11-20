@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "samagotchi/memory_bundle/manifest"
+require "samagotchi/bundle_manifest"
 require "samagotchi/memory_bundle/source"
 require "samagotchi/memory_bundle/system_bundle"
 
@@ -13,7 +13,7 @@ RSpec.describe "The shipped bundle profiles" do
     path = File.join(shipped_dir, dir)
     next unless File.file?(File.join(path, "manifest.yml"))
 
-    [dir, Samagotchi::MemoryBundle::Manifest.read(dir: path)]
+    [dir, Samagotchi::BundleManifest.read(dir: path)]
   end.to_h
   metas = manifests.select { |_, m| m.meta? }
   plain = manifests.reject { |_, m| m.meta? || m.name == Samagotchi::MemoryBundle::SystemBundle::BUNDLE_NAME }

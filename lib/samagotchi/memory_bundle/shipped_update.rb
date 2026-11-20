@@ -4,7 +4,7 @@ require_relative "asset_installer"
 require_relative "asset_state"
 require_relative "installer"
 require_relative "listing"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "manifest_standing"
 require_relative "merger"
 require_relative "profile"
@@ -198,14 +198,14 @@ module Samagotchi
         return profile_row(row, bundle, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
         return same_version_row(row, bundle) unless Listing.newer?(row.to, row.from)
 
-        manifest = Manifest.read(dir: row.source_dir)
-        if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
+        manifest = BundleManifest.read(dir: row.source_dir)
+        if BundleManifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
-        # The upgrade would refuse it (Manifest::HooksRetired.refuse_source_files).
-        hooks = Manifest::HooksRetired.files_in(row.source_dir)
-        return skip(row, Manifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
+        # The upgrade would refuse it (BundleManifest::HooksRetired.refuse_source_files).
+        hooks = BundleManifest::HooksRetired.files_in(row.source_dir)
+        return skip(row, BundleManifest::HooksRetired.for_files(hooks).message, keep_to: true) unless hooks.empty?
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
@@ -263,15 +263,15 @@ module Samagotchi
       end
 
       def profile_row(row, bundle, shipped_dir, chi_version)
-        manifest = Manifest.read(dir: row.source_dir)
+        manifest = BundleManifest.read(dir: row.source_dir)
         newer = Listing.newer?(row.to, row.from)
-        if newer && Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
+        if newer && BundleManifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
         row.adds = Profile.to_install(manifest, bundle).reject do |member|
-          Manifest.requires_chi_failure(Manifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
-        rescue Manifest::ValidationError, Psych::Exception
+          BundleManifest.requires_chi_failure(BundleManifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
+        rescue BundleManifest::ValidationError, Psych::Exception
           false # apply reports it failing
         end
         row.to = nil unless newer

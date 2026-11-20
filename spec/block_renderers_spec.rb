@@ -76,25 +76,25 @@ RSpec.describe Samagotchi::BlockRenderers do
 
   describe "the manifest" do
     it "reads block_renderers:" do
-      manifest = Samagotchi::MemoryBundle::Manifest.read(dir: source)
+      manifest = Samagotchi::BundleManifest.read(dir: source)
 
       expect(manifest.block_renderers).to eq([described_class::Renderer.new(lang: "mermaid", load: %w[lib.js draw.js])])
     end
 
     it "refuses a load that isn't a scripts: key" do
-      expect { Samagotchi::MemoryBundle::Manifest.read(dir: source(scripts: %w[lib.js])) }
-        .to raise_error(Samagotchi::MemoryBundle::Manifest::ValidationError, /block_renderers: .*draw\.js.*scripts:/)
+      expect { Samagotchi::BundleManifest.read(dir: source(scripts: %w[lib.js])) }
+        .to raise_error(Samagotchi::BundleManifest::ValidationError, /block_renderers: .*draw\.js.*scripts:/)
     end
 
     it "takes an unparseable list as a validation error" do
-      expect { Samagotchi::MemoryBundle::Manifest.read(dir: source(renderers: "x")) }
-        .to raise_error(Samagotchi::MemoryBundle::Manifest::ValidationError, /block_renderers:/)
+      expect { Samagotchi::BundleManifest.read(dir: source(renderers: "x")) }
+        .to raise_error(Samagotchi::BundleManifest::ValidationError, /block_renderers:/)
     end
 
     it "writes them back" do
       dir = File.join(tmpdir, "written")
-      Samagotchi::MemoryBundle::Manifest.write(dir: dir, name: "x", version: "1", files: {},
-                                               block_renderers: [described_class::Renderer.new(lang: "a", load: ["b.js"])])
+      Samagotchi::BundleManifest.write(dir: dir, name: "x", version: "1", files: {},
+                                       block_renderers: [described_class::Renderer.new(lang: "a", load: ["b.js"])])
 
       expect(YAML.load_file(File.join(dir, "manifest.yml"))["block_renderers"]).to eq([{ "lang" => "a", "load" => ["b.js"] }])
     end
@@ -139,11 +139,11 @@ RSpec.describe Samagotchi::BlockRenderers do
       install(src)
       out = File.join(tmpdir, "out")
       Samagotchi::MemoryBundle::Builder.new(scope: "system", name: "drawer", out: out).run
-      expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).block_renderers.map(&:to_h)).to eq([entry])
+      expect(Samagotchi::BundleManifest.read(dir: out).block_renderers.map(&:to_h)).to eq([entry])
 
       record = Samagotchi::MemoryBundle::Provenance.new(name: "drawer").record
       Samagotchi::MemoryBundle::InstalledCopy.with(record) do |dir|
-        expect(Samagotchi::MemoryBundle::Manifest.read(dir: dir).block_renderers.map(&:to_h)).to eq([entry])
+        expect(Samagotchi::BundleManifest.read(dir: dir).block_renderers.map(&:to_h)).to eq([entry])
       end
     end
   end

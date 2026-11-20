@@ -406,7 +406,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     it "keeps the bytes it checked, not what the source holds by the time it writes" do
       write_legacy
       checked = File.read(File.join(source, "manifest.yml"))
-      allow(Samagotchi::MemoryBundle::Manifest).to receive(:new).and_wrap_original do |original, **opts|
+      allow(Samagotchi::BundleManifest).to receive(:new).and_wrap_original do |original, **opts|
         original.call(**opts).tap { File.write(File.join(source, "manifest.yml"), "name: old\nversion: 1.0.0\nrequires_chi: '>= 99'\n") }
       end
       expect(prov.adopt_manifest(source)).to be_nil
@@ -515,7 +515,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       write_legacy
       edit_source { |m| m.merge("hooks" => { "h.rb" => { "event" => "after_turn" } }) }
       expect(prov.adopt_manifest(source))
-        .to eq("#{source}'s manifest.yml doesn't read: hooks: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}")
+        .to eq("#{source}'s manifest.yml doesn't read: hooks: #{Samagotchi::BundleManifest::HooksRetired::WORDS}")
     end
 
     it "refuses a source with no manifest.yml, or one that doesn't read" do

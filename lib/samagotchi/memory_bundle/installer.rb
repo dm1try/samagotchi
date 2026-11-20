@@ -4,7 +4,7 @@ require "fileutils"
 require_relative "file_digest"
 require_relative "../memory_paths"
 require_relative "provenance"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "source"
 require_relative "placeholder"
 require_relative "../memory_index/updater"
@@ -403,8 +403,8 @@ module Samagotchi
       # samagotchi-system and profiles included.
       def shipped_names
         Dir.glob(File.join(@shipped_dir, "*", "manifest.yml")).filter_map do |path|
-          Manifest.read(dir: File.dirname(path)).name
-        rescue Manifest::ValidationError
+          BundleManifest.read(dir: File.dirname(path)).name
+        rescue BundleManifest::ValidationError
           nil
         end
       end
@@ -417,16 +417,16 @@ module Samagotchi
         @bundle_dir = @source_dir = prepared.dir
         @source_owned = prepared.owned
         @source_commit = prepared.commit
-        Manifest::HooksRetired.refuse_source_files(@bundle_dir)
-        @manifest = Manifest.read(dir: @bundle_dir)
+        BundleManifest::HooksRetired.refuse_source_files(@bundle_dir)
+        @manifest = BundleManifest.read(dir: @bundle_dir)
         clash = @manifest.session_settings_clash
         raise InstallError, clash if clash
       rescue SourceNormalizer::UnknownSourceError => e
         raise InstallError, "Source normalization failed: #{e.message}"
-      rescue Manifest::HooksRetired => e
+      rescue BundleManifest::HooksRetired => e
         # A rule, not a strictness option: refused strict or not, a dry run too.
         raise InstallError, e.message
-      rescue Manifest::ValidationError => e
+      rescue BundleManifest::ValidationError => e
         raise InstallError, e.message if @strict
 
         @warnings << "No manifest found — proceeding without strict manifest validation"
@@ -435,11 +435,11 @@ module Samagotchi
       # A bundle whose requires_chi this chi doesn't meet is not installed at
       # all: --force is what installs it, and its plugin and rules then
       # warn that they won't load (AssetInstaller). The words come from
-      # Manifest.requires_chi_failure, so the requirement is said one way.
+      # BundleManifest.requires_chi_failure, so the requirement is said one way.
       # A dry run is refused the same way: nothing there would load either.
       # @raise [InstallError]
       def refuse_too_new
-        failure = Manifest.requires_chi_failure(@manifest&.requires_chi, @chi_version)
+        failure = BundleManifest.requires_chi_failure(@manifest&.requires_chi, @chi_version)
         return if failure.nil? || @force
 
         raise InstallError, "#{@name} can't be installed: #{failure} (chi update, or --force to install it anyway)"
@@ -845,7 +845,7 @@ module Samagotchi
       # too: the key is in the manifest either way.
       def warn_unknown_keys(manifest)
         manifest.unknown_keys.each do |key|
-          @warnings << "#{Manifest.unknown_key_line(key)}; a newer chi reads it from the installed manifest " \
+          @warnings << "#{BundleManifest.unknown_key_line(key)}; a newer chi reads it from the installed manifest " \
                        "(chi update, then chi bundle status #{manifest.name} says whether it needs chi bundle upgrade #{manifest.name})"
         end
       end

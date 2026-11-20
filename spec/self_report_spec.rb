@@ -707,7 +707,7 @@ RSpec.describe Samagotchi::SelfReport do
   end
 
   it "lists installed bundles and the shipped system bundle version" do
-    shipped = Samagotchi::MemoryBundle::Manifest.read(dir: Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
+    shipped = Samagotchi::BundleManifest.read(dir: Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
     expect(field("bundles")).to eq("(none installed; shipped system bundle #{shipped})")
 
     dir = File.join(bundles_dir, "samagotchi-system")
@@ -766,8 +766,8 @@ RSpec.describe Samagotchi::SelfReport do
       expect(described_class.session_muted(env.merge("SAMAGOTCHI_PARENT_SESSION" => "abc"))).to eq([])
 
       shipped = Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR
-      allow(Samagotchi::MemoryBundle::Manifest).to receive(:read).and_call_original
-      allow(Samagotchi::MemoryBundle::Manifest).to receive(:read).with(dir: shipped).and_raise(IOError, "bundle gone")
+      allow(Samagotchi::BundleManifest).to receive(:read).and_call_original
+      allow(Samagotchi::BundleManifest).to receive(:read).with(dir: shipped).and_raise(IOError, "bundle gone")
       expect(described_class.bundles_summary).to be_a(String)
 
       expect(Samagotchi::Log).to have_received(:warn).with(:config, "model_window_unreadable", hash_including(error: "IOError", msg: "config gone"))

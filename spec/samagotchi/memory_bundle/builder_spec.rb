@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(manifest).not_to have_key("hooks")
     expect(manifest["trust_level"]).to eq("reviewed")
     expect(result[:files]).to include("identity.md")
-    expect { Samagotchi::MemoryBundle::Manifest.read(dir: out) }.not_to raise_error
+    expect { Samagotchi::BundleManifest.read(dir: out) }.not_to raise_error
   end
 
   it "build without hooks still succeeds" do
@@ -199,7 +199,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(built["scripts"]).to eq("pr.rb" => "sha256:#{Digest::SHA256.hexdigest(script)}")
     expect(built["context_providers"]).to eq([provider])
     expect(File.read(File.join(out, "scripts", "pr.rb"))).to eq(script)
-    expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).context_providers.map(&:to_h)).to eq([provider])
+    expect(Samagotchi::BundleManifest.read(dir: out).context_providers.map(&:to_h)).to eq([provider])
   end
 
   it "refuses a build from an installed record whose context providers don't parse, rather than dropping them" do
@@ -223,7 +223,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     out = File.join(tmpdir, "out-descriptions")
     described_class.new(scope: "system", name: "skills-ish", out: out).run
 
-    built = Samagotchi::MemoryBundle::Manifest.read(dir: out)
+    built = Samagotchi::BundleManifest.read(dir: out)
     expect(built.file_descriptions).to eq("skill_x.md" => "Use when x")
     expect(built.checksum_for("skill_x.md")).to eq(Digest::SHA256.hexdigest("# Skill: x\n"))
   end
@@ -244,7 +244,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
 
       built = YAML.load_file(File.join(out, "manifest.yml"))
       expect(built).to include("description" => "As installed", "card_layouts" => ["wide"])
-      expect(builder.warnings).to include(start_with(Samagotchi::MemoryBundle::Manifest.unknown_key_line("card_layouts")))
+      expect(builder.warnings).to include(start_with(Samagotchi::BundleManifest.unknown_key_line("card_layouts")))
     end
 
     it "takes --description over it" do

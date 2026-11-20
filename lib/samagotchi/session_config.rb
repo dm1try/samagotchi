@@ -22,7 +22,7 @@ module Samagotchi
     # A refused --set (or request field): the message says why.
     class Error < ArgumentError; end
 
-    # A bundle name (MemoryBundle::Manifest::BUNDLE_NAME) and a setting key.
+    # A bundle name (BundleManifest::BUNDLE_NAME) and a setting key.
     BUNDLE = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
     KEY = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
     # The values a setting may take.
@@ -84,7 +84,7 @@ module Samagotchi
       def initialize(offered:, notes:, types: {}) = super
     end
 
-    # What each type (MemoryBundle::Manifest::SESSION_SETTING_TYPES) takes,
+    # What each type (BundleManifest::SESSION_SETTING_TYPES) takes,
     # as a value .typed gives it, and how a refusal names it. A number may
     # be off (false), as a bundle's own settings are turned off.
     TYPES = {
@@ -296,7 +296,7 @@ module Samagotchi
     # @return [Availability]
     def availability(dir: nil, shipped_dir: SHIPPED_DIR)
       require_relative "memory_bundle/provenance"
-      require_relative "memory_bundle/manifest"
+      require_relative "bundle_manifest"
       dir ||= MemoryBundle::Provenance.bundles_dir
       offered = {}
       notes = {}

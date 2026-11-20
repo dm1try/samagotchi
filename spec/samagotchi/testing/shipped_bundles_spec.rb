@@ -9,7 +9,7 @@ require "samagotchi/testing"
 # Plugin::Loader.load_installed).
 RSpec.describe "The bundle test kit on the shipped bundles" do
   shipped = Dir[File.join(Samagotchi::Testing::Bundle::SHIPPED_DIR, "*", "manifest.yml")].sort.filter_map do |path|
-    manifest = Samagotchi::MemoryBundle::Manifest.new(path: path)
+    manifest = Samagotchi::BundleManifest.new(path: path)
     manifest.name if manifest.plugin
   end
 

@@ -52,7 +52,7 @@ module Samagotchi
 
         sandbox ||= Sandbox.current
         dir = File.expand_path(dir)
-        name = MemoryBundle::Manifest.read(dir: dir).name
+        name = BundleManifest.read(dir: dir).name
         sandbox.config("bundles" => { name => settings })
         installer = MemoryBundle::Installer.new(source: dir, name: name, scope: "system", force: force)
         installer.run

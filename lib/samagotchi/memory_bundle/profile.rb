@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "installer"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "provenance"
 require_relative "source"
 require_relative "uninstaller"
@@ -48,8 +48,8 @@ module Samagotchi
       def shipped_meta?(dir, shipped_dir: SourceNormalizer::SHIPPED_DIR)
         return false unless File.expand_path(File.dirname(dir.to_s)) == File.expand_path(shipped_dir)
 
-        Manifest.read(dir: dir).meta?
-      rescue Manifest::ValidationError, Psych::Exception, SystemCallError
+        BundleManifest.read(dir: dir).meta?
+      rescue BundleManifest::ValidationError, Psych::Exception, SystemCallError
         false
       end
 
@@ -95,7 +95,7 @@ module Samagotchi
       # ones installed now or found installed). Never raises for a member.
       # @return [InstallResult]
       def install(dir, shipped_dir: SourceNormalizer::SHIPPED_DIR, chi_version: Samagotchi::VERSION, dry_run: false, force: false)
-        manifest = Manifest.read(dir: dir)
+        manifest = BundleManifest.read(dir: dir)
         bundle = Provenance.new(name: manifest.name).record
         was = recorded(bundle, manifest)
         installed = installed_names
@@ -122,7 +122,7 @@ module Samagotchi
 
       def install_member(member, shipped_dir, chi_version, dry_run, force, result)
         member_dir = File.join(shipped_dir, member)
-        failure = Manifest.requires_chi_failure(Manifest.read(dir: member_dir).requires_chi, chi_version)
+        failure = BundleManifest.requires_chi_failure(BundleManifest.read(dir: member_dir).requires_chi, chi_version)
         return result.skipped[member] = failure if failure
 
         # A dry run runs the Installer's too, which writes nothing, so it
@@ -159,7 +159,7 @@ module Samagotchi
         raise Uninstaller::UninstallError.not_installed(name) unless bundle
 
         shipped = File.join(shipped_dir, name)
-        manifest = File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil
+        manifest = File.file?(File.join(shipped, "manifest.yml")) ? BundleManifest.read(dir: shipped) : nil
         members = recorded(bundle, manifest)
         result = UninstallResult.new(name: name, removed: [], blocked: {}, gone: false, trash: {}, warnings: [])
         (members & installed_names).each do |member|

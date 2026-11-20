@@ -724,7 +724,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
 
     def warning(key)
-      Samagotchi::MemoryBundle::Manifest.unknown_key_line(key) +
+      Samagotchi::BundleManifest.unknown_key_line(key) +
         "; a newer chi reads it from the installed manifest (chi update, then chi bundle status future-bundle " \
         "says whether it needs chi bundle upgrade future-bundle)"
     end
@@ -1218,7 +1218,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
   end
 
   describe "class-file hooks (retired)" do
-    let(:words) { Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS }
+    let(:words) { Samagotchi::BundleManifest::HooksRetired::WORDS }
 
     def source_with(dir, manifest: {}, files: {})
       FileUtils.mkdir_p(dir)
@@ -1844,7 +1844,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(system("tar", "-czf", tar, "-C", dir, ".")).to be(true)
 
       expect { installer_for(source: tar, name: "linky", scope: "system").run }
-        .to raise_error(described_class::InstallError, "hooks/evil.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}")
+        .to raise_error(described_class::InstallError, "hooks/evil.rb: #{Samagotchi::BundleManifest::HooksRetired::WORDS}")
       expect(Dir.exist?(File.join(bundles_dir, "linky"))).to be false
       expect(config_home_mentions?("SECRET-TOKEN-123")).to be false
     end

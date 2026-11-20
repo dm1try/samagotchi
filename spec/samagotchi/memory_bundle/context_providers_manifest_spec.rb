@@ -47,7 +47,7 @@ RSpec.describe "Bundle scripts and context providers: manifest, install, provena
     installer
   end
 
-  describe Samagotchi::MemoryBundle::Manifest do
+  describe Samagotchi::BundleManifest do
     it "reads scripts: {file: sha256} and context_providers:" do
       manifest = described_class.read(dir: write_source)
 

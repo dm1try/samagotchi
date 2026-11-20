@@ -736,7 +736,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   it "reads nothing with no marks" do
     write_source("1.0.0", doc)
     install
-    expect(Samagotchi::MemoryBundle::Manifest).not_to receive(:read)
+    expect(Samagotchi::BundleManifest).not_to receive(:read)
     expect(remerge).to eq(described_class::NOTHING)
   end
 

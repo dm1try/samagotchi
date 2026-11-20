@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "source"
 require_relative "provenance"
 require_relative "system_bundle"
@@ -32,11 +32,11 @@ module Samagotchi
         Dir.children(dir).sort.filter_map do |source|
           next unless File.file?(File.join(dir, source, "manifest.yml"))
 
-          m = Manifest.read(dir: File.join(dir, source))
+          m = BundleManifest.read(dir: File.join(dir, source))
           next if m.name == SystemBundle::BUNDLE_NAME
 
           Shipped.new(name: m.name, source: source, version: m.version, description: m.description, includes: m.includes)
-        rescue Manifest::ValidationError, Psych::Exception
+        rescue BundleManifest::ValidationError, Psych::Exception
           nil
         end.sort_by(&:name)
       end

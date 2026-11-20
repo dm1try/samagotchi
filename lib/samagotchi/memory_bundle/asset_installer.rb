@@ -4,7 +4,7 @@ require "fileutils"
 require_relative "asset_state"
 require_relative "file_actions"
 require_relative "file_digest"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "provenance"
 require_relative "../version"
 
@@ -42,7 +42,7 @@ module Samagotchi
       DRY_WORDS = { installed: :would_install, updated: :would_update, up_to_date: :up_to_date }.freeze
 
       # @param source_dir [String] the normalized bundle source
-      # @param manifest [Manifest, nil] nil for a non-strict install without one
+      # @param manifest [BundleManifest, nil] nil for a non-strict install without one
       # @param existing [InstalledBundle, nil] the record before this install
       # @param results, warnings, conflicts the Installer's (results and
       #   warnings are added to)
@@ -170,7 +170,7 @@ module Samagotchi
         return {} unless plugin
 
         src = plugin_source
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
+        if (failure = BundleManifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
         { plugin[:file] => src }
@@ -320,7 +320,7 @@ module Samagotchi
       def warn_rules_requires_chi(rule_files)
         return if @manifest.nil? || rule_files.empty?
 
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
+        if (failure = BundleManifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Bundle #{@name}: its guardrail rules won't load: #{failure}; until chi is updated " \
                        "(chi update), guarded tool calls are refused"
         end

@@ -4,7 +4,7 @@ require "digest"
 require_relative "file_digest"
 require "fileutils"
 require "tmpdir"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "placeholder"
 require_relative "../memory_paths"
 require_relative "../model_overlay"
@@ -16,7 +16,7 @@ module Samagotchi
     # record's hooks/ isn't built).
     #
     # Inverse of Installer: reads from the resolved scope directory,
-    # computes SHA256 checksums, writes manifest.yml via Manifest.write,
+    # computes SHA256 checksums, writes manifest.yml via BundleManifest.write,
     # and optionally zips/tars the staging directory.
     class Builder
       class BuildError < StandardError; end
@@ -195,7 +195,7 @@ module Samagotchi
         trust_level = @trust_level
         trust_level = manifest.trust_level if (trust_level.nil? || trust_level.empty?) && manifest&.trust_level
         description = @description.empty? && manifest&.description ? manifest.description : @description
-        Manifest.write(
+        BundleManifest.write(
           dir: staging,
           name: name,
           version: version,
@@ -224,7 +224,7 @@ module Samagotchi
         kept = YAML.load_file(record.kept_manifest_path) || {}
         File.write(path, YAML.dump(YAML.load_file(path).merge(kept.slice(*manifest.unknown_keys))))
         manifest.unknown_keys.each do |key|
-          @warnings << "#{Manifest.unknown_key_line(key)}; the build carries it as installed"
+          @warnings << "#{BundleManifest.unknown_key_line(key)}; the build carries it as installed"
         end
       end
 
@@ -258,10 +258,10 @@ module Samagotchi
         return unless Profile.installed_meta?(name, record)
 
         shipped = File.join(SourceNormalizer::SHIPPED_DIR, name)
-        members = Profile.recorded(record, File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil)
+        members = Profile.recorded(record, File.file?(File.join(shipped, "manifest.yml")) ? BundleManifest.read(dir: shipped) : nil)
         raise BuildError, "#{name} is an installed profile (includes: #{members.join(", ")}): it ships only its includes, " \
                           "so a build can't remake it; pick another --name for these memories"
-      rescue JSON::ParserError, SystemCallError, Manifest::ValidationError
+      rescue JSON::ParserError, SystemCallError, BundleManifest::ValidationError
         nil
       end
 

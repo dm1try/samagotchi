@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../memory_index/updater"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "memory_files"
 require_relative "file_actions"
 require_relative "file_digest"
@@ -78,7 +78,7 @@ module Samagotchi
         @behind = []
         @warnings = []
         @trash = Trash.new(@name)
-        @manifest = Manifest.read(dir: @source_dir)
+        @manifest = BundleManifest.read(dir: @source_dir)
         shipped = MemoryFiles.select(@source_dir, @manifest)
         marked.each { |key, entry| retry_file(key, entry, shipped) }
         settle unless dry_run

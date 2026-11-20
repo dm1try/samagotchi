@@ -3,7 +3,7 @@
 require "fileutils"
 require "tmpdir"
 require "yaml"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "provenance"
 
 module Samagotchi
@@ -42,7 +42,7 @@ module Samagotchi
 
       def write(bundle, provenance, dir)
         manifest = bundle.manifest
-        Manifest.write(
+        BundleManifest.write(
           dir: dir, name: bundle.name, version: bundle.version.to_s.empty? ? "0" : bundle.version, trust_level: manifest.trust_level,
           files: memories(bundle, provenance, dir),
           file_descriptions: manifest.file_descriptions,

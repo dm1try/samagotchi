@@ -7,7 +7,7 @@ require_relative "../hooks"
 require_relative "../log"
 require_relative "../guardrails/load_failures"
 require_relative "../version"
-require_relative "../memory_bundle/manifest"
+require_relative "../bundle_manifest"
 require_relative "../memory_bundle/provenance"
 
 module Samagotchi
@@ -157,7 +157,7 @@ module Samagotchi
         path = MemoryBundle::Provenance.new(name: bundle_name).kept_manifest_path
         return true unless path && File.file?(path)
 
-        kept, problems = MemoryBundle::Manifest.tolerant(path: path)
+        kept, problems = BundleManifest.tolerant(path: path)
         return true if problems.key?("plugin")
         return false unless kept.plugin
 

@@ -64,7 +64,7 @@ module Samagotchi
 
     # One bundle's +values+ against its manifest (an installed one's or a
     # source's); none while it declares no settings:.
-    # @param manifest [MemoryBundle::InstalledManifest, MemoryBundle::Manifest]
+    # @param manifest [MemoryBundle::InstalledManifest, BundleManifest]
     #   name, settings, session_settings, setting_types
     # @return [Array<String>]
     def record_warnings(manifest, values)

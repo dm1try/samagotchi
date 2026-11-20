@@ -11,7 +11,7 @@ require_relative "../state_format"
 require_relative "../version"
 require_relative "file_digest"
 require_relative "installed_bundle"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 
 module Samagotchi
   module MemoryBundle
@@ -693,7 +693,7 @@ module Samagotchi
       def adoption_mismatch(bundle, dir, bytes)
         manifest = begin
           parsed(bytes)
-        rescue Manifest::ValidationError, Psych::Exception, EncodingError => e
+        rescue BundleManifest::ValidationError, Psych::Exception, EncodingError => e
           return "#{dir}'s manifest.yml doesn't read: #{e.message}"
         end
         found = "#{manifest.name} #{manifest.version}"
@@ -716,9 +716,9 @@ module Samagotchi
         Dir.mktmpdir("chi-adopt-") do |tmp|
           path = File.join(tmp, "manifest.yml")
           File.binwrite(path, bytes)
-          Manifest.new(path: path)
-        rescue Manifest::ValidationError => e
-          raise Manifest::ValidationError, e.message.gsub(tmp, "the source")
+          BundleManifest.new(path: path)
+        rescue BundleManifest::ValidationError => e
+          raise BundleManifest::ValidationError, e.message.gsub(tmp, "the source")
         end
       end
       private :parsed
@@ -748,8 +748,8 @@ module Samagotchi
       # The first manifest key in which +manifest+ says other than what the
       # record keeps, nil when none: each mirrored key as #write records it (one
       # the record lacks is fine only when an older chi couldn't have known it:
-      # Manifest::SINCE has it). An older record's hooks don't count: they
-      # no longer load, and the source can't list any (Manifest::HooksRetired).
+      # BundleManifest::SINCE has it). An older record's hooks don't count: they
+      # no longer load, and the source can't list any (BundleManifest::HooksRetired).
       def manifest_difference(bundle, manifest)
         recorded = plain(bundle.mirror)
         source = plain(mirror_fields(
@@ -761,7 +761,7 @@ module Samagotchi
         InstalledBundle::MIRROR_KEYS.find do |key|
           next false if recorded[key] == source[key]
 
-          !(recorded[key].nil? && Manifest::SINCE.key?(MIRROR_SINCE.fetch(key, key)))
+          !(recorded[key].nil? && BundleManifest::SINCE.key?(MIRROR_SINCE.fetch(key, key)))
         end
       end
       private :manifest_difference

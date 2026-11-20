@@ -4,7 +4,7 @@ require "fileutils"
 require_relative "installer"
 require_relative "file_digest"
 require_relative "provenance"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "../memory_index/updater"
 require_relative "memory_files"
 require_relative "merger"
@@ -100,8 +100,8 @@ module Samagotchi
         return result(:skipped, error: "no shipped system bundle") unless File.directory?(GEM_BUNDLE_DIR)
 
         begin
-          gem_manifest = Manifest.read(dir: GEM_BUNDLE_DIR)
-        rescue Manifest::ValidationError => e
+          gem_manifest = BundleManifest.read(dir: GEM_BUNDLE_DIR)
+        rescue BundleManifest::ValidationError => e
           return result(:failed, error: "invalid gem manifest: #{e.message}")
         end
         to = gem_manifest.version.to_s

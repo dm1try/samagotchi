@@ -602,7 +602,7 @@ RSpec.describe "chi bootstrap" do
       raising = Class.new do
         def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", behind: [], warnings: [])
         def to_install(_) = raise(Errno::EACCES, "memories")
-        def install(_name, dry_run: false) = raise(Samagotchi::MemoryBundle::Manifest::ValidationError, "manifest missing required field: name")
+        def install(_name, dry_run: false) = raise(Samagotchi::BundleManifest::ValidationError, "manifest missing required field: name")
       end
 
       code, out, err = run_command("", target, "--no-test", bundles: raising.new)

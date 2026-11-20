@@ -282,10 +282,10 @@ module Samagotchi
     # @return [Array(MemoryBundle::PreparedSource, String), nil]
     def prepare_or_fail(expanded_source, word)
       prepared = Samagotchi::MemoryBundle::PreparedSource.prepare(expanded_source)
-      Samagotchi::MemoryBundle::Manifest::HooksRetired.refuse_source_files(prepared.dir)
-      named = [prepared, Samagotchi::MemoryBundle::Manifest.read(dir: prepared.dir).name]
+      Samagotchi::BundleManifest::HooksRetired.refuse_source_files(prepared.dir)
+      named = [prepared, Samagotchi::BundleManifest.read(dir: prepared.dir).name]
     rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError,
-           Samagotchi::MemoryBundle::Manifest::ValidationError => e
+           Samagotchi::BundleManifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
     ensure
       # Any failure (an unexpected error too) removes the extract.
@@ -343,7 +343,7 @@ module Samagotchi
       return unless plugin && manifest&.plugin
 
       # Installed with --force past its requires_chi: the Engine won't load it.
-      failure = Samagotchi::MemoryBundle::Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
+      failure = Samagotchi::BundleManifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
       @stdout.puts "Plugin: #{manifest.plugin[:file]} (#{failure ? "won't load on this chi: #{failure}" : "loads at the next chi start"})"
     end
 
@@ -372,7 +372,7 @@ module Samagotchi
     # can be restarted.
     # @param before [InstalledBundle, nil] the bundle's record as it was before
     #   the run (an uninstall deletes it, so take it first)
-    # @param manifest [MemoryBundle::Manifest, nil] the manifest this run
+    # @param manifest [BundleManifest, nil] the manifest this run
     #   installed; nil for an uninstall
     # @param installer [Installer, nil] the run, for what it wrote to the plugin
     def restart_hint(before, manifest = nil, installer = nil)
@@ -508,7 +508,7 @@ module Samagotchi
       lines.each { |line| @stdout.puts "  #{line}" }
       @stdout.puts "(dry-run: no changes written)" if dry_run
       result.failed? ? 1 : 0
-    rescue Samagotchi::MemoryBundle::Manifest::ValidationError => e
+    rescue Samagotchi::BundleManifest::ValidationError => e
       @stderr.puts "#{word} failed: #{e.message}"
       1
     end

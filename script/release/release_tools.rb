@@ -909,7 +909,7 @@ module ReleaseTools
   # profile's version unless it moved since the last tag; named in the
   # CHANGELOG's "Update with `chi update`" line). No other requires_chi is
   # touched. The Unreleased comments in Plugin::Api::SINCE and
-  # Manifest::SINCE become entries at +version+ (release_since). No commit;
+  # BundleManifest::SINCE become entries at +version+ (release_since). No commit;
   # a Bumped.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
@@ -1099,13 +1099,13 @@ module ReleaseTools
   # A new plugin API call waits in a comment in Plugin::Api::SINCE until it
   # is released (docs/releasing.md); a release that left it there ships it
   # with no floor for `chi bundle check`'s requires-chi-floor. A new manifest
-  # key waits the same way in Manifest::SINCE.
+  # key waits the same way in BundleManifest::SINCE.
   PLUGIN_API = "lib/samagotchi/plugin/api.rb"
-  MANIFEST_KEYS = "lib/samagotchi/memory_bundle/manifest.rb"
+  MANIFEST_KEYS = "lib/samagotchi/bundle_manifest.rb"
   UNRELEASED_API = /^\s*#\s*Unreleased\b.*$/
 
   def unreleased_api_problems(root, version)
-    [[PLUGIN_API, "Plugin::Api::SINCE"], [MANIFEST_KEYS, "Manifest::SINCE"]].filter_map do |rel, table|
+    [[PLUGIN_API, "Plugin::Api::SINCE"], [MANIFEST_KEYS, "BundleManifest::SINCE"]].filter_map do |rel, table|
       path = File.join(root, rel)
       comment = File.exist?(path) ? File.read(path)[UNRELEASED_API] : nil
       next unless comment

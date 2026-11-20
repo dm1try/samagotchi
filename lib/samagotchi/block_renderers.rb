@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Samagotchi
+  autoload :BundleManifest, File.expand_path("bundle_manifest", __dir__)
   autoload :InlineWidgets, File.expand_path("inline_widgets", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
   autoload :VERSION, File.expand_path("version", __dir__)
   module MemoryBundle
-    autoload :Manifest, File.expand_path("memory_bundle/manifest", __dir__)
     autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
   end
 
@@ -70,7 +70,7 @@ module Samagotchi
       raise Invalid, "block_renderers: #{lang} is drawn by chi itself; a bundle can't render it" if RESERVED.include?(lang)
 
       load = data["load"]
-      unless load.is_a?(Array) && !load.empty? && load.all? { |file| file.is_a?(String) && file.match?(MemoryBundle::Manifest::SCRIPT_FILE) }
+      unless load.is_a?(Array) && !load.empty? && load.all? { |file| file.is_a?(String) && file.match?(BundleManifest::SCRIPT_FILE) }
         raise Invalid, "block_renderers: #{lang}'s load must be a non-empty list of file names in scripts/, not #{load.inspect}"
       end
 

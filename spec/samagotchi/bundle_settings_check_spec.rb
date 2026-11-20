@@ -94,7 +94,7 @@ RSpec.describe Samagotchi::BundleSettingsCheck do
 
     shipped.each do |dir|
       name = File.basename(dir)
-      manifest = Samagotchi::MemoryBundle::Manifest.read(dir: dir)
+      manifest = Samagotchi::BundleManifest.read(dir: dir)
       source = Dir[File.join(dir, "plugin.rb"), File.join(dir, "hooks", "*.rb")].map { |file| File.read(file) }.join("\n")
       # loop-guard's ThinkingWatch reads its own thinking: section's settings.
       source = source.sub(/^class ThinkingWatch.*?^end$/m, "") if name == "loop-guard"

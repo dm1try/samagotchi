@@ -254,9 +254,9 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     def manifest_readers
       Dir.mktmpdir do |dir|
         File.write(File.join(dir, "manifest.yml"), "name: t\nversion: 1.0.0\n")
-        manifest = Samagotchi::MemoryBundle::Manifest.read(dir: dir)
-        Samagotchi::MemoryBundle::Manifest.public_instance_methods(false).select do |name|
-          Samagotchi::MemoryBundle::Manifest.instance_method(name).arity.zero? && manifest.instance_variables.include?(:"@#{name}")
+        manifest = Samagotchi::BundleManifest.read(dir: dir)
+        Samagotchi::BundleManifest.public_instance_methods(false).select do |name|
+          Samagotchi::BundleManifest.instance_method(name).arity.zero? && manifest.instance_variables.include?(:"@#{name}")
         end
       end
     end

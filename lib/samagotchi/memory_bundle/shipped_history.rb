@@ -67,7 +67,7 @@ module Samagotchi
       end
 
       # The name a bundle's manifest gives, nil when it doesn't read. Not
-      # Manifest.read: an older manifest needn't pass this chi's checks.
+      # BundleManifest.read: an older manifest needn't pass this chi's checks.
       def manifest_name(dir)
         data = YAML.safe_load_file(File.join(dir, "manifest.yml"))
         data.is_a?(Hash) ? data["name"] : nil

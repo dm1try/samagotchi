@@ -595,7 +595,7 @@ RSpec.describe "chi bundle (CLI)" do
       FileUtils.mkdir_p(File.join(source, "hooks"))
       File.write(File.join(source, "hooks", "g.rb"), "class G; end\n")
       File.write(File.join(source, "manifest.yml"), "name: [x\n")
-      hook_error = "hooks/g.rb: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}"
+      hook_error = "hooks/g.rb: #{Samagotchi::BundleManifest::HooksRetired::WORDS}"
 
       expect(chi("install", source)).to eq(["", "Install failed: #{hook_error}\n", 1])
       expect do

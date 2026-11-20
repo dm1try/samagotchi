@@ -109,7 +109,7 @@ module Samagotchi
         # Installs the tried bundle, then the shipped guardrails and
         # cost-cap (unless it is one of them), each as `chi bundle install
         # PATH --force` in one child chi with the sandbox's environment.
-        # @return [MemoryBundle::Manifest]
+        # @return [BundleManifest]
         # @raise [Error] what the first install that failed printed
         def install
           paths = [@path] + %w[guardrails cost-cap].reject { |name| @manifest.name == name }
@@ -171,13 +171,13 @@ module Samagotchi
             raise Error, "chi bundle try: stale or placeholder sha256 in manifest.yml; run chi bundle check --fix"
           end
 
-          @manifest = MemoryBundle::Manifest.read(dir: @path)
+          @manifest = BundleManifest.read(dir: @path)
           if @manifest.meta?
             raise Error.new("chi bundle try: profile bundles cannot be tried directly", status: CLI::Exit::USAGE)
           end
 
           @manifest
-        rescue MemoryBundle::Manifest::ValidationError => e
+        rescue BundleManifest::ValidationError => e
           raise Error, "chi bundle try: #{e.message}"
         rescue MemoryBundle::Shas::Error => e
           raise Error, "chi bundle try: #{e.message}"

@@ -1,0 +1,579 @@
+# frozen_string_literal: true
+
+require "yaml"
+require "digest"
+require "fileutils"
+require_relative "context_providers"
+require_relative "version"
+
+module Samagotchi
+  autoload :BlockRenderers, File.expand_path("block_renderers", __dir__)
+
+  # Parses and validates a bundle manifest.yml.
+  #
+  # Expected structure:
+  #   name: my-bundle
+  #   version: 1.0.0
+  #   scope: system          # optional — CLI --scope wins over this
+  #   description: "…"       # optional
+  #   files:
+  #     identity.md: sha256:abc123...
+  #     skill_x.md:          # or a mapping: the description is the
+  #       sha256: sha256:def456...   #   memory's index.md line
+  #       description: "Use when …"
+  #   plugin:                # optional — the bundle's plugin.rb (docs/plugins.md)
+  #     file: plugin.rb
+  #     sha256: sha256:0a1b...
+  #     required: true       # optional: a guardrail; when it fails to load
+  #                          #   chi denies every tool call (docs/hooks.md)
+  #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
+  #   requires_chi_next: true     # optional, shipped bundles — ignored here:
+  #                          #   `rake release:bump` raises requires_chi to
+  #                          #   the released chi (docs/releasing.md)
+  #   needs:                 # optional — outside commands the memories rely on
+  #     - command: gh        #   (checked on PATH, never installed; docs/memory.md)
+  #       why: reads PRs     #   optional
+  #       hint: brew install gh   # optional
+  #     - jq                 #   short form: just the command
+  #   scripts:               # optional — files in scripts/ a context
+  #     pr_context.rb: sha256:…   #   provider's command runs (installed into
+  #                          #   the bundle's own dir, scripts/)
+  #   context_providers:     # optional — URL → attached context source
+  #     - match: '\Ahttps://…/pull/(\d+)'   # (ContextProviders)
+  #       name: 'pr-\1'
+  #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
+  #       why: GitHub PR      #   optional
+  #       every_seconds: 300  #   optional
+  #   block_renderers:       # optional — a fence's language → the scripts/
+  #     - lang: mermaid      #   files chi web's page loads to draw it
+  #       load: [lib.js, draw.js]   # (BlockRenderers); each one a scripts: key
+  #   session_settings: [cap] # optional — the settings a session may set
+  #                          #   (chi --set cost-cap.cap=3), read by the
+  #                          #   plugin from ctx.settings at call time;
+  #                          #   or {cap: number}: each with the type
+  #                          #   --set checks (SESSION_SETTING_TYPES)
+  #   settings: [default]    # optional — the keys config.yml bundles: <name>:
+  #                          #   may have, as session_settings: is written (a
+  #                          #   list, or {key: type}; a value may also be
+  #                          #   any Hash or list under any); with it, another
+  #                          #   key warns (BundleSettingsCheck). A session
+  #                          #   setting needn't be listed twice
+  #   includes: [a, b]       # optional — a profile (meta bundle): the
+  #                          #   shipped bundles it installs; its dir holds
+  #                          #   only manifest.yml (MemoryBundle::Profile)
+  class BundleManifest
+    class ValidationError < StandardError; end
+
+    # Class-file bundle hooks (hooks/*.rb, the manifest's hooks:) are
+    # retired: chi installs and loads none. WORDS is the one wording of
+    # it, wherever chi meets one (the Engine's first-turn line, install,
+    # chi bundle check and status, chi update's row). A strict read of a
+    # manifest with a hooks: entry raises it (.for_key's message); a
+    # tolerant read (a kept manifest.yml) ignores the key.
+    class HooksRetired < ValidationError
+      WORDS = "class-file bundle hooks are retired: chi loads no hooks/*.rb; a bundle hooks events from its " \
+              "plugin.rb with chi.on, see docs/plugins.md"
+
+      # The manifest's hooks: key.
+      def self.for_key = new("hooks: #{WORDS}")
+
+      # A source's hooks/*.rb (+files+, relative), with or without the key.
+      def self.for_files(files) = new("#{files.join(", ")}: #{WORDS}")
+
+      # The source's hooks/*.rb, relative and sorted ([] for none).
+      def self.files_in(dir) = Dir.glob(File.join(dir, "hooks", "*.rb")).map { |f| "hooks/#{File.basename(f)}" }.sort
+
+      # Refuse a source's class-file hooks before parsing its manifest.
+      def self.refuse_source_files(dir)
+        files = files_in(dir)
+        raise for_files(files) unless files.empty?
+      end
+    end
+
+    # A plugin file is a plain .rb name in the bundle's top directory.
+    PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
+    # A script is a plain file name in the bundle's scripts/.
+    SCRIPT_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/
+    # A need is a plain executable name: no path, no spaces.
+    NEED_COMMAND = /\A[A-Za-z0-9][A-Za-z0-9._+-]*\z/
+    # A bundle name, as `chi bundle install <name>` takes a shipped one.
+    BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
+
+    # Every top-level manifest key this chi reads (requires_chi_next is known
+    # but read only by the release tooling: docs/releasing.md). A key not
+    # here is one this chi ignores: #unknown_keys, which `chi bundle check`
+    # and the Installer say.
+    KEYS = %w[name version scope description files hooks trust_level plugin requires_chi requires_chi_next needs
+              scripts context_providers block_renderers includes session_settings settings].freeze
+
+    # The first chi release that reads each manifest key or shape (from git:
+    # the first tag whose manifest.rb reads it), for `chi bundle check`'s
+    # requires-chi-floor on the manifest itself: a bundle whose requires_chi
+    # admits a chi that never saw the key. A key the first tag (v0.2.0)
+    # already reads has no entry. `files.description` is a files: entry given
+    # as a mapping, `*.types` a session_settings:/settings: given as a mapping
+    # of keys to types. A key
+    # whose release is not out yet waits here as a comment naming it, the way
+    # Plugin::Api::SINCE does, until `release:bump` gives it its version
+    # (docs/releasing.md).
+    SINCE = {
+      "includes" => "0.8.0",
+      "scripts" => "0.32.0",
+      "context_providers" => "0.32.0",
+      "files.description" => "0.34.0",
+      "session_settings" => "0.84.0",
+      "session_settings.types" => "0.92.0",
+      "settings.types" => "0.92.0",
+      "settings" => "0.143.0",
+      "block_renderers" => "0.151.0",
+      "plugin.required" => "0.157.0"
+    }.freeze
+
+    # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
+    # the description a mapping gave, for the files that have one.
+    attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :trust_level, :plugin, :requires_chi, :needs, :includes,
+                :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
+
+    def initialize(path:)
+      @path = path
+      raw = load_mapping(path)
+      # Every key of the manifest, for #floor_keys to look at the shapes a
+      # newer chi reads.
+      @raw = raw
+      # A key this chi's parser never reads is one it ignores, in the order
+      # the manifest lists it.
+      @unknown_keys = raw.keys - KEYS
+      @name     = require_str(raw, "name")
+      # The name is a directory under .bundles/: never a path.
+      if @name.match?(%r{[/\\\0]}) || %w[. ..].include?(@name)
+        raise ValidationError, "name: #{@name.inspect} is not a bundle name (no path separators, not . or ..)"
+      end
+
+      @version  = require_str(raw, "version")
+      @scope    = normalize_scope(raw["scope"])
+      @description = (raw["description"] || "").to_s
+      @files    = parse_files(raw["files"] || {})
+      raise HooksRetired.for_key if self.class.lists_hooks?(raw["hooks"])
+
+      @file_descriptions = parse_file_descriptions(raw["files"])
+      @trust_level = (raw["trust_level"] || "experimental").to_s
+      @plugin = parse_plugin(raw["plugin"])
+      @requires_chi = parse_requires_chi(raw["requires_chi"])
+      @needs = self.class.parse_needs(raw["needs"])
+      @scripts = parse_scripts(raw["scripts"])
+      @context_providers = parse_context_providers(raw["context_providers"])
+      @block_renderers = parse_block_renderers(raw["block_renderers"])
+      @includes = parse_includes(raw["includes"])
+      @session_settings = self.class.parse_session_settings(raw["session_settings"])
+      @session_setting_types = self.class.parse_session_setting_types(raw["session_settings"])
+      # nil: the manifest says nothing of them (unlike settings: []).
+      @settings = raw["settings"].nil? ? nil : self.class.parse_session_settings(raw["settings"], key: "settings")
+      @setting_types = self.class.parse_session_setting_types(raw["settings"], key: "settings")
+    end
+
+    # Why the install refuses this bundle's session_settings: a key whose
+    # NAME.KEY is chi's own session setting (SessionConfig.clash, the
+    # words chi bundle check reports too), nil when none clashes.
+    # @return [String, nil]
+    def session_settings_clash
+      return nil if @session_settings.empty?
+
+      require_relative "session_config"
+      SessionConfig.clash(@name, @session_settings)
+    end
+
+    # A profile: it installs the bundles in includes instead of files.
+    def meta?
+      !@includes.empty?
+    end
+
+    # An installed bundle's kept manifest.yml read key by key
+    # (InstalledManifest): each key parsed as #initialize parses it, in its
+    # own rescue and in this order, so a key that doesn't parse under this
+    # chi (a newer chi tightened it, or an older one wrote it) costs only
+    # that key, which reads as empty with its message in the problems:
+    #   name, version (never checked: identity is the record's), scope;
+    #   files and their descriptions, scripts, plugin (hooks: is ignored,
+    #   HooksRetired); needs, context_providers; block_renderers
+    #   (against +fallback_scripts+ when scripts: failed); includes (after
+    #   what its check reads); session_settings with its types, settings
+    #   with theirs (one raw value each, so one problem); requires_chi,
+    #   trust_level, description. Then unknown_keys.
+    # @param fallback_scripts [Array<String>] the script names block_renderers
+    #   is checked against when scripts: doesn't parse (the record's)
+    # @return [Array(BundleManifest, Hash{String => String})] the manifest and
+    #   key => message for each key that didn't parse
+    # @raise [ValidationError] the file isn't YAML or isn't a mapping
+    def self.tolerant(path:, fallback_scripts: [])
+      manifest = allocate
+      [manifest, manifest.send(:read_tolerantly, path, fallback_scripts)]
+    end
+
+    # Whether a manifest's hooks: value lists anything (none, {} and []
+    # don't: a manifest may keep an empty key).
+    def self.lists_hooks?(raw) = !(raw.nil? || ((raw.is_a?(Hash) || raw.is_a?(Array)) && raw.empty?))
+
+    def self.read(dir:)
+      manifest_path = File.join(dir, "manifest.yml")
+      raise ValidationError, "manifest.yml not found in #{dir}" unless File.exist?(manifest_path)
+
+      new(path: manifest_path)
+    end
+
+    # Returns the expected sha256 hex digest for a given file key
+    # (e.g. "identity.md"), with the "sha256:" prefix stripped, nil when
+    # the entry declares none (an empty value is nothing to verify).
+    def checksum_for(file_key)
+      raw = @files[file_key]
+      return nil unless raw
+
+      hex = raw.start_with?("sha256:") ? raw[7..] : raw
+      hex unless hex.nil? || hex.empty?
+    end
+
+    # @return [String, nil] the plugin's sha256 hex, "sha256:" stripped
+    def checksum_for_plugin
+      sha = @plugin && @plugin[:sha256].to_s
+      return nil if sha.nil? || sha.empty?
+
+      sha.delete_prefix("sha256:")
+    end
+
+    # Why chi +version+ can't load this bundle's plugin, or nil when it can
+    # (or the bundle names no requirement).
+    def self.requires_chi_failure(requirement, version)
+      return nil if requirement.nil? || requirement.to_s.strip.empty?
+      return nil if Gem::Requirement.new(*requirement.to_s.split(",").map(&:strip)).satisfied_by?(Gem::Version.new(version.to_s))
+
+      "it requires chi #{requirement} (this is chi #{version})"
+    rescue ArgumentError, EncodingError => e
+      # Gem::Requirement::BadRequirementError is an ArgumentError; bytes that
+      # aren't UTF-8 (a record another chi wrote) raise an EncodingError out
+      # of Gem::Requirement. Either way this chi can't read the requirement,
+      # which is a failure: the bundle is refused, not loaded.
+      "its requires_chi #{requirement.inspect} is not a version requirement (#{e.message})"
+    end
+
+    # What an unknown manifest key means, said once (docs/cli.md): the
+    # Installer and `chi bundle check` add their own fix to it.
+    def self.unknown_key_line(key, version = Samagotchi::VERSION)
+      "this chi (#{version}) doesn't know the manifest key #{key}:, so it ignores it"
+    end
+
+    # The SINCE keys this manifest actually uses, each with the chi release
+    # that first read it: the plain keys, and the shapes only a newer chi
+    # reads — a files: entry given as a mapping, a session_settings:/settings:
+    # given as a mapping of keys to types.
+    # @return [Hash{String => String}]
+    def floor_keys
+      raw = @raw
+      found = {}
+      found["includes"] = SINCE["includes"] unless @includes.empty?
+      found["scripts"] = SINCE["scripts"] unless @scripts.empty?
+      found["context_providers"] = SINCE["context_providers"] unless @context_providers.empty?
+      found["block_renderers"] = SINCE["block_renderers"] unless @block_renderers.empty?
+      found["plugin.required"] = SINCE["plugin.required"] if @plugin&.dig(:required) && SINCE.key?("plugin.required")
+      found["session_settings"] = SINCE["session_settings"] unless @session_settings.empty?
+      found["settings"] = SINCE["settings"] unless @settings.nil?
+      found["files.description"] = SINCE["files.description"] if raw["files"].is_a?(Hash) && raw["files"].values.any?(Hash)
+      found["session_settings.types"] = SINCE["session_settings.types"] if raw["session_settings"].is_a?(Hash)
+      found["settings.types"] = SINCE["settings.types"] if raw["settings"].is_a?(Hash)
+      found
+    end
+
+    # Writes a fresh manifest.yml from computed checksums at `dir`.
+    # +file_descriptions+ (name → text) writes those files as mappings.
+    def self.write(dir:, name:, version:, files:, scope: nil, description: "", trust_level: nil,
+                   plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], block_renderers: [], file_descriptions: {},
+                   session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
+      FileUtils.mkdir_p(dir)
+      manifest = {
+        "name" => name,
+        "version" => version,
+        "description" => description
+      }
+      manifest["scope"] = scope if scope
+      manifest["files"] = files.to_h do |key, sha| # { "file.md" => "sha256:abc..." }
+        text = file_descriptions[key].to_s.strip
+        [key, text.empty? ? sha : { "sha256" => sha, "description" => text }]
+      end
+      manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+      if plugin
+        sha = plugin[:sha256].to_s
+        manifest["plugin"] = { "file" => plugin[:file].to_s, "sha256" => sha.start_with?("sha256:") ? sha : "sha256:#{sha}" }
+        manifest["plugin"]["required"] = true if plugin[:required]
+      end
+      manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
+      needs = parse_needs(needs)
+      manifest["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } unless needs.empty?
+      manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
+      manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+      manifest["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
+      manifest["session_settings"] = session_settings_entry(session_settings, session_setting_types) unless Array(session_settings).empty?
+      manifest["settings"] = session_settings_entry(settings, setting_types) unless settings.nil?
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+    end
+
+    # A setting key a session may set (SessionConfig::KEY).
+    SESSION_SETTING = /\A[A-Za-z0-9_][A-Za-z0-9_-]*\z/
+
+    # The types a session setting may be given (session_settings: {key:
+    # type}), checked by SessionConfig.check!: number (or off),
+    # boolean, string; any (or a list's key) takes every scalar.
+    SESSION_SETTING_TYPES = %w[number boolean string any].freeze
+
+    # session_settings: (or settings:, +key+) → the keys, [] when absent: a
+    # list of plain key names, or a mapping of them to types; anything else
+    # is a ValidationError.
+    def self.parse_session_settings(raw, key: "session_settings")
+      return [] if raw.nil?
+
+      keys = raw.is_a?(Hash) && raw.values.all?(String) ? raw.keys : raw
+      keys = nil unless keys.is_a?(Array)
+      unless keys&.all? { |name| (name.is_a?(String) || name.is_a?(Symbol)) && name.to_s.match?(SESSION_SETTING) }
+        raise ValidationError, "#{key}: a list of setting names, or a mapping of them to types (#{raw.inspect})"
+      end
+
+      keys.map(&:to_s).uniq
+    end
+
+    # session_settings: (or settings:, +key+) → {key => type} for the keys a mapping types
+    # (any left out), {} for a list or none.
+    # @raise [ValidationError] a type that isn't one of SESSION_SETTING_TYPES
+    def self.parse_session_setting_types(raw, key: "session_settings")
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(name, type), types|
+        unless SESSION_SETTING_TYPES.include?(type)
+          raise ValidationError, "#{key}: #{name}'s type is #{SESSION_SETTING_TYPES[0..-2].join(", ")} or " \
+                                 "#{SESSION_SETTING_TYPES.last}, not #{type.inspect}"
+        end
+        types[name.to_s] = type unless type == "any"
+      end
+    end
+
+    # session_settings: as written back: a list without types, else a
+    # mapping (an untyped key as any).
+    def self.session_settings_entry(keys, types)
+      keys = Array(keys).map(&:to_s)
+      return keys if types.nil? || types.empty?
+
+      keys.to_h { |key| [key, types[key] || "any"] }
+    end
+
+    # needs: → [{command:, why:, hint:}] (why/hint a String or nil), [] when
+    # absent. Takes the manifest's string-keyed YAML or the symbol-keyed
+    # form provenance stores. Duplicates merge (the first one's why/hint
+    # win); a list that isn't one, or a command that isn't a plain name,
+    # is a ValidationError.
+    def self.parse_needs(raw)
+      return [] if raw.nil?
+      raise ValidationError, "needs: must be a list of commands" unless raw.is_a?(Array)
+
+      raw.each_with_object([]) do |item, acc|
+        unless item.is_a?(Hash) || item.is_a?(String) || item.is_a?(Symbol)
+          raise ValidationError, "needs: each item must be a command name or a mapping with command:, not #{item.inspect}"
+        end
+
+        need = item.is_a?(Hash) ? item.transform_keys(&:to_s) : { "command" => item }
+        command = need["command"].to_s.strip
+        raise ValidationError, "needs: #{command.inspect} is not a plain command name" unless command.match?(NEED_COMMAND)
+        next if acc.any? { |n| n[:command] == command }
+
+        acc << { command: command, why: optional_text(need["why"]), hint: optional_text(need["hint"]) }
+      end
+    end
+
+    def self.optional_text(value)
+      text = value.to_s.strip
+      text.empty? ? nil : text
+    end
+    private_class_method :optional_text
+
+    private
+
+    # BundleManifest.tolerant's read: the order and the keys are its comment's.
+    def read_tolerantly(path, fallback_scripts)
+      @path = path
+      raw = @raw = load_mapping(path)
+      problems = {}
+      @name = raw["name"].to_s
+      @version = raw["version"].to_s
+      @scope = normalize_scope(raw["scope"])
+      @files, @file_descriptions = tolerate(problems, "files", [{}, {}]) do
+        [parse_files(raw["files"] || {}), parse_file_descriptions(raw["files"])]
+      end
+      @scripts = tolerate(problems, "scripts", {}) { parse_scripts(raw["scripts"]) }
+      @plugin = tolerate(problems, "plugin", nil) { parse_plugin(raw["plugin"]) }
+      # An old kept manifest's hooks: is no problem: it isn't read (HooksRetired).
+      @needs = tolerate(problems, "needs", []) { self.class.parse_needs(raw["needs"]) }
+      @context_providers = tolerate(problems, "context_providers", []) { parse_context_providers(raw["context_providers"]) }
+      script_names = problems.key?("scripts") ? fallback_scripts.map(&:to_s) : @scripts.keys
+      @block_renderers = tolerate(problems, "block_renderers", []) { parse_block_renderers(raw["block_renderers"], script_names) }
+      @includes = tolerate(problems, "includes", []) { parse_includes(raw["includes"]) }
+      @session_settings, @session_setting_types = tolerate(problems, "session_settings", [[], {}]) do
+        [self.class.parse_session_settings(raw["session_settings"]), self.class.parse_session_setting_types(raw["session_settings"])]
+      end
+      @settings, @setting_types = tolerate(problems, "settings", [nil, {}]) do
+        next [nil, {}] if raw["settings"].nil?
+
+        [self.class.parse_session_settings(raw["settings"], key: "settings"),
+         self.class.parse_session_setting_types(raw["settings"], key: "settings")]
+      end
+      @requires_chi = tolerate(problems, "requires_chi", nil) { parse_requires_chi(raw["requires_chi"]) }
+      @trust_level = tolerate(problems, "trust_level", "experimental") { (raw["trust_level"] || "experimental").to_s }
+      @description = tolerate(problems, "description", "") { (raw["description"] || "").to_s }
+      @unknown_keys = raw.keys - KEYS
+      problems
+    end
+
+    # The block's value, else +empty+ with the key's problem noted. Anything
+    # a parser raises counts: the file is a load-time input, and one key
+    # must never cost the bundle.
+    def tolerate(problems, key, empty)
+      yield
+    rescue StandardError => e
+      problems[key] = e.message
+      empty
+    end
+
+    # The manifest.yml's top-level mapping ({} for an empty file); YAML that
+    # doesn't parse, or isn't a mapping, raises ValidationError, as every
+    # other manifest problem does.
+    def load_mapping(path)
+      raw = YAML.load_file(path) || {}
+      raise ValidationError, "manifest.yml is not a YAML mapping in #{File.dirname(path)}" unless raw.is_a?(Hash)
+
+      raw
+    rescue Psych::SyntaxError => e
+      raise ValidationError, "manifest.yml is not valid YAML in #{File.dirname(path)}: line #{e.line}, column #{e.column}: #{e.problem}"
+    rescue Psych::Exception => e
+      raise ValidationError, "manifest.yml is not valid YAML in #{File.dirname(path)}: #{e.message}"
+    end
+
+    def require_str(hash, key)
+      val = hash[key]
+      return val if val.is_a?(String) && !val.empty?
+
+      raise ValidationError, "manifest missing required field: #{key}"
+    end
+
+    def normalize_scope(val)
+      return nil if val.nil?
+
+      v = val.to_s.strip.downcase
+      %w[project system].include?(v) ? v : nil
+    end
+
+    def parse_files(raw)
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(k, v), acc|
+        next unless k.is_a?(String) && !k.empty?
+
+        str = (v.is_a?(Hash) ? v["sha256"] : v).to_s
+        acc[k] = if str.start_with?("sha256:")
+                   str
+                 else
+                   "sha256:#{str}"
+                 end
+      end
+    end
+
+    # The descriptions of the files: entries given as a mapping.
+    def parse_file_descriptions(raw)
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(k, v), acc|
+        next unless k.is_a?(String) && v.is_a?(Hash)
+
+        text = v["description"].to_s.strip
+        acc[k] = text unless text.empty?
+      end
+    end
+
+    # plugin: {file:, sha256:, required:} → {file:, sha256:} (sha "" when
+    # not given) with required: true when it says so, or nil; a file that
+    # isn't a plain .rb name, or a required: that isn't true or false, is a
+    # validation error.
+    def parse_plugin(raw)
+      return nil if raw.nil?
+      raise ValidationError, "plugin: must be a mapping with file: and sha256:" unless raw.is_a?(Hash)
+
+      file = (raw["file"] || raw[:file]).to_s.strip
+      unless file.match?(PLUGIN_FILE)
+        raise ValidationError, "plugin file must be a .rb file name in the bundle's top directory, not #{file.inspect}"
+      end
+
+      sha = (raw["sha256"] || raw[:sha256]).to_s.strip
+      sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
+      required = raw.key?("required") ? raw["required"] : raw[:required]
+      raise ValidationError, "plugin required: must be true or false, not #{required.inspect}" unless [nil, true, false].include?(required)
+
+      required ? { file: file, sha256: sha, required: true } : { file: file, sha256: sha }
+    end
+
+    # scripts: {file => sha256} → the same, "sha256:" prefixed; {} when absent.
+    def parse_scripts(raw)
+      return {} if raw.nil?
+      raise ValidationError, "scripts: must be a mapping of file name to sha256" unless raw.is_a?(Hash)
+
+      raw.to_h do |file, sha|
+        file = file.to_s
+        raise ValidationError, "scripts: #{file.inspect} isn't a plain file name in scripts/" unless file.match?(SCRIPT_FILE)
+
+        sha = sha.to_s.strip
+        [file, sha.empty? || sha.start_with?("sha256:") ? sha : "sha256:#{sha}"]
+      end
+    end
+
+    # @return [Array<ContextProviders::Provider>]
+    def parse_context_providers(raw)
+      ContextProviders.parse_list(raw)
+    rescue ContextProviders::Invalid => e
+      raise ValidationError, e.message
+    end
+
+    # @param script_names [Array<String>] the scripts: keys each load must be
+    # @return [Array<BlockRenderers::Renderer>] each load is a scripts: key
+    def parse_block_renderers(raw, script_names = @scripts.keys)
+      return [] if raw.nil?
+
+      renderers = BlockRenderers.parse_list(raw)
+      renderers.each do |renderer|
+        missing = renderer.load - script_names
+        raise ValidationError, "block_renderers: #{renderer.lang} loads #{missing.join(", ")}, not under scripts:" unless missing.empty?
+      end
+      renderers
+    rescue BlockRenderers::Invalid => e
+      raise ValidationError, e.message
+    end
+
+    # includes: → the names in order, duplicates dropped; [] when absent.
+    # A meta ships nothing of its own, so files, hooks or a plugin next
+    # to it is a ValidationError.
+    def parse_includes(raw)
+      return [] if raw.nil?
+      raise ValidationError, "includes: must be a list of bundle names" unless raw.is_a?(Array)
+
+      names = raw.map do |item|
+        name = item.to_s.strip
+        raise ValidationError, "includes: #{item.inspect} is not a bundle name" unless name.match?(BUNDLE_NAME)
+
+        name
+      end.uniq
+      if !names.empty? && (!@files.empty? || @plugin || !@scripts.empty?)
+        raise ValidationError, "a bundle with includes: holds only its includes (no files, plugin or scripts)"
+      end
+
+      names
+    end
+
+    def parse_requires_chi(raw)
+      return nil if raw.nil?
+
+      text = raw.to_s.strip
+      text.empty? ? nil : text
+    end
+  end
+end

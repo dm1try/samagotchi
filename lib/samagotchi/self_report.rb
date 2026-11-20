@@ -20,7 +20,7 @@ require_relative "llm/adapters"
 require_relative "tools/memory"
 require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
-require_relative "memory_bundle/manifest"
+require_relative "bundle_manifest"
 require_relative "memory_bundle/system_bundle"
 require_relative "memory_index/size"
 require_relative "memory_index/entry_size"
@@ -490,7 +490,7 @@ module Samagotchi
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
     def bundles_summary
       shipped = Degrade.call(:memory, "shipped_bundle_unreadable") do
-        MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
+        BundleManifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
       end
       installed = MemoryBundle::Provenance.each_installed.map do |name, bundle|
         version = bundle.version || "?"

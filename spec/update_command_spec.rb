@@ -522,7 +522,7 @@ RSpec.describe Samagotchi::UpdateCommand do
       statuses = finding_rows(rows, "future-one").map { |r| r["status"] }
       expect(statuses.size).to eq(1)
       expect(statuses.first).to match(/\Awarn unknown-key manifest\.yml:\d+: /)
-        .and include(Samagotchi::MemoryBundle::Manifest.unknown_key_line("card_layouts"))
+        .and include(Samagotchi::BundleManifest.unknown_key_line("card_layouts"))
     end
 
     it "gives no missing-file row for what the kept manifest lists and the install left out, and still loads the plugin" do

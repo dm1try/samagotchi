@@ -111,7 +111,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
 
       expect(install(core)).to have_attributes(installed: [], already: [], skipped: {}, failed: {})
       expect(File.read(File.join(system_dir, ".bundles", "core", "manifest.json"))).to eq(record)
-      expect(described_class.to_install(Samagotchi::MemoryBundle::Manifest.read(dir: core))).to eq([])
+      expect(described_class.to_install(Samagotchi::BundleManifest.read(dir: core))).to eq([])
     end
 
     it "keeps a member the user uninstalled out, and installs only a bundle new to the profile" do
@@ -120,7 +120,7 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       Samagotchi::MemoryBundle::Uninstaller.new(name: "b").run
 
       core2 = ship_meta("core", %w[a b c], version: "0.2.0")
-      expect(described_class.to_install(Samagotchi::MemoryBundle::Manifest.read(dir: core2))).to eq(%w[c])
+      expect(described_class.to_install(Samagotchi::BundleManifest.read(dir: core2))).to eq(%w[c])
       result = install(core2)
 
       expect(result.installed).to eq(%w[c])

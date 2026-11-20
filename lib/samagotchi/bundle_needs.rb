@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Samagotchi
+  autoload :BundleManifest, File.expand_path("bundle_manifest", __dir__)
   autoload :MutedMemories, File.expand_path("muted_memories", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
   module MemoryBundle
     autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
-    autoload :Manifest, File.expand_path("memory_bundle/manifest", __dir__)
   end
 
   # The outside commands a bundle declares in its manifest's `needs:`

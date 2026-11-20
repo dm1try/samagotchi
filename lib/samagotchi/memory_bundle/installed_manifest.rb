@@ -2,7 +2,7 @@
 
 require_relative "../context_providers"
 require_relative "../version"
-require_relative "manifest"
+require_relative "../bundle_manifest"
 require_relative "provenance"
 
 module Samagotchi
@@ -30,7 +30,7 @@ module Samagotchi
     #   kept, another sha, or not a   problems["manifest.yml"] = :edited
     #   YAML mapping
     #   kept, its sha                 origin :kept
-    # Each key is parsed on its own (Manifest.tolerant for the kept file): one
+    # Each key is parsed on its own (BundleManifest.tolerant for the kept file): one
     # that doesn't parse reads as the mirror's value if that parses, else as
     # empty, and its message is in +problems+ (key => message), so one bad key
     # never costs the rest. A reader that logged such a key logs problems[key].
@@ -39,7 +39,7 @@ module Samagotchi
     #
     #   requires_chi, trust_level   the strings as recorded, nil when none
     #   description                 the kept manifest's, nil from the record
-    #   needs                       Manifest.parse_needs'
+    #   needs                       BundleManifest.parse_needs'
     #   script_names                the scripts/ files it lists
     #   context_providers           Array<ContextProviders::Provider>
     #   block_renderers             Array<BlockRenderers::Renderer>
@@ -55,7 +55,7 @@ module Samagotchi
     #   includes                    a profile's recorded members (the record's
     #                               identity, never the kept file's), nil for a plain bundle
     #   unknown_keys                the kept manifest's keys this chi doesn't know
-    #   floor_keys                  the kept manifest's Manifest#floor_keys (key =>
+    #   floor_keys                  the kept manifest's BundleManifest#floor_keys (key =>
     #                               the first chi that read it), {} from the record
     #   origin                      :kept or :record
     class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :needs,
@@ -111,9 +111,9 @@ module Samagotchi
         return standing(mirrored, :stale) unless recorded
         return standing(mirrored, :edited) unless Provenance.sha_matches?(path, bundle.manifest_sha)
 
-        kept, problems = Manifest.tolerant(path: path, fallback_scripts: bundle.scripts.keys)
+        kept, problems = BundleManifest.tolerant(path: path, fallback_scripts: bundle.scripts.keys)
         from_kept(bundle, kept, problems, mirrored)
-      rescue Manifest::ValidationError, SystemCallError, EncodingError
+      rescue BundleManifest::ValidationError, SystemCallError, EncodingError
         standing(mirrored, :edited)
       end
 
@@ -139,7 +139,7 @@ module Samagotchi
             unknown_keys: kept.unknown_keys.map(&:to_s), floor_keys: floors(kept), problems: problems.freeze, origin: :kept)
       end
 
-      # Manifest#floor_keys of the tolerant read; a shape it can't tell is no floor.
+      # BundleManifest#floor_keys of the tolerant read; a shape it can't tell is no floor.
       def self.floors(kept)
         kept.floor_keys
       rescue StandardError
@@ -151,7 +151,7 @@ module Samagotchi
         problems = {}
         new(name: bundle.name, version: bundle.version,
             requires_chi: raw["requires_chi"]&.to_s, trust_level: raw["trust_level"]&.to_s, description: nil,
-            needs: parsed(problems, "needs", [], Manifest::ValidationError) { Manifest.parse_needs(raw["needs"]) },
+            needs: parsed(problems, "needs", [], BundleManifest::ValidationError) { BundleManifest.parse_needs(raw["needs"]) },
             script_names: bundle.scripts.keys,
             context_providers: parsed(problems, "context_providers", []) { ContextProviders.parse_list(raw["context_providers"]) },
             block_renderers: parsed(problems, "block_renderers", []) { BlockRenderers.parse_list(raw["block_renderers"]) },
@@ -202,7 +202,7 @@ module Samagotchi
 
       # Why chi +version+ can't load this bundle, nil when it can (or it
       # names no requirement): the one requires_chi gate.
-      def requires_chi_failure(version = Samagotchi::VERSION) = Manifest.requires_chi_failure(requires_chi, version)
+      def requires_chi_failure(version = Samagotchi::VERSION) = BundleManifest.requires_chi_failure(requires_chi, version)
 
       # A bundle with no trust_level counts as experimental.
       def experimental? = (trust_level || "experimental") == "experimental"
