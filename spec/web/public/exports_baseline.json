@@ -940,6 +940,14 @@
     "sessionHash",
     "sessionIdFromHash"
   ],
+  "running_tasks.js": [
+    "NAMED_MAX",
+    "cutCommand",
+    "tasksConfirmText",
+    "tasksCount",
+    "tasksLine",
+    "tasksStoppedSuffix"
+  ],
   "scope.js": [
     "allScopeHref",
     "cardFolder",
@@ -1537,6 +1545,13 @@
     "cardTemplate",
     "linesTemplate",
     "textTemplate"
+  ],
+  "ws_item_sig.js": [
+    "ITEM_STATES",
+    "olderAnswer",
+    "serverIndex",
+    "serverItem",
+    "serverSig"
   ],
   "ws_peek.js": [
     "PEEK_WIDTH",

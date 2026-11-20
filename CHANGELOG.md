@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.178.0] - 2026-11-20
+
 ### Changed
 
 - Deleting or archiving a session whose background tasks still run now asks first: the web names them and offers to
@@ -28,6 +30,8 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions restart` (and the web's restart) of a session being deleted says "the session is being deleted"
   instead of "its worker is still starting"; a schedule's skip says the same, and for a worker on a newer chi says
   to restart chi web or update chi, instead of "its worker is starting or leaving".
+
+Update with `chi update`.
 
 ## [0.177.1] - 2026-11-19
 
@@ -6517,7 +6521,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.177.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.178.0...HEAD
+[0.178.0]: https://github.com/dm1try/samagotchi/compare/v0.177.1...v0.178.0
 [0.177.1]: https://github.com/dm1try/samagotchi/compare/v0.177.0...v0.177.1
 [0.177.0]: https://github.com/dm1try/samagotchi/compare/v0.176.0...v0.177.0
 [0.176.0]: https://github.com/dm1try/samagotchi/compare/v0.175.0...v0.176.0
