@@ -511,6 +511,9 @@ chi.on(:before_tool_call, priority: 10, on_error: :fail_closed) { |event, _ctx| 
   to load (a sha256 that differs, an unmet `requires_chi`, a raise in the file
   or in `register`) is a **required guardrail failure**: every tool call is
   denied until it is fixed ([guardrails.md](guardrails.md#failing-closed)).
+  If manifest.json doesn't read, chi treats the bundle as required unless the
+  kept manifest.yml reads and names no plugin or a plugin without
+  `required: true`; reinstall the bundle to fix it.
   Without the flag a fail-closed hook still denies the call it raises on, but
   a load failure denies nothing; `chi bundle check` warns (`fail-closed`) and
   the log says so (`plugin_fail_closed_unrequired`).

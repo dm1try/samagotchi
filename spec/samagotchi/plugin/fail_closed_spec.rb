@@ -160,6 +160,40 @@ RSpec.describe "A fail-closed plugin hook" do
       expect(denied_reason(started)).to include("sha256")
     end
 
+    it "denies when a required plugin's manifest.json is unreadable" do
+      install("guard", guard)
+      File.write(File.join(system_dir, ".bundles", "guard", "manifest.json"), "{")
+      eng = started
+      expect(denied_reason(eng)).to include("manifest.json is unreadable")
+      expect(eng.guardrail_failures.required.first.what).to eq("plugin plugin (bundle guard)")
+    end
+
+    it "denies when an unreadable plugin's kept manifest.yml is missing" do
+      install("guard", guard)
+      bundle_dir = File.join(system_dir, ".bundles", "guard")
+      File.write(File.join(bundle_dir, "manifest.json"), "{")
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      expect(denied_reason(started)).to include("manifest.json is unreadable")
+    end
+
+    it "denies when an unreadable plugin's kept manifest.yml is invalid" do
+      install("guard", guard)
+      bundle_dir = File.join(system_dir, ".bundles", "guard")
+      File.write(File.join(bundle_dir, "manifest.json"), "{")
+      File.write(File.join(bundle_dir, "manifest.yml"), "{")
+      expect(denied_reason(started)).to include("manifest.json is unreadable")
+    end
+
+    it "denies when an unreadable plugin's kept manifest.yml has an invalid plugin" do
+      install("guard", guard)
+      bundle_dir = File.join(system_dir, ".bundles", "guard")
+      File.write(File.join(bundle_dir, "manifest.json"), "{")
+      kept = YAML.load_file(File.join(bundle_dir, "manifest.yml"))
+      kept["plugin"]["required"] = "yes"
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(kept))
+      expect(denied_reason(started)).to include("manifest.json is unreadable")
+    end
+
     it "denies every tool call when the plugin's folder is gone" do
       path = install("guard", guard)
       FileUtils.rm_rf(File.dirname(path))
@@ -176,6 +210,24 @@ RSpec.describe "A fail-closed plugin hook" do
       File.write(path, "# tampered\n")
       eng = started
       expect(eng.guardrail_failures.any?).to be(false)
+      expect(eng.plugin_failures.list.map(&:required)).to eq([false])
+    end
+
+    it "keeps an unreadable plugin without required: as not required" do
+      install("guard", guard, required: nil)
+      File.write(File.join(system_dir, ".bundles", "guard", "manifest.json"), "{")
+      eng = started
+      expect(eng.guardrail_failures.any?).to be(false)
+      expect(eng.plugin_failures.list.map(&:required)).to eq([false])
+    end
+
+    it "does not require an unreadable plugin whose kept manifest.yml has no plugin" do
+      install("guard", guard, required: nil)
+      bundle_dir = File.join(system_dir, ".bundles", "guard")
+      File.write(File.join(bundle_dir, "manifest.json"), "{")
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump("name" => "guard", "version" => "1.0.0", "files" => {}))
+      eng = started
+      expect(denied_reason(eng)).to be_nil
       expect(eng.plugin_failures.list.map(&:required)).to eq([false])
     end
 

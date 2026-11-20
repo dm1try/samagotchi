@@ -53,8 +53,10 @@ module Samagotchi
     # (the manifest's plugin: required: true, read from the kept manifest:
     # InstalledManifest#plugin_required) goes to +guardrail_failures+ as
     # required instead: every tool call is denied, as for a fail-closed
-    # config hook. Its chi.on(..., on_error: :fail_closed) hooks deny the
-    # call they raise on (Api#on).
+    # config hook. A bundle whose manifest.json doesn't read counts as
+    # required unless its kept manifest.yml reads and names no plugin or a
+    # plugin without required: true. Its chi.on(..., on_error: :fail_closed)
+    # hooks deny the call they raise on (Api#on).
     module Loader
       TAG = :plugins
 
@@ -87,7 +89,7 @@ module Samagotchi
         basename = file ? File.basename(file) : "plugin"
         # Known before it registers anything: a guardrail that fails to load
         # (its sha, requires_chi, a raise) denies every tool call.
-        required = !bundle.error? && bundle.manifest.plugin_required
+        required = bundle.error? ? unreadable_required?(bundle_name) : bundle.manifest.plugin_required
         into = required ? guardrail_failures || failures : failures
         reason = bundle.error || unloadable_reason(file, bundle)
         return failed(bundle_name, basename, reason, into, required: required) if reason
@@ -147,6 +149,21 @@ module Samagotchi
         return "the file is missing" unless file && File.file?(file)
 
         sha_mismatch(file, bundle.plugin.sha256)
+      end
+
+      # Decide from the last readable manifest whether an unreadable record
+      # might have been a required guardrail; unknown evidence fails closed.
+      def unreadable_required?(bundle_name)
+        path = MemoryBundle::Provenance.new(name: bundle_name).kept_manifest_path
+        return true unless path && File.file?(path)
+
+        kept, problems = MemoryBundle::Manifest.tolerant(path: path)
+        return true if problems.key?("plugin")
+        return false unless kept.plugin
+
+        kept.plugin[:required] == true
+      rescue StandardError # degrade-ok: unreadable kept manifests must be treated as required
+        true
       end
 
       # Why +file+ doesn't match the sha256 recorded at install (+recorded+,
