@@ -260,10 +260,12 @@ module Samagotchi
     class RetryExhausted < ConnectionError
       attr_reader :last_error
 
-      def initialize(attempts:, last_error:, label: "llama.cpp")
+      # @param message [String, nil] a subclass's own message; nil: "request
+      #   failed after …" with +last_error+
+      def initialize(attempts:, last_error:, label: "llama.cpp", message: nil)
         @last_error = last_error
-        super("#{label} request failed after #{self.class.count(attempts)}: #{last_error.class}: #{last_error.message}",
-              host: label, retryable: false, attempts: attempts)
+        message ||= "#{label} request failed after #{self.class.count(attempts)}: #{last_error.class}: #{last_error.message}"
+        super(message, host: label, retryable: false, attempts: attempts)
       end
 
       def summary = "network error after #{self.class.count(attempts)} (host #{host}: #{last_error.class})"
@@ -271,8 +273,44 @@ module Samagotchi
       # The message without its leading "host ": "request failed after …".
       def detail = host ? message.delete_prefix("#{host} ") : message
 
+      # The same failure counting +attempts+ requests: what the loops raise
+      # once a dropped stream's step has been asked again (every request
+      # counts, not only the last one's).
+      def recounted(attempts) = RetryExhausted.new(attempts: attempts, last_error: last_error, label: host)
+
       # "1 attempt", "3 attempts".
       def self.count(attempts) = "#{attempts} attempt#{"s" unless attempts == 1}"
+    end
+
+    # A stream that showed something, then nothing more (no text, reasoning
+    # or tool call) for the host's stream_idle_timeout, while keep-alives
+    # could hold it open until the read timeout. A RetryExhausted, so the
+    # loops ask the step again as they do a dropped stream.
+    class StreamStalled < RetryExhausted
+      attr_reader :limit
+
+      def initialize(limit:, host:, attempts: 1, last_error: nil)
+        @limit = limit
+        super(attempts: attempts, last_error: last_error, label: host,
+              message: "#{host}: the model's stream stalled: no output for #{format_seconds(limit)}s")
+      end
+
+      def kind = :stream_stalled
+
+      def summary
+        "the model's stream stalled on host #{host}: no output for #{format_seconds(limit)}s (stream_idle_timeout)" \
+          "#{", after #{self.class.count(attempts)}" if attempts.to_i > 1}; try again later or pick another model (/model)"
+      end
+
+      # The message without its leading "host: ".
+      def detail = host ? message.delete_prefix("#{host}: ") : message
+
+      # Keeps its class and limit (RetryExhausted#recounted would not).
+      def recounted(attempts) = StreamStalled.new(limit: limit, host: host, attempts: attempts, last_error: last_error)
+
+      private
+
+      def format_seconds(seconds) = seconds == seconds.to_i ? seconds.to_i.to_s : seconds.to_s
     end
 
     # A refused connection: nothing listens at the host's address. Not

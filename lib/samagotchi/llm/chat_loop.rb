@@ -965,10 +965,11 @@ module Samagotchi
 
         # A dropped stream (LLM::HTTP raises RetryExhausted once a stream
         # that already showed something fails, where a retry would repeat
-        # output) is asked again here, from the same conversation, up to
-        # MAX_STREAM_DROPS times per step (fewer under a smaller retry.max;
-        # none with 0), after the transport's backoff: the partial reply is
-        # dropped and the step restarts. A refusal or a first-token timeout
+        # output; StreamStalled, one that went quiet past
+        # stream_idle_timeout, is one) is asked again here, from the same
+        # conversation, up to MAX_STREAM_DROPS times per step (fewer under a
+        # smaller retry.max; none with 0), after the transport's backoff: the
+        # partial reply is dropped and the step restarts. A refusal or a first-token timeout
         # fails as before, and a cancel (before or during the wait) never
         # retries. +count+ (a DropCount) carries on across calls for one
         # step.
@@ -986,7 +987,7 @@ module Samagotchi
           if count.drops >= limit || !streamed_any
             raise if count.requests == e.attempts.to_i
 
-            raise RetryExhausted.new(attempts: count.requests, last_error: e.last_error, label: e.host)
+            raise e.recounted(count.requests)
           end
 
           count.drops += 1

@@ -876,6 +876,29 @@ RSpec.describe Samagotchi::KernelLoop do
         expect(error.message).to start_with("llama.cpp request failed after 3 attempts: Net::ReadTimeout")
       end
 
+      it "asks a stalled stream (StreamStalled) again like a drop, then fails with it, its attempts summed" do
+        stalled = Samagotchi::LLM::StreamStalled.new(limit: 2, host: "llama.cpp")
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          raise stalled
+        end
+        events = []
+        error = nil
+        expect { drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e }) }
+          .to raise_error(Samagotchi::LLM::StreamStalled) { |raised| error = raised }
+
+        expect(calls).to eq(3)
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| [e[:attempt], e[:restarted]] })
+          .to eq([[1, true], [2, true]])
+        expect(error.attempts).to eq(3)
+        expect(error.limit).to eq(2)
+        expect(error.message).to eq("llama.cpp: the model's stream stalled: no output for 2s")
+        expect(error.summary).to start_with("the model's stream stalled on host llama.cpp: no output for 2s " \
+                                            "(stream_idle_timeout), after 3 attempts;")
+      end
+
       it "counts the drops' requests in a different error that ends the step (a 503)" do
         calls = 0
         allow(client).to receive(:complete) do |_prompt, **kwargs|

@@ -753,6 +753,27 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:attempt] }).to eq([1, 2])
       end
 
+      it "asks a stalled stream (StreamStalled) again like a drop, then fails with it, its attempts summed" do
+        stalled = Samagotchi::LLM::StreamStalled.new(limit: 120, host: "openrouter")
+        backend.adapter = FakeChatAdapter.new(dropping(error: stalled), text("the whole answer"))
+
+        expect(run.text).to eq("the whole answer")
+        expect(events.find { |e| e[:type] == :generation_retrying })
+          .to include(attempt: 1, error_class: "Samagotchi::LLM::StreamStalled", restarted: true)
+
+        events.clear
+        backend.adapter = FakeChatAdapter.new(dropping(error: stalled))
+        error = nil
+        expect { run }.to raise_error(Samagotchi::LLM::StreamStalled) { |raised| error = raised }
+
+        expect(backend.adapter.requests.size).to eq(3)
+        expect(error.attempts).to eq(3)
+        expect(error.limit).to eq(120)
+        expect(error.kind).to eq(:stream_stalled)
+        expect(error.summary).to eq("the model's stream stalled on host openrouter: no output for 120s " \
+                                    "(stream_idle_timeout), after 3 attempts; try again later or pick another model (/model)")
+      end
+
       it "counts the drops' requests in a different error that ends the step (a 503)" do
         server_error = lambda do |on_delta:, **|
           on_delta.call(content: "x", reasoning: "", payload: {})
