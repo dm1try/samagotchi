@@ -3,6 +3,7 @@
 require_relative "tool_activity"
 require_relative "tool_row_fields"
 require_relative "row_refs"
+require_relative "tool_ids"
 require_relative "file_ref"
 require_relative "guardrails"
 require_relative "vision_context"
@@ -123,7 +124,8 @@ module Samagotchi
       # plugin tool's refs); the worker runs in its session's working
       # directory.
       fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
-      refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd(context))
+      refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd(context),
+                                                                                         tool_id: tool_id)
       fields[:refs] = refs unless refs.empty?
       started.merge!(fields)
       # The row's clock: tool_call_completed's duration_ms runs from here.
@@ -147,7 +149,7 @@ module Samagotchi
         result = denied(call, verdict, context)
       else
         dispatched_at = @clock.call
-        result = dispatch(call, context)
+        result = dispatch(call, context, tool_id)
         elapsed_ms = ((@clock.call - dispatched_at) * 1000).round
       end
       diff = file_change(call, before)
@@ -594,8 +596,10 @@ module Samagotchi
 
     # KernelLoop#dispatch turns tool errors into "[name] Error: …" itself;
     # this rescue only catches a failing dispatcher.
-    def dispatch(call, context)
-      @kernel.dispatch_tool_call(call, context)
+    # The handler runs on this thread with +tool_id+ as ToolIds.current (a
+    # plugin's ctx.tool_id), the id its row's refs got too.
+    def dispatch(call, context, tool_id = nil)
+      ToolIds.with_current(tool_id) { @kernel.dispatch_tool_call(call, context) }
     rescue StandardError => e
       { output: "[#{call[:name]}] Error: #{e.class}: #{e.message}", activity: nil }
     end

@@ -99,6 +99,19 @@ RSpec.describe Samagotchi::RowRefs do
       expect(logged.map(&:first)).to eq(%w[tool_refs_failed tool_refs_failed])
       expect(logged.first.last).to include(tool: "ticket", error: "RuntimeError: boom")
     end
+
+    it "gives a two-arg lambda the run's tool_id too, a one-arg one the call alone" do
+      seen = []
+      two = ->(c, tool_id) { seen << [c, tool_id] and [jira] }
+      optional = ->(_c, tool_id = :unset) { seen << tool_id and [] }
+
+      expect(described_class.for(two, call, cwd: "/proj", tool_id: "t7")).to eq([Samagotchi::Ref.from(jira).to_h])
+      described_class.for(two, call, cwd: "/proj")
+      described_class.for(optional, call, cwd: "/proj", tool_id: "t8")
+      expect(refs_for([jira])).to eq([Samagotchi::Ref.from(jira).to_h])
+      expect(seen).to eq([[call, "t7"], [call, nil], "t8"])
+      expect(logged).to be_empty
+    end
   end
 
   describe "a session folder behind a symlink (macOS /tmp is /private/tmp)" do

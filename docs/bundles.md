@@ -1049,8 +1049,9 @@ Claude pairs; without one the bundle costs one tool declaration.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`, and a second line,
-  `ref: <send id>` (`s-` and 6 hex, from the kind, title and text as given:
-  the same part sent again has the same id), which Claude's answer gives back
+  `ref: <send id>` (`s-` and 6 hex, from the kind, title and text as given
+  and the send itself: each send has its own id, the same part sent again
+  too; an older chi's resend shared one), which Claude's answer gives back
   so chi can tie it to its send; the tool's row in the web carries the id too.
   A text up to 4,000 characters follows inline; a longer one goes to a file,
   `$XDG_STATE_HOME/samagotchi/plugins/claude-peer/sessions/<id>/<HHMMSS>-<slug>.md`

@@ -400,6 +400,10 @@ end
   the phone too; a file's "Open in editor" only where the editor opens (this machine).
 - It runs **once per call, on the tool path**, before the call runs: keep it cheap, with no I/O (no
   network, no file reads); build the refs from `args` alone.
+- A lambda that takes two args, `->(args, tool_id) { … }`, gets the run's own id too (chi's tool id, `"t41"`;
+  nil when the run has none, a [bundle test](bundle-authoring.md)'s `bundle.tool` for one), and the block reads
+  the same id as `ctx.tool_id`: what makes an id for the row that differs between two calls with equal args (the
+  peer bundles' send id). A one-arg lambda gets the args alone. Needs chi 0.181.0.
 - If it raises or returns something other than a list, the row gets no refs and the tool still runs; a bad
   ref (an unknown kind, a `javascript:` URL, a file outside the folder) is dropped. Both are logged (tag
   `plugins`, `tool_refs_failed` / `tool_refs_rejected`).
@@ -891,6 +895,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
 | `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
 | `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)). Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
+| `ctx.tool_id` | inside a tool's block, the run's own id (chi's tool id, `"t41"`), the one a two-arg `refs:` lambda got for its row ([Refs on a tool's row](#refs-on-a-tools-row)); nil anywhere else (a hook, a command, a thread the block started) and for a run with none. Needs chi 0.181.0 (guard it with `ctx.respond_to?(:tool_id)`) |
 | `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use: what the bundle keeps across sessions |
 | `ctx.session_dir` | this session's own folder there, created on use, read now; nil with no session yet. `ctx.session_dir(create: false)` is the same path with no folder made, for a read, so a session that saved nothing leaves none (a `File.read` of what isn't there raises `Errno::ENOENT`); needs chi newer than 0.143.0. chi removes it when the session is deleted, discarded or pruned, so don't build the path yourself. A `sessions/<id>.json` an older version of your bundle kept moves in as `state.json` (chi still removes one left there). Needs chi newer than 0.142.0 |
@@ -1456,10 +1461,12 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
    `APP`, `COMMAND`, `USAGE`, `OUTBOX` and `SCRIPTS_DIRS`. These constants are
-   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text)` (`s-` and 6 hex
-   of SHA-256 over the args as given) is the message's second line (`ref: <id>`), the tool row's `peer` ref
-   (display only, no actions; computed from the args before the call runs, so a send that then fails has it too)
-   and the last send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
+   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text, salt)` (`s-` and 6 hex
+   of SHA-256 over the args as given and the send's salt: the tool run's `ctx.tool_id`, a random one for a
+   `/<peer>` command's, so each send has its own id; a nil salt gives an older chi's id, over the args alone) is the
+   message's second line (`ref: <id>`), the tool row's `peer` ref (display only, no actions; computed from the args
+   and the run's id before the call runs, a two-arg `refs:`, so a send that then fails has it too) and the last
+   send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
    Successful sends and transport failures are recorded in the session's peer exchange log; answer pushes add
    summaries, not answer texts. The log does not enter the model's context.
    See the [claude-peer](bundles.md#the-claude-peer-bundle) and

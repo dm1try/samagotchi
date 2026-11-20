@@ -5,6 +5,8 @@ require_relative "support/test_kernel"
 require "samagotchi/hooks"
 require "samagotchi/session"
 require "samagotchi/message_parts"
+require "samagotchi/plugin/api"
+require "samagotchi/plugin/context"
 require "fileutils"
 require "tmpdir"
 require "support/task_dirs"
@@ -298,6 +300,28 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).not_to include("PREVIEW")
       expect(prompts[1]).not_to include("notes: save")
       expect(prompts[1]).not_to include("NOTE-7")
+    end
+
+    it "gives a plugin tool's two-arg refs: and its handler (ctx.tool_id) the run's own tool id" do
+      registry = Samagotchi::Tools::Builtins.registry
+      ctx = Samagotchi::Plugin::Context.new(bundle: "notes", label: "notes", settings: {},
+                                            host: Samagotchi::Plugin::Host.new(session_id: -> {}, cwd: -> {}))
+      spec = Samagotchi::Plugin::ToolSpec.build("save_note", "save", refs: ->(_args, id) { [{ kind: "issue", target: { id: "N-#{id}" } }] }) do |_args, c|
+        "saved under #{c.tool_id}"
+      end
+      registry.register("save_note", source: "notes", **spec.entry_fields(ctx))
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length > 1 ? "done" : %(<|tool_call>call:save_note{}<tool_call|><|tool_call>call:save_note{}<tool_call|>)
+      end
+      result = described_class.new(client: client, services: described_class::Services.none(tools: registry)).run([{ role: "user", content: "check" }])
+      tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
+      ids = tool_response[:tool_ids]
+      expect(ids.uniq.length).to eq(2)
+      expect(tool_response[:tool_refs].map { |refs| refs.first.dig(:target, :id) }).to eq(ids.map { |id| "N-#{id}" })
+      expect(ids.map { |id| prompts[1].include?("saved under #{id}") }).to eq([true, true])
+      expect(ctx.tool_id).to be_nil
     end
 
     it "saves what an edit/write changed on its result (tool_diffs, one per call), read back after a reload" do

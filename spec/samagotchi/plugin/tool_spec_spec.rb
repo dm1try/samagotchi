@@ -24,6 +24,21 @@ RSpec.describe Samagotchi::Plugin::ToolSpec do
     end
   end
 
+  describe "refs:" do
+    let(:call) { { name: "t", args: { "q" => "x" } } }
+
+    it "gives a two-arg lambda the call's typed args and the run's tool_id, a one-arg one the args alone" do
+      seen = []
+      two = described_class.build("t", "t", refs: ->(args, tool_id) { seen << [args, tool_id] and [] }) { "ok" }
+      one = described_class.build("t", "t", refs: ->(args) { seen << args and [] }) { "ok" }
+
+      two.entry_fields(nil)[:refs].call(call, "t3")
+      two.entry_fields(nil)[:refs].call(call)
+      one.entry_fields(nil)[:refs].call(call, "t4")
+      expect(seen).to eq([[{ "q" => "x" }, "t3"], [{ "q" => "x" }, nil], { "q" => "x" }])
+    end
+  end
+
   # Bundles call Api.tool_spec and read the spec as a Hash (the mcp
   # bundle's token estimate: spec[:schema]).
   it "is what Api.tool_spec gives, its fields read as a Hash's too" do

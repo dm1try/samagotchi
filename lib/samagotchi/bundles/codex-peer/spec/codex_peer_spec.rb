@@ -36,8 +36,20 @@ RSpec.describe "The codex-peer plugin", :bundle do
   end
   let(:codex) { sandbox.fake_executable("codex", codex_body) }
 
-  # The message's second line: the send id of the args as given.
-  def ref(kind, title, text) = "ref: #{Samagotchi::Plugin::Peer.send_id(kind, title, text)}"
+  # A /<peer> command send's random salt (Peer#command_salt), fixed so its
+  # id is known.
+  let(:command_salt) { "c0ffee00" }
+
+  before do
+    allow(SecureRandom).to receive(:hex).and_call_original
+    allow(SecureRandom).to receive(:hex).with(4).and_return(command_salt)
+    ENV["CODEX"] = codex
+  end
+
+  # The message's second line: the send id of the args as given (a tool
+  # call's, run with no tool id here), or of a command send's (+salt+).
+  def ref(kind, title, text, salt = nil) = "ref: #{Samagotchi::Plugin::Peer.send_id(kind, title, text, salt)}"
+  def command_ref(kind, title, text) = ref(kind, title, text, command_salt)
 
   # Every UI's events of the session: from the plugin, they are cards.
   def cards = bundle.cards
@@ -46,7 +58,6 @@ RSpec.describe "The codex-peer plugin", :bundle do
   def hooked_events = %i[session_start before_turn before_generation generation_progress after_generation
                          before_tool_call after_tool_call after_turn session_end].select { |event| bundle.hook_names(event).any? }
 
-  before { ENV["CODEX"] = codex } # the sandbox puts ENV back
   after { FileUtils.rm_rf(tmpdir) }
 
   def own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
@@ -286,10 +297,10 @@ RSpec.describe "The codex-peer plugin", :bundle do
       result = run("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
       expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as the codex-outbox context")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
-      expect(queued_message).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
+      expect(queued_message).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
       run("context we chose Redis")
-      expect(queued_message).to eq("chi #{short} · context · we chose Redis\n#{ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
+      expect(queued_message).to eq("chi #{short} · context · we chose Redis\n#{command_ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
     end
 
     it "adds a Confirm with Codex pill (a fill, the quote) and the codex-outbox peer source" do
@@ -303,7 +314,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       result = run("validate\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
       expect(result).to start_with("sent to Codex: validate · the key stays;")
       quote = "From your thinking:\n>   the key stays\n> two\n\nis it?"
-      expect(queued_message).to eq("chi #{short} · validate · the key stays\n#{ref("validate", "the key stays", quote)}\n#{quote}")
+      expect(queued_message).to eq("chi #{short} · validate · the key stays\n#{command_ref("validate", "the key stays", quote)}\n#{quote}")
 
       run("validate\n> an answer line\n\nok?")
       expect(queued_message.lines.first).to eq("chi #{short} · validate · an answer line\n")
@@ -332,7 +343,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
 
         expect(run("last")).to eq("sent to Codex: context · chi's last answer: The plan: three steps.")
         expect(queued_message).to eq("chi #{short} · context · chi's last answer: The plan: three steps.\n" \
-                                     "#{ref("context", "chi's last answer: The plan: three steps.", "The plan: three steps.")}\nThe plan: three steps.")
+                                     "#{command_ref("context", "chi's last answer: The plan: three steps.", "The plan: three steps.")}\nThe plan: three steps.")
       end
 
       it "mid-turn, sends the answer before the running turn, not the turn's partial text" do
