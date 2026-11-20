@@ -8,8 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi reminds you once on stderr when no core safety bundles are installed, including in a one-shot.
+
 ### Changed
 
+- A background task's folder (`tmp/tasks/`) is added to the repository's `.git/info/exclude`, so `git status`
+  doesn't list it.
 - In the web, the working set's reader and peek show a memory and a whole read of a `.md` file as rendered
   markdown, with a `rendered | source` switch on the reader's cards; a slice of a file stays numbered source.
 - In the web, the working set's peek and reader say an item read in the step still running shows once that step's

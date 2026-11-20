@@ -2,10 +2,13 @@
 
 require "fileutils"
 require "json"
+require "open3"
+require "pathname"
 require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
+require_relative "../git_env"
 require_relative "../log"
 require_relative "../process_group"
 require_relative "../spawn_env"
@@ -77,6 +80,7 @@ module Samagotchi
         exit_code_path = File.expand_path(File.join(task_dir, TaskFiles::EXIT_CODE_FILENAME))
 
         FileUtils.mkdir_p(task_dir)
+        exclude_task_dir
 
         # The child writes to it; the ensure below closes the parent's copy.
         output_io = File.open(output_path, "a") # rubocop:disable Style/FileOpen
@@ -327,6 +331,7 @@ module Samagotchi
         record = task.with(command: task.command.to_s.strip, cwd: File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
                            pid_started: ProcessGroup.start_time(pid), handed_over_by: ToolNames::Execute::NAME)
         write_record(record)
+        exclude_task_dir
         [record, nil]
       rescue StandardError => e
         [nil, "Error: #{e.message}"]
@@ -533,6 +538,35 @@ module Samagotchi
 
       def ensure_tasks_dir
         FileUtils.mkdir_p(TaskFiles.tasks_dir)
+      end
+
+      def exclude_task_dir
+        dir = File.realpath(TaskFiles.root || Dir.pwd)
+        out, err, status = Open3.capture3(GitEnv::UNSET, "git", "-C", dir, "rev-parse",
+                                          "--show-toplevel", "--git-common-dir")
+        unless status.success?
+          Log.warn(:turn, "task_exclude_failed", msg: err.strip) unless err.include?("not a git repository")
+          return
+        end
+
+        root, common = out.lines.map(&:chomp)
+        relative = Pathname.new(dir).relative_path_from(Pathname.new(File.realpath(root))).to_s
+        path = relative == "." ? TaskFiles::TASKS_DIR : File.join(relative, TaskFiles::TASKS_DIR)
+        raise ArgumentError, "task path contains a newline" if path.match?(/[\r\n]/)
+
+        pattern = "/#{path.gsub(/([\\*?\[\]])/, '\\\\\1')}/"
+        exclude = File.join(File.expand_path(common, dir), "info", "exclude")
+        FileUtils.mkdir_p(File.dirname(exclude))
+        File.open(exclude, File::RDWR | File::CREAT, 0o666) do |file|
+          file.flock(File::LOCK_EX)
+          contents = file.read
+          next if contents.lines.any? { |line| line.chomp == pattern }
+
+          file.write("\n") unless contents.empty? || contents.end_with?("\n")
+          file.write("#{pattern}\n")
+        end
+      rescue StandardError => e
+        Log.warn(:turn, "task_exclude_failed", error: e.class.name, msg: e.message)
       end
 
       def generate_task_id
