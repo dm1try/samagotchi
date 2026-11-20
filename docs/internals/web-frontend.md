@@ -423,7 +423,9 @@ In a session, the dock (composer card) shares the history's centered column, at 
 `picture_viewer.js` (`createPictureViewer`, made once by app.js as `pictures`; `viewer` there is the capabilities
 object) shows a picture over the whole page in `#lightbox`, an opaque surface in `--bg` (a diagram's ink is the
 theme's text colour, which a dark backdrop would hide on the light theme). A click on an attached image's thumbnail
-opens it (its natural size from the loaded thumbnail, else after a `decode()`, showing nothing till then). It opens
+opens it (its natural size from the loaded thumbnail, else after a `decode()`, showing nothing till then), and so
+does a click on a drawn diagram or its keyboard button (`block_host.js`'s `openPicture`: its `data:` URL and its size
+from the viewBox; [block-renderers.md](block-renderers.md)). It opens
 fitted (`pan_zoom.js fitScale`: inside 24px of padding, the safe areas and the bar, never above 3 ×) and nothing is
 kept: every open starts fitted.
 
@@ -446,10 +448,16 @@ kept: every open starts fitted.
   Ctrl/Cmd held: the browser's own zoom), arrows move, Esc closes. The page's document listeners (the all-sessions
   Esc, a popover's Esc, the reader's arrows, type-anywhere) never see them. It is a modal dialog ("Picture viewer",
   `popover_modal.js modalDialog`); the surface takes the focus on open.
-- **Closing** is ✕ and Esc only (a tap on the surface starts a drag). The focus goes back to the opener without
-  scrolling (`focusBack(…, {preventScroll})`, before hiding); a thumbnail takes no focus, so after one it is the
-  page's. A window `resize` (an orientation change) refits a fitted view, else re-clamps; it is listened to only
-  while open.
+- **Closing** is ✕ and Esc only (a tap on the surface starts a drag). The focus goes back to the opener (a
+  diagram's button) without scrolling (`focusBack(…, {preventScroll})`, before hiding); a thumbnail takes no focus,
+  so after one it is the page's. A window `resize` (an orientation change) refits a fitted view, else re-clamps; it
+  is listened to only while open.
+- **It closes by itself**, whatever it shows, on a system theme change (the diagram behind is redrawn; the viewer
+  holds the old picture; app.js), on a switch to another session or the start page (`session_view.js
+  forgetSession`, given `pictures`; the same session again keeps it) and when the all-sessions view opens (it hides
+  `#center`, the viewer's parent; app.js `applyView`). A bubble rewritten or cloned while it is open leaves it as it
+  is: it holds its own copy of the URL. The toast may show over it (both z-index 50, the toast later); it is modal by
+  `aria-modal`, `#center`'s other children aren't made `inert`.
 - index.html keeps `<div id="lightbox" hidden><img alt=""></div>`: an older cached app.js reads that `<img>`. The
   viewer adopts it (or adds one) and draws ✕ and the bar with lit at the first open. ✕ and the bar are glass cards
   (solid `--bg-panel` under `body.no-glass` and reduced transparency), by `--safe-*`, and the standalone phone

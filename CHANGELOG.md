@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - In the web, an attached image opens in a full-screen viewer, fitted: pinch, Ctrl/Cmd + scroll or the bar's − and +
   zoom (sharp at every size), a drag or scroll moves, a double tap goes close and back, ✕ or Esc closes. A tap on
   the picture no longer closes it.
+- In the web, a tap on a drawn diagram (a mermaid block) opens it in that viewer, fitted to the screen, to zoom in
+  and move around; in the answer it stays fitted to the column (the tap no longer switches it to its natural size).
 
 ### Fixed
 

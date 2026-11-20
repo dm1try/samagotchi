@@ -54,6 +54,7 @@ function setup(html, opts = {}) {
     makeFrame: opts.makeFrame || fakeFrame({ ...opts, calls, frames }),
     decodeImage: opts.decodeImage || (async () => ({ width: 320, height: 90 })),
     copy: opts.copy,
+    ...("openPicture" in opts ? { openPicture: opts.openPicture } : {}),
     decodeTimeoutMs: opts.decodeTimeoutMs ?? 1000,
     theme: opts.theme || (() => ({ name: "dark" })),
     watch: opts.lazy ? (el, scroller, onNear) => near.push({ el, scroller, onNear }) : (_el, _scroller, onNear) => onNear(),
@@ -643,17 +644,30 @@ test("the toggle swaps the picture and the source, and says so", async () => {
   assert.equal(toggle.getAttribute("aria-pressed"), "false");
 });
 
-test("a click on the picture toggles its natural size", async () => {
-  const { root } = setup(answer(block()));
+// What a click on a drawn picture asks of the page's viewer.
+function opened() {
+  const calls = [];
+  return { calls, openPicture: (picture, opts) => calls.push({ picture, opener: opts?.opener }) };
+}
+
+test("a click on the picture opens it in the viewer, at its size, the zoom button as the opener", async () => {
+  const viewer = opened();
+  const { root } = setup(answer(block()), { openPicture: viewer.openPicture });
   await settle();
-  root.querySelector(".block-img").click();
-  assert.ok(root.querySelector("figure").classList.contains("natural"));
-  root.querySelector(".block-img").click();
-  assert.ok(!root.querySelector("figure").classList.contains("natural"));
+  const figure = root.querySelector("figure");
+  const img = figure.querySelector(".block-img");
+  img.click();
+  assert.equal(viewer.calls.length, 1);
+  const [{ picture, opener }] = viewer.calls;
+  assert.deepEqual(picture, { url: img.src, width: 320, height: 90, alt: img.alt });
+  assert.ok(picture.url.startsWith("data:image/svg+xml"));
+  assert.ok(opener === figure.querySelector(":scope > .block-zoom"));
+  assert.ok(!figure.classList.contains("natural"));
 });
 
-test("the picture is named with where its source is, and its zoom is a button the keyboard reaches", async () => {
-  const { root } = setup(answer(block()));
+test("the picture is named with where its source is, and opening it in the viewer is a button the keyboard reaches", async () => {
+  const viewer = opened();
+  const { root } = setup(answer(block()), { openPicture: viewer.openPicture });
   const before = root.textContent;
   await settle();
   const figure = root.querySelector("figure");
@@ -663,13 +677,33 @@ test("the picture is named with where its source is, and its zoom is a button th
   assert.equal(zoom.type, "button");
   assert.equal(zoom.textContent.trim(), "");
   assert.equal(root.textContent, before);
-  assert.deepEqual([zoom.getAttribute("aria-label"), zoom.getAttribute("aria-pressed")], ["Show at full size", "false"]);
+  assert.equal(zoom.getAttribute("aria-label"), "Open in the viewer");
+  assert.ok(!zoom.hasAttribute("aria-pressed"));
   zoom.click(); // a button's Enter and Space are its click
-  assert.ok(figure.classList.contains("natural"));
-  assert.deepEqual([zoom.getAttribute("aria-label"), zoom.getAttribute("aria-pressed")], ["Fit to the column", "true"]);
-  figure.querySelector(".block-img").click();
-  assert.ok(!figure.classList.contains("natural"));
-  assert.equal(zoom.getAttribute("aria-pressed"), "false", "a click on the picture keeps the button's state");
+  assert.equal(viewer.calls.length, 1);
+  assert.equal(viewer.calls[0].picture.width, 320);
+  assert.ok(viewer.calls[0].opener === zoom);
+});
+
+test("a Revise clone's picture opens in the viewer too", async () => {
+  const viewer = opened();
+  const { root } = setup(answer(block()), { openPicture: viewer.openPicture });
+  await settle();
+  const clone = root.querySelector(".bubble").cloneNode(true);
+  root.append(clone);
+  await settle();
+  clone.querySelector(".block-img").click();
+  assert.equal(viewer.calls.length, 1);
+  assert.ok(viewer.calls[0].opener === clone.querySelector(".block-zoom"));
+  assert.equal(viewer.calls[0].picture.url, clone.querySelector(".block-img").src);
+});
+
+test("without openPicture (an older app.js) a click on the picture does nothing, and throws nothing", async () => {
+  const { root } = setup(answer(block()));
+  await settle();
+  root.querySelector(".block-img").click();
+  root.querySelector(".block-zoom").click();
+  assert.ok(!root.querySelector("figure").classList.contains("natural"));
 });
 
 test("the zoom button shows on keyboard focus only, takes no pointer while hidden, and goes with the picture", async () => {
@@ -801,7 +835,7 @@ test("a picture with no box takes its decoded size", async () => {
 test("the CSS backstop says the same maximum", async () => {
   const css = await readFile(new URL("../../../lib/samagotchi/web/public/block_renderers.css", import.meta.url), "utf8");
   assert.match(css, new RegExp(`\\.block-img\\{[^}]*max-height:${MAX_PICTURE_SIDE}px`));
-  assert.match(css, new RegExp(`\\.natural \\.block-img\\{[^}]*max-width:${MAX_PICTURE_SIDE}px`));
+  assert.ok(!css.includes(".natural"), "no natural size in the answer: the viewer zooms");
 });
 
 test("a render that held on past the bound draws now and keeps its mark: one stall, not one per load", async (t) => {
