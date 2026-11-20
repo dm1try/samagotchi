@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A guardrail plugin (`plugin: required: true`) whose bundle's manifest.json doesn't read now denies tool calls,
+  as its rules would, instead of only being reported.
+
 ## [0.178.0] - 2026-11-20
 
 ### Changed
