@@ -36,7 +36,8 @@ module Samagotchi
     # Languages core draws itself: a bundle's renderer for one would be a
     # second drawer for the same block.
     RESERVED = [InlineWidgets::LANG].freeze
-    # The [bundle, problem] pairs .renderers has logged in this process.
+    # What .renderers and .too_new? have logged in this process: [bundle,
+    # problem] pairs, and [bundle, version, refusal] for a bundle too new.
     WARNED = Set.new
     WARNED_LOCK = Mutex.new
 
@@ -77,12 +78,13 @@ module Samagotchi
 
     # What the installed bundles draw: the first bundle by name wins a
     # language. A bundle whose requires_chi this chi doesn't meet, or whose list
-    # doesn't parse (logged), is skipped; a record that doesn't read lists none.
+    # doesn't parse, is skipped (each logged once); a record that doesn't read
+    # lists none.
     # @return [Array<Installed>]
     def for_installed
       taken = {}
       InstalledBundles.standings do |standing|
-        next if standing.too_new?
+        next if too_new?(standing)
 
         bundle = standing.name
         renderers(bundle, standing.record.manifest).each do |renderer|
@@ -108,6 +110,23 @@ module Samagotchi
 
       File.join(installed.scripts_dir, file)
     end
+
+    # A bundle this chi is too old for (the verdict's :too_new) draws
+    # nothing: skip it, and say so once per process per bundle and version,
+    # only when it declares renderers (as ContextProviders.too_new? does).
+    # @param standing [InstalledBundles::Standing]
+    def too_new?(standing)
+      return false unless standing.too_new?
+
+      manifest = standing.record.manifest
+      if manifest.block_renderers? &&
+         WARNED_LOCK.synchronize { WARNED.add?([standing.name, manifest.version.to_s, standing.refusal.text]) }
+        Log.warn(:web, "block_renderers_too_new", bundle: standing.name, version: manifest.version.to_s,
+                                                  requires_chi: manifest.requires_chi.to_s, msg: standing.refusal.text)
+      end
+      true
+    end
+    private_class_method :too_new?
 
     # Its parsed renderers; a kept list that doesn't parse is the record's
     # mirror, else none. Logged once per bundle and problem: this runs on each
