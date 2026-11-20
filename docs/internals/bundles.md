@@ -41,8 +41,8 @@ read side, never the reverse.
 | Piece | Role |
 |---|---|
 | `InstalledBundles` (`installed_bundles.rb`) | `.each(holding:, dir:)` (each installed bundle by name, its `Record`; one whose `manifest.json` doesn't read with `error` set, and with `holding:` only those with that key, or that dir when it doesn't read), `.claimants` (which bundles own a memory file), `.dir` (`MemoryPaths.bundles_dir`) |
-| `InstalledBundles::Dir` (installed_bundles/dir.rb) | one bundle's `.bundles/<name>/` as the runtime reads it: `Dir.new(name:, dir:)`, `#record`, `#plugin_dir`, `#plugin_path`, `#scripts_dir`, `#guardrails_dir`, `#kept_manifest_path`, `#file_refusal(kind, file, recorded)` (the one "is this installed file as installed" check: `:plugin`, `:scripts`, `:guardrails`, each with its own order and words today, a `Refusal`). Its only state is the name and the folder; `Provenance` is one |
-| `InstalledBundles::Standing`, `Refusal` (installed_bundles/standing.rb) | the usability verdict: `.standings(holding:, dir:)` (the walk, each bundle's `Standing`), `.standing(name, dir:)` (one record; a `manifest.json` that doesn't parse raises), `Standing.of(name, record)`: `#refusal` is `:unreadable` (the record) or `:too_new` (requires_chi), nil when chi may use it; none of the bundle's own files is hashed (a manifest cache miss hashes the kept `manifest.yml`, as `Manifest.of` does). A `Refusal` has `kind`, `text` and, for `:file_changed`, the `actual` and `expected` shas. Each reader keeps only its reaction (below) |
+| `InstalledBundles::Dir` (installed_bundles/dir.rb) | one bundle's `.bundles/<name>/` as the runtime reads it: `Dir.new(name:, dir:)`, `#record`, `#plugin_dir`, `#plugin_path`, `#scripts_dir`, `#guardrails_dir`, `#kept_manifest_path`, `#file_refusal(kind, file, recorded)` (the one "is this installed file as installed" check: `:plugin`, `:scripts`, `:guardrails`, one order (no sha recorded, missing, changed) and one wording, `bundle X's <folder>/<file> isn't recorded / is missing / differs from the installed one (reinstall the bundle)`, a `Refusal`). Its only state is the name and the folder; `Provenance` is one |
+| `InstalledBundles::Standing`, `Refusal` (installed_bundles/standing.rb) | the usability verdict: `.standings(holding:, dir:)` (the walk, each bundle's `Standing`), `.standing(name, dir:)` (one record; a `manifest.json` that doesn't parse is `:unreadable`, in the walk's words), `Standing.of(name, record)`: `#refusal` is `:unreadable` (the record; `Standing.warn_unreadable` logs `bundle_unreadable` once per process per bundle and reason, whichever reader came across it, `.claimants` too) or `:too_new` (requires_chi), nil when chi may use it; none of the bundle's own files is hashed (a manifest cache miss hashes the kept `manifest.yml`, as `Manifest.of` does). A `Refusal` has `kind`, `text` and, for `:file_changed`, the `actual` and `expected` shas. Each reader keeps only its reaction (below) |
 | `InstalledBundles::Sha` (installed_bundles/sha.rb) | the record's shas: `.recorded` (either format, `""` for none), `.of_file`, `DEV` (a dev install's `sha256:dev`), `.unchecked?`, `.matches?` |
 | `BundleCommand` (`lib/samagotchi/bundle_command.rb`) | `chi bundle install/upgrade/uninstall/status/diff/list/build/trash/new/test/check/try` (`install --dev`: the Installer's `dev:`, links and `InstalledBundles::Sha::DEV`); runs the Installer, prints its summary, runs the conflict agent step; refuses a source already installed under another name (`installed_under_another_name?`: a git URL bundle recorded under its repo's name before the manifest named it). `upgrade` resolves its argument by `upgrade_source`: a git URL or an existing path, then a shipped name, then the bare name of an installed bundle — whose record's source it then uses (a git URL with its `#ref`, a dir or an archive that is still there), printed as `Upgrading NAME from SOURCE`; a dev record is refused with `Installer.dev_install_line`, a recorded source that is relative, empty or gone says so and asks for the path or URL of a copy (`Installer.source_gone_line`, the words `ManifestStanding` uses too). After an upgrade or uninstall that changed the bundle's plugin (or brought one in), one line names the sessions still running its old code (`LiveVersions.workers`, the ones whose worker takes a restart) and `chi sessions restart ID` for each: only the plugin stays in memory, since a bundle's rules reload by their stamp and its scripts run from the replaced files. |
 | `BundleCommand::Check` (bundle_command/check.rb) | `chi bundle check [PATH] [--fix] [--set K=V]`: a bundle being written, checked as an install takes it (docs/cli.md lists the codes); parses the manifest from `Shas.parseable` (a placeholder sha is a `sha` finding, not a YAML error), reads the user's installed bundles only for `clash`, and installs and loads through `Testing::Install` in a `Testing::Sandbox` with `force: true`, the log's echoes swallowed |
@@ -95,7 +95,7 @@ Readers of the installed state ask one verdict and keep only their reaction. The
 `InstalledBundles.standings` (the walk) or `.standing(name)` (one record): a `Standing` whose `refusal` is
 `:unreadable` (the record doesn't read) or `:too_new` (requires_chi), then, for a file chi loads, runs, serves or
 reads, `InstalledBundles::Dir#file_refusal(:plugin | :scripts | :guardrails, file, recorded)` (`:file_missing`,
-`:file_unrecorded`, `:file_changed`; each kind keeps today's order and words, so the same failure wins as before).
+`:file_unrecorded`, `:file_changed`; checked not recorded, then missing, then changed, for every kind).
 What each does with a refusal stays its own:
 
 | Reader | `:unreadable` | `:too_new` | a file's refusal |
@@ -103,15 +103,17 @@ What each does with a refusal stays its own:
 | `Plugin::Loader.load_bundle` | a failure that fails closed (required) unless its kept `manifest.yml` reads and names no required plugin (`#unreadable_required?`) | a failure (required for a guardrail plugin) | a failure, the refusal's text |
 | `GuardrailWiring#bundle_rules` | a required failure | `#too_new_bundle_rules` (the rules loaded before stay) | a required failure per rule file |
 | `ContextProviders.resolve` / `.any?` | skipped | skipped, `providers_too_new` logged once (only when it declares providers) | n/a |
-| `ContextProviders.command_for` | not refused (a `manifest.json` that doesn't parse raises `JSON::ParserError`: D7; one that isn't an object runs: D8) | `Invalid` | `Invalid`, per recorded script |
-| `BlockRenderers.for_installed` / `.script_path` | lists none | skipped | `Invalid` |
-| `SessionConfig.availability` | left out | a note, only when it has a plugin (D2) | a note |
-| `BundleSettingsCheck.warnings`, `BundleNeeds.entry_markers`, `MemoryCommand.entries` | skipped | still read (D1, D5) | n/a |
-| `MemoryBundle::Status.plugin_status` | n/a | `requires_failure` | `missing`, else `modified` (D9) |
+| `ContextProviders.command_for` | `Invalid` | `Invalid` | `Invalid`, per recorded script |
+| `BlockRenderers.for_installed` / `.script_path` | lists none | skipped, `block_renderers_too_new` logged once (only when it declares renderers) | `Invalid` |
+| `SessionConfig.availability` | left out | a note, plugin or not (`SessionConfig.unusable`) | a note |
+| `BundleSettingsCheck.warnings` | skipped | one warning (`SessionConfig.unusable`), its keys unchecked | n/a |
+| `BundleNeeds.entry_markers`, `MemoryCommand.entries` | skipped | still read (its memories are) | n/a |
+| `MemoryBundle::Status.plugin_status` | n/a | `requires_failure` | `unrecorded`, `missing` or `modified` |
 
 `InstalledBundles.claimants` skips an unreadable record off the record itself (`Record#error?`), so a claimant
-check reads no manifest. `ContextProviders`' once-per-process log is a Set under a Mutex, like `GuardrailWiring`'s
-kept-rules notice. The D rows are the plan's V2 decisions; until then each reaction is pinned as it is.
+check reads no manifest. Each skip is also logged once per process: an unreadable record by the verdict
+(`bundle_unreadable`), a too-new bundle by the reader that skips it; every once-per-process log is a Set under a Mutex,
+like `GuardrailWiring`'s kept-rules notice.
 They read shas and state off the record, and
 manifest data (requires_chi, needs, providers, renderers, settings) through `InstalledBundles::Record#manifest`
 (`InstalledBundles::Manifest`: the kept `manifest.yml` when its sha holds, else the record's mirror), as do `SessionConfig`, `BundleSettingsCheck`, `BlockRenderers`, `Status`, `BundleCommand`'s
