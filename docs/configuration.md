@@ -352,8 +352,8 @@ doesn't end in a local suffix (`gpu.example.com`). A name without a dot (`box`)
 or ending in `localhost`, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`,
 `.intranet`, `.localdomain`, `.private`, `.corp`, `.test`, `.box` (`fritz.box`)
 or `.ts.net` (Tailscale) is local: chi doesn't look names up. A remote
-host keeps its model list for 10 minutes, gets a 120-second first-token limit,
-and isn't asked for llama.cpp's `/props` (its context window and served model
+host keeps its model list for 10 minutes, gets a 120-second first-token limit
+and a 120-second stream-idle limit, and isn't asked for llama.cpp's `/props` (its context window and served model
 come from its model list and each turn). A local `api: openai` host has no
 `/props`, so `chi self` GETs its `/models` with the same short probe timeouts
 and reports up/down with the ids it serves. `remote: true` or `remote: false` on a
@@ -919,6 +919,24 @@ hosts:
 which applies to every host. With neither set, remote hosts (see "Remote or local" above) get 120 seconds and local
 servers no limit: a long prompt evaluation is normal there, and the read timeout catches a dead server.
 
+Once a stream has shown something, a **stream-idle limit** watches the rest: the seconds it may go without showing
+more text, reasoning or a tool call. Keep-alive comments don't count, so an answer that stops mid-way is no longer
+held open until the read timeout. A stalled stream is closed and asked again like a dropped one (`↻ retrying
+(stream dropped) …`, its partial output dropped; see "Retries" below); once those run out the turn fails with `the
+model's stream stalled on host <name>: no output for 120s (stream_idle_timeout); …`. The end of an answer (a finish
+reason, the usage chunk, Anthropic's `message_delta` and `message_stop`) restarts the clock too, so a slow trailing
+usage chunk doesn't void a complete answer.
+
+```yaml
+hosts:
+  openrouter:
+    stream_idle_timeout: 300   # seconds; 0 = off
+```
+
+`hosts.<name>.stream_idle_timeout` wins over `server.stream_idle_timeout` (`SAMAGOTCHI_SERVER_STREAM_IDLE_TIMEOUT`),
+which applies to every host. With neither set, remote hosts get 120 seconds and local servers no limit: a local
+server may stream nothing while it buffers a long tool call's arguments.
+
 Every chat request carries the session's id as a `Session-Id` header (next to `User-Agent: chi/<version>`). A
 gateway that spreads requests over several providers can key on it to keep one conversation on one provider, so
 prompt caches hit and every turn is answered by the same model. Servers that don't know the header ignore it.
@@ -1114,7 +1132,8 @@ Transient network failures are retried automatically with exponential backoff.
   chat loop (an OpenAI-compatible host) drops the partial reply and asks again for the whole step, from the same
   conversation, at most twice (at most `retry.max` times when that is smaller: `retry.max: 0` turns it off), after
   the same backoff, reported as a retry (`↻ retrying (stream dropped) …`); once those run out the turn fails with
-  the error, as before. A refusal, a first-token timeout, a provider error and a cancel are never retried this way.
+  the error, as before. A stream that stalled past its `stream_idle_timeout` is asked again the same way. A refusal,
+  a first-token timeout, a provider error and a cancel are never retried this way.
 - Cancellation (`Ctrl-C`) is never retried.
 
 Configuration:

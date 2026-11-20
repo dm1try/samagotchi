@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A streamed answer that stops mid-way (no text, reasoning or tool call for `stream_idle_timeout` seconds; default
+  120 on remote hosts, off on local) is closed and asked again like a dropped stream, then fails with `the model's
+  stream stalled …`, instead of waiting on keep-alives until the read timeout.
 - The objectives strip no longer shows an empty 0/0 bar when every objective is dropped, and disappears at once when
   the list goes away.
 - A continue no longer starts with an empty Objectives bubble when every objective was dropped.
