@@ -501,3 +501,34 @@ test("the peek of a read of an .md file: a whole read renders, a slice stays its
   p.ws.popover.close();
   p.cleanup();
 });
+
+test("no events: the step still running when the answer says a turn runs, today's note when none does (the reader and the peek)", async () => {
+  let running = true;
+  const p = page({ answers: { "file:/p/a.rb": () => ({ kind: "file", key: "/p/a.rb", events: [], running }) } });
+  const still = "chi read this in the step still running. It shows here when that step's tools finish.";
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  assert.equal(reader.querySelector(".wsr-note").textContent, still);
+  p.preview.close();
+  running = false;
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  assert.equal(reader.querySelector(".wsr-note").textContent, "Nothing of it in the conversation yet: a running turn's reads show at its next step.");
+  p.preview.close();
+
+  running = true;
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  const toggle = () => pop.querySelector('.ws-row[data-ws-id="file:/p/a.rb"] .ws-peek-toggle');
+  toggle().click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-note").textContent, still);
+  toggle().click();
+  running = false;
+  toggle().click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-note").textContent, "Nothing of it in the conversation yet.");
+  p.ws.popover.close();
+  p.cleanup();
+});
