@@ -100,16 +100,21 @@ module Samagotchi
       # The session's objectives as the page draws them (Engine#objectives_view),
       # when that differs from the last announced: after an edit (its file
       # written, pending), once a list note is in, at a turn's end (its moves)
-      # and after a rollback. A session with no list announces nothing. The caller
-      # (Engine#announce_objectives) holds the event lock, the one guard of
-      # the last view, announces the event and logs a failure: it only
-      # informs, never fails a turn.
+      # and after a rollback. A list going away (a rollback or a turn's kept
+      # messages past its note) announces once, without items, so the page
+      # clears; a session with no list before and after announces nothing.
+      # The caller (Engine#announce_objectives) holds the event lock, the one
+      # guard of the last view, announces the event and logs a failure: it
+      # only informs, never fails a turn.
       # @param view [Hash, nil] the view from Engine#objectives_view
       # @return [Hash, nil] the :objectives_updated event to announce, nil when the view is the same
       def announce(session, view:)
-        return if view.nil? || view == @announced
+        return if view == @announced
 
         @announced = view
+        # Written out: **nil raises on Ruby 3.3.
+        return { type: :objectives_updated, session_id: session.id, items: nil } if view.nil?
+
         { type: :objectives_updated, session_id: session.id, **view }
       end
 

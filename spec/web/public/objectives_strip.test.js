@@ -317,3 +317,52 @@ test("a read's start or end doesn't bring Not yet back: only a change to the lis
   assert.equal(await control.notYet("O1"), false);
   assert.equal(sent.length, 1);
 });
+
+const dropped = (id) => ({ id, text: `Dropped ${id}`, status: "dropped" });
+
+test("only dropped objectives: no strip, as with no list, and the list is not one", () => {
+  const { el, control } = strip();
+  control.seed({ pending: false, items: [dropped("O1"), dropped("O2")] });
+  assert.equal(el.hidden, true);
+  assert.ok(el.querySelector(".obj-strip") === null);
+  assert.equal(control.hasList(), false);
+  control.update({ pending: false, items: [dropped("O1"), { id: "O2", text: "Back", status: "active" }] });
+  assert.equal(el.hidden, false);
+  assert.equal(el.querySelector(".obj-count").textContent, "0/1");
+  assert.equal(control.hasList(), true);
+  control.reset();
+});
+
+test("one done and the rest dropped: the strip shows with its count", () => {
+  const { el, control } = strip();
+  control.seed({ pending: false, items: [dropped("O1"), { id: "O2", text: "Shipped", status: "done" }] });
+  assert.equal(el.hidden, false);
+  assert.equal(el.querySelector(".obj-count").textContent, "1/1");
+  control.reset();
+});
+
+test("the last one dropped from the open list: list and strip stay until it closes, then the strip goes", () => {
+  const { el, control, pop } = strip();
+  control.seed({ pending: false, items: [{ id: "O1", text: "A", status: "active" }] });
+  el.querySelector(".obj-edit").click();
+  control.update({ pending: false, items: [dropped("O1")] });
+  assert.equal(pop().hidden, false);
+  assert.ok(pop().querySelector('[data-row="O1"] [data-obj-act="undo"]'));
+  assert.equal(el.hidden, false);
+  assert.equal(control.hasList(), false);
+  pop().querySelector('[data-act="close"]').click();
+  assert.equal(pop().hidden, true);
+  assert.equal(el.hidden, true);
+  assert.ok(el.querySelector(".obj-strip") === null);
+  control.reset();
+});
+
+test("the list going away while it is open closes it, and the strip goes", () => {
+  const { el, control, pop } = strip();
+  control.seed(view());
+  el.querySelector(".obj-edit").click();
+  control.update({ type: "objectives_updated", session_id: "s1", items: null });
+  assert.equal(pop().hidden, true);
+  assert.equal(el.hidden, true);
+  control.reset();
+});

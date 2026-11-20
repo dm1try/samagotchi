@@ -171,8 +171,10 @@ any call. An add's text can't split on ` | `. The body names the line, for a ter
 `Objectives.view` (`List#to_view`) is what the page draws: the items, each with its last move, and `pending`, whether
 the newest list is a file still waiting. The session read (`objectives`, no key with no list) and the live
 `:objectives_updated` carry it. `Engine#announce_objectives` (under the event lock, `TurnStages::Objectives#announce` giving the event) emits when the view differs from the last: after an edit,
-once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A session
-with no list emits nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
+once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A list
+that goes away (a rollback, or a canceled or failed turn's kept messages, past the note that set it) emits one event
+with `items: nil`, and the strip's `take` clears (an N-1 page's too); a session with no list before and after emits
+nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
 `ParticipantView::DROPPED`.
 
 Idle, an edit lands at once: the worker's anytime path wakes the loop (`@waker.wake`, one extra pass for any anytime
@@ -185,7 +187,10 @@ command), which absorbs the file. It no longer waits for the fallback tick.
   by `forgetSession`. Its edit list is a `chip_popover.js` shell, so a phone gets the bottom sheet and the focus rules.
   Every edit is a line on the command route with `card: true`: no echo, and `commandView` hides a good `/objectives`
   answer that came with that mark, so a tap leaves no bubble, a refusal does. The strip redraws from the event, never
-  optimistically.
+  optimistically. A list with only dropped objectives draws no strip, as no list (`stripItems` is empty), and
+  `hasList()` is false, so the history's /short button hides too. The last one dropped from inside the open edit list
+  keeps the list and its strip until the list closes (its Undo stays under the finger); the close redraws the strip
+  away. `/objectives undo <id>` brings one back meanwhile.
 - **The entry** (`objectives_entry.js`, from `turn_html.js noteBubbleTemplate`): `Objectives.entry` puts the note's items
   and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
   `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
@@ -237,7 +242,7 @@ command), which absorbs the file. It no longer waits for the fallback tick.
 - **Continue**: `Objectives.carry`, in `SessionContinue`'s `before_spawn`, writes a second note file in the new link,
   after the carry note and any moved context's note, so the list reads as the latest word. It is not in
   `SessionChain.note_text` (capped; the last answer gets what the recap leaves). It reads the previous link fresh,
-  with its unabsorbed newest file. A failure is only logged (`continue_objectives_failed`), because it runs inside the
+  with its unabsorbed newest file; a list with nothing active or done isn't carried (`List#meant?`). A failure is only logged (`continue_objectives_failed`), because it runs inside the
   continue's rollback. The previous link's other waiting notes move after it (`NoteMove.move`, the step after: moved first, the
   carry would miss a pending edit, and the stale list would be the batch's newest); its objectives notes never move,
   and the new link's worker never adopts one from it (`NoteMove.adoption`), so a list from the archived link can't

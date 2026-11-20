@@ -171,6 +171,10 @@ module Samagotchi
       # Nothing was ever set.
       def empty? = items.empty?
 
+      # Something still meant: an active or a done objective (an
+      # only-dropped list has none).
+      def meant? = items.any? { |item| item.status != DROPPED }
+
       def find(id) = items.find { |item| item.id == id }
 
       # @param text [String]
@@ -402,13 +406,14 @@ module Samagotchi
     end
 
     # A continue's copy: +previous+'s list as a note file in the new link,
-    # read fresh, its unabsorbed newest file included. It runs inside the
+    # read fresh, its unabsorbed newest file included; a list with nothing
+    # active or done (List#meant?) isn't carried. It runs inside the
     # continue's rollback, and a link without the list is still a good link:
     # a failure is logged.
     # @return [String, nil] the note file's path
     def carry(previous, to:, state_dir:)
       list = current(previous.id, Session.load(previous.id, state_dir: state_dir).messages, state_dir: state_dir)
-      return nil if list.empty?
+      return nil unless list.meant?
 
       SessionInbox.write_note(to, text: list.text, source: SOURCE, objectives: list.to_payload, state_dir: state_dir)
     rescue StandardError => e
