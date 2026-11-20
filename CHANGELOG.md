@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.179.0] - 2026-11-20
+
 ### Added
 
 - A peer's answer names the send it answers: claude-peer and codex-peer messages carry a `ref:` line, the peers'
@@ -29,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - A reloaded turn keeps an answered question and an asking card (check-in's) in the order they showed live: a card
   that stopped asking mid-turn no longer moves back into its first step, and one still asking no longer jumps above
   the question answered after it.
+
+Update with `chi update`.
 
 ## [0.178.0] - 2026-11-20
 
@@ -6543,7 +6547,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.178.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.179.0...HEAD
+[0.179.0]: https://github.com/dm1try/samagotchi/compare/v0.178.0...v0.179.0
 [0.178.0]: https://github.com/dm1try/samagotchi/compare/v0.177.1...v0.178.0
 [0.177.1]: https://github.com/dm1try/samagotchi/compare/v0.177.0...v0.177.1
 [0.177.0]: https://github.com/dm1try/samagotchi/compare/v0.176.0...v0.177.0

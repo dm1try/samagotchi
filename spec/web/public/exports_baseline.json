@@ -1402,6 +1402,9 @@
     "NOTE_BOUNDARY",
     "turnElements"
   ],
+  "turn_settle.js": [
+    "settleOrder"
+  ],
   "unqueue.js": [
     "createUnqueue",
     "unqueueFailureText"
