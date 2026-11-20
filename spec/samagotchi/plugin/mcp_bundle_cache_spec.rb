@@ -191,7 +191,7 @@ RSpec.describe "The mcp bundle" do
         next_engine
         # The refresh's server, stopped after listing; the session's isn't started.
         expect(spawned).to eq(2)
-        expect(alive?(File.readlines(pids_file).last.to_i)).to be(false)
+        expect(gone_soon?(File.readlines(pids_file).last.to_i)).to be(true)
         expect(@init_events.map { |e| e[:type] }).not_to include(:plugin_init_started, :plugin_init_finished)
         expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo])
         expect(Time.iso8601(cache["saved_at"])).to be > Time.now - 60
@@ -204,7 +204,7 @@ RSpec.describe "The mcp bundle" do
         next_engine_with_groups([])
 
         expect(spawned).to eq(2)
-        expect(alive?(File.readlines(pids_file).last.to_i)).to be(false)
+        expect(gone_soon?(File.readlines(pids_file).last.to_i)).to be(true)
         expect(cache["tools"].map { |tool| tool["name"] }).to eq(["echo"])
         expect(indexed).to be_empty
       end

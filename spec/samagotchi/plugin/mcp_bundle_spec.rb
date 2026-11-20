@@ -469,7 +469,7 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("echo", { "text" => "back" })).to eq("echo: back")
       expect(mcp("add", { "a" => 1, "b" => 2 })).to eq("3")
       expect(pids.size).to eq(2)
-      expect(alive?(pids.first)).to be(false)
+      expect(gone_soon?(pids.first)).to be(true)
       expect(engine.apply_staged_tools!).to be(false)
     end
 
@@ -491,7 +491,7 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("echo", { "text" => "x" })).to eq("echo: x")
       expect(alive?(pids.last)).to be(true)
       engine.shutdown
-      expect(alive?(pids.last)).to be(false)
+      expect(gone_soon?(pids.last)).to be(true)
       expect(mcp("echo", { "text" => "x" })).to eq("Error: service mcp:fake is stopped")
     end
   end
@@ -625,7 +625,7 @@ RSpec.describe "The mcp bundle" do
     pid = server_pid
     expect(alive?(pid)).to be(true)
     engine.shutdown
-    expect(alive?(pid)).to be(false)
+    expect(gone_soon?(pid)).to be(true)
     expect(mcp("echo", { "text" => "x" })).to eq("Error: service mcp:fake is stopped")
   end
 end
