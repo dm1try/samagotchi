@@ -1409,6 +1409,34 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 #infoBar .ctx-chip.empty{color:var(--text-faint);border-style:dashed}
 #infoBar .ctx-chip.error{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:var(--danger-bg-dim)}
 .ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
+/* A paired peer's one chip (peer_chip.js): waiting in the accent, can't send in warn, answers only dashed. */
+#infoBar .ctx-chip.peer.waiting{color:var(--text);background:var(--accent-bg);border-color:var(--accent-border)}
+#infoBar .ctx-chip.peer.cant-send{color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
+#infoBar .ctx-chip.peer.answers-only{border-style:dashed}
+/* Its popover (scene 2): the two ways, the last exchanges, its actions; a bottom sheet on a phone. */
+.ctx-popover.peer-pop{gap:12px}
+.ctx-popover.peer-pop .ctx-pop-head strong{font-family:inherit;font-size:15px}
+.ctx-popover.peer-pop .ctx-pop-head .ctx-pop-kind{margin-left:auto;font-size:12px}
+.ctx-popover.peer-pop .ctx-pop-head .ctx-pop-close{margin-left:0}
+.ctx-popover.sheet{border-radius:14px}
+.peer-pop-legs{display:flex;flex-direction:column;gap:6px}
+.peer-pop-legs>div{display:flex;gap:8px}
+.peer-pop-legs>div>span:first-child{flex:0 0 78px;color:var(--text-muted)}
+.peer-pop-legs .warn{color:var(--warn-text)}
+.peer-pop-list{display:flex;flex-direction:column}
+.peer-pop-list-head{font-size:12px;font-weight:700;color:var(--text-muted);padding-bottom:4px}
+.peer-pop-x{display:flex;gap:10px;align-items:baseline;width:100%;box-sizing:border-box;padding:7px 0;margin:0;border:0;border-top:1px solid var(--border-strong);border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left}
+button.peer-pop-x{cursor:pointer}@media(hover:hover){button.peer-pop-x:hover .pp-x-what{color:var(--text-hover);text-decoration:underline}}
+.pp-x-at{flex:none;font:11px ui-monospace,monospace;color:var(--text-muted)}
+.pp-x-what{flex:1;min-width:0;color:var(--text);overflow-wrap:anywhere}
+.pp-x-state{flex:none;color:var(--text-muted)}
+.pp-x-state.waiting{color:var(--accent)}
+.pp-x-state.changes{color:var(--warn-text)}
+.pp-x-state:is(.ok,.answered){color:var(--ok-text)}
+.pp-x-state.failed{color:var(--danger-text)}
+.ctx-popover.peer-pop .ctx-pop-actions{justify-content:flex-start;flex-wrap:wrap}
+.ctx-popover.peer-pop .ctx-pop-actions button{min-height:44px;padding:10px 12px;border-radius:8px}
+.ctx-popover.peer-pop .ctx-pop-actions .ctx-pop-detach{color:var(--danger-text)}
 .ctx-popover{position:fixed;z-index:60;max-height:min(60vh,520px);overflow:auto;padding:12px 14px;border-radius:12px;background:var(--bg-panel);color:var(--text-2);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px;line-height:1.45;display:flex;flex-direction:column;gap:6px}
 .ctx-popover[hidden]{display:none}
 /* The participants chip (info bar) and its panel (participants_panel.js). */

@@ -198,3 +198,15 @@ test("a second answer to one send links back to it by its re", async () => {
     PEERS.peers[0].exchanges.shift();
   }
 });
+
+test("hasSend / showSend (the peer chip's exchange list): the last row of an id, shown and focused; false for none drawn", async () => {
+  const { history, links } = page();
+  await links.drawn();
+  assert.equal(links.hasSend("s-a"), true);
+  assert.equal(links.hasSend("s-x"), false);
+  const rows = [...history.querySelectorAll(".activity-row")];
+  rows.forEach((row) => { row.scrollIntoView = () => {}; });
+  assert.equal(links.showSend("s-a"), true);
+  assert.equal(document.activeElement, rows.at(-1));
+  assert.equal(links.showSend("s-x"), false);
+});
