@@ -6,6 +6,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 for (const k of ["MutationObserver", "CustomEvent", "localStorage", "sessionStorage", "getSelection"]) {
   if (!(k in globalThis)) globalThis[k] = window[k];
@@ -116,6 +117,14 @@ test("cardWait inTurn: a card's own in_turn unless the caller says", () => {
   assert.equal(cardWait({ id: "d", actions: [{ label: "x" }] }, { inTurn: true }).kind, null);
   assert.equal(cardWait({ id: "e" }, { inTurn: true }).kind, null);
 });
+
+// The Ruby twin (Bridge::CardWait) reads the same cases (spec/bridge/card_wait_spec.rb).
+const CASES = JSON.parse(readFileSync(new URL("../../shared/card_wait_cases.json", import.meta.url), "utf8")).cases;
+for (const c of CASES) {
+  test(`cardWait, the shared case "${c.name}": ${c.kind}`, () => {
+    assert.equal(cardWait(c.card, { inTurn: true }).kind, c.kind);
+  });
+}
 
 test("questionText: a relayed question's own words, else the question", () => {
   assert.equal(questionText({ question: "Q" }), "Q");

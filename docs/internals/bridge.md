@@ -30,7 +30,7 @@ whose seq a cursor is) and its **secret**; both are published in `bridge.json` (
 
 A joining UI must draw a turn already half done, and the ring may have dropped its early events. The accumulator
 folds the event log into one hash, `current_turn`: the prompt, `turn_id`, origin, `at`, and ordered `parts`
-(generation, thinking, text, tool, input, steer, reminder, notice, card), plus `pending_question`. A tool part keeps its
+(generation, thinking, text, tool, input, steer, reminder, notice, card, settle), plus `pending_question`. A tool part keeps its
 row fields (`ToolRowFields`), its `tool_id`, its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a
 joined row is the row a reload draws, `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`)
 and, once finished, the event's `duration_ms` (its own clock only for an older worker's event that has none). A
@@ -38,7 +38,16 @@ and, once finished, the event's `duration_ms` (its own clock only for an older w
 the "asking again" row, a steer's cut, a ✂ row, a question and its answer), so a join replays it through the handler
 that drew it live. A `card` part is a card the turn showed in its step (`in_turn`), its latest version in its first
 one's place; `replay_events` and `join_events` skip it (a running turn's join takes its cards from CardStore), and
-only `replay_events(turn, cards: true)` (a finished turn's drawing) replays it as its `card` event.
+only `replay_events(turn, cards: true)` (a finished turn's drawing) replays it as its `card` event. Since the card
+part keeps only the latest version, an update that ends a card's wait (`Bridge::CardWait.kind`: `asks` for an action
+with a command, else `warn` for level warn, else none; the twin of the page's `card_kinds.js cardWait`, both pinned by
+`spec/shared/card_wait_cases.json`) for another (none, or `warn`) appends a `settle` part at that place:
+`{kind: "settle", of: "card", id:, was: "asks" | "warn", now: nil | "warn"}`. A title-only update, a card that never
+waited and one that starts waiting later get none. `replay_events` replays it as `{type: :part_settled, of:, id:,
+was:, now:}` with or without cards (a join's page that has no such card ignores it; a participant's read drops the
+type). A question needs no settle part: its own `notice` parts (`question_requested`, then `question_answered` or
+`question_cancelled`) are its arrival and its settle. The page orders a finished turn's pieces from these marks
+(`turn_settle.js`, docs/internals/web-frontend.md).
 
 At the terminal event, before clearing, the accumulator hands a deep copy of the turn and the end event to its
 `on_turn_end:` hook (the Bridge's `TurnDrawings#append`). The hook runs under the accumulator's mutex and the

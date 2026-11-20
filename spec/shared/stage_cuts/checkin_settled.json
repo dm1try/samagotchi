@@ -326,6 +326,13 @@
               "output_truncated": false,
               "action": "running command",
               "duration_ms": 120
+            },
+            {
+              "kind": "settle",
+              "of": "card",
+              "id": "check-in-1",
+              "was": "asks",
+              "now": null
             }
           ],
           "pending_question": null,
@@ -398,6 +405,13 @@
               "action": "running command"
             },
             "duration_ms": 120
+          },
+          {
+            "type": "part_settled",
+            "of": "card",
+            "id": "check-in-1",
+            "was": "asks",
+            "now": null
           }
         ],
         "cards": [
@@ -528,6 +542,13 @@
                   "action": "running command"
                 },
                 "duration_ms": 120
+              },
+              {
+                "type": "part_settled",
+                "of": "card",
+                "id": "check-in-1",
+                "was": "asks",
+                "now": null
               },
               {
                 "type": "generation_started",

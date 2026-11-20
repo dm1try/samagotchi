@@ -141,6 +141,18 @@ RSpec.describe Samagotchi::Bridge::TurnDrawings do
       expect(described_class.parse(JSON.generate(good.merge("drawing" => good["drawing"].except("parts")))).size).to eq(1)
     end
 
+    it "keeps a settle part (TurnAccumulator#fold_card) and replays it from the saved line" do
+      settle = { kind: "settle", of: "card", id: "check-in", was: "asks", now: nil }
+      drawings.append({ prompt: "hi", turn_id: "t1", parts: [{ kind: "card", id: "check-in", event: { id: "check-in", title: "check-in" } }, settle] },
+                      end_event)
+
+      line = lines.fetch(0)
+      expect(line.drawing["parts"].last).to eq("kind" => "settle", "of" => "card", "id" => "check-in", "was" => "asks", "now" => nil)
+      turn = Samagotchi::Bridge::TurnAccumulator.from_wire(line.drawing)
+      expect(Samagotchi::Bridge::TurnAccumulator.replay_events(turn, cards: true).last)
+        .to eq(type: :part_settled, of: "card", id: "check-in", was: "asks", now: nil)
+    end
+
     it "starts from the file's last line (#last), a torn tail skipped" do
       drawings.append({ prompt: "hi", parts: [] }, end_event)
       File.write(path, %({"v":1,"tur), mode: "a")

@@ -858,6 +858,13 @@
               "output_truncated": false,
               "action": "running command",
               "duration_ms": 120
+            },
+            {
+              "kind": "settle",
+              "of": "card",
+              "id": "spend",
+              "was": "warn",
+              "now": null
             }
           ],
           "pending_question": null,
@@ -1001,6 +1008,13 @@
               "action": "running command"
             },
             "duration_ms": 120
+          },
+          {
+            "type": "part_settled",
+            "of": "card",
+            "id": "spend",
+            "was": "warn",
+            "now": null
           }
         ],
         "cards": [
@@ -1241,6 +1255,13 @@
                   "action": "running command"
                 },
                 "duration_ms": 120
+              },
+              {
+                "type": "part_settled",
+                "of": "card",
+                "id": "spend",
+                "was": "warn",
+                "now": null
               },
               {
                 "type": "generation_started",

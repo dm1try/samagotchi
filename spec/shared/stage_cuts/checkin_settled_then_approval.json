@@ -398,6 +398,13 @@
               "output_truncated": false,
               "action": "running command",
               "duration_ms": 120
+            },
+            {
+              "kind": "settle",
+              "of": "card",
+              "id": "check-in-1",
+              "was": "asks",
+              "now": null
             }
           ],
           "pending_question": null,
@@ -470,6 +477,13 @@
               "action": "running command"
             },
             "duration_ms": 120
+          },
+          {
+            "type": "part_settled",
+            "of": "card",
+            "id": "check-in-1",
+            "was": "asks",
+            "now": null
           }
         ],
         "cards": [
@@ -552,6 +566,13 @@
               "output_truncated": false,
               "action": "running command",
               "duration_ms": 120
+            },
+            {
+              "kind": "settle",
+              "of": "card",
+              "id": "check-in-1",
+              "was": "asks",
+              "now": null
             },
             {
               "kind": "generation",
@@ -692,6 +713,13 @@
               "action": "running command"
             },
             "duration_ms": 120
+          },
+          {
+            "type": "part_settled",
+            "of": "card",
+            "id": "check-in-1",
+            "was": "asks",
+            "now": null
           },
           {
             "type": "generation_started",
@@ -875,6 +903,13 @@
               "duration_ms": 120
             },
             {
+              "kind": "settle",
+              "of": "card",
+              "id": "check-in-1",
+              "was": "asks",
+              "now": null
+            },
+            {
               "kind": "generation",
               "iteration": 3
             },
@@ -1007,6 +1042,13 @@
               "action": "running command"
             },
             "duration_ms": 120
+          },
+          {
+            "type": "part_settled",
+            "of": "card",
+            "id": "check-in-1",
+            "was": "asks",
+            "now": null
           },
           {
             "type": "generation_started",
@@ -1249,6 +1291,13 @@
                   "action": "running command"
                 },
                 "duration_ms": 120
+              },
+              {
+                "type": "part_settled",
+                "of": "card",
+                "id": "check-in-1",
+                "was": "asks",
+                "now": null
               },
               {
                 "type": "generation_started",
