@@ -242,14 +242,23 @@ module Samagotchi
       def settle_pending!(timeout:)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         threads = @waiters_lock.synchronize do
-          @waiters.values.filter_map do |thread, _pid, detach|
-            thread if thread != Thread.current && thread.alive? && (!detach.alive? || thread[SETTLING])
+          @waiters.values.filter_map do |thread, pid, detach|
+            thread if thread != Thread.current && thread.alive? && shell_reaped?(thread, pid, detach)
           end
         end
         threads.each { |thread| thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max) }
         alive = threads.select(&:alive?)
         Log.warn(:turn, "task_leftovers_unsettled", count: alive.size) unless alive.empty?
         alive
+      end
+
+      # Whether a waiter's shell is reaped: its detach thread ended, the
+      # waiter is past the reap (SETTLING), or the pid is gone. Right after
+      # Process.detach reaps the shell its thread still runs a moment and
+      # SETTLING isn't set yet; kill(0) reads ESRCH only after the reap
+      # (a zombie answers), and a reused pid reads alive and is skipped.
+      def shell_reaped?(thread, pid, detach)
+        !detach.alive? || thread[SETTLING] || (ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid))
       end
 
       # Joins every live EXIT_STATUS_THREAD, for up to +timeout+ s in all: a
@@ -612,7 +621,7 @@ module Samagotchi
                            :status_code, :correct_finished_record, :record_at,
                            :leftover_group?, :settle_from_refresh, :chis_group?, :mark_not_chis, :not_found,
                            :record_json, :ensure_tasks_dir, :normalize_cwd, :mark_finished_without_exit_code, :finished_with, :current_record,
-                           :mark_stopped, :read_exit_code, :timestamp
+                           :mark_stopped, :read_exit_code, :timestamp, :shell_reaped?
     end
   end
 end
