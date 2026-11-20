@@ -89,6 +89,8 @@ ENV["SAMAGOTCHI_UPDATE_NOTIFY"] = "off"
 # Log drops a record with an unknown tag or a bad event name; specs (and the
 # workers they spawn) raise instead, so a typo'd tag fails loudly.
 ENV["SAMAGOTCHI_LOG_STRICT"] = "1"
+# The core-bundle reminder has its own specs; ordinary runs do not emit it.
+ENV["SAMAGOTCHI_CORE_NOTICE"] = "off"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 # A host key never comes from the developer's login Keychain: off for this
 # process and everything it starts (bin/chi, workers); in-process reads go to

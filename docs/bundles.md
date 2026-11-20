@@ -9,6 +9,10 @@ feature they belong to: **source-links** in [hooks.md](hooks.md#the-source-links
 every shipped bundle with code does; before known-names 0.2.0 and source-links 0.7.0 they shipped a `hooks/*.rb` file
 (chi no longer loads one: [hooks.md](hooks.md#class-file-hooks-are-retired); `chi update` removes the old file).
 
+`chi bootstrap` installs the recommended `core` safety profile. If none of its members has an install record,
+chi prints a reminder to stderr at a session or web launch, including a one-shot, once per state directory. See
+[Bundle profiles](memory.md#bundle-profiles-core-and-dev).
+
 ## The btw bundle
 
 `chi bundle install btw` (or the `dev` profile) installs the bundle shipped with chi. It is written

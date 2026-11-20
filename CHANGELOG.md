@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi reminds you once on stderr when no core safety bundles are installed, including in a one-shot.
+
 ### Changed
 
 - A background task's folder (`tmp/tasks/`) is added to the repository's `.git/info/exclude`, so `git status`

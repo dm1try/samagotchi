@@ -662,6 +662,9 @@ profiles, meta bundles that install a set of them:
 
 `chi bootstrap` installs `core` and, on a terminal, offers `dev`. An existing
 install gets neither by itself: `chi bundle install core` (or `dev`).
+When no core member has an install record, chi prints a one-line reminder to
+stderr at a session or web launch, including a one-shot. It is shown only once
+per state directory, even if core is later removed.
 
 A profile's `manifest.yml` has `includes:` (bundle names) and nothing else to
 install; its dir holds only that file. What installing it does follows one

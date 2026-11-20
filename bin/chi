@@ -260,6 +260,10 @@ end
 
 if options[:web]
   chi_update_hint.call unless web_restarted
+  unless web_restarted
+    require "samagotchi/core_notice"
+    Samagotchi::CoreNotice.show
+  end
   require "samagotchi/web/server"
   port = options[:web_port] || Samagotchi::Config.get("web.port")
   markdown = options[:web_markdown]
@@ -416,6 +420,8 @@ if launch == :attached
     exit 1
   end
 
+  require "samagotchi/core_notice"
+  Samagotchi::CoreNotice.show
   require "samagotchi/terminal_ui/attach_launcher"
   begin
     ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], resume: options[:resume],
@@ -445,6 +451,10 @@ end
 
 # --non-interactive: the -p prompt's one turn in this process (TerminalUI,
 # the one-shot host); bare, a no-op that creates no session.
+if options[:prompt]
+  require "samagotchi/core_notice"
+  Samagotchi::CoreNotice.show
+end
 require "samagotchi/cli/exit"
 require "samagotchi/terminal_ui"
 begin
