@@ -189,7 +189,11 @@ module Samagotchi
         stream_assembled(request, cancel_controller, on_retry, log_fields, assembly_class: Assembly,
                                                                            what: "stream chunk") do |assembly, payload, shown|
           content, reasoning = assembly.add(payload)
-          shown.call if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
+          if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
+            shown.call
+          elsif Assembly.ending?(payload)
+            shown.call(ending: true)
+          end
           on_delta&.call(content: content, reasoning: reasoning, payload: payload)
         end
       end
@@ -341,6 +345,13 @@ module Samagotchi
         def self.tool_call_delta?(payload)
           choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
           choice.is_a?(Hash) && choice["delta"].is_a?(Hash) && !Array(choice["delta"]["tool_calls"]).empty?
+        end
+
+        # The chunk ends the answer (a finish reason, the usage): it restarts
+        # the stream-idle clock without counting as shown.
+        def self.ending?(payload)
+          choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
+          payload["usage"].is_a?(Hash) || (choice.is_a?(Hash) && !choice["finish_reason"].nil?)
         end
 
         def initialize

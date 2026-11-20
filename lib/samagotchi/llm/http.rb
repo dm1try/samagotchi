@@ -102,18 +102,22 @@ module Samagotchi
       # @param sleeper [#call] waits the given seconds (specs pass a no-op)
       # @param first_token_timeout [Numeric, nil] seconds a stream may take to
       #   show something (see #stream_lines); nil: no limit
+      # @param stream_idle_timeout [Numeric, nil] seconds a stream that showed
+      #   something may go without showing more (see #stream_lines); nil or
+      #   0: no limit
       # @param api_key [ApiKey, nil] sent on every request; nil: no
       #   Authorization header (a local server)
       # @param diagnosis_header [String, nil] a response header the adapter
       #   wants kept on a ProviderError as its diagnosis; nil: none
       def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil, first_token_timeout: nil,
-                     api_key: nil, diagnosis_header: nil)
+                     stream_idle_timeout: nil, api_key: nil, diagnosis_header: nil)
         @label = label
         @api_key = api_key
         @diagnosis_header = diagnosis_header
         @open_timeout = open_timeout
         @read_timeout = read_timeout
         @first_token_timeout = first_token_timeout&.positive? ? first_token_timeout : nil
+        @stream_idle_timeout = stream_idle_timeout&.positive? ? stream_idle_timeout : nil
         @retry_policy = retry_policy || RetryPolicy.from_config
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       end
@@ -136,6 +140,14 @@ module Samagotchi
       # timeout, so without this a queued request can wait silently for as
       # long as the provider keeps it open.
       #
+      # With a stream_idle_timeout, an attempt that called +shown+ and then
+      # doesn't call it again within the limit is closed the same way and
+      # raises StreamStalled (a RetryExhausted: the loops ask the step again
+      # as they do a dropped stream). +shown.call(ending: true)+, for a
+      # stream's end-of-answer chunks (a finish reason, the usage), restarts
+      # that clock without counting as shown, so a slow trailing usage chunk
+      # doesn't void a complete answer.
+      #
       # @param on_retry [Proc, nil] called before each backoff wait with
       #   attempt:, max_retries:, next_delay:, error_class:, error_message:
       # @param on_network_error [Proc, nil] called with each network error
@@ -143,6 +155,7 @@ module Samagotchi
       # @raise [RetryExhausted] when the retries run out
       # @raise [ProviderError] for an error status
       # @raise [FirstTokenTimeout] when nothing was shown in time
+      # @raise [StreamStalled] when the stream showed nothing more in time
       # @param log_fields [Hash] what the log line says about the request
       #   (model:, purpose: chat/recap/warmup/probe/models); never its body
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, log_fields: {}, &on_line)
@@ -158,11 +171,18 @@ module Samagotchi
       def stream_attempt(uri, request, current, &)
         # Time to first token is the answering attempt's, not the retries'.
         current[:attempt_started_at] = monotonic_now
-        shown = lambda do
+        current[:last_shown_at] = nil
+        # Lock-free: the watchdog reads last_shown_at, and rechecks it under
+        # the mutex before it closes anything.
+        shown = lambda do |ending: false|
+          now = monotonic_now
+          current[:last_shown_at] = now
+          next if ending
+
           current[:streamed] = true
-          current[:first_shown_at] ||= monotonic_now
+          current[:first_shown_at] ||= now
         end
-        watch_first_token(current) do
+        watch_stream(current) do
           start(uri) do |http|
             current[:http] = http
             http.request(request) do |response|
@@ -287,6 +307,7 @@ module Samagotchi
           rescue StandardError => e
             raise RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
             raise first_token_timeout if current[:first_token_expired]
+            raise stream_stalled(attempts, e) if current[:stalled]
             raise unless self.class.network_error?(e)
 
             on_network_error&.call(e)
@@ -312,29 +333,28 @@ module Samagotchi
         end
       end
 
-      # Runs one attempt (the block) under the first-token limit: a watchdog
-      # thread closes the attempt's socket when the limit passes before
-      # anything was shown, so the read fails and #with_retries raises
-      # FirstTokenTimeout; while still connecting, it raises that in the
+      # Runs one attempt (the block) under the first-token and stream-idle
+      # limits: a watchdog thread closes the attempt's socket when the
+      # deadline passes (first_token_timeout after the attempt started while
+      # nothing was shown, then stream_idle_timeout after the last shown
+      # chunk), so the read fails and #with_retries raises FirstTokenTimeout
+      # or StreamStalled; while still connecting, it raises that in the
       # requesting thread, as a cancel does.
-      def watch_first_token(current)
-        return yield unless @first_token_timeout
+      def watch_stream(current)
+        return yield unless @first_token_timeout || @stream_idle_timeout
 
         requesting_thread = Thread.current
         current[:mutex].synchronize { current[:attempt_over] = false }
         watchdog = Thread.new do
-          sleep(@first_token_timeout)
-          current[:mutex].synchronize do
-            next if current[:streamed] || current[:attempt_over] || current[:done]
+          loop do
+            deadline = watch_deadline(current)
+            break if deadline == :off
 
-            current[:first_token_expired] = true
-            # No Net::HTTP yet: still connecting. One whose socket is closed
-            # has finished, and the attempt returns on its own.
-            if current[:http]
-              socket_io(current[:http])&.close
-            else
-              requesting_thread.raise(first_token_timeout)
-            end
+            # No deadline yet (no first-token limit, nothing shown): look
+            # again after the idle limit.
+            wait = deadline ? deadline - monotonic_now : @stream_idle_timeout
+            next sleep(wait) if wait.positive?
+            break if expire(current, requesting_thread)
           end
         rescue IOError
           nil
@@ -347,7 +367,48 @@ module Samagotchi
         end
       end
 
+      # When the attempt's current limit passes: the first-token one before
+      # anything was shown, the idle one after; nil while neither applies
+      # yet, :off once nothing is left to watch.
+      def watch_deadline(current)
+        if current[:streamed]
+          return :off unless @stream_idle_timeout
+
+          (current[:last_shown_at] || current[:attempt_started_at]) + @stream_idle_timeout
+        elsif @first_token_timeout
+          current[:attempt_started_at] + @first_token_timeout
+        end
+      end
+
+      # Ends the attempt if its deadline (rechecked under the mutex) has
+      # passed: true once it is over (expired, finished or done), false when
+      # a chunk came since and the watch goes on.
+      def expire(current, requesting_thread)
+        current[:mutex].synchronize do
+          next true if current[:attempt_over] || current[:done]
+
+          deadline = watch_deadline(current)
+          next true if deadline == :off
+          next false if deadline.nil? || deadline > monotonic_now
+
+          stalled = current[:streamed]
+          current[stalled ? :stalled : :first_token_expired] = true
+          # No Net::HTTP yet: still connecting. One whose socket is closed
+          # has finished, and the attempt returns on its own.
+          if current[:http]
+            socket_io(current[:http])&.close
+          else
+            requesting_thread.raise(stalled ? stream_stalled(current[:attempts].to_i) : first_token_timeout)
+          end
+          true
+        end
+      end
+
       def first_token_timeout = FirstTokenTimeout.new(limit: @first_token_timeout, host: @label)
+
+      def stream_stalled(attempts, last_error = nil)
+        StreamStalled.new(limit: @stream_idle_timeout, host: @label, attempts: attempts, last_error: last_error)
+      end
 
       def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -385,11 +446,13 @@ module Samagotchi
         failure_level = current[:level] == :info ? :error : :debug
         event = case e
                 when FirstTokenTimeout then "first_token_timeout"
+                when StreamStalled then "stream_stalled"
                 when RetryExhausted then "retry_exhausted"
                 else "failed"
                 end
         Log.public_send(failure_level, :http, event, **log_base(current), status: e.is_a?(ProviderError) ? e.status : nil,
                                                      ms: elapsed_ms(current), attempts: current[:attempts], error: e.class.name,
+                                                     idle_s: e.is_a?(StreamStalled) ? e.limit : nil,
                                                      msg: log_message(e.respond_to?(:summary) ? e.summary : e.message))
         raise
       end

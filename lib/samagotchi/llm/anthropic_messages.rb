@@ -463,6 +463,8 @@ module Samagotchi
           if AnthropicAssembly.shows?(event)
             shown.call
             on_shown&.call
+          elsif AnthropicAssembly.ending?(event)
+            shown.call(ending: true)
           end
           on_delta&.call(content: content, reasoning: reasoning, payload: assembly.with_usage(event)) unless event["type"] == "ping"
         end

@@ -91,6 +91,11 @@ module Samagotchi
       # what the first-token limit waits for.
       def self.shows?(event) = %w[content_block_start content_block_delta].include?(event["type"])
 
+      # Whether a streamed +event+ ends the message (message_delta,
+      # message_stop): it restarts the stream-idle clock without counting as
+      # shown.
+      def self.ending?(event) = %w[message_delta message_stop].include?(event["type"])
+
       # Whether a streamed +event+ carries part of a tool call.
       def self.tool_call_delta?(event)
         case event["type"]
