@@ -28,7 +28,7 @@ test("itemsOfTurn keeps each row's tool id with its place; the session's set joi
 
 // The page's pieces as app.js wires them: the preview, then the working set
 // with its peek, then attach.
-function page({ answers = {}, sendLine = null, serverSet = () => ({ items: [], at: 0 }) } = {}) {
+function page({ answers = {}, sendLine = null, serverSet = () => ({ items: [], at: 0 }), renderMarkdown, extra = [] } = {}) {
   const center = document.createElement("section");
   const stage = document.createElement("div");
   stage.id = "stage";
@@ -47,14 +47,14 @@ function page({ answers = {}, sendLine = null, serverSet = () => ({ items: [], a
     const answer = typeof found === "function" ? found() : found;
     return answer instanceof Promise ? answer : Promise.resolve(answer || { kind, key, events: [] });
   };
-  const preview = createWorkingSetPreview({ centerEl: center, session: () => session, state: () => ({ dir: "/p" }), getItem, sendLine });
+  const preview = createWorkingSetPreview({ centerEl: center, session: () => session, state: () => ({ dir: "/p" }), getItem, sendLine, renderMarkdown });
   const ws = createWorkingSet({
     historyEl, infoEl, state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [], dir: "/p" }), session: () => session,
     getWorkingSet: () => Promise.resolve(serverSet()), peek: preview.peek, onTimeline: preview.open,
   });
   preview.attach(ws);
   const memoryRow = { tool: "memory_read", title: "style", status: "ok", tool_id: "t5" };
-  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [row("a.rb", "t1"), row("b.rb", "t2")] }, { tools: [row("a.rb", "t3", "edit"), memoryRow] }] }, 0), prompt: "go" }]);
+  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [row("a.rb", "t1"), row("b.rb", "t2")] }, { tools: [row("a.rb", "t3", "edit"), memoryRow, ...extra] }] }, 0), prompt: "go" }]);
   const cleanup = () => { center.remove(); historyEl.remove(); infoEl.remove(); ws.popover.pop.remove(); setTimelineWayIn(false); };
   return { center, stage, ws, preview, asked, latestAsked, cleanup, setSession: (id) => { session = id; } };
 }
@@ -331,4 +331,204 @@ test("What chi has comes after a row's other refs: never a file title's main tar
     more: [{ kind: "issue", target: { id: "X-1" }, label: "X-1", actions: [{ id: "open", label: "Open", url: "https://x.test/X-1" }] }] };
   const ids = refActions(target, { editor: false }, REF_ACTIONS, env).map((a) => a.id);
   assert.deepEqual(ids, ["more:0:open", "has", "copy"]);
+});
+
+// Markdown in the reader and the peek (ws_markdown.js): a stand-in for
+// markdown_place.js renderMarkdown whose answers the test lets go.
+function renderer(answer = (text) => `<h1>${text.split("\n")[0].replace(/^#+\s*/, "")}</h1><p>rendered</p>`) {
+  const asked = [];
+  const waiting = [];
+  const renderMarkdown = (text) => {
+    asked.push(text);
+    return new Promise((resolve) => waiting.push(() => resolve(answer(text))));
+  };
+  const release = async () => {
+    while (waiting.length) waiting.shift()();
+    await tick();
+  };
+  return { renderMarkdown, asked, release };
+}
+const memoryAnswer = (text, extra = {}) => ({
+  kind: "memory", key: "style",
+  events: [{ tool_id: "t5", op: "memory_read", step: 3, sent: true, text, memory: { scope: "project", path: "/m/style.md", overlay: null }, shared_with: [], ...extra }],
+});
+const viewButtons = (root) => [...root.querySelectorAll('[data-wsr="view"]')].map((b) => `${b.dataset.view}:${b.getAttribute("aria-pressed")}`);
+
+test("a memory renders once its HTML came, source while it is on its way; the switch flips every card of the item, back to rendered on another item", async () => {
+  const md = renderer();
+  const p = page({ answers: { "memory:style": memoryAnswer("---\nname: style\n---\n# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
+  p.preview.open({ kind: "memory", key: "style" });
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  const card = () => reader.querySelector(".wsr-card.memory");
+  assert.match(card().querySelector(".wsr-text").textContent, /# Style/, "pending: today's source");
+  assert.deepEqual(viewButtons(reader), [], "no switch before the HTML");
+  assert.deepEqual(md.asked, ["# Style\nbe brief\n"], "the body only: the front matter is taken off");
+  await md.release();
+  assert.equal(card().querySelector(".wsr-md h1").textContent, "Style");
+  assert.match(card().querySelector(".wsr-front").textContent, /^---\nname: style\n---$/, "the front matter as source, above");
+  assert.ok(card().querySelector(".wsr-text") === null);
+  const group = card().querySelector('.wsr-card-h [role="group"]');
+  assert.ok(group?.getAttribute("aria-label"));
+  assert.deepEqual(viewButtons(reader), ["rendered:true", "source:false"]);
+
+  card().querySelector('[data-view="source"]').click();
+  assert.match(card().querySelector(".wsr-text").textContent, /name: style[\s\S]*# Style/, "source: the whole text as sent");
+  assert.ok(card().querySelector(".wsr-md") === null);
+  assert.deepEqual(viewButtons(reader), ["rendered:false", "source:true"]);
+  assert.equal(md.asked.length, 1, "nothing asked again");
+
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  p.preview.open({ kind: "memory", key: "style" });
+  await tick();
+  assert.ok(card().querySelector(".wsr-md h1"), "another item opened: back to rendered");
+  assert.equal(md.asked.length, 1, "the cache keeps the HTML");
+  p.preview.close();
+  p.cleanup();
+});
+
+test("a memory's overlay renders with it; the greyed card's what it was too", async () => {
+  const md = renderer();
+  const memory = { scope: "project", path: "/m/style.md", overlay_path: "/m/style.qwen.md", overlay: "# Qwen\nshorter\n" };
+  const answers = {
+    "memory:style": memoryAnswer("# Style\nbe brief\n", { memory }),
+    "memory:old": { kind: "memory", key: "old", events: [{ tool_id: "t9", op: "memory_read", step: 1, sent: false, text: "# Old\nwas\n", memory: { scope: "project" } }] },
+  };
+  const p = page({ answers, renderMarkdown: md.renderMarkdown });
+  p.preview.open({ kind: "memory", key: "style" });
+  await tick();
+  await md.release();
+  const reader = p.center.querySelector("#wsReader");
+  assert.equal(reader.querySelector(".wsr-overlay .wsr-md h1").textContent, "Qwen");
+  reader.querySelector('[data-view="source"]').click();
+  assert.match(reader.querySelector(".wsr-overlay .wsr-text").textContent, /# Qwen/, "the switch takes the overlay too");
+
+  p.preview.open({ kind: "memory", key: "old" });
+  await tick();
+  await md.release();
+  assert.equal(reader.querySelector(".wsr-card.gone .wsr-had .wsr-md h1").textContent, "Old");
+  assert.deepEqual(viewButtons(reader), ["rendered:true", "source:false"]);
+  p.preview.close();
+  p.cleanup();
+});
+
+test("markdown off (a null render): today's source and no switch", async () => {
+  const p = page({ answers: { "memory:style": memoryAnswer("# Style\n") }, renderMarkdown: () => Promise.resolve(null) });
+  p.preview.open({ kind: "memory", key: "style" });
+  await tick();
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  assert.match(reader.querySelector(".wsr-card.memory .wsr-text").textContent, /# Style/);
+  assert.deepEqual(viewButtons(reader), []);
+  p.preview.close();
+  p.cleanup();
+});
+
+test("an .md file: a whole read renders (its band still jumps to it); a slice stays numbered, not asked; an edit stays a diff", async () => {
+  const md = renderer();
+  const readme = "/p/README.md";
+  const whole = readEvent("t6", 1, 3, { text: "# Readme\nsome\ntext\n", lines: { first: 1, last: 3, whole: true, partial: false } });
+  const answers = { [`file:${readme}`]: () => answer };
+  let answer = { kind: "file", key: readme, events: [whole] };
+  const p = page({ answers, renderMarkdown: md.renderMarkdown, extra: [row("README.md", "t6")] });
+  p.preview.open({ kind: "file", key: readme });
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  assert.ok(reader.querySelector(".wsr-card.slice .read-line"), "pending: numbered lines");
+  await md.release();
+  assert.deepEqual(md.asked, ["# Readme\nsome\ntext"]);
+  const card = reader.querySelector(".wsr-card.slice");
+  assert.equal(card.dataset.first, "1");
+  assert.equal(card.querySelector(".wsr-md h1").textContent, "Readme");
+  assert.ok(card.querySelector(".read-line") === null);
+  let scrolled = null;
+  card.scrollIntoView = () => { scrolled = card; };
+  reader.querySelector('.wsr-band[data-wsr="band"]').click();
+  assert.ok(scrolled === card, "the band finds the rendered slice by its first line");
+
+  answer = { kind: "file", key: readme, events: [readEvent("t6", 40, 42), editEvent("t7")] };
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  p.preview.open({ kind: "file", key: readme });
+  await tick();
+  await md.release();
+  assert.equal(md.asked.length, 1, "a slice from line 40 is never asked");
+  assert.deepEqual([...reader.querySelectorAll(".wsr-card.slice .read-line")].map((l) => l.dataset.line), ["40", "41", "42"]);
+  assert.equal(reader.querySelector(".wsr-card.slice").dataset.first, "40");
+  assert.ok(reader.querySelector(".wsr-card.edit .diff"));
+  assert.ok(reader.querySelector(".wsr-md") === null);
+  assert.deepEqual(viewButtons(reader), []);
+  p.preview.close();
+  p.cleanup();
+});
+
+test("the peek of a memory: today's lines while pending, then the whole text rendered once the HTML comes", async () => {
+  const md = renderer();
+  const p = page({ answers: { "memory:style": memoryAnswer("# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  pop.querySelector(".ws-row.memory .ws-peek-toggle").click();
+  await tick();
+  assert.match(pop.querySelector(".ws-peek-b .wsr-text").textContent, /# Style/, "pending: the text's first lines");
+  await md.release();
+  assert.equal(pop.querySelector(".ws-peek-b .wsr-md h1").textContent, "Style", "redrawn when the HTML came");
+  assert.ok(pop.querySelector(".ws-peek-b .wsr-text") === null);
+  assert.ok(pop.querySelector('[data-wsr="view"]') === null, "no switch in the peek");
+  p.ws.popover.close();
+  p.cleanup();
+});
+
+test("the peek of a read of an .md file: a whole read renders, a slice stays its numbered lines", async () => {
+  const md = renderer();
+  const readme = "/p/README.md";
+  let answer = { kind: "file", key: readme, events: [readEvent("t6", 1, 2, { text: "# Readme\nx\n", lines: { first: 1, last: 2, whole: true, partial: false } })] };
+  const p = page({ answers: { [`file:${readme}`]: () => answer }, renderMarkdown: md.renderMarkdown, extra: [row("README.md", "t6")] });
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  const toggle = () => pop.querySelector(`.ws-row[data-ws-id="file:${readme}"] .ws-peek-toggle`);
+  toggle().click();
+  await tick();
+  await md.release();
+  assert.equal(pop.querySelector(".ws-peek-b .wsr-md h1").textContent, "Readme");
+  toggle().click();
+  answer = { kind: "file", key: readme, events: [readEvent("t6", 5, 6)] };
+  toggle().click();
+  await tick();
+  await md.release();
+  assert.deepEqual([...pop.querySelectorAll(".ws-peek-b .read-line")].map((l) => l.dataset.line), ["5", "6"]);
+  assert.equal(md.asked.length, 1);
+  p.ws.popover.close();
+  p.cleanup();
+});
+
+test("no events: the step still running when the answer says a turn runs, today's note when none does (the reader and the peek)", async () => {
+  let running = true;
+  const p = page({ answers: { "file:/p/a.rb": () => ({ kind: "file", key: "/p/a.rb", events: [], running }) } });
+  const still = "chi read this in the step still running. It shows here when that step's tools finish.";
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  const reader = p.center.querySelector("#wsReader");
+  assert.equal(reader.querySelector(".wsr-note").textContent, still);
+  p.preview.close();
+  running = false;
+  p.preview.open({ kind: "file", key: "/p/a.rb" });
+  await tick();
+  assert.equal(reader.querySelector(".wsr-note").textContent, "Nothing of it in the conversation yet: a running turn's reads show at its next step.");
+  p.preview.close();
+
+  running = true;
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  const toggle = () => pop.querySelector('.ws-row[data-ws-id="file:/p/a.rb"] .ws-peek-toggle');
+  toggle().click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-note").textContent, still);
+  toggle().click();
+  running = false;
+  toggle().click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-note").textContent, "Nothing of it in the conversation yet.");
+  p.ws.popover.close();
+  p.cleanup();
 });

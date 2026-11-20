@@ -959,18 +959,22 @@ test.describe("the working set", () => {
     await clickBarItem(page, "workingSet");
     const pop = page.locator("#workingSetPopover");
     const row = pop.locator(".ws-row.file", { hasText: "README.md" });
-    // What chi has of it: the row's ▸ peeks (the read's first lines), the
-    // peek's link opens the reader over the stage, ← Stage brings it back.
+    // What chi has of it: the row's ▸ peeks (a whole read of an .md file:
+    // rendered), the peek's link opens the reader over the stage (rendered,
+    // its switch to the numbered source), ← Stage brings it back.
     await row.locator(".ws-peek-toggle").click();
     const peek = pop.locator(".ws-peek");
     await expect(peek.locator(".ws-peek-t")).toHaveText(/latest · read/);
-    await expect(peek.locator(".read-line").first()).toBeVisible();
+    await expect(peek.locator(".wsr-md h1")).toHaveText("e2e project");
     await peek.locator(".ws-peek-open").click();
     const reader = page.locator("#wsReader");
     await expect(reader).toBeVisible();
     await expect(pop).toBeHidden();
     await expect(reader.locator(".wsr-name")).toHaveText("README.md");
     await expect(reader.locator(".wsr-card.slice .wsr-card-h")).toContainText("1 read");
+    await expect(reader.locator(".wsr-card.slice .wsr-md h1")).toHaveText("e2e project");
+    await reader.locator('.wsr-card.slice [data-view="source"]').click();
+    await expect(reader.locator(".wsr-card.slice .read-line").first()).toHaveText("# e2e project");
     await expect(reader.locator(".wsr-item.on")).toContainText("README.md");
     await reader.locator(".wsr-back").click();
     await expect(reader).toBeHidden();

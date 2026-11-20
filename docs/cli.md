@@ -1440,11 +1440,13 @@ session bar shows the `mem N` chip again.
   stage's rail shows an add queued for its end as a dashed `+ name · next turn`
   line.
 - **What chi has of an item**: a row's `▸` in the list peeks at it (its latest edit's diff, else its newest
-  read's first lines); `Open the timeline` (also a tool row's `timeline` and a file ref's ▾ `What chi has`) puts
-  the item's timeline over the stage, newest first: reads merged into line slices over a strip of the file, edits
-  as diffs, what chi no longer has greyed (with `undrop` for your drop), a changed memory's `Now · diff`. `← Stage`
-  or Esc goes back to the same place, ↑↓ step through the set; on a phone it is full screen (`‹ Set`, `‹ ›`).
-  Yours only: a participant's list has no `▸`.
+  read's first lines, or a memory or a whole `.md` file rendered); `Open the timeline` (also a tool row's
+  `timeline` and a file ref's ▾ `What chi has`) puts the item's timeline over the stage, newest first: reads merged
+  into line slices over a strip of the file, edits as diffs, what chi no longer has greyed (with `undrop` for your
+  drop), a changed memory's `Now · diff`. A memory and a whole read of an `.md` file show as rendered markdown (a
+  leading front matter as source above it), with a `rendered | source` switch on the card; a slice of a file stays
+  numbered source, and with markdown off everything is source. `← Stage` or Esc goes back to the same place, ↑↓
+  step through the set; on a phone it is full screen (`‹ Set`, `‹ ›`). Yours only: a participant's list has no `▸`.
 
 Only `read`, `edit`, `write`, `memory_read`, `memory_write` and `web_fetch`
 calls that succeeded count; files an `execute` touched don't.
