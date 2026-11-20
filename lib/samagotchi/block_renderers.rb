@@ -6,7 +6,6 @@ module Samagotchi
   autoload :BundleManifest, File.expand_path("bundle_manifest", __dir__)
   autoload :InlineWidgets, File.expand_path("inline_widgets", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
-  autoload :VERSION, File.expand_path("version", __dir__)
 
   # Declarative block renderers (docs/plugins.md, docs/internals/block-renderers.md):
   # a bundle's manifest maps a fenced block's language to the scripts/ files the
@@ -82,11 +81,11 @@ module Samagotchi
     # @return [Array<Installed>]
     def for_installed
       taken = {}
-      InstalledBundles.each do |bundle, record|
-        manifest = record.manifest
-        next if manifest.requires_chi_failure(VERSION)
+      InstalledBundles.standings do |standing|
+        next if standing.too_new?
 
-        renderers(bundle, manifest).each do |renderer|
+        bundle = standing.name
+        renderers(bundle, standing.record.manifest).each do |renderer|
           taken[renderer.lang] ||= Installed.new(lang: renderer.lang, bundle: bundle, files: renderer.load)
         end
       end
@@ -103,11 +102,11 @@ module Samagotchi
     def script_path(bundle, file)
       return nil unless for_installed.any? { |renderer| renderer.bundle == bundle && renderer.files.include?(file) }
 
-      provenance = InstalledBundles::Dir.new(name: bundle)
-      failure = provenance.script_failure(file, provenance.record&.scripts&.fetch(file, nil))
-      raise Invalid, failure if failure
+      installed = InstalledBundles::Dir.new(name: bundle)
+      refusal = installed.file_refusal(:scripts, file, InstalledBundles.standing(bundle)&.record&.scripts&.fetch(file, nil))
+      raise Invalid, refusal.text if refusal
 
-      File.join(provenance.scripts_dir, file)
+      File.join(installed.scripts_dir, file)
     end
 
     # Its parsed renderers; a kept list that doesn't parse is the record's

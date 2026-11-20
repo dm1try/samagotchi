@@ -3,6 +3,7 @@
 require "json"
 
 require_relative "../question_answer"
+require_relative "verdict"
 
 module Samagotchi
   module Guardrails

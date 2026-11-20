@@ -64,8 +64,10 @@ module Samagotchi
     # entry name → marker, for the installed bundles of +scope+ with a
     # missing need. A manifest.json or needs: that doesn't parse is skipped.
     def self.entry_markers(scope, path:, bundles_dir:)
-      InstalledBundles.each(dir: bundles_dir).each_with_object({}) do |(_name, bundle), acc|
-        next if bundle.error? || bundle.effective_scope != scope.to_s
+      InstalledBundles.standings(dir: bundles_dir).each_with_object({}) do |standing, acc|
+        bundle = standing.record
+        # A bundle too new for this chi keeps its markers: its memories are read (the plan's D5).
+        next if standing.unreadable? || bundle.effective_scope != scope.to_s
 
         needs = bundle.manifest.needs
         next if needs.empty?

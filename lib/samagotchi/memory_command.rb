@@ -105,7 +105,7 @@ module Samagotchi
     # name within a scope.
     # @return [Array<Entry>]
     def self.entries(scope = nil)
-      owners = InstalledBundles.each.reject { |_, bundle| bundle.error? }
+      owners = InstalledBundles.standings.reject(&:unreadable?).map { |standing| [standing.name, standing.record] }
       (scope ? [scope] : SCOPES).flat_map { |s| scope_entries(s, owners) }
     end
 

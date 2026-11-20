@@ -288,9 +288,9 @@ module Samagotchi
     def offered(dir: nil) = availability(dir: dir).offered
 
     # The installed bundles a session may set settings of: a record that
-    # doesn't read is left out, and so is one whose plugin doesn't load as
-    # chi's loader decides (Plugin::Loader#unloadable_reason: requires_chi,
-    # the file, its sha256), with a note saying why. A record with no
+    # doesn't read is left out, and so is one whose plugin doesn't load, as
+    # the verdict says for the loader (InstalledBundles::Standing: requires_chi;
+    # Dir#file_refusal(:plugin): the file, its sha256), with a note saying why. A record with no
     # session_settings whose shipped bundle lists some (installed before
     # them) gets a note on refreshing it.
     # @return [Availability]
@@ -301,10 +301,12 @@ module Samagotchi
       offered = {}
       notes = {}
       types = {}
-      InstalledBundles.each(dir: dir) do |name, bundle|
-        next if bundle.error?
+      InstalledBundles.standings(dir: dir) do |standing|
+        next if standing.unreadable?
 
-        if (reason = unloadable(dir, name, bundle))
+        name = standing.name
+        bundle = standing.record
+        if (reason = unloadable(dir, standing))
           notes[name] = "#{name} is installed but its plugin doesn't load: #{reason}"
           next
         end
@@ -374,14 +376,16 @@ module Samagotchi
         "setting#{"s" unless clashing.size == 1} (--set #{clashing.first}=… sets chi's); rename the setting or the bundle"
     end
 
-    # Why +bundle+'s plugin doesn't load, as chi's loader decides it
-    # (Plugin::Loader.unloadable_reason), nil when it does or has none.
-    def unloadable(dir, name, bundle)
-      return nil unless bundle.plugin
+    # Why +standing+'s plugin doesn't load, as the plugin loader would refuse
+    # it (InstalledBundles' verdict), nil when it does or it has none. A bundle
+    # with no plugin is never refused here, even one too new (the plan's D2).
+    def unloadable(dir, standing)
+      plugin = standing.record.plugin
+      return nil unless plugin
 
-      require_relative "plugin/loader"
-      # +dir+, not the global bundles dir: a spec's records live elsewhere.
-      Plugin::Loader.unloadable_reason(InstalledBundles::Dir.new(name: name, dir: dir).plugin_path(bundle), bundle)
+      refusal = standing.refusal ||
+                InstalledBundles::Dir.new(name: standing.name, dir: dir).file_refusal(:plugin, plugin.file, plugin.sha256)
+      refusal&.text
     end
 
     # Whether chi ships a bundle +name+ whose manifest lists session_settings.

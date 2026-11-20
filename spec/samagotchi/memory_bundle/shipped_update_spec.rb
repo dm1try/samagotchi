@@ -76,7 +76,9 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
 
   def plugin_loads?(name)
     record = Samagotchi::MemoryBundle::Provenance.new(name: name).record
-    Samagotchi::Plugin::Loader.unloadable_reason(Samagotchi::MemoryBundle::Provenance.new(name: name).plugin_path(record), record).nil?
+    installed = Samagotchi::InstalledBundles::Dir.new(name: name)
+    (Samagotchi::InstalledBundles::Standing.of(name, record).refusal ||
+      installed.file_refusal(:plugin, record.plugin&.file, record.plugin&.sha256)).nil?
   end
 
   def mtimes

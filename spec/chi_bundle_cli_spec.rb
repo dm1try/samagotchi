@@ -964,7 +964,8 @@ Removed: hooks/guardrails.rb\n\z})
       expect(File.read(plugin)).to eq("# edited\n")
       with_sandbox_env do
         expect(record("sample-plugin")).to have_attributes(dev: true, source: File.realpath(@plugin_src))
-        expect(Samagotchi::Plugin::Loader.sha_mismatch(plugin, record("sample-plugin").plugin.sha256)).to be_nil
+        expect(Samagotchi::InstalledBundles::Dir.new(name: "sample-plugin").file_refusal(:plugin, "plugin.rb", record("sample-plugin").plugin.sha256))
+          .to be_nil
         expect(Samagotchi::InstalledBundles::Sha.matches?(plugin, record("sample-plugin").plugin.sha256)).to be(true)
       end
     end
@@ -1015,8 +1016,8 @@ Removed: hooks/guardrails.rb\n\z})
       File.write(File.join(bundle_dir("other"), "plugin", "plugin.rb"), "# edited\n")
       with_sandbox_env do
         expect(record("other")).to have_attributes(dev: false)
-        expect(Samagotchi::Plugin::Loader.sha_mismatch(File.join(bundle_dir("other"), "plugin", "plugin.rb"),
-                                                       record("other").plugin.sha256)).to include("differs")
+        expect(Samagotchi::InstalledBundles::Dir.new(name: "other").file_refusal(:plugin, "plugin.rb", record("other").plugin.sha256).text)
+          .to include("differs")
       end
     end
 
