@@ -508,6 +508,44 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}
 .note-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-faint);margin-bottom:2px}
 .note-text{white-space:pre-wrap;max-height:8em;overflow:auto}
+/* A peer's answer (peer_note.js): a bubble from the peer, not a dotted system note; its verdict pill, the ↑ to its
+   send, "Read the full answer" (the newest answer only) and chi's instruction folded under "what chi told the agent".
+   A send's state (peer_exchange.js pillTemplate) is a pill in the chip's shape after the row's params. */
+.bubble.note.peer-answer{border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-panel);opacity:1;font-size:13px;color:var(--text);white-space:normal;display:flex;flex-direction:column;gap:8px}
+.bubble.note.peer-answer .note-text{max-height:none;overflow:visible;line-height:1.5}
+.peer-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
+.peer-who{font-weight:700;color:var(--text-bright)}
+.peer-mark{margin-left:auto;display:inline-flex;align-items:baseline;gap:8px}
+.peer-closed{font-size:12px;color:var(--ok-text)}
+:is(.peer-state,.peer-verdict){display:inline-block;padding:2px 9px;border-radius:999px;font:600 11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;border:1px solid var(--border-strong);color:var(--text-3);background:transparent}
+:is(.peer-state,.peer-verdict).changes{color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
+:is(.peer-state,.peer-verdict).ok{color:var(--ok-text);background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.peer-state.waiting{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
+.peer-state.failed{color:var(--danger-text);background:var(--danger-bg-dim);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
+.peer-slot{margin-left:auto;display:inline-flex}
+.peer-slot:empty{display:none}
+button.peer-state{cursor:pointer}
+@media(hover:hover){button.peer-state:hover{filter:brightness(1.15)}}
+.peer-short{display:none}
+:is(button.peer-up,button.peer-full){padding:0;border:0;background:none;color:var(--accent);font:inherit;font-size:12px;text-align:left;cursor:pointer}
+@media(hover:hover){:is(button.peer-up,button.peer-full):hover{color:var(--text-hover);text-decoration:underline}}
+.peer-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;font-size:12px}
+.peer-told>summary{cursor:pointer;color:var(--text-3);list-style:none;width:max-content}
+.peer-told>summary::-webkit-details-marker{display:none}
+.peer-told>summary::before{content:"\25B8  "}
+.peer-told[open]{flex-basis:100%}
+.peer-told[open]>summary::before{content:"\25BE  "}
+.peer-told-text{margin-top:6px;white-space:pre-wrap;color:var(--text-muted);max-height:16em;overflow:auto}
+@media(max-width:600px){
+  .peer-short{display:inline}
+  :is(.peer-state,.peer-verdict) .peer-long:has(+.peer-short),.peer-verdict .peer-long{display:none}
+  .activity-row .peer-slot{order:1;flex:1 1 100%;margin:2px 0 0 var(--row-gutter)}
+  .activity-row:has(>.peer-slot:not(:empty))>.activity-duration{display:none}
+  .activity-row button.peer-state{min-height:44px;padding:10px 12px;font-size:12px;box-sizing:border-box}
+  .peer-head .peer-up-slot{flex:1 1 100%;order:3}
+  button.peer-up{padding:6px 0;min-height:32px}
+  button.peer-full{padding:12px 0}
+}
 .bubble.command.busy{border-left-color:var(--warn)}
 .bubble.command.failed{border-left-color:var(--danger)}
 .bubble.command.queued{border-left-style:dashed}
