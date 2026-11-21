@@ -35,8 +35,9 @@ module Samagotchi
     # @return [Boolean] +url+ is an http or https URL with a host and no
     #   userinfo (a "https://github.com@evil.example/" shows one host and
     #   opens another, and a token in it would be copied around)
-    def self.http_url?(url)
-      return false if url.length > MAX_URL
+    #   +max+ is the length cap (a card's url action allows more: Plugin::Card)
+    def self.http_url?(url, max: MAX_URL)
+      return false if url.length > max
 
       uri = URI.parse(url)
       uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && uri.userinfo.nil?

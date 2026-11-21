@@ -409,7 +409,8 @@ made in Keychain Access or by another app may raise an "allow access" dialog the
 deadline (or add `-T /usr/bin/security`). An unset key's error names the `security` command;
 `chi self` says `VAR (keychain)`, `chi desktop status` which keys the helper gets.
 `SAMAGOTCHI_KEYCHAIN=off` turns the Keychain off for a process and everything it starts (the spec suite sets it).
-Linux has no fallback: the variable only.
+Linux has no fallback: the variable only. A bundle's own tokens (`ctx.secrets`, a sign-in's) aren't kept here but in
+0600 files under the state dir ([docs/plugins.md](plugins.md#secrets-ctxsecrets) says why).
 
 ### Anthropic Messages hosts
 

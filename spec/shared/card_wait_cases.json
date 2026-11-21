@@ -10,6 +10,9 @@
     { "name": "a warning", "card": { "id": "w", "level": "warn", "title": "Careful" }, "kind": "warn" },
     { "name": "a warning that asks (asks first)", "card": { "id": "w", "level": "warn", "actions": [{ "label": "Stop", "command": "/stop" }] }, "kind": "asks" },
     { "name": "a warning cleared to info", "card": { "id": "w", "level": "info", "title": "Fine" }, "kind": null },
-    { "name": "an error level", "card": { "id": "e", "level": "error" }, "kind": null }
+    { "name": "an error level", "card": { "id": "e", "level": "error" }, "kind": null },
+    { "name": "a url action alone (it opens an address, nothing to answer)", "card": { "id": "s", "title": "Sign in", "actions": [{ "label": "Open sign-in page", "url": "https://linear.app/oauth" }] }, "kind": null },
+    { "name": "a url action on a warning", "card": { "id": "s", "level": "warn", "actions": [{ "label": "Docs", "url": "https://a.example" }] }, "kind": "warn" },
+    { "name": "a url action next to a command one", "card": { "id": "s", "actions": [{ "label": "Docs", "url": "https://a.example" }, { "label": "Go", "command": "/go" }] }, "kind": "asks" }
   ]
 }

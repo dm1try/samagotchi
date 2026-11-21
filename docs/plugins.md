@@ -896,7 +896,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.model_names` | the names chi's own per-model config looks that model up under (a `models:` map in config.yml): as typed (an alias), the alias's target, the resolved ref, without the host, the bare id; deduped, most specific first, frozen (`[]` when it doesn't resolve). Match a map of yours over them downcased, first hit, as chi does. Needs chi 0.132.0 |
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
 | `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
-| `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)). Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
+| `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)): `ctx.secrets` works there, so don't start a sign-in on such a turn. Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
 | `ctx.tool_id` | inside a tool's block, the run's own id (chi's tool id, `"t41"`), the one a two-arg `refs:` lambda got for its row ([Refs on a tool's row](#refs-on-a-tools-row)); nil anywhere else (a hook, a command, a thread the block started) and for a run with none. Needs chi 0.181.0 (guard it with `ctx.respond_to?(:tool_id)`) |
 | `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use: what the bundle keeps across sessions |
@@ -918,6 +918,8 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
+| `ctx.sign_in(title:, button:, timeout: 300, port: nil, path: "/callback", cancel: nil) { \|redirect_uri\| address }` | send the owner to an address and get back where the browser was sent: see [Sign-in](#sign-in-ctxsign_in) |
+| `ctx.secrets` | the bundle's tokens, kept apart from its data files (`get`, `set`, `delete`, `update`): see [Secrets](#secrets-ctxsecrets) |
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
@@ -973,6 +975,20 @@ ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces 
   `command_queued` and `command_ran` carry `card: true`, and no UI shows
   its line; the web shows a bubble only when the command answers with
   text or fails.
+- An action can open an address instead: `{label:, url:}` (exactly one of
+  `command:` / `url:`; both or neither raise). The `url` is an absolute
+  `http(s)` address with a host and no userinfo (`https://linear.app@evil.example`
+  is refused), at most 4096 characters, and `label:` is required. The web
+  draws a link that opens it in a new tab, its host as the tooltip, with a
+  muted line under the buttons naming each host the card's links open
+  (`opens linear.app`), so a label can't hide where it leads; the terminal
+  prints `→ <label>`, then the address whole on its own line (no frame, not
+  wrapped) for a click or a copy. Opening it sends nothing to the session,
+  and a url action doesn't make a card ask: a running turn's card with only
+  url actions doesn't hold the turn's stage or the "needs you" badge. It
+  needs chi 0.183.0: set `requires_chi: ">= 0.183.0"` in the bundle by hand
+  (`chi bundle check` can't see an action's keys); an older chi refuses the
+  card with `ArgumentError`.
 - `level:` is `:info` or `:warn` (the warning colour).
 - An `:info` card with no actions and a body of one short line (up to 160
   characters) is a notice: the web shows it as a one-line row,
@@ -1021,7 +1037,8 @@ then a new turn) starts from them. Load warnings and a question still
 waiting when the worker went are not saved.
 
 The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
-in_turn:}` (`source` is the bundle), plus `command:` when a session command
+in_turn:}` (`source` is the bundle; each action `{label:, command:}` or
+`{label:, url:}`), plus `command:` when a session command
 showed it (`"/short"`), logged as `card` with its source, id and title.
 
 ## Side answers: `ctx.ask_model`
@@ -1256,6 +1273,184 @@ end
   comments; an event is yielded at its blank line (one cut off by the end of the body is dropped, one without `data` too).
 
 `ctx.http` is experimental until 1.0, like the test kit.
+
+## Secrets: `ctx.secrets`
+
+What a bundle keeps that must not sit in a plain data file: tokens.
+
+```ruby
+ctx.secrets.get("linear")                 # => String or nil
+ctx.secrets.set("linear", json_string)    # => true
+ctx.secrets.delete("linear")              # => true if there was one
+ctx.secrets.update("linear") { |old| new_or_nil }   # read-change-write under a lock; nil deletes
+ctx.secrets.backend                       # => :file (:memory in the test kit), for a status line
+```
+
+- Per bundle: bundle `mcp`'s `linear` and another bundle's `linear` are different secrets. A name matches
+  `/\A[a-z0-9][a-z0-9._-]{0,63}\z/` and doesn't end in `.tmp`; a value is a String of at most 16 KB (encode JSON yourself). Anything else
+  raises `ArgumentError`, whose message never holds the value. chi never logs a value, nor shows it in `inspect`.
+- Where it is: one file per secret, `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/secrets/<name>`, mode 0600 in a
+  0700 folder, written whole. On macOS too: the login Keychain can't take a value through `/usr/bin/security`
+  without it showing in a process list (its stdin mode cuts a line at about 4 KB and its prompt at 128
+  characters), so chi doesn't use it for these.
+- `update` holds an exclusive lock on the secret for the whole block, across processes: two workers refreshing the
+  same token don't each spend the refresh token, the second one's block gets the first one's new value as `old`.
+  `set` and `delete` take the same lock (kept apart from the values, in `secrets/.locks/`). A `set`, `delete` or
+  `update` of the same secret inside its own `update` block raises `ArgumentError` at once (it would wait for
+  itself): return the new value from the block. The wait has a deadline (`timeout:`, default 30 s), after which it raises
+  `Samagotchi::Plugin::Secrets::Busy`. A store failure (the disk, permissions) raises
+  `Samagotchi::Plugin::Secrets::Unavailable`, naming the store and the secret's name only.
+- No caching: `get` reads the file each time. Keep the token in memory and read it again on a 401.
+- What protects the file: a participant's turn never reads chi's state dir, and System 1 never answers for it.
+  chi's own model is kept off it too ([Protected paths](guardrails.md#protected-paths)): `read`, `write`, `edit` and a
+  plugin tool's `targets:` paths under `plugins/<bundle>/secrets/` are denied, and a shell command that names that
+  folder asks the user once. That is an accident guard, not a sandbox: a command that doesn't name the folder (one
+  that `cd`s there first, a variable, a script) still reads it, as the owner's own processes can.
+- On a participant's turn (`ctx.turn_author` set) a plugin runs with the owner's power, so `ctx.secrets` works
+  there. Using a token you already have is the same as a stdio server's env secret today; don't start a sign-in on
+  a participant's turn.
+- `chi bundle uninstall` leaves `plugins/<bundle>/` in place, secrets included. Offer a command that forgets them
+  (`ctx.secrets.delete`).
+- In the test kit `ctx.secrets` is in memory: `bundle.set(secrets: { "linear" => "..." })` (or `host:` on load)
+  seeds it, `bundle.secrets` reads what the plugin kept. A bundle's specs never touch the disk for it.
+
+Needs chi 0.183.0 (`ctx.respond_to?(:secrets)`).
+
+## Sign-in: `ctx.sign_in`
+
+Send the session's owner to an address and get back the address the browser was sent to. OAuth is the first use;
+core knows nothing of OAuth but one check (`state`, below).
+
+```ruby
+flow = ctx.sign_in(title: "Sign in to Linear", button: "Open sign-in page", timeout: 300) do |redirect_uri|
+  authorize_url(redirect_uri)        # the bundle builds it; it holds its own state / PKCE
+end
+flow.card_id        # the card core showed; the bundle replaces it with its result
+flow.redirect_uri   # "http://127.0.0.1:53123/callback"
+Thread.new do
+  result = flow.wait  # blocks: => {"code"=>"…", "state"=>"…", "iss"=>"…"} (the callback's query), or nil
+  next ctx.card(id: flow.card_id, title: "Sign-in failed", body: flow.outcome.to_s) unless result
+
+  token = exchange(result["code"])   # check iss / error yourself
+  ctx.secrets.set("linear", token)
+  ctx.card(id: flow.card_id, title: "Signed in to Linear")
+end
+flow.outcome        # :done, :timed_out, :cancelled, :stopped (the worker leaving), nil while waiting
+flow.cancel
+```
+
+What the user sees: a card with the title, one button that opens the address in a new tab (the terminal prints it
+whole), and the line "If the browser ends on a page that doesn't load, copy that page's address and run
+`/callback <address>`."
+
+- `ctx.sign_in` returns at once; `flow.wait` blocks, so call it on a thread of your own (a session command must not
+  sit for minutes). `timeout:` is 60..900 seconds (default 300); `port:` asks for a fixed port when the provider's
+  registered redirect address is exact (a taken one raises `ArgumentError` naming it); `path:` defaults to
+  `/callback`. A block that raises, an address that isn't an http(s) one a card takes, or one without `state`
+  (below), raises and leaves nothing open.
+- The browser comes back to a listener on `127.0.0.1` only, in the worker: it answers `GET <path>?…` and nothing
+  else (a 404, and the wait goes on), reads at most 8 KB within 5 s per connection, reads several connections at
+  once (a silent one, such as a browser's preconnect, never holds the callback up; one that breaks is dropped
+  alone), answers the callback with a static "Signed in. You can close this tab." page and stops listening. Should
+  the listener fail anyway, its port closes and the flow ends `:cancelled`. A browser on another device
+  ends on that address, which doesn't load there: the user pastes it with `/callback` ([cli.md](cli.md)), which
+  settles the flow the same way.
+- Your address must have a `state` query parameter, a fresh random one per sign-in: `ctx.sign_in` raises
+  `ArgumentError` (and leaves nothing open) when it hasn't, since without it any local process, or a page in the
+  owner's browser, could finish the flow with its own code. A callback whose `state` differs is ignored, browser or
+  pasted. Check everything else (`iss`, `error`) yourself.
+- On `:done` core leaves the card for you: replace `flow.card_id` with your result, as a command's card is
+  replaced. On `:timed_out`, `:cancelled` and `:stopped` core replaces it ("Sign-in timed out" / "Sign-in
+  cancelled", no button). The flow's cards are never a running turn's.
+- A flow never outlives its worker: an exit, a restart or a crash's shutdown stops it, its card replaced first, so a
+  card a later worker loads never offers a dead sign-in. An idle exit waits for a waiting flow.
+- A flow is tied to no turn by default: the session's Stop doesn't end it (`flow.cancel` and its timeout do). To let
+  Stop end it, pass `cancel:` a `Samagotchi::CancellationController`, the flow polls it (about once a second) and ends
+  `:cancelled` with the cancelled card. A tool that signs in mid-turn passes `ctx.cancel_controller` read on its own
+  thread (a tool's is its turn's); a session command between turns has none (`nil`, the default).
+
+  ```ruby
+  chi.tool "linear_search", "…", params: {} do |args, ctx|
+    flow = ctx.sign_in(title: "Sign in to Linear", cancel: ctx.cancel_controller) { |uri| authorize_url(uri) }
+    result = flow.wait            # on the turn's thread: Stop ends it (nil, flow.outcome == :cancelled)
+    next "sign-in #{flow.outcome}" unless result
+    # …
+  end
+  ```
+- No one to ask: a one-shot run (`ctx.frontend == :one_shot`), a `:generation_progress` handler, and any call once
+  the worker has begun to leave (a command still running at an exit, a thread of yours) get a flow that is
+  `:stopped` already (`wait` → nil), with no card and no port.
+- The pasted address holds a one-time code: chi shows the line as `/callback …` in every event, UI and log. Best
+  effort is enough there: the code is single-use and, with PKCE, useless without the verifier that never leaves the
+  worker. chi logs the address's host and path only (an authorize address can carry a login hint).
+  A `/callback` line is always the command, never a message: one with more lines is refused (one line only), and
+  one that can't run as a command (with images, from a delegate, a schedule or a plugin) is refused, not sent to the
+  model. A trailing `#fragment` is dropped. The shared prompt history (history.json) keeps no `/callback` line, a
+  `/cut` or `/queue` one in the terminal neither; a chi web older than 0.183.0 in front of this worker does record
+  one sent from its page.
+- A participant never sees the card (their view has no cards) and can't send `/callback`; a parent agent's
+  `chi answer` can't either. Don't start a sign-in on a participant's turn (`ctx.turn_author`).
+- In the test kit `ctx.sign_in` opens no port: `bundle.sign_ins` lists the flows (`title`, `address` the block
+  built, `redirect_uri`, `card_id`, `outcome`), `bundle.complete_sign_in("code" => "c1", "state" => "…")` and
+  `bundle.fail_sign_in(:timed_out)` settle the newest.
+
+Needs chi 0.183.0 (`ctx.respond_to?(:sign_in)`).
+
+### A whole bundle: sign-in-echo
+
+`spec/fixtures/sign_in_echo_bundle` (chi's own specs test it the way a bundle's spec would): `/echo-login` sends you
+to a provider's page, keeps the code the browser brings back with `ctx.secrets` (it exchanges nothing: a real
+bundle trades the code for a token there), and replaces the card; the `echo_token` tool reads it back.
+
+```ruby
+# The sign-in-echo bundle (spec fixture, docs/plugins.md "Sign-in"):
+# /echo-login sends you to a provider's sign-in page, keeps the code the
+# browser brings back as a secret (it exchanges nothing), and the
+# echo_token tool reads it back.
+require "securerandom"
+require "uri"
+
+class Plugin
+  def initialize(settings)
+    @authorize = settings.fetch("authorize_url", "http://127.0.0.1:9100/authorize")
+  end
+
+  def register(chi)
+    chi.command "/echo-login", "sign in to the echo provider" do |_args, ctx|
+      state = SecureRandom.hex(16)
+      flow = ctx.sign_in(title: "Sign in to Echo", button: "Open sign-in page", timeout: 300) do |redirect_uri|
+        "#{@authorize}?#{URI.encode_www_form(redirect_uri: redirect_uri, state: state)}"
+      end
+      next "sign-in needs the web or a terminal" if flow.outcome == :stopped
+
+      # flow.wait blocks: never on the command's thread.
+      Thread.new do
+        result = flow.wait
+        if result && result["code"]
+          ctx.secrets.update("echo") { result["code"] }
+          ctx.card(id: flow.card_id, title: "Signed in to Echo", body: "The echo_token tool reads it.")
+        end
+      end
+      nil
+    end
+
+    chi.tool "echo_token", "Read back the code the echo sign-in kept", params: {}, label: "reading" do |_args, ctx|
+      code = ctx.secrets.get("echo")
+      code ? "signed in: #{code}" : "not signed in (run /echo-login)"
+    end
+  end
+end
+```
+
+Its spec, on the kit:
+
+```ruby
+bundle.command("/echo-login")
+state = URI.decode_www_form(URI(bundle.sign_ins.last.address).query).to_h["state"]
+bundle.complete_sign_in("code" => "C1", "state" => state)
+wait_for("the code") { bundle.secrets["echo"] }
+expect(bundle.tool("echo_token")).to eq("signed in: C1")
+```
 
 ## Other sessions: `ctx.sessions`
 

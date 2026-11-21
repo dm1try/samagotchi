@@ -25,4 +25,23 @@ RSpec.describe Samagotchi::Plugin::Card do
     expect { build(actions: ["/x"]) }.to raise_error(ArgumentError, /is a Hash/)
     expect { build(actions: [{ command: "/x\n/y" }]) }.to raise_error(ArgumentError, /needs a command/)
   end
+
+  it "takes a url action: label + an http(s) address with a host" do
+    card = build(actions: [{ label: " Open ", url: " https://linear.app/oauth?x=1 " }, { command: "/x" }])
+    expect(card[:actions]).to eq([{ label: "Open", url: "https://linear.app/oauth?x=1" },
+                                  { label: "/x", command: "/x" }])
+    long = "https://a.example/#{"x" * 3000}"
+    expect(build(actions: [{ label: "Go", url: long }])[:actions].first[:url]).to eq(long)
+  end
+
+  it "refuses an action with both or neither, a bad url, or a url without a label" do
+    expect { build(actions: [{ label: "x", command: "/x", url: "https://a.example" }]) }
+      .to raise_error(ArgumentError, /not both/)
+    expect { build(actions: [{ label: "x" }]) }.to raise_error(ArgumentError, /needs a command/)
+    ["javascript:alert(1)", "file:///etc/passwd", "https://", "https://linear.app@evil.example/",
+     "https://a.example/#{"x" * 4100}", "ftp://a.example"].each do |url|
+      expect { build(actions: [{ label: "x", url: url }]) }.to raise_error(ArgumentError, /url must be http/), url
+    end
+    expect { build(actions: [{ url: "https://a.example" }]) }.to raise_error(ArgumentError, /needs a label/)
+  end
 end

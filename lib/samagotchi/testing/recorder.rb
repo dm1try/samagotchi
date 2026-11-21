@@ -49,10 +49,13 @@ module Samagotchi
         # to restart), and the context size its confirm names (nil: none).
         history: false, context_tokens: nil,
         # ctx.model_names: nil gives model_name and its id without the host.
-        model_names: nil
+        model_names: nil,
+        # ctx.secrets: seeds its in-memory store ({"name" => "value"}); a
+        # set replaces what it holds. bundle.secrets reads it.
+        secrets: nil
       }.freeze
 
-      attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
+      attr_reader :sign_ins, :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
                   :model_answers, :values
 
       def initialize(**values)
@@ -60,7 +63,10 @@ module Samagotchi
         raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
 
         @values = DEFAULTS.merge(values)
+        @secrets = Plugin::Secrets::MemoryStore.new
+        @secrets.replace(@values[:secrets] || {})
         @notices = []
+        @sign_ins = []
         @cards = []
         @steers = []
         @stops = []
@@ -79,8 +85,13 @@ module Samagotchi
         raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
 
         @mutex.synchronize { @values.merge!(values) }
+        @secrets.replace(values[:secrets] || {}) if values.key?(:secrets)
         self
       end
+
+      # ctx.secrets' store: in memory, the one for the bundle under test.
+      # @return [Plugin::Secrets::MemoryStore]
+      attr_reader :secrets
 
       def [](key) = @mutex.synchronize { @values.fetch(key) }
 
@@ -102,6 +113,32 @@ module Samagotchi
         card = Plugin::Card.build(**fields).freeze
         record(@cards, card)
         card[:id]
+      end
+
+      # The port a kit flow's redirect_uri names: none is opened.
+      SIGN_IN_PORT = 53_682
+
+      # ctx.sign_in, as chi starts one (Engine#start_sign_in) but with no
+      # port opened: the card with its button, the flow listed in
+      # #sign_ins; Bundle#complete_sign_in / #fail_sign_in settle it. An
+      # ending without a callback replaces its card as chi does.
+      # @return [Plugin::SignIn]
+      def sign_in(bundle, title:, button:, timeout:, port:, path:, cancel: nil, &build)
+        redirect_uri = "http://127.0.0.1:#{port || SIGN_IN_PORT}#{path}"
+        flow = Plugin::SignIn.new(bundle: bundle, title: title, button: button, timeout: timeout, listener: nil,
+                                  redirect_uri: redirect_uri, cancel: cancel,
+                                  on_settle: lambda { |settled, outcome|
+                                    ended = Plugin::SignIn.ended_card(settled, outcome)
+                                    card(source: bundle, level: :info, **ended) if ended
+                                  })
+        address = yield(redirect_uri).to_s.strip
+        id = Plugin::Card.build(source: bundle, title: title, body: "", actions: [{ label: button, url: address }],
+                                level: :info, id: nil)[:id]
+        flow.started(address, id)
+        card(source: bundle, title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }],
+             level: :info, id: id)
+        record(@sign_ins, flow)
+        flow
       end
 
       def steer(text, hook)

@@ -26,7 +26,7 @@ module Samagotchi
         "Plugin::Api" => { ctx: "Plugin::Context" },
         "Plugin::Context" => { sessions: "Plugin::Sessions", context: "Plugin::AttachedContext", http: "Plugin::Http",
                                judgments: "Plugin::Judgments", cost: "SessionMetrics::Cost", usage: "SessionMetrics::Usage",
-                               log: "Plugin::Context::Logger" }
+                               log: "Plugin::Context::Logger", secrets: "Plugin::Secrets" }
       }.freeze
       ROOTS = { ctx: "Plugin::Context", chi: "Plugin::Api" }.freeze
 

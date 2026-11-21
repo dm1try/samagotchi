@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "uri"
 require_relative "../plugin/loader"
 require_relative "../plugin/tool_spec"
 require_relative "../hooks"
@@ -358,6 +359,29 @@ module Samagotchi
 
       def notices = @recorder.notices
       def cards = @recorder.cards
+      # What ctx.secrets holds now ({"name" => "value"}); seed it with
+      # bundle.set(secrets: {...}).
+      def secrets = @recorder.secrets.to_h
+
+      # Every ctx.sign_in flow, oldest first (Plugin::SignIn: #title,
+      # #address the block built, #redirect_uri, #card_id, #outcome). The kit
+      # opens no port.
+      def sign_ins = @recorder.sign_ins
+
+      # The newest sign-in's callback arrives with +params+ (the query the
+      # browser would bring: {"code" => "c1", "state" => "…"}). A state that
+      # isn't the address's is ignored, as chi ignores it.
+      # @return [Boolean] whether it settled the flow :done
+      def complete_sign_in(params)
+        newest_sign_in.offer(URI.encode_www_form(params.to_h { |key, value| [key.to_s, value.to_s] }))
+      end
+
+      # The newest sign-in ends as +outcome+ (:timed_out, :cancelled,
+      # :stopped) with no callback: its card is replaced as chi does.
+      def fail_sign_in(outcome = :timed_out)
+        newest_sign_in.end_as(outcome)
+      end
+
       def steers = @recorder.steers
       # Every stop_turn and stop_generation, in order (Stop#kind).
       def stops = @recorder.stops
@@ -398,8 +422,17 @@ module Samagotchi
         self
       end
 
-      # Stop the plugin's services; leave the sandbox it entered.
+      def newest_sign_in
+        sign_ins.last or raise ArgumentError, "no ctx.sign_in was started"
+      end
+      private :newest_sign_in
+
+      # Stop the plugin's services and its waiting sign-ins; leave the
+      # sandbox it entered.
       def shutdown
+        # As a worker leaving does: a waiting sign-in ends :stopped (its
+        # waiting thread goes on).
+        sign_ins.each(&:stop)
         @registries&.services&.stop_all
         return unless @own_sandbox
 

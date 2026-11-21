@@ -209,6 +209,11 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
     // scenario: no plugin, only a renderer in the page's sandboxed frame.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-block-renderer")],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // The sign-in fixture bundle (/echo-login: a card whose button opens an
+    // address), for the sign-in card scenario. Nothing is fetched: the
+    // address is a local one no one serves.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "fixtures", "sign_in_echo_bundle")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     // github-pr (shipped), for the PR line links scenario: its gh is the fake.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });

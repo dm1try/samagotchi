@@ -990,6 +990,18 @@ RSpec.describe "Cards" do
         .to eq("check" => [], "offer" => offer)
     end
 
+    it "treats a url action as it treats a command one across a restart: kept between turns, dropped in a turn" do
+      open_page = [{ label: "Open sign-in page", url: "https://linear.app/oauth?state=s" }]
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      turn(:turn_started, on: store)
+      store.call(card("in").merge(actions: open_page))
+      turn(:turn_completed, on: store)
+      store.call(card("between").merge(actions: open_page, in_turn: false))
+
+      later = Samagotchi::Bridge::CardStore.new(path: path)
+      expect(later.list.to_h { |entry| [entry[:id], entry[:actions]] }).to eq("in" => [], "between" => open_page)
+    end
+
     # A worker's store (the Bridge's): the session file keeps a running turn's
     # prompt (TurnCheckpoint) with its id, so a turn a kill cut short counts by
     # its opening, with nothing saved about it.

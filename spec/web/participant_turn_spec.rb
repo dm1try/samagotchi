@@ -210,12 +210,13 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
   end
 
   it "refuses a shell line and a command (403 not_permitted), audited, never delivered" do
-    ["!ls", "  /toolkit full", "/title mine"].each do |line|
+    # /callback too: a participant never finishes the owner's sign-in.
+    ["!ls", "  /toolkit full", "/title mine", "/callback http://127.0.0.1:5000/callback?code=c&state=s"].each do |line|
       expect(turn({ prompt: line })).to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])
     end
     expect(delivered).to eq([])
     expect(audit.map { |line| line.values_at("status", "reason") }).to all(eq(%w[refused not_permitted]))
-    expect(audit.size).to eq(3)
+    expect(audit.size).to eq(4)
   end
 
   describe "with images" do

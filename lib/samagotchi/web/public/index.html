@@ -695,6 +695,11 @@ button.peer-state{cursor:pointer}
 .card-body :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 3px;font-size:.88em}
 .card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .card-action{font-size:12.5px;padding:4px 10px}
+/* A url action (card.js): an anchor that looks like the card's buttons; the line under the row names its host. */
+.card-link{display:inline-block;font-size:12.5px;padding:4px 10px;border-radius:8px;background:var(--bg-raised);color:var(--text-2);text-decoration:none;transition:filter .12s ease}
+@media(hover:hover){.card-link:hover{filter:brightness(1.12)}}
+.card-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card-opens{margin-top:4px;font-size:11px;color:var(--text-faint)}
 .card-error{color:var(--danger);font-size:12px;margin-top:6px}
 .card-error.hidden{display:none}
 /* In a step: a row, lighter (no float), like the step's notices. */

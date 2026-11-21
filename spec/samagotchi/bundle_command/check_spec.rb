@@ -259,11 +259,12 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     def api_findings = findings.select { |line| line.include?(" api ") }
 
     it "warns on ctx.*, a member's member and a keyword, each at its line, and still exits 0" do
-      body("ctx.settingz\n      ctx.sessions.nope\n      ctx.card(titel: \"x\")")
+      body("ctx.settingz\n      ctx.sessions.nope\n      ctx.card(titel: \"x\")\n      ctx.secrets.fetch(\"x\")")
       expect(api_findings).to eq([
         "warn api plugin.rb:7: ctx.settingz isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: did you mean ctx.settings? docs/plugins.md has the API)",
         "warn api plugin.rb:8: ctx.sessions.nope isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: docs/plugins.md has the API)",
-        "warn api plugin.rb:9: ctx.card takes no titel: in chi #{Samagotchi::VERSION} (fix: did you mean title:? it takes title:, body:, actions:, level:, id:)"
+        "warn api plugin.rb:9: ctx.card takes no titel: in chi #{Samagotchi::VERSION} (fix: did you mean title:? it takes title:, body:, actions:, level:, id:)",
+        "warn api plugin.rb:10: ctx.secrets.fetch isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: docs/plugins.md has the API)"
       ])
       expect(@status).to eq(0)
     end
@@ -284,6 +285,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
         ctx.context.attach(url: "u", name: "n")
         ctx.judgments.label("r", "v", by: "me")
         ctx.http.get("u", timeout: 3)
+        ctx.secrets.update("linear", timeout: 5) { |old| old }
         ctx.notify("x", level: :warn)
         ctx.steer(text: "a hash, a method with no keywords takes as its argument")
         ctx.class

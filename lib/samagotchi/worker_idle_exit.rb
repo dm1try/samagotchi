@@ -106,8 +106,9 @@ module Samagotchi
 
     # What keeps the worker up, or nil when nothing does.
     # @return [Symbol, nil] :disabled, :turn_running, :input_queued,
-    #   :continue_offered, :client_connected, :reminders, :background_tasks
-    #   or :recent_activity
+    #   :continue_offered, :client_connected, :reminders, :background_tasks,
+    #   :sign_in_waiting (ctx.sign_in's flow, until its own timeout) or
+    #   :recent_activity
     def hold
       return :disabled unless @timeout.positive?
       return :turn_running if @engine.turn_running?
@@ -116,6 +117,7 @@ module Samagotchi
       return :client_connected if @bridge && @bridge.open_streams.positive?
       return :reminders if @engine.reminder_store&.any?
       return :background_tasks if @watched_tasks.call.any?
+      return :sign_in_waiting if @engine.sign_in_waiting?
       return :recent_activity if idle_seconds < @timeout
 
       nil

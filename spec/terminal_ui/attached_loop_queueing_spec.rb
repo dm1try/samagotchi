@@ -126,6 +126,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     expect(screen.lines).to include("(goes in at the next step)")
   end
 
+  it "keeps a /callback sent with /cut or /queue out of the prompt history (its address holds a one-time code)" do
+    appended = []
+    allow(Samagotchi::PromptHistory).to receive(:append) { |line| appended << line }
+    run_inputs("/cut /callback http://127.0.0.1:5000/callback?code=ONE", "/queue /callback http://127.0.0.1:5000/callback?code=TWO",
+               "/queue fix it")
+
+    expect(client).to have_received(:post_turn).exactly(3).times
+    expect(appended).to eq(["fix it"])
+  end
+
   it "posts /cut TEXT as delivery cut, and prints the ack's outcome" do
     run_inputs("/cut drop the tests", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "now" })
 

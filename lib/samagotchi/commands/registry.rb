@@ -40,7 +40,7 @@ module Samagotchi
       # @!attribute annotations [Array<Annotation>] its selection-bar pills
       #   (a bundle's command; empty for the rest)
       Entry = Struct.new(:id, :name, :description, :mid_turn, :local, :uis, :match, :handler, :source, :annotations,
-                         keyword_init: true) do
+                         :private_args, keyword_init: true) do
         def match?(text) = match.call(text)
 
         # Whether every line of it runs at once, a turn running or not (D8).
@@ -107,12 +107,13 @@ module Samagotchi
       # @param annotations [Array<Annotation>] see Entry
       # @return [Entry]
       def register(name, description, id: nil, anytime: false, mid_turn: nil, local: false, uis: nil, match: nil,
-                   source: "core", annotations: [], &handler)
+                   source: "core", annotations: [], private_args: false, &handler)
         raise ArgumentError, "command #{name} is already registered" unless name_free?(name, local: local, source: source)
 
         entry = Entry.new(id: id || name.delete_prefix("/").to_sym, name: name, description: description,
                           mid_turn: mid_turn || (anytime ? :anytime : :refuse), local: local, uis: uis, match: match || default_match(name),
-                          handler: handler, source: source, annotations: annotations.dup.freeze)
+                          handler: handler, source: source, annotations: annotations.dup.freeze,
+                          private_args: private_args ? true : false)
         @entries << entry
         entry
       end
@@ -124,6 +125,10 @@ module Samagotchi
       end
 
       def command?(line) = !lookup(line).nil?
+
+      # Whether +line+'s command keeps its arguments out of sight
+      # (QueuedCommand.mint's private_args: /callback's address).
+      def private_args?(line) = lookup(line)&.private_args == true
 
       # Whether every line of +line+'s command runs at once, a turn running
       # or not (D8). A line whose #mid_turn is :anytime but whose command's

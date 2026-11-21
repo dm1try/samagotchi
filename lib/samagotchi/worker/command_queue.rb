@@ -199,7 +199,7 @@ module Samagotchi
       def run_command_line(command)
         @engine.holding_announcements do
           command_result(command) do
-            @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
+            @commands.run(command.run_line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
           end
         end
       end
@@ -294,7 +294,7 @@ module Samagotchi
         @engine.spawn_anytime do
           result = command_result(command) do
             @engine.running_anytime do
-              @commands.run(command.line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
+              @commands.run(command.run_line, confirm: confirm?(command), as_parent: as_parent?(command), user_ui: user_ui?(command))
             end
           end
           # Saved before its command_ran: a client that reads the file on the reply finds it.

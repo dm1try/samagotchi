@@ -1,0 +1,8 @@
+name: sign-in-echo
+version: 1.0.0
+description: "Sample bundle that signs in through the browser with ctx.sign_in and keeps the code with ctx.secrets: /echo-login, then the echo_token tool"
+files: {}
+plugin:
+  file: plugin.rb
+  sha256: sha256:9b7d7dc46f4f58e29021f729074bd65fa364d8e867b53fe34a56abf16f65c258
+trust_level: reviewed

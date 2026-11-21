@@ -283,7 +283,7 @@ module ReleaseTools
     normalize_json_store!(archive_path) { |data| data["archived_at"] = COMPAT_STAMP }
 
     Samagotchi::Bridge::PendingCard.new(session_dir).call(
-      { type: :card, id: "compat-card", source: "check-in", actions: [{ label: "Nudge" }], in_turn: true }
+      { type: :card, id: "compat-card", source: "check-in", actions: [{ label: "Nudge", command: "/check-in nudge" }], in_turn: true }
     )
     pending_path = File.join(session_dir, Samagotchi::Bridge::PendingCard::FILE)
 

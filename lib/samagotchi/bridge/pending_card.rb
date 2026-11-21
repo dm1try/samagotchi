@@ -4,11 +4,12 @@ require "json"
 require "fileutils"
 require_relative "../atomic_file"
 require_relative "../events"
+require_relative "card_wait"
 
 module Samagotchi
   class Bridge
-    # The running turn's open card with actions (check-in's Nudge / Keep
-    # going / Stop) as a file in the session's folder, pending_card.json
+    # The running turn's open card with command actions (check-in's Nudge /
+    # Keep going / Stop; a url action alone doesn't ask, CardWait) as a file in the session's folder, pending_card.json
     # {id:, bundle:}, for `chi web`'s session hub: it watches files, not
     # workers, and a tab behind notifies from its summary (notify.js), as
     # for a pending question. A persistent observer, like CardStore.
@@ -63,7 +64,7 @@ module Samagotchi
       end
 
       def card(event)
-        asks = Array(event[:actions]).any?
+        asks = Array(event[:actions]).any? { |action| CardWait.command?(action) }
         if event[:in_turn] && asks
           write(event[:id].to_s, event[:source].to_s)
         elsif @id && event[:id].to_s == @id

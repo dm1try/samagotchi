@@ -97,6 +97,11 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
       expect(history).to eq([])
     end
 
+    it "records no /callback sent as a turn (its address holds a one-time code)" do
+      expect(turn({ prompt: "/callback http://127.0.0.1:5000/callback?code=c" }, accepted)).to eq(202)
+      expect(history).to eq([])
+    end
+
     it "records nothing with history: false (an image-only send)" do
       expect(turn({ prompt: "[image: cat.png]", history: false }, accepted)).to eq(202)
       expect(history).to eq([])

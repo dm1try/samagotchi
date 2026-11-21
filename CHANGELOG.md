@@ -28,6 +28,18 @@ and commands may change between minor versions. How releases are made:
   fingertip, unless an arrow or its label is right under it. Tab, the arrow keys and Enter reach the nodes; Esc
   clears, then closes. A drag, a pinch and a double tap work as before. For bundle authors: `render` may return
   `{ svg, regions }` when `chi.features.regions` is set ([plugins.md](docs/plugins.md#block-renderers)).
+- For bundle authors: a card action can open an address, `{label:, url:}` (an http(s) one with a host): the web
+  draws a link to a new tab with the host named under the buttons, the terminal prints the address whole. It sends
+  nothing to the session and doesn't make a card ask. Set `requires_chi: ">= 0.183.0"` by hand.
+- For bundle authors: `ctx.secrets` (`get`, `set`, `delete`, `update`), the bundle's tokens in 0600 files under the
+  state dir, apart per bundle; `update` reads, changes and writes under a lock that holds across workers. The test
+  kit keeps them in memory (`bundle.secrets`, `bundle.set(secrets: …)`). chi's model is kept off them by accident
+  guards: its file tools are refused there, and a shell command naming the folder asks you once.
+- For bundle authors: `ctx.sign_in(title:, button:) { |redirect_uri| address }`, a browser round trip: a card with a
+  button to the address, a listener on 127.0.0.1 for the browser's return, and `flow.wait` for its query. A browser
+  on another device ends on an address that doesn't load: `/callback <address>` (a new session command) finishes it
+  there, shown as `/callback …` everywhere. Timeout, cancel and the worker leaving replace the card; `cancel:`
+  (a tool's `ctx.cancel_controller`) lets the turn's Stop end it.
 
 ### Changed
 

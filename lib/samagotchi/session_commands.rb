@@ -189,6 +189,7 @@ module Samagotchi
       # an anytime command runs on another thread against this instance.
       return continue_command(text, as_parent: as_parent) if entry.id == :continue
       return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
+      return callback(text, as_parent: as_parent) if entry.id == :callback
 
       instance_exec(text, &entry.handler)
     end
@@ -543,6 +544,22 @@ module Samagotchi
     def title(text)
       output, changed, status = TitleCommand.new(engine: @engine).run(text.delete_prefix(TITLE_COMMAND))
       reply(output, status: status, changed: changed ? [:title] : [])
+    end
+
+    # /callback ADDRESS: the waiting sign-in it belongs to takes the
+    # address's query (Engine#sign_in_callback). A parent agent's chi answer
+    # doesn't finish the owner's sign-in. The answer never repeats the
+    # address.
+    def callback(text, as_parent: false)
+      return reply("a parent agent doesn't finish this session's sign-in", status: :error) if as_parent
+
+      address = text.delete_prefix(CALLBACK_COMMAND).strip
+      if address.empty? || address.match?(/\s/)
+        return reply("usage: /callback ADDRESS, on one line (the address the browser ended on)", status: :error)
+      end
+
+      settled, line = @engine.sign_in_callback(address)
+      reply(line, status: settled ? :ok : :error)
     end
 
     # /objectives (ObjectivesCommand): nothing to save, an edit is a note file.

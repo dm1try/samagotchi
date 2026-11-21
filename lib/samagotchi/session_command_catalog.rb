@@ -39,6 +39,7 @@ module Samagotchi
     OBJECTIVES_COMMAND = "/objectives"
     ROLLBACK_COMMAND = "!rollback"
     CONTINUE_COMMAND = TurnFlow::CONTINUE_COMMAND
+    CALLBACK_COMMAND = "/callback"
     SHELL_BANG_PREFIX = "!"
     # /exit --delete: delete the session on the way out.
     EXIT_DELETE_FLAG = "--delete"
@@ -102,6 +103,15 @@ module Samagotchi
       registry.register(OBJECTIVES_COMMAND, "show or edit what this session is to achieve (set A | B, add TEXT, edit ID TEXT, done ID…, drop ID…, undo ID…, check ID, track)",
                         id: :objectives, anytime: true) { |text| objectives(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
+      # A sign-in's ending pasted from a browser elsewhere (ctx.sign_in): at
+      # once, a turn running or not. Its address holds a one-time code: kept
+      # out of every event, log and echo (private_args, QueuedCommand).
+      # #run passes who sent it (as_parent:): a parent agent may not. Its
+      # match takes any line after the word, more lines too (the handler
+      # refuses those), so the address never goes to the model as a message.
+      registry.register(CALLBACK_COMMAND, "finish a waiting sign-in with the address the browser ended on (/callback ADDRESS)",
+                        anytime: true, private_args: true,
+                        match: ->(text) { text.match?(%r{\A/callback(?:\s|\z)}) }) { |text| callback(text) }
       registry.register("/stats", "show the session's stats", local: true)
       # /recap with words (on|off|default, or a slip: the usage) runs here:
       # it toggles the idle job only, so it doesn't wait for a running turn.

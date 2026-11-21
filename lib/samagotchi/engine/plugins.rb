@@ -174,6 +174,8 @@ module Samagotchi
             []
           end,
           state_dir: -> { session_state_dir },
+          secrets_store: ->(bundle) { Plugin::Secrets::FileStore.for_bundle(bundle) },
+          sign_in: ->(bundle, **options, &build) { start_sign_in(bundle: bundle, build: build, **options) },
           scratch: -> { @scratch },
           setup: -> { SessionSetup.of(@session, forked: true) },
           # The files whose text the built system prompt holds; [] until a

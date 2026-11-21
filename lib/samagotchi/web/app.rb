@@ -1150,6 +1150,7 @@ module Samagotchi
       # (SessionManager::ScratchSession, an OwnedByTUI: 409).
       def record_history(body, line)
         return if body["history"] == false
+        return if SessionCommandCatalog.builtin_registry.private_args?(line.to_s) # /callback's argument stays out
 
         PromptHistory.append(line.to_s)
       rescue StandardError => e

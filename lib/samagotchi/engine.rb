@@ -125,6 +125,7 @@ require_relative "engine/models"
 require_relative "engine/model_settings"
 require_relative "engine/events"
 require_relative "engine/cards"
+require_relative "engine/sign_in"
 require_relative "engine/objectives"
 require_relative "engine/messages"
 require_relative "engine/plugins"
@@ -162,6 +163,7 @@ module Samagotchi
     include ModelSettingsPart
     include EventsPart
     include CardsPart
+    include SignInPart
     include ObjectivesPart
     include MessagesPart
     include PluginsPart
@@ -381,6 +383,9 @@ module Samagotchi
       # commands running now (#spawn_anytime), which it waits for.
       @services = Plugin::Services.new
       @anytime_threads = []
+      # ctx.sign_in's flows waiting for their callback (SignInPart), which
+      # #shutdown stops first.
+      @sign_in_flows = []
       # chi.init tasks (#add_init_task), started by #start_init_tasks!, and
       # plugins' tool sets from chi.replace_tools until the turn thread
       # applies them (#apply_staged_tools!). Built before the plugins load.
@@ -676,7 +681,8 @@ module Samagotchi
     SIDE_JUDGMENTS_JOIN_SECONDS = 1.0
 
     # The session's worker (or a one-shot run) is leaving (/exit, an idle
-    # exit, a crash, TERM): stop the idle jobs, give the running anytime commands
+    # exit, a crash, TERM): stop the waiting sign-ins (their cards say
+    # cancelled) and the idle jobs, give the running anytime commands
     # up to +join_timeout+ seconds to finish (their command_ran is
     # announced), and settle already-reaped tasks under a shared deadline
     # of at least TaskRuntime::SETTLE_ON_EXIT_SECONDS. Then stop the plugins'
@@ -690,6 +696,9 @@ module Samagotchi
         # An init task's requests end (a server's boot), so it finishes.
         @anytime_threads.dup + @plugin_tasks.shut_down!
       end
+      # A waiting sign-in's card says cancelled while the Bridge still
+      # listens (its cards.json), and its port closes.
+      stop_sign_ins
       # #stop_idle's work (the scheduler's stop is idempotent), where the
       # callers haven't stopped it already.
       @idle_scheduler&.stop
