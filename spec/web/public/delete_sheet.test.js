@@ -7,7 +7,7 @@
 import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDeleteSheet, deleteChoices, deleteSheetTemplate, isChained, listAfterDelete, refusalModel,
+import { createDeleteSheet, deleteChoices, deleteSheetTemplate, isChained, listAfterDelete, loadingTemplate, refusalModel,
          refusalTemplate, runDeleteFlow } from "../../../lib/samagotchi/web/public/delete_sheet.js";
 import { archiveSheetModel, buttonWords, deleteToast, sheetGroups,
          stopTasksOptions } from "../../../lib/samagotchi/web/public/removal_sheet_model.js";
@@ -470,6 +470,23 @@ test("the archive flow: its 409's sheet, the tap archives with the named ids; a 
   await tick();
   assert.match(other.shown.at(-1), /Can't archive ab12cd34 now/);
   assert.match(other.shown.at(-1), />Close</);
+});
+
+test("a card's sheet opens with focus on Cancel (× while the plan is read), never on the destructive button", async () => {
+  const card = document.createElement("button");
+  card.dataset.del = S;
+  document.body.append(card);
+  const sheet = createDeleteSheet({ doc: document, win: { innerWidth: 390, innerHeight: 844 } });
+  const host = sheet.host(card, S);
+  host.show(loadingTemplate());
+  await tick();
+  assert.equal(document.activeElement?.getAttribute("aria-label"), "Close");
+  host.show(deleteSheetTemplate(model()));
+  await tick();
+  assert.equal(document.activeElement?.dataset.act, "del:cancel");
+  assert.equal(document.activeElement?.textContent, "Cancel");
+  sheet.close();
+  card.remove();
 });
 
 test("one shell, two cards: a ✕ on another card while the first plan is read takes the shell; the first answer draws and acts on nothing", async () => {
