@@ -24,13 +24,13 @@ module Samagotchi
       def any? = reminders.any? || tasks.any? || delegates.any?
     end
 
-    # @param engine [Engine] #reminder_store
+    # @param reminder_store [ReminderStore, nil] the session's reminders
     # @param task_watch [TaskWatch, nil] this session's finish-wake watch
     #   (nil with session.task_wakes: off)
     # @param delegates [#call] the children to stop (ChildrenStatus::Child)
     # @param state_dir [String] where the child sessions live
-    def initialize(engine:, task_watch:, delegates:, state_dir:)
-      @engine = engine
+    def initialize(reminder_store:, task_watch:, delegates:, state_dir:)
+      @reminder_store = reminder_store
       @task_watch = task_watch
       @delegates = delegates
       @state_dir = state_dir
@@ -49,7 +49,7 @@ module Samagotchi
     # Reminders live only in this process, so clearing the store ends them;
     # the names go to the report before it is emptied.
     def stop_reminders
-      store = @engine.reminder_store
+      store = @reminder_store
       return [] unless store
 
       names = store.reminders.values.map { |reminder| reminder[:name] }

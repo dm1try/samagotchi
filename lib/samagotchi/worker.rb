@@ -403,8 +403,8 @@ module Samagotchi
         # them so "stop them and exit" stops them too.
         delegates: method(:live_delegates)
       )
-      @hold_stop = HoldStop.new(engine: @engine, task_watch: @task_wakes.watch, delegates: method(:live_delegates),
-                                state_dir: @state_dir)
+      @hold_stop = HoldStop.new(reminder_store: @engine.reminder_store, task_watch: @task_wakes.watch,
+                                delegates: method(:live_delegates), state_dir: @state_dir)
     end
 
     # Start the in-process Bridge transport for this worker. The bridge is
