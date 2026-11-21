@@ -1229,7 +1229,7 @@ Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which r
   `purpose=plugin`, the method, the URL **without its query**, the status and the time. Never headers or bodies.
   A plugin that polls a dead service therefore logs an ERROR per poll.
 
-**Streaming: `ctx.http.stream`** (chi 0.182.0 or newer: guard it with `ctx.http.respond_to?(:stream)`). The block
+**Streaming: `ctx.http.stream`** (chi 0.183.0 or newer: guard it with `ctx.http.respond_to?(:stream)`). The block
 gets a `Samagotchi::Plugin::Http::Stream` as soon as the headers are in:
 
 ```ruby
