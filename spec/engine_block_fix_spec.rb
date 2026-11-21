@@ -120,14 +120,30 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
 
     it "answers 429 past two in flight" do
       gate = Queue.new
-      session.messages = [session.messages.first,
-                          { role: "model", content: "```mermaid\na\n```\n```mermaid\nb\n```\n```mermaid\nc\n```" }]
+      session.messages = [session.messages.first, { role: "model", content: "```mermaid\na\n```\n```mermaid\nb\n```" },
+                          { role: "user", content: "more", turn_id: "t2" }, { role: "model", content: "```mermaid\nc\n```" }]
       2.times { side_answers << -> { gate.pop } }
       expect(fix("a").first).to eq(202)
       expect(fix("b").first).to eq(202)
-      expect(fix("c")).to eq([429, { error: "fix_busy", detail: Samagotchi::BlockFix::REFUSALS[:fix_busy] }])
+      expect(fix("c", turn_id: "t2")).to eq([429, { error: "fix_busy", detail: Samagotchi::BlockFix::REFUSALS[:fix_busy] }])
       2.times { gate << Samagotchi::IdleClient::Summary.new(text: "```mermaid\nz\n```", model: "m") }
       settle
+    end
+
+    it "asks for at most two blocks of one answer, counting its stamp, so a reload's third block is refused" do
+      session.messages = [session.messages.first,
+                          { role: "model", content: "```mermaid\na\n```\n```mermaid\nb\n```\n```mermaid\nc\n```" }]
+      side_answers.push("```mermaid\nz1\n```", "```mermaid\nz2\n```")
+      expect(fix("a").first).to eq(202)
+      expect(fix("b").first).to eq(202)
+      expect(fix("c")).to eq([429, { error: "fix_limit", detail: Samagotchi::BlockFix::REFUSALS[:fix_limit] }])
+      settle
+      expect(fix("c").last[:error]).to eq("fix_limit")
+      engine.send(:note_block_fix_turn)
+      engine.apply_block_fixes
+      expect(Samagotchi::BlockFix.stamps(session.messages.last).size).to eq(2)
+      expect(fix("c").last[:error]).to eq("fix_limit")
+      expect(asks.size).to eq(2)
     end
 
     it "sends the conversation up to the answer, display-only keys gone, as the owner's block-fix side request" do

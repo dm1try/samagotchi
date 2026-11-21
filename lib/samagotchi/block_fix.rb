@@ -28,12 +28,15 @@ module Samagotchi
     MAX_REASON_CHARS = 300
     # Asks in flight per Engine at once.
     MAX_RUNNING = 2
+    # Blocks asked for per answer, ever (its stamp and its asks in flight).
+    PER_ANSWER = 2
 
     # The route's refusals (one message per condition), by reason code.
     REFUSALS = {
       block_too_large: "the block is over #{MAX_SOURCE_BYTES / 1024} KB",
       block_not_found: "that block isn't in the turn's answer",
       fix_busy: "#{MAX_RUNNING} fixes are being asked for already",
+      fix_limit: "#{PER_ANSWER} blocks of this answer were asked for already",
       fix_unavailable: "this session can't ask for a fix"
     }.freeze
 

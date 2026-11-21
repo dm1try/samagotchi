@@ -39,7 +39,8 @@ module Samagotchi
       # @return [Array(Integer, Hash)] the status and the body: 200
       #   {state: "fixed" | "failed", reason:} (asked before), 202
       #   {state: "running"}, or an error ({error:, detail:}: 409
-      #   fix_unavailable / block_not_found, 413 block_too_large, 429 fix_busy)
+      #   fix_unavailable / block_not_found, 413 block_too_large, 429
+      #   fix_limit (BlockFix::PER_ANSWER) / fix_busy)
       def fix_block(turn_id:, lang:, source:, reason:)
         session = @session
         return block_fix_refused(409, :fix_unavailable) if session.nil? || session.scratch || !BlockFix.available?
@@ -71,6 +72,7 @@ module Samagotchi
         asking = [index, key]
         @block_fix_mutex.synchronize do
           return [202, { state: "running" }] if block_fix_pending?(asking)
+          return block_fix_refused(429, :fix_limit) if block_fix_asked(answer, index) >= BlockFix::PER_ANSWER
           return block_fix_refused(429, :fix_busy) if @block_fix_running.size >= BlockFix::MAX_RUNNING
 
           @block_fix_running << asking
@@ -119,6 +121,16 @@ module Samagotchi
       # @block_fix_mutex).
       def block_fix_pending?(asking)
         @block_fix_running.include?(asking) || @block_fix_ready.any? { |r| [r.anchor.index, r.key] == asking }
+      end
+
+      # How many blocks of the answer at +index+ were asked for: its stamp's
+      # and those in flight or waiting (under @block_fix_mutex). The stamp
+      # is on the message, so the count holds across a page's reload.
+      def block_fix_asked(answer, index)
+        keys = BlockFix.stamps(answer).map { |entry| entry[:key] }
+        keys += @block_fix_running.filter_map { |at, key| key if at == index }
+        keys += @block_fix_ready.filter_map { |r| r.key if r.anchor.index == index }
+        keys.uniq.size
       end
 
       def block_fix_refused(status, code)
