@@ -484,6 +484,22 @@ test("the peek of a memory: today's lines while pending, then the whole text ren
   p.cleanup();
 });
 
+test("the peek of a fetched YAML file keeps its leading document separator block", async () => {
+  const url = "https://example.test/data.yaml";
+  const text = "---\nkind: first\n---\n---\nkind: second\n";
+  const p = page({
+    answers: { [`url:${url}`]: { kind: "url", key: url, events: [{ tool_id: "t9", op: "fetch", step: 3, sent: true, text }] } },
+    extra: [{ tool: "web_fetch", title: url, params: `url="${url}"`, status: "ok", tool_id: "t9" }],
+  });
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  pop.querySelector(".ws-row.url .ws-peek-toggle").click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-b .wsr-text").textContent, text);
+  p.ws.popover.close();
+  p.cleanup();
+});
+
 test("the peek of a read of an .md file: a whole read renders, a slice stays its numbered lines", async () => {
   const md = renderer();
   const readme = "/p/README.md";

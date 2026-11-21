@@ -34,10 +34,10 @@ and commands may change between minor versions. How releases are made:
 
 - On a phone, one tap on a drawn diagram opens it in the viewer (it took two); the rendered | source switch stays
   shown, faint.
-- The working set reader keeps its rendered/source pill and "go to the call" link on one line at phone widths.
-- The working-set reader keeps metadata and latest pills visible on phones; the rendered/source switch and call link stay
-  together.
-- A memory's working set peek starts at the rendered body, hiding front matter while the reader keeps it above the body.
+- On a phone, the working set reader's rendered | source switch is the same small pill as on desktop, beside "go to
+  the call", and a card keeps its details and its latest / "chi no longer has this" label.
+- A memory's peek in the working set starts at its rendered body, without the front matter (the reader still
+  shows it above the body).
 - The known-names guardrail no longer flags a project's class name in backticks
   (`CoffeeAssistant` for `coffee_assistant`) as a typo.
 - A streamed answer that stops mid-way (no text, reasoning or tool call for `stream_idle_timeout` seconds; default
