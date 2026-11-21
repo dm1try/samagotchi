@@ -10,11 +10,14 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/bridge_client"
 
 # POST /session/:id/turn/dequeue: a queued message (one that waits for the
 # running turn's end) taken back before it runs.
 RSpec.describe Samagotchi::Bridge, "dequeue" do
+  include BridgeParts
+
   let(:state_dir) { Dir.mktmpdir("bridge-dequeue") }
   let(:engine) { Samagotchi::Engine.new(client: test_client, kernel: test_kernel) }
   let(:on_input) { instance_double(Proc, call: nil) }
@@ -26,7 +29,7 @@ RSpec.describe Samagotchi::Bridge, "dequeue" do
   before do
     WebMock.allow_net_connect! if defined?(WebMock)
     hold_worker(session_dir)
-    @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2,
+    @bridge = described_class.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2,
                                   on_input: on_input).start
     @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     engine.subscribe(observer: ->(event) { events << event if %i[turn_enqueued turn_dequeued].include?(event[:type]) })

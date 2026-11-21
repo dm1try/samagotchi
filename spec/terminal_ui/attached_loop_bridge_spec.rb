@@ -4,6 +4,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/session"
 require "samagotchi/worker_link"
 require "samagotchi/terminal_ui"
@@ -21,6 +22,8 @@ require_relative "../support/recording_surface"
 # attached_loop_* specs on a BridgeClient double, bridge_spec, the
 # bridge_client specs).
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a real Bridge" do
+  include BridgeParts
+
   include WorkerFixtures
 
   let(:state_dir) { Dir.mktmpdir("attached-loop-bridge") }
@@ -43,7 +46,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a real Bridge" do
     WebMock.allow_net_connect! if defined?(WebMock)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     hold_worker(session_dir)
-    @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 5).start
+    @bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id, heartbeat_interval: 5).start
   end
 
   after do

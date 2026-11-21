@@ -13,11 +13,14 @@ require "samagotchi/owner_lock"
 require "samagotchi/archive_store"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require_relative "support/fake_provider_server"
 require "support/test_kernel"
 require_relative "support/remote_backend"
 
 RSpec.describe Samagotchi::SendCommand do
+  include BridgeParts
+
   let(:tmpdir) { Dir.mktmpdir("send-command") }
   let(:locks) { [] }
   let(:bridges) { [] }
@@ -55,17 +58,17 @@ RSpec.describe Samagotchi::SendCommand do
 
   # A live worker's Bridge (no turn loop: it only writes input files and
   # announces), with the events its engine sent. +cut+: the outcome its
-  # engine's Engine#cut_for_steer answers (nil: the real one, :off with no
+  # engine's SteerCut#cut_for_steer answers (nil: the real one, :off with no
   # turn running).
   def serve(session, on_command: nil, cut: nil)
     engine = Samagotchi::Engine.new(client: test_client,
                                     kernel: test_kernel)
     @engines ||= {}
     @engines[session.id] = engine
-    allow(engine).to receive(:cut_for_steer).and_return(cut) if cut
+    allow(engine.steer_cut).to receive(:cut_for_steer).and_return(cut) if cut
     events = []
     engine.subscribe(observer: ->(e) { events << e })
-    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
+    bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
                                     input_format: Samagotchi::SessionInbox::INPUT_FORMAT, on_command: on_command)
     bridge.start
     bridges << bridge
@@ -377,7 +380,7 @@ RSpec.describe Samagotchi::SendCommand do
         serve(a, cut: :now)
 
         expect(run("--cut", "-m", "go", a.id)).to eq(0), err.string
-        expect(engine_of(a)).to have_received(:cut_for_steer).once
+        expect(engine_of(a).steer_cut).to have_received(:cut_for_steer).once
       end
 
       it "says the next-step line when the ack names no cut (the Bridge went away: a file)" do

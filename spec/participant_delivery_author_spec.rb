@@ -11,6 +11,7 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/worker"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/bridge_client"
 require "samagotchi/queued_command"
 require "samagotchi/participants"
@@ -27,6 +28,8 @@ require_relative "support/remote_backend"
 # never a command (a /word input file or POST /turn). The owner's events
 # and commands carry no author key.
 RSpec.describe "a participant's author on delivery" do
+  include BridgeParts
+
   include OutdatedGrants
 
   let(:tmpdir) { Dir.mktmpdir("delivery-author") }
@@ -619,7 +622,7 @@ RSpec.describe "a participant's author on delivery" do
       WebMock.allow_net_connect! if defined?(WebMock)
       hold_worker(session_dir)
       engine.subscribe(observer: ->(event) { announced << event })
-      @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: "s1", heartbeat_interval: 0.2,
+      @bridge = described_class.new(engine: engine, **bridge_parts(engine), state_dir: tmpdir, session_id: "s1", heartbeat_interval: 0.2,
                                     on_command: lambda { |command, **|
                                       commands << command
                                       :anytime

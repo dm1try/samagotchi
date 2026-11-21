@@ -276,8 +276,13 @@ module Samagotchi
       # runs from the leave) and restored into it after.
       carried = take_carried_reminders
       @engine = build_engine
-      # The Engine's event log, handed to the Bridge and the collaborators.
+      # The Engine's event log, turn state, question desk and steer cut,
+      # handed to the Bridge and the collaborators (read here, not in
+      # #start_bridge, whose rescue would hide a missing one).
       @event_log = @engine.event_log
+      @turn_state = @engine.turn_state
+      @question_desk = @engine.question_desk
+      @steer_cut = @engine.steer_cut
       restore_carried_reminders(carried)
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
         @event_log.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
@@ -371,7 +376,8 @@ module Samagotchi
     # The Bridge (UIs and clients reach the worker from here on), then the
     # idle-exit policy.
     def serve
-      @bridge = start_bridge(engine: @engine, event_log: @event_log, state_dir: @state_dir, session_id: @session_id,
+      @bridge = start_bridge(engine: @engine, event_log: @event_log, turn_state: @turn_state, question_desk: @question_desk,
+                             steer_cut: @steer_cut, state_dir: @state_dir, session_id: @session_id,
                              on_input: -> { @waker.wake },
                              on_command: method(:on_command),
                              on_exit_request: method(:exit_request),
@@ -419,11 +425,13 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def start_bridge(engine:, event_log:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
-                     exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil)
+    def start_bridge(engine:, event_log:, turn_state:, question_desk:, steer_cut:, state_dir:, session_id:, on_input: nil,
+                     on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil, on_holds: nil,
+                     on_holds_stop: nil, on_activity: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, event_log: event_log, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
+        engine: engine, event_log: event_log, turn_state: turn_state, question_desk: question_desk, steer_cut: steer_cut,
+        state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
         exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       ).start

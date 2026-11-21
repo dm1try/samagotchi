@@ -10,6 +10,7 @@ require "samagotchi/session"
 require "samagotchi/session_manager"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/note_command"
 require "samagotchi/send_command"
 require "samagotchi/tools/send_note"
@@ -23,6 +24,8 @@ require "support/session_hubs"
 # is one: Session.valid_id? is the one check, and Session.session_dir /
 # session_file refuse the rest. The web routes are in spec/web/routing_spec.rb.
 RSpec.describe "session id check" do
+  include BridgeParts
+
   let(:root) { Dir.mktmpdir("session-id-check") }
   let(:state_dir) { File.join(root, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:bad_ids) { ["../x", "..", "/tmp/x", "a/b", "a\0b", "", " ", "-x", "a" * 129, "x.json"] }
@@ -81,7 +84,7 @@ RSpec.describe "session id check" do
     let(:engine) do
       Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
     end
-    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1") }
 
     it "answers 404 unknown_session for a bad session_id and writes nothing" do
       bad_ids.reject { |id| id.strip.empty? }.each do |id|

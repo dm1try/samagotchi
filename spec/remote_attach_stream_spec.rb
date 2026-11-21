@@ -5,6 +5,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/owner_lock"
 require "samagotchi/session"
 require "samagotchi/session_manager"
@@ -24,6 +25,8 @@ require_relative "support/web_server"
 # 127.0.0.1 peer needs no token); the gate on the stream route is
 # spec/web/lan_auth_spec.rb's.
 RSpec.describe "a remote attach's stream through chi web" do
+  include BridgeParts
+
   let(:tmpdir) { Dir.mktmpdir("remote-attach-stream") }
   let(:events) { Queue.new }
   let(:bridges) { [] }
@@ -62,7 +65,7 @@ RSpec.describe "a remote attach's stream through chi web" do
   # A worker's Bridge for the session (a new one is a restart: a new epoch).
   def start_worker
     engine = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
-    Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
+    Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
                            input_format: Samagotchi::SessionInbox::INPUT_FORMAT).tap do |bridge|
       bridge.start
       bridges << bridge

@@ -5,6 +5,7 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/turn_flow"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
@@ -13,6 +14,8 @@ require "support/test_kernel"
 # Cards (docs/plugins.md, Cards): Engine#show_card, ctx.card and the
 # Bridge's CardStore (snapshot[:cards]).
 RSpec.describe "Cards" do
+  include BridgeParts
+
   include_context "thinking off"
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
@@ -1466,18 +1469,18 @@ RSpec.describe "Cards" do
 
     it "counts a turn its worker was killed in, when a later worker's Bridge starts" do
       engine.session = session
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
       bridge.instance_variable_get(:@cards).call({ type: :turn_started, turn_id: "t1" })
       session.messages << { role: "user", content: "killed", turn_id: "t1" }
-      later = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      later = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       expect(later.snapshot[:cards].first).to include(id: "c1", turns_since: 1)
     end
 
     it "gives its store the session's messages: a card shown after an opening with no id stays below it, and the saved log reaches its opening" do
       engine.session = session
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       store = bridge.instance_variable_get(:@cards)
       engine.subscribe(observer: store)
       store.call({ type: :turn_started, turn_id: "t1" })
@@ -1493,7 +1496,7 @@ RSpec.describe "Cards" do
 
     it "lists against the messages the snapshot carries: a running wake's note is in both, a running prompt in neither" do
       engine.session = session
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       store = bridge.instance_variable_get(:@cards)
       engine.subscribe(observer: store)
       engine.show_card(source: "b", title: "one", id: "c1")
@@ -1510,20 +1513,20 @@ RSpec.describe "Cards" do
     end
 
     it "carries the cards" do
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
       expect(bridge.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
     end
 
     it "saves them in the session's folder, and a later worker's Bridge starts from them" do
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
       expect(Samagotchi::Bridge::CardStore.saved(File.join(state_dir, "s1")).map { |c| c[:id] }).to eq(["c1"])
 
       fresh = Samagotchi::Engine.new(client: client, kernel: kernel)
-      later = Samagotchi::Bridge.new(engine: fresh, event_log: fresh.event_log, state_dir: state_dir, session_id: "s1")
+      later = Samagotchi::Bridge.new(engine: fresh, **bridge_parts(fresh), state_dir: state_dir, session_id: "s1")
       expect(later.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
     end
   end

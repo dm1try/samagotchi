@@ -376,7 +376,8 @@ see [internals/bridge.md](internals/bridge.md)). A spec that writes its own requ
 socket) names it too: `include BridgeAuth` (spec/support/bridge_auth.rb, required by the spec that needs it) gives
 `bridge_auth(session_dir_or_sidecar)`, the header as a Hash, and `bridge_auth_line(...)` for a raw request; or read
 `port` and `secret` from the sidecar in one go, as `WorkerLink.client` does. A client made with `BridgeClient.new`
-takes `secret:` (nil for a fake Bridge that doesn't check it).
+takes `secret:` (nil for a fake Bridge that doesn't check it). A spec that builds a Bridge passes the Engine's parts
+with `include BridgeParts` (spec/support/bridge_parts.rb): `Bridge.new(engine: engine, **bridge_parts(engine), …)`.
 
 ### Support files
 
@@ -387,6 +388,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 |---|---|
 | `bounded_capture.rb` | `BoundedCapture.capture3`: `Open3.capture3` with a deadline, in its own process group killed on expiry |
 | `bridge_auth.rb` | `BridgeAuth`: the Bridge secret's header for a hand-written request (above) |
+| `bridge_parts.rb` | `BridgeParts`: `bridge_parts(engine)`, a real Engine's event log, turn state, question desk and steer cut for `Bridge.new`; `idle_engine_parts`, real idle ones for the Worker specs' `instance_double(Samagotchi::Engine, …)` only |
 | `chi_cli.rb` | *helper*: `run_chi` (bin/chi in a child process), `fork_chi` (in a fork: no Ruby boot), `isolated_chi_env` |
 | `effective_model_configs.rb` | `EffectiveModelConfigs`: one config.yml holding every host the effective-model characterization pins, and its goldens |
 | `env.rb` | *helper*: `with_env` sets ENV for a block and puts it back (nil unsets) |

@@ -10,6 +10,7 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/bridge_client"
 
 # The approval relay's Bridge routes, between two real workers' Bridges in
@@ -17,6 +18,8 @@ require "samagotchi/bridge_client"
 # parent's POST relay/status, which the child asks before it believes an
 # answer.
 RSpec.describe Samagotchi::Bridge, "approval relay" do
+  include BridgeParts
+
   let(:state_dir) { Dir.mktmpdir("bridge-relay") }
   let(:parent) { new_session }
   let(:child) { new_session(parent_id: parent.id) }
@@ -57,7 +60,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
 
   def serve(engine, session)
     hold_worker(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-    bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
+    bridge = described_class.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
     @bridges << bridge
     bridge
   end

@@ -11,12 +11,15 @@ require "samagotchi/worker_sidecar"
 require "samagotchi/owner_lock"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "support/test_kernel"
 
 # `chi sessions stats ID`: a session's cost, tokens and progress without
 # running a model turn — a live worker's GET stats, else the snapshot an
 # analytics.json on disk rebuilds (SessionMetrics), never starting a worker.
 RSpec.describe "chi sessions stats" do
+  include BridgeParts
+
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-stats") }
   let(:outside) { Dir.mktmpdir("chi-sessions-stats-cwd") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
@@ -284,7 +287,7 @@ RSpec.describe "chi sessions stats" do
     def serve(session)
       locks << Samagotchi::OwnerLock.acquire(dir_of(session), kind: "worker")
       engine = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
-      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id,
+      bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id,
                                       heartbeat_interval: 5, input_format: Samagotchi::SessionInbox::INPUT_FORMAT)
       bridge.start
       bridges << bridge

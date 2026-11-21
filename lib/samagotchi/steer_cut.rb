@@ -11,9 +11,10 @@ module Samagotchi
   # A message for the running turn cutting the generation it came during:
   # what the generation streams (GenerationPhase, fed by #observe from the
   # turn's stream) and a message that came too early to cut (WaitingSteer).
-  # The Engine's seam: Bridge and TerminalUI call Engine#cut_for_steer and
-  # #input_epoch, the turn thread feeds #observe and #delivered!, and the
-  # turn's end calls #finished!. Callable from any thread: GenerationPhase
+  # The Engine's one, which the Worker hands the Bridge (Engine#steer_cut):
+  # the Bridge calls #cut_for_steer, #input_epoch and #generation_snapshot,
+  # the turn thread feeds #observe and #delivered!, and the turn's end calls
+  # #finished!. Callable from any thread: GenerationPhase
   # and WaitingSteer hold their own locks.
   class SteerCut
     # A chunk's thinking and text. A chunk without the lanes (no loop of

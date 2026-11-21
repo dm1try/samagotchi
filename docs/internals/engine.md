@@ -124,7 +124,7 @@ Interrupt (Ctrl-C; a one-shot only, a worker traps INT):
     interrupted result (ToolResponse.run_batch), so no call is kept without its result; a half-streamed reply is
     not kept; :turn_canceled {cancellation_reason: :ctrl_c}; re-raised (the caller decides whether to exit)
 
-A Stop (Engine#cancel_current_turn!, the Bridge's POST cancel) or a hook's stop_turn:
+A Stop (TurnState#cancel!: the Bridge's POST cancel, Engine#cancel_current_turn!) or a hook's stop_turn:
   → not an error: LLM::ModelResult(canceled: true, conversation:); complete_turn keeps the conversation with a
     TurnNote.cancelled note; text streamed before the cancel stays, marked [interrupted]
 
@@ -331,7 +331,8 @@ only input (`entries`, `reachable_names`, `left_out_names`, `removed_names`, `st
 One object (`turn_state.rb`), guarded by a `Monitor`, that the turn thread writes (`begin_turn`, `release_turn`)
 and other threads read: the idle scheduler, the Bridge's request threads, plugin threads, the UIs. It holds
 running, `context` (nil between turns), `last_context`, `controller`, the turn's thread and `ended`, the sink,
-steers and carried steers, and the activity clock.
+steers and carried steers, and the activity clock. The Bridge holds it (`Engine#turn_state`, handed on by the
+Worker) and calls its readers, `cancel!` and the enqueued-id ledger; only the turn thread calls the writers (`begin!`, `replace_context`, `ended!`, `finish!`).
 
 - `begin!(context:, controller:, sink:, input_waiting:)`: all of it in one step, carried steers become steers. The
   context is built whole before (mode and git included), **so no reader sees a running turn with the last turn's
@@ -439,7 +440,7 @@ KernelLoop has its own `Turn` struct, a run's.
   TurnContext.**
 - Specs: `run_context(settings: …)` and `attach_services(kernel, tools: …)` (spec/support/test_kernel.rb).
 - `controller` is an in-process signal; another process stops a worker's turn through the Bridge (`POST cancel` →
-  `Engine#cancel_current_turn!`).
+  `TurnState#cancel!`, on the Engine's TurnState the Worker handed the Bridge).
 
 **The live conversation and the checkpoint.** Both loops register the array they append to on the kernel
 (`KernelLoop#llm_context_turn`, `LLMContextForget::Turn#conversation`, tagged with the run's `turn_id`).
@@ -453,8 +454,9 @@ as a killed turn's (canceled, `worker_stopped`); the turn's end writes over it.
 
 ### SteerCut, GenerationPhase and WaitingSteer
 
-The Engine's one `SteerCut` (`steer_cut.rb`) owns a `GenerationPhase` and a `WaitingSteer`. The Bridge and the TUI
-ask it (`Engine#cut_for_steer`, `#input_epoch`, `#generation_snapshot`), the stream handler feeds it
+The Engine's one `SteerCut` (`steer_cut.rb`) owns a `GenerationPhase` and a `WaitingSteer`. The Bridge holds it
+(`Engine#steer_cut`, handed on by the Worker) and asks it (`#cut_for_steer`, `#input_epoch`, `#generation_snapshot`;
+the Engine forwards the same three), the stream handler feeds it
 (`SteerCut#observe`), a drain that took input calls `#delivered!`, and `release_turn` calls `#finished!`.
 
 - `GenerationPhase`: whether a steer sent as a cut (`/cut TEXT`, `chi send --cut`) may cut the running generation.
@@ -787,7 +789,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `engine/participants.rb` | `Engine::ParticipantsPart`: the turn's author, a pair turn's stop, the participants line |
 | `engine/session.rb` | `Engine::SessionPart`: `#session=`, the state dir, the relay's view, the system prompt |
 | `engine/verify.rb` | `Engine::VerifyPart`: the Verify/Revise anchors' stage builder |
-| `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded) |
+| `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded: the hosts hold `Engine#question_desk`; the forwards stay for the Engine's parts, the one-shot and Engine-only specs) |
 | `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, the toolkit suggestion's builder |
 | `engine/context_judge.rb` | `Engine::ContextJudgePart`: the candidate judge's builder and `judge_late_candidates` |
 | `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: turn settings, images, model ref, used memories, the warm-up's builder |
