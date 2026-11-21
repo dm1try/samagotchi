@@ -77,6 +77,25 @@ exist. **A new session command or flag fails that spec until you choose one.**
 registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` without being listed
 (`Contract.run_status`). The contract spec fails on a run flag in neither.
 
+## Exchange
+
+`SessionAccess::Exchange` (`session_access/exchange.rb`) holds the stateless pieces of "send one message and bind its
+wait", over either backend (it calls only their public methods): `locate` (resolve, head, the poll while a continue
+is in flight: `Located` or `Unsent`), `relocate` (located again after a continue took the link), `attempt` (one
+delivery: show, the caller's check, owner, images, the delivery choice, `deliver_turn`: `Attempted` or `Stopped`),
+`bind` (`ReplyWait::Target.message`) and `wait` (the backend's wait, the turn id and the UTF-8 text). It prints
+nothing, keeps no state between calls, never retries and lets the backend's errors raise. `SendCommand` keeps its
+retry loop, rescues and lines and calls these pieces (its Exchange reads `CONTINUING_WAIT` and `pause` when built, the
+specs' stubs); `CLI::ParentWait` (chi send's and chi answer's wait) calls `wait`. `SessionAccess::Ask`
+(`session_access/ask.rb`) is its own short loop over the same pieces for one message and one wait slice on one
+deadline (chi web's starts with the request: `locate`'s `deadline:` and `relocate`'s `bounded: true` end the continue
+waits `Ask::MIN_SLICE` before it, a continue that takes the link after it gets no second delivery, and the Bridge wait
+of a worker starting draws on it too; chi web stopping cuts the continue waits at the next look, `Refused :canceled`,
+503 `server_stopping`; a client that goes away is not seen (WEBrick), so its handler runs on to that deadline),
+answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
+builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
+AskAccess`), and plan 2's MCP server reuses it without chi web. The routes: [thin-clients.md](../thin-clients.md).
+
 ## One request, end to end
 
 `chi --remote studio send ab12 -m "fix it" --wait`:
@@ -84,8 +103,8 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
 1. **bin/chi → Dispatch.** The flag is removed. `send` and `send --message` / `--wait` are `SUPPORTED`. `Remotes.find("studio")`
    reads `$XDG_CONFIG_HOME/samagotchi/remotes.yml`. Then `SendCommand.new(argv, access: Remote.new(entry)).run`.
 2. **SendCommand.** The client-side checks (UI-only slash commands, image ingest) run. The machine-local ones are
-   skipped (next section). Every id is resolved once up front (`SendCommand#target`): `Remote#resolve`, then
-   `Remote#head`, where input for it goes (a continued session's chain's newest link).
+   skipped (next section). Every id is resolved once up front (`SendCommand#target` → `Exchange#locate`):
+   `Remote#resolve`, then `Remote#head`, where input for it goes (a continued session's chain's newest link).
 3. **Remote → HTTPTransport.** The first request on a `Remote` is preceded by `check_server!`, which sends
    `GET /api/info` and needs `app: "chi-web"` plus the `session_commands` feature. Next come
    `GET /api/sessions/resolve?id=ab12`, `GET /api/sessions/resolve?id=<full id>&head=1` (`{id, asked, via}`:
@@ -93,8 +112,8 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
    ignores `head=1` and answers `{id}`, read as `same`, so the message goes to the id named as before; a participant's
    token never asks, and the participant branch of the route answers `{id}` alone) and
    `POST …/wait/prepare {busy: true, queue:}` (`Remote#busy`) on the id it answered, then
-   `POST …/wait/prepare {turn, created}` for the `WaitStart`. `deliver` calls `Remote#show` and `#owner` (each
-   `GET /api/sessions/:id?brief=1`), then
+   `POST …/wait/prepare {turn, created}` for the `WaitStart`. `deliver`'s pass (`Exchange#attempt`) calls
+   `Remote#show` and `#owner` (each `GET /api/sessions/:id?brief=1`), then
    `POST …/turn {prompt, client_id: "cli:send", history: false}`. A 202 ack becomes a `DeliverResult` with `via`
    (`bridge` or `file`).
 4. **chi web.** `Web::App#route` runs the Host check (`local_host_header?`), then `cross_site?`, then in LAN mode for a
@@ -102,7 +121,7 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
    before any handler runs. A `:session` route turns an `ArgumentError` into its unknown-session 404. The handlers in
    `SessionAccessRoutes` call `session_access`, a `SessionAccess::Local` on chi web's own state dir. The page's older
    routes (`/turn`, `/answer`, `/stop`, …) call `SessionManager` and the Bridge directly, as before.
-5. **The wait.** `ParentWait#wait_for_reply` → `Remote#wait_reply` loops on `POST …/wait` with
+5. **The wait.** `ParentWait#wait_for_reply` → `Exchange#wait` → `Remote#wait_reply` loops on `POST …/wait` with
    `timeout: min(time left, WAIT_SLICE)` (30 s). The server runs `ReplyWait.call` for at most `WAIT_MAX_SECONDS` (30 s)
    and returns the `ReplyWait::Result` fields plus `parent_strategy`. On a `timeout` status the client asks again until
    its own `--timeout` runs out, at which point it builds the `timeout` result itself. Each slice is a fresh `ReplyWait`

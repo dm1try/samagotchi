@@ -19,6 +19,9 @@ and commands may change between minor versions. How releases are made:
   Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.
 - For bundle authors: `ctx.cancel_controller`, the Stop `ctx.cancelled?` reads on this thread (an init task's own, else
   the running turn's), to hand to `ctx.http`'s `cancel:` or a thread of your own.
+- chi web takes a message and answers it in one call (`POST /api/sessions/ID/ask`), for a thin client such as an
+  iOS Shortcut or a script: the answer comes back within 35 s, or a wait token to send to `…/wait` until it does.
+  `…/answer` takes `wait`, and a new session's 201 has a token too. See docs/thin-clients.md.
 
 ### Changed
 

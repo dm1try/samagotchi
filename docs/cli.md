@@ -1640,6 +1640,9 @@ The attached context's chips keep their own second line under the row.
 
 ### Remote sessions
 
+(For a phone or a script that only needs to send a message and read its answer over HTTP, without chi on that side,
+see [Thin clients](thin-clients.md).)
+
 The session commands also reach another machine's sessions, through its chi
 web on the LAN: the sessions, workers, memories and code stay there. On the
 other machine (the Studio), run `chi web --web-host lan`; on this one (the

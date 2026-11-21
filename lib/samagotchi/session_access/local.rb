@@ -191,9 +191,15 @@ module Samagotchi
       # @return [SessionManager::DeliverResult]
       # @raise [SessionManager::OwnedByTUI] a one-turn chi run owns it
       # @param follow [Boolean] +id+ is the head #head resolved (SessionManager.deliver_turn's follow:)
-      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false)
+      # @param manager [#resume_session, nil] the manager that starts its
+      #   worker; nil: SessionManager's own default
+      # @param bridge [#call, nil] the worker's Bridge client (chi web's
+      #   live_bridge_client: POST …/ask delivers as POST …/turn does); nil:
+      #   SessionManager's own wait
+      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false, manager: nil, bridge: nil)
+        routing = { manager: manager, bridge: bridge }.compact
         SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
-                                        follow: follow, **dir)
+                                        follow: follow, **routing, **dir)
       end
 
       # @return [NoteDelivery::Result]

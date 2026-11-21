@@ -318,6 +318,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :participant, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/ask\z}, :handle_ask, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/verdicts/([^/]+)/fresh\z}, :handle_verify_fresh, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/blocks/fix\z}, :handle_block_fix, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
@@ -1126,7 +1127,7 @@ module Samagotchi
       # delegates: chi --remote sessions delete --dry-run asks for this first.
       DELETE_PLAN_FEATURE = "delete_plan_all"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and
@@ -1416,11 +1417,11 @@ module Samagotchi
         error_response(504, "worker_timeout", "the session's worker did not answer, so #{what}")
       end
 
-      # The session's Bridge, waiting briefly for one a resume just spawned.
+      # The session's Bridge, waiting briefly (5 s, or +within+ an ask's left) for one a resume just spawned.
       # @return [BridgeClient, nil]
-      def live_bridge_client(id)
+      def live_bridge_client(id, within: 5.0)
         link = worker_link(id)
-        link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min) unless link.live?
+        link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, within].min.clamp(0.0..)) unless link.live?
         link_client(id, link)
       end
 

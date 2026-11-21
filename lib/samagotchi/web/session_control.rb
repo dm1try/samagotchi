@@ -57,6 +57,14 @@ module Samagotchi
         qid = body["id"]
         return error_response(400, "missing_fields", "id is required") if qid.to_s.strip.empty?
 
+        # wait: a thin client's answer that also waits for what comes next
+        # (AskRoutes#answered_wait), its start read before the answer goes in.
+        wait, error = answer_wait_option(body)
+        return error if error
+
+        start = answer_wait_start(id, session, qid) if wait
+        return session_not_found(id) if wait && !start
+
         # client_id: only chi answer's (a parent agent's answer, which the
         # worker holds to its guardrails.parent_answers) is passed on; any
         # other is dropped, so a forward can only tighten (an answer never
@@ -65,19 +73,27 @@ module Samagotchi
         request = once_more_on_late do |client|
           client.answer(id: qid, selected: body["selected"], freeform: body["freeform"], client_id: client_id)
         end
-        relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
+        # With wait, the relay answers :answered / :not_pending and the wait
+        # runs after it: relay's rescues are the answer's, not the wait's.
+        relayed = relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
           case reply.status
           when 200
             @hub&.resolve_question(id, question_id: qid)
+            next :answered if wait
+
             json_response(200, { status: "answered", session_id: id, id: qid })
           # Another client answered first (or the question was cancelled).
-          when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
+          when 409
+            next :not_pending if wait
+
+            error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
           when 400 then error_response(400, "invalid_answer", reply_detail(reply, "answer rejected"))
           # The worker's guardrails.parent_answers refused a parent's option.
           when 403 then json_response(403, { error: "parent_answer_refused", reason: reply.json&.dig("reason"),
                                              detail: reply_detail(reply, "the worker refused that option") })
           end
         end
+        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered) : relayed
       end
 
       # A request to the worker sent once more when the worker dropped it as
@@ -223,18 +239,24 @@ module Samagotchi
                                                  follow: body["follow"] == true,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
+        return refused_delivery(result) unless result.status == :accepted
+
+        record_history(body, prompt)
+        # via: bridge or file (the worker was gone: its input file), which
+        # names the turn a remote chi send --wait follows (ReplyWait::Target).
+        json_response(202, result.ack.merge("via" => result.via.to_s))
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_tui(e)
+      end
+
+      # A delivery that did not go in (POST …/turn's, POST …/ask's): the
+      # worker's refusal as it answered it, 504 worker_timeout, or 500.
+      def refused_delivery(result)
         case result.status
-        when :accepted
-          record_history(body, prompt)
-          # via: bridge or file (the worker was gone: its input file), which
-          # names the turn a remote chi send --wait follows (ReplyWait::Target).
-          json_response(202, result.ack.merge("via" => result.via.to_s))
         when :refused then json_response(result.code, result.ack)
         when :timeout then error_response(504, "worker_timeout", result.detail)
         else error_response(500, "enqueue_failed", "could not write turn input")
         end
-      rescue SessionManager::OwnedByTUI => e
-        owned_by_tui(e)
       end
 
       # A turn refused before it goes in, as chi send refuses it on its own

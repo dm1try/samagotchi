@@ -17,6 +17,7 @@ require_relative "../session_metrics"
 require_relative "../version"
 require_relative "request_body"
 require_relative "session_hub"
+require_relative "ask_routes"
 
 module Samagotchi
   module Web
@@ -30,9 +31,10 @@ module Samagotchi
     # parse_json, …) answer. See docs/architecture.md (chi web's routes for
     # the session commands).
     module SessionAccessRoutes
-      # A wait route answers within this many seconds (status timeout); the
-      # client asks again until its own --timeout.
-      WAIT_MAX_SECONDS = 30.0
+      include AskRoutes
+
+      # WAIT_MAX_SECONDS (a wait route's slice) is AskRoutes', included above.
+
       # GET /api/info's feature: this chi web has these routes (a remote
       # client checks it before its first session command).
       FEATURE = "session_commands"
@@ -198,8 +200,11 @@ module Samagotchi
       # Session) and parent_strategy, what a parent may pick on the
       # session's questions here (ParentReport.strategy_for). A timeout
       # status: ask again. 503 server_stopping when chi web stops mid-wait.
+      # A body with token (a thin client's) is #handle_token_wait's.
       def handle_wait(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        return handle_token_wait(req, id, body) if body.key?("token")
+
         options, error = wait_options(body)
         return error if error
         return participant_wait(req, id, options) unless principal(req).owner?
@@ -233,15 +238,11 @@ module Samagotchi
            owner_grace: numbers["owner_grace"], queued: body["queued"] == true, ended_before: body["ended_before"] == true }, nil]
       end
 
+      # The body's baseline, checked as a wait token's is (Token.baseline).
       def wait_baseline(raw)
-        return [nil, nil] if raw.nil?
-
-        fields = { "messages" => Integer, "question_id" => String, "last_turn" => String }
-        unless raw.is_a?(Hash) && raw.all? { |key, value| fields.key?(key) && (value.nil? || value.is_a?(fields[key])) }
-          return [nil, error_response(400, "invalid_wait", "baseline is {messages, question_id, last_turn}")]
-        end
-
-        [ReplyWait::Baseline.new(**raw.transform_keys(&:to_sym)), nil]
+        [SessionAccess::Exchange::Token.baseline(raw), nil]
+      rescue SessionAccess::Exchange::Token::Invalid => e
+        [nil, error_response(400, "invalid_wait", e.message)]
       end
 
       RESULT_FIELDS = %i[text file outcome limit error_kind retryable cancel_reason stopped_by kept_steps turn_id origin].freeze

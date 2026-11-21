@@ -125,7 +125,7 @@ module Samagotchi
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning,
                                                           parent_answers_warning: Guardrails::ParentPolicy.capped_note(parent_answers),
-                                                          first_turn_id: session.first_turn_id))
+                                                          first_turn_id: session.first_turn_id, **create_token(session)))
       end
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
@@ -171,7 +171,7 @@ module Samagotchi
                                                           model_warning: session.model_warning,
                                                           opener: session.opener,
                                                           moved_context: session.moved_context&.to_h,
-                                                          first_turn_id: session.first_turn_id))
+                                                          first_turn_id: session.first_turn_id, **create_token(session)))
       end
 
       # The previous link's parent_answers and the model the new one runs,

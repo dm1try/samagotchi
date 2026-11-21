@@ -240,6 +240,14 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end
 
+    it "is refused a wait token on POST …/wait (an owner's thin-client wait), even one for their own session" do
+      target = Samagotchi::ReplyWait::Target.new(turn: "t1", report_turn_id: "t1", queued: true)
+      wait_token = Samagotchi::SessionAccess::Exchange::Token.dump(session.id, target)
+
+      expect(json("/api/sessions/#{session.id}/wait", method: "POST", headers: { input: JSON.generate(token: wait_token) }))
+        .to eq([400, { "error" => "invalid_wait", "detail" => "a participant's wait takes a turn, not a token" }])
+    end
+
     it "reaches GET …/images/<name> as their own uploads only: 404 for one they didn't upload" do
       expect(json("/api/sessions/#{session.id}/images/0123456789abcdef.png").first).to eq(404)
     end

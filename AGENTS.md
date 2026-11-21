@@ -111,6 +111,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Web Push (`Web::Push`, the Notifier, the service worker, the Home Screen app's bell) → `docs/internals/web-push.md`; the user side → `docs/configuration.md` (Phone notifications)
 - Participants (`chi share`, `Grants`, the participant gate and routes, their turns, `participants.json`) → `docs/internals/participants.md`; their boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
+- Thin clients (`POST …/ask`, wait tokens, `SessionAccess::Exchange`, `SessionAccess::Ask`) → `docs/thin-clients.md`; the pieces → `docs/internals/remote-sessions.md` (Exchange)
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`
 - Memory scopes, tools, overlays, model notes, skills, bundles' memories → `docs/memory.md`

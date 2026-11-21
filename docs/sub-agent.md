@@ -34,6 +34,15 @@ answers wake chi in a short loop (fix or disagree, send again) until it says
 or after `context.peer_turns` turns: [Waking: peer
 sources](context.md#peer-sources-the-peer-loop).
 
+A client with no chi of its own (an iOS Shortcut, a script) can do the same
+over HTTP: one `POST …/ask` to chi web, then a wait token until the answer
+comes ([Thin clients](thin-clients.md)). An agent uses `chi send` and `chi
+answer` (with `--remote NAME` for another machine) whenever it can run chi.
+Over HTTP it must send `"client_id": "cli:send"` on an ask and
+`"client_id": "cli:answer"` on an answer: without them its lines are the
+owner's and `guardrails.parent_answers` does not hold them ([An agent over
+HTTP](thin-clients.md#an-agent-over-http)).
+
 ## The commands
 
 ```sh
