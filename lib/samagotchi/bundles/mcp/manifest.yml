@@ -7,7 +7,7 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:d409cf8fadfabf24050200dc0d47ec06aaac768f3fda8d0609ecc475c167b390
+  sha256: sha256:490e4bcef3c163059853a038656b3d87d26ec5e63bc0243c70eb16160e4e0da1
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
 requires_chi: ">= 0.143.0"
 # ctx.http.stream (the HTTP transport); release:bump raises requires_chi.

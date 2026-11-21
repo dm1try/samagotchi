@@ -414,6 +414,7 @@ class Plugin
 
     # @return [Hash] the result
     def request(method, params = nil, timeout:, cancelled: nil)
+      renew(timeout, cancelled) if @era == :expired
       raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(@era)
 
       post(method, params, timeout: timeout, cancelled: cancelled)
@@ -422,7 +423,7 @@ class Plugin
 
       @renewing = true
       begin
-        legacy(timeout, cancelled, nil)
+        renew(timeout, cancelled)
         post(method, params, timeout: timeout, cancelled: cancelled)
       ensure
         @renewing = false
@@ -448,6 +449,19 @@ class Plugin
     end
 
     private
+
+    # A legacy session's handshake again (its 404). One that fails leaves
+    # the era :expired, so the next request tries again; its error is the
+    # server's state, never the tool's (Unavailable, no schema note).
+    def renew(timeout, cancelled)
+      legacy(timeout, cancelled, nil)
+    rescue Client::Timeout, Client::Cancelled, Client::Dead, Client::Unavailable
+      raise
+    rescue Client::Error => e
+      raise Client::Unavailable, e.message
+    ensure
+      @era = :expired unless @era == :legacy
+    end
 
     def legacy(timeout, cancelled, offered)
       @era = :initialize

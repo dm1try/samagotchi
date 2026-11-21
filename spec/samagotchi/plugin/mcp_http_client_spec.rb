@@ -158,6 +158,25 @@ RSpec.describe "The mcp bundle's HTTP client" do
       expect { client.request("tools/list", nil, timeout: 5) }.to raise_error(errors::Unavailable, "the session expired (404)")
     end
 
+    it "recovers on the next call from a re-handshake that failed (the server still coming back after a restart)" do
+      server.enqueue("/mcp", status: 405, body: "")
+      legacy_answers(2, session: "s1")
+      client.handshake(timeout: 5, cancelled: nil)
+      server.enqueue("/mcp", status: 404, body: "") # tools/list: the session expired
+      server.enqueue("/mcp", status: 503, body: "") # initialize again: not up yet
+      server.enqueue("/mcp", json: rpc_error(5, -32_603, "warming up")) # initialize: a JSON-RPC error
+
+      expect { client.request("tools/list", nil, timeout: 5) }.to raise_error(errors::Unavailable, "HTTP 503")
+      expect { client.request("tools/list", nil, timeout: 5) }.to raise_error(errors::Unavailable, "warming up (-32603)")
+      legacy_answers(6, session: "s2")
+      server.enqueue("/mcp", json: json_rpc(7, { tools: [] }))
+
+      expect(client.request("tools/list", nil, timeout: 5)).to eq("tools" => [])
+      expect(client.era).to eq(:legacy)
+      expect(methods_sent.drop(3)).to eq(%w[tools/list initialize initialize initialize notifications/initialized tools/list])
+      expect(server.requests.last.header("mcp-session-id")).to eq("s2")
+    end
+
     it "DELETEs a legacy session at close, best effort" do
       fake = Samagotchi::Testing::FakeHttp.new
       fake.stub(:post, %r{/mcp}) do |request|
