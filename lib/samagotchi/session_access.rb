@@ -18,6 +18,7 @@ module Samagotchi
     autoload :Contract, File.expand_path("session_access/contract", __dir__)
     autoload :Remote, File.expand_path("session_access/remote", __dir__)
     autoload :Dispatch, File.expand_path("session_access/dispatch", __dir__)
+    autoload :DeletePlan, File.expand_path("session_access/delete_plan", __dir__)
 
     # A remote's chi web could not be asked, or answered what this chi can't
     # use: the message names the remote and what failed ("remote studio

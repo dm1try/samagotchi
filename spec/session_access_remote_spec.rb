@@ -223,6 +223,32 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "a delete plan (chi --remote sessions delete --dry-run)" do
+    it "names the feature chi web lists (Web::App::DELETE_PLAN_FEATURE), and that chi web lists it" do
+      expect(described_class::DELETE_PLAN_FEATURE).to eq(Samagotchi::Web::App::DELETE_PLAN_FEATURE)
+      expect(Samagotchi::Web::App::INFO_FEATURES).to include(described_class::DELETE_PLAN_FEATURE)
+    end
+
+    it "is never asked of an older chi web, whose plan lacks it for a session in no chain: update it, nothing sent" do
+      old, calls = scripted([200, { chained: false, session_id: "s" }],
+                            info: { app: "chi-web", version: "0.180.0", features: %w[session_commands chain_delete stop_tasks] })
+      expect { old.delete_plan("s") }.to raise_error(Samagotchi::SessionAccess::RemoteTooOld, /runs chi 0\.180\.0, too old/)
+      expect(calls.map { |method, path, _| [method, path] }).to eq([[:get, "/api/info"]])
+    end
+
+    it "reads the route's JSON as Local reads the preview's symbols: one plan, the same values" do
+      session = make
+      child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir, parent_id: session.id)
+      child.save(state_dir: tmpdir)
+
+      remote_plan = remote.delete_plan(session.id)
+      local_plan = Samagotchi::SessionAccess::Local.new(state_dir: tmpdir).delete_plan(session.id)
+
+      expect(remote_plan).to eq(local_plan)
+      expect(remote_plan.link).to have_attributes(delete: [child.id], leave: [], workers: 0, links: 1, refusal: nil)
+    end
+  end
+
   describe "running background tasks (chi --remote sessions delete|archive [--stop-tasks])" do
     let(:tasks) do
       { running: [{ session_id: "s", id: "20261120120000-3f9a2c1d", command: "npm run dev" }],
