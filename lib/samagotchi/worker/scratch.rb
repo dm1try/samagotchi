@@ -14,7 +14,7 @@ module Samagotchi
     # SCRATCH_JOIN_GRACE and SCRATCH_GONE_AFTER. Writes @unattended_since
     # (the scratch thread and the loop, no lock: a monotonic stamp, benign).
     # Reads @poll_interval, @session, @bridge, @started_at (#start), @engine,
-    # @event_log, @session_id and @waker. #scratch? and @scratch_watch (#start_background,
+    # @turn_state, @question_desk, @event_log, @session_id and @waker. #scratch? and @scratch_watch (#start_background,
     # #teardown) stay in Worker.
     module ScratchPart
       # How long a scratch worker waits for its terminal's first stream
@@ -46,11 +46,11 @@ module Samagotchi
       end
 
       def cancel_unattended_turn
-        return unless @engine.turn_running? && scratch_unattended?
+        return unless @turn_state.running? && scratch_unattended?
 
         Log.info(:worker, "scratch_turn_cancelled", sid: @session_id)
-        @engine.cancel_question(SessionManager::STOP_CANCEL_REASON) if @engine.pending_question
-        @engine.cancel_current_turn!(SessionManager::STOP_CANCEL_REASON.to_sym)
+        @question_desk.cancel(SessionManager::STOP_CANCEL_REASON) if @question_desk.pending
+        @turn_state.cancel!(SessionManager::STOP_CANCEL_REASON.to_sym)
         @waker.wake
       end
 
@@ -85,7 +85,7 @@ module Samagotchi
         stop_bridge_after do
           @event_log.synchronize do
             # A turn still running is the scratch watch's to cancel first.
-            next false unless scratch_unattended? && !@engine.turn_running?
+            next false unless scratch_unattended? && !@turn_state.running?
 
             @bridge&.close_intake
             @engine.stop_idle(join: false)

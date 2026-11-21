@@ -6,6 +6,9 @@ require "samagotchi/worker_idle_exit"
 require "samagotchi/reminder_store"
 require "samagotchi/relay_desk"
 require "samagotchi/children_status"
+require "samagotchi/turn_state"
+require "samagotchi/question_desk"
+require "samagotchi/cancellation_controller"
 
 RSpec.describe Samagotchi::WorkerIdleExit do
   let(:now) { [1000.0] }
@@ -13,9 +16,12 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   let(:reminders) { Samagotchi::ReminderStore.new }
   let(:relays) { Samagotchi::RelayDesk.new }
   let(:engine) do
-    double("engine", turn_running?: false, last_activity_at: 1000.0, reminder_store: reminders, pending_question: nil,
-                     anytime_running?: false, relay_desk: relays, sign_in_waiting?: false)
+    double("engine", reminder_store: reminders, anytime_running?: false, relay_desk: relays, sign_in_waiting?: false)
   end
+  # Made at 1000.0, before any example advances the clock: its activity
+  # clock starts there.
+  let!(:turn_state) { Samagotchi::TurnState.new(clock: clock) }
+  let(:desk) { instance_double(Samagotchi::QuestionDesk, pending: nil) }
   let(:tasks) { [[]] }
   let(:watched) { [[]] }
   let(:watched_running) { [[]] }
@@ -24,8 +30,13 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   let(:queued) { [false] }
   let(:offer) { [false] }
 
+  # A turn runs (TurnState#begin!), or none (#finish!).
+  def turn_running(running)
+    running ? turn_state.begin!(controller: Samagotchi::CancellationController.new, sink: nil) : turn_state.finish!
+  end
+
   def policy(minutes: 1.0, bridge: self.bridge)
-    described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
+    described_class.new(engine: engine, turn_state: turn_state, question_desk: desk, bridge: bridge, timeout_minutes: minutes,
                         input_pending: -> { queued.first }, awaiting_continue: -> { offer.first },
                         running_tasks: -> { tasks.first }, watched_tasks: -> { watched.first },
                         watched_running: -> { watched_running.first }, delegates: -> { delegates.first },
@@ -55,7 +66,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
 
   it "counts from the Engine's last activity" do
     p = policy
-    allow(engine).to receive(:last_activity_at).and_return(1030.0)
+    turn_state.record_activity(1030.0)
     advance(60)
     expect(p.hold).to eq(:recent_activity)
     advance(30)
@@ -75,7 +86,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     before { advance(3600) }
 
     it "while a turn runs" do
-      allow(engine).to receive(:turn_running?).and_return(true)
+      turn_running(true)
       expect(policy(minutes: 0.001).hold).to eq(:turn_running)
     end
 
@@ -132,7 +143,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     end
 
     it "holds while a turn runs" do
-      allow(engine).to receive(:turn_running?).and_return(true)
+      turn_running(true)
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:turn_running)
     end
 
@@ -169,7 +180,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "as a Hold, names the running tasks from one look (TaskWatch#running runs ps per task)" do
       looks = 0
       running = [Samagotchi::TaskWatch::Running.new(id: "t1", command: "rails s", age_seconds: 42)]
-      p = described_class.new(engine: engine, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
+      p = described_class.new(engine: engine, turn_state: turn_state, question_desk: desk, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
                               watched_running: lambda {
                                 looks += 1
                                 running
@@ -252,10 +263,10 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       watched_running[0] = [task("t1", "rails s", 10)]
       delegates[0] = [child("c1c1c1c1-1111", state: "running")]
 
-      allow(engine).to receive(:turn_running?).and_return(true)
+      turn_running(true)
       expect(policy.request_hold(requester: "tui:1").holds).to eq([])
       queued[0] = true
-      allow(engine).to receive(:turn_running?).and_return(false)
+      turn_running(false)
       expect(policy.request_hold(requester: "tui:1").holds).to eq([])
       allow(bridge).to receive(:open_streams_except).with("tui:1").and_return(1)
       queued[0] = false
@@ -291,7 +302,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
         reminders.register(name: "api_health", description: "check the API", interval_minutes: 20)
         watched_running[0] = [task("3f9a2c1d-77", "npm test", 180)]
         delegates[0] = [child("c1c1c1c1-1111", state: "running")]
-        allow(engine).to receive(:turn_running?).and_return(true)
+        turn_running(true)
         allow(bridge).to receive(:open_streams_except).with("web:tab-1").and_return(2)
 
         expect(policy.stoppable_holds).to eq([
@@ -312,7 +323,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       it "is empty when nothing runs the user can stop, and reads the watched tasks once" do
         looks = 0
         running = [Samagotchi::TaskWatch::Running.new(id: "t1", command: "rails s", age_seconds: 30)]
-        p = described_class.new(engine: engine, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
+        p = described_class.new(engine: engine, turn_state: turn_state, question_desk: desk, bridge: bridge, timeout_minutes: 1.0, input_pending: -> { false },
                                 watched_running: lambda {
                                   looks += 1
                                   running
@@ -365,14 +376,14 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "holds for a turn, queued input, a continue offer and a question, not for reminders (the restart carries them)" do
       reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
       expect(policy.hold_for_restart).to be_nil
-      allow(engine).to receive(:pending_question).and_return({ id: "q1" })
+      allow(desk).to receive(:pending).and_return({ id: "q1" })
       expect(policy.hold_for_restart).to eq(:question_pending)
-      allow(engine).to receive(:pending_question).and_return(nil)
+      allow(desk).to receive(:pending).and_return(nil)
       offer[0] = true
       expect(policy.hold_for_restart).to eq(:continue_offered)
       queued[0] = true
       expect(policy.hold_for_restart).to eq(:input_queued)
-      allow(engine).to receive(:turn_running?).and_return(true)
+      turn_running(true)
       expect(policy.hold_for_restart).to eq(:turn_running)
     end
 

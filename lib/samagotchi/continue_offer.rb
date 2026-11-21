@@ -31,7 +31,12 @@ module Samagotchi
     # whoever answered (chi answer) ends on it.
     NOT_CONTINUED = "not_continued"
 
-    # @param engine [Engine] records activity, holds the question
+    # @param engine [Engine] the session, and the continue steer
+    #   (#steer_next_turn, #drop_carried_steers)
+    # @param turn_state [TurnState] the Engine's (Engine#turn_state): records
+    #   activity
+    # @param question_desk [QuestionDesk] the Engine's (Engine#question_desk):
+    #   holds the question
     # @param event_log [SessionObserver] the Engine's event log: announces, under its lock
     # @param turn_flow [TurnFlow] owns the offer
     # @param run_turn [#call] (prompt, **turn_args, &block) the worker's
@@ -42,10 +47,12 @@ module Samagotchi
     # +participant_refused+ (author → reason or nil): why a participant's
     # turn may no longer run ("revoked", "outdated", "cap_reached": Worker's check).
     # @param save [#call] saves the session (a refused Continue's Stop)
-    def initialize(engine:, event_log:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
+    def initialize(engine:, event_log:, turn_state:, question_desk:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
                    save: -> {})
       @engine = engine
       @event_log = event_log
+      @turn_state = turn_state
+      @question_desk = question_desk
       @save = save
       @turn_flow = turn_flow
       @run_turn = run_turn
@@ -86,7 +93,7 @@ module Samagotchi
         @turn_flow.drop_offer!
         @event_log.announce(type: :continue_resolved, decision: "dropped", client_id: origin.client_id)
       end
-      @engine.record_activity
+      @turn_state.record_activity
     end
 
     # Whether a command's +result+ answered the offer that was pending
@@ -132,7 +139,7 @@ module Samagotchi
 
       # An offer answered without a turn ("no") is activity: the recap
       # written at the offer (it says the turn stopped) gets rewritten.
-      @engine.record_activity unless result.resume
+      @turn_state.record_activity unless result.resume
     end
 
     # The continue offer was answered yes: resume the conversation without a
@@ -192,7 +199,7 @@ module Samagotchi
       return unless @asked
 
       @asked = false
-      @engine.withdraw_question(reason)
+      @question_desk.withdraw(reason)
     end
 
     private
@@ -245,8 +252,8 @@ module Samagotchi
       return unless awaiting?
 
       @asked = true
-      @engine.post_question(question_fields(@turn_flow.offer), on_answer: method(:answered),
-                                                               on_superseded_close: method(:ask))
+      @question_desk.post(question_fields(@turn_flow.offer), on_answer: method(:answered),
+                                                             on_superseded_close: method(:ask))
     end
 
     def question_fields(offer)

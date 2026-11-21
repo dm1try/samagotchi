@@ -32,7 +32,8 @@ RSpec.describe Samagotchi::ContinueOffer do
     end
   end
   let(:continue_offer) do
-    described_class.new(engine: engine, event_log: engine.event_log, turn_flow: turn_flow, run_turn: run_turn, max_iterations: ->(_) { 100 },
+    described_class.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                        question_desk: engine.question_desk, turn_flow: turn_flow, run_turn: run_turn, max_iterations: ->(_) { 100 },
                         queue_command: ->(line, client_id:) { queued << [line, client_id] })
   end
 
@@ -126,7 +127,8 @@ RSpec.describe Samagotchi::ContinueOffer do
 
   it "resumes the run the offer's turn started (TurnFlow#resume_from), so the Continue keeps its reasoning" do
     args = nil
-    offer = described_class.new(engine: engine, event_log: engine.event_log, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args = a },
+    offer = described_class.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                                question_desk: engine.question_desk, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args = a },
                                 max_iterations: ->(_) { 100 })
 
     offer.run_continue_turn(command_from("web:2"))
@@ -137,7 +139,8 @@ RSpec.describe Samagotchi::ContinueOffer do
   describe "the offer turn's enqueued_id" do
     let(:args) { {} }
     let(:recording) do
-      described_class.new(engine: engine, event_log: engine.event_log, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+      described_class.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                          question_desk: engine.question_desk, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
                           max_iterations: ->(_) { 100 })
     end
 
@@ -164,7 +167,8 @@ RSpec.describe Samagotchi::ContinueOffer do
     it "doesn't continue a participant's turn they may no longer run (revoked, at the cap)" do
       session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
                                                    author: "p:p_0123abcd")
-      refusing = described_class.new(engine: engine, event_log: engine.event_log, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+      refusing = described_class.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                                     question_desk: engine.question_desk, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
                                      max_iterations: ->(_) { 100 },
                                      participant_refused: ->(author) { "revoked" if author == "p:p_0123abcd" })
       allow(turn_flow).to receive(:abort_continue!)
@@ -187,7 +191,8 @@ RSpec.describe Samagotchi::ContinueOffer do
                                                    author: "p:p_0123abcd")
       announced = []
       engine.event_log.subscribe(observer: ->(event) { announced << event })
-      refusing = described_class.new(engine: engine, event_log: engine.event_log, turn_flow: real_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+      refusing = described_class.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                                     question_desk: engine.question_desk, turn_flow: real_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
                                      max_iterations: ->(_) { 100 }, participant_refused: ->(_) { "revoked" })
       refusing.send(:ask)
       expect(engine.pending_question).not_to be_nil

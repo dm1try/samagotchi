@@ -745,9 +745,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
-      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0, messages_checkpoint: [])
-      allow(engine).to receive(:claim_enqueued_id).and_return(true)
-      allow(engine).to receive(:finish_enqueued_id)
+      allow(engine).to receive_messages(messages_checkpoint: [])
       expect do
         Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
       end.to raise_error(SystemExit)
