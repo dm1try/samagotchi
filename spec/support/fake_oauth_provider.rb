@@ -16,7 +16,7 @@ require "webrick"
 # each token's life; +refresh_answer+, when set, answers the next
 # refresh_token grants ({status:, json:}). Tokens are ACCESS-1, ACCESS-2…
 # and REFRESH-1… #valid?(token) says whether the MCP server should take
-# one. Wrap examples in FakeProviderServer.without_webmock.
+# one; #expire! makes it stop. Wrap examples in FakeProviderServer.without_webmock.
 class FakeOAuthProvider
   Seen = Data.define(:verb, :path, :params)
 
@@ -53,6 +53,9 @@ class FakeOAuthProvider
   def requests = @mutex.synchronize { @requests.dup }
   def grants = requests.select { |r| r.path == "/token" }.map { |r| r.params["grant_type"] }
   def valid?(token) = @mutex.synchronize { @access.include?(token) }
+
+  # The MCP server no longer takes +token+ (it ran out early).
+  def expire!(token) = @mutex.synchronize { @access.delete(token) }
 
   private
 

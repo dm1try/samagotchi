@@ -49,6 +49,9 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       token_answers.shift || if form["grant_type"] == "authorization_code" && form["code"] == "AUTH-CODE-1"
                                { json: { access_token: "ACCESS-TOKEN-1", token_type: "bearer", refresh_token: "REFRESH-TOKEN-1",
                                          expires_in: 3600 } }
+                             elsif form["grant_type"] == "refresh_token" && form["refresh_token"] == "REFRESH-TOKEN-1"
+                               { json: { access_token: "ACCESS-TOKEN-2", token_type: "Bearer", refresh_token: "REFRESH-TOKEN-2",
+                                         expires_in: 3600 } }
                              else
                                { status: 400, json: { error: "invalid_grant" } }
                              end
@@ -385,6 +388,23 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(listing).to start_with("**linear**: needs sign-in")
     end
 
+    it "fails a renew with a line naming the store when the store is busy, the token untouched" do
+      oauth = bundle.namespace::Plugin::OAuth
+      kept = JSON.generate(access_token: "ACCESS-TOKEN-1", refresh_token: "REFRESH-TOKEN-1", resource: url,
+                           token_endpoint: "#{issuer}/token")
+      secrets = instance_double(Samagotchi::Plugin::Secrets, get: kept)
+      allow(secrets).to receive(:update)
+        .and_raise(Samagotchi::Plugin::Secrets::Busy, "secret #{secrets_name} is held by another process (waited 18 s)")
+      token = oauth::Token.new(secrets: secrets, resource: url, http: bundle.plugin.instance_variable_get(:@ctx).http)
+
+      expect(token.call).to eq("ACCESS-TOKEN-1")
+      expect { token.refresh_token!("ACCESS-TOKEN-1") }
+        .to raise_error(bundle.namespace::Plugin::Client::Unavailable,
+                        "the sign-in can't be renewed: secret #{secrets_name} is held by another process (waited 18 s)")
+      expect(token.call).to eq("ACCESS-TOKEN-1")
+      expect(requests_to("#{issuer}/token")).to be_empty
+    end
+
     it "is used by a later session at once" do
       bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", resource: url) })
 
@@ -406,9 +426,13 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
   it "never puts a token, a code, a verifier, a client secret or the authorize address in a log line, card or notice" do
     flow = signed_in!
     exchange = form(requests_to("#{issuer}/token").first)
+    valid.replace(["ACCESS-TOKEN-2"]) # a 401: one renew, the request again
+    server = bundle.plugin.instance_variable_get(:@servers).first
+    expect(server.client.request("tools/list", nil, timeout: 5)["tools"].size).to eq(2)
+    expect(form(requests_to("#{issuer}/token").last)).to include("grant_type" => "refresh_token", "resource" => url)
     bundle.command("/mcp logout linear")
-    secrets = ["ACCESS-TOKEN-1", "REFRESH-TOKEN-1", "AUTH-CODE-1", exchange["code_verifier"], query(flow)["state"],
-               query(flow)["code_challenge"]]
+    secrets = ["ACCESS-TOKEN-1", "REFRESH-TOKEN-1", "ACCESS-TOKEN-2", "REFRESH-TOKEN-2", "AUTH-CODE-1", exchange["code_verifier"],
+               query(flow)["state"], query(flow)["code_challenge"]]
 
     shown = bundle.cards.map { |c| [c[:title], c[:body]].join(" ") } + bundle.notices.map(&:text) + logged
     secrets.each { |secret| expect(shown.grep(/#{Regexp.escape(secret)}/)).to eq([]), "#{secret} shown" }

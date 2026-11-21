@@ -58,6 +58,10 @@ class Plugin
       def self.for(seconds) = new(seconds, Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
 
       def left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # The same budget, +seconds+ later: time it doesn't count (a sign-in
+      # renewing, OAuth::Token: its own deadline).
+      def later(seconds) = with(deadline: deadline + seconds)
     end
 
     # HttpClient's token: for a server with no token (nil) or a static one
@@ -211,11 +215,16 @@ class Plugin
     end
 
     # One message on the wire, and its answer, in what is left of +budget+.
+    # A 401 to a token it sent renews the token once (#refresh_token!) and
+    # sends the message again; the time a renew takes, before the message or
+    # after its 401, isn't the budget's.
     # @return [Hash, nil] the result (nil for a notification)
-    def post(method, params, budget, cancelled, notification: false, session: false)
+    def post(method, params, budget, cancelled, notification: false, session: false, renewed: false)
       id = notification ? nil : @mutex.synchronize { @next_id += 1 }
       message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
+      asked = monotonic
       headers = headers_for(method, params)
+      budget = budget.later(monotonic - asked)
       raise Client::Timeout, timed_out(method, budget) if (left = budget.left) <= 0
 
       timer = Samagotchi::CancellationController.new
@@ -226,6 +235,15 @@ class Plugin
           answer(res, id)
         end
       end
+    rescue Refused => e
+      sent = headers&.fetch("Authorization", nil)&.delete_prefix("Bearer ")
+      raise unless e.status == 401 && sent && !renewed
+
+      asked = monotonic
+      raise unless @token.refresh_token!(sent)
+
+      @log.call("token_renewed")
+      post(method, params, budget.later(monotonic - asked), cancelled, notification: notification, session: session, renewed: true)
     rescue Samagotchi::Plugin::HttpCancelled
       raise Client::Timeout, timed_out(method, budget) if timer&.reason == :budget
 
@@ -376,6 +394,8 @@ class Plugin
     end
 
     def content_type(res) = res.headers["content-type"].to_s.split(";").first.to_s.strip.downcase
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     def timed_out(method, budget) = "#{method} timed out after #{format("%g", budget.seconds)}s"
   end

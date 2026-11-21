@@ -579,14 +579,27 @@ class Plugin
     # beside StaticToken): the kept sign-in for this url (ctx.secrets,
     # OAuth.token_name), read once per worker into memory and again while
     # there is none. A kept token whose resource isn't this url is never
-    # sent. Safe from several threads (one Mutex over what it holds).
+    # sent. It renews itself when it runs out within AHEAD seconds, and on
+    # HttpClient's 401 (#refresh_token!). Safe from several threads: one
+    # Mutex over what it holds, one more so a worker renews once at a time;
+    # across workers, the secret's lock.
     class Token
+      # Renewed when it runs out within this many seconds (or half its life,
+      # if that is shorter: a token for a minute isn't renewed at each request).
+      AHEAD = 60
+      # The renew request's whole time (by the clock, its own controller:
+      # never the turn's, a Stop would lose a rotated refresh token) and the
+      # wait for another worker's renew: above that request's, and at most
+      # 30 s together, outside the call's own timeout.
+      RENEW_SECONDS = 12
+      RENEW_LOCK = 18
+
       # The JSON value kept for a sign-in.
       def self.record(answer, provider:, registration:, resource:, now: Time.now.to_i)
         expires_in = Integer(answer["expires_in"], exception: false) if answer.key?("expires_in")
         { access_token: answer["access_token"],
           refresh_token: answer["refresh_token"].is_a?(String) ? answer["refresh_token"] : nil,
-          expires_at: expires_in&.positive? ? now + expires_in : nil,
+          expires_at: expires_in&.positive? ? now + expires_in : nil, issued_at: now,
           scope: answer["scope"].is_a?(String) ? answer["scope"] : provider.scope,
           issuer: provider.issuer, token_endpoint: provider.token_endpoint, revocation_endpoint: provider.revocation_endpoint,
           client_id: registration.client_id, client_secret: registration.kind == :dcr ? registration.client_secret : nil,
@@ -596,11 +609,20 @@ class Plugin
       # @param secrets [#get, #update, #delete] ctx.secrets
       # @param resource [String, nil] the server's canonical url (nil: one
       #   that can't sign in, a url with a query: never a token)
-      def initialize(secrets:, resource:)
+      # @param http [#stream, nil] ctx.http, for renewing (nil: never renews)
+      # @param client_secret [#call] → the configured client's secret, nil
+      # @param log [#call] (event, fields)
+      # @param clock [#call] → now, epoch seconds
+      def initialize(secrets:, resource:, http: nil, client_secret: -> {}, log: ->(*) {}, clock: -> { Time.now.to_i })
         @secrets = secrets
         @resource = resource
         @name = resource && OAuth.token_name(resource)
+        @http = http
+        @client_secret = client_secret
+        @log = log
+        @clock = clock
         @mutex = Mutex.new
+        @renewing = Mutex.new
         @held = nil
       end
 
@@ -608,12 +630,66 @@ class Plugin
 
       def pretty_print(printer) = printer.text(inspect)
 
-      # @return [String, nil] the access token, nil when there is no sign-in
-      # @raise [Client::Unavailable] the store can't be read
-      def call = held&.fetch("access_token")
+      # The access token, renewed first when it runs out within AHEAD
+      # seconds (one that can't be renewed now is still sent while it holds).
+      # @return [String, nil] nil when there is no sign-in
+      # @raise [NeedsSignIn] renewing was refused; [Client::Dead] it failed
+      #   and the token ran out; [Client::Unavailable] the store failed
+      def call
+        current = held
+        return nil unless current
 
-      # @return [Boolean] whether there is a new token to try (O2)
-      def refresh_token!(_sent = nil) = false
+        expires_at = current["expires_at"]
+        if expires_at.is_a?(Integer) && expires_at - @clock.call < ahead(current) && current["refresh_token"] && @http
+          begin
+            refresh_token!(current["access_token"])
+          rescue NeedsSignIn
+            raise
+          rescue Client::Error
+            raise if expires_at <= @clock.call
+          end
+          current = held
+        end
+        current&.fetch("access_token")
+      end
+
+      # Renew the token +sent+ (the one a 401 refused; nil: the one held),
+      # under the secret's lock: another worker that renewed it already
+      # gave the store a newer token, taken with no request; else a
+      # refresh_token grant at the kept token endpoint, the new token kept
+      # (and the new refresh token, else the old).
+      # @return [Boolean] true: a new token to try
+      # @raise [NeedsSignIn] no refresh token, or the provider refused it
+      #   (invalid_grant): the kept sign-in is deleted; [Client::Dead] the
+      #   provider can't be reached or failed: the token is kept
+      def refresh_token!(sent = nil)
+        return false unless @name && @http
+
+        @renewing.synchronize do
+          known = @mutex.synchronize { @held }
+          return true if sent && known && known["access_token"] != sent # this worker renewed it meanwhile
+
+          stale = sent || known&.fetch("access_token")
+          outcome = nil
+          @secrets.update(@name, timeout: RENEW_LOCK) do |old|
+            stored = parse(old)
+            if stored.nil? || stored["resource"] != @resource
+              outcome = :gone
+              next old
+            end
+            if stored["access_token"] != stale
+              outcome = :taken
+              @mutex.synchronize { @held = stored }
+              next old
+            end
+            outcome, value = renewed(stored)
+            next value
+          end
+          settle(outcome)
+        end
+      rescue Samagotchi::Plugin::Secrets::Unavailable, Samagotchi::Plugin::Secrets::Busy => e
+        raise Client::Unavailable, "the sign-in can't be renewed: #{e.message}"
+      end
 
       # Forget what it holds: the next #call reads the store (a new sign-in,
       # a sign-out).
@@ -632,17 +708,83 @@ class Plugin
         @mutex.synchronize { @held ||= read }
       end
 
+      def ahead(record)
+        life = record["expires_at"] - record["issued_at"] if record["issued_at"].is_a?(Integer)
+        life ? [AHEAD, life / 2].min : AHEAD
+      end
+
       def read
         return nil unless @name
 
-        value = JSON.parse(@secrets.get(@name).to_s)
-        return nil unless value.is_a?(Hash) && value["resource"] == @resource && value["access_token"].is_a?(String)
+        value = parse(@secrets.get(@name))
+        return nil unless value && value["resource"] == @resource
 
         value
-      rescue JSON::ParserError
-        nil
       rescue Samagotchi::Plugin::Secrets::Unavailable, Samagotchi::Plugin::Secrets::Busy => e
         raise Client::Unavailable, "the sign-in can't be read: #{e.message}"
+      end
+
+      def parse(text)
+        value = text && JSON.parse(text)
+        value.is_a?(Hash) && value["access_token"].is_a?(String) ? value : nil
+      rescue JSON::ParserError
+        nil
+      end
+
+      # Inside the secret's lock: the refresh_token grant.
+      # @return [Array(Symbol, String|nil)] the outcome and what the store keeps
+      def renewed(stored)
+        return [:refused, nil] unless stored["refresh_token"].is_a?(String)
+
+        status, answer = grant(stored)
+        if status.between?(200, 299) && answer && answer["access_token"].is_a?(String) &&
+           answer["token_type"].to_s.casecmp?("bearer")
+          expires_in = Integer(answer["expires_in"], exception: false)
+          fresh = stored.merge("access_token" => answer["access_token"],
+                               "refresh_token" => answer["refresh_token"].is_a?(String) ? answer["refresh_token"] : stored["refresh_token"],
+                               "expires_at" => expires_in&.positive? ? @clock.call + expires_in : nil, "issued_at" => @clock.call)
+          fresh["scope"] = answer["scope"] if answer["scope"].is_a?(String)
+          @mutex.synchronize { @held = fresh }
+          @log.call("oauth_renewed", where: OAuth.origin(stored["token_endpoint"]))
+          return [:renewed, JSON.generate(fresh)]
+        end
+        error = answer.is_a?(Hash) ? OAuth.plain(answer["error"], 64) : ""
+        @log.call("oauth_not_renewed", where: OAuth.origin(stored["token_endpoint"]), status: status, error: error)
+        return [:refused, nil] if error == "invalid_grant"
+
+        @failure = error.empty? ? "HTTP #{status}" : error
+        [:failed, JSON.generate(stored)]
+      rescue Refusal => e
+        @log.call("oauth_not_renewed", where: OAuth.origin(stored["token_endpoint"]), error: "unreachable")
+        @failure = e.message
+        [:failed, JSON.generate(stored)]
+      end
+
+      # The grant, on a controller of its own cancelled after RENEW_SECONDS.
+      def grant(stored)
+        form = { grant_type: "refresh_token", refresh_token: stored["refresh_token"], client_id: stored["client_id"],
+                 resource: @resource, client_secret: stored["client_secret"] || @client_secret.call }.compact
+        cancel = Samagotchi::CancellationController.new
+        timer = Thread.new do
+          sleep(RENEW_SECONDS)
+          cancel.cancel!(:budget)
+        end
+        local = OAuth.loopback_host?(URI.parse(@resource).host)
+        Wire.new(http: @http, local: local, cancel: cancel)
+            .post(stored["token_endpoint"], URI.encode_www_form(form), "application/x-www-form-urlencoded",
+                  "the token endpoint", timeout: RENEW_SECONDS)
+      ensure
+        timer&.kill&.join
+      end
+
+      def settle(outcome)
+        case outcome
+        when :taken, :renewed then true
+        when :failed then raise Client::Dead, "its sign-in couldn't be renewed (#{@failure})"
+        else
+          forget
+          raise NeedsSignIn
+        end
       end
     end
   end
