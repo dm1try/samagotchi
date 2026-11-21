@@ -93,18 +93,24 @@ thinking off, 25 s, 6,000 tokens out. It shows as `block-fix` in `/stats`' side 
 off at its limit, empty, the same block, or over 16 KB, and a `chi-ui` fix must parse (`BlockFix.check`). Any other
 language passes: only the page can draw it.
 
-**Where the block is** (`BlockFix.locate`, `replace`): commonmarker, the page's render's parser (`MarkdownParser` loads
-it for the render and the worker), walks the `code_block` nodes; the first in that language whose normalised source is
-the block's is the one, and its `source_position` gives its body's lines. `replace` keeps the fence lines and gives each
+**Where the block is** (`BlockFix.locate`, `locate_all`, `replace`, `replace_all`): commonmarker, the page's render's
+parser (`MarkdownParser` loads it for the render and the worker), walks the `code_block` nodes; each in that language
+whose normalised source is the block's is a copy of it (an answer may repeat a block: a fix patches every copy, so none
+is left to fail and be asked for again), and its `source_position` gives its body's lines. `replace` keeps the fence lines and gives each
 new line the old body's indent (a list item's) and the text's own line ends. A block in a blockquote isn't fixed (its
 lines carry `> `). A block's identity is `BlockFix.key`: SHA-256 of the language and the normalised source, 32 hex
 characters.
 
 **The route's answers** (`Engine#fix_block`): 409 `fix_unavailable` (no session, a scratch one, no commonmarker), 413
-`block_too_large` (over 16 KB), 409 `block_not_found` (the source isn't a block of that turn's answer:
-`AnswerTail.find` by turn id), 200 with the stamp's state when the answer's stamp knows the block (a block that is a
-fix and fails again: `failed`), 202 `running` while it is asked, 429 `fix_busy` past 2 in flight. The answer is resolved
-once, there: the result carries its **anchor** (its index in the conversation, its digest as `Bridge::TurnDrawings`
+`block_too_large` (over 16 KB), then the turn's answer (`AnswerTail.find` by turn id; none: 409 `block_not_found`) and
+**its stamp before its text**: 200 with the stamp's state when the stamp knows the block, even when the block is no
+longer in the answer (a page that drew the answer before its fix, a second tab: `fixed`, and it reads the answer
+again); a block that is a fix and fails again, or a `fixed` block still in the shown text (a copy no fix reached),
+answers `failed`, never `fixed`, so a page can't redraw and ask again. Then 409 `block_not_found` (the source isn't a
+block of the answer), 202 `running` while that answer's block is asked (in flight per answer and block: the same block
+in a newer answer is that answer's own ask), 429 `fix_limit` past 2 blocks of one answer (`BlockFix::PER_ANSWER`: its
+stamp and its asks in flight or waiting, so a reload's page can't ask for a third), 429 `fix_busy` past 2 in flight
+(`MAX_RUNNING`). The answer is resolved once, there: the result carries its **anchor** (its index in the conversation, its digest as `Bridge::TurnDrawings`
 computes one, and the turn counter: `Engine#turn_messages` counts each turn).
 
 **The write: on the worker's loop, between turns, never from the request's thread.** A running turn holds its own copy
@@ -117,15 +123,22 @@ outcomes:
   `/continue no` land after an answer without a request, so "the last message" isn't the test): its `content` is
   patched, its `display` too when a hook set one, and on `api: anthropic` its saved blocks (`anthropic_content`, which
   `AnthropicWire#assistant_blocks` sends as they are): the text block that holds the block whole, else the blocks are
-  dropped and the answer goes as its text. A thinking block is never touched. The next turn sends the patched answer.
+  dropped and the answer goes as its text. A thinking block is never touched (with the blocks dropped, the answer's
+  thinking blocks go with them: the `thinking` text stays on the message, a final answer with no `tool_use` is valid
+  without them, and `ReasoningHistory.earlier_thought?` reads `thinking` too). The next turn sends the patched answer.
   A fix asked as its own turn ends (the page asks on the end event, before the turn's hooks are done) counts as no turn
   since.
 - **A turn started since** (or was running at the ask): only `display` (`AnswerDisplay::KEY`, what the page renders in
   place of `content`; never sent to a model). No message a model has been sent is rewritten, so no prompt cache is
   invalidated.
-- **The answer or the block is gone** (its digest changed: a rollback, a new text; the turn id now names another
-  answer: a reminder turn's id names no prompt, so it falls back to the newest answer): the fix is dropped
-  (`state: "dropped"`).
+- **The answer is still there but the fix can't land** (the block left its shown text, say a hook's new display; or the
+  patched display would pass `AnswerDisplay::MAX_CHARS`, on either path): the block is stamped `failed` with the
+  reason ("the answer changed", "the fix is too long"), so a reload doesn't ask again.
+- **The answer is gone** (its digest changed: a rollback, a new text; the turn id now names another answer: a reminder
+  turn's id names no prompt, so it falls back to the newest answer): the fix is dropped (`state: "dropped"`), no stamp.
+
+A fix in an answer's text moves its digest; the engine keeps the move (`@block_fix_moved`), so the answer's other
+block, asked before that fix landed, still finds its answer (and its event's `was_digest` is the digest it patched).
 
 A failed ask stamps the answer only. Each outcome is one `Log.info(:model, "block_fix_<state>", lang:, key:, bytes:, ms:,
 landed:, reason:)` line (never the source) and one `:block_fix` event (`turn_id`, `key`, `lang`, `state`, `landed`,
@@ -146,8 +159,10 @@ marked fixable; a failure that isn't the model's (the renderer didn't load, a ha
 too large) keeps today's line, with no button. In the newest answer the line reads "· asking for a fix…" with a
 pulsing dot; the fixed block draws as any block, with "Drawn after a fix" under it. A fix that didn't help says so
 with an **Ask in chat** button (it fills the composer with "The X block in your answer didn't draw: reason. Please
-send it again, corrected."; never sends), as does an older answer's failed block and an answer's third. A worker
-without the feature: "· restart this session to fix". The terminal and a participant's page show nothing new.
+send it again, corrected."; never sends), as does an older answer's failed block and an answer's third. A live worker
+without the feature (`workerPredates`, with the store's `bridgeUp`): "· restart this session to fix"; a worker that
+isn't up is asked, and chi web's 503 `not_live` gives the plain line. An answer is read again at most once per block
+for the page's life, so a copy still failing after the redraw says a fix didn't help. The terminal and a participant's page show nothing new.
 
 **The turn's drawing.** A patched `content` changes the digest the turn's drawing line ends on (`TurnDrawings#holds?`),
 so the Bridge's `TurnDrawings` (an observer of `:block_fix` with `landed: "answer"`) writes that turn's line again with
