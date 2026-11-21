@@ -524,7 +524,14 @@ RSpec.describe Samagotchi::IdleClient do
 
     it "keeps an answer cut off by the limit, marked with …" do
       reply(content: "It started to say something and", finish_reason: "length")
-      expect(client.ask([{ role: "user", content: "q" }]).text).to eq("It started to say something and…")
+      answer = client.ask([{ role: "user", content: "q" }])
+      expect(answer.text).to eq("It started to say something and…")
+      expect(answer.cut_off).to be(true)
+    end
+
+    it "says an answer that finished wasn't cut off" do
+      reply(content: "Done.")
+      expect(client.ask([{ role: "user", content: "q" }]).cut_off).to be(false)
     end
 
     it "raises RequestCancelled for a cancelled controller, and sends nothing" do

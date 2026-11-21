@@ -102,8 +102,9 @@ module Samagotchi
       # refused thinking-off, holds for the next request); the session's id
       # goes with the request. Its usage counts in the session's side line
       # (#note_side_usage) under +source+, the asking bundle's name.
-      # @return [String] the answer
-      def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil)
+      # @param whole [Boolean] return the IdleClient::Summary (its cut_off)
+      # @return [String, IdleClient::Summary] the answer
+      def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil, whole: false)
         target = model.nil? ? session_model_recap_target : configured_side_target(model)
         client = side_model_client(target, timeout)
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -111,7 +112,7 @@ module Samagotchi
                                      kind: source.to_s.empty? ? "ask" : source.to_s, on_usage: method(:note_side_usage))
         Log.info(:plugins, "ask_model", model: target.label, answer_model: answer.model, chars: answer.text.length,
                                         ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
-        answer.text
+        whole ? answer : answer.text
       end
       private :ask_side_model
 
