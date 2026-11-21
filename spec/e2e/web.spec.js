@@ -1608,13 +1608,16 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
   }
 });
 
-test("the info bar: a click on the id copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
+test("the info bar: a click on the id copies the full id; Delete in ⋯ shows one sheet naming the stopped delegate that goes, and its button deletes both with no browser dialog", async ({ page, script, chi }) => {
+  // A leftover confirm() or alert() fails the test (Playwright would dismiss it unseen).
+  page.on("dialog", (dialog) => { throw new Error(`unexpected dialog: ${dialog.type()} ${dialog.message()}`); });
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
   await expect(stripCard).toBeVisible();
+  const kid = seedDelegate(chi, id, { tag: "Sheet" });
 
   // What the id hands the clipboard (headless Chromium's own clipboard
   // needs a permission grant and focus).
@@ -1628,14 +1631,26 @@ test("the info bar: a click on the id copies the full id, delete removes the ses
   await expect(page.locator("#toast")).toContainText("Session id copied");
   expect(await page.evaluate(() => window.__copied)).toEqual([id]);
 
-  let confirmText = null;
-  page.once("dialog", (dialog) => { confirmText = dialog.message(); dialog.accept(); });
-  const deleted = page.waitForResponse((res) => res.url().includes(id) && res.request().method() === "DELETE");
-  // Delete is ⋯'s alone (never on the row): its action clicks the bar's button.
+  // Delete is ⋯'s alone (never on the row): the panel turns into the sheet.
   expect(await barItemOnRow(page, "delete")).toBe(false);
   await clickBarItem(page, "delete");
-  expect((await deleted).ok()).toBe(true);
-  expect(confirmText).toContain(`Delete session ${id.slice(0, 8)}`);
+  const sheet = page.locator("#moreSheet .delete-sheet");
+  await expect(sheet.locator(".ds-title")).toContainText(`Delete ${id.slice(0, 8)}`);
+  const goes = sheet.locator('.ds-group[data-group="goes"]');
+  await expect(goes).toContainText("1 stopped delegate");
+  await expect(goes).toContainText(kid.id.slice(0, 8));
+  const button = sheet.locator('[data-act="del:this"]');
+  await expect(button).toHaveText("Delete · 2 sessions");
+  // Drawn after the plan was read, so the tap that opened it is long done:
+  // it stayed open (no click-outside close inside More's click).
+  await expect(sheet).toBeVisible();
+
+  const deleted = page.waitForResponse((res) => res.url().includes(id) && res.request().method() === "DELETE");
+  await button.click();
+  const answer = await (await deleted).json();
+  expect(answer.deleted.sort()).toEqual([id, kid.id].sort());
+  await expect(page.locator("#toast")).toContainText(`Deleted ${id.slice(0, 8)} and 1 delegate`);
+  expect(fs.existsSync(path.join(chi.dirs.state, "samagotchi", "sessions", `${kid.id}.json`))).toBe(false);
   await expect(stripCard).toHaveCount(0);
   await expect(page).not.toHaveURL(new RegExp(id));
   // The start page: no bar, and ⋯'s menu closed with it.
