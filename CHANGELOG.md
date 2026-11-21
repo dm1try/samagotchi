@@ -63,6 +63,8 @@ and commands may change between minor versions. How releases are made:
   that names the outcome (no browser dialog, no second ask). Archive asks in the same sheet when background tasks still
   run, or says why it can't archive now. The tap stops only the tasks the sheet named.
 - In the picture viewer, a double tap whose finger moved a little (up to 10 px) now counts as one.
+- `chi bundle install` and `chi bundle upgrade` (`--dry-run` too) start with the bundle's version: `mcp 0.8.0 → 0.9.0`
+  when it changes, `mcp 0.9.0` when it doesn't, and `mcp 0.9.0 (already current)` when the upgrade has nothing to write.
 
 ## [0.182.0] - 2026-11-21
 
