@@ -238,6 +238,17 @@ test("case 14: the toast after a delete: what went, what was stopped, what stays
   assert.equal(deleteToast("chain", chain, newest(), B).text, "Deleted the chain: 3 sessions and 4 delegates · r1 keeps running.");
 });
 
+test("the toast counts only the delegates still running: a stopped one under a running delegate stays with it, unsaid", () => {
+  // left_running is the running delegates with their subtrees; the plan marks the stopped ones.
+  const under = plain({ delegates: { delete: [], leave: [{ id: R1, running: true }, { id: D1, running: false }] } });
+  assert.deepEqual(deleteToast("this", { deleted: [S], left_running: [R1, D1] }, under, S),
+                   { text: "Deleted ab12cd34 · 5c1b22e0 keeps running", back: R1 });
+  const chainPlan = newest();
+  chainPlan.chain.delegates = { delete: [], leave: [{ id: R1, running: true }, { id: D1, running: false }] };
+  assert.deepEqual(deleteToast("chain", { deleted: ["l1", "l2", "l3"], left: [], left_running: [R1, D1] }, chainPlan, B),
+                   { text: "Deleted the chain: 3 sessions · 5c1b22e0 keeps running.", back: R1 });
+});
+
 test("isChained is kept for an older cached page: it still says which sessions are in a chain", () => {
   assert.equal(isChained({ id: B, continues: A }, []), true);
   assert.equal(isChained({ id: A }, [{ id: B, continues: A }]), true);
