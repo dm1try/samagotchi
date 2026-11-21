@@ -456,7 +456,8 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
 
     it "is in the repo at the address the plugin's constant names, a loopback redirect with any port, no localhost" do
       expect(document["client_id"]).to eq(bundle.namespace::Plugin::CLIENT_METADATA_DOCUMENT)
-      expect(document["client_id"]).to start_with("https://").and(end_with("/oauth/client.json"))
+      # The address Pages serves without a redirect (github.io 301s to the custom domain).
+      expect(document["client_id"]).to eq("https://dmitry.it/samagotchi/oauth/client.json")
       expect(document).to include("client_name" => "chi", "redirect_uris" => ["http://127.0.0.1/callback"],
                                   "grant_types" => %w[authorization_code refresh_token], "response_types" => ["code"],
                                   "token_endpoint_auth_method" => "none")

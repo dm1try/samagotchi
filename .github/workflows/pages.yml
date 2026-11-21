@@ -1,6 +1,7 @@
 name: Pages
 
-# Publishes pages/ to GitHub Pages (https://dm1try.github.io/samagotchi/):
+# Publishes pages/ to GitHub Pages, served at https://dmitry.it/samagotchi/
+# (the owner's custom domain; dm1try.github.io redirects there):
 # pages/oauth/client.json is the mcp bundle's client id metadata document
 # (docs/bundles.md, client_metadata_url:). pages/.nojekyll keeps every file
 # served as-is. Branch-source Pages serves only / or /docs, hence a workflow.
