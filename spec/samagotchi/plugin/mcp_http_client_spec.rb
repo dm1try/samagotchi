@@ -187,8 +187,10 @@ RSpec.describe "The mcp bundle's HTTP client" do
         end
       end
       fake.stub(:delete, %r{/mcp}, status: 405)
+      # ctx.http's default cancel is a stopped turn's: the DELETE goes out all the same.
+      stopped = Samagotchi::CancellationController.new.tap(&:cancel!)
       faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
-                                    http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
+                                    http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake, cancel_lookup: -> { stopped }))
       faked.handshake(timeout: 5, cancelled: nil)
 
       expect(faked.close).to be_nil
@@ -244,6 +246,41 @@ RSpec.describe "The mcp bundle's HTTP client" do
       expect(raised).to eq([[client_class::Refused, "refused (403)"],
                             [errors::Unavailable, "redirected (307) to https://other.example:8443: set url: to the new address"],
                             [client_class::RpcError, "boom (-32000)"], [errors::Unavailable, "HTTP 502"]])
+    end
+
+    it "words a redirect whose Location isn't a URL without it (it may be a signed URL)" do
+      fake = Samagotchi::Testing::FakeHttp.new
+      fake.stub(:post, %r{/mcp}, status: 302, headers: { "Location" => "http://[bad/x?k=QUERY-SECRET" })
+      faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
+                                    http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
+
+      # discover's 302 falls to legacy; initialize's is the error.
+      expect { faked.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "redirected (302): set url: to the new address")
+      expect(fake.requests.size).to eq(2)
+    end
+
+    it "reads at most 64 KB of a JSON error body: past them it is a bare status, at once" do
+      modern_discover
+      client.handshake(timeout: 5, cancelled: nil)
+      big = %({"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"#{"x" * 70_000}"}})
+      server.enqueue("/mcp", status: 500, sse: [big], headers: { "Content-Type" => "application/json" }, hold: true)
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { client.request("tools/list", nil, timeout: 3) }.to raise_error(errors::Unavailable, "HTTP 500")
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.5, below: 3)
+    ensure
+      server.release
+    end
+
+    context "with an authorization header of the config's own, in any case" do
+      let(:headers) { { "authorization" => "Bearer HEADER-SECRET" } }
+
+      it "says a 401 refused it" do
+        server.enqueue("/mcp", status: 401, body: "")
+
+        expect { client.handshake(timeout: 5, cancelled: nil) }.to raise_error(errors::Unavailable, "refused the token (401)")
+      end
     end
 
     it "calls a server it can't reach Dead, naming host and port" do

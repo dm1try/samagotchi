@@ -154,6 +154,16 @@ RSpec.describe "The mcp bundle with a remote server" do
       end
     end
 
+    it "refuses a token with a line break (an env file saved with CRLF ends) as the call's error, sending nothing" do
+      with_env("FAKE_MCP_TOKEN" => "fake-token-1") { engine }
+      with_env("FAKE_MCP_TOKEN" => "fake-token-1\r\n") do
+        next_engine
+        expect(mcp("echo", { "text" => "x" }))
+          .to eq("Error: MCP server fake didn't connect: FAKE_MCP_TOKEN holds a line break: set it on one line")
+      end
+      expect(remote.rpc_methods.size).to eq(2)
+    end
+
     it "takes the token from the server's env: too" do
       fake["env"] = { "FAKE_MCP_TOKEN" => "fake-token-1" }
 
@@ -191,6 +201,13 @@ RSpec.describe "The mcp bundle with a remote server" do
         "headers: Authorization is chi's to set (bundles: mcp: servers: fake)",
       { "url" => "http://x/mcp", "headers" => { "X-A" => "a\nb" } } =>
         "headers: \"X-A\" must be a name and a one-line text value (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "headers" => { "Content-Length" => "3" } } =>
+        "headers: Content-Length is chi's to set (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "headers" => { "host" => "y" } } => "headers: host is chi's to set (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "headers" => { "Connection" => "close" } } =>
+        "headers: Connection is chi's to set (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "headers" => { "Transfer-Encoding" => "chunked" } } =>
+        "headers: Transfer-Encoding is chi's to set (bundles: mcp: servers: fake)",
       { "url" => "http://x/mcp", "headers" => { "X-A" => 1 } } =>
         "headers: \"X-A\" must be a name and a one-line text value (bundles: mcp: servers: fake)",
       {} => "no command (bundles: mcp: servers: fake: command: [...] or url: ...)"

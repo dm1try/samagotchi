@@ -74,7 +74,8 @@ bundles:
       github:
         url: https://api.githubcopilot.com/mcp/
         bearer_token_env: GITHUB_MCP_TOKEN     # sent as Authorization: Bearer <its value>
-        headers: {X-Example: "1"}              # optional, sent as given (not for secrets)
+        headers: {X-Example: "1"}              # optional, sent as given (not for secrets; not chi's own:
+                                               # Accept, Content-Type, Host, Content-Length, Mcp-*…)
         tools: [get_*, list_*]                 # tools, description, timeout, start: as for a local server
 ```
 
@@ -84,7 +85,9 @@ bundles:
   are the same. `/mcp` shows `connected (https://mcp.context7.com)` where a local one shows `running (pid N)`:
   the scheme, host and a non-default port only.
   - **A token:** `bearer_token_env` names the variable that holds it, looked up at each request (never kept or
-    saved): the server's `env:`, then the worker's environment. A worker has the environment of the chi that
+    saved): the server's `env:`, then the session's project env (its mise env, as `execute` commands get it), then
+    the worker's environment. A value with a line break (an env file saved with CRLF ends) is refused, and nothing
+    is sent. A worker has the environment of the chi that
     started it, so a new `export` needs a restarted worker (`chi sessions restart`). Keys belong there, not in the
     URL: the debug log's `http` line for each request keeps the URL's path (only the query is cut).
   - **What it says:** a 401 is `MCP server github didn't connect: needs a token (401): set bearer_token_env

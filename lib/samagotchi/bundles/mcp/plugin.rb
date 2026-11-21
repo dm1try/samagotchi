@@ -333,6 +333,8 @@ class Plugin
     ACCEPT = "application/json, text/event-stream"
     # How long #close's DELETE of a legacy session may take.
     CLOSE_TIMEOUT = 2
+    # The most of a JSON error answer read for its JSON-RPC error.
+    ERROR_BODY_BYTES = 64 * 1024
 
     # A JSON-RPC error answer: +code+ and +data+ for the handshake.
     class RpcError < Client::Error
@@ -446,7 +448,9 @@ class Plugin
     def close
       return nil unless @era == :legacy && @session_id
 
-      @http.request("DELETE", @url, headers: headers_for("DELETE", nil), timeout: CLOSE_TIMEOUT)
+      # A controller of its own: a cancelled turn's (ctx.http's default) would skip it.
+      @http.request("DELETE", @url, headers: headers_for("DELETE", nil), timeout: CLOSE_TIMEOUT,
+                                    cancel: Samagotchi::CancellationController.new)
       nil
     rescue Samagotchi::Plugin::HttpError, Client::Error => e
       @log.call("close_failed", error: e.class.name)
@@ -501,7 +505,7 @@ class Plugin
       budgeted(cancelled, timer, left) do
         @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: [left, 0.05].max, cancel: timer) do |res|
           @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
-          refuse(res, headers.key?("Authorization")) unless res.ok?
+          refuse(res, headers.keys.any? { |name| name.casecmp?("authorization") }) unless res.ok?
           answer(res, id)
         end
       end
@@ -590,23 +594,37 @@ class Plugin
     # JSON-RPC error.
     def refuse(res, token_sent)
       status = res.status
-      if status.between?(300, 399)
-        raise Client::Unavailable, "redirected (#{status}) to #{self.class.origin(URI.join(@url, res.headers["location"].to_s))}: " \
-                                   "set url: to the new address"
-      end
+      raise Client::Unavailable, "redirected (#{status})#{redirect_to(res)}: set url: to the new address" if status.between?(300, 399)
       raise Refused, token_sent ? "refused the token (401)" : "needs a token (401): set bearer_token_env (sign-in comes in a later chi)" if status == 401
       raise Refused, "refused (403)" if status == 403
       raise Expired, "the session expired (404)" if status == 404 && @era == :legacy && @session_id
 
-      if content_type(res) == "application/json"
-        message = begin
-          JSON.parse(res.body)
-        rescue JSON::ParserError, EncodingError
-          nil
-        end
-        raise RpcError, message["error"] if message.is_a?(Hash) && message["error"].is_a?(Hash) && message["error"].key?("code")
-      end
+      message = error_body(res) if content_type(res) == "application/json"
+      raise RpcError, message["error"] if message.is_a?(Hash) && message["error"].is_a?(Hash) && message["error"].key?("code")
+
       raise Client::Unavailable, "HTTP #{status}"
+    end
+
+    # " to <origin>" of a redirect's Location; "" when it has none or it
+    # isn't a URL (never the Location itself: it may be a signed URL).
+    def redirect_to(res)
+      location = res.headers["location"].to_s
+      location.empty? ? "" : " to #{self.class.origin(URI.join(@url, location))}"
+    rescue URI::Error
+      ""
+    end
+
+    # A JSON error body, read up to ERROR_BODY_BYTES (nil past them, or
+    # when it isn't JSON).
+    def error_body(res)
+      body = +"".b
+      res.each_chunk do |bytes|
+        body << bytes
+        break if body.bytesize > ERROR_BODY_BYTES
+      end
+      body.bytesize > ERROR_BODY_BYTES ? nil : JSON.parse(body.force_encoding(Encoding::UTF_8))
+    rescue JSON::ParserError, EncodingError
+      nil
     end
 
     def params_for(params)
@@ -790,7 +808,9 @@ class Plugin
   end
 
   # The headers chi sets itself on a remote server's requests.
-  OWN_HEADERS = %w[accept content-type mcp-protocol-version mcp-method mcp-name mcp-session-id].freeze
+  # The wire's own (host, content-length…) too: one set in config.yml would break every request.
+  OWN_HEADERS = %w[accept content-type mcp-protocol-version mcp-method mcp-name mcp-session-id
+                   host content-length connection transfer-encoding].freeze
 
   # Why the server's config can't start it, nil when it can.
   def config_error(server)
@@ -826,7 +846,8 @@ class Plugin
   end
 
   # A remote server's bearer token, looked up at each request (never
-  # kept): the env a stdio server would get, then the worker's.
+  # kept): the env a stdio server would get (its env:, then the project
+  # env: #server_env), then the worker's.
   def token_lookup(server)
     return -> {} unless server.token_env
 
@@ -834,6 +855,8 @@ class Plugin
       value = server_env(server)[server.token_env].to_s
       value = ENV[server.token_env].to_s if value.empty?
       raise HttpClient::Refused, "#{server.token_env} is not set" if value.empty?
+      # An env file saved with CRLF line ends; a header can't carry it.
+      raise HttpClient::Refused, "#{server.token_env} holds a line break: set it on one line" if value.match?(/[\r\n\0]/)
 
       value
     end
