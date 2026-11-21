@@ -887,3 +887,22 @@ test("a claim's jump to a quote in a drawn block's source shows it", async () =>
   assert.equal(how, "quote");
   assert.equal(pre.hidden, false);
 });
+
+test("a renderer's own refusal fails its block as fixable; a timeout or a picture too large doesn't", async () => {
+  const { FrameError } = await import("../../../lib/samagotchi/web/public/block_frame.js");
+  const refused = setup(answer(block("graph X")), { throwing: new FrameError("Parse error on line 1", { renderer: true }) });
+  await settle();
+  const pre = refused.root.querySelector("pre");
+  assert.equal(pre.dataset.blockFailed, "1");
+  assert.equal(pre.dataset.blockFixable, "1");
+  assert.equal(pre.dataset.blockReason, "Parse error on line 1");
+  document.body.innerHTML = "";
+  const timedOut = setup(answer(block("graph Y")), { throwing: new FrameError("timed out (render 1)", { timedOut: true }) });
+  await settle();
+  assert.ok(timedOut.root.querySelector("pre").dataset.blockFixable === undefined);
+  document.body.innerHTML = "";
+  const huge = setup(answer(block("graph Z")), { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 ${MAX_PICTURE_SIDE + 1}"></svg>` });
+  await settle();
+  assert.equal(huge.root.querySelector("pre").dataset.blockFailed, "1");
+  assert.ok(huge.root.querySelector("pre").dataset.blockFixable === undefined);
+});

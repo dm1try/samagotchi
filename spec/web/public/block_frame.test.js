@@ -109,7 +109,7 @@ test("the handshake: loaded, then the code in order, then ready; then renders an
   const svg = await frame.render("A", { name: "dark" }, { onStart: () => { started_ += 1; } });
   assert.equal(svg, "<svg>A</svg>");
   assert.equal(started_, 1);
-  await assert.rejects(frame.render("bad", {}), /nope/);
+  await assert.rejects(frame.render("bad", {}), (e) => /nope/.test(e.message) && e.renderer === true && !e.load);
   assert.equal(frame.dead(), false, "a renderer's error isn't the frame's end");
   assert.equal(await frame.render("C", {}), "<svg>C</svg>");
   frame.drop();
