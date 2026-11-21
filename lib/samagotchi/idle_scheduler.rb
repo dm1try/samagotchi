@@ -4,13 +4,13 @@ require "monitor"
 require_relative "log"
 
 module Samagotchi
-  # Shared background poller for all Engine-owned idle subsystems
-  # (currently: IdleReminders and the optional IdleRecap).
+  # Shared background poller for idle subsystems (currently: IdleReminders
+  # and the optional IdleRecap).
   #
   # Previously each subsystem ran its own 0.5s polling thread against the
   # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam.
   # Now a single thread steps every registered job in turn, so the whole
-  # idle layer polls the Engine seam from one loop.
+  # idle layer polls from one loop.
   #
   # Jobs must implement `tick`. Each job keeps its own eligibility guard
   # (e.g. `should_fire?` / `should_check?`, including the `turn_running?`
@@ -23,14 +23,11 @@ module Samagotchi
     STOP_JOIN_SECONDS = 1.0
     THREAD_NAME = "idle_scheduler"
 
-    attr_reader :engine, :jobs, :interval
+    attr_reader :jobs, :interval
 
     # +interval+: the pause between ticks (a spec passes a long one, so its
     # own #tick is the only one after the first).
-    def initialize(engine:, jobs: [], interval: POLL_INTERVAL_SECONDS)
-      raise ArgumentError, "IdleScheduler requires an engine" unless engine
-
-      @engine = engine
+    def initialize(jobs: [], interval: POLL_INTERVAL_SECONDS)
       @jobs = jobs.compact.freeze
       @interval = interval
       # The loop's pause: a pop with the interval as its timeout, which

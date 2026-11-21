@@ -5,20 +5,15 @@ require "fileutils"
 require "tmpdir"
 
 RSpec.describe Samagotchi::IdleScheduler do
-  subject(:scheduler) { described_class.new(engine: engine, jobs: jobs) }
+  subject(:scheduler) { described_class.new(jobs: jobs) }
 
-  let(:engine) { double("Engine") }
   let(:jobs) { [job_a, job_b] }
   let(:job_a) { double("JobA", tick: nil) }
   let(:job_b) { double("JobB", tick: nil) }
 
   describe "#initialize" do
-    it "requires an engine" do
-      expect { described_class.new(jobs: []) }.to raise_error(ArgumentError)
-    end
-
     it "drops nil jobs" do
-      scheduler = described_class.new(engine: engine, jobs: [job_a, nil])
+      scheduler = described_class.new(jobs: [job_a, nil])
       expect(scheduler.jobs).to eq([job_a])
     end
   end
@@ -38,7 +33,7 @@ RSpec.describe Samagotchi::IdleScheduler do
     it "keeps the running thread, which ticks the new job" do
       ticked = Queue.new
       allow(job_b).to receive(:tick) { ticked << true }
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       scheduler.start
       thread = scheduler.instance_variable_get(:@thread)
       pop!(ticked, "the thread's first tick")
@@ -69,7 +64,7 @@ RSpec.describe Samagotchi::IdleScheduler do
     end
 
     it "is a no-op when there are no jobs" do
-      scheduler = described_class.new(engine: engine, jobs: [])
+      scheduler = described_class.new(jobs: [])
       scheduler.start
       expect(scheduler.running?).to be false
     end
@@ -95,7 +90,7 @@ RSpec.describe Samagotchi::IdleScheduler do
       stub_const("#{described_class}::STOP_JOIN_SECONDS", 30)
       ticked = Queue.new
       allow(job_b).to receive(:tick) { ticked << true }
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       thread = started(scheduler, ticked)
 
       scheduler.stop
@@ -113,7 +108,7 @@ RSpec.describe Samagotchi::IdleScheduler do
         ticked << true
         pop!(gate, "the example to open the gate", timeout: 30)
       end
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       thread = started(scheduler, ticked)
 
       scheduler.stop
@@ -131,7 +126,7 @@ RSpec.describe Samagotchi::IdleScheduler do
         ticked << true
         pop!(gate, "the example to open the gate", timeout: 30)
       end
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       thread = started(scheduler, ticked)
 
       scheduler.stop(join: false)
@@ -153,7 +148,7 @@ RSpec.describe Samagotchi::IdleScheduler do
         ticked << true
         pop!(gate, "the example to open the gate", timeout: 30)
       end
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       thread = started(scheduler, ticked)
       allow(thread).to receive(:join).and_call_original
 
@@ -176,7 +171,7 @@ RSpec.describe Samagotchi::IdleScheduler do
       report = Thread.report_on_exception
       Thread.report_on_exception = false
       allow(job_a).to receive(:tick).and_raise(fatal, "deep")
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60).start
+      scheduler = described_class.new(jobs: jobs, interval: 60).start
       thread = scheduler.instance_variable_get(:@thread)
       wait_for("the scheduler's thread to die") { !thread.alive? }
 
@@ -186,7 +181,7 @@ RSpec.describe Samagotchi::IdleScheduler do
     end
 
     it "is safe from inside a tick: it doesn't join its own thread, which ends after the tick" do
-      scheduler = described_class.new(engine: engine, jobs: jobs, interval: 60)
+      scheduler = described_class.new(jobs: jobs, interval: 60)
       stopped = Queue.new
       allow(job_b).to receive(:tick) do
         scheduler.stop
@@ -257,7 +252,7 @@ RSpec.describe Samagotchi::IdleScheduler do
       job_b = double("JobB")
       allow(job_a).to receive(:tick) { counts[:a] += 1 }
       allow(job_b).to receive(:tick) { counts[:b] += 1 }
-      scheduler = described_class.new(engine: engine, jobs: [job_a, job_b], interval: 0.01)
+      scheduler = described_class.new(jobs: [job_a, job_b], interval: 0.01)
       scheduler.start
       wait_for("two ticks of each job", seen: -> { counts }) { counts.values_at(:a, :b).min >= 2 }
       scheduler.stop
@@ -266,7 +261,7 @@ RSpec.describe Samagotchi::IdleScheduler do
     end
 
     it "waits POLL_INTERVAL_SECONDS between ticks by default" do
-      expect(described_class.new(engine: engine).interval).to eq(described_class::POLL_INTERVAL_SECONDS)
+      expect(described_class.new.interval).to eq(described_class::POLL_INTERVAL_SECONDS)
     end
   end
 end
