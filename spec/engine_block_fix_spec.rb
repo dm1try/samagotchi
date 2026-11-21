@@ -276,6 +276,17 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(answer[:display]).to eq("Shown.\n\n```mermaid\n#{good}\n```\n")
     end
 
+    it "keeps a hook's display under its size when the fix lands in the text too: failed, nothing patched" do
+      display = "Shown.\n\n```mermaid\n#{bad}```\n"
+      session.messages = [session.messages.first, session.messages.last.merge(display: display)]
+      stub_const("Samagotchi::AnswerDisplay::MAX_CHARS", display.length)
+      fix
+      settle
+      engine.apply_block_fixes
+      expect(answer).to include(content: answer_text, display: display)
+      expect(Samagotchi::BlockFix.stamps(answer)).to contain_exactly(include(state: "failed", reason: "the fix is too long"))
+    end
+
     it "drops the fix when the answer changed (a rollback, a new text)" do
       fix
       settle

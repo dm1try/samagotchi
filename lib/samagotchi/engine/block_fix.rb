@@ -255,7 +255,7 @@ module Samagotchi
 
       # No turn since, the newest answer: its text (and its display, and
       # on api: anthropic its saved blocks) holds the fix, in every copy of
-      # the block.
+      # the block; nil copy: the display would pass its size.
       def block_fix_in_answer(answer, result)
         content = answer[:content].to_s
         places = BlockFix.locate_all(content, lang: result.lang, source: result.source)
@@ -264,7 +264,11 @@ module Samagotchi
         copy = answer.merge(content: BlockFix.replace_all(content, places, result.fixed))
         if (display = answer[AnswerDisplay::KEY])
           shown = BlockFix.locate_all(display, lang: result.lang, source: result.source)
-          copy[AnswerDisplay::KEY] = BlockFix.replace_all(display, shown, result.fixed) unless shown.empty?
+          text = shown.empty? ? display : BlockFix.replace_all(display, shown, result.fixed)
+          # The display's own cap (AnswerDisplay::MAX_CHARS), as #block_fix_in_display keeps it.
+          return [nil, nil] if text.length > AnswerDisplay::MAX_CHARS
+
+          copy[AnswerDisplay::KEY] = text
         end
         [block_fix_blocks(copy, result, places.size), "answer"]
       end
