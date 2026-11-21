@@ -5,6 +5,7 @@ require_relative "../reply_wait"
 require_relative "../parent_report"
 require_relative "exit"
 require_relative "../session_access"
+require_relative "../session_access/exchange"
 
 module Samagotchi
   module CLI
@@ -64,9 +65,7 @@ module Samagotchi
       # @return [Integer] the exit status
       def wait_for_reply(id, target:, timeout:)
         report_turn_id = target.report_turn_id
-        result = @access.wait_reply(id, **target.to_h, timeout: timeout, poll_interval: self.class::POLL_INTERVAL)
-        result.turn_id = report_turn_id if report_turn_id && !report_turn_id.to_s.empty?
-        result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
+        result = exchange.wait(id, target, timeout: timeout, poll_interval: self.class::POLL_INTERVAL)
         @reported = true
         # What a parent may pick there: config.yml tightened by the session's
         # own. Machine-local (this machine's config.yml): remotely the
@@ -88,6 +87,9 @@ module Samagotchi
         error_line("#{command_name}: the session is gone (deleted while waiting)")
         Exit::FAILED
       end
+
+      # The wait's Exchange (chi send builds its own, with its pause).
+      def exchange = @exchange ||= SessionAccess::Exchange.new(@access)
 
       # More keys for the error object, after session_id: {} (chi send's
       # names the id asked).

@@ -28,6 +28,7 @@ require_relative "cli/parent_wait"
 require_relative "send_command/parent_gate"
 require_relative "send_command/busy"
 require_relative "session_access/local"
+require_relative "session_access/exchange"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -792,27 +793,25 @@ module Samagotchi
 
       id = target.id
       short = target.label
-      session = @access.show(id)
-      # Machine-local (this machine's model registry): remotely the
-      # server's (P2), as for --new.
-      if !@images.empty? && (refusal = vision_refusal(session.model_name, typed: session.model_typed))
-        @info.puts("#{short}  refused: #{refusal}")
-        return false
-      end
-      owner = @access.owner(id)
-      running = owner && session.status == Session::STATUS_RUNNING
-      refs = upload_images(id)
       # --cut asks the running turn for a cut (to an idle session an
       # ordinary message: nothing to cut). --queue always goes as a queue,
       # idle or not: the Bridge acks next_step to an idle worker and the
       # file still carries it, so a turn another client starts first never
       # merges it, and its turn and reply carry its enqueued_id (the
       # --wait's turn:); a worker older than queueing is refused.
-      delivery = if @queue then Delivery::QUEUE
-                 elsif @cut && running then Delivery::CUT
-                 end
-      result = @access.deliver_turn(id, prompt: prompt, client_id: client_id_for(prompt), images: refs, delivery: delivery,
-                                        follow: target.via != :pinned)
+      # The vision check is machine-local (this machine's model registry):
+      # remotely the server's (P2), as for --new.
+      pass = exchange.attempt(target, prompt, client_id: client_id_for(prompt), queue: @queue, cut: @cut,
+                                              images: ImageUpload.new(method(:upload_images)), check: method(:image_check))
+      if pass.is_a?(SessionAccess::Exchange::Stopped)
+        @info.puts("#{short}  refused: #{pass.refusal}")
+        return false
+      end
+      owner = pass.owner
+      running = pass.running
+      refs = pass.refs
+      delivery = pass.delivery
+      result = pass.result
       if result.continued?
         # Copied in before the refusal: not the old link's to keep.
         @access.discard_images(id, refs)
@@ -973,38 +972,52 @@ module Samagotchi
     # is never sent to (a send would un-archive it beside the new one).
     # @return [SessionInbox::Resolved, Unsent]
     def target(given)
-      id = @access.resolve(given)
-      head = @access.head(id)
-      deadline = monotonic + self.class::CONTINUING_WAIT
-      waited = head.continuing?
-      while head.continuing? && monotonic < deadline
-        self.class.pause(self.class::CONTINUING_POLL)
-        head = @access.head(id)
-      end
-      return Unsent.new(line: "#{id[0, 8]}  refused: #{head.continuing_refusal}", error: false, asked: id) if head.continuing?
+      found = exchange.locate(given)
+      return unsent_of(found) if found.is_a?(SessionAccess::Exchange::Unsent)
 
-      (@continued_here ||= {})[head.id] = true if waited
-      head
-    rescue ArgumentError => e
-      Unsent.new(line: "#{command_name}: #{e.message}", error: true)
+      (@continued_here ||= {})[found.target.id] = true if found.waited
+      found.target
+    end
+
+    # An Exchange::Unsent as the line chi send prints: a continue in
+    # flight's refusal (info), or the resolve's error (+error+ true).
+    def unsent_of(found)
+      if found.reason == :continuing
+        Unsent.new(line: "#{found.asked[0, 8]}  refused: #{found.message}", error: false, asked: found.asked)
+      else
+        Unsent.new(line: "#{command_name}: #{found.message}", error: true)
+      end
     end
 
     # +refused+'s id resolved again after a continue took its link
-    # (#deliver): #target, pausing between looks while it still names that
-    # link, until +deadline+. The new link's worker is the continue's spawn
-    # to start (#delivery_note).
+    # (#deliver): Exchange#relocate, until +deadline+. The new link's
+    # worker is the continue's spawn to start (#delivery_note).
     # @return [SessionInbox::Resolved, Unsent, nil] nil: out of time
     def follow_again(refused, deadline)
-      while monotonic < deadline
-        self.class.pause(self.class::CONTINUING_POLL)
-        again = target(refused.asked)
-        return again unless again.is_a?(SessionInbox::Resolved)
-        next if again.id == refused.id
+      again = exchange.relocate(refused, deadline) { |look| (@continued_here ||= {})[look.target.id] = true }
+      return nil unless again
+      return unsent_of(again) if again.is_a?(SessionAccess::Exchange::Unsent)
 
-        (@continued_here ||= {})[again.id] = true
-        return again
-      end
-      nil
+      (@continued_here ||= {})[again.target.id] = true
+      again.target
+    end
+
+    # The send's Exchange: the class's pause and continue wait, read when
+    # it is built (the specs stub both).
+    def exchange
+      @exchange ||= SessionAccess::Exchange.new(@access, pause: ->(seconds) { self.class.pause(seconds) },
+                                                         continuing_wait: self.class::CONTINUING_WAIT,
+                                                         continuing_poll: self.class::CONTINUING_POLL)
+    end
+
+    # Exchange#attempt's images: this send's, copied into each target.
+    ImageUpload = Data.define(:uploader) do
+      def upload(id) = uploader.call(id)
+    end
+
+    # Exchange#attempt's check: images to a model known not to take them.
+    def image_check(session)
+      vision_refusal(session.model_name, typed: session.model_typed) unless @images.empty?
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
