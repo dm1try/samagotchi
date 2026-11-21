@@ -97,10 +97,19 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
   return { page, deps, handlers: createStreamHandlers(deps), liveTurn };
 }
 
+test("a block fix's word goes to block_fix.js, and nowhere when the page has none", () => {
+  const { handlers, deps } = fakePage();
+  const heard = [];
+  handlers.block_fix({ turn_id: "t1", state: "fixed" });
+  const withFix = createStreamHandlers({ ...deps, blockFix: (data) => heard.push(data) });
+  withFix.block_fix({ turn_id: "t1", state: "fixed" });
+  assert.deepEqual(heard, [{ turn_id: "t1", state: "fixed" }]);
+});
+
 test("every stream event type has its handler", () => {
   const { handlers } = fakePage();
   assert.deepEqual(Object.keys(handlers).sort(), [
-    "answer_display", "card", "command_queued", "command_ran", "context_added", "context_status", "continue_offered",
+    "answer_display", "block_fix", "card", "command_queued", "command_ran", "context_added", "context_status", "continue_offered",
     "continue_resolved", "empty_answer_retry", "generation_chunk", "generation_completed", "generation_retrying",
     "generation_started", "guardrail_warning", "hook_notice", "input_merged", "llm_context_edited", "merged_input", "objectives_updated",
     "participants_changed", "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
