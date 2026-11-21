@@ -633,8 +633,10 @@ module Samagotchi
       # was stopped, a chain's links (the words name them).
       def tasks_running_fields(error, op)
         links = error.respond_to?(:links) ? error.links : []
-        { op: op, tasks: error.tasks.to_wire, worker_stopped: error.worker_stopped, stopped_worker: error.stopped_worker,
-          links: (links unless links.empty?) }
+        fields = { op: op, tasks: error.tasks.to_wire, worker_stopped: error.worker_stopped, stopped_worker: error.stopped_worker,
+                   links: (links unless links.empty?) }
+        fields[:stopped_workers] = error.stopped_workers if error.respond_to?(:stopped_workers) && !error.stopped_workers.empty?
+        fields
       end
 
       # 409 with the refusal's reason as its code, and what a remote client

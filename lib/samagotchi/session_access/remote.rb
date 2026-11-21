@@ -857,7 +857,9 @@ module Samagotchi
         # Whose worker was stopped (an older chi web sends only the Boolean).
         stopped = Session.valid_id?(json["stopped_worker"]) ? json["stopped_worker"] : json["worker_stopped"] == true
         if json["op"] == "archive"
-          SessionManager::ArchiveRefused.new(sid, :tasks_running, tasks: tasks, worker_stopped: stopped)
+          stopped_workers = Array(json["stopped_workers"]).select { |id| id.is_a?(String) && Session.valid_id?(id) }
+          SessionManager::ArchiveRefused.new(sid, :tasks_running, tasks: tasks, worker_stopped: stopped,
+                                                               sessions: json["sessions"], stopped_workers: stopped_workers)
         else
           SessionManager::DeleteRefused.new(sid, :tasks_running, tasks: tasks, worker_stopped: stopped,
                                                                  links: ids_of(json["links"]))

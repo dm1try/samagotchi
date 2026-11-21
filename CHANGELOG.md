@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
 - Deleting a session (the web, `chi sessions delete`, `/exit --delete`) now deletes its stopped delegates with it; a
   running delegate keeps running on its own. With `--remote`, an older chi web still leaves them.
 
+### Fixed
+
+- A remote archive refusal keeps the hidden session count and names every worker stopped before its task check.
+
 ## [0.181.0] - 2026-11-21
 
 ### Added

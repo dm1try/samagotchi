@@ -283,6 +283,38 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       }
     end
 
+    it "carries an archive's session count and every stopped worker from the 409" do
+      session = make
+      delegate = make
+      tasks = Samagotchi::SessionManager::RunningTasks::Listing.new(
+        running: [Samagotchi::SessionManager::RunningTasks::RunningTask.new(session_id: session.id, id: "task-1",
+                                                                            command: "rspec")]
+      )
+      stopped_workers = [session.id, delegate.id]
+      local = Samagotchi::SessionManager::ArchiveRefused.new(
+        session.id, :tasks_running, tasks: tasks, worker_stopped: session.id, sessions: 2, stopped_workers: stopped_workers
+      )
+      access, = scripted([409, { error: "tasks_running", reason: "tasks_running", op: "archive", session_id: session.id,
+                                 tasks: tasks.to_wire, worker_stopped: true, stopped_worker: session.id,
+                                 sessions: 2, stopped_workers: stopped_workers }])
+
+      expect { access.archive(session.id) }.to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |error|
+        expect(error.sessions).to eq(2)
+        expect(error.stopped_workers).to eq(stopped_workers)
+        expect(error.message).to eq(local.message)
+      }
+    end
+
+    it "uses the single-worker archive wording when an older chi web omits stopped_workers" do
+      access, = scripted([409, { error: "tasks_running", reason: "tasks_running", op: "archive", session_id: "s",
+                                 tasks: { running: [], unverified: [], unreadable: [] }, worker_stopped: true }])
+
+      expect { access.archive("s") }.to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |error|
+        expect(error.stopped_workers).to be_empty
+        expect(error.message).to end_with("; its worker was stopped")
+      }
+    end
+
     it "sends stop_tasks (the query for a delete, the body for an archive) and reads the stopped tasks" do
       stopped = [{ session_id: "s", id: "t1", command: "npm run dev" }]
       access, calls = scripted([200, { session_id: "s", stopped: true, tasks_stopped: stopped }],

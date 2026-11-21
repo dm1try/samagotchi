@@ -4211,6 +4211,18 @@ RSpec.describe Samagotchi::Web::App do
         expect(json["tasks_stopped"].map { |t| t["id"] }).to eq([record.id])
       end
 
+      it "includes every worker stopped before an archive's task refusal" do
+        stopped_workers = [session.id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
+        refusal = Samagotchi::SessionManager::ArchiveRefused.new(
+          session.id, :tasks_running, sessions: 2, worker_stopped: session.id, stopped_workers: stopped_workers
+        )
+        allow(Samagotchi::SessionManager).to receive(:archive_session).and_raise(refusal)
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST")
+
+        expect([status, json["sessions"], json["stopped_workers"]]).to eq([409, 2, stopped_workers])
+      end
+
       it "answers a chain delete 409 tasks_running, deleting nothing, for an unnamed task in an older link" do
         older = start_task("sleep 30.57")
         Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
