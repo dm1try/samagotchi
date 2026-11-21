@@ -28,6 +28,15 @@ RSpec.describe Samagotchi::McpServer::Http do
     expect([status, body["id"], body["error"]["code"]]).to eq([400, 3, -32_700])
   end
 
+  it "answers an Mcp-Name that isn't UTF-8 (base64 of a bad byte) with 400 -32020, not a raise" do
+    env = { "HTTP_MCP_PROTOCOL_VERSION" => "2026-07-28", "HTTP_MCP_METHOD" => "tools/call", "HTTP_MCP_NAME" => "=?base64?/w==?=" }
+    message = { jsonrpc: "2.0", id: 4, method: "tools/call",
+                params: { name: "echo", _meta: { "io.modelcontextprotocol/protocolVersion" => "2026-07-28" } } }
+    status, _headers, body = post(message, env)
+    expect([status, body["id"], body["error"]["code"]]).to eq([400, 4, -32_020])
+    expect(body["error"]["message"]).to include("\uFFFD")
+  end
+
   it "answers a body that isn't an object (a batch, null, a number) with -32600, never raising" do
     ['[{"jsonrpc":"2.0","id":1,"method":"ping"}]', "null", "3", '"x"'].each do |text|
       [{}, legacy_session].each do |env|

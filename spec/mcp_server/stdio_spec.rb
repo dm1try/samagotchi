@@ -93,6 +93,17 @@ RSpec.describe Samagotchi::McpServer::Stdio do
     expect(out.map { |a| a.dig("error", "code") || a["result"] }).to eq([-32_600, -32_600, -32_600, {}])
   end
 
+  it "answers a call whose result isn't valid UTF-8 (scrubbed), and one that can't be written at all (-32603)" do
+    allow(tools).to receive(:call) do |name, _arguments|
+      text = name == "echo" ? "bad \xff byte" : Float::NAN
+      { content: [{ type: "text", text: text }], isError: false }
+    end
+    out = run(line(1, "tools/call", { name: "echo" }) + line(2, "tools/call", { name: "hold" }))
+    by_id = out.to_h { |a| [a["id"], a] }
+    expect(by_id[1]["result"]["content"].first["text"]).to eq("bad \uFFFD byte")
+    expect(by_id[2]["error"]).to include("code" => -32_603)
+  end
+
   it "drops answers once the host closed its end (EPIPE), and still returns" do
     output = instance_double(IO)
     allow(output).to receive(:write).and_raise(Errno::EPIPE)

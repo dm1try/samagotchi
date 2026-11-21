@@ -88,6 +88,41 @@ module Samagotchi
         error_body(recovered_id(text), PARSE_ERROR, "Parse error: #{error.message}")
       end
 
+      # A response as JSON text, for a transport to write: one with a
+      # string that isn't UTF-8 (a worker's reply, a header echoed in a
+      # refusal) is written scrubbed, and one that can't be written at all
+      # is a -32603 for its id, so no call is left unanswered.
+      # @return [String]
+      def self.dump(body)
+        JSON.generate(body)
+      rescue JSON::GeneratorError, EncodingError
+        begin
+          JSON.generate(scrubbed(body))
+        rescue JSON::GeneratorError, EncodingError => e
+          id = body.is_a?(Hash) ? body[:id] || body["id"] : nil
+          JSON.generate(error_body(scrubbed(id), INTERNAL_ERROR, "Internal error: the answer could not be written (#{e.class})"))
+        end
+      end
+
+      # +value+ with every string as valid UTF-8 (U+FFFD for a bad byte).
+      def self.scrubbed(value)
+        case value
+        when Hash then value.to_h { |key, item| [scrubbed(key), scrubbed(item)] }
+        when Array then value.map { |item| scrubbed(item) }
+        when String then utf8(value)
+        else value
+        end
+      end
+
+      # +text+ as UTF-8, a bad byte replaced (a binary string read as UTF-8).
+      def self.utf8(text)
+        if [Encoding::UTF_8, Encoding::BINARY, Encoding::US_ASCII].include?(text.encoding)
+          text.dup.force_encoding(Encoding::UTF_8).scrub
+        else
+          text.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+        end
+      end
+
       # A JSON-RPC error response (also a transport's own, Http's -32020).
       def self.error_body(id, code, message, data: nil)
         error = { code: code, message: message }

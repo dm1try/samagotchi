@@ -77,7 +77,7 @@ module Samagotchi
         @write_lock.synchronize do
           return if @closed
 
-          @output.write("#{JSON.generate(answer.body)}\n")
+          @output.write("#{Protocol.dump(answer.body)}\n")
           @output.flush
         rescue Errno::EPIPE, IOError
           # The host left: later answers go nowhere.

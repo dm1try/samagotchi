@@ -90,11 +90,11 @@ module Samagotchi
       def decoded(value)
         return value unless value&.match?(ENCODED)
 
-        value[ENCODED, 1].unpack1("m").force_encoding(Encoding::UTF_8)
+        Protocol.utf8(value[ENCODED, 1].unpack1("m"))
       end
 
       def respond(status, body, headers = {})
-        text = JSON.generate(body)
+        text = Protocol.dump(body)
         [status, JSON_HEADERS.merge("Content-Length" => text.bytesize.to_s, **headers), [text]]
       end
     end
