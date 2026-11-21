@@ -73,6 +73,14 @@ test("the arrows move to the nearest region that way, along + 2 x across", () =>
   assert.equal(nearestInDirection([A, { ...A, box: [0.1, 0.8, 0.1, 0.1] }, B], A, "ArrowDown", SIZE), null);
 });
 
+test("a group is an arrow's move only when nothing else is that way", () => {
+  const inner = node("I", [0.5, 0.5, 0.1, 0.1]);
+  const far = node("F", [0.9, 0.55, 0.05, 0.05]);
+  const group = { kind: "group", id: "g", label: "", box: [0.45, 0.2, 0.3, 0.6] };
+  assert.equal(nearestInDirection([inner, far, group], inner, "ArrowRight", SIZE), far);
+  assert.equal(nearestInDirection([inner, group], inner, "ArrowUp", SIZE), group);
+});
+
 test("an edge's centre is its label box's, else its middle point", () => {
   assert.deepEqual(regionCentre(LABELLED), { x: 0.15, y: 0.4 });
   assert.deepEqual(regionCentre(E), { x: 0.3, y: 0.15 });

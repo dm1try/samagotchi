@@ -2506,7 +2506,7 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
 // sandboxed frame: the answer's block shows as an <img> with a data: URL, live
 // and after a reload (a <title> holds the source's first line, so the picture
 // is this block's), its source stays in the DOM hidden and the toggle shows it,
-// the zoom works by keyboard;
+// the zoom works by keyboard, the renderer's one node selects in the viewer;
 // a block the renderer throws on stays source with its line, and a language no
 // bundle draws is left alone.
 test("a bundle's block renderer draws a fenced block in the answer, live and after a reload", async ({ page, script }) => {
@@ -2573,6 +2573,21 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     await viewer.press("Escape");
     await expect(page.locator("#lightbox")).toBeHidden();
     await expect(zoom).toBeFocused();
+    // The renderer reports one node (its regions): in the viewer a click on its
+    // place selects it and the card names it; Esc clears, a second Esc closes.
+    await page.keyboard.press("Enter");
+    await expect(viewer.locator(".pv-pic")).not.toHaveClass(/\bwaiting\b/);
+    const pic = await shown.boundingBox();
+    await page.mouse.click(pic.x + pic.width * 0.25, pic.y + pic.height * 0.5);
+    const card = viewer.getByRole("region", { name: "Selected" });
+    await expect(card).toBeVisible();
+    await expect(card.locator(".pv-sel-label")).toHaveText("First node");
+    await expect(viewer.getByRole("button", { name: "node First node, A" })).toHaveAttribute("aria-pressed", "true");
+    await viewer.press("Escape");
+    await expect(card).toBeHidden();
+    await expect(viewer).toBeVisible();
+    await viewer.press("Escape");
+    await expect(page.locator("#lightbox")).toBeHidden();
   };
   script("block_renderer");
   await send(page, "Draw it");

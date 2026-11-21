@@ -2,13 +2,14 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createPictureViewer, thumbPicture } from "../../../lib/samagotchi/web/public/picture_viewer.js";
+import { createRegionLayer } from "../../../lib/samagotchi/web/public/picture_regions.js";
 
 const URL_A = "data:image/png;base64,AAAA";
 // A 1000 x 800 stage with no insets: the room is 952 x 696 (pad 24, bar 56),
 // so a 476 x 200 picture fits at 2, centred at (24, 172).
 const PIC = { url: URL_A, alt: "a shot", width: 476, height: 200 };
 
-function setup({ markup = '<img alt="">', decode = async () => {} } = {}) {
+function setup({ markup = '<img alt="">', decode = async () => {}, layer = null, later = undefined } = {}) {
   const el = document.createElement("div");
   el.id = "lightbox";
   el.hidden = true;
@@ -17,7 +18,7 @@ function setup({ markup = '<img alt="">', decode = async () => {} } = {}) {
   let clock = 1000;
   const pictures = createPictureViewer({
     el, measure: () => ({ left: 0, top: 0, width: 1000, height: 800 }), insets: () => ({ t: 0, r: 0, b: 0, l: 0 }),
-    decode, now: () => clock,
+    decode, now: () => clock, layer, ...(later ? { later } : {}),
   });
   const box = () => el.querySelector(".pv-pic");
   return {
@@ -306,16 +307,16 @@ function fakeLayer(room = 0) {
   };
 }
 
-test("a layer mounts once on .pv-pic, is shown the open's picture, and cleared on close", async () => {
+test("a layer mounts once on .pv-pic, is cleared and shown the open's picture on each open, and cleared on close", async () => {
   const { pictures } = setup();
   const layer = fakeLayer();
   pictures.useLayer(layer);
   assert.deepEqual(layer.calls, []);
   await pictures.open({ ...PIC, extra: 1 });
-  assert.deepEqual(layer.calls, [["mount", "pv-pic"], ["show", { ...PIC, extra: 1 }]]);
+  assert.deepEqual(layer.calls, [["mount", "pv-pic"], ["clear"], ["show", { ...PIC, extra: 1 }]]);
   pictures.close();
   await pictures.open(PIC);
-  assert.deepEqual(layer.calls.map((c) => c[0]), ["mount", "show", "clear", "show"]);
+  assert.deepEqual(layer.calls.map((c) => c[0]), ["mount", "clear", "show", "clear", "clear", "show"]);
 });
 
 test("a layer given after the first open mounts at once; its room is kept at the bottom of the fit", async () => {
@@ -334,4 +335,153 @@ test("without a layer the viewer fits as before", async () => {
   const { pictures, place } = setup();
   await pictures.open(PIC);
   assert.equal(place(), "translate(24px, 172px)");
+});
+
+// With the regions' layer: the room is 952 x 632 (pad 24, bar 56, the card's 64),
+// so the 476 x 200 picture fits at 2, centred at (24, 140) in the free 680.
+const NODE = { kind: "node", id: "BR", label: "Bridge", box: [0.5, 0.5, 0.1, 0.1] }; // 500..595 x 340..380 at fit
+const LOW = { kind: "node", id: "LO", label: "Low", box: [0.4, 0.85, 0.2, 0.1] };
+const WITH_REGIONS = { ...PIC, regions: [NODE, LOW] };
+
+function regionsSetup() {
+  const timers = [];
+  const layer = createRegionLayer();
+  const v = setup({ layer, later: (fn) => timers.push(fn) });
+  layer.card.getBoundingClientRect = () => ({ top: 660 });
+  const tap = (x, y, type = "mouse") => { pointer(v.el, "pointerdown", 1, x, y, type); pointer(v.el, "pointerup", 1, x, y, type); };
+  const y = () => parseFloat(v.place().match(/, ([-\d.]+)px/)[1]);
+  return { ...v, layer, timers, tap, y, runTimers: () => timers.splice(0).forEach((fn) => fn()) };
+}
+
+test("a picture with regions fits with the card's room; one without fits as before, the same layer there", async () => {
+  const { pictures, place } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  assert.equal(place(), "translate(24px, 140px)");
+  await pictures.open(PIC);
+  assert.equal(place(), "translate(24px, 172px)");
+});
+
+test("the layer's card and live line join the viewer, after its bar", async () => {
+  const { el, pictures, layer } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  assert.ok(layer.card.parentElement === el && layer.live.parentElement === el);
+  assert.ok(el.querySelector(".pv-pic .pv-marks"));
+  assert.ok(el.querySelector(".pv-bar").compareDocumentPosition(layer.card) & 4);
+});
+
+test("a tap selects and still counts toward a double tap, which zooms at its point; the picture doesn't slide between the taps", async () => {
+  const { pictures, layer, tap, tick, pct, timers, runTimers, place } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  tap(520, 360);
+  assert.equal(layer.selected(), NODE);
+  tick(150);
+  tap(520, 360);
+  assert.equal(pct(), "500%");
+  assert.equal(layer.selected(), NODE);
+  const zoomed = place();
+  assert.ok(timers.length >= 1);
+  runTimers();
+  assert.equal(place(), zoomed, "no slide after a double tap");
+});
+
+test("a drag doesn't select; a tap on empty space clears", async () => {
+  const { el, pictures, layer, tap } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  pointer(el, "pointerdown", 1, 520, 360);
+  pointer(el, "pointermove", 1, 540, 360);
+  pointer(el, "pointerup", 1, 540, 360);
+  assert.equal(layer.selected(), null);
+  tap(560, 365);
+  assert.equal(layer.selected(), NODE);
+  tap(100, 150);
+  assert.equal(layer.selected(), null);
+});
+
+test("zoomed in, a selected node under the card slides up into view after the double-tap wait", async () => {
+  const { el, pictures, layer, tap, y, runTimers, tick } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  for (let i = 0; i < 4; i++) key(el, "+"); // 4.88: 976.5 px tall, more than the free 680
+  const before = y();
+  const tall = 200 * 2 * 1.25 ** 4;
+  tap(500, before + 0.9 * tall); // LOW, its bottom under the card's top (660)
+  assert.equal(layer.selected(), LOW);
+  assert.equal(y(), before, "not before the wait");
+  tick(400);
+  runTimers();
+  const bottom = before + 0.95 * tall;
+  assert.ok(bottom > 660);
+  assert.ok(Math.abs(y() - (before - (bottom + 12 - 660))) < 1, `${before} → ${y()}`);
+});
+
+test("a fitted picture never slides: a node is above the card already", async () => {
+  const { pictures, layer, tap, place, runTimers } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  tap(520, 520); // LOW at fit: 480..520
+  assert.equal(layer.selected(), LOW);
+  runTimers();
+  assert.equal(place(), "translate(24px, 140px)");
+});
+
+test("Esc clears the selection first, then closes", async () => {
+  const { el, pictures, layer, tap } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  tap(520, 360);
+  key(el, "Escape");
+  assert.equal(layer.selected(), null);
+  assert.equal(pictures.isOpen(), true);
+  key(el, "Escape");
+  assert.equal(pictures.isOpen(), false);
+});
+
+test("from the card's ✕: Esc clears and the focus goes to the node's button; Esc again closes", async () => {
+  const { el, pictures, layer, tap } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  tap(520, 360);
+  const x = el.querySelector(".pv-sel-x");
+  x.focus();
+  key(x, "Escape");
+  assert.equal(layer.selected(), null);
+  assert.equal(document.activeElement.getAttribute("aria-label"), "node Bridge, BR");
+  key(document.activeElement, "Escape");
+  assert.equal(pictures.isOpen(), false);
+});
+
+test("the keyboard: a node's Enter selects (its click), arrows move between nodes, not the picture", async () => {
+  const { el, pictures, layer, place } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  const [bridge] = el.querySelectorAll(".pv-node");
+  bridge.focus();
+  const at = place();
+  assert.ok(key(bridge, "ArrowDown").defaultPrevented);
+  assert.equal(document.activeElement.getAttribute("aria-label"), "node Low, LO");
+  assert.equal(place(), at);
+  document.activeElement.click();
+  assert.equal(layer.selected(), LOW);
+});
+
+test("a pointerdown on the card starts no drag; close and a new open clear the selection", async () => {
+  const { el, pictures, layer, tap } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  tap(520, 360);
+  pointer(el.querySelector(".pv-sel"), "pointerdown", 1, 500, 700);
+  assert.ok(!el.classList.contains("dragging"));
+  pointer(el, "pointerup", 1, 500, 700);
+  pictures.close();
+  assert.equal(layer.selected(), null);
+  await pictures.open(WITH_REGIONS);
+  tap(520, 360);
+  await pictures.open(WITH_REGIONS);
+  assert.equal(layer.selected(), null);
+});
+
+test("the mouse over a node, no button down, outlines it and shows the hand", async () => {
+  const { el, pictures } = regionsSetup();
+  await pictures.open(WITH_REGIONS);
+  pointer(el, "pointermove", 1, 520, 360);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(el.classList.contains("over"));
+  assert.equal(el.querySelectorAll(".pv-mark.pv-hover").length, 1);
+  el.dispatchEvent(new window.PointerEvent("pointerleave", { pointerType: "mouse" }));
+  assert.ok(!el.classList.contains("over"));
+  assert.equal(el.querySelectorAll(".pv-mark.pv-hover").length, 0);
 });

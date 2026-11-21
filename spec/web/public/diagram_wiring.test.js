@@ -24,3 +24,14 @@ test("a system theme change closes the viewer; the host is made", () => {
   change();
   assert.equal(closed, 1);
 });
+
+test("the regions' layer goes to the viewer; an older viewer without useLayer is wired all the same", () => {
+  const { win } = themedWindow();
+  const root = document.createElement("div");
+  document.body.append(root);
+  let given = null;
+  const { layer } = wireDiagrams({ roots: [root], sessionId: () => "s1", renderers: false, pictures: { open() {}, close() {}, useLayer: (l) => { given = l; } }, win });
+  assert.ok(given === layer);
+  assert.equal(typeof layer.tap, "function");
+  assert.doesNotThrow(() => wireDiagrams({ roots: [root], sessionId: () => "s1", renderers: false, pictures: { open() {}, close() {} }, win }));
+});
