@@ -43,6 +43,27 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: wake, hint: nil)
   end
 
+  describe "#deliver_turn" do
+    let(:result) { Samagotchi::SessionManager::DeliverResult.new(status: :accepted, ack: {}) }
+
+    it "passes neither manager: nor bridge: when none is given (SessionManager's own defaults)" do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(result)
+      access.deliver_turn("id", prompt: "p", client_id: "cli:send", images: [])
+      expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
+        .with("id", prompt: "p", client_id: "cli:send", images: [], delivery: nil, follow: false, state_dir: tmpdir)
+    end
+
+    it "passes a manager and a Bridge through when given (chi web's ask)" do
+      manager = Object.new
+      bridge = -> {}
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(result)
+      access.deliver_turn("id", prompt: "p", client_id: "web:unnamed", images: [], manager: manager, bridge: bridge)
+      expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
+        .with("id", prompt: "p", client_id: "web:unnamed", images: [], delivery: nil, follow: false, manager: manager,
+                    bridge: bridge, state_dir: tmpdir)
+    end
+  end
+
   describe "#head" do
     it "is SessionInbox::Head's send walk: a continued link's newest one, else the id" do
       old = saved_session
