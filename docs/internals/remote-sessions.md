@@ -134,9 +134,12 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `SessionManager::OwnedByTUI` / `DeleteRefused` / `ArchiveRefused` / `RestartRefused`, `SessionContinue::Refused`,
   and `ModelProfile::MissingModel` for `invalid_model` (no model there, or `--model`'s host unknown there: "could not
   start a session: …", exit 1, as here). A delete's or archive's `409 tasks_running` carries `op` (`delete` or
-  `archive`), `tasks` (`{running, unverified, unreadable}`), `worker_stopped`, `stopped_worker` (whose; an older chi web sends only the Boolean) and a chain's `links`: `raise_refusal`
+  `archive`), `tasks` (`{running, unverified, unreadable}`), `worker_stopped`, `stopped_worker` (whose; an older chi web
+  sends only the Boolean), `stopped_workers` (the archive tree's stopped worker ids), and `sessions` (the archive's
+  hidden session count), plus a chain's `links`: `raise_refusal`
   rebuilds `DeleteRefused` or `ArchiveRefused` by `op`, with the `RunningTasks::Listing`, and makes the words here
-  (`RunningTasks.words`), not from chi web's `message`. Its own code, not archive's `busy`: an older client prints
+  (`RunningTasks.words`, plus `RunningTasks.worker_words`: "its worker was stopped", "9d0e1f2a's worker was stopped",
+  or "N workers were stopped: its own, 9d0e1f2a"), not from chi web's `message`. Its own code, not archive's `busy`: an older client prints
   `RemoteFailed "… answered 409 tasks_running: …"` rather than "a turn is running". `--stop-tasks` asks for the
   `stop_tasks` feature first (`RemoteTooOld` without it).
   Checks the client would make locally come back as `SessionAccess::Refused` (`parent_answers_refused`,
