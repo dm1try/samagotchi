@@ -89,7 +89,9 @@ RSpec.describe Samagotchi::McpServer::Tools do
       result = call("chi_ask", session: session.id[0, 8], prompt: "hi")
       expect(result).to include("isError" => false)
       expect(text(result)).to eq("the answer")
-      expect(result["structuredContent"]).to eq("status" => "done", "session_id" => session.id, "turn_id" => "t1")
+      # The words in structuredContent too: a host may hand its model that alone.
+      expect(result["structuredContent"]).to eq("status" => "done", "session_id" => session.id, "turn_id" => "t1",
+                                                "text" => "the answer")
       expect(deliveries.first.last).to include(client_id: "cli:send", delivery: Samagotchi::Delivery::QUEUE)
     end
 

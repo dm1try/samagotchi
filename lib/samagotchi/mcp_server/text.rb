@@ -25,8 +25,12 @@ module Samagotchi
 
       module_function
 
+      # A host may hand its model the structuredContent alone (Claude Code
+      # 2.1.330 does when there is one), so it carries the words too:
+      # +text+, unless +words+ is false (the sessions' rows say it all).
       # @return [Hash] a tools/call result
-      def result(text, structured, error: false)
+      def result(text, structured, error: false, words: true)
+        structured = { **structured, text: text } if words && !structured.key?(:text) && !structured.key?(:detail)
         { content: [{ type: "text", text: text }], structuredContent: structured, isError: error }
       end
 
@@ -132,7 +136,7 @@ module Samagotchi
                    bits.join(" · ")
                  end.join("\n")
                end
-        result(text, { sessions: listed })
+        result(text, { sessions: listed }, words: false)
       end
     end
   end
