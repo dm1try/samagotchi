@@ -53,12 +53,12 @@ module Samagotchi
       # @param undo [Boolean] the caller undoes a newest link's continue
       #   (revive_previous)
       # @return [LinkPlan]
-      def link_plan(id, state_dir:, links:, undo: true)
+      def link_plan(id, state_dir:, links:, undo: true, rows: nil)
         previous = links.continues(id)
         previous = nil unless undo && previous && revivable?(id, previous, links)
-        moved = previous ? moved_ids(id, previous, state_dir) : []
+        moved = previous ? moved_ids(id, previous, state_dir, rows: rows) : []
         LinkPlan.new(id: id, previous: previous, revive: previous ? revive_ids(id, previous, state_dir) : [],
-                     moved: moved, delegates: SessionManager::DELEGATES.plan(id, state_dir: state_dir, except: moved),
+                     moved: moved, delegates: SessionManager::DELEGATES.plan(id, state_dir: state_dir, except: moved, rows: rows),
                      notes: previous ? NoteMove.returnable(from: id, moved: [], state_dir: state_dir).size : 0)
       end
 
@@ -68,9 +68,10 @@ module Samagotchi
       ChainPlan = Data.define(:id, :links, :delegates, :cut_off)
 
       # @return [ChainPlan]
-      def chain_plan(id, state_dir:, links:)
+      def chain_plan(id, state_dir:, links:, rows: nil)
         ids = links.live_links(id)
-        ChainPlan.new(id: id, links: ids, delegates: ids.to_h { |link| [link, SessionManager::DELEGATES.plan(link, state_dir: state_dir)] },
+        ChainPlan.new(id: id, links: ids,
+                      delegates: ids.to_h { |link| [link, SessionManager::DELEGATES.plan(link, state_dir: state_dir, rows: rows)] },
                       cut_off: links.gone?(links.chain(id).first))
       end
 
@@ -267,8 +268,8 @@ module Samagotchi
       # one rewrote parent.json's from), else +id+'s children whose
       # parent.json says they came from +previous+.
       # @return [Array<String>]
-      def moved_ids(id, previous, state_dir)
-        children = SessionManager.children_of(id, state_dir: state_dir).map(&:id)
+      def moved_ids(id, previous, state_dir, rows: nil)
+        children = SessionManager.children_of(id, state_dir: state_dir, rows: rows).map(&:id)
         record = ContinuedFrom.read(id, state_dir: state_dir)
         return record.moved_ids & children if record&.previous_id == previous
 

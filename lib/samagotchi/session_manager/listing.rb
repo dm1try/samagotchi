@@ -72,20 +72,20 @@ module Samagotchi
       # first, as .session_rows. A running one (busy) counts against
       # session.max_children. Archived ones too.
       # @return [Array<SessionRow>]
-      def children_of(parent_id, state_dir: nil)
+      def children_of(parent_id, state_dir: nil, rows: nil)
         return [] if parent_id.to_s.empty?
 
-        session_rows(state_dir: state_dir, include_tests: true, include_archived: true)
+        (rows || session_rows(state_dir: state_dir, include_tests: true, include_archived: true))
           .select { |s| s.parent_id == parent_id.to_s }
       end
 
       # Children, their children, …: a delegated session doesn't delegate
       # further today, a plugin's fork may. The walk doesn't enter +except+.
-      def descendant_ids(id, state_dir, except: [])
+      def descendant_ids(id, state_dir, except: [], rows: nil)
         seen = [id]
         queue = [id]
         until queue.empty?
-          children_of(queue.shift, state_dir: state_dir).each do |child|
+          children_of(queue.shift, state_dir: state_dir, rows: rows).each do |child|
             next if seen.include?(child.id) || except.include?(child.id)
 
             seen << child.id
