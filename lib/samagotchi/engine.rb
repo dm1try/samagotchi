@@ -138,6 +138,7 @@ require_relative "engine/toolkit"
 require_relative "engine/context_judge"
 require_relative "engine/turn_helpers"
 require_relative "engine/turn_end"
+require_relative "engine/block_fix"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -174,6 +175,7 @@ module Samagotchi
     include ContextJudgePart
     include TurnHelpersPart
     include TurnEndPart
+    include BlockFixPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -230,6 +232,7 @@ module Samagotchi
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
+      init_block_fix
       @judgments = build_judgments
       # Taken once: a running worker keeps the hosts it started with. A
       # client (specs) goes on a registry of its own, never the shared one.
@@ -1153,6 +1156,7 @@ module Samagotchi
     # so a Ctrl-C or a failure meanwhile keeps what is there.
     def turn_messages(turn, image_refs)
       session = turn.session
+      note_block_fix_turn
       turn.messages = session.messages.dup
       # Built once per Engine (and again after a model switch) so the prompt
       # prefix, and the model server's KV cache for it, stay stable.

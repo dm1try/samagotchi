@@ -83,7 +83,7 @@ module Samagotchi
       # fails for a new one until it is decided here or in EVENTS. Not
       # named is dropped all the same.
       DROPPED = %w[
-        after_generation after_tool_call after_turn answer_display before_generation before_tool_call before_turn
+        after_generation after_tool_call after_turn answer_display before_generation before_tool_call before_turn block_fix
         card command_output command_queued command_ran context_added empty_answer_retry
         generation_cancelled generation_progress generation_started guardrail_warning hook_notice
         llm_context_edited merged_input objectives_updated part_settled participants_changed pending_input_merged plugin_init_finished

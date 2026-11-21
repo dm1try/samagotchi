@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../block_fix"
 require_relative "../idle_client"
 require_relative "../idle_target"
 require_relative "../log"
@@ -50,9 +51,9 @@ module Samagotchi
       # command's ask_model between turns).
       # @return [String, nil]
       def side_author(kind)
-        # Check this and the tracker are only ever the owner's, whichever turn
+        # Check this, the tracker and a block fix are only ever the owner's, whichever turn
         # runs as they end.
-        return nil if [ObjectivesCheck::SOURCE, ObjectivesTrack::SOURCE].include?(kind.to_s)
+        return nil if [ObjectivesCheck::SOURCE, ObjectivesTrack::SOURCE, BlockFix::SOURCE].include?(kind.to_s)
 
         # One read each of the published contexts (TurnState): any thread.
         running = turn_context
