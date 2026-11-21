@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Deleting a session (the web, `chi sessions delete`, `/exit --delete`) now deletes its stopped delegates with it; a
+  running delegate keeps running on its own. With `--remote`, an older chi web still leaves them.
+
 ## [0.181.0] - 2026-11-21
 
 ### Added

@@ -782,8 +782,12 @@ the previous link 1a2b3c4d is back in the lists`): the previous link comes
 back, not started, with the delegates and notes that had moved on. `--chain`
 deletes every link of the session's chain with their delegates (a running
 delegate is left running), one line per link and a `chain: …` summary; a
-schedule on the chain refuses it. See docs/sessions.md (Session chains →
-Deleting a link). A
+schedule on the chain refuses it. A plain delete takes the session's stopped
+delegates with it too (archived ones as well) and says how many (`… deleted;
+2 delegates deleted with it; 1 left running: 9d0e1f2a`); a running delegate
+keeps running on its own, with its subtree. A delegate that would go and is a
+schedule's target, or in a one-turn run, refuses the delete. See
+docs/sessions.md (Session chains → Deleting a link). A
 session whose worker runs is refused unless `--force` stops the worker first;
 one a `--non-interactive` run has is always refused ("in use by a one-turn chi
 --non-interactive run or an older chi's terminal; let it finish first"). A
