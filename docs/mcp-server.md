@@ -51,6 +51,9 @@ A call waits at most 25 seconds (a `chi_ask` 35 in all). Then:
 - the turn still runs: `Still running. Call chi_wait with this token to keep waiting.` with a `token`;
 - a question waits: the question, its numbered options and `Call chi_answer with session, question_id and option
   (or text).` An option is its label or its number (1-based); several only on a question that takes several.
+- `chi_answer` on a question no longer open (answered elsewhere first, a newer one waits, or a stale
+  `question_id`): nothing is sent. The text starts `Question <id> is no longer open …; not answered here.`, then
+  says what came next (`answered_here: false` in `structuredContent`).
 
 Every result is text plus the same facts, the text included, as `structuredContent` (`status`: `done`, `running`, `waiting_for_answer`,
 `command`, or `error` with `detail`). A refusal, a bad argument and a turn that ended without a reply are results

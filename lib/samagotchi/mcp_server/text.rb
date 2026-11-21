@@ -59,6 +59,18 @@ module Samagotchi
         end
       end
 
+      # chi_answer's +result+ (what came next) when the answer did not go
+      # in: question +qid+ was answered elsewhere first, or another one
+      # waits (AnswerCommand's words, first in the text).
+      def not_answered(result, qid)
+        line = "Question #{qid} is no longer open (answered elsewhere, or another one waits); not answered here. " \
+               "What came next:"
+        said = "#{line}\n#{result[:content].first[:text]}"
+        structured = result[:structuredContent]
+        key = structured.key?(:detail) ? :detail : :text
+        { **result, content: [{ type: "text", text: said }], structuredContent: { **structured, key => said } }
+      end
+
       # A pending question (a PendingQuestion) as a host's model answers it.
       def question(pending, session_id:, strategy:, extra: {})
         q = ParentReport.question(pending, strategy: strategy)

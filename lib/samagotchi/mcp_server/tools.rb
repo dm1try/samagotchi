@@ -145,17 +145,20 @@ module Samagotchi
         more = @cancelled ? { cancelled: @cancelled } : {}
         outcome(SessionAccess::Ask.new(@access, exchange: exchange)
                                   .answer(id, question_id: qid, selected: selected, freeform: text,
-                                              client_id: ClientId::CLI_ANSWER, timeout: @slice, **more))
+                                              client_id: ClientId::CLI_ANSWER, timeout: @slice, **more), question_id: qid)
       end
 
-      def outcome(outcome)
+      # @param question_id [String, nil] chi_answer's: an answer that
+      #   didn't go in says so in the text, not only in answered_here
+      def outcome(outcome, question_id: nil)
         case outcome
         when SessionAccess::Ask::Refused then Text.refused(outcome)
         when SessionAccess::Ask::Ran then Text.ran(outcome.session_id)
         else
           extra = outcome.answered_here ? {} : { answered_here: false }
-          Text.wait_result(outcome.result, session_id: outcome.session_id, token: outcome.token,
-                                           strategy: @access.parent_strategy(outcome.session_id), extra: extra)
+          result = Text.wait_result(outcome.result, session_id: outcome.session_id, token: outcome.token,
+                                                    strategy: @access.parent_strategy(outcome.session_id), extra: extra)
+          outcome.answered_here ? result : Text.not_answered(result, question_id)
         end
       end
 

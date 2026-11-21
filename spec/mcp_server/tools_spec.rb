@@ -220,10 +220,26 @@ RSpec.describe Samagotchi::McpServer::Tools do
       expect(result["structuredContent"]).to include("reason" => "parent_refused")
     end
 
-    it "says answered_here false when the question was answered elsewhere first" do
+    it "says in its text and answered_here false when the question was answered elsewhere first (409)" do
       bridge(409, { "error" => "question_not_pending" })
       result = call("chi_answer", session: session.id, question_id: "q1", option: 1)
       expect(result["structuredContent"]).to include("answered_here" => false, "status" => "running")
+      expect(text(result)).to start_with("Question q1 is no longer open (answered elsewhere, or another one waits); " \
+                                         "not answered here. What came next:\nStill running.")
+      expect(result["structuredContent"]["text"]).to eq(text(result))
+    end
+
+    it "says so in its text for a question_id that isn't the pending one, posting nothing" do
+      bridge(200)
+      result = call("chi_answer", session: session.id, question_id: "q0", option: 1)
+      expect(answers).to be_empty
+      expect(text(result)).to start_with("Question q0 is no longer open")
+      expect(result["structuredContent"]).to include("answered_here" => false)
+    end
+
+    it "keeps its text as is when the answer went in" do
+      bridge(200)
+      expect(text(call("chi_answer", session: session.id, question_id: "q1", option: 1))).to start_with("Still running.")
     end
 
     it "refuses a question that no longer waits in an idle session" do
