@@ -107,6 +107,34 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(calls).to be_empty
     end
 
+    it "answers a group that needs the user (a sign-in) with the source's own line, in a lookup and a search" do
+      fs.publish([described_class::Group.new(name: "fs", tools: [echo]),
+                  described_class::Group.new(name: "linear", state: :needs_user,
+                                             error: "linear needs sign-in: the user runs /mcp login linear")])
+
+      expect(index.call("linear/search", {}, surface: now)).to eq("Error: linear needs sign-in: the user runs /mcp login linear")
+      expect(index.find("", surface: now)).to include("\nlinear (linear needs sign-in: the user runs /mcp login linear)")
+      expect(calls).to be_empty
+    end
+
+    it "asks the source's wait before answering a call to a group that needs the user, and finds its tools then" do
+      waited = []
+      fs.instance_variable_set(:@wait, lambda { |group|
+        waited << group
+        fs.publish([described_class::Group.new(name: "linear", tools: [tool("linear", "search")])])
+      })
+      fs.publish([described_class::Group.new(name: "linear", state: :needs_user, error: "linear needs sign-in")])
+
+      expect(index.call("linear/search", {}, surface: now)).to eq("ran search")
+      expect(waited).to eq(["linear"])
+    end
+
+    it "names a group that needs the user without a line of its own" do
+      group = described_class::Group.new(name: "linear", state: :needs_user)
+
+      expect(group.note).to eq("(linear needs the user)")
+    end
+
     it "answers a call whose group a publish dropped meanwhile with an error, not a crash" do
       allow(index).to receive(:inner_args).and_wrap_original do |original, *args|
         fs.publish([])

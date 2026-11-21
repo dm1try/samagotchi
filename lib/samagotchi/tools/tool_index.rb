@@ -130,7 +130,7 @@ module Samagotchi
       end
 
       # A Group's states.
-      STATES = %i[ready starting failed].freeze
+      STATES = %i[ready starting failed needs_user].freeze
 
       # A search's answer (#find): its text, and the tools it loads on a host
       # that loads tools (+loaded+: the wire names of a keyword answer's
@@ -148,7 +148,10 @@ module Samagotchi
       # One group of a source's tools (an MCP server): +summary+ its line in
       # the search tool's description (nil: its name and tool count only),
       # +state+ :ready, :starting (its tools may come: a lookup waits) or
-      # :failed (+error+ says why). A group exists before its tools do.
+      # :failed (+error+ says why), :needs_user (it can't be used until the
+      # user does something: +error+ is the source's own line, a sign-in's;
+      # a call that names it asks the source's wait first).
+      # A group exists before its tools do.
       # Another state, or a tool of another group, raises ArgumentError (a
       # lookup would neither wait on it nor find the tool's source).
       Group = Data.define(:name, :summary, :state, :error, :tools) do
@@ -162,6 +165,7 @@ module Samagotchi
           end
 
           summary = summary.to_s.strip
+          error = "#{name} needs the user" if state == :needs_user && error.to_s.strip.empty?
           super(name: name.to_s, summary: summary.empty? ? nil : summary, state: state, error: error,
                 tools: tools.dup.freeze)
         end
@@ -174,6 +178,7 @@ module Samagotchi
           case state
           when :failed then "(failed: #{error})"
           when :starting then "(starting, try again)"
+          when :needs_user then "(#{error})"
           end
         end
       end
@@ -756,9 +761,12 @@ module Samagotchi
         end
 
         # A name with a group's <group>/ waits for that group only; any
-        # other name (an acts_as) for every one starting.
+        # other name (an acts_as) for every one starting. A group that needs
+        # the user, named, is asked too: the user may have done it meanwhile
+        # (signed in from another session).
         named = reached_groups(surface).select { |group| name.start_with?("#{group.name}/") }
         starting = (named.empty? ? reached_groups(surface) : named).select { |group| group.state == :starting }
+        starting += named.select { |group| group.state == :needs_user }
         unless waited || starting.empty?
           starting.each { |group| source_of(group.name)&.wait(group.name) }
           return lookup(name, surface, waited: true)
@@ -766,6 +774,9 @@ module Samagotchi
 
         failed = all.find { |group| group.state == :failed && name.start_with?("#{group.name}/") }
         return "Error: MCP server #{failed.name} didn't start: #{failed.error}" if failed
+
+        blocked = all.find { |group| group.state == :needs_user && name.start_with?("#{group.name}/") }
+        return "Error: #{blocked.error}" if blocked
 
         closest = ranked(name, all.flat_map(&:tools)).take(CLOSEST)
         return "Error: no tool #{name}. Search with #{FIND_NAME}." if closest.empty?

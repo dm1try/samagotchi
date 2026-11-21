@@ -1735,7 +1735,8 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::Plugin::HttpError` (with the subclass `HttpCancelled`) and
    `Samagotchi::Plugin::Http::Response`, `Http::Stream` (what `ctx.http.stream` yields) and
    `Http::SseReader` (its SSE reader, `SseReader.new.feed(bytes) { |event| … }`, for an `each_chunk` loop that checks
-   a deadline of its own) are **experimental until 1.0**, like the test kit.
+   a deadline of its own) are **experimental until 1.0**, like the test kit. So are `ctx.secrets`' errors,
+   `Samagotchi::Plugin::Secrets::Busy` and `Samagotchi::Plugin::Secrets::Unavailable` (a bundle rescues them by name).
 2. `Samagotchi::Plugin::Peer` as a base class. A subclass defines `post`,
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
