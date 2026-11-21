@@ -167,18 +167,9 @@ module Samagotchi
         policy.stop? && policy.only ? policy.with(only: nil) : policy
       end
 
-      # REFUSE's one listing of a whole batch under its locks, and a stop
-      # with +only+'s: the batch's DeleteRefused :tasks_running (+refusal+
-      # builds it) before anything of it goes, on any task (REFUSE) or on
-      # one the stop wasn't given (Policy#unnamed). Nothing for another
-      # policy.
-      def refuse_batch!(ids, state_dir:, policy:, &refusal)
-        return unless policy.refuse? || (policy.stop? && policy.only)
-
-        listing = of(ids, state_dir: state_dir)
-        refused = policy.refuse? ? !listing.empty? : !policy.unnamed(listing).empty?
-        raise yield(listing) if refused
-      end
+      # The last word on a whole batch under its locks (SessionChain::Delete):
+      # #check! again, before anything of it goes.
+      def refuse_batch!(ids, state_dir:, policy:, &) = check!(ids, state_dir: state_dir, policy: policy, &)
 
       # The tasks the sessions +ids+ started that may still run; never
       # writes, never loads TaskRuntime. A session with no file (a folder
@@ -202,14 +193,19 @@ module Samagotchi
       end
 
       # +listing+ of +ids+ when +policy+ refuses on it, raised as the op's
-      # refusal (+refusal+ builds it from the listing); else the listing
-      # (EMPTY unless the policy refuses: a stop lists again where it stops).
+      # refusal (+refusal+ builds it from the listing): REFUSE on any task, a
+      # stop with +only+ on a running one it wasn't given (Policy#unnamed),
+      # so an op refuses up front, before a worker is stopped or anything
+      # goes; the op's check under its lock stays the last word. Else the
+      # listing (EMPTY for IGNORE and a plain stop, which lists again where
+      # it stops).
       # @return [Listing]
       def check!(ids, state_dir:, policy:, &refusal)
-        return EMPTY unless policy.refuse?
+        return EMPTY unless policy.refuse? || (policy.stop? && policy.only)
 
         listing = of(ids, state_dir: state_dir)
-        raise yield(listing) unless listing.empty?
+        refused = policy.refuse? ? !listing.empty? : !policy.unnamed(listing).empty?
+        raise yield(listing) if refused
 
         listing
       end

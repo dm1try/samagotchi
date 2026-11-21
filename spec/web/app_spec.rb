@@ -4211,6 +4211,19 @@ RSpec.describe Samagotchi::Web::App do
         expect(json["tasks_stopped"].map { |t| t["id"] }).to eq([record.id])
       end
 
+      it "answers a chain delete 409 tasks_running, deleting nothing, for an unnamed task in an older link" do
+        older = start_task("sleep 30.57")
+        Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+        link = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd,
+                                               continues: session.id).tap { |s| s.save(state_dir: state_dir) }
+
+        status, json = call("/api/sessions/#{link.id}/chain?force=true&stop_tasks=true&tasks=", method: "DELETE")
+
+        expect([status, json["error"]]).to eq([409, "tasks_running"])
+        expect(json.dig("tasks", "running").map { |t| t["id"] }).to eq([older.id])
+        expect([session.id, link.id].map { |sid| Samagotchi::Session.exist?(sid, state_dir: state_dir) }).to eq([true, true])
+      end
+
       it "takes stop_tasks on the chain delete's query too" do
         record = start_task("sleep 30.53")
 

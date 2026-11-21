@@ -611,22 +611,41 @@ RSpec.describe Samagotchi::SessionChain::Delete do
         expect([status_of(in_plain), status_of(in_d)]).to eq(%w[stopped stopped])
       end
 
-      it "refuses on a task it wasn't given, under the lock, nothing gone or stopped, the worker's stop said" do
+      it "refuses up front on a task it wasn't given: no worker stopped, nothing gone or stopped" do
         plain = make
         d = make(parent: plain)
         named = start_task(plain, "sleep 30.33")
         unnamed = start_task(d, "sleep 30.34")
+        allow(manager).to receive(:release_for_delete!).and_call_original
+        before = all_ids
+
+        expect { delete(plain.id, running_tasks: policies.stop(by: "user", only: [named.id])) }
+          .to raise_error(manager::DeleteRefused) { |e|
+            expect(e).to have_attributes(reason: :tasks_running, session_id: plain.id, worker_stopped: false)
+            expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+          }
+        expect(manager).not_to have_received(:release_for_delete!)
+        expect(all_ids).to eq(before)
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+      end
+
+      it "refuses under the lock on one that started after the check, nothing gone, the worker's stop said" do
+        plain = make
+        d = make(parent: plain)
+        named = start_task(plain, "sleep 30.37")
         allow(manager).to receive(:release_for_delete!).and_return(true)
+        allow(described_class).to receive(:check_link!).and_wrap_original do |original, *args, **kw|
+          original.call(*args, **kw).tap { start_task(d, "sleep 30.38") }
+        end
         before = all_ids
 
         expect { delete(plain.id, running_tasks: policies.stop(by: "user", only: [named.id])) }
           .to raise_error(manager::DeleteRefused) { |e|
             expect(e).to have_attributes(reason: :tasks_running, session_id: plain.id, worker_stopped: true,
                                          stopped_worker: plain.id)
-            expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
           }
         expect(all_ids).to eq(before)
-        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+        expect(status_of(named)).to eq("running")
       end
 
       # The batch's check under the locks is the last word: a record read
@@ -673,12 +692,34 @@ RSpec.describe Samagotchi::SessionChain::Delete do
         end
       end
 
-      it "keeps a chain whole on a task it wasn't given on its newest link, saying whose worker was stopped" do
+      # The review's probe: the sheet named the newest link's task; one the
+      # sheet didn't name runs in the older link. Refused up front, not part-way.
+      it "refuses a chain whole, up front, on a task it wasn't given in an older link" do
         a = make
         b = continue(a.id)
-        named = start_task(a, "sleep 30.35")
-        start_task(b, "sleep 30.36")
+        named = start_task(b, "sleep 30.35")
+        unnamed = start_task(a, "sleep 30.36")
+        allow(manager).to receive(:release_for_delete!).and_call_original
+
+        expect do
+          manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user", only: [named.id]))
+        end.to raise_error(manager::DeleteRefused) { |e|
+          expect(e).to have_attributes(reason: :tasks_running, worker_stopped: false)
+          expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+        }
+        expect(manager).not_to have_received(:release_for_delete!)
+        expect([exists?(a.id), exists?(b.id)]).to eq([true, true])
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+      end
+
+      it "keeps a chain whole on a task started on its newest link after the check, saying whose worker was stopped" do
+        a = make
+        b = continue(a.id)
+        named = start_task(a, "sleep 30.39")
         allow(manager).to receive(:release_for_delete!).and_return(true)
+        allow(described_class).to receive(:check_chain!).and_wrap_original do |original, *args, **kw|
+          original.call(*args, **kw).tap { start_task(b, "sleep 30.40") }
+        end
 
         expect do
           manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user", only: [named.id]))

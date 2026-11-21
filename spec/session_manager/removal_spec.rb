@@ -569,6 +569,21 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.exist?(dir)).to be(true)
     end
 
+    it "refuses a plain delete up front on a task the stop wasn't given, before its worker is stopped" do
+      session = task_session
+      named = start_task(session, "sleep 30.45")
+      start_task(session, "sleep 30.46")
+      allow(described_class).to receive(:release_for_delete!).and_call_original
+
+      expect do
+        described_class.delete_resolved(session.id, state_dir: tmpdir, stop: true,
+                                                    running_tasks: policies.stop(by: "user", only: [named.id]))
+      end.to raise_error(described_class::DeleteRefused) { |e| expect(e).to have_attributes(reason: :tasks_running, worker_stopped: false) }
+      expect(described_class).not_to have_received(:release_for_delete!)
+      expect(gone?(session)).to be(false)
+      expect(status_of(named)).to eq("running")
+    end
+
     it "refuses a plain delete on a task the stop wasn't given, under the lock, with the worker stopped" do
       session = task_session
       named = start_task(session, "sleep 30.43")
@@ -633,12 +648,15 @@ RSpec.describe Samagotchi::SessionManager do
         expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))).to be(false)
       end
 
-      it "with a stop given the named tasks: stops them and archives; refuses on another, archiving nothing" do
+      it "with a stop given the named tasks: stops them and archives; refuses on another up front, archiving nothing" do
         session = task_session
         child = task_session(parent: session)
         named = start_task(session, "sleep 30.41")
         unnamed = start_task(child, "sleep 30.42")
         dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+        FileUtils.mkdir_p(dir)
+        spawn_owner_for(dir)
+        allow(described_class).to receive(:stop_session).and_call_original
 
         expect do
           described_class.archive_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user", only: [named.id]))
@@ -646,6 +664,8 @@ RSpec.describe Samagotchi::SessionManager do
           expect(e.reason).to eq(:tasks_running)
           expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
         }
+        expect(described_class).not_to have_received(:stop_session)
+        expect(described_class.session_owner(session.id, state_dir: tmpdir)).not_to be_nil
         expect(Samagotchi::ArchiveStore.archived?(dir)).to be(false)
         expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
 
