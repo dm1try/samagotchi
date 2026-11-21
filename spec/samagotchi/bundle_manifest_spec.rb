@@ -224,6 +224,87 @@ RSpec.describe Samagotchi::BundleManifest do
     end
   end
 
+  describe "plugin: parts:" do
+    def plugin_with(parts) = { "plugin" => { "file" => "plugin.rb", "sha256" => "sha256:aa", "parts" => parts } }
+
+    it "reads the parts in the order listed, each sha prefixed, an empty one kept" do
+      manifest = described_class.new(path: write_manifest(plugin_with({ "z_client.rb" => "bb", "a_http.rb" => "sha256:cc",
+                                                                        "empty.rb" => "" })))
+      expect(manifest.plugin[:parts]).to eq("z_client.rb" => "sha256:bb", "a_http.rb" => "sha256:cc", "empty.rb" => "")
+      expect(manifest.plugin_parts.keys).to eq(%w[z_client.rb a_http.rb empty.rb])
+      expect(manifest.plugin_files).to eq([["z_client.rb", "sha256:bb"], ["a_http.rb", "sha256:cc"], ["empty.rb", ""],
+                                           ["plugin.rb", "sha256:aa"]])
+      expect(manifest.checksum_for_part("z_client.rb")).to eq("bb")
+      expect(manifest.checksum_for_part("empty.rb")).to be_nil
+      expect(manifest.checksum_for_part("nope.rb")).to be_nil
+    end
+
+    it "parses a manifest without parts to what it did before" do
+      manifest = described_class.new(path: write_manifest({ "plugin" => { "file" => "plugin.rb", "sha256" => "sha256:aa" } }))
+      expect(manifest.plugin).to eq(file: "plugin.rb", sha256: "sha256:aa")
+      expect(manifest.plugin_parts).to eq({})
+      expect(manifest.plugin_files).to eq([["plugin.rb", "sha256:aa"]])
+      expect(described_class.new(path: write_manifest(plugin_with(nil))).plugin).to eq(file: "plugin.rb", sha256: "sha256:aa")
+      expect(described_class.new(path: write_manifest({})).plugin_files).to eq([])
+    end
+
+    it "refuses a part that isn't a top-level .rb name, the plugin file itself, a list, or more than 16" do
+      error = described_class::ValidationError
+      expect { described_class.new(path: write_manifest(plugin_with({ "lib/client.rb" => "aa" }))) }
+        .to raise_error(error, %(plugin parts: "lib/client.rb" isn't a .rb file name in the bundle's top directory))
+      expect { described_class.new(path: write_manifest(plugin_with({ "client.py" => "aa" }))) }
+        .to raise_error(error, /"client.py" isn't a .rb file name/)
+      expect { described_class.new(path: write_manifest(plugin_with({ "plugin.rb" => "aa" }))) }
+        .to raise_error(error, "plugin parts: plugin.rb is the plugin file itself")
+      expect { described_class.new(path: write_manifest(plugin_with(["client.rb"]))) }
+        .to raise_error(error, "plugin parts: must be a mapping of file names to sha256")
+      many = (1..17).to_h { |i| ["p#{i}.rb", "aa"] }
+      expect { described_class.new(path: write_manifest(plugin_with(many))) }
+        .to raise_error(error, "plugin parts: lists 17 files, at most 16")
+      expect(described_class.new(path: write_manifest(plugin_with(many.first(16).to_h))).plugin_parts.size).to eq(16)
+    end
+
+    it "refuses a part named like the plugin file or an earlier part in another case" do
+      error = described_class::ValidationError
+      expect { described_class.new(path: write_manifest(plugin_with({ "a.rb" => "aa", "Plugin.rb" => "bb" }))) }
+        .to raise_error(error, "plugin parts: Plugin.rb and plugin.rb differ only in case (one file on a case-insensitive disk)")
+      expect { described_class.new(path: write_manifest(plugin_with({ "a.rb" => "aa", "A.rb" => "bb" }))) }
+        .to raise_error(error, "plugin parts: A.rb and a.rb differ only in case (one file on a case-insensitive disk)")
+    end
+
+    it "refuses a part the YAML lists twice, which loading would collapse into one" do
+      path = File.join(tmpdir, "manifest.yml")
+      File.write(path, <<~YAML)
+        name: b
+        version: 1.0.0
+        files: {}
+        plugin:
+          file: plugin.rb
+          sha256: sha256:aa
+          parts:
+            a.rb: sha256:bb
+            b.rb: sha256:cc
+            a.rb: sha256:dd
+      YAML
+      expect { described_class.new(path: path) }
+        .to raise_error(described_class::ValidationError, "plugin parts: a.rb is listed twice")
+      expect(described_class.tolerant(path: path).last).to eq("plugin" => "plugin parts: a.rb is listed twice")
+    end
+
+    it "writes the parts back in their order, and reads them again" do
+      described_class.write(dir: tmpdir, name: "b", version: "1.0.0", files: {},
+                            plugin: { file: "plugin.rb", sha256: "aa", parts: { "z.rb" => "bb", "a.rb" => "sha256:cc" } })
+      expect(YAML.load_file(File.join(tmpdir, "manifest.yml"))["plugin"]["parts"]).to eq("z.rb" => "sha256:bb", "a.rb" => "sha256:cc")
+      expect(described_class.read(dir: tmpdir).plugin_parts.keys).to eq(%w[z.rb a.rb])
+    end
+
+    it "puts a bad parts: under the tolerant read's plugin problem" do
+      manifest, problems = described_class.tolerant(path: write_manifest(plugin_with("client.rb")))
+      expect(manifest.plugin).to be_nil
+      expect(problems).to eq("plugin" => "plugin parts: must be a mapping of file names to sha256")
+    end
+  end
+
   describe "needs" do
     it "is empty when the manifest has none" do
       expect(described_class.new(path: write_manifest({})).needs).to eq([])
@@ -398,6 +479,12 @@ RSpec.describe Samagotchi::BundleManifest do
         expect(manifest.floor_keys).to eq("files.description" => "0.34.0",
                                           "session_settings" => "0.84.0", "session_settings.types" => "0.92.0",
                                           "settings" => "0.143.0", "settings.types" => "0.92.0")
+      end
+
+      it "counts plugin: parts: once its release is in SINCE" do
+        stub_const("#{described_class}::SINCE", described_class::SINCE.merge("plugin.parts" => "9.9.9"))
+        manifest = manifest({ "plugin" => { "file" => "plugin.rb", "sha256" => "", "parts" => { "a.rb" => "" } } })
+        expect(manifest.floor_keys).to eq("plugin.parts" => "9.9.9")
       end
 
       it "takes no floor from a plain files: entry" do
