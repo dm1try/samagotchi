@@ -2,6 +2,7 @@
 
 require "uri"
 require_relative "../log"
+require_relative "../plugin/card"
 require_relative "../plugin/sign_in"
 
 module Samagotchi
