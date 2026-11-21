@@ -200,11 +200,11 @@ RSpec.describe "The mcp bundle's HTTP client" do
   end
 
   describe "statuses" do
-    it "says a 401 needs a token, and doesn't try legacy" do
+    it "says a 401 needs a token or sign-in, its status on the error, and doesn't try legacy" do
       server.enqueue("/mcp", status: 401, body: "")
 
       expect { client.handshake(timeout: 5, cancelled: nil) }
-        .to raise_error(errors::Unavailable, "needs a token (401): set bearer_token_env (sign-in comes in a later chi)")
+        .to raise_error(client_class::Refused, "needs a token or sign-in (401)") { |e| expect(e.status).to eq(401) }
       expect(methods_sent).to eq(["server/discover"])
     end
 

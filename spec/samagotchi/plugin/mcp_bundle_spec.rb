@@ -595,7 +595,7 @@ RSpec.describe "The mcp bundle" do
     cards = []
     engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
 
-    expect(engine.running_anytime { commands.run("/mcp nope") }.output).to eq("usage: /mcp (lists the servers)")
+    expect(engine.running_anytime { commands.run("/mcp nope") }.output).to eq("usage: /mcp (lists the servers), /mcp login NAME, /mcp logout NAME")
     expect(cards).to be_empty
   end
 

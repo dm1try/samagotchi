@@ -172,12 +172,24 @@ RSpec.describe "The mcp bundle with a remote server" do
     end
   end
 
-  it "says a 401 needs a token when none is configured" do
+  it "says a first run's 401 needs sign-in when no token is configured: no failure card, a sign-in one (in a worker)" do
     remote.token = "fake-token-1"
+    allow_any_instance_of(Samagotchi::Plugin::Context).to receive(:frontend).and_return(:worker)
 
-    expect(load_events.find { |e| e[:type] == :card }[:body])
-      .to eq("MCP server fake didn't connect: needs a token (401): set bearer_token_env (sign-in comes in a later chi); " \
-             "its calls fail until chi restarts")
+    expect(load_events.select { |e| e[:type] == :card }.map { |c| [c[:title], c[:actions]] })
+      .to eq([["fake needs sign-in", [{ label: "Sign in", command: "/mcp login fake" }]]])
+    expect(mcp_card).to start_with("**fake**: needs sign-in (/mcp login fake)")
+    expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
+  end
+
+  it "keeps a 401 with a static token a plain error: no sign-in offered" do
+    remote.token = "fake-token-1"
+    fake["bearer_token_env"] = "FAKE_MCP_TOKEN"
+
+    with_env("FAKE_MCP_TOKEN" => "wrong") do
+      expect(load_events.select { |e| e[:type] == :card }.map { |c| c[:body] })
+        .to eq(["MCP server fake didn't connect: refused the token (401); its calls fail until chi restarts"])
+    end
   end
 
   it "never attaches a local image a remote server names" do

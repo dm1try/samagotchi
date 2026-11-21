@@ -38,8 +38,17 @@ class Plugin
     end
 
     # No token, or the server refused one (401, 403): the handshake never
-    # tries legacy for it.
-    class Refused < Client::Unavailable; end
+    # tries legacy for it. +status+ is the answer's (nil: refused before
+    # sending, an unset variable).
+    class Refused < Client::Unavailable
+      attr_reader :status
+
+      def initialize(message = nil, status: nil)
+        @status = status
+        super(message)
+      end
+    end
+
     # A 404 for a legacy session id: the session expired.
     class Expired < Client::Unavailable; end
 
@@ -303,8 +312,8 @@ class Plugin
     def refuse(res, token_sent)
       status = res.status
       raise Client::Unavailable, "redirected (#{status})#{redirect_to(res)}: set url: to the new address" if status.between?(300, 399)
-      raise Refused, token_sent ? "refused the token (401)" : "needs a token (401): set bearer_token_env (sign-in comes in a later chi)" if status == 401
-      raise Refused, "refused (403)" if status == 403
+      raise Refused.new(token_sent ? "refused the token (401)" : "needs a token or sign-in (401)", status: 401) if status == 401
+      raise Refused.new("refused (403)", status: 403) if status == 403
       raise Expired, "the session expired (404)" if status == 404 && @era == :legacy && @session_id
 
       message = error_body(res) if content_type(res) == "application/json"

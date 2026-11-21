@@ -143,16 +143,25 @@ class Plugin
 
     @publish.synchronize do
       groups = @servers.map do |server|
-        state = { starting: :starting, failed: :failed }.fetch(server.state, :ready)
+        state = { starting: :starting, failed: :failed, needs_sign_in: :needs_user }.fetch(server.state, :ready)
         tools = Array(server.tools).map do |tool|
           Samagotchi::Tools::ToolIndex::Tool.new(group: tool.server, name: tool.name, description: tool.description,
                                                  schema: tool.schema, acts_as: tool.chi_name, refusal: refusal(tool),
                                                  mark: mark(tool))
         end
         Samagotchi::Tools::ToolIndex::Group.new(name: server.name, summary: server_summary(server), state: state,
-                                                error: state == :failed ? server.error : nil, tools: tools)
+                                                error: group_error(server, state), tools: tools)
       end
       @source.publish(groups)
+    end
+  end
+
+  # What a group's note and a call that misses its tools say: a failed
+  # server's error, the sign-in line of one that needs it.
+  def group_error(server, state)
+    case state
+    when :failed then server.error
+    when :needs_user then sign_in_line(server)
     end
   end
 

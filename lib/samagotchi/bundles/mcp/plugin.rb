@@ -43,6 +43,7 @@
 # two tools take in every request.
 # Its parts (manifest.yml plugin: parts:, loaded first, in this order):
 # client.rb (Client, the stdio JSON-RPC client), http_client.rb (HttpClient),
+# oauth.rb (sign-in: OAuth::Login, OAuth::Token),
 # tools.rb (the tools/list cache and the tool index) and content.rb (a
 # tools/call answer's text and images).
 require "digest"
@@ -84,10 +85,14 @@ class Plugin
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
   # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio),
-  # +oauth+ its oauth: map as given (nil without one).
+  # +oauth+ its oauth: map as given (nil without one). +signs_in+: a remote
+  # server with no static token (bearer_token_env, an Authorization
+  # header), whose 401 offers sign-in; +token+ the token its HttpClient
+  # sends (OAuth::Token, else HttpClient::StaticToken); +card_shown+ its
+  # "needs sign-in" card was shown in this worker.
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
                       :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, :url, :headers,
-                      :token_env, :oauth, keyword_init: true) do
+                      :token_env, :oauth, :signs_in, :token, :card_shown, keyword_init: true) do
     # Its state and tools, never the env (values often a token), the
     # command's args (which may carry a token too), a URL's path or query
     # or a header's value: a failing spec or a debugger would print those.
@@ -115,6 +120,15 @@ class Plugin
     @left_out = []
     @left_out_lock = Mutex.new
     @publish = Mutex.new
+    # Sign-ins: each server's waiting /mcp login thread, the "needs sign-in"
+    # cards a participant's turn held back, the providers that refused
+    # chi's client document (this worker only), and the controller the
+    # sign-ins' threads stop on (the plugin's shutdown).
+    @sign_ins = {}
+    @sign_in_lock = Mutex.new
+    @held_cards = []
+    @cimd_refused = {}
+    @sign_in_cancel = Samagotchi::CancellationController.new
   end
 
   # The servers' names, never @settings (the raw servers config, env values
@@ -150,6 +164,7 @@ class Plugin
                           restarts: 0, tokens: 0)
       server.timeout = positive(server.config["timeout"]) || @timeout
       resolve(server, ctx)
+      server.token = token_of(server, ctx) if server.url
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
       server
     end
@@ -179,23 +194,207 @@ class Plugin
       end
     end
     publish
-    chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |args, command_ctx|
+    # The sign-ins' stop seat: chi stops its services as it leaves.
+    chi.service("(sign-ins)", eager: true) { |svc| svc.on_stop { stop_sign_ins } }
+    chi.on(:after_turn) { |_event, hook_ctx| show_held_cards(hook_ctx) unless hook_ctx.turn_author }
+    chi.command "/mcp", "list the MCP servers (login NAME, logout NAME: sign in to or out of a remote one)",
+                anytime: true do |args, command_ctx|
       mcp_command(args, command_ctx)
     end
   end
 
   # /mcp's one line for a word it doesn't know.
-  USAGE = "usage: /mcp (lists the servers)"
+  USAGE = "usage: /mcp (lists the servers), /mcp login NAME, /mcp logout NAME"
 
   private
 
-  # /mcp: no word lists the servers (a card); another word answers USAGE.
+  # /mcp: no word lists the servers (a card); login / logout NAME sign in
+  # to or out of a remote server; another word answers USAGE.
   def mcp_command(args, ctx)
-    word, = args.to_s.split(/\s+/, 2)
-    return USAGE if word
+    show_held_cards(ctx)
+    word, name, extra = args.to_s.split(/\s+/, 3)
+    case word
+    when nil
+      ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
+      nil
+    when "login", "logout"
+      return "usage: /mcp #{word} NAME" if name.nil? || extra
 
-    ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
-    nil
+      word == "login" ? login(name, ctx) : logout(name, ctx)
+    else USAGE
+    end
+  end
+
+  # ── Sign-in (the OAuth in oauth.rb; here its wiring) ──────────────────
+
+  # Why /mcp login|logout can't act on server +name+, nil when it can.
+  def sign_in_refusal(name)
+    server = @servers.find { |s| s.name == name }
+    return "no MCP server #{name}#{" (#{@servers.map(&:name).join(", ")})" unless @servers.empty?}" unless server
+    return "#{name} is a local server: sign-in is for remote ones (url:)" unless server.url
+    return "#{name} has a static token (bearer_token_env: or an Authorization header): it doesn't sign in" unless server.signs_in
+    return "#{name}'s url: has a query: chi can't sign in to it (it would go out with the sign-in)" if URI.parse(server.url).query
+
+    config_error(server)
+  end
+
+  # /mcp login NAME: answers at once; discovery, the client, the flow and
+  # the exchange run on a thread of the plugin's (OAuth::Login), whose
+  # result or error replaces the flow's card.
+  def login(name, ctx)
+    refusal = sign_in_refusal(name)
+    return refusal if refusal
+    return "sign-in needs the web or a terminal: this run is one-shot" if ctx.frontend == :one_shot
+    return "this chi can't sign in (it has no ctx.sign_in)" unless ctx.respond_to?(:sign_in) && ctx.respond_to?(:secrets)
+
+    server = @servers.find { |s| s.name == name }
+    started = @sign_in_lock.synchronize do
+      next false if @sign_ins[name]&.alive? || @sign_in_cancel.cancelled?
+
+      @sign_ins[name] = Thread.new { sign_in(server, ctx) }
+    end
+    return "a sign-in to #{name} is already waiting: finish it in the browser, or let it time out" unless started
+
+    "Opening sign-in for #{name}…"
+  end
+
+  # The login's thread: every error ends on a card, never raised into nothing.
+  def sign_in(server, ctx)
+    login = OAuth::Login.new(ctx: ctx, server: server, secret_lookup: ->(name) { env_value(server, name) },
+                             client_metadata_url: nil, cimd_refused: @cimd_refused, cancel: @sign_in_cancel,
+                             log: ->(event, **fields) { ctx.log.info("mcp_#{event}", **fields) })
+    card_id = login.run
+    signed_in(server, card_id, ctx) if card_id
+  rescue OAuth::Refusal => e
+    ctx.log.warn("mcp_sign_in_failed", server: server.name, error: e.class.name)
+    ctx.card(id: e.card_id, title: "Sign-in to #{server.name} failed", body: e.message, level: :warn, between_turns: true)
+  rescue StandardError => e
+    ctx.log.warn("mcp_sign_in_failed", server: server.name, error: e.class.name)
+    ctx.card(title: "Sign-in to #{server.name} failed", body: "chi's sign-in broke (#{e.class.name}); the debug log has it",
+             level: :warn, between_turns: true)
+  end
+
+  # Kept: the server connects as a lazy start does (handshake, tools/list,
+  # the cache), with spawn directly when its service already runs (a 401
+  # met during a call, a sign-out), then the flow's card says so.
+  def signed_in(server, card_id, ctx)
+    server.token.forget
+    # Its "needs sign-in" card loses its button; a later refusal shows it again.
+    if @sign_in_lock.synchronize { server.card_shown.tap { server.card_shown = false } }
+      ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in", body: "Signed in since.", between_turns: true)
+    end
+    begin
+      @restart.synchronize do
+        if server.service.state == :running
+          old = server.client
+          spawn(server, ctx, cancelled: @sign_in_cancel)
+          old.close unless old.equal?(server.client)
+        else
+          server.service.value
+        end
+      end
+      server.state = :running
+      server.error = nil
+      publish
+      count = offered(server).size
+      ctx.card(id: card_id, title: "Signed in to #{server.name}", body: "#{count} tool#{"s" unless count == 1}, ready to use.",
+               between_turns: true)
+    rescue StandardError => e
+      if needs_sign_in?(server, e)
+        signed_out(server, ctx)
+        return
+      end
+
+      ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, signed_in: true)
+      ctx.card(id: card_id, title: "Signed in, but #{server.name} didn't connect", body: e.message, level: :warn,
+               between_turns: true)
+    end
+  end
+
+  # /mcp logout NAME: the kept token goes (the provider's revocation asked,
+  # best effort), the client closes, the server needs sign-in. chi's
+  # registration with the provider stays.
+  def logout(name, ctx)
+    refusal = sign_in_refusal(name)
+    return refusal if refusal
+
+    server = @servers.find { |s| s.name == name }
+    kept = server.token.kept
+    ctx.secrets.delete(server.token.name)
+    server.token.forget
+    OAuth.revoke(ctx.http, kept, log: ->(event, **fields) { ctx.log.info("mcp_#{event}", server: name, **fields) }) if kept
+    server.client&.close
+    server.state = :needs_sign_in
+    publish
+    "Signed out of #{name}."
+  rescue Samagotchi::Plugin::Secrets::Unavailable, Samagotchi::Plugin::Secrets::Busy => e
+    "#{name}'s sign-in wasn't forgotten: #{e.message}"
+  end
+
+  # Whether +error+ means the server wants a sign-in: a 401 from one that signs in.
+  def needs_sign_in?(server, error) = server.signs_in && error.is_a?(HttpClient::Refused) && error.status == 401
+
+  # The server needs sign-in: its state (said once), its card, and the
+  # line its call answers.
+  def signed_out(server, ctx)
+    first = @sign_in_lock.synchronize { server.state == :needs_sign_in ? false : (server.state = :needs_sign_in) }
+    if first
+      server.error = nil
+      publish
+      ctx.log.info("mcp_needs_sign_in", server: server.name)
+    end
+    offer_sign_in(server, ctx)
+    "Error: #{sign_in_line(server, ctx.turn_author)}"
+  end
+
+  # What a call of a server that needs sign-in answers: the owner's
+  # command, or (a participant's turn) who signs in, no command.
+  def sign_in_line(server, author = nil)
+    return "#{server.name} needs sign-in: the session's owner signs in" if author
+
+    "#{server.name} needs sign-in: the user runs /mcp login #{server.name}"
+  end
+
+  # The "needs sign-in" card, once per server per worker, never a turn's;
+  # none on a one-shot; on a participant's turn held for the owner's next
+  # turn end or command.
+  def offer_sign_in(server, ctx)
+    return if ctx.frontend == :one_shot
+
+    if ctx.turn_author
+      @sign_in_lock.synchronize { @held_cards << server.name unless @held_cards.include?(server.name) }
+      return
+    end
+    first = @sign_in_lock.synchronize { server.card_shown ? false : (server.card_shown = true) }
+    return unless first
+
+    ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in",
+             body: "The server asks chi to sign in. Sign in opens its provider's page in your browser.",
+             actions: [{ label: "Sign in", command: "/mcp login #{server.name}" }], between_turns: true)
+  end
+
+  def show_held_cards(ctx)
+    names = @sign_in_lock.synchronize { @held_cards.slice!(0..) }
+    names.each do |name|
+      server = @servers.find { |s| s.name == name }
+      offer_sign_in(server, ctx) if server&.state == :needs_sign_in
+    end
+  end
+
+  # The service's stop: the waiting sign-ins end (core stops their flows
+  # too), their threads get a moment to put their cards right.
+  def stop_sign_ins
+    @sign_in_cancel.cancel!
+    threads = @sign_in_lock.synchronize { @sign_ins.values }
+    threads.each { |thread| thread.join(2) }
+  end
+
+  # A remote server's token object: OAuth::Token for one that signs in
+  # (with this chi's ctx.secrets), else the static one.
+  def token_of(server, ctx)
+    return token_lookup(server) unless server.signs_in && ctx.respond_to?(:secrets)
+
+    OAuth::Token.new(secrets: ctx.secrets, resource: URI.parse(server.url).query ? nil : OAuth.canonical(server.url))
   end
 
   # The command, env and cwd the server runs with, and their digest (the
@@ -224,6 +423,7 @@ class Plugin
     server.headers = server.config["headers"].is_a?(Hash) ? server.config["headers"] : {}
     server.token_env = server.config["bearer_token_env"]&.to_s
     server.oauth = server.config["oauth"] if server.config.key?("oauth")
+    server.signs_in = server.token_env.nil? && server.headers.keys.none? { |name| name.to_s.casecmp?("authorization") }
     digested = [server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort, server.token_env]
     digested << (server.oauth.is_a?(Hash) ? server.oauth.map { |k, v| [k.to_s, v] }.sort_by(&:first) : server.oauth) if server.config.key?("oauth")
     server.digest = Digest::SHA256.hexdigest(JSON.generate(digested))
@@ -325,14 +525,21 @@ class Plugin
     return HttpClient::StaticToken.new { nil } unless server.token_env
 
     HttpClient::StaticToken.new do
-      value = server_env(server)[server.token_env].to_s
-      value = ENV[server.token_env].to_s if value.empty?
+      value = env_value(server, server.token_env).to_s
       raise HttpClient::Refused, "#{server.token_env} is not set" if value.empty?
       # An env file saved with CRLF line ends; a header can't carry it.
       raise HttpClient::Refused, "#{server.token_env} holds a line break: set it on one line" if value.match?(/[\r\n\0]/)
 
       value
     end
+  end
+
+  # +variable+'s value for the server: its env:, the project env, then the
+  # worker's; nil when unset or empty.
+  def env_value(server, variable)
+    value = server_env(server)[variable].to_s
+    value = ENV[variable].to_s if value.empty?
+    value.empty? ? nil : value
   end
 
   # A client's cancelled:, read on the thread that does the work (an init
@@ -347,7 +554,7 @@ class Plugin
   # is the caller's, never assigned here.
   def connect(server, ctx, **callbacks)
     if server.url
-      return HttpClient.new(server.url, headers: server.headers, token: token_lookup(server), http: ctx.http,
+      return HttpClient.new(server.url, headers: server.headers, token: server.token || token_lookup(server), http: ctx.http,
                                         log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
     end
 
@@ -371,8 +578,7 @@ class Plugin
   # it), then cache the list and its info when either changed, and index
   # the tools.
   # @return [Client]
-  def spawn(server, ctx)
-    cancelled = stop_of(server, ctx)
+  def spawn(server, ctx, cancelled: stop_of(server, ctx))
     client = server.client = connect(server, ctx,
                                      on_exit: ->(reason) { exited(server, reason, ctx) },
                                      on_notification: lambda { |method, _params|
@@ -426,6 +632,10 @@ class Plugin
     count = server.listed.size
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
+    if needs_sign_in?(server, e)
+      signed_out(server, ctx)
+      return "#{server.name} needs sign-in (/mcp login #{server.name})"
+    end
     if cached && server.url
       ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
       server.error = e.message # its first call failing the same way says nothing new
@@ -465,6 +675,11 @@ class Plugin
       ctx.log.info("mcp_tools_refreshed", server: server.name, tools: listed.size, changed: changed)
       index(server, ctx) if changed
     end
+    nil
+  rescue HttpClient::Refused => e
+    raise unless needs_sign_in?(server, e)
+
+    signed_out(server, ctx) if server.state == :cached
     nil
   end
 
@@ -557,6 +772,7 @@ class Plugin
   # JSON-RPC error answer the tool's inputSchema too (ToolIndex.schema_note).
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} #{server.failed_word}: #{server.error}" if server.state == :failed
+    return signed_out(server, ctx) if server.state == :needs_sign_in
 
     client = case server.state
              when :cached then lazy_start(server, ctx)
@@ -575,6 +791,8 @@ class Plugin
     images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
   rescue Client::Dead => e
     "Error: MCP server #{server.name} is #{server.url ? "not reachable" : "not running"} (#{e.message})"
+  rescue HttpClient::Refused => e
+    needs_sign_in?(server, e) ? signed_out(server, ctx) : "Error: #{e.message}"
   rescue Client::Timeout, Client::Cancelled, Client::Unavailable, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   rescue Client::Error => e
@@ -599,6 +817,7 @@ class Plugin
     "Error: #{e.message}"
   rescue StandardError => e
     raise unless server.state == :cached
+    return signed_out(server, ctx) if needs_sign_in?(server, e)
     return not_connected(server, e, ctx) if server.url
 
     server.state = :failed
@@ -705,6 +924,7 @@ class Plugin
     when :running then "#{server.url ? "connected" : "running"} (#{server.client.label}), #{tools}, #{tokens_text(server)}"
     when :starting then "starting"
     when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
+    when :needs_sign_in then "needs sign-in (/mcp login #{server.name})"
     else "stopped: #{server.error}"
     end
   rescue Samagotchi::Plugin::Service::Stopped
