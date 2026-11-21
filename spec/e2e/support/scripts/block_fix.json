@@ -1,0 +1,18 @@
+{
+  "delay": 0.01,
+  "iterations": [
+    {
+      "text": "One choice before the build:\n\n```chi-ui\ntype: picks\ntitle: Where the fix lands\nrows:\n  - id: store\n    text: Where fixes are kept\n    options: [session folder, the answer itself]\n    recommended: sidecar file\n```\n"
+    }
+  ],
+  "branches": [
+    {
+      "when_last": "could not be drawn",
+      "iterations": [
+        {
+          "text": "```chi-ui\ntype: picks\ntitle: Where the fix lands\nrows:\n  - id: store\n    text: Where fixes are kept\n    options: [session folder, the answer itself]\n    recommended: the answer itself\n```"
+        }
+      ]
+    }
+  ]
+}
