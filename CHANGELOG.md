@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.182.0] - 2026-11-21
+
 ### Added
 
 - In the web, a fenced block chi can't draw in the newest answer (a `chi-ui` picks or walk, a Mermaid diagram) is
@@ -27,6 +29,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - A remote archive refusal keeps the hidden session count and names every worker stopped before its task check.
+
+Update with `chi update`.
 
 ## [0.181.0] - 2026-11-21
 
@@ -6640,7 +6644,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.181.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.182.0...HEAD
+[0.182.0]: https://github.com/dm1try/samagotchi/compare/v0.181.0...v0.182.0
 [0.181.0]: https://github.com/dm1try/samagotchi/compare/v0.180.0...v0.181.0
 [0.180.0]: https://github.com/dm1try/samagotchi/compare/v0.179.0...v0.180.0
 [0.179.0]: https://github.com/dm1try/samagotchi/compare/v0.178.0...v0.179.0

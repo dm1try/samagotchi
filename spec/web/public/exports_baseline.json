@@ -79,6 +79,23 @@
     "foldSignature",
     "rowWidth"
   ],
+  "block_fix.js": [
+    "FEATURE",
+    "GIVE_UP_MS",
+    "MAX_SOURCE_BYTES",
+    "PER_ANSWER",
+    "createBlockFix",
+    "postFix",
+    "wireBlockFix"
+  ],
+  "block_fix_note.js": [
+    "ASK_LABEL",
+    "FIXED_TEXT",
+    "askText",
+    "markFixed",
+    "noteOf",
+    "setFixNote"
+  ],
   "block_frame.js": [
     "FRAME_CSP",
     "FRAME_TIMEOUT_MS",
