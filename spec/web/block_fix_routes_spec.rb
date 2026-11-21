@@ -91,6 +91,13 @@ RSpec.describe Samagotchi::Web::BlockFixRoutes do
         .to eq([[true, false], [false, true], [false, false]])
     end
 
+    it "says a block was fixed in the answer (a reload's drawn turn takes the saved answer), not for a failed fix alone" do
+      shown = ->(stamp) { app.send(:messages_for_display, [{ role: "model", content: text, block_fixes: stamp }]).last }
+      expect(shown.call([{ "key" => "k", "fixed_key" => "f", "state" => "fixed" }])[:block_fixed]).to be(true)
+      expect(shown.call([{ "key" => "k", "state" => "failed" }])).not_to have_key(:block_fixed)
+      expect(app.send(:messages_for_display, [{ role: "model", content: text }]).last).not_to have_key(:block_fixed)
+    end
+
     it "is byte-identical to the HTML before block fixes for an answer without a stamp (a golden)" do
       source = "One:\n\n```mermaid\ngraph TD\n  A-->B\n```\n\n```chi-ui\ntype: nope\n```\n"
       golden = "<p>One:</p>\n<pre class=\"syntax-highlighting\" data-lang=\"mermaid\"><code><span class=\"hl-text hl-plain\">" \

@@ -70,6 +70,18 @@ test("the answer and the steps' texts take their items' markdown; a row its tool
   assert.ok([...host.children].every((el) => el.dataset.drawn === "T1"));
 });
 
+// A block fix patched the answer's text after it streamed (block_fix.js): the
+// drawing's text is the old one, the saved answer (block_fixed) is drawn.
+test("a drawn answer whose block was fixed since takes its saved message, not what streamed", () => {
+  const events = [started, gen(1), say(1, "```mermaid\ngraph TD\n```")];
+  const fixed = { role: "assistant", content: "```mermaid\ngraph LR\n```", html: '<pre data-lang="mermaid" data-block-fixed=""><code>graph LR</code></pre>', drawn: "T1" };
+  const host = drawn(events, [{ role: "user", content: "hi", turn_id: "T1", drawn: "T1" }, { ...fixed, block_fixed: true }]);
+  assert.ok(host.querySelector(".bubble.output pre[data-block-fixed]"));
+  assert.equal(host.querySelector(".bubble.output").dataset.answerTurn, "T1");
+  const unmarked = drawn(events, [{ role: "user", content: "hi", turn_id: "T1", drawn: "T1" }, fixed]);
+  assert.ok(unmarked.querySelector(".bubble.output pre") === null, "an answer that says something else stays as live drew it");
+});
+
 test("a drawn card that asked sits beside the block; the drawing's own copy (no stored card) has its buttons off", () => {
   const card = { type: "card", in_turn: true, id: "check-in", source: "check-in", title: "Check in", body: "still?", level: "info",
     actions: [{ label: "Nudge", command: "/check-in nudge" }] };
