@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "block_fix/stamp"
 require_relative "log"
 
 module Samagotchi
@@ -25,8 +26,8 @@ module Samagotchi
     # The same object when it has none.
     # An empty-answer note's marker (TurnNote::EMPTY_ANSWER) and the
     # answer's refs (AnswerRefs::KEY, display_refs) are display only too:
-    # they go the same way.
-    DISPLAY_ONLY = [KEY.to_s, "empty_answer", "display_refs"].freeze
+    # they go the same way, and so does a block fix's stamp (BlockFix::STAMP).
+    DISPLAY_ONLY = [KEY.to_s, "empty_answer", "display_refs", BlockFix::STAMP.to_s].freeze
 
     def self.strip(message)
       return message unless message.is_a?(Hash) && DISPLAY_ONLY.any? { |key| message.key?(key.to_sym) || message.key?(key) }

@@ -71,6 +71,21 @@ RSpec.describe "Side requests on a Messages host" do
       .to eq([engine.session.id] * 3)
   end
 
+  it "hands the whole Summary to an ask with whole: true, cut off at max_tokens on a Messages host" do
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:kimi")
+    engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "fw:kimi", working_directory: Dir.pwd)
+    server.enqueue("/v1/messages", json: message("```mermaid\ngraph").merge(stop_reason: "max_tokens"))
+    server.enqueue("/v1/messages", json: message("ok."))
+
+    cut = engine.send(:ask_side_model, [{ role: "user", content: "q" }], timeout: 5, max_tokens: 50,
+                                                                          cancel_controller: nil, whole: true)
+    plain = engine.send(:ask_side_model, [{ role: "user", content: "q" }], timeout: 5, max_tokens: 50, cancel_controller: nil)
+
+    expect(cut).to be_a(Samagotchi::IdleClient::Summary)
+    expect(cut.cut_off).to be(true)
+    expect(plain).to eq("ok.")
+  end
+
   # Both side requests count in the session's side line, apart from its
   # turns' tokens, and are saved between turns.
   it "counts a recap and a ctx.ask_model in the side block, announced and saved at once", :recap do

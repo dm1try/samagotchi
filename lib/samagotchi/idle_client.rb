@@ -29,9 +29,10 @@ module Samagotchi
     # answered (the server's name for it; nil when the reply names none).
     # +top_logprobs+: the first token's alternatives (LLM::TokenLogprob)
     # when #ask asked for logprobs and the server sent them, else [].
-    # #to_s is the text.
-    Summary = Data.define(:text, :model, :top_logprobs) do
-      def initialize(top_logprobs: [].freeze, **) = super
+    # +cut_off+: the reply stopped at max_tokens (its finish reason is
+    # "length"). #to_s is the text.
+    Summary = Data.define(:text, :model, :top_logprobs, :cut_off) do
+      def initialize(top_logprobs: [].freeze, cut_off: false, **) = super
 
       def to_s = text
     end
@@ -139,7 +140,8 @@ module Samagotchi
     def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {}, session_id: nil, on_usage: nil)
       response = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
                                     kind: kind, options: options, session_id: session_id, on_usage: on_usage)
-      Summary.new(text: response.text.to_s.strip, model: response.model, top_logprobs: response.top_logprobs)
+      Summary.new(text: response.text.to_s.strip, model: response.model, top_logprobs: response.top_logprobs,
+                  cut_off: response.cut_off)
     rescue SummarizeError, LLM::RequestCancelled
       raise
     rescue StandardError => e
@@ -174,7 +176,9 @@ module Samagotchi
       cut_off = response.finish_reason == "length"
       # Reasoning cut off by max_tokens is the model's thinking, not a recap
       # (a server that ignores the thinking switch thinks until the limit).
-      return Summary.new(text: "", model: response.model, top_logprobs: response.top_logprobs) if content.empty? && cut_off
+      if content.empty? && cut_off
+        return Summary.new(text: "", model: response.model, top_logprobs: response.top_logprobs, cut_off: true)
+      end
 
       # Prefer content, fall back to a finished reasoning_content (e.g.
       # Qwen3.6), and strip thinking tokens some models (Qwen, Gemma) leave
@@ -182,7 +186,7 @@ module Samagotchi
       text = self.class.strip_thinking(content.empty? ? reasoning : content)
       # Cut off by max_tokens: keep the sentences that finished ("" if none).
       text = whole_sentences ? self.class.full_sentences(text) : "#{text}…" if cut_off && !text.empty?
-      Summary.new(text: text, model: response.model, top_logprobs: response.top_logprobs)
+      Summary.new(text: text, model: response.model, top_logprobs: response.top_logprobs, cut_off: cut_off)
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end

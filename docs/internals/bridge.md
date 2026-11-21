@@ -426,6 +426,14 @@ The Bridge exposes:
   `200`, or `409` when it is no longer pending.
 - `POST /session/:id/guardrails/wrong` — `{id}`: label this session's System 1 auto-allow as
   one it should have asked about; `200`, `404` for an unknown judgment, `409` if already labelled.
+- `POST /session/:id/blocks/fix` — `{turn_id, lang, source, reason}`: ask again, once, for a block the owner's page
+  couldn't draw in that turn's answer (`Bridge::BlockFixRoute` → `Engine#fix_block`; web route `POST
+  /api/sessions/:id/blocks/fix`, `Web::BlockFixRoutes`). `400 missing_fields` without a turn id, a fence language
+  (`BlockRenderers::LANG`) or a source; `200 {state: "fixed" | "failed", reason?}` when the answer's stamp knows the
+  block, `202 {state: "running"}` while it is asked, `409 fix_unavailable` / `block_not_found`, `413 block_too_large`,
+  `429 fix_busy`. The result lands between turns and is announced as `:block_fix` (a `state` event; never a
+  participant's); a fix that patched the answer's text writes its turn's drawing line again with the new end digest
+  (`TurnDrawings#call`). See [block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again).
 - `POST /session/:id/holds/stop` — stop those holds without the worker leaving; `200 {status: "stopped",
   session_id, stopped}` or `501 holds_unavailable`.
 - `POST /session/:id/tasks/stop` — `{task_id}`: stop a background task as the user
@@ -666,6 +674,7 @@ compatibility from its version. `Bridge::FEATURES` advertises:
 | `cancel_turn_id` | `POST /session/:id/cancel` can stop only the named turn. |
 | `participant_revise` | chi web can pass a participant's Revise draft for worker-side validation. |
 | `participant_client_id` | chi web can identify a participant as `participant:<id>` instead of using the legacy `review:<id>`. |
+| `block_fix` | `POST /session/:id/blocks/fix` asks again for a block the page couldn't draw; the owner's page without it says "restart this session to fix". |
 | `working_set_item` | `GET /session/:id/working_set/item` answers one item's timeline (the running turn's mid-turn), so chi web asks for it instead of the whole snapshot. |
 
 `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge

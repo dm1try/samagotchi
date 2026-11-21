@@ -31,6 +31,7 @@ module Samagotchi
       after_tool_call: :internal,
       after_turn: :internal,
       answer_display: :state,
+      block_fix: :state,
       before_generation: :internal,
       before_tool_call: :internal,
       before_turn: :internal,

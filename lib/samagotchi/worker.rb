@@ -48,6 +48,7 @@ require_relative "worker/signal_grace"
 require_relative "worker/scratch"
 require_relative "worker/child_side"
 require_relative "worker/command_queue"
+require_relative "worker/block_fixes"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -82,13 +83,14 @@ module Samagotchi
   # the loop's thread, as Ruby's default would (the teardown still runs).
   #
   # This file keeps the loop, the wiring, the prompt turns and the steering
-  # drain. Seven concerns are parts, lib/samagotchi/worker/<concern>.rb
+  # drain. Eight concerns are parts, lib/samagotchi/worker/<concern>.rb
   # holding Worker::<Concern>Part, included here (they share Worker's ivars):
   # LeavePart (exit and leave), WakeTurnsPart (the turns nobody typed),
   # StartupPart (the start-up settle), SignalGracePart (a signal's grace),
   # ScratchPart (a scratch worker whose terminal left), ChildSidePart (a
-  # delegate child's rings, Verify fresh verdicts) and CommandQueuePart
-  # (session commands between turns).
+  # delegate child's rings, Verify fresh verdicts), CommandQueuePart
+  # (session commands between turns) and BlockFixesPart (a failed block's
+  # fix, between turns).
   class Worker
     include LeavePart
     include WakeTurnsPart
@@ -97,6 +99,7 @@ module Samagotchi
     include ScratchPart
     include ChildSidePart
     include CommandQueuePart
+    include BlockFixesPart
 
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
@@ -482,6 +485,7 @@ module Samagotchi
       # before a new prompt still answers the offer).
       return if run_queued_commands
 
+      apply_block_fixes
       # Between turns, so the next turn (the first one too) sees them.
       # A change that asks to wake may start a turn here (C4), but not
       # ahead of an exit or restart a client asked for: it is a note then.
@@ -543,6 +547,7 @@ module Samagotchi
         # Commands that came before this file (D1: a queued /model X sent
         # before this prompt, a command an earlier file carried) run first.
         run_queued_commands
+        apply_block_fixes
         @inbound.absorb_notes
         if held ? SessionInbox.participant_input?(input_file) : held_for_offer?(input_file)
           held = true
@@ -623,6 +628,8 @@ module Samagotchi
       engine.interface = :worker
       # A pair turn stops mid-turn at its participant's cap.
       engine.participant_stop = ->(author) { @participant_gate.turn_stop(author) }
+      # A block fix's result wakes the loop, which applies it between turns.
+      engine.block_fix_ready = -> { waker.wake }
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine

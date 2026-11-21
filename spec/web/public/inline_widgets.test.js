@@ -388,6 +388,8 @@ test("a refused block stays source under the muted line; one with no widget data
   assert.equal(refused.dataset.blockFailed, "1");
   assert.equal(refused.nextElementSibling.dataset.text, 'Couldn\'t draw this chi-ui block: step 2: actor "x" isn\'t one of the actors');
   assert.equal(refused.nextElementSibling.textContent, "");
+  // The model's: a fix may be asked for (block_fix.js).
+  assert.equal(refused.dataset.blockFixable, "1");
   assert.ok(!figureOf(plain));
   assert.ok(!plain.dataset.blockFailed);
 });

@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBlockHost } from "../../../lib/samagotchi/web/public/block_host.js";
-import { createBlockWatch, rejoin } from "../../../lib/samagotchi/web/public/block_watch.js";
+import { createBlockWatch, failBlock, rejoin } from "../../../lib/samagotchi/web/public/block_watch.js";
 import { DRAWN, figureOf } from "../../../lib/samagotchi/web/public/block_source.js";
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 90"><text>hi</text></svg>';
@@ -176,4 +176,33 @@ test("a throw after an asynchronous claim fails the block instead of going unhan
   assert.equal(pre.dataset.blockFailed, "1");
   assert.match(root.querySelector(".block-note").dataset.text, /needsDraw broke/);
   assert.equal(errors.mock.callCount(), 1);
+});
+
+test("failBlock keeps the reason, marks a fixable block and tells the root; a click on a button in the line doesn't copy", async () => {
+  const copied = [];
+  const root = makeRoot(answer(block("a", "x") + block("b", "x")));
+  createBlockWatch({ roots: [root], sessionId: () => "s1", drawers: [], copy: (text) => copied.push(text), win: window });
+  const heard = [];
+  root.addEventListener("block-failed", (e) => heard.push(e.target));
+  const [fixable, plain] = root.querySelectorAll("pre");
+  failBlock(fixable, "x", `Parse error on line 2:\n${"y".repeat(400)}`, { fixable: true });
+  failBlock(plain, "x", "it is over 64 KB");
+  assert.deepEqual(heard, [fixable, plain]);
+  assert.equal(fixable.dataset.blockFixable, "1");
+  assert.ok(plain.dataset.blockFixable === undefined);
+  assert.equal(fixable.dataset.blockReason.length, 300);
+  assert.ok(fixable.dataset.blockReason.startsWith("Parse error on line 2:\ny"));
+  assert.equal(fixable.nextElementSibling.dataset.text, "Couldn't draw this x block: Parse error on line 2:");
+  const button = document.createElement("button");
+  fixable.nextElementSibling.append(button);
+  button.click();
+  assert.deepEqual(copied, []);
+  fixable.nextElementSibling.click();
+  assert.deepEqual(copied, ["Couldn't draw this x block: Parse error on line 2:"]);
+  const drawn = document.createElement("div");
+  drawn.className = "block-note fixed";
+  drawn.dataset.text = "Drawn after a fix";
+  plain.after(drawn);
+  drawn.click();
+  assert.deepEqual(copied, ["Couldn't draw this x block: Parse error on line 2:"], "Drawn after a fix isn't copied");
 });

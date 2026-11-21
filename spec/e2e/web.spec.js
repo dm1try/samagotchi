@@ -2508,7 +2508,11 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     await expect(drawn).toBeHidden();
     await expect(thrown).toBeVisible();
     await expect(thrown).toHaveText(/throw me/);
-    await expect(output.locator(".block-note")).toHaveAttribute("data-text", "Couldn't draw this e2e-draw block: the fixture throws");
+    // The renderer's own refusal: asked for again once (the script's side
+    // answer is the same block, refused), so live and after a reload the line
+    // says a fix didn't help, with Ask in chat.
+    await expect(output.locator(".block-note")).toHaveAttribute("data-text", "Couldn't draw this e2e-draw block: the fixture throws · a fix didn't help");
+    await expect(output.locator(".block-note .block-fix-ask")).toHaveAccessibleName("Ask in chat");
     await expect(other).toBeVisible();
     await output.locator(".block-toggle").click();
     await expect(drawn).toBeVisible();
@@ -2588,6 +2592,31 @@ test("on a phone a diagram opens in the viewer on one tap and the source switch 
   } finally {
     await context.close();
   }
+});
+
+// A chi-ui block the server refuses, in the newest answer, is asked for again
+// on the side (no turn, no message): the script's side answer is the corrected
+// block, so the picks draw with "Drawn after a fix" under them, and the same
+// after a reload (the saved answer holds the fix, the stamp marks it).
+test("a broken chi-ui block in the newest answer is asked for again and draws, live and after a reload", async ({ page, script }) => {
+  const check = async () => {
+    const output = page.locator("#history .bubble.output").last();
+    await expect(output.locator(".w.picks")).toHaveCount(1);
+    await expect(output.locator(".w.picks .wp-opt[aria-pressed=\"true\"]")).toHaveText(["the answer itselfrec"]);
+    await expect(output.locator(".block-note.fixed")).toHaveAttribute("data-text", "Drawn after a fix");
+    await expect(output.locator(".block-note:not(.fixed)")).toHaveCount(0);
+    await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  };
+  script("block_fix");
+  const turnPosts = [];
+  page.on("request", (req) => { if (req.method() === "POST" && /\/turn$/.test(req.url())) turnPosts.push(req.url()); });
+  await send(page, "Which store?");
+  await turnEnded(page, 1);
+  await check();
+  expect(turnPosts.length).toBe(1);
+  await page.reload();
+  await turnEnded(page, 1);
+  await check();
 });
 
 // A long streamed answer: its block lands in the stage first and the hand-off

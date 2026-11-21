@@ -172,6 +172,15 @@ module Samagotchi
       post("guardrails/wrong", { id: judgment_id }, read_body: true)
     end
 
+    # POST /session/:id/blocks/fix: ask again, once, for a block the page
+    # couldn't draw in +turn_id+'s answer (Bridge::BlockFixRoute). 200 asked
+    # before, 202 asking, 400/409/413/429 refused; 404: a worker older than
+    # the route.
+    # @return [Response]
+    def fix_block(turn_id:, lang:, source:, reason:)
+      post("blocks/fix", { turn_id: turn_id, lang: lang, source: source, reason: reason }, read_body: true)
+    end
+
     # POST /session/:id/turn/dequeue: take back a queued message (one that
     # waits for the running turn's end) before it runs. 200 {status:
     # "removed", enqueued_id, prompt}; 409 already_started (a turn took

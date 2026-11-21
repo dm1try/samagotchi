@@ -113,7 +113,9 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
   listeners. A widget's position and picks live in the widget, so a clone or a rewrite starts over (accepted for v1).
 - **A refused block** (`data-widget-error`) stays source under `failBlock`'s muted `.block-note` ("Couldn't draw this
   chi-ui block: …", an attribute CSS shows, a click copies it). Bad JSON or an unknown `type` fails the same way, from
-  the watcher. A `chi-ui` `<pre>` with neither attribute (an older server) is left alone.
+  the watcher. A `chi-ui` `<pre>` with neither attribute (an older server) is left alone. In the newest answer a
+  refused block is asked for again, once (the schemas go with the request: `InlineWidgets::FIX_RULES`, and the fix
+  must parse before it is used; [block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again)).
 - **walk** (`widget_walk.js`): the swimlane (one column per actor, one row per step; the current, seen and a hovered
   case's target marked; a click jumps), the step card (actor, `does`, "You see", the dashed "Behind it"), a fork's
   "Which case?" buttons, Back / Next / Start over, the path taken, and ← → while the widget has the focus

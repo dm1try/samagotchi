@@ -51,6 +51,18 @@ module Samagotchi
     COMMAND_LEAD = %r{\A[!/\s]+}
     # How much of a bad type value an error repeats.
     MAX_ECHO = 40
+    # The schemas (docs/internals/inline-widgets.md, The schemas) as a block
+    # fix's request states them (BlockFix.request): core can't read the
+    # inline-widgets bundle's prompt sections.
+    FIX_RULES = <<~RULES.chomp
+      A chi-ui block is YAML with `type:` first, picks or walk. Quote a value that holds a colon.
+      picks: `rows`, each with `id`, `text` and `options` (2 to 4 texts); optional `title`, and on a row
+      `recommended` (one of its options) and `why`. Row ids are unique, a row's options are unique.
+      walk: `title`, `actors` (2 to 5 unique texts) and `steps`, each with `id`, `actor` (one of the actors)
+      and `does` or `sees`; optional on a step `behind`, `next` (another step's id, or `end`) and `cases`
+      (each `when` and `goto`, a step's id). Step ids are unique and none is `end`.
+      No anchors, aliases or tags; at most #{MAX_ROWS} rows, #{MAX_STEPS} steps.
+    RULES
 
     module_function
 

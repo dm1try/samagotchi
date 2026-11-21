@@ -1213,6 +1213,107 @@ RSpec.describe Samagotchi::Worker do
       end
     end
 
+    # The race (docs/internals/block-renderers.md, A failed block is asked
+    # for again): a fix asked as turn 1 ends, with prompt 2 queued, on a real
+    # run_turn; the side request is held by its own gate.
+    describe "a block fix racing the next turn" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:requests) { Queue.new }
+      let(:in_turn) { Queue.new }
+      let(:release) { Queue.new }
+      let(:side_gate) { Queue.new }
+      let(:fix_events) { Queue.new }
+      let(:bad) { "graph TD\n  A--B\n" }
+      let(:good) { "graph TD\n  A-->B" }
+      let(:answer_one) { "One:\n\n```mermaid\n#{bad}```\n" }
+
+      before do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        side = instance_double(Samagotchi::IdleClient)
+        allow(side).to receive(:ask) do |_request, **|
+          side_gate.pop
+          Samagotchi::IdleClient::Summary.new(text: "```mermaid\n#{good}\n```", model: "m")
+        end
+        allow(Samagotchi::IdleClient).to receive(:for).and_return(side)
+        # Turn 1 answers with the broken block at once; turn 2 waits to be
+        # released. Each turn's request (its messages) is kept.
+        allow(kernel).to receive(:run) do |messages, **|
+          requests << messages.map(&:dup)
+          prompt = messages.last[:content]
+          if prompt == "two"
+            in_turn << true
+            release.pop
+          end
+          text = prompt == "one" ? answer_one : "Two."
+          Samagotchi::LLM::ModelResult.new(text: text, conversation: messages.map(&:dup) + [{ role: "model", content: text }],
+                                           exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+        end
+        # The page asks as turn 1's end event arrives, with prompt 2 queued.
+        engine.subscribe(observer: lambda { |event|
+          fix_events << event if event[:type] == :block_fix
+          next unless event[:type] == :turn_completed && engine.session.messages.last[:content] == answer_one
+
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "two", client_id: "web:x")
+          @asked = engine.fix_block(turn_id: event[:turn_id], lang: "mermaid", source: bad, reason: "Parse error")
+        })
+      end
+
+      def answer_in(messages) = messages.find { |m| m[:role] == "model" && m[:content].to_s.start_with?("One") }
+
+      it "lands in the answer's text when it is back before the next turn starts: that turn sends the fix" do
+        # The loop's step between the turns finds the result there.
+        allow(engine).to receive(:apply_block_fixes).and_wrap_original do |original|
+          if @asked && !@released
+            @released = true
+            side_gate << true
+            eventually { expect(engine.block_fixes_running).to be_empty }
+          end
+          original.call
+        end
+        start_worker(poll_interval: 5)
+        post_turn("one")
+        pop!(requests, "turn 1's request")
+        expect(pop!(in_turn, "turn 2")).to be(true)
+
+        expect(@asked).to eq([202, { state: "running" }])
+        sent = answer_in(pop!(requests, "turn 2's request"))
+        expect(sent[:content]).to eq("One:\n\n```mermaid\n#{good}\n```\n")
+        expect(pop!(fix_events, "the fix's event")).to include(state: "fixed", landed: "answer")
+        release << true
+        wait_for("turn 2's end") { engine.session.messages.last[:content] == "Two." }
+        expect(answer_in(engine.session.messages)[:content]).to include(good)
+        expect(Samagotchi::BlockFix.stamps(answer_in(engine.session.messages))).to contain_exactly(include(state: "fixed"))
+      end
+
+      it "lands in the answer's display only when it is back after the next turn started: that turn sent the original" do
+        start_worker(poll_interval: 5)
+        post_turn("one")
+        pop!(requests, "turn 1's request")
+        expect(pop!(in_turn, "turn 2")).to be(true)
+        sent = answer_in(pop!(requests, "turn 2's request"))
+        expect(sent[:content]).to eq(answer_one)
+
+        side_gate << true
+        eventually { expect(engine.block_fixes_running).to be_empty }
+        # Nothing is written while the turn runs.
+        expect(answer_in(engine.session.messages)).not_to have_key(:display)
+        release << true
+
+        expect(pop!(fix_events, "the fix's event")).to include(state: "fixed", landed: "display")
+        answer = answer_in(engine.session.messages)
+        expect(answer[:content]).to eq(answer_one)
+        expect(answer[:display]).to eq("One:\n\n```mermaid\n#{good}\n```\n")
+        expect(engine.session.messages.last[:content]).to eq("Two.")
+        on_disk = JSON.parse(File.read(Samagotchi::Session.session_file(session.id, state_dir: tmpdir)))
+        wait_for("the display saved") do
+          on_disk = JSON.parse(File.read(Samagotchi::Session.session_file(session.id, state_dir: tmpdir)))
+          on_disk["messages"].any? { |m| m["display"].to_s.include?("A-->B") }
+        end
+        expect(on_disk["messages"].find { |m| m["display"] }["block_fixes"]).to contain_exactly(include("state" => "fixed"))
+      end
+    end
+
     describe "a chi scratch session" do
       before do
         session.scratch = true

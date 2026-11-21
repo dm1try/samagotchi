@@ -3,6 +3,7 @@
 require_relative "../session"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
+require_relative "../block_fix/stamp"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../message_parts"
@@ -223,7 +224,11 @@ module Samagotchi
             shown = display.is_a?(String) ? Samagotchi::OutputFormatter.strip_markup(display) : ""
             message[:display] = shown unless shown.strip.empty?
             rendered = message[:display] || stripped
-            message[:html] = @markdown_renderer.render(rendered) if markdown && !rendered.empty? && @markdown_renderer.available?
+            fixes = Samagotchi::BlockFix.stamps(m)
+            message[:html] = @markdown_renderer.render(rendered, block_fixes: fixes) if markdown && !rendered.empty? && @markdown_renderer.available?
+            # A block was fixed in it: a reload's drawn turn takes this answer
+            # even though what streamed differs (turn_block.js savedAnswer).
+            message[:block_fixed] = true if fixes.any? { |entry| entry[:state] == "fixed" }
             # The refs after_turn hooks attached (AnswerRefs), checked again:
             # a stored file is never trusted. Never raises.
             refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"], cwd: cwd)

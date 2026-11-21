@@ -81,6 +81,7 @@ require_relative "session_show"
 require_relative "session_create"
 require_relative "session_control"
 require_relative "verify_fresh_routes"
+require_relative "block_fix_routes"
 require_relative "reload_check_route"
 require_relative "working_set_routes"
 require_relative "push_routes"
@@ -121,6 +122,7 @@ module Samagotchi
       include SessionCreate
       include SessionControl
       include VerifyFreshRoutes
+      include BlockFixRoutes
       include ReloadCheckRoute
       include WorkingSetRoutes
       include PushRoutes
@@ -166,6 +168,8 @@ module Samagotchi
       # @param reload_check [Boolean] the page checks each finished turn
       #   against a reload of it and posts the counts (web.reload_check,
       #   opt-in; POST /api/sessions/:id/reload_check logs them)
+      # @param block_fix [String] "auto": the owner's page asks again for a
+      #   block it couldn't draw in the newest answer (web.block_fix); "off": never
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -205,6 +209,7 @@ module Samagotchi
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
                      reload_check: Config::BY_KEY["web.reload_check"].default,
+                     block_fix: Config::BY_KEY["web.block_fix"].default,
                      stage_collapsed: Config::BY_KEY["web.stage_collapsed"].default,
                      grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil, update_runner: nil,
                      update_blocked: nil, update_ops: nil)
@@ -222,6 +227,7 @@ module Samagotchi
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @working_set = working_set
         @reload_check = reload_check
+        @block_fix = block_fix.to_s
         @stage_collapsed = stage_collapsed
         @reload_checks = ReloadCheckRoute::Seen.new
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
@@ -313,6 +319,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/verdicts/([^/]+)/fresh\z}, :handle_verify_fresh, :participant, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/blocks/fix\z}, :handle_block_fix, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],
@@ -1947,6 +1954,7 @@ module Samagotchi
         attrs["working-set"] = "1" if working_set?(req.GET["working_set"])
         # The opt-in reload check (reload_check.js): only when on.
         attrs["reload-check"] = "1" if @reload_check
+        attrs["block-fix"] = @block_fix
         attrs.merge!(stage_collapsed_data)
         attrs.merge!(annotate_presets_data)
         # Who looks and what they may do (Viewer; viewer.js reads it at boot).
