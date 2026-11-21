@@ -411,7 +411,8 @@ it says what goes, what is stopped first and what stays, with one button that na
   read is the same view.
 - **The button's words** (`buttonWords`): it names the running work it ends: `Stop them and delete` (`Stop it …` for
   one task), `Stop the turn and delete`; an idle worker is only a row and the button stays `Delete`; ` · N sessions`
-  when the tap takes delegates too (a chain's whole-chain choice counts its links); a chain's choices say `Stop 2 tasks
+  when the tap takes more than one session: every session it deletes, the stopped delegates too (`Delete this link · 2
+  sessions` with one; the whole chain counts its links and theirs, a step past the mock-up's case 8, by the owner's word); a chain's choices say `Stop 2 tasks
   and delete this link`. While the tap runs it says `Stopping…` (tasks or a turn) or `Deleting…`.
 - **The tap** sends the choice's `digest` (`expect=`) and, whenever the choice's task listing isn't empty, `stopTasks`
   with the ids of its `running` tasks (`stopTasksOptions`; `data.js` sends `stop_tasks=true&tasks=<id,id>`, `tasks=`

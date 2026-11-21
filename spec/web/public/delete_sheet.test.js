@@ -122,21 +122,35 @@ test("case 8: a chain link keeps its two choices, each with its own rows and but
   const m = deleteChoices(session, plan);
   const [mine, chain] = m.choices;
   assert.equal(m.sub, "It is link 3 of 3 of its chain. This can't be undone.");
-  assert.equal(mine.label, "Stop 2 tasks and delete this link");
+  assert.equal(mine.label, "Stop 2 tasks and delete this link · 2 sessions");
   assert.deepEqual(mine.lines, [
     { cls: "", text: "Undoes the continue: 1a2b3c4d comes back to the lists (not started), with its 2 delegates and 1 unread note." },
     { cls: "dim", text: "Goes: its turns and its 1 stopped delegate." },
     { cls: "stop", text: "Stopped first: ab12cd34: npm run dev · ab12cd34: rspec" },
     { cls: "stays", text: "Stays: 1 running delegate, on its own." },
   ]);
-  assert.equal(chain.label, "Stop 3 tasks and delete the whole chain · 3 sessions");
+  assert.equal(chain.label, "Stop 3 tasks and delete the whole chain · 7 sessions");
   assert.deepEqual(chain.lines.map((l) => l.text), ["Goes: all 3 links and their 4 stopped delegates.",
                                                     "Stopped first: ab12cd34: npm run dev · ab12cd34: rspec · 1a2b3c4d: tail -f log",
                                                     "Stays: 1 running delegate, on its own."]);
   assert.equal(m.foot, "Running workers are stopped first.");
   // No task, no turn: today's words.
   const bare = deleteChoices(session, newest()).choices;
-  assert.deepEqual(bare.map((c) => c.label), ["Delete this link", "Delete the whole chain · 3 sessions"]);
+  assert.deepEqual(bare.map((c) => c.label), ["Delete this link · 2 sessions", "Delete the whole chain · 7 sessions"]);
+});
+
+test("a chain's buttons count every session the tap deletes: its links and their stopped delegates (case 2's rule)", () => {
+  const plan = newest();
+  plan.link.delegates = { delete: [D1, D2], leave: [] };
+  plan.chain = { links: 3, deletes: 2, left_running: 0, refusal: null, delegates: { delete: [D1, D2], leave: [] } };
+  assert.deepEqual(deleteChoices(session, plan).choices.map((c) => c.label),
+                   ["Delete this link · 3 sessions", "Delete the whole chain · 5 sessions"]);
+  // No stopped delegate: this link alone, no count; an older plan's counts without the ids.
+  const alone = newest();
+  alone.link.deletes = 0;
+  alone.chain = { links: 3, deletes: 1, left_running: 0, refusal: null };
+  assert.deepEqual(deleteChoices(session, alone).choices.map((c) => c.label),
+                   ["Delete this link", "Delete the whole chain · 4 sessions"]);
 });
 
 test("a chain's middle link splits the chain, nothing undone", () => {
@@ -155,7 +169,7 @@ test("a gap before the link: the whole-chain choice says the earlier links are k
   plan.cut_off = true;
   plan.chain = { links: 2, deletes: 1, left_running: 0, refusal: null };
   const chain = deleteChoices(session, plan).choices[1];
-  assert.equal(chain.label, "Delete the whole chain · 2 sessions");
+  assert.equal(chain.label, "Delete the whole chain · 3 sessions");
   assert.deepEqual(chain.lines.map((l) => l.text), ["Goes: these 2 links and their 1 stopped delegate."]);
   assert.equal(chain.warn, "Earlier links, cut off by a deleted link, are kept (archived).");
 });
