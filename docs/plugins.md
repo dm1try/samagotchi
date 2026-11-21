@@ -1472,7 +1472,8 @@ block_renderers:
   bottom box) select together. Past 600 regions none are taken; chi cleans and caps the rest
   ([internals/block-renderers.md](internals/block-renderers.md#regions)), and uses them as text and numbers only.
   An object without a string `svg` is the bundle's own bug: the block stays source with its line, and no fix is
-  asked of the model. A measuring failure should return the SVG with no regions, never throw. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in
+  asked of the model. Returning no object (`undefined`, a number) is a failed render as before, which chi may ask
+  the model to fix. A measuring failure should return the SVG with no regions, never throw. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in
   a sandboxed frame with no cookie and no access to the page, and the CSP closes its network, but for WebRTC (what the
   frame holds, the diagrams it rendered, could leave that way). The SVG is shown as an `<img>`, so its scripts, links
   and remote images don't run: it has to stand alone (no `foreignObject`, every namespace prefix bound) and stay under 50,000 px a

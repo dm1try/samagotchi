@@ -38,9 +38,11 @@ model. The TUI is untouched: it shows a fence as source.
    then `render {id, source, theme}` → `done {id, svg, regions?} | error {id, message, bundle?}`. The bootstrap's
    `window.chi` is `{ defineRenderer, features: { regions: true } }`: a renderer returns the SVG, or `{ svg, regions }`
    ([Regions](#regions)). An object without a string `svg` is the bundle's bug, `error {bundle: true}`: its
-   `FrameError` isn't `renderer`, so the block fails with its line and no fix is asked; a renderer that throws (or
-   returns no object at all) is as before. `createBlockFrame`'s `draw` resolves `{svg, regions}` (`render`, its SVG
-   alone, stays); `block_host.js` uses `render` when a cached older `block_frame.js` has no `draw`.
+   `FrameError` isn't `renderer`, so the block fails with its line and no fix is asked; a renderer that throws, or
+   returns no object at all (`undefined`, `null`, a number), is as before: a failed render that may be the model's
+   (a renderer can return nothing for a source it can't draw), so `renderer` and fixable. Kept so on purpose: the
+   bundle flag is for what only a bundle returns (an object), and a bundle's measuring stays inside its own `try`.
+   `createBlockFrame`'s `draw` resolves `{svg, regions}` (`render`, its SVG alone, stays); `block_host.js` uses `render` when a cached older `block_frame.js` has no `draw`.
 5. On success a `<figure class="block-drawn">` goes right before the `<pre>`, which stays in the DOM, `hidden`, so whatever
    reads text (copy, a claim's walk, fold thresholds) sees what it did. **The DOM is the state** (`block_source.js`): a Revise
    clone arrives with both. On failure the `<pre>` stays, marked `data-block-failed`, with one muted line: an attribute CSS
