@@ -22,7 +22,9 @@ and commands may change between minor versions. How releases are made:
   `needs sign-in` in `/mcp` and a card with a **Sign in** button; `/mcp login NAME` registers chi with its provider
   and opens the sign-in page (or `/callback` the address from another device). The token is kept per address for
   every session, renewed by itself, and `/mcp logout NAME` forgets it. A client of your own: `oauth: client_id:`
-  with `issuer:`. Nothing signs in by itself. See docs/bundles.md (The mcp bundle, Sign-in).
+  with `issuer:`. A provider that takes a client id metadata document gets chi's own
+  (`https://dmitry.it/samagotchi/oauth/client.json`) with no registration; `client_metadata_url:` names another,
+  `false` none. Nothing signs in by itself. See docs/bundles.md (The mcp bundle, Sign-in).
 - For bundle authors: `ctx.card(…, between_turns: true)`, a card from a thread of your own that never lands in a
   running turn's block; `chi.tool_source` groups take `state: :needs_user` (a search and a call say the source's
   line); `Samagotchi::Plugin::Secrets::Busy` and `Unavailable` are stable to rescue.

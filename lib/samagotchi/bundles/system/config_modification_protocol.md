@@ -116,7 +116,7 @@ bundles:
       linear:                  # a remote server with no static token that answers 401: /mcp login linear signs in (OAuth)
         url: https://mcp.linear.app/mcp
         oauth: {client_id: Iv1.abc, issuer: https://id.example}  # optional, a client the user registered; scopes:, redirect_port:, client_secret_env:
-    client_metadata_url: https://…/client.json   # optional: chi's client id metadata document (unset by default)
+    client_metadata_url: https://…/client.json   # optional: chi's client id metadata document (default: chi's own; false: none)
 ```
 
 A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool: a `call_tool` acts as `mcp_<server>_<tool>`, so `tool: "mcp_github_*"` covers one server's (a `find_tools` search is never asked about); see `docs/guardrails.md`. A server's optional `description:` is its line in `find_tools`' description. The mcp bundle saves each server's tool list in `$XDG_STATE_HOME/samagotchi/plugins/mcp/tools-<server>.json` (keyed by a digest of command/env/cwd, or of url/headers/bearer_token_env for a remote server: never the token's value): a changed server config is picked up by the next session start, which shows "Starting MCP server x (config changed, …)".
