@@ -228,6 +228,23 @@ test("setArchived: a 409 tasks_running opens the sheet at the card's archive but
   assert.deepEqual([h.asked, h.alerts], [[], []]);
 });
 
+test("setArchived: a late 409 never takes a sheet opened since for another session: it is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  let shownFor = null;
+  sheet.openFor = () => shownFor;
+  sheet.isOpen = () => shownFor !== null;
+  let reject;
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }], deleteSheet: sheet, doc: fakeDoc({ cards: ["s1aaaaaaaa"] }),
+                      api: { archiveSession: () => new Promise((_resolve, no) => { reject = no; }) } });
+  const asked = h.actions.setArchived("s1aaaaaaaa", true);
+  shownFor = "s2bbbbbbbb"; // a card's ✕ on another session meanwhile
+  reject(tasksRunning("archive"));
+  await asked;
+  assert.deepEqual(sheet.hosts, []);
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options.sticky]),
+                   [["Can't archive s1aaaaaa: background tasks it started are still running: npm run dev, rspec", true]]);
+});
+
 test("toggleArchiveSelected: the open session's archive sheet opens at ⋯", async () => {
   const sheet = fakeSheet();
   const doc = fakeDoc({ cards: ["s1aaaaaaaa"] });

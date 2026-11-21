@@ -426,7 +426,9 @@ it says what goes, what is stopped first and what stays, with one button that na
   archive`, its button sending the named ids the same way); a task that started since re-shows it with "What this
   archives changed; check again."; any other refusal is "Can't archive … now". The sheet is at the control tapped:
   ⋯ for the open session's (`toggleArchiveSelected` passes it), else the card's archive button with a box, found by
-  `[data-arch="<id>"]` (app.js's wrapper passes no anchor). An unarchive that fails is a sticky toast. A batch archive
+  `[data-arch="<id>"]` (app.js's wrapper passes no anchor). A 409 that comes once the shell shows another session's
+sheet (opened while the archive was out) leaves that sheet and is a sticky toast (`latest.js stillOn` on the shell's
+`openFor`). An unarchive that fails is a sticky toast. A batch archive
   is untouched (`archiveOne` passes nothing, and skips a session with running tasks).
 After a delete, `listAfterDelete` drops the `deleted` ids and un-archives the `unarchived` ones in the store, the
 selection clears when it went, and the toast (`deleteToast`) says what went, what was stopped and what stays, with
