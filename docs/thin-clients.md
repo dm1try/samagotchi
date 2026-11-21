@@ -38,6 +38,9 @@ another link ran it. Body fields:
 - `queue`: `true` (the default) means a session running a turn queues your
   message as its own turn, and you get that turn's answer. `false` refuses a
   running session with 409 `busy`.
+- `client_id`: who is asking. Leave it out for yourself (the line is the
+  owner's, as from the web composer). An agent sends `"cli:send"`: see
+  [An agent over HTTP](#an-agent-over-http).
 
 A question that is waiting for an answer refuses the ask with 409 `waiting` and
 the `question`. Answer it first (below).
@@ -92,6 +95,26 @@ The answer goes in before the wait starts, so a wait that fails afterwards
 `status`, and a `wait_error` (`error`: `server_stopping`, `not_found` or
 `wait_failed`, and a `detail`) in place of `reply`. Don't answer again (that
 would be 409): ask or wait on the session instead.
+
+## An agent over HTTP
+
+An agent (Claude Code, Codex, a script acting on its own) should drive chi
+with `chi send --wait` and `chi answer` first, and `chi --remote NAME` for
+another machine's chi web ([chi as a sub-agent](sub-agent.md)): they name
+the sender for it. An agent that calls these routes itself must name itself
+the same way:
+
+- `"client_id": "cli:send"` on every ask (and on `POST /api/sessions`);
+- `"client_id": "cli:answer"` on every answer.
+
+Then `guardrails.parent_answers` applies as it does to `chi send` and `chi
+answer` ([Answers from a parent agent](guardrails.md#answers-from-a-parent-agent)):
+a `/continue yes` is held to it (403 `parent_continue_refused`), a
+`/parent-answers` that loosens it is refused (403 `parent_answers_refused`),
+and the worker checks an answer's option (403 `parent_answer_refused`).
+Without a `client_id`, the ask and the answer are the owner's (`web:unnamed`)
+and none of this holds: the token can do anything you can. It is a
+convention for an honest agent, not a barrier, so tell your agent to send it.
 
 ## A new session
 
