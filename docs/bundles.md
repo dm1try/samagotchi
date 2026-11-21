@@ -165,7 +165,8 @@ bundles:
     in chi's repository, a client id metadata document): a provider that says it takes one gets it as chi's client
     id, with no registration; one that refuses it gets a registration (for that session worker). The Pages
     workflow (`.github/workflows/pages.yml`) publishes `pages/` from main, so it is served at
-    `https://dm1try.github.io/samagotchi/oauth/client.json`. Unset by default until chi's own address is live.
+    `https://dmitry.it/samagotchi/oauth/client.json` (the owner's custom domain: GitHub Pages redirects github.io
+    there, and a client id must equal the address it is fetched from). Unset by default until chi's own address is live.
 
 - **Start: from a cache, on the first call.** A server's `tools/list` is
   saved in the bundle's data dir (`$XDG_STATE_HOME/samagotchi/plugins/mcp/

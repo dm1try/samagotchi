@@ -1,5 +1,5 @@
 {
-  "client_id": "https://dm1try.github.io/samagotchi/oauth/client.json",
+  "client_id": "https://dmitry.it/samagotchi/oauth/client.json",
   "client_name": "chi",
   "client_uri": "https://github.com/dm1try/samagotchi",
   "redirect_uris": ["http://127.0.0.1/callback"],

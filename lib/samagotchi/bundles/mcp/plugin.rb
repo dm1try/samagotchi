@@ -212,11 +212,13 @@ class Plugin
   end
 
   # chi's client metadata document (CIMD: its client_id at a provider that
-  # takes one), pages/oauth/client.json in chi's repository once GitHub
-  # Pages serves it there. Not the default yet: a provider fetches it during
-  # the sign-in, so an address that isn't live would fail in the browser.
+  # takes one), pages/oauth/client.json in chi's repository as GitHub Pages
+  # serves it, at the owner's custom domain (github.io redirects there, and
+  # a client_id must equal the fetched address exactly). Not the default
+  # yet: a provider fetches it during the sign-in, so an address that isn't
+  # live would fail in the browser.
   # bundles: mcp: client_metadata_url: sets one (this one, or your own).
-  CLIENT_METADATA_DOCUMENT = "https://dm1try.github.io/samagotchi/oauth/client.json"
+  CLIENT_METADATA_DOCUMENT = "https://dmitry.it/samagotchi/oauth/client.json"
   CLIENT_METADATA_URL = nil
 
   # /mcp's one line for a word it doesn't know.
