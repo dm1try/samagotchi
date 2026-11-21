@@ -23,6 +23,11 @@ RSpec.describe Samagotchi::McpServer::Http do
     [status, headers, text.empty? ? nil : JSON.parse(text)]
   end
 
+  it "answers a body that isn't valid UTF-8 with 400 -32700, never raising" do
+    status, _headers, body = post(%({"jsonrpc":"2.0","id":3,"method":"ping","params":{"x":"\xff"}}).b, legacy_session)
+    expect([status, body["id"], body["error"]["code"]]).to eq([400, 3, -32_700])
+  end
+
   it "answers a body that isn't an object (a batch, null, a number) with -32600, never raising" do
     ['[{"jsonrpc":"2.0","id":1,"method":"ping"}]', "null", "3", '"x"'].each do |text|
       [{}, legacy_session].each do |env|

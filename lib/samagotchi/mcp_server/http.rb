@@ -33,9 +33,9 @@ module Samagotchi
       # @param body [String] the request's body as read
       # @return [Array(Integer, Hash, Array<String>)]
       def call(env, body)
-        message = JSON.parse(body.to_s)
-      rescue JSON::ParserError => e
-        respond(400, Protocol.error_body(nil, Protocol::PARSE_ERROR, "Parse error: #{e.message}"))
+        message = Protocol.parse(body)
+      rescue Protocol::Unparseable => e
+        respond(400, Protocol.parse_error_body(body, e))
       else
         era = Protocol.era_of(message)
         refused = era == :modern ? header_refusal(env, message) : session_refusal(env, message)

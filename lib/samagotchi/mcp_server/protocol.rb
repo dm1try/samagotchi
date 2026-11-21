@@ -32,6 +32,9 @@ module Samagotchi
       # JSON-RPC response (a Hash), +era+ :modern or :legacy.
       Answer = Data.define(:status, :body, :era)
 
+      # Text that isn't one JSON value in UTF-8 (.parse); the message says why.
+      class Unparseable < StandardError; end
+
       PARSE_ERROR = -32_700
       INVALID_REQUEST = -32_600
       METHOD_NOT_FOUND = -32_601
@@ -55,6 +58,36 @@ module Samagotchi
         meta.is_a?(Hash) && meta.key?(VERSION_META) ? :modern : :legacy
       end
 
+      # One message's text parsed, whatever its encoding tag (a pipe's or
+      # a Rack body's bytes are read as UTF-8).
+      # @raise [Unparseable] invalid UTF-8, or not JSON
+      def self.parse(text)
+        text = text.to_s.dup.force_encoding(Encoding::UTF_8)
+        raise Unparseable, "invalid UTF-8" unless text.valid_encoding?
+
+        JSON.parse(text)
+      rescue JSON::ParserError, EncodingError => e
+        raise Unparseable, e.message
+      end
+
+      # A request's "id" in text that didn't parse (a lone surrogate
+      # escape, a stray byte), so the host can match the -32700 to its
+      # call instead of waiting to its own timeout: only when the text names
+      # exactly one "id" (one in the params too: nil, never a wrong match).
+      ID = /"id"\s*:\s*("(?:[^"\\\x00-\x1f]|\\["\\\/bfnrt]|\\u\h{4})*"|-?(?:0|[1-9]\d*))\s*[,}]/
+      def self.recovered_id(text)
+        found = text.to_s.dup.force_encoding(Encoding::UTF_8).scrub.scan(ID)
+        found.size == 1 ? JSON.parse(found.first.first) : nil
+      rescue JSON::ParserError
+        nil
+      end
+
+      # The -32700 answer for +text+ (.parse's +error+), with the id when
+      # .recovered_id reads one.
+      def self.parse_error_body(text, error)
+        error_body(recovered_id(text), PARSE_ERROR, "Parse error: #{error.message}")
+      end
+
       # A JSON-RPC error response (also a transport's own, Http's -32020).
       def self.error_body(id, code, message, data: nil)
         error = { code: code, message: message }
@@ -74,10 +107,9 @@ module Samagotchi
       # One line of JSON text: #handle on what it parses to, or -32700.
       # @return [Answer, nil]
       def handle_text(text, era: nil)
-        message = JSON.parse(text)
-      rescue JSON::ParserError => e
-        Answer.new(status: STATUS[PARSE_ERROR], body: self.class.error_body(nil, PARSE_ERROR, "Parse error: #{e.message}"),
-                   era: era || :legacy)
+        message = self.class.parse(text)
+      rescue Unparseable => e
+        Answer.new(status: STATUS[PARSE_ERROR], body: self.class.parse_error_body(text, e), era: era || :legacy)
       else
         handle(message, era: era)
       end

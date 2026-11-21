@@ -131,6 +131,16 @@ RSpec.describe Samagotchi::McpServer::Protocol do
     end
   end
 
+  it "answers -32700 for text that isn't UTF-8 or has a lone surrogate, with the id when exactly one can be read" do
+    surrogate = protocol.handle_text(%({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"text":"\\udc00"}}}))
+    expect([surrogate.status, body(surrogate)["id"], body(surrogate)["error"]["code"]]).to eq([400, 7, -32_700])
+    bytes = protocol.handle_text(%({"jsonrpc":"2.0","id":"a-1","method":"ping","params":{"x":"\xff"}}))
+    expect([body(bytes)["id"], body(bytes)["error"]["message"]]).to eq(["a-1", "Parse error: invalid UTF-8"])
+    # Two ids (one in the params): none, never a wrong match.
+    two = protocol.handle_text(%({"jsonrpc":"2.0","id":8,"params":{"arguments":{"id":9,"text":"\\udc00"}}}))
+    expect(body(two)["id"]).to be_nil
+  end
+
   it "answers -32603 for an exception outside a tool's own rescue, never raising" do
     allow(tools).to receive(:call).and_raise(RuntimeError, "boom")
     answer = protocol.handle(legacy("tools/call", { "name" => "echo" }, id: 9))

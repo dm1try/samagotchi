@@ -32,7 +32,8 @@ module Samagotchi
       # @return [Integer] 0
       def run
         @input.each_line do |line|
-          next if line.strip.empty?
+          # Bytes: a line that isn't valid UTF-8 is a -32700, never a raise.
+          next if line.b.strip.empty?
 
           dispatch(line)
         end
@@ -43,8 +44,8 @@ module Samagotchi
       private
 
       def dispatch(line)
-        message = JSON.parse(line)
-      rescue JSON::ParserError
+        message = Protocol.parse(line)
+      rescue Protocol::Unparseable
         write(@protocol.handle_text(line, era: @era))
       else
         lock_era(message)
