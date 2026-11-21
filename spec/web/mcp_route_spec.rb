@@ -90,6 +90,20 @@ RSpec.describe Samagotchi::Web::App, "POST /api/mcp" do
                                         "content" => [{ "type" => "text", "text" => "over http" }])
     end
 
+    it "answers a prompt over 16 KiB with the tool's error, even JSON-escaped past 64 KiB (not chi web's 413)" do
+      session = make
+      prompt = "\u00e9" * 12_000
+      message = { jsonrpc: "2.0", id: 4, method: "tools/call",
+                  params: { name: "chi_ask", arguments: { session: session.id, prompt: prompt } }.merge(meta) }
+      text = JSON.generate(message, script_safe: false).gsub("\u00e9", "\\u00e9")
+      expect(text.bytesize).to be > 64 * 1024
+      status, _headers, body = post(text, headers: modern_headers.merge("HTTP_MCP_METHOD" => "tools/call",
+                                                                        "HTTP_MCP_NAME" => "chi_ask"))
+      expect(status).to eq(200)
+      expect(body["result"]).to include("isError" => true)
+      expect(body["result"]["content"].first["text"]).to include("the message is 24000 bytes; the limit is 16 KiB")
+    end
+
     it "takes a base64-encoded Mcp-Name" do
       status, = modern(3, "tools/call", { name: "chi_sessions", arguments: {} }, name: "=?base64?#{["chi_sessions"].pack("m0")}?=")
       expect(status).to eq(200)

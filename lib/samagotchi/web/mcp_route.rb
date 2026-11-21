@@ -4,6 +4,7 @@ require_relative "../mcp_server/protocol"
 require_relative "../mcp_server/http"
 require_relative "../mcp_server/tools"
 require_relative "../mcp_server/text"
+require_relative "../session_inbox"
 require_relative "ask_routes"
 require_relative "request_body"
 
@@ -26,6 +27,11 @@ module Samagotchi
       # GET /api/info's feature: this chi web serves POST /api/mcp.
       FEATURE = "mcp"
       PATH = %r{\A/api/mcp\z}
+      # A POST's body cap: a chi_ask prompt at its 16 KiB limit, every byte
+      # JSON-escaped (a control character's \u0000 is 6 bytes), plus the
+      # envelope, so a host gets the tool's "the message is N bytes" over
+      # the limit, not chi web's 413.
+      BODY_LIMIT = (6 * SessionInbox::NOTE_MAX_BYTES) + (16 * 1024)
       # App::ROUTES' rows for the path (all :owner).
       ROUTES = [["POST", PATH, :handle_mcp, :owner], ["GET", PATH, :handle_mcp_get, :owner],
                 ["DELETE", PATH, :handle_mcp_delete, :owner]].freeze
@@ -49,7 +55,7 @@ module Samagotchi
       private
 
       def handle_mcp(req)
-        body = request_body(req, RequestBody::SMALL_BODY_LIMIT, what: "an MCP request")
+        body = request_body(req, BODY_LIMIT, what: "an MCP request")
         McpServer::Http.new(mcp_protocol).call(req.env, body)
       end
 
