@@ -20,7 +20,7 @@ function fakeTimers() {
   };
 }
 
-function setup(html, { answers = [], features = ["block_fix"], reads = [] } = {}) {
+function setup(html, { answers = [], features = ["block_fix"], reads = [], bridgeUp = true } = {}) {
   const root = document.createElement("div");
   root.id = "history";
   root.innerHTML = html;
@@ -33,6 +33,7 @@ function setup(html, { answers = [], features = ["block_fix"], reads = [] } = {}
     roots: [root],
     sessionId: () => session,
     features: () => features,
+    bridgeUp: () => bridgeUp,
     post: async (id, body) => { posts.push({ id, ...body }); return answers.shift() || { status: 202, body: { state: "running" } }; },
     getSession: async (id, opts) => { reads.push({ id, ...opts }); return reads.answer || { messages: [] }; },
     composerText: () => "draft",
@@ -96,6 +97,18 @@ test("a worker without the feature: restart this session to fix, nothing asked",
   await settle();
   assert.equal(posts.length, 0);
   assert.equal(el.nextElementSibling.dataset.fix, "restart");
+});
+
+test("a worker not up, or not reported yet, isn't old: the block is asked for (chi web says whether it is live)", async () => {
+  for (const [features, bridgeUp] of [[[], false], [[], null], [null, true]]) {
+    const { root, posts } = setup(bubble("t1", pre("a")), { features, bridgeUp, answers: [{ status: 503, body: {} }] });
+    const el = root.querySelector("pre");
+    fail(el);
+    await settle();
+    assert.equal(posts.length, 1, JSON.stringify([features, bridgeUp]));
+    assert.equal(el.nextElementSibling.dataset.fix, "older");
+    document.body.innerHTML = "";
+  }
 });
 
 test("each answer of the route: 200 failed, 501, any other; 200 fixed reads the answer again", async () => {
@@ -265,7 +278,7 @@ test("postFix: 202 is running, a refusal its status; wireBlockFix only on the ow
   assert.deepEqual(await postFix("s1", { source: "known" }, { fetchImpl }), { status: 200, body: { state: "failed" } });
   assert.equal((await postFix("s1", { source: "bad" }, { fetchImpl })).status, 429);
   const viewer = (yes) => ({ can: (what) => what === "block_renderers" && yes });
-  const args = { roots: [], store: { selected: "s1", current: { workerFeatures: [] } }, getSession: async () => ({}), composerText: () => "", fillComposer() {} };
+  const args = { roots: [], store: { selected: "s1", current: { workerFeatures: [], bridgeUp: true } }, getSession: async () => ({}), composerText: () => "", fillComposer() {} };
   document.body.dataset.blockFix = "auto";
   assert.ok(wireBlockFix({ viewer: viewer(true), ...args }));
   assert.equal(wireBlockFix({ viewer: viewer(false), ...args }), null);
