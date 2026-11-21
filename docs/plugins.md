@@ -918,6 +918,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
+| `ctx.sign_in(title:, button:, timeout: 300, port: nil, path: "/callback") { \|redirect_uri\| address }` | send the owner to an address and get back where the browser was sent: see [Sign-in](#sign-in-ctxsign_in) |
 | `ctx.secrets` | the bundle's tokens, kept apart from its data files (`get`, `set`, `delete`, `update`): see [Secrets](#secrets-ctxsecrets) |
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
@@ -1310,6 +1311,64 @@ ctx.secrets.backend                       # => :file (:memory in the test kit), 
   seeds it, `bundle.secrets` reads what the plugin kept. A bundle's specs never touch the disk for it.
 
 Needs chi 0.183.0 (`ctx.respond_to?(:secrets)`).
+
+## Sign-in: `ctx.sign_in`
+
+Send the session's owner to an address and get back the address the browser was sent to. OAuth is the first use;
+core knows nothing of OAuth but one check (`state`, below).
+
+```ruby
+flow = ctx.sign_in(title: "Sign in to Linear", button: "Open sign-in page", timeout: 300) do |redirect_uri|
+  authorize_url(redirect_uri)        # the bundle builds it; it holds its own state / PKCE
+end
+flow.card_id        # the card core showed; the bundle replaces it with its result
+flow.redirect_uri   # "http://127.0.0.1:53123/callback"
+Thread.new do
+  result = flow.wait  # blocks: => {"code"=>"…", "state"=>"…", "iss"=>"…"} (the callback's query), or nil
+  next ctx.card(id: flow.card_id, title: "Sign-in failed", body: flow.outcome.to_s) unless result
+
+  token = exchange(result["code"])   # check iss / error yourself
+  ctx.secrets.set("linear", token)
+  ctx.card(id: flow.card_id, title: "Signed in to Linear")
+end
+flow.outcome        # :done, :timed_out, :cancelled, :stopped (the worker leaving), nil while waiting
+flow.cancel
+```
+
+What the user sees: a card with the title, one button that opens the address in a new tab (the terminal prints it
+whole), and the line "If the browser ends on a page that doesn't load, copy that page's address and run
+`/callback <address>`."
+
+- `ctx.sign_in` returns at once; `flow.wait` blocks, so call it on a thread of your own (a session command must not
+  sit for minutes). `timeout:` is 60..900 seconds (default 300); `port:` asks for a fixed port when the provider's
+  registered redirect address is exact (a taken one raises `ArgumentError` naming it); `path:` defaults to
+  `/callback`. A block that raises, or an address that isn't an http(s) one a card takes, raises and leaves nothing
+  open.
+- The browser comes back to a listener on `127.0.0.1` only, in the worker: it answers `GET <path>?…` and nothing
+  else (a 404, and the wait goes on), reads at most 8 KB within 5 s, takes one connection at a time, answers the
+  callback with a static "Signed in. You can close this tab." page and stops listening. A browser on another device
+  ends on that address, which doesn't load there: the user pastes it with `/callback` ([cli.md](cli.md)), which
+  settles the flow the same way.
+- When your address has a `state` query parameter, a callback whose `state` differs is ignored, browser or pasted.
+  Check everything else (`iss`, `error`) yourself.
+- On `:done` core leaves the card for you: replace `flow.card_id` with your result, as a command's card is
+  replaced. On `:timed_out`, `:cancelled` and `:stopped` core replaces it ("Sign-in timed out" / "Sign-in
+  cancelled", no button). The flow's cards are never a running turn's.
+- A flow never outlives its worker: an exit, a restart or a crash's shutdown stops it, its card replaced first, so a
+  card a later worker loads never offers a dead sign-in. An idle exit waits for a waiting flow. A flow is tied to no
+  turn: the session's Stop doesn't end it (`flow.cancel` does).
+- No one to ask: a one-shot run (`ctx.frontend == :one_shot`) and a `:generation_progress` handler get a flow that is
+  `:stopped` already (`wait` → nil), with no card and no port.
+- The pasted address holds a one-time code: chi shows the line as `/callback …` in every event, UI and log. Best
+  effort is enough there: the code is single-use and, with PKCE, useless without the verifier that never leaves the
+  worker. chi logs the address's host and path only (an authorize address can carry a login hint).
+- A participant never sees the card (their view has no cards) and can't send `/callback`; a parent agent's
+  `chi answer` can't either. Don't start a sign-in on a participant's turn (`ctx.turn_author`).
+- In the test kit `ctx.sign_in` opens no port: `bundle.sign_ins` lists the flows (`title`, `address` the block
+  built, `redirect_uri`, `card_id`, `outcome`), `bundle.complete_sign_in("code" => "c1", "state" => "…")` and
+  `bundle.fail_sign_in(:timed_out)` settle the newest.
+
+Needs chi 0.183.0 (`ctx.respond_to?(:sign_in)`).
 
 ## Other sessions: `ctx.sessions`
 

@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   let(:relays) { Samagotchi::RelayDesk.new }
   let(:engine) do
     double("engine", turn_running?: false, last_activity_at: 1000.0, reminder_store: reminders, pending_question: nil,
-                     anytime_running?: false, relay_desk: relays)
+                     anytime_running?: false, relay_desk: relays, sign_in_waiting?: false)
   end
   let(:tasks) { [[]] }
   let(:watched) { [[]] }
@@ -77,6 +77,11 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "while a turn runs" do
       allow(engine).to receive(:turn_running?).and_return(true)
       expect(policy(minutes: 0.001).hold).to eq(:turn_running)
+    end
+
+    it "while a sign-in waits for its callback (it times out on its own)" do
+      allow(engine).to receive(:sign_in_waiting?).and_return(true)
+      expect(policy(minutes: 0.001).hold).to eq(:sign_in_waiting)
     end
 
     it "while input is queued" do

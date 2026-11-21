@@ -36,6 +36,7 @@ RSpec.describe Samagotchi::ComposerRoute do
     "/objectives" => %w[command command],
     "/working-set" => %w[command command],
     "/help" => %w[command command],
+    "/callback" => %w[command command],
     "/stats" => %w[local local],
     "/recap" => %w[local local],
     "/exit" => %w[local local],

@@ -2374,11 +2374,28 @@ RSpec.describe Samagotchi::Bridge do
                               event_seq: 1 }])
       end
 
+      it "keeps /callback's address out of the line: the events say '/callback …', the worker runs the whole line" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+        address = "http://127.0.0.1:5000/callback?code=ONE-TIME-CODE&state=s"
+
+        post_command(JSON.generate(line: "/callback #{address}", client_id: "web:1"))
+        post_turn(JSON.generate(session_id: @session.id, prompt: "/callback #{address}", client_id: "cli:send"))
+
+        expect(queued.map(&:line)).to eq(["/callback …"] * 2)
+        expect(queued.map(&:run_line)).to eq(["/callback #{address}"] * 2)
+        expect(queued.first.inspect).not_to include("ONE-TIME-CODE")
+        expect(seen.map { |e| e[:line] }).to eq(["/callback …"] * 2)
+        expect(JSON.generate(seen)).not_to include("ONE-TIME-CODE")
+      end
+
       it "refuses what isn't a session command, bad JSON and other sessions" do
         start_bridge(on_command: ->(_) { raise "must not be called" })
 
         expect(post_command(JSON.generate(line: "hello")).first).to eq(400)
-        expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /context, /continue, " \
+        expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /callback, /context, /continue, " \
                                                  "/guardrails, /help, /llm-context, /model, /models, /objectives, /parent-answers, /reasoning-history, /recap, /thinking, /title, /toolkit, /working-set; /help lists them)")
         expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
         expect(post_command("{nope").first).to eq(400)

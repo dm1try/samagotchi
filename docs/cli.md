@@ -1058,6 +1058,14 @@ runs don't back, `not backed: the last command failed` or `not backed: edited af
 All of them run mid-turn too. An edit answers with the new list at once and goes into the conversation between turns.
 Refused while a `--non-interactive` run has the session, as `chi note` is.
 
+`/callback ADDRESS` finishes a sign-in a bundle started (`ctx.sign_in`: plan 4's `/mcp login` is the first) when
+the browser ran on another device (a phone, a laptop reaching chi web over the network or SSH) and ended on an
+`http://127.0.0.1:…` page that doesn't load: copy that page's address and send it here. It runs at once, a turn
+running or not, and answers `Got it.` or one line why not (`no sign-in is waiting`, `that isn't this sign-in's
+address`). The address holds a one-time code, so chi shows the line as `/callback …` everywhere (the other UIs, the
+events, the logs, the shared prompt history); your own terminal's ↑ still has it. A participant can't send it, nor
+can a parent agent's `chi answer`.
+
 A `/model`, `/llm-context`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`, `/model qwen --default --yes`). `--yes` (or `-y`) applies it at once.

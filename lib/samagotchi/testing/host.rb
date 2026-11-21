@@ -73,7 +73,8 @@ module Samagotchi
           # goes nowhere.
           candidate_proposed: ->(_candidate) {},
           judgments: -> { recorder.judgments.layer },
-          secrets_store: ->(_bundle) { recorder.secrets }
+          secrets_store: ->(_bundle) { recorder.secrets },
+          sign_in: ->(bundle, **options, &build) { recorder.sign_in(bundle, **options, &build) }
         )
       end
 

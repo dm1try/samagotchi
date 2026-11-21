@@ -34,6 +34,10 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: `ctx.secrets` (`get`, `set`, `delete`, `update`), the bundle's tokens in 0600 files under the
   state dir, apart per bundle; `update` reads, changes and writes under a lock that holds across workers. The test
   kit keeps them in memory (`bundle.secrets`, `bundle.set(secrets: …)`).
+- For bundle authors: `ctx.sign_in(title:, button:) { |redirect_uri| address }`, a browser round trip: a card with a
+  button to the address, a listener on 127.0.0.1 for the browser's return, and `flow.wait` for its query. A browser
+  on another device ends on an address that doesn't load: `/callback <address>` (a new session command) finishes it
+  there, shown as `/callback …` everywhere. Timeout, cancel and the worker leaving replace the card.
 
 ### Changed
 

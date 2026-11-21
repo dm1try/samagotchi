@@ -2847,6 +2847,18 @@ RSpec.describe Samagotchi::Worker do
                                              output: "dropped: the session's worker stopped before it ran")
         end
 
+        it "runs /callback at once with its whole address; no event holds the address, a turn running or not" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          address = "http://127.0.0.1:5000/callback?code=ONE-TIME-CODE&state=s"
+          command_id = JSON.parse(post_command("/callback #{address}").body)["command_id"]
+          expect(ran(command_id)).to include(status: "error", output: "no sign-in is waiting", line: "/callback …", anytime: true)
+          release << true
+          expect(JSON.generate(seen)).not_to include("ONE-TIME-CODE")
+        end
+
         # D1: an idle command that came just after the turn ended stays behind
         # one still waiting for a prompt sent before it.
         it "runs in arrival order: a ready command waits behind one still waiting for its prompt file" do

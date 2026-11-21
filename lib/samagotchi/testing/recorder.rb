@@ -55,7 +55,7 @@ module Samagotchi
         secrets: nil
       }.freeze
 
-      attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
+      attr_reader :sign_ins, :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
                   :model_answers, :values
 
       def initialize(**values)
@@ -66,6 +66,7 @@ module Samagotchi
         @secrets = Plugin::Secrets::MemoryStore.new
         @secrets.replace(@values[:secrets] || {})
         @notices = []
+        @sign_ins = []
         @cards = []
         @steers = []
         @stops = []
@@ -112,6 +113,30 @@ module Samagotchi
         card = Plugin::Card.build(**fields).freeze
         record(@cards, card)
         card[:id]
+      end
+
+      # The port a kit flow's redirect_uri names: none is opened.
+      SIGN_IN_PORT = 53_682
+
+      # ctx.sign_in, as chi starts one (Engine#start_sign_in) but with no
+      # port opened: the card with its button, the flow listed in
+      # #sign_ins; Bundle#complete_sign_in / #fail_sign_in settle it. An
+      # ending without a callback replaces its card as chi does.
+      # @return [Plugin::SignIn]
+      def sign_in(bundle, title:, button:, timeout:, port:, path:, &build)
+        redirect_uri = "http://127.0.0.1:#{port || SIGN_IN_PORT}#{path}"
+        flow = Plugin::SignIn.new(bundle: bundle, title: title, button: button, timeout: timeout, listener: nil,
+                                  redirect_uri: redirect_uri,
+                                  on_settle: lambda { |settled, outcome|
+                                    ended = Plugin::SignIn.ended_card(settled, outcome)
+                                    card(source: bundle, level: :info, **ended) if ended
+                                  })
+        address = yield(redirect_uri).to_s.strip
+        id = card(source: bundle, title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }],
+                  level: :info, id: nil)
+        flow.started(address, id)
+        record(@sign_ins, flow)
+        flow
       end
 
       def steer(text, hook)

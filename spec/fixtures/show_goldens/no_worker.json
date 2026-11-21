@@ -397,6 +397,15 @@
       "source": "core"
     },
     {
+      "name": "/callback",
+      "description": "finish a waiting sign-in with the address the browser ended on (/callback ADDRESS)",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
       "name": "/stats",
       "description": "show the session's stats",
       "anytime": false,

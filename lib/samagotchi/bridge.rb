@@ -517,7 +517,8 @@ module Samagotchi
       # A card's action (the step-limit question's answer): the UIs leave
       # its line out. +enqueued_id+: a file-delivered command's input, whose
       # sender's wait its command_ran settles. +author+: its input's.
-      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card, author: author)
+      line = line.to_s.strip
+      command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author, private_args: command_registry.private_args?(line))
                              .with(enqueued_id: enqueued_id)
       @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
       command.command_id
@@ -1124,7 +1125,7 @@ module Samagotchi
     # /turn's (a /word sent as a message).
     def queue_command_request(session_id, line, client_id:, deadline: nil, card: false, author: nil)
       # A card's action: the UIs leave its line out (the card is the echo).
-      command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author)
+      command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author, private_args: command_registry.private_args?(line))
       queued = @engine.synchronize_events do
         raise IntakeClosed if stopped?
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command.client_id)
