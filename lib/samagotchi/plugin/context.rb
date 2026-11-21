@@ -81,7 +81,7 @@ module Samagotchi
     # and ctx.judgments ask and label through.
     # +secrets_store+ takes (bundle) and returns the store ctx.secrets keeps
     # that bundle's secrets in (Secrets::FileStore; the test kit's in memory).
-    # +sign_in+ takes (bundle, title:, button:, timeout:, port:, path:) and
+    # +sign_in+ takes (bundle, title:, button:, timeout:, port:, path:, cancel:) and
     # the block that builds the address, and returns the SignIn flow
     # (Engine#start_sign_in; the test kit's opens no port).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
@@ -532,22 +532,26 @@ module Samagotchi
       # +button+, a loopback listener, /callback for a browser elsewhere.
       # Returns at once: wait on the flow (#wait) on a thread of your own.
       # A one-shot run and a :generation_progress handler ask no one: the
-      # flow is :stopped already, with no card and no port.
+      # flow is :stopped already, with no card and no port. No Stop ends it
+      # unless +cancel+ is given: a controller it polls (ctx.cancel_controller
+      # read on the calling thread: a tool's is its turn's), cancelled → the
+      # flow ends :cancelled.
       # @yieldparam redirect_uri [String] "http://127.0.0.1:<port><path>"
       # @yieldreturn [String] the address to send the user to (http(s))
       # @return [SignIn]
       # @raise [ArgumentError] no block, a timeout outside 60..900, a taken
-      #   port, a bad path or address
+      #   port, a bad path or address, a cancel: that isn't a controller
       def sign_in(title:, button: "Open sign-in page", timeout: SignIn::DEFAULT_TIMEOUT, port: nil,
-                  path: SignIn::DEFAULT_PATH, &build)
+                  path: SignIn::DEFAULT_PATH, cancel: nil, &build)
         raise ArgumentError, "ctx.sign_in needs a block that builds the address" unless build
 
-        SignIn.check_options!(timeout: timeout, path: path)
+        SignIn.check_options!(timeout: timeout, path: path, cancel: cancel)
         event = Thread.current[CURRENT_EVENTS]&.[](self)
         stream = event.is_a?(Hash) && event[:type] == :generation_progress
         return SignIn.stopped(bundle: @bundle, title: title.to_s) if frontend == :one_shot || stream || @host.sign_in.nil?
 
-        @host.sign_in.call(@bundle, title: title.to_s, button: button.to_s, timeout: timeout, port: port, path: path, &build)
+        @host.sign_in.call(@bundle, title: title.to_s, button: button.to_s, timeout: timeout, port: port, path: path,
+                                    cancel: cancel, &build)
       end
 
       # An HTTP client for calling services (Http, docs/plugins.md). A call

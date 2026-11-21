@@ -37,7 +37,8 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: `ctx.sign_in(title:, button:) { |redirect_uri| address }`, a browser round trip: a card with a
   button to the address, a listener on 127.0.0.1 for the browser's return, and `flow.wait` for its query. A browser
   on another device ends on an address that doesn't load: `/callback <address>` (a new session command) finishes it
-  there, shown as `/callback …` everywhere. Timeout, cancel and the worker leaving replace the card.
+  there, shown as `/callback …` everywhere. Timeout, cancel and the worker leaving replace the card; `cancel:`
+  (a tool's `ctx.cancel_controller`) lets the turn's Stop end it.
 
 ### Changed
 

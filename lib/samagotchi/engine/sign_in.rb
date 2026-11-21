@@ -10,7 +10,8 @@ module Samagotchi
     # waiting now, their cards, the /callback paste, and their end when the
     # worker leaves (#shutdown closes every one first, so a card a later
     # worker loads never offers a dead sign-in). A flow never outlives its
-    # worker and is tied to no turn. Reads and writes @sign_in_flows under
+    # worker and is tied to no turn (unless the bundle passes cancel:, a
+    # turn's controller). Reads and writes @sign_in_flows under
     # @lifecycle_mutex.
     module SignInPart
       # Start a flow for +bundle+: a loopback listener, the address +build+
@@ -21,17 +22,19 @@ module Samagotchi
       # flow is listed before its card shows, so a shutdown in between
       # stops it and its card says cancelled.
       # @param build [#call] (redirect_uri) → the address to send the user to
+      # @param cancel [CancellationController, nil] ends it :cancelled (a
+      #   tool's turn's Stop, when the bundle passes ctx.cancel_controller)
       # @return [Plugin::SignIn]
       # @raise [ArgumentError] a bad option, a taken port, an address the
       #   card refuses (Plugin::Card's url check); nothing stays open then
       def start_sign_in(bundle:, title:, button:, timeout:, build:, port: nil, path: Plugin::SignIn::DEFAULT_PATH,
-                        listener_options: {})
-        Plugin::SignIn.check_options!(timeout: timeout, path: path)
+                        cancel: nil, listener_options: {})
+        Plugin::SignIn.check_options!(timeout: timeout, path: path, cancel: cancel)
         return Plugin::SignIn.stopped(bundle: bundle, title: title) if sign_ins_closed?
 
         listener = Plugin::SignIn::Listener.new(port: port, path: path, **listener_options)
         flow = Plugin::SignIn.new(bundle: bundle, title: title, button: button, timeout: timeout, listener: listener,
-                                  on_settle: ->(settled, outcome) { sign_in_settled(settled, outcome) })
+                                  cancel: cancel, on_settle: ->(settled, outcome) { sign_in_settled(settled, outcome) })
         begin
           address = build.call(flow.redirect_uri).to_s.strip
           card = { title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }] }

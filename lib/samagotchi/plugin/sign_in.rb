@@ -16,8 +16,9 @@ module Samagotchi
     # The browser comes back to a Listener on 127.0.0.1 (#redirect_uri), or
     # the user pastes the address it ended on with /callback (#offer). The
     # first callback that passes settles it :done; #wait returns its query.
-    # It also ends :timed_out (its deadline), :cancelled (#cancel) or
-    # :stopped (the worker leaving, #stop): +on_settle+ hears each, once.
+    # It also ends :timed_out (its deadline), :cancelled (#cancel, or the
+    # +cancel+ controller the bundle passed: a turn's Stop) or :stopped (the
+    # worker leaving, #stop): +on_settle+ hears each, once.
     class SignIn
       OUTCOMES = %i[done timed_out cancelled stopped].freeze
       TIMEOUTS = (60..900)
@@ -44,8 +45,12 @@ module Samagotchi
         end
       end
 
-      # @raise [ArgumentError] a timeout outside TIMEOUTS, a bad path
-      def self.check_options!(timeout:, path:)
+      # @raise [ArgumentError] a timeout outside TIMEOUTS, a bad path, a
+      #   cancel: that isn't a controller
+      def self.check_options!(timeout:, path:, cancel: nil)
+        unless cancel.nil? || cancel.respond_to?(:cancelled?)
+          raise ArgumentError, "ctx.sign_in's cancel: is a Samagotchi::CancellationController (ctx.cancel_controller) or nil"
+        end
         unless timeout.is_a?(Numeric) && TIMEOUTS.cover?(timeout)
           raise ArgumentError, "ctx.sign_in's timeout: is #{TIMEOUTS.min}..#{TIMEOUTS.max} seconds"
         end
@@ -69,8 +74,10 @@ module Samagotchi
       # @param redirect_uri [String, nil] without a listener (the test kit's)
       # @param clock [#call] monotonic seconds
       # @param on_settle [#call] (flow, outcome), once, off the lock
+      # @param cancel [CancellationController, nil] polled (each TICK, by
+      #   the listener and any #wait): cancelled ends it :cancelled
       def initialize(bundle:, title:, button:, timeout:, listener:, redirect_uri: nil,
-                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, on_settle: nil)
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, on_settle: nil, cancel: nil)
         @bundle = bundle
         @title = title
         @button = button
@@ -78,6 +85,7 @@ module Samagotchi
         @clock = clock
         @deadline = clock.call + timeout
         @on_settle = on_settle
+        @cancel = cancel
         @redirect_uri = listener&.redirect_uri || redirect_uri
         @mutex = Mutex.new
         @settled = ConditionVariable.new
@@ -170,10 +178,12 @@ module Samagotchi
         settle(:done, params)
       end
 
-      # The deadline passed: :timed_out.
+      # Its cancel: controller was cancelled: :cancelled; the deadline
+      # passed: :timed_out.
       # @return [Boolean] whether this call ended it
       def expire_if_due
         return false unless outcome.nil?
+        return settle(:cancelled) if @cancel&.cancelled?
         return settle(:timed_out) if @clock.call >= @deadline
 
         false

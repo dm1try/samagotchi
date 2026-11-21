@@ -7,6 +7,8 @@ require "samagotchi/kernel_loop"
 require "samagotchi/session_commands"
 require "samagotchi/plugin/context"
 require "samagotchi/plugin/sign_in"
+require "samagotchi/plugin/tool_spec"
+require "samagotchi/session"
 require "support/thinking_off"
 require "support/test_kernel"
 
@@ -143,6 +145,21 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect(settled.map { |f, outcome| [f.card_id, outcome] }).to include(["card3", :timed_out])
     end
 
+    it "ends :cancelled when its cancel: controller is cancelled (the listener's tick sees it, no waiter needed)" do
+      cancel = Samagotchi::CancellationController.new
+      own = described_class::Listener.new(read_timeout: 0.2, tick: 0.02)
+      cancellable = described_class.new(bundle: "b", title: "T", button: "Open", timeout: 60, listener: own, cancel: cancel,
+                                        on_settle: ->(f, outcome) { settled << [f, outcome] })
+      cancellable.started("https://provider.example/authorize?state=S4", "card4")
+      cancellable.listen
+      cancel.cancel!(:manual)
+      wait_for("the cancelled flow", timeout: 5) { settled.any? { |f, _| f.equal?(cancellable) } }
+      expect(cancellable.outcome).to eq(:cancelled)
+      expect(refused?(own.port)).to be(true)
+    ensure
+      own&.close
+    end
+
     it "ends once: a cancel after a callback changes nothing" do
       expect(flow.offer("code=C1&state=S1")).to be(true)
       flow.cancel
@@ -158,9 +175,10 @@ RSpec.describe Samagotchi::Plugin::SignIn do
     end
   end
 
-  it "refuses a timeout outside 60..900, a bad path, a taken port" do
+  it "refuses a timeout outside 60..900, a bad path, a taken port, a cancel: that isn't a controller" do
     expect { described_class.check_options!(timeout: 30, path: "/callback") }.to raise_error(ArgumentError, /60\.\.900/)
     expect { described_class.check_options!(timeout: 300, path: "callback") }.to raise_error(ArgumentError, /path/)
+    expect { described_class.check_options!(timeout: 300, path: "/callback", cancel: -> {}) }.to raise_error(ArgumentError, /cancel:/)
     taken = described_class::Listener.new
     expect { described_class::Listener.new(port: taken.port) }.to raise_error(ArgumentError, /port #{taken.port} is taken/)
   ensure
@@ -313,6 +331,67 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect { ctx.sign_in(title: "T") { "javascript:alert(1)" } }.to raise_error(ArgumentError, /url must be http/)
       expect(engine.sign_in_waiting?).to be(false)
       expect { ctx.sign_in(title: "T") }.to raise_error(ArgumentError, /needs a block/)
+    end
+  end
+
+  # The build prompt's cancel: keyword, on a real turn: a tool signs in
+  # mid-turn with ctx.cancel_controller read on its own (the turn's) thread,
+  # and the turn's Stop ends that flow; one started without cancel: waits on.
+  describe "a tool's sign-in and the turn's Stop (cancel:)" do
+    include_context "thinking off"
+
+    around do |example|
+      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run }
+    end
+
+    let(:client) { test_client }
+    let(:engine) { Samagotchi::Engine.new(client: client) }
+    let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
+    let(:ctx) do
+      Samagotchi::Plugin::Context.new(bundle: "demo", label: "plugin.rb (bundle demo)", settings: {},
+                                      host: engine.send(:plugin_host))
+    end
+    let(:flows) { Queue.new }
+    let(:seen) { [] }
+
+    before do
+      allow(ctx).to receive(:frontend).and_return(:worker)
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      engine.subscribe(observer: ->(e) { seen << e })
+      tool = Samagotchi::Plugin::ToolSpec.build("sign_in_now", "signs in", params: {}) do |_args, context|
+        flow = context.sign_in(title: "Sign in mid-turn", cancel: context.cancel_controller) do |uri|
+          "https://provider.example/authorize?#{URI.encode_www_form(redirect_uri: uri, state: "S7")}"
+        end
+        flows << flow
+        flow.wait ? "signed in" : "sign-in #{flow.outcome}"
+      end
+      Samagotchi::Plugin::ToolSpec.apply(engine.tools, "demo", [tool], ctx)
+      replies = ["<|tool_call>call:sign_in_now{}<tool_call|>", "done"]
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        ctrl = kwargs[:cancel_controller]
+        raise Samagotchi::Client::RequestCancelled, ctrl.reason if ctrl&.cancelled?
+
+        replies.shift || "done"
+      end
+    end
+
+    after { engine.shutdown(join_timeout: 0) }
+
+    it "ends the tool's flow :cancelled with the cancelled card; a flow without cancel: goes on" do
+      turn = Thread.new { engine.run_turn(session, "go", on_event: ->(_e) {}) }
+      flow = flows.pop(timeout: 10)
+      expect(flow&.outcome).to be_nil
+      loose = Thread.new do
+        ctx.sign_in(title: "Loose") { |uri| "https://provider.example/authorize?#{URI.encode_www_form(redirect_uri: uri, state: "S8")}" }
+      end.value
+
+      expect(engine.cancel_current_turn!(:manual)).to be(true)
+      join!(turn, "the stopped turn", timeout: 10)
+
+      expect(flow.outcome).to eq(:cancelled)
+      expect(seen.select { |e| e[:type] == :card }.last).to include(id: flow.card_id, title: "Sign-in cancelled", actions: [])
+      expect(refused?(URI(flow.redirect_uri).port)).to be(true)
+      expect(loose.outcome).to be_nil
     end
   end
 end

@@ -123,10 +123,10 @@ module Samagotchi
       # #sign_ins; Bundle#complete_sign_in / #fail_sign_in settle it. An
       # ending without a callback replaces its card as chi does.
       # @return [Plugin::SignIn]
-      def sign_in(bundle, title:, button:, timeout:, port:, path:, &build)
+      def sign_in(bundle, title:, button:, timeout:, port:, path:, cancel: nil, &build)
         redirect_uri = "http://127.0.0.1:#{port || SIGN_IN_PORT}#{path}"
         flow = Plugin::SignIn.new(bundle: bundle, title: title, button: button, timeout: timeout, listener: nil,
-                                  redirect_uri: redirect_uri,
+                                  redirect_uri: redirect_uri, cancel: cancel,
                                   on_settle: lambda { |settled, outcome|
                                     ended = Plugin::SignIn.ended_card(settled, outcome)
                                     card(source: bundle, level: :info, **ended) if ended

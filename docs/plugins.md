@@ -918,7 +918,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
-| `ctx.sign_in(title:, button:, timeout: 300, port: nil, path: "/callback") { \|redirect_uri\| address }` | send the owner to an address and get back where the browser was sent: see [Sign-in](#sign-in-ctxsign_in) |
+| `ctx.sign_in(title:, button:, timeout: 300, port: nil, path: "/callback", cancel: nil) { \|redirect_uri\| address }` | send the owner to an address and get back where the browser was sent: see [Sign-in](#sign-in-ctxsign_in) |
 | `ctx.secrets` | the bundle's tokens, kept apart from its data files (`get`, `set`, `delete`, `update`): see [Secrets](#secrets-ctxsecrets) |
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
@@ -1357,8 +1357,20 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
   replaced. On `:timed_out`, `:cancelled` and `:stopped` core replaces it ("Sign-in timed out" / "Sign-in
   cancelled", no button). The flow's cards are never a running turn's.
 - A flow never outlives its worker: an exit, a restart or a crash's shutdown stops it, its card replaced first, so a
-  card a later worker loads never offers a dead sign-in. An idle exit waits for a waiting flow. A flow is tied to no
-  turn: the session's Stop doesn't end it (`flow.cancel` does).
+  card a later worker loads never offers a dead sign-in. An idle exit waits for a waiting flow.
+- A flow is tied to no turn by default: the session's Stop doesn't end it (`flow.cancel` and its timeout do). To let
+  Stop end it, pass `cancel:` a `Samagotchi::CancellationController`, the flow polls it (about once a second) and ends
+  `:cancelled` with the cancelled card. A tool that signs in mid-turn passes `ctx.cancel_controller` read on its own
+  thread (a tool's is its turn's); a session command between turns has none (`nil`, the default).
+
+  ```ruby
+  chi.tool "linear_search", "…", params: {} do |args, ctx|
+    flow = ctx.sign_in(title: "Sign in to Linear", cancel: ctx.cancel_controller) { |uri| authorize_url(uri) }
+    result = flow.wait            # on the turn's thread: Stop ends it (nil, flow.outcome == :cancelled)
+    next "sign-in #{flow.outcome}" unless result
+    # …
+  end
+  ```
 - No one to ask: a one-shot run (`ctx.frontend == :one_shot`), a `:generation_progress` handler, and any call once
   the worker has begun to leave (a command still running at an exit, a thread of yours) get a flow that is
   `:stopped` already (`wait` → nil), with no card and no port.
