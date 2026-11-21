@@ -351,6 +351,14 @@ class Plugin
     # A 404 for a legacy session id: the session expired.
     class Expired < Client::Unavailable; end
 
+    # One call's time, +seconds+ from its start, for every message it sends
+    # (connect, headers, body; a re-handshake's too).
+    Budget = Data.define(:seconds, :deadline) do
+      def self.for(seconds) = new(seconds, Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
+
+      def left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
+
     attr_reader :era
 
     # @param url [String] http(s)
@@ -401,7 +409,7 @@ class Plugin
       @era = :discover
       @session_id = nil
       begin
-        result = post("server/discover", {}, timeout: timeout, cancelled: cancelled)
+        result = post("server/discover", {}, Budget.for(timeout), cancelled)
         offered = Array(result["supportedVersions"])
         return result.tap { @era = :modern } if offered.include?(MODERN)
       rescue Refused, Client::Timeout, Client::Cancelled, Client::Dead
@@ -411,30 +419,27 @@ class Plugin
       rescue Client::Error
         offered = nil
       end
-      legacy(timeout, cancelled, offered)
+      legacy(Budget.for(timeout), cancelled, offered)
     end
 
+    # @param timeout [Numeric] the whole call's, a re-handshake included
     # @return [Hash] the result
     def request(method, params = nil, timeout:, cancelled: nil)
-      renew(timeout, cancelled) if @era == :expired
+      budget = Budget.for(timeout)
+      renew(budget, cancelled) if @era == :expired
       raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(@era)
 
-      post(method, params, timeout: timeout, cancelled: cancelled)
+      post(method, params, budget, cancelled)
     rescue Expired
       raise if @era != :legacy || @renewing
 
       @renewing = true
       begin
-        renew(timeout, cancelled)
-        post(method, params, timeout: timeout, cancelled: cancelled)
+        renew(budget, cancelled)
+        post(method, params, budget, cancelled)
       ensure
         @renewing = false
       end
-    end
-
-    def notify(method, params = nil)
-      post(method, params, timeout: 10, cancelled: nil, notification: true)
-      nil
     end
 
     # A legacy session's best-effort DELETE; nothing for the modern era.
@@ -455,8 +460,8 @@ class Plugin
     # A legacy session's handshake again (its 404). One that fails leaves
     # the era :expired, so the next request tries again; its error is the
     # server's state, never the tool's (Unavailable, no schema note).
-    def renew(timeout, cancelled)
-      legacy(timeout, cancelled, nil)
+    def renew(budget, cancelled)
+      legacy(budget, cancelled, nil)
     rescue Client::Timeout, Client::Cancelled, Client::Dead, Client::Unavailable
       raise
     rescue Client::Error => e
@@ -465,15 +470,16 @@ class Plugin
       @era = :expired unless @era == :legacy
     end
 
-    def legacy(timeout, cancelled, offered)
+    # initialize, then notifications/initialized, in one +budget+.
+    def legacy(budget, cancelled, offered)
       @era = :initialize
       @session_id = nil
       result = post("initialize", { protocolVersion: LEGACY, capabilities: {},
                                     clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                    timeout: timeout, cancelled: cancelled, session: true)
+                    budget, cancelled, session: true)
       @protocol = result["protocolVersion"].is_a?(String) ? result["protocolVersion"] : LEGACY
       @era = :legacy
-      notify("notifications/initialized")
+      post("notifications/initialized", nil, budget, cancelled, notification: true)
       result
     rescue Client::Timeout, Client::Cancelled, Client::Dead, Refused
       raise
@@ -483,39 +489,58 @@ class Plugin
       raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
     end
 
-    # One message on the wire, and its answer.
+    # One message on the wire, and its answer, in what is left of +budget+.
     # @return [Hash, nil] the result (nil for a notification)
-    def post(method, params, timeout:, cancelled:, notification: false, session: false)
+    def post(method, params, budget, cancelled, notification: false, session: false)
       id = notification ? nil : @mutex.synchronize { @next_id += 1 }
       message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
-      deadline = monotonic + timeout
       headers = headers_for(method, params)
-      @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: timeout, cancel: cancelled) do |res|
-        @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
-        refuse(res, headers.key?("Authorization")) unless res.ok?
-        answer(res, id, method, timeout, deadline)
+      raise Client::Timeout, timed_out(method, budget) if (left = budget.left) <= 0
+
+      timer = Samagotchi::CancellationController.new
+      budgeted(cancelled, timer, left) do
+        @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: [left, 0.05].max, cancel: timer) do |res|
+          @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
+          refuse(res, headers.key?("Authorization")) unless res.ok?
+          answer(res, id)
+        end
       end
     rescue Samagotchi::Plugin::HttpCancelled
+      raise Client::Timeout, timed_out(method, budget) if timer&.reason == :budget
+
       raise Client::Cancelled, "#{method} was cancelled"
     rescue Samagotchi::Plugin::HttpError => e
-      raise Client::Timeout, timed_out(method, timeout) if e.message.end_with?("timed out")
+      raise Client::Timeout, timed_out(method, budget) if e.message.end_with?("timed out")
 
       raise Client::Dead, e.message
     end
 
+    # +timer+, cancelled with +cancelled+ or once +left+ seconds have
+    # passed, whichever comes first: the budget holds by the clock, whatever
+    # the server sends (a keep-alive just before the end).
+    def budgeted(cancelled, timer, left)
+      listener = cancelled&.on_cancel { |reason| timer.cancel!(reason) }
+      clock = Thread.new do
+        sleep(left)
+        timer.cancel!(:budget)
+      end
+      yield
+    ensure
+      clock&.kill&.join
+      cancelled&.remove_listener(listener)
+    end
+
     # The answer to message +id+ (nil: a notification's) in +res+.
-    def answer(res, id, method, timeout, deadline)
+    def answer(res, id)
       type = content_type(res)
       return nil if id.nil?
 
       case type
       when "application/json"
-        body = +""
-        chunks(res, method, timeout, deadline) { |bytes| body << bytes }
-        result_of(parse(body, type))
+        result_of(parse(res.body, type))
       when "text/event-stream"
         reader = Samagotchi::Plugin::Http::SseReader.new
-        chunks(res, method, timeout, deadline) do |bytes|
+        res.each_chunk do |bytes|
           reader.feed(bytes) do |event|
             message = parse_event(event)
             return result_of(message) if message && !message.key?("method") && message["id"] == id
@@ -524,15 +549,6 @@ class Plugin
         raise Client::Error, "the server closed the stream without an answer"
       else
         raise Client::Unavailable, "unexpected answer (#{type.empty? ? "no content type" : type})"
-      end
-    end
-
-    # The body's pieces, the call's whole budget checked at each.
-    def chunks(res, method, timeout, deadline)
-      res.each_chunk do |bytes|
-        raise Client::Timeout, timed_out(method, timeout) if monotonic > deadline
-
-        yield bytes
       end
     end
 
@@ -626,9 +642,7 @@ class Plugin
 
     def content_type(res) = res.headers["content-type"].to_s.split(";").first.to_s.strip.downcase
 
-    def timed_out(method, timeout) = "#{method} timed out after #{format("%g", timeout)}s"
-
-    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    def timed_out(method, budget) = "#{method} timed out after #{format("%g", budget.seconds)}s"
   end
 
   # One tool of a server in the index (the tools: filter applied): +name+

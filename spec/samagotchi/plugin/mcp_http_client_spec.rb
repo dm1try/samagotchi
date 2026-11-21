@@ -266,6 +266,62 @@ RSpec.describe "The mcp bundle's HTTP client" do
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.5, below: 2)
     end
 
+    def elapsed_since(started) = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    it "holds the budget by the clock: a keep-alive just before its end doesn't buy another read" do
+      modern_discover
+      client.handshake(timeout: 5, cancelled: nil)
+      server.enqueue("/mcp", sse: [": a\n\n", ": b\n\n"], delay: 0.8, hold: true)
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { client.request("tools/list", nil, timeout: 1) }.to raise_error(errors::Timeout, "tools/list timed out after 1s")
+      expect(elapsed_since(started)).to be < time_bound(1.4, below: 1.7) # not 0.8 s + another 1 s read
+    ensure
+      server.release
+    end
+
+    it "spends the call's budget on a re-handshake too, not a new one" do
+      server.enqueue("/mcp", status: 405, body: "")
+      legacy_answers(2, session: "s1")
+      client.handshake(timeout: 5, cancelled: nil)
+      server.enqueue("/mcp", status: 404, body: "")
+      server.enqueue("/mcp", sse: [": wait\n\n", sse(json_rpc(4, { protocolVersion: "2025-11-25" }))], delay: 0.7,
+                             headers: { "Mcp-Session-Id" => "s2" })
+      server.enqueue("/mcp", status: 202, body: "")
+      server.enqueue("/mcp", sse: [], hold: true)
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { client.request("tools/list", nil, timeout: 1) }.to raise_error(errors::Timeout, "tools/list timed out after 1s")
+      expect(elapsed_since(started)).to be < time_bound(1.4, below: 1.6) # not 0.7 s + a fresh 1 s
+      expect(methods_sent.drop(3)).to eq(%w[tools/list initialize notifications/initialized tools/list])
+    ensure
+      server.release
+    end
+
+    it "gives notifications/initialized what is left of the handshake's budget, not a fixed 10 s" do
+      fake = Samagotchi::Testing::FakeHttp.new
+      fake.stub(:post, %r{/mcp}) do |request|
+        case request.json["method"]
+        when "server/discover" then { status: 404 }
+        when "initialize" then { events: [JSON.generate(json_rpc(2, {}))] }
+        else { status: 202 }
+        end
+      end
+      timeouts = {}
+      recording = Class.new(SimpleDelegator) do
+        define_method(:stream) do |**args, &block|
+          timeouts[JSON.parse(args[:body])["method"]] = args[:timeout]
+          __getobj__.stream(**args, &block)
+        end
+      end
+      faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
+                                    http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: recording.new(fake)))
+      faked.handshake(timeout: 0.5, cancelled: nil)
+
+      expect(timeouts.keys).to eq(%w[server/discover initialize notifications/initialized])
+      expect(timeouts.values).to all(be <= 0.5)
+    end
+
     it "times out a quiet stream with the stdio wording" do
       modern_discover
       client.handshake(timeout: 5, cancelled: nil)
@@ -293,7 +349,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
         .to raise_error(errors::Cancelled, "tools/call was cancelled")
     end
 
-    it "stops the handshake on a Stop too, with no thread of its own" do
+    it "stops the handshake on a Stop too, leaving no thread behind" do
       server.enqueue("/mcp", sse: [], hold: true)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       threads = Thread.list.size
