@@ -19,7 +19,7 @@ model. The TUI is untouched: it shows a fence as source.
    `renderer_changed`, each with its own reason. ETag + `no-cache`, as static files. A `block_renderers:` list that
    doesn't parse is logged once per bundle and problem (each list request and file fetch reads it); a bundle this chi is
    too old for (`requires_chi`) draws nothing, logged once per bundle and version (`block_renderers_too_new`).
-3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; a participant's page
+3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired by `diagram_wiring.js wireDiagrams` from `app.js`; a participant's page
    gets the core drawers only, no bundle's renderers: `block_renderers`) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an
    ordered list of drawers, core ones first (`inline_widgets.js` for `chi-ui`: [inline-widgets.md](inline-widgets.md)), then the frame drawer, which waits for `/api/block_renderers`;
    the first that `claims` the block's language draws it, and a language none claims is left alone. The contract
