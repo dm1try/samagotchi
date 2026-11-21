@@ -1461,7 +1461,17 @@ block_renderers:
   replies, a lead-in bubble, delegate reports and the doc viewer show the source, and so does the terminal.
 - **The script's side:** the last file calls `chi.defineRenderer({ init, render })`. `init()` (optional, may be async)
   runs once; `render(source, theme)` returns the SVG as a string, or a promise of one. Throw to keep the block as
-  source. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in
+  source (the model's diagram is wrong: chi may ask it for a fixed one). **Regions:** when `chi.features?.regions` is
+  true (an older chi's frame takes a string only, so check it), `render` may return
+  `{ svg, regions }`: the diagram's parts, so the picture viewer can make them tappable. A region is
+  `{ kind: "node" | "group" | "edge" | "note", id, label, box: [x, y, w, h], points, from, to }`: `id` the source's
+  own name, `label` the text shown, `box` and `points` fractions of the picture (0..1); `box` is required but for an
+  edge, whose optional `box` is its label's; an edge has 2..16 `points` along its line and, when the bundle can name
+  them, the ids of its ends in `from` and `to`. Two regions with one kind and id (a sequence participant's top and
+  bottom box) select together. Past 600 regions none are taken; chi cleans and caps the rest
+  ([internals/block-renderers.md](internals/block-renderers.md#regions)), and uses them as text and numbers only.
+  An object without a string `svg` is the bundle's own bug: the block stays source with its line, and no fix is
+  asked of the model. A measuring failure should return the SVG with no regions, never throw. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in
   a sandboxed frame with no cookie and no access to the page, and the CSP closes its network, but for WebRTC (what the
   frame holds, the diagrams it rendered, could leave that way). The SVG is shown as an `<img>`, so its scripts, links
   and remote images don't run: it has to stand alone (no `foreignObject`, every namespace prefix bound) and stay under 50,000 px a
@@ -1527,8 +1537,8 @@ that calls it, or for a real external bundle that does. No method on the chance 
      upgraded.
    - A bundle declares its floor with `requires_chi`, and an install below it is refused (`--force` aside).
      There is no `api_version:`.
-   - `block_renderers:` and the frame's `chi.defineRenderer` ([Block renderers](#block-renderers)) are part
-     of it. Neither is Ruby, so the scan below doesn't see them.
+   - `block_renderers:`, the frame's `chi.defineRenderer` and `chi.features` (`regions`: `render` may return
+     `{ svg, regions }`) ([Block renderers](#block-renderers)) are part of it. Neither is Ruby, so the scan below doesn't see them.
 
 `Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of items 1-6,
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle
