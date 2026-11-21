@@ -152,6 +152,13 @@ RSpec.describe Samagotchi::Web::App, "POST /api/mcp" do
       expect([status, body["error"]["message"]]).to eq([400, "Bad Request: Missing session ID"])
     end
 
+    it "answers a batch or a null body with JSON-RPC -32600, not chi web's 500" do
+      ['[{"jsonrpc":"2.0","id":1,"method":"ping"}]', "null"].each do |text|
+        status, _headers, body = post(text, headers: { "HTTP_MCP_SESSION_ID" => "s" })
+        expect([status, body.dig("error", "code")]).to eq([400, -32_600]), text
+      end
+    end
+
     it "answers GET with 405 and Allow, DELETE with 200 and no body" do
       status, headers, = post(nil, method: "GET")
       expect([status, headers["Allow"]]).to eq([405, "POST, DELETE"])

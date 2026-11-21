@@ -83,6 +83,11 @@ RSpec.describe Samagotchi::McpServer::Stdio do
     expect(out.map { |a| a.dig("error", "code") || a["result"] }).to eq([-32_700, {}])
   end
 
+  it "answers a line that isn't an object (a batch, null, a number) with -32600 and goes on" do
+    out = run(%([{"jsonrpc":"2.0","id":1,"method":"ping"}]\nnull\n3\n#{line(2, "ping")}))
+    expect(out.map { |a| a.dig("error", "code") || a["result"] }).to eq([-32_600, -32_600, -32_600, {}])
+  end
+
   it "drops answers once the host closed its end (EPIPE), and still returns" do
     output = instance_double(IO)
     allow(output).to receive(:write).and_raise(Errno::EPIPE)

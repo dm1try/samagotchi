@@ -45,7 +45,8 @@ module Samagotchi
         return [202, {}, []] unless answer
 
         headers = {}
-        if era == :legacy && message["method"] == "initialize" && answer.body.key?(:result)
+        # A body that isn't an object (a batch, null) is -32600 already.
+        if era == :legacy && message.is_a?(Hash) && message["method"] == "initialize" && answer.body.key?(:result)
           headers[SESSION_HEADER] = SecureRandom.uuid
         end
         respond(answer.status, answer.body, headers)
