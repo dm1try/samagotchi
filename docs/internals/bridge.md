@@ -11,8 +11,9 @@ handed on by the Worker) and calls `subscribe`, `unsubscribe`, `event_count`, `a
 
 ## What a Bridge keeps
 
-`Bridge#start` binds a port (OS-assigned, `127.0.0.1`), then subscribes four persistent observers to the event log
-(`SessionObserver#subscribe`, the thread-safe fan-out whose events all carry a monotonic `event_seq`). Each is cheap and
+`Bridge#start` binds a port (OS-assigned, `127.0.0.1`), then subscribes five persistent observers to the event log
+(`SessionObserver#subscribe`, the thread-safe fan-out whose events all carry a monotonic `event_seq`): the capture
+observer (feeding the ring), the accumulator, the drawings, the cards and the pending card. Each is cheap and
 rescues its own errors: an observer must never break the running turn.
 
 | Piece | File (`bridge/`) | Holds |
