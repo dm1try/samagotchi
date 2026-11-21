@@ -1301,9 +1301,11 @@ ctx.secrets.backend                       # => :file (:memory in the test kit), 
   `Samagotchi::Plugin::Secrets::Busy`. A store failure (the disk, permissions) raises
   `Samagotchi::Plugin::Secrets::Unavailable`, naming the store and the secret's name only.
 - No caching: `get` reads the file each time. Keep the token in memory and read it again on a 401.
-- What protects the file: a participant's turn never reads chi's state dir, and System 1 never answers for it. The
-  owner's own model can still read it under the ordinary outside-the-repo rules (as it can run `security` for a
-  Keychain item); the guardrails' core write checks don't cover it.
+- What protects the file: a participant's turn never reads chi's state dir, and System 1 never answers for it.
+  chi's own model is kept off it too ([Protected paths](guardrails.md#protected-paths)): `read`, `write`, `edit` and a
+  plugin tool's `targets:` paths under `plugins/<bundle>/secrets/` are denied, and a shell command that names that
+  folder asks the user once. That is an accident guard, not a sandbox: a command that doesn't name the folder (one
+  that `cd`s there first, a variable, a script) still reads it, as the owner's own processes can.
 - On a participant's turn (`ctx.turn_author` set) a plugin runs with the owner's power, so `ctx.secrets` works
   there. Using a token you already have is the same as a stdio server's env secret today; don't start a sign-in on
   a participant's turn.

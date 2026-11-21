@@ -16,7 +16,8 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         context_dir: File.join(root, "state", "context"),
                         runs_dir: File.join(root, "state", "system_one"),
                         home_path: File.join(config_dir, "home.json"),
-                        shim_path: File.join(root, "state", "bin", "chi"))
+                        shim_path: File.join(root, "state", "bin", "chi"),
+                        plugins_dir: File.join(root, "state", "plugins"))
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: root) }
 
@@ -35,6 +36,40 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect([v.decision, v.rule, v.source]).to eq([:deny, "guardrail-store", "core"])
     v = verdict_for(name: "edit", path: "config/memories/.bundles/b/hooks/g.rb", content: "x")
     expect([v.decision, v.rule]).to eq([:deny, "installed-bundles"])
+  end
+
+  # An accident guard (docs/plugins.md, Secrets): chi's model doesn't read
+  # a bundle's tokens by mistake. Not a sandbox: a command that doesn't name
+  # the folder (cd there first, a variable) still reads it.
+  describe "a bundle's secrets (<state dir>/plugins/<bundle>/secrets, ctx.secrets)" do
+    it "denies every file tool there, read included, and leaves the rest of plugins/ alone" do
+      v = verdict_for(name: "read", content: "state/plugins/mcp/secrets/linear")
+      expect([v.decision, v.rule, v.source]).to eq([:deny, "bundle-secrets", "core"])
+      expect(verdict_for(name: "read", content: "state/plugins/mcp/secrets")).to be_deny
+      expect(verdict_for(name: "write", path: "state/plugins/mcp/secrets/linear", content: "x")).to be_deny
+      expect(verdict_for(name: "edit", path: "state/plugins/mcp/secrets/.locks/linear", old_string: "a", new_string: "b")).to be_deny
+      expect(verdict_for(name: "read", content: "state/plugins/mcp/servers.json")).to be_allow
+      expect(verdict_for(name: "read", content: "state/plugins/mcp/secretsx/a")).to be_allow
+      expect(verdict_for(name: "read", content: "elsewhere/plugins/mcp/secrets/a")).to be_allow
+    end
+
+    it "follows a symlink into the folder" do
+      FileUtils.mkdir_p(File.join(root, "state", "plugins", "mcp", "secrets"))
+      File.symlink(File.join(root, "state", "plugins", "mcp"), File.join(root, "link"))
+      expect(verdict_for(name: "read", content: "link/secrets/linear")).to be_deny
+    end
+
+    it "asks once (the user only) about a shell command that names the folder, reading or not" do
+      ["cat #{root}/state/plugins/mcp/secrets/linear",
+       "ls ~/.local/state/samagotchi/plugins/*/secrets",
+       "grep -r token \"$XDG_STATE_HOME/samagotchi/plugins/mcp/secrets/\""].each do |command|
+        v = verdict_for(name: "execute", content: command)
+        expect([v.decision, v.rule, v.scopes]).to eq([:ask, "bundle-secrets-shell", ["once"]]), command
+      end
+      expect(Samagotchi::Guardrails::Verdict::PROTECTED_RULES).to include("bundle-secrets-shell")
+      expect(verdict_for(name: "execute", content: "ls #{root}/state/plugins/mcp")).to be_allow
+      expect(verdict_for(name: "execute", content: "cat config/secrets.yml")).to be_allow
+    end
   end
 
   it "denies writes to System 1's saved runs: a label there may train a model" do

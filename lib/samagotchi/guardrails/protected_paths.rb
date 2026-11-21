@@ -25,8 +25,22 @@ module Samagotchi
     #         breaking it.
     # execute can still write all of them (the guardrails bundle adds a
     # text match for that).
+    #
+    # A bundle's secrets (<state dir>/plugins/<bundle>/secrets, ctx.secrets)
+    # are kept from chi's model whatever the call does: every file tool's
+    # path there is denied, read included, and a shell command that names
+    # the folder asks once (the user only). An accident guard, not a
+    # sandbox: a command that doesn't name it (cd there first, a variable,
+    # a script) still reads it.
     class ProtectedPaths
       SOURCE = "core"
+      SECRETS_RULE = "bundle-secrets"
+      SECRETS_SHELL_RULE = "bundle-secrets-shell"
+      SECRETS_REASON = "a bundle's secrets (tokens) are its own: chi's model doesn't read or change them"
+      SECRETS_SHELL_REASON = "the command names a bundle's secrets folder (its tokens)"
+      # A command naming a secrets folder under chi's state dir, as typed:
+      # the dir's name (samagotchi), then plugins/<bundle or a glob>/secrets.
+      SECRETS_TEXT = %r{samagotchi/plugins/[^/\s'"]+/secrets(?![\w.-])}
 
       # @param store_dir [String] <state dir>/guardrails
       # @param bundles_dir [String] <memories>/.bundles
@@ -36,7 +50,14 @@ module Samagotchi
       # @param runs_dir [String, nil] <state dir>/system_one (SystemOne::Runs)
       # @param home_path [String, nil] home.json (ChiHome.path)
       # @param shim_path [String, nil] the chi shim (ChiShim.path)
-      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, runs_dir: nil, home_path: nil, shim_path: nil)
+      # @param plugins_dir [String, nil] <state dir>/plugins (the bundles' data, their secrets/ in it)
+      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, runs_dir: nil, home_path: nil, shim_path: nil,
+                     plugins_dir: nil)
+        @plugins_dir = plugins_dir
+        # The same, spelled out: this state dir's own plugins/<x>/secrets.
+        @secrets_text = plugins_dir && Regexp.union(SECRETS_TEXT, *([plugins_dir.to_s.chomp("/")] | PathResolve.reals(plugins_dir.to_s.chomp("/"))).map do |dir|
+          %r{#{Regexp.escape(dir)}/[^/\s'"]+/secrets(?![\w.-])}
+        end)
         @deny = [
           ["guardrail-store", store_dir, "the approval store belongs to the user"],
           ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"],
@@ -56,7 +77,10 @@ module Samagotchi
       # targets: writes: true) is judged on its paths.
       def check(verdict)
         targets = verdict.targets
-        return verdict unless targets&.writes?
+        return verdict unless targets
+
+        check_secrets(verdict, targets)
+        return verdict unless targets.writes?
 
         paths = targets.paths.flat_map { |p| PathResolve.reals(p) }
         @deny.each do |rule, root, reason|
@@ -72,6 +96,16 @@ module Samagotchi
         verdict
       end
 
+      # Whether +path+ (absolute, resolved) is a bundle's secrets folder or
+      # in it: <plugins dir>/<bundle>/secrets[/…].
+      def secrets_path?(path)
+        return false unless @plugins_dir
+
+        PathResolve.reals(@plugins_dir.to_s.chomp("/")).any? do |dir|
+          PathResolve.under?(path, dir) && path[(dir.length + 1)..].to_s.split("/")[1]&.casecmp?("secrets")
+        end
+      end
+
       # The path primitives (PathResolve) as this class has long named
       # them; specs and older callers reach them here.
       def self.expand(path, base = nil) = PathResolve.expand(path, base)
@@ -81,6 +115,21 @@ module Samagotchi
       def self.within?(path, root) = PathResolve.within?(path, root)
       def self.under?(path, dir) = PathResolve.under?(path, dir)
       def self.folds_case?(path) = PathResolve.folds_case?(path)
+
+      private
+
+      def check_secrets(verdict, targets)
+        return unless @plugins_dir
+
+        paths = targets.paths.flat_map { |p| PathResolve.reals(p) }
+        if targets.shell?
+          return unless paths.any? { |p| secrets_path?(p) } || targets.command.to_s.match?(@secrets_text)
+
+          verdict.ask!(SECRETS_SHELL_REASON, scopes: %w[once], rule: SECRETS_SHELL_RULE, source: SOURCE, decided_by: "core")
+        elsif paths.any? { |p| secrets_path?(p) }
+          verdict.deny!(SECRETS_REASON, rule: SECRETS_RULE, source: SOURCE, decided_by: "core")
+        end
+      end
     end
   end
 end

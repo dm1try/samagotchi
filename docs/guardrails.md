@@ -252,7 +252,8 @@ the user's alone (`user_only`): `chi answer` and the worker refuse the allow
 with `only the user can allow it`. The same holds for the guardrails bundle's
 other user-only rules (`chi-context-cmd`, `chi-broadcast`,
 `prompt-memory-write`, `model-overlay-write`, and `chi-answer-piped` /
-`chi-answer-http`, which answer a grandchild's question as the user).
+`chi-answer-http`, which answer a grandchild's question as the user), and core's
+`bundle-secrets-shell` (a command naming a bundle's secrets).
 
 `child-boundary` isn't one of them: an ask before a delegate child acts outside
 its folder follows the level, so a `soft` parent may give Allow once. If that
@@ -340,6 +341,20 @@ with `writes: true` (symlinks resolved; see
 
 `execute` can still reach them; the guardrails bundle asks about shell
 commands that name them.
+
+A bundle's secrets ([`ctx.secrets`](plugins.md#secrets-ctxsecrets):
+`<state dir>/plugins/<bundle>/secrets/`) are kept from chi's model whatever
+the call does, reads too:
+
+- deny (`bundle-secrets`): `read`, `write`, `edit` and a plugin tool's
+  `targets:` paths there (symlinks resolved);
+- ask, once, the user only (`bundle-secrets-shell`, a protected rule): an
+  `execute` or `task_create` command that names the folder
+  (`…/samagotchi/plugins/<bundle or a glob>/secrets`, or this state dir's
+  path spelled out), `ls` and `cat` included.
+
+It is an accident guard, not a sandbox: a command that doesn't name the
+folder (one that `cd`s there first, a variable, a script) still reads it.
 
 ## A delegate child's boundary
 
