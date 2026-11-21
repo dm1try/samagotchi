@@ -36,7 +36,8 @@ test("over 600 entries: null, never cut", () => {
 test("a number where a string goes is \"\"; an object as id isn't stringified", () => {
   let called = 0;
   const sneaky = { toString() { called += 1; return "<b>"; } };
-  assert.deepEqual(one(node({ id: 42, label: sneaky })), [{ kind: "node", id: "", label: "", box: [0.1, 0.2, 0.3, 0.1] }]);
+  assert.deepEqual(one(node({ id: 42 })), [{ kind: "node", id: "", label: "Bridge", box: [0.1, 0.2, 0.3, 0.1] }]);
+  assert.deepEqual(one(node({ label: sneaky })), [{ kind: "node", id: "BR", label: "", box: [0.1, 0.2, 0.3, 0.1] }]);
   assert.equal(called, 0);
 });
 
@@ -73,6 +74,20 @@ test("a __proto__ own key, a cycle and a BigInt are data, never followed", () =>
   cyclic.label = cyclic;
   assert.deepEqual(one(cyclic), [{ kind: "node", id: "BR", label: "", box: [0.1, 0.2, 0.3, 0.1] }]);
   assert.deepEqual(one(node({ id: 10n })), [{ kind: "node", id: "", label: "Bridge", box: [0.1, 0.2, 0.3, 0.1] }]);
+});
+
+test("a nameless region is skipped: a node, note or group with no label and no id; an edge with no label and not both ends", () => {
+  for (const kind of ["node", "note", "group"]) {
+    assert.deepEqual(one(node({ kind, id: "", label: "" })), [], kind);
+    assert.deepEqual(one(node({ kind, id: " \u200b\n", label: 7 })), [], `${kind}: nothing left after cleaning`);
+    assert.equal(one(node({ kind, id: "", label: "Bridge" })).length, 1);
+    assert.equal(one(node({ kind, id: "BR", label: "" })).length, 1);
+  }
+  assert.deepEqual(one(edge({ label: "", from: "", to: "" })), []);
+  assert.deepEqual(one(edge({ label: "", from: "BR", to: "" })), [], "one end only");
+  assert.deepEqual(one(edge({ label: "", id: "e1", from: "", to: "" })), [], "an edge's id isn't shown");
+  assert.equal(one(edge({ label: "", from: "BR", to: "EN" })).length, 1);
+  assert.equal(one(edge({ from: "", to: "" })).length, 1, "its label");
 });
 
 test("past the bytes budget over the cleaned fields: null", () => {

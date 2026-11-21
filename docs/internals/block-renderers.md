@@ -103,7 +103,9 @@ page or stall it. Two gates:
    `points` 2..16 pairs of finite numbers, clamped, else the edge is skipped; `id`, `label`, `from`, `to` strings only
    (never `String()` of an object), controls and line separators a space, bidi, zero-width and lone surrogates gone,
    whitespace runs one space, cut by code points to 80 (`label` 120); only own keys of known names are read, and the
-   result is new objects. Nothing stringifies the raw data (structured clone keeps cycles and BigInt). A list dropped
+   result is new objects. A region left with no name is skipped (a node, note or group with neither `label` nor
+   `id`; an edge with no `label` and not both ends): the card and a button name a region by the diagram's own text
+   only, and the page never makes one up (a "node 3" means nothing in the source, nor to the model). Nothing stringifies the raw data (structured clone keeps cycles and BigInt). A list dropped
    whole is said once per language (`console.warn`, its count, no model text). **Never cut**: past a cap the picture
    shows with nothing tappable.
 

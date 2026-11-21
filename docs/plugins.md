@@ -1467,7 +1467,8 @@ block_renderers:
   `{ kind: "node" | "group" | "edge" | "note", id, label, box: [x, y, w, h], points, from, to }`: `id` the source's
   own name, `label` the text shown, `box` and `points` fractions of the picture (0..1); `box` is required but for an
   edge, whose optional `box` is its label's; an edge has 2..16 `points` along its line and, when the bundle can name
-  them, the ids of its ends in `from` and `to`. Two regions with one kind and id (a sequence participant's top and
+  them, the ids of its ends in `from` and `to`. A region with nothing to call it by (no `label` and no `id`; an
+  edge, no `label` and not both ends) isn't tappable. Two regions with one kind and id (a sequence participant's top and
   bottom box) select together. Past 600 regions none are taken; chi cleans and caps the rest
   ([internals/block-renderers.md](internals/block-renderers.md#regions)), and uses them as text and numbers only.
   An object without a string `svg` is the bundle's own bug: the block stays source with its line, and no fix is

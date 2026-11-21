@@ -10,8 +10,8 @@ const EN = { kind: "node", id: "EN", label: "Engine", box: [0.7, 0.4, 0.1, 0.1] 
 const UP = { kind: "node", id: "M", label: "Model", box: [0.7, 0.1, 0.1, 0.1] };
 const G = { kind: "group", id: "worker", label: "Worker process", box: [0.35, 0.05, 0.6, 0.6] };
 const EDGE = { kind: "edge", id: "", label: "events", from: "BR", to: "EN", points: [[0.5, 0.45], [0.7, 0.45]], box: [0.58, 0.41, 0.04, 0.03] };
-const BARE = { kind: "edge", id: "", label: "", from: "", to: "", points: [[0.45, 0.5], [0.45, 0.9]] };
-const PICTURE = { url: "data:x", width: 1000, height: 500, regions: [G, BR, EN, UP, EDGE, BARE] };
+const DOWN = { kind: "edge", id: "", label: "down", from: "", to: "", points: [[0.45, 0.5], [0.45, 0.9]] };
+const PICTURE = { url: "data:x", width: 1000, height: 500, regions: [G, BR, EN, UP, EDGE] };
 
 function setup(picture = PICTURE, opts = {}) {
   const box = document.createElement("div");
@@ -39,7 +39,7 @@ const key = (el, k) => {
 
 test.afterEach(() => { document.body.innerHTML = ""; });
 
-test("draws a button per named region, named for a screen reader, in a group that counts them", () => {
+test("draws a button per region, named for a screen reader, in a group that counts them", () => {
   const { q, buttons } = setup();
   assert.equal(q(".pv-nodes").getAttribute("role"), "group");
   assert.equal(q(".pv-nodes").getAttribute("aria-label"), "Diagram: 3 nodes, 1 arrow, 1 group");
@@ -114,7 +114,7 @@ test("two regions with one id mark together, behind one button", () => {
 });
 
 test("only the hovered and the selected edges have a line", () => {
-  const { layer, qa } = setup();
+  const { layer, qa } = setup({ ...PICTURE, regions: [...PICTURE.regions, DOWN] });
   assert.equal(qa("polyline").length, 0);
   assert.equal(layer.hover({ x: 0.6, y: 0.45 }, SIZE), true);
   assert.deepEqual(qa("polyline").map((p) => p.getAttribute("class")), ["pv-hover"]);
@@ -177,8 +177,9 @@ test("✕ clears; the focus inside the card goes to the cleared region's button,
   q(".pv-sel-x").click();
   assert.equal(layer.selected(), null);
   assert.ok(document.activeElement === buttons()[1]);
-  layer.tap({ x: 0.45, y: 0.7 }, SIZE, "mouse"); // the bare edge: no button
-  assert.equal(layer.selected(), BARE);
+  const stray = { ...DOWN }; // not one of the picture's: no button
+  layer.select(stray);
+  assert.equal(layer.selected(), stray);
   q(".pv-sel-x").focus();
   layer.select(null);
   assert.ok(document.activeElement === viewer);
