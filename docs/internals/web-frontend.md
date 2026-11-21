@@ -475,7 +475,8 @@ kept: every open starts fitted.
   moves, Ctrl/Cmd + wheel zooms at the cursor (a Chromium trackpad pinch is a ctrl + wheel), by `exp(-deltaY ×
   0.01)`, not fixed steps. Safari's `gesturestart`/`change`/`end` are always prevented (they would zoom the page) and
   applied only while no touch pointer is down: that is a Mac trackpad; iOS fires them beside the pointers for a
-  finger pinch, and applying both would double it. A double tap or click (two ups without a move within 300 ms)
+  finger pinch, and applying both would double it. A double tap or click (two ups within 300 ms, neither a move: past 4 px for a mouse, 10 for a finger,
+  as |dx| + |dy|)
   goes to max(2.5 × fit, natural) at that point, or back to fit when closer than fit. The `<img>` is never
   dragged natively (`draggable=false`, `dragstart` prevented, `-webkit-user-drag:none`, `pointer-events:none`) and
   has no iOS long-press sheet (`-webkit-touch-callout:none`).

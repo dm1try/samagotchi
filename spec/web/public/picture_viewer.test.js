@@ -259,3 +259,79 @@ test("thumbPicture takes a loaded thumbnail's size, and none before it loads", (
   assert.deepEqual(thumbPicture(loaded), { url: URL_A, alt: "x", width: 40, height: 30 });
   assert.deepEqual(thumbPicture({ ...loaded, complete: false }), { url: URL_A, alt: "x", width: null, height: null });
 });
+
+test("a finger's tap may move up to 10 px (a mouse's 4) and still count toward a double tap", async () => {
+  const { el, pictures, pct, tick } = setup();
+  await pictures.open(PIC);
+  const tap = (dx, type) => { pointer(el, "pointerdown", 1, 500, 400, type); pointer(el, "pointermove", 1, 500 + dx, 400, type); pointer(el, "pointerup", 1, 500 + dx, 400, type); };
+  tap(7, "touch");
+  tick(150);
+  tap(7, "touch");
+  assert.equal(pct(), "500%");
+  el.querySelector(".pv-fit").click();
+  tick(1000);
+  tap(7, "mouse");
+  tick(150);
+  tap(7, "mouse");
+  assert.equal(pct(), "200%", "a mouse that moved 7 px dragged");
+});
+
+test("made without PointerEvent, ResizeObserver or a layout read", () => {
+  const saved = { PointerEvent: globalThis.PointerEvent, ResizeObserver: globalThis.ResizeObserver };
+  delete globalThis.PointerEvent;
+  delete globalThis.ResizeObserver;
+  try {
+    const el = document.createElement("div");
+    el.hidden = true;
+    document.body.append(el);
+    let measured = 0;
+    const pictures = createPictureViewer({ el, measure: () => { measured += 1; return { width: 0, height: 0 }; }, insets: () => { measured += 1; return {}; } });
+    pictures.useLayer({ mount() {}, show() {}, clear() {}, room: () => { measured += 1; return 0; } });
+    assert.equal(measured, 0);
+    assert.equal(pictures.isOpen(), false);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
+// A layer that records what the viewer tells it.
+function fakeLayer(room = 0) {
+  const calls = [];
+  return {
+    calls,
+    mount: (box) => calls.push(["mount", box.className]),
+    show: (picture) => calls.push(["show", picture]),
+    clear: () => calls.push(["clear"]),
+    room: () => room,
+  };
+}
+
+test("a layer mounts once on .pv-pic, is shown the open's picture, and cleared on close", async () => {
+  const { pictures } = setup();
+  const layer = fakeLayer();
+  pictures.useLayer(layer);
+  assert.deepEqual(layer.calls, []);
+  await pictures.open({ ...PIC, extra: 1 });
+  assert.deepEqual(layer.calls, [["mount", "pv-pic"], ["show", { ...PIC, extra: 1 }]]);
+  pictures.close();
+  await pictures.open(PIC);
+  assert.deepEqual(layer.calls.map((c) => c[0]), ["mount", "show", "clear", "show"]);
+});
+
+test("a layer given after the first open mounts at once; its room is kept at the bottom of the fit", async () => {
+  const { pictures, width, place } = setup();
+  await pictures.open(PIC);
+  const layer = fakeLayer(96);
+  pictures.useLayer(layer);
+  assert.deepEqual(layer.calls, [["mount", "pv-pic"]]);
+  await pictures.open(PIC);
+  // The room is 952 x 600 now: 476 x 200 still fits at 2 by width, centred in the 600.
+  assert.equal(width(), 952);
+  assert.equal(place(), "translate(24px, 124px)");
+});
+
+test("without a layer the viewer fits as before", async () => {
+  const { pictures, place } = setup();
+  await pictures.open(PIC);
+  assert.equal(place(), "translate(24px, 172px)");
+});
