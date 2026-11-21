@@ -138,7 +138,8 @@ module Samagotchi
       #   tree started that still run: IGNORE (left running), REFUSE
       #   (ArchiveRefused :tasks_running before anything changes), or a stop
       #   (after the workers let go, or the wait ran out: their own waiters
-      #   then record the stop from the flag on disk), before the marker
+      #   then record the stop from the flag on disk), before the marker; a
+      #   stop with +only+ refuses there on a task it wasn't given
       def archive_session(id_or_prefix, state_dir: nil, wait: 5, except: [], running_tasks: RunningTasks::Policy::IGNORE)
         sd = state_dir || Session.default_state_dir
         id = archive_target(id_or_prefix, sd)
@@ -149,7 +150,7 @@ module Samagotchi
         stopped = tree.select { |sid| owners[sid] }
         # With +wait+, stop_session waits for the owner to let go.
         stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
-        RunningTasks.stop!(RunningTasks.of(tree, state_dir: sd), policy: running_tasks) if running_tasks.stop?
+        stop_archived_tasks!(id, tree, stopped, sd, running_tasks) if running_tasks.stop?
         archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
         # A restart's reminders hand-off no successor took (the stop above
         # removes a live one's): archived sessions keep no reminders.
@@ -157,6 +158,19 @@ module Samagotchi
         # D8: an archive ends the review (unarchiving doesn't restore it).
         Participants.end_sessions(archived, by: "archive", state_dir: sd)
         ArchiveResult.new(id: id, archived: archived, stopped: stopped, discarded: discarded, **running_tasks.result_fields)
+      end
+
+      # An archive's stop, after the workers let go: a stop with +only+
+      # refuses (ArchiveRefused :tasks_running, saying whose worker it
+      # stopped) on a running task it wasn't given, before any is stopped.
+      private def stop_archived_tasks!(id, tree, stopped, state_dir, running_tasks)
+        listing = RunningTasks.of(tree, state_dir: state_dir)
+        unless running_tasks.unnamed(listing).empty?
+          worker = stopped.include?(id) || stopped.first || false
+          raise ArchiveRefused.new(id, :tasks_running, tasks: listing, worker_stopped: worker)
+        end
+
+        RunningTasks.stop!(listing, policy: running_tasks)
       end
 
       # The session and its descendants, with their owners, when they can be
@@ -439,7 +453,8 @@ module Samagotchi
       # @return [Array<String>] the paths removed
       # @raise [DeleteRefused] a worker took the lock, or a start was
       #   claimed, after the caller's check, or +still+ no longer holds, or
-      #   (:tasks_running, REFUSE) a task started since the op's check.
+      #   (:tasks_running) REFUSE: a task started since the op's check; a
+      #   stop with +only+: a running task it wasn't given.
       #   SessionChain::Delete lists its whole batch under its locks first
       #   and passes RunningTasks.after_check (no re-check here, so no id is
       #   refused after another of the batch went).
@@ -453,6 +468,7 @@ module Samagotchi
         unless running_tasks.ignore?
           listing = RunningTasks.of([id], state_dir: state_dir)
           raise DeleteRefused.new(id, :tasks_running, tasks: listing) if running_tasks.refuse? && !listing.empty?
+          raise DeleteRefused.new(id, :tasks_running, tasks: listing) unless running_tasks.unnamed(listing).empty?
 
           RunningTasks.stop!(listing, policy: running_tasks) if running_tasks.stop?
         end

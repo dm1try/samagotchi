@@ -569,6 +569,27 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.exist?(dir)).to be(true)
     end
 
+    it "refuses a plain delete on a task the stop wasn't given, under the lock, with the worker stopped" do
+      session = task_session
+      named = start_task(session, "sleep 30.43")
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(dir)
+      spawn_owner_for(dir)
+      allow(described_class).to receive(:stop_session).and_wrap_original do |original, *args, **kwargs|
+        start_task(session, "sleep 30.44")
+        original.call(*args, **kwargs)
+      end
+
+      expect do
+        described_class.delete_resolved(session.id, state_dir: tmpdir, stop: true, wait: 5,
+                                                    running_tasks: policies.stop(by: "user", only: [named.id]))
+      end.to raise_error(described_class::DeleteRefused) { |e|
+        expect(e).to have_attributes(reason: :tasks_running, worker_stopped: true)
+      }
+      expect(Dir.exist?(dir)).to be(true)
+      expect(status_of(named)).to eq("running")
+    end
+
     it "names whose worker was stopped: the refused session's own, or the one the op stopped" do
       listing = described_class::RunningTasks::Listing.new(
         running: [described_class::RunningTasks::RunningTask.new(session_id: "dddd1111-0", id: "t-1", command: "rspec")]
@@ -597,6 +618,28 @@ RSpec.describe Samagotchi::SessionManager do
             expect(e.message).to eq("its delegate #{child.id[0, 8]}'s background tasks are still running: rspec spec/foo_spec.rb")
           }
         expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))).to be(false)
+      end
+
+      it "with a stop given the named tasks: stops them and archives; refuses on another, archiving nothing" do
+        session = task_session
+        child = task_session(parent: session)
+        named = start_task(session, "sleep 30.41")
+        unnamed = start_task(child, "sleep 30.42")
+        dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+
+        expect do
+          described_class.archive_session(session.id, state_dir: tmpdir, running_tasks: policies.stop(by: "user", only: [named.id]))
+        end.to raise_error(described_class::ArchiveRefused) { |e|
+          expect(e.reason).to eq(:tasks_running)
+          expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+        }
+        expect(Samagotchi::ArchiveStore.archived?(dir)).to be(false)
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+
+        result = described_class.archive_session(session.id, state_dir: tmpdir,
+                                                             running_tasks: policies.stop(by: "user", only: [named.id, unnamed.id]))
+        expect(result.archived).to contain_exactly(session.id, child.id)
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[stopped stopped])
       end
 
       it "with a stop: waits for the worker to let go, stops the tasks, then archives" do

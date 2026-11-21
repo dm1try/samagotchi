@@ -596,6 +596,100 @@ RSpec.describe Samagotchi::SessionChain::Delete do
       expect([exists?(a.id), exists?(b.id)]).to eq([false, false])
     end
 
+    # The delete sheet's tap: a stop given the task ids the sheet named.
+    describe "a stop given the named tasks (only:)" do
+      it "stops the named tasks of a session in no chain and its delegate, then deletes both" do
+        plain = make
+        d = make(parent: plain)
+        in_plain = start_task(plain, "sleep 30.31")
+        in_d = start_task(d, "sleep 30.32")
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: [in_plain.id, in_d.id]))
+
+        expect(result[:deleted]).to eq([d.id, plain.id])
+        expect(result[:tasks_stopped].map(&:id)).to contain_exactly(in_plain.id, in_d.id)
+        expect([status_of(in_plain), status_of(in_d)]).to eq(%w[stopped stopped])
+      end
+
+      it "refuses on a task it wasn't given, under the lock, nothing gone or stopped, the worker's stop said" do
+        plain = make
+        d = make(parent: plain)
+        named = start_task(plain, "sleep 30.33")
+        unnamed = start_task(d, "sleep 30.34")
+        allow(manager).to receive(:release_for_delete!).and_return(true)
+        before = all_ids
+
+        expect { delete(plain.id, running_tasks: policies.stop(by: "user", only: [named.id])) }
+          .to raise_error(manager::DeleteRefused) { |e|
+            expect(e).to have_attributes(reason: :tasks_running, session_id: plain.id, worker_stopped: true,
+                                         stopped_worker: plain.id)
+            expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+          }
+        expect(all_ids).to eq(before)
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+      end
+
+      # The batch's check under the locks is the last word: a record read
+      # again per id (one unreadable a moment before) refuses nothing there,
+      # so no delegate goes before a refusal.
+      it "doesn't refuse an id after its delegate went once the batch was checked" do
+        plain = make
+        d = make(parent: plain)
+        late = manager::RunningTasks::RunningTask.new(session_id: plain.id, id: "20261121000000-0badf00d", command: "x",
+                                                      root: folder)
+        allow(manager::RunningTasks).to receive(:of).and_wrap_original do |original, ids, **kw|
+          ids == [plain.id] ? manager::RunningTasks::Listing.new(running: [late]) : original.call(ids, **kw)
+        end
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: []))
+
+        expect([exists?(d.id), exists?(plain.id)]).to eq([false, false])
+        expect(result[:deleted]).to eq([d.id, plain.id])
+      end
+
+      it "deletes a session whose only task is unverified, never signalling it" do
+        plain = make
+        allow(Process).to receive(:spawn).and_call_original
+        pid = Process.spawn("sleep", "31.93", pgroup: true)
+        allow(Process).to receive(:spawn).and_return(12_345)
+        record = Samagotchi::Tools::TaskRecord.from_file(
+          "id" => runtime.generate_task_id, "command" => "sleep 40", "status" => "running", "pid" => pid,
+          "created_at" => "2026-10-01T00:00:00Z", "exit_code_path" => File.join(folder, "no-exit-code")
+        )
+        runtime.write_record(record)
+        session = Samagotchi::Session.load(plain.id, state_dir: tmpdir)
+        session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+        session.save(state_dir: tmpdir)
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: []))
+
+        expect(exists?(plain.id)).to be(false)
+        expect(result[:tasks_not_stopped].map(&:id)).to eq([record.id])
+        expect(Process.wait2(pid, Process::WNOHANG)).to be_nil
+      ensure
+        if pid
+          Process.kill("KILL", -pid)
+          Process.wait(pid)
+        end
+      end
+
+      it "keeps a chain whole on a task it wasn't given on its newest link, saying whose worker was stopped" do
+        a = make
+        b = continue(a.id)
+        named = start_task(a, "sleep 30.35")
+        start_task(b, "sleep 30.36")
+        allow(manager).to receive(:release_for_delete!).and_return(true)
+
+        expect do
+          manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user", only: [named.id]))
+        end.to raise_error(manager::DeleteRefused) { |e|
+          expect(e).to have_attributes(reason: :tasks_running, session_id: b.id, stopped_worker: b.id)
+        }
+        expect([exists?(a.id), exists?(b.id)]).to eq([true, true])
+        expect(status_of(named)).to eq("running")
+      end
+    end
+
     it "keeps a link refused part-way whole with its task running; the later link's task is stopped" do
       a = make
       b = continue(a.id)

@@ -87,13 +87,27 @@ module Samagotchi
       # How an op treats running tasks: :ignore (today's: they keep
       # running), :refuse (DeleteRefused/ArchiveRefused :tasks_running) or
       # :stop (stopped by +by+, "user", "retention" or "scratch", their
-      # outcomes in +tally+).
-      Policy = Data.define(:mode, :by, :tally) do
-        def self.stop(by:) = new(mode: :stop, by: by.to_s, tally: Tally.new)
+      # outcomes in +tally+). A stop with +only+ (task ids: the ones the
+      # delete sheet named) refuses, :tasks_running, where it would stop a
+      # verified task not in it, before anything of the op's batch goes;
+      # without it (--stop-tasks, an older page) it stops whatever runs.
+      Policy = Data.define(:mode, :by, :tally, :only) do
+        def initialize(mode:, by:, tally:, only: nil) = super
+
+        def self.stop(by:, only: nil) = new(mode: :stop, by: by.to_s, tally: Tally.new, only: only&.map(&:to_s)&.freeze)
 
         def ignore? = mode == :ignore
         def refuse? = mode == :refuse
         def stop? = mode == :stop
+
+        # +listing+'s verified tasks this stop was not given (none without
+        # +only+): the ones it refuses on. Unverified and unreadable ones are
+        # never signalled, so never refused on.
+        def unnamed(listing)
+          return [] unless stop? && only
+
+          listing.running.reject { |task| only.include?(task.id) }
+        end
 
         # The result keys a delete adds for a stop: the tasks the op
         # stopped, did not stop and found ended ({} unless +stop?+, so a
@@ -136,18 +150,27 @@ module Samagotchi
       end
 
       # The policy a batch's removals get once the batch was listed under its
-      # locks (SessionChain::Delete): a REFUSE already checked does no
-      # per-id re-check; IGNORE and a stop are unchanged.
-      def after_check(policy) = policy.refuse? ? Policy::IGNORE : policy
+      # locks (SessionChain::Delete): the batch's check was the last word, so
+      # no id is refused after another of the batch went. A REFUSE does no
+      # per-id re-check, a stop with +only+ stops what each id runs (the same
+      # tally); IGNORE and a plain stop are unchanged.
+      def after_check(policy)
+        return Policy::IGNORE if policy.refuse?
 
-      # REFUSE's one listing of a whole batch under its locks: the batch's
-      # DeleteRefused :tasks_running (+refusal+ builds it) before anything of
-      # it goes. Nothing for another policy.
+        policy.stop? && policy.only ? policy.with(only: nil) : policy
+      end
+
+      # REFUSE's one listing of a whole batch under its locks, and a stop
+      # with +only+'s: the batch's DeleteRefused :tasks_running (+refusal+
+      # builds it) before anything of it goes, on any task (REFUSE) or on
+      # one the stop wasn't given (Policy#unnamed). Nothing for another
+      # policy.
       def refuse_batch!(ids, state_dir:, policy:, &refusal)
-        return unless policy.refuse?
+        return unless policy.refuse? || (policy.stop? && policy.only)
 
         listing = of(ids, state_dir: state_dir)
-        raise yield(listing) unless listing.empty?
+        refused = policy.refuse? ? !listing.empty? : !policy.unnamed(listing).empty?
+        raise yield(listing) if refused
       end
 
       # The tasks the sessions +ids+ started that may still run; never

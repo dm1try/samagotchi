@@ -335,8 +335,16 @@ module Samagotchi
           stopped = plan.links.select do |link|
             SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
           end
-          delete_links(plan, links, state_dir, running_tasks: running_tasks)
-            .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
+          begin
+            delete_links(plan, links, state_dir, running_tasks: running_tasks)
+              .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
+          rescue SessionManager::DeleteRefused => e
+            raise e unless e.reason == :tasks_running && !stopped.empty?
+
+            # Nothing went (a part-way refusal is in the result): say whose
+            # worker was stopped, the refused link's own when it was.
+            raise e.with_worker_stopped(stopped.include?(e.session_id) ? e.session_id : stopped.first)
+          end
         end
       end
 
