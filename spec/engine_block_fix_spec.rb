@@ -57,6 +57,8 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
 
   def fix_events = events.select { |e| e[:type] == :block_fix }
 
+  def answer_of_turn = session.messages.last
+
   describe "#fix_block" do
     it "is unavailable without a session, or for a scratch session" do
       engine.instance_variable_set(:@session, nil)
@@ -210,6 +212,20 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       engine.apply_block_fixes
       expect(answer[:display].scan(good).size).to eq(2)
       expect(answer[:display]).not_to include("A--B")
+    end
+
+    it "lands both blocks of one answer in its text, the second asked before the first's fix changed the text" do
+      session.messages = [session.messages.first, session.messages.last.merge(content: "```mermaid\na\n```\n\n```mermaid\nb\n```\n")]
+      side_answers.push("```mermaid\nz1\n```", "```mermaid\nz2\n```")
+      fix("a")
+      fix("b")
+      settle
+      expect(engine.apply_block_fixes).to eq(2)
+      # The two asks run at once: either may take either answer.
+      expect(answer_of_turn[:content].scan(/z[12]/).sort).to eq(%w[z1 z2])
+      expect(answer_of_turn[:content]).not_to match(/^[ab]$/)
+      expect(fix_events.map { |e| e[:landed] }).to eq(%w[answer answer])
+      expect(fix_events.last[:was_digest]).to eq(fix_events.first[:digest])
     end
 
     it "still patches the text when only a note came after the answer" do

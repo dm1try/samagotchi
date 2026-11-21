@@ -109,6 +109,10 @@ module Samagotchi
         @block_fix_ready = []
         @block_fix_turns = 0
         @block_fix_wake = nil
+        # An answer's digest before a fix in its text => after (on the loop
+        # thread): the other block of the same answer, asked before that fix
+        # landed, still knows its answer.
+        @block_fix_moved = {}
       end
 
       # A turn takes its messages (#turn_messages): a fix asked before it
@@ -197,8 +201,10 @@ module Samagotchi
         list = messages.dup
         list[result.anchor.index] = copy
         replace_session_messages(session, list)
-        block_fix_announce(result, state: result.fixed? ? "fixed" : "failed", landed: landed,
-                                   was_digest: result.anchor.digest, digest: Bridge::TurnDrawings.digest(copy))
+        was = Bridge::TurnDrawings.digest(answer)
+        now = Bridge::TurnDrawings.digest(copy)
+        @block_fix_moved[was] = now unless was == now
+        block_fix_announce(result, state: result.fixed? ? "fixed" : "failed", landed: landed, was_digest: was, digest: now)
         true
       end
 
@@ -206,8 +212,18 @@ module Samagotchi
       # the turn id names (a reminder turn's id names no prompt, so it falls
       # back to the newest answer, which a later turn's answer becomes).
       def block_fix_anchored?(messages, answer, result)
-        Bridge::TurnDrawings.digest(answer) == result.anchor.digest &&
+        Bridge::TurnDrawings.digest(answer) == block_fix_digest_now(result.anchor.digest) &&
           AnswerTail.find(messages, turn_id: result.turn_id).equal?(answer)
+      end
+
+      # +digest+ after the fixes that landed in its answer's text since.
+      def block_fix_digest_now(digest)
+        seen = []
+        while (moved = @block_fix_moved[digest]) && !seen.include?(digest)
+          seen << digest
+          digest = moved
+        end
+        digest
       end
 
       # The answer's copy with the fix (or, for a failed ask, only the stamp)
