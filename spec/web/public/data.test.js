@@ -495,6 +495,29 @@ test("deleteSession and deleteChain put the expected digest in the query, not fe
   assert.equal("expect" in calls[1][1], false);
 });
 
+test("a stop with the sheet's named tasks: tasks=<ids> after stop_tasks (tasks= for none); the archive's body carries them", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([path, opts]);
+    return Promise.resolve(okResponse({ status: "ok" }));
+  };
+  await deleteSession("s1", { expect: "d", stopTasks: true, tasks: ["20261120-3f9a", "a,b"], fetchImpl });
+  await deleteChain("s1", { stopTasks: true, tasks: [], fetchImpl });
+  await deleteSession("s1", { stopTasks: true, fetchImpl });
+  await deleteSession("s1", { tasks: ["ignored"], fetchImpl });
+  await archiveSession("s1", { stopTasks: true, tasks: ["t-1"], fetchImpl });
+  await archiveSession("s1", { stopTasks: true, fetchImpl });
+  assert.deepEqual(calls.slice(0, 4).map(([path]) => path), [
+    "/api/sessions/s1?force=true&expect=d&stop_tasks=true&tasks=20261120-3f9a,a%2Cb",
+    "/api/sessions/s1/chain?force=true&stop_tasks=true&tasks=",
+    "/api/sessions/s1?force=true&stop_tasks=true",
+    "/api/sessions/s1?force=true",
+  ]);
+  assert.equal("tasks" in calls[0][1], false);
+  assert.deepEqual(calls.slice(4).map(([, opts]) => JSON.parse(opts.body)),
+                   [{ stop_tasks: true, tasks: ["t-1"] }, { stop_tasks: true }]);
+});
+
 test("archiveSession and unarchiveSession POST to the session's archive routes", async () => {
   const calls = [];
   const fetchImpl = (path, opts) => {
