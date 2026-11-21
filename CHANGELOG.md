@@ -20,6 +20,10 @@ and commands may change between minor versions. How releases are made:
   stopped first and what stays (the web's delete sheet in the terminal), and which of `--force` / `--stop-tasks` it
   needs; with `--chain`, the chain's. It exits 1 when the delete would be refused. With `--remote` it needs a chi
   web of this version.
+- The mcp bundle takes remote MCP servers: `url: https://mcp.context7.com/mcp` in place of `command:` under
+  `bundles: mcp: servers: <name>:`, with `bearer_token_env: VAR` for a token (sent as `Authorization: Bearer`) and
+  optional `headers:`. They work like local ones (the cached tools, `find_tools`, `call_tool`, guardrail names);
+  `/mcp` shows `connected (https://host)`. A 401 says it needs a token; sign-in comes later. Run `chi update`.
 - For bundle authors: `ctx.http.stream(method, url, …) { |res| … }`, a streamed answer: the status and headers
   first, then the body as it arrives (`res.each_event` reads Server-Sent Events, `res.each_chunk` the raw pieces).
   Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.

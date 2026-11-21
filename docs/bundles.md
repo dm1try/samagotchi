@@ -47,7 +47,7 @@ per server), and the model has its two tools, `find_tools` and `call_tool` (~250
 every request plus a line per server, whatever the servers have; `/mcp`
 says how many). On `api: anthropic` each tool also goes out deferred as
 `mcp_<server>_<tool>`, so a `find_tools` hit loads it and the model calls it
-by that name, as `call_tool` would run it. Stdio servers only, for now.
+by that name, as `call_tool` would run it. A server is a local command (stdio) or a remote one (`url:`, HTTP).
 
 ```yaml
 # config.yml
@@ -69,12 +69,42 @@ bundles:
         command: [npx, -y, "chrome-devtools-mcp@latest", --slim, --headless]
         attach_image_paths: true               # the default; false leaves a path as text
         start: lazy                            # the default; eager: start it with every session
+      context7:
+        url: https://mcp.context7.com/mcp      # a remote server: url instead of command
+      github:
+        url: https://api.githubcopilot.com/mcp/
+        bearer_token_env: GITHUB_MCP_TOKEN     # sent as Authorization: Bearer <its value>
+        headers: {X-Example: "1"}              # optional, sent as given (not for secrets)
+        tools: [get_*, list_*]                 # tools, description, timeout, start: as for a local server
 ```
+
+- **Remote servers** (`url:`, http or https; `command:` and `url:` together are a config error). They behave
+  like local ones everywhere you look: the first run lists the tools in an init task, later sessions search the
+  cache and connect on the first call, and `find_tools`, `call_tool` and the `mcp_<server>_<tool>` guardrail names
+  are the same. `/mcp` shows `connected (https://mcp.context7.com)` where a local one shows `running (pid N)`:
+  the scheme, host and a non-default port only.
+  - **A token:** `bearer_token_env` names the variable that holds it, looked up at each request (never kept or
+    saved): the server's `env:`, then the worker's environment. A worker has the environment of the chi that
+    started it, so a new `export` needs a restarted worker (`chi sessions restart`). Keys belong there, not in the
+    URL: the debug log's `http` line for each request keeps the URL's path (only the query is cut).
+  - **What it says:** a 401 is `MCP server github didn't connect: needs a token (401): set bearer_token_env
+    (sign-in comes in a later chi)` (`refused the token (401)` when one was sent); an unset or empty variable is
+    `… didn't connect: GITHUB_MCP_TOKEN is not set`, and nothing is sent. A cached server that doesn't connect
+    (the network, a token you are about to fix) stays cached: the call answers the error, there is one notice per
+    distinct message, and the next call tries again in the same session. A redirect is never followed: the error
+    names the new origin.
+  - chi speaks the current MCP revision (2026-07-28) first and falls back to the older handshake (`initialize`,
+    with its session when the server gives one) for a server that doesn't answer it; answers may be JSON or an SSE
+    stream.
+  - Not there yet: sign-in (OAuth), and live tool-list changes from a remote server (its saved list is refreshed
+    daily, as for a local one). A remote server's text never attaches a local image (`attach_image_paths` is off
+    for it); its image blocks attach as usual.
 
 - **Start: from a cache, on the first call.** A server's `tools/list` is
   saved in the bundle's data dir (`$XDG_STATE_HOME/samagotchi/plugins/mcp/
   tools-<server>.json`), keyed by a digest of its `command`, `env` (names
-  and values: only the digest is stored) and `cwd`. A session with a saved
+  and values: only the digest is stored) and `cwd` (a remote server's: its
+  `url`, `headers` and `bearer_token_env`, never the token's value). A session with a saved
   list can search its tools at once and **doesn't start the server**: the
   first call of one of its tools does (the call's row shows the wait). So a
   session that never uses MCP spawns nothing, and a new session opens without
@@ -186,7 +216,7 @@ bundles:
   server a second, then TERMs and KILLs its group (the server's helpers
   too). A server that leaves its group (`setsid`) is out of its reach.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached
-  (not started), running with its pid, failed with its count, stopped) and
+  (not started), running with its pid, connected with its origin for a remote one, failed with its count, stopped) and
   their tools as `<server>/<tool>`, the name `call_tool` takes.
   A cached or running server's line says roughly how many tokens its tool
   definitions take (`~4,232 tokens`), which only a search's answer carries
