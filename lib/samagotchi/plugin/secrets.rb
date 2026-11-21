@@ -30,7 +30,11 @@ module Samagotchi
       # secret's lock past the deadline.
       class Busy < StandardError; end
 
-      NAME = /\A[a-z0-9][a-z0-9._-]{0,63}\z/
+      # A name never starts with a dot (the lock folder is .locks) nor ends
+      # in .tmp (AtomicFile's temp files beside the values).
+      NAME = /\A(?!.*\.tmp\z)[a-z0-9][a-z0-9._-]{0,63}\z/
+      # The secrets this thread holds the lock of now (#locked).
+      HELD = :samagotchi_secrets_held
       MAX_BYTES = 16 * 1024
       LOCK_TIMEOUT = 30
 
@@ -58,14 +62,14 @@ module Samagotchi
       def set(name, value, timeout: LOCK_TIMEOUT)
         name = check_name(name)
         value = check_value(value)
-        @store.locked(name, timeout: timeout) { @store.write(name, value) }
+        locked(name, timeout) { @store.write(name, value) }
         true
       end
 
       # @return [Boolean] whether there was one
       def delete(name, timeout: LOCK_TIMEOUT)
         name = check_name(name)
-        @store.locked(name, timeout: timeout) { @store.remove(name) }
+        locked(name, timeout) { @store.remove(name) }
       end
 
       # Read, change, write under the secret's lock (two workers refreshing
@@ -79,7 +83,7 @@ module Samagotchi
         raise ArgumentError, "ctx.secrets.update needs a block" unless block_given?
 
         name = check_name(name)
-        @store.locked(name, timeout: timeout) do
+        locked(name, timeout) do
           value = yield @store.read(name)
           if value.nil?
             @store.remove(name)
@@ -93,9 +97,32 @@ module Samagotchi
 
       private
 
+      # The store's lock on +name+; refused at once when this thread holds
+      # it already (a set, delete or update inside the secret's own update
+      # block would wait for itself: a file lock taken again by the same
+      # process conflicts, and the wait would end in Busy).
+      def locked(name, timeout, &)
+        key = @store.lock_key(name)
+        held = (Thread.current[HELD] ||= [])
+        if held.include?(key)
+          raise ArgumentError, "secret #{name} is held by this thread already (inside its own update block): " \
+                               "return the new value from the block instead"
+        end
+
+        held << key
+        begin
+          @store.locked(name, timeout: timeout, &)
+        ensure
+          held.delete(key)
+        end
+      end
+
       def check_name(name)
         name = name.to_s if name.is_a?(Symbol)
-        raise ArgumentError, "a secret's name is a String like \"linear\" (#{NAME.source})" unless name.is_a?(String) && name.match?(NAME)
+        unless name.is_a?(String) && name.match?(NAME)
+          raise ArgumentError, "a secret's name is a String like \"linear\" (a-z 0-9 . _ -, 1..64, a letter or digit first, " \
+                               "not ending .tmp)"
+        end
 
         name
       end
@@ -110,9 +137,11 @@ module Samagotchi
 
       # One file per secret, <state dir>/plugins/<bundle>/secrets/<name>,
       # 0600 in a 0700 folder, written whole (AtomicFile). Its lock is
-      # <name>.lock beside it, an exclusive flock held across processes.
+      # .locks/<name> under that folder (no secret's name starts with a
+      # dot), an exclusive flock held across processes.
       class FileStore
         POLL = 0.02
+        LOCKS = ".locks"
 
         # @param dir [String] the bundle's secrets folder
         # @param clock [#call] monotonic seconds (specs pass their own)
@@ -131,6 +160,9 @@ module Samagotchi
         def backend = :file
 
         def inspect = "#<#{self.class.name}>"
+
+        # What one thread's held locks are told apart by: the lock file.
+        def lock_key(name) = File.expand_path(lock_path(name))
 
         def read(name)
           File.binread(path(name)).force_encoding(Encoding::UTF_8)
@@ -171,6 +203,8 @@ module Samagotchi
 
         def path(name) = File.join(@dir, name)
 
+        def lock_path(name) = File.join(@dir, LOCKS, name)
+
         def folder
           FileUtils.mkdir_p(@dir, mode: 0o700)
           File.chmod(0o700, @dir)
@@ -178,7 +212,10 @@ module Samagotchi
 
         def open_lock(name)
           folder
-          File.open(File.join(@dir, "#{name}.lock"), File::RDWR | File::CREAT, 0o600)
+          locks = File.join(@dir, LOCKS)
+          FileUtils.mkdir_p(locks, mode: 0o700)
+          File.chmod(0o700, locks)
+          File.open(lock_path(name), File::RDWR | File::CREAT, 0o600)
         rescue SystemCallError, IOError
           raise Unavailable, "the secrets folder can't be locked (secret #{name})"
         end
@@ -219,6 +256,8 @@ module Samagotchi
         end
 
         def remove(name) = @mutex.synchronize { !@values.delete(name).nil? }
+
+        def lock_key(name) = [object_id, name]
 
         def locked(_name, timeout:, &) = @mutex.synchronize(&)
       end

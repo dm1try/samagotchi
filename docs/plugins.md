@@ -1287,7 +1287,7 @@ ctx.secrets.backend                       # => :file (:memory in the test kit), 
 ```
 
 - Per bundle: bundle `mcp`'s `linear` and another bundle's `linear` are different secrets. A name matches
-  `/\A[a-z0-9][a-z0-9._-]{0,63}\z/`; a value is a String of at most 16 KB (encode JSON yourself). Anything else
+  `/\A[a-z0-9][a-z0-9._-]{0,63}\z/` and doesn't end in `.tmp`; a value is a String of at most 16 KB (encode JSON yourself). Anything else
   raises `ArgumentError`, whose message never holds the value. chi never logs a value, nor shows it in `inspect`.
 - Where it is: one file per secret, `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/secrets/<name>`, mode 0600 in a
   0700 folder, written whole. On macOS too: the login Keychain can't take a value through `/usr/bin/security`
@@ -1295,7 +1295,9 @@ ctx.secrets.backend                       # => :file (:memory in the test kit), 
   characters), so chi doesn't use it for these.
 - `update` holds an exclusive lock on the secret for the whole block, across processes: two workers refreshing the
   same token don't each spend the refresh token, the second one's block gets the first one's new value as `old`.
-  `set` and `delete` take the same lock. The wait has a deadline (`timeout:`, default 30 s), after which it raises
+  `set` and `delete` take the same lock (kept apart from the values, in `secrets/.locks/`). A `set`, `delete` or
+  `update` of the same secret inside its own `update` block raises `ArgumentError` at once (it would wait for
+  itself): return the new value from the block. The wait has a deadline (`timeout:`, default 30 s), after which it raises
   `Samagotchi::Plugin::Secrets::Busy`. A store failure (the disk, permissions) raises
   `Samagotchi::Plugin::Secrets::Unavailable`, naming the store and the secret's name only.
 - No caching: `get` reads the file each time. Keep the token in memory and read it again on a 401.
