@@ -136,7 +136,11 @@ module Samagotchi
         asked = session_access.resolve(id)
         ids = [asked, session_access.head(asked).id].uniq
         sessions = ids.select { |sid| File.file?(Session.session_file(sid, state_dir: default_state_dir)) }
-        parent_gate(prompt, client_id: client_id, values: sessions.map { |sid| session_access.show(sid).parent_answers })
+        values = sessions.map { |sid| session_access.show(sid).parent_answers }
+        # No session left to read: config.yml's value alone (fail closed),
+        # as SendCommand::ParentGate#target_values falls back.
+        values = [nil] if values.empty?
+        parent_gate(prompt, client_id: client_id, values: values)
       rescue ArgumentError # degrade-ok: no such session, or a prefix of several: the ask's own answer says which
         nil
       end

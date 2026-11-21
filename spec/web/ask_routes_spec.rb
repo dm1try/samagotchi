@@ -239,6 +239,19 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(ask(make, { prompt: "/continue yes", client_id: "cli:send" }).first).to eq(200)
       expect(deliveries.last.last).to include(client_id: "cli:answer")
     end
+
+    it "holds a parent's line to config.yml's parent_answers when no session file is left to read (fails closed)" do
+      parent_answers_config("hard")
+      session = make
+      worker(accepted(nil, "command_id" => "c1"))
+      file = Samagotchi::Session.session_file(session.id, state_dir: state_dir)
+      allow(File).to receive(:file?).and_call_original
+      allow(File).to receive(:file?).with(file).and_return(false)
+
+      expect(ask(session, { prompt: "/continue yes", client_id: "cli:send" }))
+        .to match([403, include("error" => "parent_continue_refused")])
+      expect(deliveries).to be_empty
+    end
   end
 
   describe "POST /api/sessions/:id/wait with a token" do
