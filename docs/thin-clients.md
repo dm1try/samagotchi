@@ -84,6 +84,12 @@ fields as an ask's answer, with a `token` while the turn is still running. If
 someone answered the question first, you get `"status": "not_pending"` and
 `reply` holds what came after their answer.
 
+The answer goes in before the wait starts, so a wait that fails afterwards
+(chi web stopping, the session deleted meanwhile) still answers 200 with your
+`status`, and a `wait_error` (`error`: `server_stopping`, `not_found` or
+`wait_failed`, and a `detail`) in place of `reply`. Don't answer again (that
+would be 409): ask or wait on the session instead.
+
 ## A new session
 
 `POST /api/sessions {"prompt": "…", "dir": "/Users/me/projects/app"}` starts a

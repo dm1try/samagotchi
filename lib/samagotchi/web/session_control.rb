@@ -73,16 +73,18 @@ module Samagotchi
         request = once_more_on_late do |client|
           client.answer(id: qid, selected: body["selected"], freeform: body["freeform"], client_id: client_id)
         end
-        relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
+        # With wait, the relay answers :answered / :not_pending and the wait
+        # runs after it: relay's rescues are the answer's, not the wait's.
+        relayed = relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
           case reply.status
           when 200
             @hub&.resolve_question(id, question_id: qid)
-            next answered_wait(id, qid, start, wait, answered: true) if wait
+            next :answered if wait
 
             json_response(200, { status: "answered", session_id: id, id: qid })
           # Another client answered first (or the question was cancelled).
           when 409
-            next answered_wait(id, qid, start, wait, answered: false) if wait
+            next :not_pending if wait
 
             error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
           when 400 then error_response(400, "invalid_answer", reply_detail(reply, "answer rejected"))
@@ -91,6 +93,7 @@ module Samagotchi
                                              detail: reply_detail(reply, "the worker refused that option") })
           end
         end
+        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered) : relayed
       end
 
       # A request to the worker sent once more when the worker dropped it as

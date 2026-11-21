@@ -327,6 +327,27 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(body["reply"]).to include("status" => "done", "text" => "already on")
     end
 
+    it "reports an error of the wait after the answer went in as answered + wait_error, not as the answer failing" do
+      answered(200)
+      failing = instance_double(Samagotchi::SessionAccess::Exchange)
+      allow(app).to receive(:plain_exchange).and_return(failing)
+
+      allow(failing).to receive(:wait).and_raise(Errno::ENOENT, "session file")
+      status, body = answer(wait: 1)
+      expect(status).to eq(200)
+      expect(body).to include("status" => "answered", "session_id" => session.id, "id" => "q1",
+                              "wait_error" => include("error" => "wait_failed", "detail" => include("session file")))
+      expect(body).not_to have_key("reply")
+
+      allow(failing).to receive(:wait).and_raise(ArgumentError, "no such session")
+      expect(answer(wait: 1))
+        .to match([200, include("status" => "answered", "wait_error" => include("error" => "not_found"))])
+
+      allow(failing).to receive(:wait).and_return(Samagotchi::ReplyWait::Result.new(status: :canceled))
+      expect(answer(wait: 1))
+        .to match([200, include("status" => "answered", "wait_error" => include("error" => "server_stopping"))])
+    end
+
     it "answers as before without wait, and 400 for a bad one" do
       answered(200)
       expect(answer({})).to eq([200, { "status" => "answered", "session_id" => session.id, "id" => "q1" }])

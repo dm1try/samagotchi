@@ -237,19 +237,30 @@ module Samagotchi
       # question was answered elsewhere first, as chi answer still waits)
       # and what comes next, for up to +seconds+. 200 {status: answered |
       # not_pending, (answered_here: false,) session_id, id, reply:
-      # {wait_result_json's fields, token while it is timeout}}.
+      # {wait_result_json's fields, token while it is timeout}}. The answer
+      # went in before the wait, so a wait that fails (chi web stopping, the
+      # session deleted, its files unreadable) is still a 200: wait_error
+      # {error: server_stopping | not_found | wait_failed, detail} in place
+      # of reply (an answer retried would be 409).
       def answered_wait(id, question_id, start, seconds, answered:)
+        head = answered ? { status: "answered" } : { status: "not_pending", answered_here: false }
+        head = { **head, session_id: id, id: question_id }
         target = ReplyWait::Target.answer(start)
         result = plain_exchange.wait(id, target, timeout: seconds, **wait_extras)
-        return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
+        if result.status == :canceled
+          return answer_wait_error(head, "server_stopping", "chi web is stopping; the answer went in")
+        end
 
         reply = wait_result_json(result, session_access.parent_strategy(id))
         reply[:token] = SessionAccess::Exchange::Token.dump(id, target) if result.status == :timeout
-        head = answered ? { status: "answered" } : { status: "not_pending", answered_here: false }
-        json_response(200, { **head, session_id: id, id: question_id, reply: reply })
-      rescue ArgumentError # deleted while waiting
-        session_not_found(id)
+        json_response(200, { **head, reply: reply })
+      rescue ArgumentError => e # deleted while waiting
+        answer_wait_error(head, "not_found", e.message)
+      rescue SystemCallError, IOError => e
+        answer_wait_error(head, "wait_failed", "#{e.class}: #{e.message}")
       end
+
+      def answer_wait_error(head, error, detail) = json_response(200, { **head, wait_error: { error: error, detail: detail } })
 
       # A create's 201 token, for a session started with its first turn
       # (first_turn_id): POST …/wait {token} answers that turn. {} for an
