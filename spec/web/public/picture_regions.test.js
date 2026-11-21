@@ -75,6 +75,20 @@ test("no regions: nothing drawn, no room, every hook inert", () => {
   assert.equal(q(".pv-sel").hidden, true);
 });
 
+test("never bound (an older cached picture_viewer.js): nothing drawn, no room; bound, both", () => {
+  const box = document.createElement("div");
+  document.body.append(box);
+  const layer = createRegionLayer();
+  layer.mount(box);
+  layer.show(PICTURE);
+  assert.equal(box.querySelectorAll(".pv-node").length, 0);
+  assert.equal(box.querySelector(".pv-marks").children.length, 0);
+  assert.equal(layer.room(), 0);
+  layer.bind({});
+  assert.equal(box.querySelectorAll(".pv-node").length, 5);
+  assert.equal(layer.room(), CARD_ROOM);
+});
+
 test("with regions the card's room is kept", () => {
   assert.equal(setup().layer.room(), CARD_ROOM);
 });

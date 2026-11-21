@@ -500,9 +500,10 @@ kept: every open starts fitted.
   app's ✕ is 12px lower, below iOS 26's band under the clock.
 - **A diagram's regions** (a renderer that reports them: [block-renderers.md](block-renderers.md#regions)): the
   viewer's layer, `picture_regions.js createRegionLayer`, made by `diagram_wiring.js` and given by
-  `pictures.useLayer?.(layer)` (an older cached `picture_viewer.js` has none: the viewer as before). The layer adds
-  its own `.pv-marks` child to `.pv-pic` (the box marks by percent, the page's own `<svg viewBox="0 0 1 1">` with at
-  most two `<polyline>`s, the hovered and the selected arrow's, and a `role="group"` of buttons), and its card
+  `pictures.useLayer?.(layer)` (an older cached `picture_viewer.js` has none: the viewer as before; one with
+  `useLayer` but no `bind`, which never shows the card, leaves the layer undrawn and keeps no card's room). The layer
+  adds its own `.pv-marks` child to `.pv-pic` (the box marks by percent, the page's own `<svg viewBox="0 0 1 1">`
+  with at most two `<polyline>`s, the hovered and the selected arrow's, and a `role="group"` of buttons), and its card
   (`.pv-sel`, `role="region"` "Selected") and visually hidden `aria-live` line join `#lightbox` after the bar.
   **The pointer path is maths** (`region_hit.js`): the surface keeps its pointer capture, so a drag, a pinch and a
   double tap are as before. A tap that isn't a move (4 px for a mouse, 10 for a finger) goes to `layer.tap` before
