@@ -40,6 +40,35 @@ RSpec.describe "Engine recap on a configured host", :recap do
                                            model: "small", label: "fw:small", api: :openai, auth: nil, dialect: nil, price: nil)
   end
 
+  # The idle jobs read the Engine's own TurnState (Engine#build_recap,
+  # #build_reminders): a turn it begins holds both, and a recap job built
+  # again (Engine#rebuild_recap!) reads the same one.
+  describe "the idle jobs' turn state" do
+    let(:engine) do
+      Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
+                             recap: { host_ref: "box", model: "box:small", inactivity: 0.0 })
+    end
+
+    after { engine.turn_state.finish! }
+
+    def begin_turn = engine.turn_state.begin!(controller: Samagotchi::CancellationController.new, sink: nil)
+
+    it "holds the recap while the Engine's turn runs, built again too" do
+      expect(engine.recap.should_fire?).to be true
+      begin_turn
+      expect(engine.recap.should_fire?).to be false
+      expect(engine.send(:build_recap).should_fire?).to be false
+    end
+
+    it "holds the reminders while the Engine's turn runs" do
+      reminders = engine.send(:build_reminders)
+      engine.turn_state.record_activity(engine.turn_state.last_activity_at - reminders.inactivity - 1)
+      expect(reminders.should_check?).to be true
+      begin_turn
+      expect(reminders.should_check?).to be false
+    end
+  end
+
   describe "with no recap config" do
     it "recaps with the session's own model on its host" do
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")

@@ -826,7 +826,9 @@ module Samagotchi
     # @return [IdleRecap, nil]
     def build_recap
       @recap_built_for = session_recap_values
-      recap = RecapSetup.build(@recap_kwarg, engine: self, host_registry: @host_registry,
+      recap = RecapSetup.build(@recap_kwarg, turn_state: @turn_state, messages_json: -> { messages_json_for_recap },
+                                             emit_recap: ->(**fields) { emit_recap(**fields) },
+                                             on_usage: ->(usage) { note_side_usage(usage) }, host_registry: @host_registry,
                                              session_target: -> { session_model_recap_target },
                                              session_id: -> { @session&.id }, state_dir: -> { session_state_dir },
                                              session_config: -> { @session&.settings&.core })
@@ -1321,7 +1323,7 @@ module Samagotchi
     def build_reminders(auto_turn_callback: nil)
       @auto_turn_callback = auto_turn_callback
       IdleReminders.new(
-        engine: self,
+        turn_state: @turn_state,
         queue: @reminder_queue,
         callback: @auto_turn_callback
       )

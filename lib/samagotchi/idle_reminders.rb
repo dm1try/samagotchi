@@ -19,13 +19,15 @@ module Samagotchi
 
     attr_reader :inactivity
 
-    def initialize(engine:, inactivity: DEFAULT_MIN_INACTIVITY_SECONDS,
+    # @param turn_state [TurnState] the Engine's (Engine#turn_state): whether
+    #   a turn runs, and when the latest activity was
+    def initialize(turn_state:, inactivity: DEFAULT_MIN_INACTIVITY_SECONDS,
                    queue: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                    callback: nil)
-      raise ArgumentError, "IdleReminders requires an engine" unless engine
+      raise ArgumentError, "IdleReminders requires a turn state" unless turn_state
 
-      @engine = engine
+      @turn_state = turn_state
       @inactivity = inactivity
       @queue = queue
       @clock = clock
@@ -43,7 +45,7 @@ module Samagotchi
 
     # @return [Boolean] true when it's time to check for reminders.
     def should_check?
-      return false if @engine.turn_running?
+      return false if @turn_state.running?
       return false unless last_idle_seconds >= @inactivity
 
       true
@@ -52,7 +54,7 @@ module Samagotchi
     private
 
     def last_idle_seconds
-      @clock.call - @engine.last_activity_at
+      @clock.call - @turn_state.last_activity_at
     end
 
     def check_due_reminders

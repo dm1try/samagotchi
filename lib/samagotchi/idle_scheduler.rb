@@ -8,12 +8,12 @@ module Samagotchi
   # and the optional IdleRecap).
   #
   # Previously each subsystem ran its own 0.5s polling thread against the
-  # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam.
+  # Engine's TurnState (`last_activity_at` / `activity_seq` / `running?`).
   # Now a single thread steps every registered job in turn, so the whole
   # idle layer polls from one loop.
   #
   # Jobs must implement `tick`. Each job keeps its own eligibility guard
-  # (e.g. `should_fire?` / `should_check?`, including the `turn_running?`
+  # (e.g. `should_fire?` / `should_check?`, including the `running?`
   # check) and its own internal state (generation ids, latches). A job that
   # raises is logged and isolated — the remaining jobs keep polling.
   class IdleScheduler
