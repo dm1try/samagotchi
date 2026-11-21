@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Engine, "event routes (characterization)" do
   before { engine.subscribe(observer: ->(e) { seen << e }) }
 
   def loading! = allow(extension_load).to receive(:loading?).and_return(true)
-  def in_turn! = allow(engine.send(:turn_state)).to receive(:in_turn_sink).and_return([true, ->(e) { sink << e }])
+  def in_turn! = allow(engine.turn_state).to receive(:in_turn_sink).and_return([true, ->(e) { sink << e }])
   def init_task! = allow(engine).to receive(:current_init_task).and_return(:an_init_task)
 
   def card! = engine.show_card(source: "b", title: "t", id: "c1")

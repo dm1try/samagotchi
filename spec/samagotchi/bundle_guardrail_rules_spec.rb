@@ -213,7 +213,7 @@ RSpec.describe "Bundle guardrail rule files" do
     it "shows the notice as a turn event during a turn" do
       eng = engine
       sink = []
-      allow(eng.instance_variable_get(:@turn_state)).to receive(:in_turn_sink).and_return([true, ->(e) { sink << e }])
+      allow(eng.turn_state).to receive(:in_turn_sink).and_return([true, ->(e) { sink << e }])
       eng.send(:guardrail_notify, "kept")
       expect(sink).to eq([{ type: :guardrail_warning, message: "kept" }])
     end

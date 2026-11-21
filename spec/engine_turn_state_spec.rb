@@ -208,7 +208,7 @@ RSpec.describe Samagotchi::Engine, "turn state" do
 
       expect(events).to include(:turn_started, :turn_failed)
       expect_idle
-      expect(engine.send(:turn_state).in_turn_sink).to eq([false, nil])
+      expect(engine.turn_state.in_turn_sink).to eq([false, nil])
     end
   end
 

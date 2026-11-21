@@ -431,7 +431,7 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
     end
 
     it "reads nothing late when a steer is carried" do
-      turn_state = engine.instance_variable_get(:@turn_state)
+      turn_state = engine.turn_state
       expect(after_turn_reads { allow(turn_state).to receive(:carried_steers?).and_return(true) }).to eq([])
     end
   end

@@ -76,7 +76,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
     expect(peers.cancelled?).to be(false)
 
     ctrl = Samagotchi::CancellationController.new
-    engine.send(:turn_state).begin!(controller: ctrl, sink: nil)
+    engine.turn_state.begin!(controller: ctrl, sink: nil)
     expect(peers.cancelled?).to be(false)
     ctrl.cancel!
     expect(peers.cancelled?).to be(true)

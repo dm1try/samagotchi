@@ -652,6 +652,18 @@ module Samagotchi
     #   to the Bridge and its collaborators, which call it directly
     attr_reader :event_log
 
+    # @return [TurnState] the turn as other threads see it: the Worker hands
+    #   it to the Bridge and its collaborators, which call it directly
+    attr_reader :turn_state
+
+    # @return [QuestionDesk] the one open question: the Worker hands it to
+    #   the Bridge and its collaborators, which call it directly
+    attr_reader :question_desk
+
+    # @return [SteerCut] the mid-turn steer cut: the Worker hands it to the
+    #   Bridge, which calls it directly
+    attr_reader :steer_cut
+
     attr_reader :default_model_name, :host_registry, :client
 
     # @return [Commands::Registry] the commands this session runs: the
@@ -1256,14 +1268,12 @@ module Samagotchi
 
     def running_command_key = :"samagotchi_command_#{object_id}"
 
-    # The one named seam for replacing a session's conversation (the
-    # array is replaced, never mutated in place). No lock: a reader gets
-    # the old array or the new one, and both are whole.
-    # The turn as other threads see it (TurnState).
-    attr_reader :turn_state
     # The due reminders on their way into a turn (ReminderQueue).
     attr_reader :reminder_queue
 
+    # The one named seam for replacing a session's conversation (the
+    # array is replaced, never mutated in place). No lock: a reader gets
+    # the old array or the new one, and both are whole.
     def replace_session_messages(session, messages)
       session.messages = messages
     end

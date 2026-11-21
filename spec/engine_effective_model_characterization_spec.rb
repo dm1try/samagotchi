@@ -109,7 +109,7 @@ RSpec.describe "Engine effective model (characterization)" do
   # TurnContext and publishes it (TurnState#replace_context).
   def record_turn_settings(engine)
     [].tap do |settings|
-      allow(engine.send(:turn_state)).to receive(:replace_context).and_wrap_original do |original, context|
+      allow(engine.turn_state).to receive(:replace_context).and_wrap_original do |original, context|
         settings << context.settings
         original.call(context)
       end
