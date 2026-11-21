@@ -771,7 +771,7 @@ them (`ab12cd34  refused: background tasks it started are still running: npm
 run dev (--stop-tasks stops them first)`, exit 1); `archive --stop-tasks`
 stops them first (TERM, then KILL) and says so (`archived (stopped its
 worker; stopped 1 background task)`). `/archive` says the same and names
-`chi sessions archive --stop-tasks ID`; the web asks a second confirm. See
+`chi sessions archive --stop-tasks ID`; the web asks in its delete sheet. See
 [Sessions](sessions.md#archiving-a-session).
 
 `chi sessions delete [--force] [--chain] [--stop-tasks] [--dry-run] ID...` deletes sessions for good: the

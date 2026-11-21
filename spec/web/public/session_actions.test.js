@@ -1,7 +1,7 @@
 // The page's whole-session actions (session_actions.js) over stand-in
 // hooks: Delete, Stop, Continue, Archive and its Undo, a gone session.
 // The refusals' and toasts' words are format.js' and chains.js'.
-import "./dom_shim.js";
+import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSessionActions } from "../../../lib/samagotchi/web/public/session_actions.js";
@@ -16,7 +16,7 @@ function failure(status, code = null, message = "boom", body = null) {
 // +holds+: what the worker answers GET …/holds with; +sheet+ stands in for
 // stop_sheet.js' sheet (the default opens when there is something, as it does).
 function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true,
-                  displaced = null, holds = [], sheet = null } = {}) {
+                  displaced = null, holds = [], sheet = null, deleteSheet = null, doc = null } = {}) {
   // world.state reads the page's session store (Stop writes its status there).
   const store = createSessionStore({ initial: { status: "running" } });
   const world = { selected: open, sessions: list, get state() { return store.current; } };
@@ -47,6 +47,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
       unarchiveSession: wrap("unarchiveSession", async (id) => ({ unarchived: [id] })),
       sessionHolds: wrap("sessionHolds", async () => ({ holds })),
       stopSessionHolds: wrap("stopSessionHolds", async () => ({ status: "stopped", stopped: {} })),
+      deletePlan: wrap("deletePlan", async () => ({ chained: false, link: {} })),
+      deleteChain: wrap("deleteChain", async () => ({})),
     },
     eventsLive: () => eventsLive,
     refresh: () => log.push("refresh"),
@@ -62,6 +64,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     alert: (text) => alerts.push(text),
     confirm: (text) => { asked.push(text); return Array.isArray(confirms) ? confirms.shift() : confirms; },
     stopSheet: sheet ?? { open: (id, held) => { opened.push([id, held]); return Array.isArray(held) && held.length > 0; } },
+    deleteSheet,
+    doc,
   });
   return { actions, world, log, calls, toasts, alerts, opened, asked };
 }
@@ -73,55 +77,193 @@ const TASKS = { running: [{ session_id: "s1aaaaaaaa", id: "20261120-3f9a2c1d", c
                 unverified: [], unreadable: [] };
 const tasksRunning = (op) => failure(409, "tasks_running", "background tasks it started are still running: npm run dev, rspec",
                                       { error: "tasks_running", op, tasks: TASKS });
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const STOPPED = { tasks_stopped: TASKS.running, tasks_not_stopped: [] };
 
-test("plainDelete: no task running is one confirm and no toast, as before", async () => {
-  const h = harness();
-  await h.actions.confirmDelete("s1aaaaaaaa");
-  assert.equal(h.asked.length, 1);
-  assert.deepEqual(h.toasts, []);
+// The delete sheet's shell, as delete_sheet.js createDeleteSheet's: each
+// host it hands out records what it showed and where it was anchored.
+function fakeSheet() {
+  const sheet = { hosts: [] };
+  sheet.host = (anchor, id) => {
+    const host = { anchor, id, back: false, shown: [], closed: 0, flow: null };
+    host.show = (tpl) => host.shown.push(markupOf(tpl));
+    host.close = () => { host.closed += 1; };
+    host.wire = (flow) => { host.flow = flow; };
+    sheet.hosts.push(host);
+    return host;
+  };
+  return sheet;
+}
+
+// A document with ⋯ and the cards' archive buttons (+cards+: their ids; a
+// box unless listed in +hidden+).
+function fakeDoc({ cards = [], hidden = [] } = {}) {
+  const more = { id: "infoMoreBtn", getClientRects: () => [1] };
+  const arch = cards.map((id) => ({ dataset: { arch: id }, getClientRects: () => (hidden.includes(id) ? [] : [1]) }));
+  return {
+    more, arch,
+    querySelector: (sel) => (sel === "#infoMoreBtn" ? more : null),
+    querySelectorAll: (sel) => arch.filter((el) => sel === `[data-arch="${el.dataset.arch}"]`),
+  };
+}
+
+const plan = (link = {}) => ({ chained: false, session_id: "s1aaaaaaaa",
+  link: { digest: "d0", delegates: { delete: [], leave: [] }, tasks: { running: [], unverified: [], unreadable: [] }, worker: null,
+          refusal: null, ...link } });
+
+test("confirmDelete: no browser confirm: the sheet opens at the card's ✕ (else ⋯), and its tap deletes; the list drops it", async () => {
+  const sheet = fakeSheet();
+  const doc = fakeDoc();
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }], sheet: undefined, deleteSheet: sheet, doc,
+                      api: { deletePlan: async () => plan(), deleteSession: async () => ({ deleted: ["s1aaaaaaaa"] }) } });
+  const card = { card: true };
+  h.actions.confirmDelete("s1aaaaaaaa", { anchor: card });
+  h.actions.confirmDelete("s2bbbbbbbb");
+  assert.deepEqual(sheet.hosts.map((x) => x.anchor), [card, doc.more]);
+  await tick();
+  sheet.hosts[0].flow.act("this");
+  await tick();
+  assert.deepEqual(h.calls.filter(([n]) => n === "deleteSession"), [["deleteSession", "s1aaaaaaaa", { expect: "d0" }]]);
+  assert.deepEqual(h.world.sessions.map((s) => s.id), ["s2bbbbbbbb"]);
+  assert.deepEqual(h.log, ["clearSelection"]);
+  assert.deepEqual(h.toasts.map((t) => t.text), ["Deleted s1aaaaaa"]);
+  assert.deepEqual([h.asked, h.alerts], [[], []]);
 });
 
-test("plainDelete: running tasks ask a second confirm naming them; OK stops them and deletes, with a toast", async () => {
-  let first = true;
-  const h = harness({ api: { deleteSession: async () => { if (first) { first = false; throw tasksRunning("delete"); } return STOPPED; } } });
-  await h.actions.confirmDelete("s1aaaaaaaa");
+test("confirmDelete: running tasks are one sheet and one tap: the named ids go with the delete, the toast says what stopped", async () => {
+  const sheet = fakeSheet();
+  const h = harness({ deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan({ tasks: TASKS }), deleteSession: async () => ({ deleted: ["s1aaaaaaaa"], ...STOPPED }) } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  assert.match(sheet.hosts[0].shown.at(-1), />Stop them and delete</);
+  sheet.hosts[0].flow.act("this");
+  await tick();
+  assert.deepEqual(h.calls.at(-1), ["deleteSession", "s1aaaaaaaa",
+                                    { expect: "d0", stopTasks: true, tasks: ["20261120-3f9a2c1d", "20261120-0badf00d"] }]);
+  assert.deepEqual(h.toasts.map((t) => t.text), ["Deleted s1aaaaaa · stopped 2 background tasks"]);
+  assert.deepEqual([h.asked, h.alerts], [[], []]);
+});
 
-  assert.equal(h.asked[1], "Session s1aaaaaa started 2 background tasks that are still running:\n" +
-                            "npm run dev · rspec\nStop them and delete the session?");
-  assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"], ["deleteSession", "s1aaaaaaaa", { stopTasks: true }]]);
-  assert.deepEqual(h.toasts.map((t) => t.text), ["Stopping 2 background tasks…", "Deleted s1aaaaaa · stopped 2 background tasks"]);
-  assert.deepEqual(h.world.sessions, []);
+test("confirmDelete: a terminal's one-turn run is the plan's refusal in the sheet: no alert, no delete", async () => {
+  const sheet = fakeSheet();
+  const h = harness({ list: [{ id: "s1aaaaaaaa", owner: "tui" }], deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan({ refusal: { reason: "owned_by_tui", message: "session s1aaaaaaaa is busy; let it finish first" } }) } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  assert.match(sheet.hosts[0].shown.at(-1), /Can't delete s1aaaaaa now/);
+  assert.deepEqual(h.calls.map(([n]) => n), ["deletePlan"]);
   assert.deepEqual(h.alerts, []);
 });
 
-test("plainDelete: Cancel on the second confirm changes nothing", async () => {
-  const h = harness({ confirms: [true, false], api: { deleteSession: async () => { throw tasksRunning("delete"); } } });
-  await h.actions.confirmDelete("s1aaaaaaaa");
-
-  assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"]]);
-  assert.deepEqual(h.world.sessions.map((s) => s.id), ["s1aaaaaaaa"]);
-  assert.deepEqual([h.toasts, h.alerts], [[], []]);
+test("confirmDelete: the sheet closed while its tap runs: a refusal that comes after is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  let reject;
+  const h = harness({ deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan(), deleteSession: () => new Promise((_resolve, no) => { reject = no; }) } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  const host = sheet.hosts[0];
+  host.live = () => host.closed === 0;
+  host.flow.act("this");
+  host.close();
+  reject(failure(409, "tui_owned", "a terminal chi has it open"));
+  await tick();
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options.sticky]), [["Can't delete s1aaaaaa: a terminal chi has it open", true]]);
+  assert.deepEqual(h.world.sessions, [{ id: "s1aaaaaaaa" }]);
 });
 
-test("setArchived: the confirm only on a 409 tasks_running; OK archives again stopping them, with Undo", async () => {
+test("confirmDelete: a chain delete that kept a link part-way is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  const chained = { chained: true, session_id: "s2bbbbbbbb", position: 2, size: 2, cut_off: false,
+                    link: { digest: "dl", previous_id: "s1aaaaaaaa", delegates: { delete: [], leave: [] } },
+                    chain: { digest: "dc", links: 2, delegates: { delete: [], leave: [] } } };
+  const h = harness({ list: [{ id: "s1aaaaaaaa", archived: true }, { id: "s2bbbbbbbb", continues: "s1aaaaaaaa" }], deleteSheet: sheet,
+                      doc: fakeDoc(), api: { deletePlan: async () => chained,
+                                             deleteChain: async () => ({ deleted: ["s2bbbbbbbb"], left: ["s1aaaaaaaa"], refusal: "a terminal chi has it open" }) } });
+  h.actions.confirmDelete("s2bbbbbbbb");
+  await tick();
+  sheet.hosts[0].flow.act("chain");
+  await tick();
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options?.sticky]),
+                   [["Deleted the chain: 1 session. 1 link kept: a terminal chi has it open", true]]);
+});
+
+test("deleteIn: the More panel's Delete always takes the panel as its host, for any session", async () => {
+  const h = harness({ api: { deletePlan: async () => plan() } });
+  const host = fakeSheet().host(null, "s1aaaaaaaa");
+  assert.equal(h.actions.deleteIn("s1aaaaaaaa", host), true);
+  assert.equal(h.actions.deleteIn("not-in-the-list", fakeSheet().host(null, "x")), true);
+  await tick();
+  assert.match(host.shown.at(-1), /data-act="del:this">Delete</);
+});
+
+test("setArchived: nothing in the way is one tap, no sheet, the Undo toast", async () => {
+  const sheet = fakeSheet();
+  const h = harness({ deleteSheet: sheet, doc: fakeDoc({ cards: ["s1aaaaaaaa"] }) });
+  await h.actions.setArchived("s1aaaaaaaa", true);
+  assert.deepEqual(sheet.hosts, []);
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.action?.label]), [["Archived s1aaaaaa", "Undo"]]);
+});
+
+test("setArchived: a 409 tasks_running opens the sheet at the card's archive button; its tap archives with the named ids, then Undo", async () => {
   let first = true;
-  const h = harness({ api: { archiveSession: async (id) => {
+  const sheet = fakeSheet();
+  const doc = fakeDoc({ cards: ["s1aaaaaaaa", "s1aaaaaaaa"], hidden: [] });
+  doc.arch[0].getClientRects = () => []; // the strip's, hidden
+  const h = harness({ deleteSheet: sheet, doc, api: { archiveSession: async (id) => {
     if (first) { first = false; throw tasksRunning("archive"); }
     return { archived: [id], stopped: [], ...STOPPED, tasks_not_stopped: [{ session_id: "s1aaaaaaaa", id: "x-0badf00d", command: "rspec" }] };
   } } });
   await h.actions.setArchived("s1aaaaaaaa", true);
+  assert.equal(sheet.hosts[0].anchor, doc.arch[1]);
+  assert.match(sheet.hosts[0].shown.at(-1), />Stop them and archive</);
+  assert.deepEqual(h.toasts, []);
+  sheet.hosts[0].flow.act("archive");
+  await tick();
+  assert.deepEqual(h.calls, [["archiveSession", "s1aaaaaaaa"],
+                             ["archiveSession", "s1aaaaaaaa", { stopTasks: true, tasks: ["20261120-3f9a2c1d", "20261120-0badf00d"] }]]);
+  assert.deepEqual(h.toasts.map((t) => t.text), ["Archived s1aaaaaa · stopped 2 background tasks · 1 not stopped: rspec"]);
+  assert.equal(h.toasts[0].action.label, "Undo");
+  assert.deepEqual([h.asked, h.alerts], [[], []]);
+});
 
-  assert.equal(h.asked.length, 1);
-  assert.match(h.asked[0], /Stop them and archive the session\?$/);
-  assert.deepEqual(h.calls, [["archiveSession", "s1aaaaaaaa"], ["archiveSession", "s1aaaaaaaa", { stopTasks: true }]]);
-  assert.deepEqual(h.toasts.map((t) => t.text),
-                   ["Stopping 2 background tasks…", "Archived s1aaaaaa · stopped 2 background tasks · 1 not stopped: rspec"]);
-  assert.equal(h.toasts[1].action.label, "Undo");
+test("setArchived: a late 409 never takes a sheet opened since for another session: it is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  let shownFor = null;
+  sheet.openFor = () => shownFor;
+  sheet.isOpen = () => shownFor !== null;
+  let reject;
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }], deleteSheet: sheet, doc: fakeDoc({ cards: ["s1aaaaaaaa"] }),
+                      api: { archiveSession: () => new Promise((_resolve, no) => { reject = no; }) } });
+  const asked = h.actions.setArchived("s1aaaaaaaa", true);
+  shownFor = "s2bbbbbbbb"; // a card's ✕ on another session meanwhile
+  reject(tasksRunning("archive"));
+  await asked;
+  assert.deepEqual(sheet.hosts, []);
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options.sticky]),
+                   [["Can't archive s1aaaaaa: background tasks it started are still running: npm run dev, rspec", true]]);
+});
 
-  const plain = harness();
-  await plain.actions.setArchived("s1aaaaaaaa", true);
-  assert.deepEqual(plain.asked, []);
+test("toggleArchiveSelected: the open session's archive sheet opens at ⋯", async () => {
+  const sheet = fakeSheet();
+  const doc = fakeDoc({ cards: ["s1aaaaaaaa"] });
+  const h = harness({ deleteSheet: sheet, doc, api: { archiveSession: async () => { throw tasksRunning("archive"); } } });
+  h.actions.toggleArchiveSelected();
+  await tick();
+  assert.equal(sheet.hosts[0].anchor, doc.more);
+});
+
+test("setArchived: any other refusal is the sheet's Can't archive; with no sheet, a sticky toast (never an alert)", async () => {
+  const sheet = fakeSheet();
+  const busy = failure(409, "busy", "a prompt is queued, which a resume would run; let it run first", { reason: "queued" });
+  const h = harness({ deleteSheet: sheet, doc: fakeDoc(), api: { archiveSession: async () => { throw busy; } } });
+  await h.actions.setArchived("s1aaaaaaaa", true);
+  assert.match(sheet.hosts[0].shown.at(-1), /Can't archive s1aaaaaa now/);
+  const bare = harness({ api: { archiveSession: async () => { throw failure(500, null, "disk full"); } } });
+  await bare.actions.setArchived("s1aaaaaaaa", true);
+  assert.deepEqual(bare.toasts.map((t) => [t.text, t.options.sticky]), [["Can't archive s1aaaaaa: disk full", true]]);
+  assert.deepEqual([h.alerts, bare.alerts], [[], []]);
 });
 
 test("archiveOne: a batch's archive never retries; the 409 is its answer", async () => {
@@ -132,33 +274,6 @@ test("archiveOne: a batch's archive never retries; the 409 is its answer", async
   assert.equal(answer.error.code, "tasks_running");
   assert.deepEqual(h.calls, [["archiveSession", "s1aaaaaaaa"]]);
   assert.deepEqual(h.asked, []);
-});
-
-test("confirmDelete: after a confirm the list drops it, and the open session goes to the start page", async () => {
-  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }] });
-  await h.actions.confirmDelete("s1aaaaaaaa");
-  assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"]]);
-  assert.deepEqual(h.world.sessions.map((s) => s.id), ["s2bbbbbbbb"]);
-  // The store's list redraws the lists (here a plain list: setSessions).
-  assert.deepEqual(h.log, ["clearSelection"]);
-});
-
-test("confirmDelete: a terminal's session is refused before the confirm; no confirm, no request", async () => {
-  const tui = harness({ list: [{ id: "s1aaaaaaaa", owner: "tui" }] });
-  await tui.actions.confirmDelete("s1aaaaaaaa");
-  assert.deepEqual(tui.alerts, ["Session s1aaaaaa is open in a terminal chi; close it there first."]);
-  assert.deepEqual(tui.calls, []);
-  const no = harness({ confirms: false });
-  await no.actions.confirmDelete("s1aaaaaaaa");
-  assert.deepEqual(no.calls, []);
-});
-
-test("confirmDelete: a failed delete says why and keeps the list; without the hub's stream it refetches", async () => {
-  const h = harness({ eventsLive: false, api: { deleteSession: async () => { throw failure(409, "owned_by_tui", "attached"); } } });
-  await h.actions.confirmDelete("s1aaaaaaaa");
-  assert.deepEqual(h.alerts, ["Could not delete session s1aaaaaa: attached"]);
-  assert.deepEqual(h.log, ["refresh"]);
-  assert.equal(h.world.sessions.length, 1);
 });
 
 test("leaveGoneSession: only the open session goes back to the start page, with its notice", () => {
@@ -320,14 +435,6 @@ test("setArchived: the ids flip at once, a toast offers Undo, and Undo's own toa
   assert.deepEqual(h.calls.at(-1), ["unarchiveSession", "s1aaaaaaaa"]);
   assert.equal(h.toasts[1].text, "Unarchived s1aaaaaa");
   assert.equal(h.toasts[1].action, null);
-});
-
-test("setArchived: a failure is an alert and nothing else", async () => {
-  const h = harness({ api: { archiveSession: async () => { throw failure(500, null, "disk full"); } } });
-  await h.actions.setArchived("s1aaaaaaaa", true);
-  assert.deepEqual(h.alerts, ["Could not archive session s1aaaaaa: disk full"]);
-  assert.deepEqual(h.log, []);
-  assert.deepEqual(h.toasts, []);
 });
 
 test("archiveOne: archiving a tree that holds the open session is a stop for its stream when the server stopped it", async () => {

@@ -175,6 +175,24 @@ test("Delete on a chained session turns the panel into the delete sheet; ‹ Mor
   done();
 });
 
+test("the delete sheet in the panel opens with focus on Cancel, never on the destructive button", async () => {
+  const { ctl, button, done } = sheet({
+    onDelete: (_id, given) => {
+      given.wire({ act: () => {} });
+      given.show(html`<div class="delete-sheet"><button type="button" class="ds-back" data-act="del:back">‹ More</button><div class="ds-acts"
+        ><button type="button" class="ds-go danger" data-act="del:this">Delete</button><button type="button" class="ds-cancel"
+        data-act="del:cancel">Cancel</button></div></div>`);
+      return true;
+    },
+  });
+  ctl.update({ bar: bare, buttons: buttonsFor() });
+  button.click();
+  ctl.pop.querySelector('[data-act="go:delete"]').click();
+  await tick();
+  assert.equal(document.activeElement?.dataset.act, "del:cancel");
+  done();
+});
+
 test("⋯ opens it as a bottom sheet; a redraw keeps it open, its nodes and focus, with the new numbers", () => {
   const { ctl, button, done } = sheet();
   ctl.update({ bar: { ...bare, workingSet: { chip: { n: 1, changed: false } } }, buttons: buttonsFor() });
