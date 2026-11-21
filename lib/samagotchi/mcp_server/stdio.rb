@@ -51,6 +51,8 @@ module Samagotchi
         lock_era(message)
         if message.is_a?(Hash) && message["method"] == "tools/call" && message.key?("id")
           prepare
+          # Finished calls let go of, so a long-lived host's don't pile up.
+          @calls.select!(&:alive?)
           @calls << Thread.new { write(@protocol.handle(message, era: @era)) }
         else
           write(@protocol.handle(message, era: @era))

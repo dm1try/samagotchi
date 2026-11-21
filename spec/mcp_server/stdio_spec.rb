@@ -78,6 +78,24 @@ RSpec.describe Samagotchi::McpServer::Stdio do
     expect(loaded).to eq([:once])
   end
 
+  it "lets go of finished call threads as it goes, still joining a running one at EOF" do
+    reader, writer = IO.pipe
+    out_reader, out_writer = IO.pipe
+    stdio = described_class.new(protocol, input: reader, output: out_writer)
+    server = Thread.new { stdio.run.tap { out_writer.close } }
+    6.times do |i|
+      writer.write(line(i, "tools/call", { name: "echo" }))
+      expect(JSON.parse(out_reader.gets)["id"]).to eq(i)
+    end
+    writer.write(line(9, "tools/call", { name: "hold" }))
+    Thread.pass until stdio.instance_variable_get(:@calls).last&.status == "sleep"
+    expect(stdio.instance_variable_get(:@calls).size).to be <= 2
+    writer.close
+    release << :go
+    expect(JSON.parse(out_reader.gets)["id"]).to eq(9)
+    expect(server.value).to eq(0)
+  end
+
   it "answers unparseable text with -32700 and goes on" do
     out = run("{nope\n#{line(2, "ping")}")
     expect(out.map { |a| a.dig("error", "code") || a["result"] }).to eq([-32_700, {}])
