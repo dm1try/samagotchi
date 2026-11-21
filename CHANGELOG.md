@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi sessions delete --dry-run ID...` prints what the delete would do and deletes nothing: what goes, what is
+  stopped first and what stays (the web's delete sheet in the terminal), and which of `--force` / `--stop-tasks` it
+  needs; with `--chain`, the chain's. It exits 1 when the delete would be refused. With `--remote` it needs a chi
+  web of this version.
+
 ### Changed
 
 - Deleting a session (the web, `chi sessions delete`, `/exit --delete`) now deletes its stopped delegates with it; a

@@ -65,7 +65,7 @@ chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv] [--
 chi sessions stop ID
 chi sessions archive ID...                            # hide from every list, keep for good; unarchive ID... undoes it
 chi sessions list --archived                          # archived sessions too, marked [archived]
-chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
+chi sessions delete [--force] [--dry-run] ID...       # for good; --force stops a live worker first; --dry-run: what it would do
 chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
 chi sessions clean [--dry-run] [--days N] [--all]     # test sessions: all, or older than N days; --all: every kind, as prune
 chi sessions stats ID [--format text|json]            # cost, tokens and progress, without a model turn

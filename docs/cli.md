@@ -774,7 +774,7 @@ worker; stopped 1 background task)`). `/archive` says the same and names
 `chi sessions archive --stop-tasks ID`; the web asks a second confirm. See
 [Sessions](sessions.md#archiving-a-session).
 
-`chi sessions delete [--force] [--chain] [--stop-tasks] ID...` deletes sessions for good: the
+`chi sessions delete [--force] [--chain] [--stop-tasks] [--dry-run] ID...` deletes sessions for good: the
 session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason.
 Deleting a chain's newest link undoes its continue and says so (`… deleted;
@@ -801,7 +801,25 @@ running)`). `--stop-tasks` is not `--force`: a live worker is still refused
 without it. `/exit --delete` refuses the same way and names `chi sessions
 delete --stop-tasks ID`. Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
-error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
+error.
+
+`--dry-run` prints what the delete would do and deletes nothing: the rows the
+web's delete sheet shows (`back`: the previous link an undo brings back;
+`goes`: the links and stopped delegates; `stopped first`: its worker or running
+turn, the background tasks, another session's with its id in front; `stays`:
+the running delegates, and the tasks chi can't verify), each only when it
+applies, and which of `--force` / `--stop-tasks` the real delete needs. With
+`--chain` it prints the chain's choice. A plan that would be refused prints
+`would be refused: <why>` instead and exits 1; otherwise it exits 0:
+
+```text
+$ chi sessions delete --dry-run ab12cd34
+ab12cd34  would delete  "fix the flaky spec"
+          goes:          2 stopped delegates (9d0e1f2a, 77aa0b1c)
+          stopped first: its worker; 2 background tasks (npm run dev, rspec) — needs --force, --stop-tasks
+          stays:         1 running delegate (5c1b22e0), without a parent
+```
+ The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
 All sessions; it asks first and stops a live worker, and asks again, naming
 them, when background tasks still run (OK stops them).
 
@@ -1688,6 +1706,10 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   an older one deletes or archives as it always did. A new chi web answers an
   older CLI's delete or archive of a session whose tasks run with 409
   `tasks_running`, which that CLI prints as a failure.
+- `sessions delete --dry-run` needs a chi web there that lists the
+  `delete_plan_all` feature; an older one is refused before anything is asked
+  (update and restart chi web there), since its plan would leave out a plain
+  session's delegates.
 - A remote that can't be reached names itself and why (`chi send: remote
   studio (http://192.168.1.29:4567): connection refused`, exit 1; with
   `--format json` an `error` object).
