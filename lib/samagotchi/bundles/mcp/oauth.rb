@@ -160,10 +160,14 @@ class Plugin
       # @param local [Boolean] the server's url is on a loopback host
       # @param cancel [Samagotchi::CancellationController]
       # @param resolve [#call] (host) → its addresses, for the internal check
-      def initialize(http:, local:, cancel:, resolve: nil)
+      # @param trusted [Array<String>] hosts the user configured (the
+      #   server's url, oauth: issuer:): an internal address is theirs to
+      #   choose; the guard is for what discovery names (https still)
+      def initialize(http:, local:, cancel:, resolve: nil, trusted: [])
         @http = http
         @local = local
         @cancel = cancel
+        @trusted = trusted.compact.map { |host| host.to_s.downcase }
         @resolve = resolve || ->(host) { Addrinfo.getaddrinfo(host, nil, nil, :STREAM).map(&:ip_address).uniq }
       end
 
@@ -172,7 +176,7 @@ class Plugin
         uri = URI.parse(url.to_s)
         raise Refusal, "#{what} isn't an address" unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && uri.userinfo.nil?
         raise Refusal, "#{what} isn't https (#{OAuth.origin(url)})" unless uri.scheme == "https" || (@local && OAuth.loopback_host?(uri.host))
-        return if @local
+        return if @local || @trusted.include?(uri.host.to_s.downcase)
 
         raise Refusal, "#{what} is an internal address (#{OAuth.origin(url)})" if internal?(uri.host)
       rescue URI::Error
@@ -368,7 +372,8 @@ class Plugin
         @cancel = cancel
         @log = log
         local = OAuth.loopback_host?(URI.parse(@url).host)
-        @wire = Wire.new(http: ctx.http, local: local, cancel: cancel, resolve: resolve)
+        issuer_host = @oauth["client_id"] && URI.parse(@oauth["issuer"].to_s).host
+        @wire = Wire.new(http: ctx.http, local: local, cancel: cancel, resolve: resolve, trusted: [URI.parse(@url).host, issuer_host])
       end
 
       def inspect = "#<Login #{@name}>"
@@ -773,8 +778,10 @@ class Plugin
           sleep(RENEW_SECONDS)
           cancel.cancel!(:budget)
         end
+        # The kept endpoint was checked at the sign-in (its host may be a
+        # configured, internal one).
         local = OAuth.loopback_host?(URI.parse(@resource).host)
-        Wire.new(http: @http, local: local, cancel: cancel)
+        Wire.new(http: @http, local: local, cancel: cancel, trusted: [URI.parse(stored["token_endpoint"].to_s).host])
             .post(stored["token_endpoint"], URI.encode_www_form(form), "application/x-www-form-urlencoded",
                   "the token endpoint", timeout: RENEW_SECONDS)
       ensure

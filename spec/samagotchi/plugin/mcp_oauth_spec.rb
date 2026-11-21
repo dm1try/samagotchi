@@ -255,6 +255,35 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(card("Sign-in to linear failed")[:body]).to eq("linear's sign-in provider is an internal address (https://auth.example.com)")
     end
 
+    context "with a server on an internal address the user configured" do
+      let(:url) { "https://10.1.2.3/mcp" }
+      let(:resource_doc) { "https://10.1.2.3/.well-known/oauth-protected-resource/mcp" }
+
+      it "asks it (its own sign-in data too), and still refuses an internal provider it names" do
+        resource[:authorization_servers] = ["https://192.168.1.9"]
+        bundle.run_inits
+        bundle.command("/mcp login linear")
+
+        wait_for("the refusal") { card("Sign-in to linear failed") }
+        expect(card("Sign-in to linear failed")[:body]).to eq("linear's sign-in provider is an internal address (https://192.168.1.9)")
+        expect(requests_to(resource_doc)).not_to be_empty
+      end
+
+      context "and its provider configured with the client" do
+        let(:issuer) { "https://10.9.9.9" }
+        let(:provider_doc) { "https://10.9.9.9/.well-known/oauth-authorization-server" }
+        let(:config) { { "url" => url, "oauth" => { "client_id" => "MY-CLIENT", "issuer" => issuer } } }
+
+        it "signs in there too" do
+          bundle.run_inits
+          flow, params = login
+
+          expect(flow.address).to start_with("https://10.9.9.9/authorize?")
+          expect(params["client_id"]).to eq("MY-CLIENT")
+        end
+      end
+    end
+
     {
       "a redirect" => [{ status: 302, headers: { "Location" => "https://elsewhere.example.com/x" } },
                        "linear asks for sign-in but gives no sign-in data (https://mcp.example.com)"],
