@@ -20,6 +20,12 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: `ctx.cancel_controller`, the Stop `ctx.cancelled?` reads on this thread (an init task's own, else
   the running turn's), to hand to `ctx.http`'s `cancel:` or a thread of your own.
 
+### Changed
+
+- chi web asks about a delete in one sheet that says what goes, what is stopped first and what stays, with one button
+  that names the outcome (no browser dialog, no second ask). Archive asks in the same sheet when background tasks still
+  run, or says why it can't archive now. The tap stops only the tasks the sheet named.
+
 ## [0.182.0] - 2026-11-21
 
 ### Added
