@@ -231,7 +231,7 @@ module Samagotchi
       # @param revive_previous [Boolean] a user's delete (CLI, web, TUI) of a
       #   chain's newest link brings the previous one back to the lists and
       #   undoes the continue (SessionChain::Delete.link, D2/D5); any chained
-      #   link's own delegates follow SessionChain::Delete::DELEGATES. The
+      #   link's own delegates follow SessionManager::DELEGATES. The
       #   result then also has unarchived:, moved_back:, deleted: and
       #   left_running: (ids)
       # @param refuse_continuing [Boolean] a user's delete refuses

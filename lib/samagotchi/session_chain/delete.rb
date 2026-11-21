@@ -36,62 +36,17 @@ module Samagotchi
     #   come back to the lists (ContinuedFrom's record; without one, the
     #   previous link alone). The previous link is not started.
     # - Any other link (a middle one splits the chain) is deleted alone.
-    # - Either way the link's own delegates follow DELEGATES (D7).
+    # - Either way the link's own delegates follow SessionManager::DELEGATES
+    #   (D7).
     module Delete
-      # What DELEGATES does with a link's delegates: +delete+ (deepest
-      # first, before the link) and +leave+ (running, with their whole
-      # subtrees: they go on without a parent, their files untouched).
-      Plan = Data.define(:delete, :leave)
-
-      # D7, hard-coded for the chain deletes for now (one place, so that a
-      # policy for every delete can move it into SessionManager later): a
-      # delegate is running when a worker owns it or is being started for
-      # it (a one-turn chi run too, which can't be stopped from here). A
-      # saved status running with no worker is a crashed run: it goes. A running one is left with its whole subtree;
-      # every other node under the link (no running node between it and the
-      # link) is deleted.
-      class DelegateRule
-        # @param except [Array<String>] the link's children left out with
-        #   their subtrees (the ones the undo gives back)
-        # @return [Plan]
-        def plan(link, state_dir:, except: [])
-          delete = []
-          leave = []
-          queue = [link]
-          until queue.empty?
-            SessionManager.children_of(queue.shift, state_dir: state_dir).each do |row|
-              next if row.id == link || except.include?(row.id) || delete.include?(row.id) || leave.include?(row.id)
-
-              if running?(row, state_dir)
-                leave.concat([row.id, *SessionManager.descendant_ids(row.id, state_dir)] - leave)
-              else
-                delete << row.id
-                queue << row.id
-              end
-            end
-          end
-          Plan.new(delete: delete.reverse, leave: leave)
-        end
-
-        private
-
-        def running?(row, state_dir)
-          presence = WorkerPresence.read(row.id, state_dir: state_dir,
-                                                 owner: SessionManager.session_owner(row.id, state_dir: state_dir))
-          presence.owned? || presence.starting?
-        end
-      end
-
-      DELEGATES = DelegateRule.new.freeze
-
       module_function
 
       # What deleting the link +id+ alone does, read from one listing: the
       # one plan the delete runs (.link) and the web's sheet shows (.preview).
       # +previous+: the link whose continue is undone (D2/D5), nil when
       # none is; +revive+: what comes back to the lists; +moved+: the
-      # delegates that go back to it; +delegates+: DELEGATES' Plan for the
-      # rest of its delegates; +notes+: the waiting notes that go back.
+      # delegates that go back to it; +delegates+: SessionManager::DELEGATES'
+      # Plan for the rest of its delegates; +notes+: the waiting notes that go back.
       LinkPlan = Data.define(:id, :previous, :revive, :moved, :delegates, :notes)
 
       # @param undo [Boolean] the caller undoes a newest link's continue
@@ -102,19 +57,19 @@ module Samagotchi
         previous = nil unless undo && previous && revivable?(id, previous, links)
         moved = previous ? moved_ids(id, previous, state_dir) : []
         LinkPlan.new(id: id, previous: previous, revive: previous ? revive_ids(id, previous, state_dir) : [],
-                     moved: moved, delegates: DELEGATES.plan(id, state_dir: state_dir, except: moved),
+                     moved: moved, delegates: SessionManager::DELEGATES.plan(id, state_dir: state_dir, except: moved),
                      notes: previous ? NoteMove.returnable(from: id, moved: [], state_dir: state_dir).size : 0)
       end
 
       # What deleting every link of +id+'s chain does: the links on its
       # branch (root to end, past a gap only the part after it), each
-      # link's DELEGATES plan, and whether a gap cut earlier links off.
+      # link's SessionManager::DELEGATES plan, and whether a gap cut earlier links off.
       ChainPlan = Data.define(:id, :links, :delegates, :cut_off)
 
       # @return [ChainPlan]
       def chain_plan(id, state_dir:, links:)
         ids = links.live_links(id)
-        ChainPlan.new(id: id, links: ids, delegates: ids.to_h { |link| [link, DELEGATES.plan(link, state_dir: state_dir)] },
+        ChainPlan.new(id: id, links: ids, delegates: ids.to_h { |link| [link, SessionManager::DELEGATES.plan(link, state_dir: state_dir)] },
                       cut_off: links.gone?(links.chain(id).first))
       end
 
