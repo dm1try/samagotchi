@@ -575,8 +575,9 @@ module Samagotchi
       # refusals the delete itself runs, each choice's delegates, running
       # tasks and workers); {chained: false, link} for one in no chain (an
       # older page asked only for a chained one). A folder whose session
-      # file is gone answers too, as the delete still takes it. One session
-      # listing per plan; each call takes and releases the session's
+      # file is gone answers too, as the delete still takes it. One shared
+      # session-row snapshot serves the link and chain choices; Links lists
+      # on its own. Each call takes and releases the session's
       # continue lock, creating its empty file (continue.lock) where there
       # was none. No query or body read; no-store (json_response's).
       def handle_delete_plan(_req, id)

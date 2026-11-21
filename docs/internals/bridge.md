@@ -429,9 +429,10 @@ The Bridge exposes:
 - `POST /session/:id/blocks/fix` — `{turn_id, lang, source, reason}`: ask again, once, for a block the owner's page
   couldn't draw in that turn's answer (`Bridge::BlockFixRoute` → `Engine#fix_block`; web route `POST
   /api/sessions/:id/blocks/fix`, `Web::BlockFixRoutes`). `400 missing_fields` without a turn id, a fence language
-  (`BlockRenderers::LANG`) or a source; `200 {state: "fixed" | "failed", reason?}` when the answer's stamp knows the
-  block, `202 {state: "running"}` while it is asked, `409 fix_unavailable` / `block_not_found`, `413 block_too_large`,
-  `429 fix_busy`. The result lands between turns and is announced as `:block_fix` (a `state` event; never a
+  (`BlockRenderers::LANG`) or a source, or `400 invalid_json` for a non-object body; `200 {state: "fixed" | "failed",
+  reason?}` when the answer's stamp knows the block, `202 {state: "running"}` while it is asked,
+  `404` for a worker or web route whose `block_fix` feature is off, `409 fix_unavailable` / `block_not_found`,
+  `413 block_too_large`, `429 fix_limit` / `fix_busy`. The result lands between turns and is announced as `:block_fix` (a `state` event; never a
   participant's); a fix that patched the answer's text writes its turn's drawing line again with the new end digest
   (`TurnDrawings#call`). See [block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again).
 - `POST /session/:id/holds/stop` — stop those holds without the worker leaving; `200 {status: "stopped",

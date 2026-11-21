@@ -68,7 +68,8 @@ model. The TUI is untouched: it shows a fence as source.
 One mechanism for every drawn block, a `chi-ui` picks or walk (core's drawer) and a bundle's renderer (chi-mermaid's
 `mermaid`): a block the owner's page can't draw **in the newest answer**, for a reason that is the model's (a refused
 `chi-ui` block, a renderer's own `error`), is asked for once more as a side request, and the answer is patched. No
-message is sent and no turn runs. `web.block_fix: off` ([configuration.md](../configuration.md)) is the page as before.
+message is sent and no turn runs. `web.block_fix: off` ([configuration.md](../configuration.md)) is the page as before:
+the web route answers `404` instead of relaying a block fix.
 
 ```
 page: a drawer fails a block in the newest answer, marked fixable
@@ -116,7 +117,7 @@ computes one, and the turn counter: `Engine#turn_messages` counts each turn).
 **The write: on the worker's loop, between turns, never from the request's thread.** A running turn holds its own copy
 of the conversation and writes it back at its end. `Worker::BlockFixesPart#apply_block_fixes` runs in each pass that
 runs the queued commands, after them and before the notes and the next prompt (the idle pass and each input file's
-step); the result's thread wakes the loop (`Engine#block_fix_ready=`, `Waker#wake`). Under the event lock, three
+step); the result's thread wakes the loop (`Engine#block_fix_ready=`, `Waker#wake`). Under the event lock, four
 outcomes:
 
 - **No turn started since the ask, and the answer is still the newest** (`AnswerTail.find`; notes, a `!cmd` line and
@@ -139,6 +140,8 @@ outcomes:
 
 A fix in an answer's text moves its digest; the engine keeps the move (`@block_fix_moved`), so the answer's other
 block, asked before that fix landed, still finds its answer (and its event's `was_digest` is the digest it patched).
+The move map is capped at `MOVED_DIGEST_LIMIT = 64`: the oldest move is evicted, so a fix landed after 64 later
+text-changing moves no longer finds and patches the older answer.
 
 A failed ask stamps the answer only. Each outcome is one `Log.info(:model, "block_fix_<state>", lang:, key:, bytes:, ms:,
 landed:, reason:)` line (never the source) and one `:block_fix` event (`turn_id`, `key`, `lang`, `state`, `landed`,

@@ -4,8 +4,8 @@ require_relative "../worker_presence"
 
 module Samagotchi
   class SessionManager
-    # D7, the rule a user's delete applies to a session's delegates (today
-    # the chain deletes: SessionChain::Delete.link_plan and .chain_plan): a
+    # D7, the rule a user's delete applies to every session's delegates
+    # (SessionChain::Delete.link_plan and .chain_plan): a
     # delegate is running when a worker owns it or is being started for it
     # (a one-turn chi run too, which can't be stopped from here). A saved
     # status running with no worker is a crashed run: it goes. A running one

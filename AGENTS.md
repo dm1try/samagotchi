@@ -95,7 +95,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)
 - System 1's common layer and saved runs (`SystemOne::Recording`, `Runs`, `RunsStore`, `ApprovalLabel`, `chi judgments`) → `docs/system-one.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
-- Block renderers (`block_renderers:`, `BlockRenderers`, the sandboxed frame, `block_host.js`, the hard rules) → `docs/internals/block-renderers.md`; a bundle's side → `docs/plugins.md` (Block renderers)
+- Block renderers (`block_renderers:`, `BlockRenderers`, `BlockFix`, `Engine::BlockFixPart`, `web.block_fix`, the sandboxed frame, `block_host.js`, the hard rules) → `docs/internals/block-renderers.md`; a bundle's side → `docs/plugins.md` (Block renderers)
 - Inline widgets (```` ```chi-ui ```` picks and walks, `InlineWidgets`, the lenient pass, `data-widget`) → `docs/internals/inline-widgets.md`
 - What each shipped bundle does for a user (btw, mcp, cost-cap, work-cap, claude-peer, skills…; the bundles' own settings) → `docs/bundles.md`
 - The chi home (`ChiHome`, home.json, `Record#boot_argv`, `chi home`, `HomeDoctor`, `HomeNotice`) → `docs/architecture.md` (How chi launches itself), `docs/configuration.md` (The chi home)
@@ -103,7 +103,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Writing a bundle (the walkthrough, `chi bundle new`/`check`/`test`/`try`) → `docs/bundle-authoring.md`
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
-- Session files, context notes, sending, chains, delegating → `docs/sessions.md`
+- Session files, context notes, sending, chains, delegating, deleting (`SessionChain::Delete`, `delete_plan`, `SessionManager::DelegateRule`, `RunningTasks::Policy.stop(only:)`, `--dry-run`) → `docs/sessions.md`
 - Durable schedules (`chi schedule`, `Schedules`, the tick's busy check, `schedule.*`) → `docs/scheduling.md`; the CLI section → `docs/cli.md` (Durable schedules)
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy

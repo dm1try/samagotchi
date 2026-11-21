@@ -389,9 +389,11 @@ links too). In ⋯'s menu, Delete doesn't click `#infoDeleteBtn` for a chained s
 card (`createDeleteSheet`, on `chip_popover.js`: a bottom sheet on a phone). Both shells keep one live host: a
 `host(anchor, id)` (the card's, with the session it opened for) or a Delete in ⋯ makes a new one, and a flow whose host
 is no longer the live one (a ✕ on another card while the first plan was read) draws and acts on nothing. What the sheet says comes from
-`GET /api/sessions/:id/delete_plan`, fetched as it opens and only for a chained session: the server's own plan and
-refusals (`SessionChain::Delete::Preview`, the code the delete runs), so the sheet and the delete can't disagree; its
-cost is one session listing walk per open. `deleteChoices` (pure) turns it into the two choices, a schedule's banner
+`GET /api/sessions/:id/delete_plan`, fetched as it opens for every session: the server's own plan and refusals
+(`SessionChain::Delete::Preview`, the code the delete runs), so the sheet and the delete can't disagree. Plain
+sessions have a server-side link plan; the page still uses the plain confirm until the delete-sheet phase sends plans
+for it. The preview shares one `session_rows` snapshot across the link and chain choices, while Links performs its own
+listing. `deleteChoices` (pure) turns it into the two choices, a schedule's banner
 and each refusal's "Not while …"; a plan that says no chain (a link alone past a gap) falls back to the confirm. The
 confirm sends the shown choice's `digest` (`expect=`, `data.js deleteSession`/`deleteChain` keep it out of `fetch`);
 a `409 plan_changed` re-reads the plan and redraws the sheet with "What this deletes changed; check again" (a link no
@@ -472,7 +474,9 @@ only). A drawer that fails a block because of the model's input marks it (`block
 `pre.dataset.blockFixable`, the reason kept in `pre.dataset.blockReason`, a bubbling `block-failed` event): a refused
 `chi-ui` block (`inline_widgets.js`) and a renderer's own `error` (`block_frame.js` `FrameError.renderer`). `block_fix.js`
 listens for that event and scans added nodes (a Revise clone arrives failed) in the turn roots, and decides from the DOM
-alone: the newest answer's first 2 such blocks are posted (`POST /api/sessions/:id/blocks/fix`, `postFix`); a block
+alone: the newest answer's first 2 such blocks are posted (`POST /api/sessions/:id/blocks/fix`, `postFix`); the worker
+also enforces the 2-per-answer limit and remains the authority (`fix_limit`, even if the page or a second tab posts).
+A block
 that is a fix (`data-block-fixed`) or whose fix failed (`data-block-fix-failed`), an older answer, a third block and a
 live worker without the `block_fix` feature (`worker_features.js workerPredates`, with `bridgeUp`) get their line
 instead. Nothing is kept across a re-render: a block failing again is posted again, and the worker answers it runs (or
