@@ -10,7 +10,9 @@ module Samagotchi
     #   kind      :unreadable (the record: manifest.json doesn't read),
     #             :too_new (its requires_chi isn't met), or for one file
     #             (Dir#file_refusal) :file_missing, :file_unrecorded (no
-    #             sha256 recorded for it), :file_changed
+    #             sha256 recorded for it), :file_changed; for a plugin
+    #             (Dir#plugin_refusal) also :parts_missing (its kept manifest
+    #             names parts the record has none of)
     #   text      what the reader says of it today (one wording per kind of
     #             file: the plugin's, a script's, a rule's)
     #   actual, expected  the file's sha256 and the recorded one, hex, for

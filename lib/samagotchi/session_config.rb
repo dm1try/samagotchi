@@ -293,7 +293,7 @@ module Samagotchi
     # The installed bundles a session may set settings of: a record that
     # doesn't read is left out, and so is one this chi is too old for
     # (InstalledBundles::Standing: requires_chi, plugin or not) or whose
-    # plugin doesn't load (Dir#file_refusal(:plugin): the file, its sha256),
+    # plugin doesn't load (Dir#plugin_refusal: its files, their sha256),
     # with a note saying why. A record with no
     # session_settings whose shipped bundle lists some (installed before
     # them) gets a note on refreshing it.
@@ -385,13 +385,13 @@ module Samagotchi
     end
 
     # Why a usable +standing+'s plugin doesn't load, as the plugin loader
-    # would refuse it (Dir#file_refusal(:plugin)), nil when it does or it has
-    # none.
+    # would refuse it (Dir#plugin_refusal: the file, its parts), nil when it
+    # does or it has none.
     def unloadable(dir, standing)
       plugin = standing.record.plugin
       return nil unless plugin
 
-      InstalledBundles::Dir.new(name: standing.name, dir: dir).file_refusal(:plugin, plugin.file, plugin.sha256)&.text
+      InstalledBundles::Dir.new(name: standing.name, dir: dir).plugin_refusal(standing.record)&.text
     end
 
     # Whether chi ships a bundle +name+ whose manifest lists session_settings.

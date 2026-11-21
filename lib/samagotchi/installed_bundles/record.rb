@@ -133,8 +133,9 @@ module Samagotchi
 
       def owns?(file_key) = files.key?(file_key.to_s)
 
-      # The plugin's file => its recorded sha256, as guardrails and scripts read.
-      def plugin_shas = plugin ? { plugin.file => plugin.sha256 } : {}
+      # The plugin's files (its parts, then the plugin file) => their recorded
+      # sha256, as guardrails and scripts read.
+      def plugin_shas = plugin ? plugin.parts.merge(plugin.file => plugin.sha256) : {}
 
       # The marked files that stay behind: one that isn't there is a missing file,
       # and one with the bundle's bytes has nothing left to miss.
