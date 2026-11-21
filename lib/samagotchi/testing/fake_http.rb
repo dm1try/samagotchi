@@ -17,12 +17,17 @@ module Samagotchi
     #   bundle.http.stub(:get, %r{/health\z}, status: 503, body: "down")
     #   bundle.http.stub(:post, "http://127.0.0.1:9000/classify") { |req| { json: { label: req.json["text"] } } }
     #   bundle.http.stub(:get, "http://127.0.0.1:9000/x", error: :refused)   # also :timeout
+    #   bundle.http.stub(:post, "http://127.0.0.1:9000/mcp", events: [{ data: "{}", id: "1" }, "plain data"])
+    #   bundle.http.stub(:get, "http://127.0.0.1:9000/big", chunks: ["hel", "lo"])
     #   bundle.http.requests    # what the plugin sent, in order
     #   bundle.http.unmatched   # what no stub answered
     #
     # A String matches the full URL exactly (query included), a Regexp is
     # matched against it; the method too. Later stubs win. A stub answers
-    # every matching call: a sequence is a block that counts.
+    # every matching call: a sequence is a block that counts. Any stub
+    # answers both ctx.http.request and ctx.http.stream: +events:+ (served
+    # as text/event-stream) is the SSE text to a request, +body:+ / +json:+
+    # one chunk to a stream.
     class FakeHttp
       # One request the plugin made (headers as the plugin gave them).
       # `method` shadows Object#method on purpose: it is the plugin's word (request.method == "POST").
@@ -67,17 +72,23 @@ module Samagotchi
       # @param json [Object, nil] a JSON body (with its Content-Type)
       # @param error [Symbol, nil] :refused or :timeout: the request fails
       #   with the HttpError the real transport raises
+      # @param events [Array<Hash, String>, nil] Server-Sent Events, each
+      #   { data:, event: nil, id: nil } or a String (its data), served as
+      #   text/event-stream
+      # @param chunks [Array<String>, nil] the body, in these pieces (a
+      #   stream reads them one by one)
       # @yield [Request] to decide per request: returns a Hash with the same
-      #   keywords (status:, headers:, body:, json:, error:) or a
-      #   Plugin::Http::Response
+      #   keywords (status:, headers:, body:, json:, events:, chunks:,
+      #   error:) or a Plugin::Http::Response
       # @return [self]
-      def stub(method, url, status: 200, headers: {}, body: nil, json: nil, error: nil, &block)
+      def stub(method, url, status: 200, headers: {}, body: nil, json: nil, events: nil, chunks: nil, error: nil, &block)
         verb = method.to_s.upcase
         raise ArgumentError, "unknown HTTP method #{method.inspect}" unless Plugin::Http::METHODS.include?(verb)
         raise ArgumentError, "the URL is a String or a Regexp" unless url.is_a?(String) || url.is_a?(Regexp)
         raise ArgumentError, "unknown error #{error.inspect} (#{ERRORS.keys.join(", ")})" if error && !ERRORS.key?(error)
 
-        answer = block || { status: status, headers: headers, body: body, json: json, error: error }
+        answer = block || { status: status, headers: headers, body: body, json: json, events: events, chunks: chunks,
+                            error: error }
         @mutex.synchronize { @stubs << Stub.new(verb: verb, matcher: url, answer: answer) }
         self
       end
@@ -93,6 +104,34 @@ module Samagotchi
       # the only cancel it checks.
       # @raise [UnstubbedRequest, Plugin::HttpError, Plugin::HttpCancelled]
       def call(method:, uri:, headers:, body:, timeout:, cancel:)
+        respond(method, uri, headers, body, cancel)
+      end
+
+      # The streamed half of the contract (Plugin::Http#stream): the block
+      # gets a Plugin::Http::Stream over the stub's chunks (its events, or
+      # its body as one chunk).
+      # @return [Object] the block's value
+      def stream(method:, uri:, headers:, body:, timeout:, cancel:)
+        response, chunks = respond(method, uri, headers, body, cancel, chunked: true)
+        yield Plugin::Http::Stream.new(status: response.status, headers: response.headers,
+                                       reader: ->(&on_chunk) { chunks.each { |chunk| on_chunk.call(chunk.b) } })
+      end
+
+      # An event as SSE text: its event: and id: lines, a data: line per line.
+      def self.sse_text(event)
+        event = { data: event } unless event.is_a?(Hash)
+        event = event.transform_keys(&:to_sym)
+        lines = []
+        lines << "event: #{event[:event]}" if event[:event]
+        lines << "id: #{event[:id]}" if event[:id]
+        event[:data].to_s.split("\n", -1).each { |line| lines << "data: #{line}" }
+        "#{lines.join("\n")}\n\n"
+      end
+
+      private
+
+      # The stub's answer: a Response, and with +chunked+ the body's pieces.
+      def respond(method, uri, headers, body, cancel, chunked: false)
         raise Plugin::HttpCancelled, "#{method} #{where(uri)}: cancelled" if cancel&.cancelled?
 
         request = Request.new(method: method, url: uri.to_s, headers: headers.dup.freeze, body: body)
@@ -102,13 +141,13 @@ module Samagotchi
         end
         raise UnstubbedRequest, unstubbed_message(request) unless stub
 
-        respond(request, uri, stub.answer.respond_to?(:call) ? stub.answer.call(request) : stub.answer)
+        answer = stub.answer.respond_to?(:call) ? stub.answer.call(request) : stub.answer
+        response, chunks = answer_of(request, uri, answer)
+        chunked ? [response, chunks] : response
       end
 
-      private
-
-      def respond(request, uri, answer)
-        return answer if answer.is_a?(Plugin::Http::Response)
+      def answer_of(request, uri, answer)
+        return [answer, [answer.body]] if answer.is_a?(Plugin::Http::Response)
         raise ArgumentError, "a stub's block returns a Hash or a Plugin::Http::Response" unless answer.is_a?(Hash)
 
         if (error = answer[:error])
@@ -116,13 +155,19 @@ module Samagotchi
         end
 
         headers = (answer[:headers] || {}).to_h { |name, value| [name.to_s.downcase, value.to_s] }
-        body = answer[:body].to_s
-        unless answer[:json].nil?
-          body = JSON.generate(answer[:json])
+        chunks = [answer[:body].to_s]
+        if !answer[:json].nil?
+          chunks = [JSON.generate(answer[:json])]
           headers = { "content-type" => "application/json" }.merge(headers)
+        elsif answer[:events]
+          chunks = Array(answer[:events]).map { |event| self.class.sse_text(event) }
+          headers = { "content-type" => "text/event-stream" }.merge(headers)
+        elsif answer[:chunks]
+          chunks = Array(answer[:chunks]).map(&:to_s)
         end
-        body = "" if request.method == "HEAD"
-        Plugin::Http::Response.new(status: Integer(answer[:status] || 200), headers: headers.freeze, body: body.dup)
+        chunks = [] if request.method == "HEAD"
+        body = Plugin::Http.text(chunks.join.b)
+        [Plugin::Http::Response.new(status: Integer(answer[:status] || 200), headers: headers.freeze, body: body), chunks]
       end
 
       def where(uri) = "#{uri.host}:#{uri.port}"

@@ -33,8 +33,8 @@ module Samagotchi
     # ctx.http's file needs only json and uri (net/http loads with the first
     # real request); autoloaded so a bundle can name HttpError at load time.
     autoload :Http, File.expand_path("http", __dir__)
-    autoload :HttpError, File.expand_path("http", __dir__)
-    autoload :HttpCancelled, File.expand_path("http", __dir__)
+    autoload :HttpError, File.expand_path("http_errors", __dir__)
+    autoload :HttpCancelled, File.expand_path("http_errors", __dir__)
     autoload :Judgments, File.expand_path("judgments", __dir__)
 
     # The Engine's side of a Context: callables, so the Engine itself is

@@ -236,7 +236,69 @@ module Samagotchi
         end
       end
 
+      # The marks a streamed attempt's reader (Plugin::Http::Stream) leaves
+      # for the log line when the body's read fails mid-stream: the error
+      # then surfaces from the caller's block, mapped, and #logged tells it
+      # from the block's own raise by these.
+      class StreamMarks
+        def initialize(current)
+          @current = current
+        end
+
+        # The body's read failed on the wire (+error+, the raw one).
+        def failed(error) = @current[:wire_error] = error
+
+        # The body's read ended because the request was cancelled.
+        def cancelled(reason) = @current[:cancelled] = [reason]
+      end
+
+      # One unretried streamed attempt (ctx.http.stream): yields the
+      # response before its body is read, its status unchecked, and the
+      # StreamMarks its reader marks a mid-body failure on. Returns the
+      # block's value. Leaving the block closes the connection however it
+      # is left: Net::HTTP reads the rest of the body after a normal block
+      # end (on an open stream, until the read timeout), so a normal end
+      # throws past that drain; Net::HTTP.start's ensure closes the socket.
+      # No first_token_timeout or stream_idle_timeout (the model stream's).
+      # @raise [RequestCancelled] cancelled before the block
+      def open_stream(uri, request, write_timeout: nil, cancel_controller: nil, log_fields: {})
+        identify(request)
+        current = new_attempt_state(uri, request, log_fields, stream: true).merge!(attempts: 1)
+        marks = StreamMarks.new(current)
+        done = Object.new
+        logged(current) do
+          cancellable(cancel_controller, current) do
+            catch(done) do
+              start(uri, write_timeout: write_timeout, max_retries: 0) do |http|
+                current[:http] = http
+                http.request(request) do |response|
+                  current[:status] = response.code.to_i
+                  throw done, in_block(current) { yield(response, marks) }
+                end
+              end
+            end
+          rescue StandardError => e
+            if !e.is_a?(RequestCancelled) && !current[:left_by_block] && cancel_controller&.cancelled?
+              raise RequestCancelled, cancel_controller.reason
+            end
+
+            raise
+          end
+        end
+      end
+
       private
+
+      # The caller's block: a raise out of it marks the attempt (#logged
+      # logs its end then, not a failure, unless its reader marked one).
+      def in_block(current)
+        left = true
+        value = yield
+        left = false
+        value
+      ensure
+        current[:left_by_block] = true if left
+      end
 
       # User-Agent, and the host's key when it has one (AuthError, before
       # any request, when its variable is not set).
@@ -433,16 +495,46 @@ module Samagotchi
       # One line per request, whatever its end: done (status, time to the
       # first token of a stream, total), failed, timed out or cancelled.
       # Retries have their own WARN lines (#retry_after).
+      # An `ensure` logs the way out a rescue can't see (break, return, a
+      # throw): as done, with the status it got. A streamed attempt's block
+      # that raised logs done too, unless its reader marked a wire failure
+      # or a cancel (StreamMarks).
       def logged(current)
         result = yield
+        log_end(current)
+        result
+      rescue RequestCancelled => e
+        log_cancelled(current, e.reason)
+        raise
+      rescue StandardError => e
+        current[:left_by_block] ? log_end(current) : log_failed(current, e)
+        raise
+      ensure
+        log_end(current) unless current[:logged]
+      end
+
+      # Done, or what a stream's reader marked (StreamMarks).
+      def log_end(current)
+        if current[:cancelled] then log_cancelled(current, current[:cancelled].first)
+        elsif current[:wire_error] then log_failed(current, current[:wire_error])
+        else log_done(current)
+        end
+      end
+
+      def log_done(current)
+        current[:logged] = true
         Log.public_send(current[:level], :http, current[:stream] ? "stream" : "fetch", **log_base(current),
                         status: current[:status], ttft_ms: ttft_ms(current),
                         ms: elapsed_ms(current), attempts: retried(current))
-        result
-      rescue RequestCancelled => e
-        Log.public_send(current[:level], :http, "cancelled", **log_base(current), ms: elapsed_ms(current), reason: e.reason&.to_s)
-        raise
-      rescue StandardError => e
+      end
+
+      def log_cancelled(current, reason)
+        current[:logged] = true
+        Log.public_send(current[:level], :http, "cancelled", **log_base(current), ms: elapsed_ms(current), reason: reason&.to_s)
+      end
+
+      def log_failed(current, e)
+        current[:logged] = true
         failure_level = current[:level] == :info ? :error : :debug
         event = case e
                 when FirstTokenTimeout then "first_token_timeout"
@@ -454,7 +546,6 @@ module Samagotchi
                                                      ms: elapsed_ms(current), attempts: current[:attempts], error: e.class.name,
                                                      idle_s: e.is_a?(StreamStalled) ? e.limit : nil,
                                                      msg: log_message(e.respond_to?(:summary) ? e.summary : e.message))
-        raise
       end
 
       def elapsed_ms(current, at = monotonic_now)

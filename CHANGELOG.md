@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
   stopped first and what stays (the web's delete sheet in the terminal), and which of `--force` / `--stop-tasks` it
   needs; with `--chain`, the chain's. It exits 1 when the delete would be refused. With `--remote` it needs a chi
   web of this version.
+- For bundle authors: `ctx.http.stream(method, url, …) { |res| … }`, a streamed answer: the status and headers
+  first, then the body as it arrives (`res.each_event` reads Server-Sent Events, `res.each_chunk` the raw pieces).
+  Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.
 
 ### Changed
 

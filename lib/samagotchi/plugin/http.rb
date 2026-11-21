@@ -2,19 +2,10 @@
 
 require "json"
 require "uri"
+require_relative "http_errors"
 
 module Samagotchi
   module Plugin
-    # ctx.http failed: the request didn't complete (refused, timed out, DNS,
-    # TLS, reset, a malformed response, a bad gzip body), or Response#json
-    # was called on a body that isn't JSON. The message says what and where,
-    # never headers or a body; the original error is the #cause.
-    class HttpError < StandardError; end
-
-    # A ctx.http request was cancelled (its cancel: controller, or the turn's
-    # Stop).
-    class HttpCancelled < HttpError; end
-
     # An HTTP client for a plugin (ctx.http, docs/plugins.md): a few methods,
     # a small Response, one error type (HttpError). It checks its arguments
     # and builds the request; a transport (Http::NetTransport by default,
@@ -51,7 +42,8 @@ module Samagotchi
       # @param cancel_lookup [#call] → the CancellationController a call
       #   without cancel: uses (nil: none), read at call time
       # @param transport [#call, nil] call(method:, uri:, headers:, body:,
-      #   timeout:, cancel:) → Response, or raises HttpError / HttpCancelled
+      #   timeout:, cancel:) → Response, or raises HttpError / HttpCancelled;
+      #   stream(same keywords) { |stream| … } → the block's value
       def initialize(bundle:, cancel_lookup: -> {}, transport: nil)
         @bundle = bundle.to_s
         @cancel_lookup = cancel_lookup
@@ -90,15 +82,45 @@ module Samagotchi
       # @param body [String, nil] sent as is (set your own Content-Type)
       # @raise [ArgumentError] an unknown method, a body that isn't a String, and as #get
       def request(method, url, body: nil, headers: {}, timeout: DEFAULT_TIMEOUT, cancel: nil)
+        transport.call(**wire_args(method, url, body, headers, timeout, cancel))
+      end
+
+      # A streamed request: the block gets a Stream (status and headers
+      # first, then the body as it arrives: Stream#each_event,
+      # #each_chunk, #body). Leaving the block closes the connection,
+      # however it is left (its end, break, return, a raise; the raise goes
+      # on as it is). Arguments, checks, cancel, proxies, User-Agent and
+      # the log line as #request; no retries; +timeout+ is the connect, the
+      # write and each read, not a total deadline.
+      # @yield [Stream]
+      # @return [Object] the block's value
+      # @raise [ArgumentError] no block, and as #request
+      # @raise [HttpError, HttpCancelled] before the block, or from a
+      #   Stream read inside it
+      def stream(method, url, body: nil, headers: {}, timeout: DEFAULT_TIMEOUT, cancel: nil, &block)
+        raise ArgumentError, "ctx.http.stream needs a block (it gets the Stream)" unless block
+
+        transport.stream(**wire_args(method, url, body, headers, timeout, cancel), &block)
+      end
+
+      # +bytes+ tagged UTF-8 when they are valid UTF-8, else binary.
+      def self.text(bytes)
+        text = bytes.to_s.dup
+        utf8 = text.dup.force_encoding(Encoding::UTF_8)
+        utf8.valid_encoding? ? utf8 : text.force_encoding(Encoding::BINARY)
+      end
+
+      private
+
+      # The checked arguments a transport gets.
+      def wire_args(method, url, body, headers, timeout, cancel)
         verb = method.to_s.upcase
         raise ArgumentError, "unknown HTTP method #{method.inspect} (#{METHODS.join(", ")})" unless METHODS.include?(verb)
         raise ArgumentError, "the body must be a String (or nil), got #{body.class}" unless body.nil? || body.is_a?(String)
 
-        transport.call(method: verb, uri: parse_url(url), headers: header_hash(headers), body: body,
-                       timeout: timeout_seconds(timeout), cancel: cancel || @cancel_lookup.call)
+        { method: verb, uri: parse_url(url), headers: header_hash(headers), body: body,
+          timeout: timeout_seconds(timeout), cancel: cancel || @cancel_lookup.call }
       end
-
-      private
 
       def transport
         @transport ||= begin
@@ -152,3 +174,6 @@ module Samagotchi
     end
   end
 end
+
+# After Http: its Stream and SseReader reopen the class.
+require_relative "http_stream"

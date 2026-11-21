@@ -1187,13 +1187,14 @@ shape to copy for a plugin that calls a service, tested on `bundle.http` as in
 `spec/samagotchi/plugin/http_echo_bundle_spec.rb`.
 
 One way to call an HTTP service, with timeouts, errors, logging and Stop handled the same for every bundle.
-`Net::HTTP` stays available for what this doesn't do (streaming, multipart, redirects, connection reuse).
+`Net::HTTP` stays available for what this doesn't do (multipart, redirects, connection reuse).
 
 | | |
 |---|---|
 | `ctx.http.get(url, headers: {}, timeout: 10)` | GET |
 | `ctx.http.post_json(url, body, headers: {}, timeout: 10)` | POST `body` encoded as JSON, with `Content-Type` and `Accept: application/json` (unless `headers` names them) |
 | `ctx.http.request(method, url, body: nil, headers: {}, timeout: 10)` | GET, POST, PUT, PATCH, DELETE or HEAD; `body` is a String sent as is (set your own `Content-Type`) |
+| `ctx.http.stream(method, url, body: nil, headers: {}, timeout: 10) { \|res\| … }` | as `request`, the answer streamed to the block (below); returns the block's value |
 
 Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which replaces the default (below).
 
@@ -1224,6 +1225,32 @@ Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which r
 - **The log.** Each call writes one `http` line to the debug log: INFO (ERROR when it fails) with `bundle=`,
   `purpose=plugin`, the method, the URL **without its query**, the status and the time. Never headers or bodies.
   A plugin that polls a dead service therefore logs an ERROR per poll.
+
+**Streaming: `ctx.http.stream`** (chi 0.182.0 or newer: guard it with `ctx.http.respond_to?(:stream)`). The block
+gets a `Samagotchi::Plugin::Http::Stream` as soon as the headers are in:
+
+```ruby
+ctx.http.stream("POST", url, body: JSON.generate(question), headers: { "Accept" => "text/event-stream" }) do |res|
+  next "the service answered #{res.status}" unless res.ok?   # status and headers before any body
+
+  res.each_event do |event|                  # event.type ("message" by default), event.data, event.id
+    break event.data if event.type == "done" # leaving the block closes the connection
+  end
+end
+```
+
+- `res.status`, `res.headers` (as `Response`'s), `res.ok?`; then the body, read **once**, by one of
+  `res.each_event { |event| … }` (Server-Sent Events), `res.each_chunk { |bytes| … }` (the raw pieces as they arrive),
+  `res.body` (the rest, read to the end) or `res.json` (`res.body` parsed). After one has read it, another read gives
+  nothing (`body` is `""`).
+- **Leaving the block closes the connection**, however it is left: its end, `break`, `return`, a raise (which goes on
+  to you as it is). That is how you stop early or keep a total deadline of your own: `timeout` is per read here too,
+  so a stream that sends something every few seconds runs as long as the server likes.
+- Errors as for `request`: before the block, and **from inside** a read once it started (`HttpError`, `HttpCancelled`
+  on a Stop); a 4xx or 5xx is handed to the block. No retries. The log line is one `http` `stream` line, whatever way
+  the block was left.
+- The SSE reader: fields `event`, `data`, `id`; several `data:` lines join with `"\n"`; lines starting with `:` are
+  comments; an event is yielded at its blank line (one cut off by the end of the body is dropped, one without `data` too).
 
 `ctx.http` is experimental until 1.0, like the test kit.
 
@@ -1592,7 +1619,10 @@ bundle.shutdown
   answered raises `Samagotchi::Testing::UnstubbedRequest` (not an `HttpError`, but a plugin may rescue it anyway) and
   **fails the test at teardown** (RSpec and Minitest adapters: after the cleanup, and only a test that passed), so a
   spec can't reach the network. With plain `Bundle.load` there is no teardown: check `bundle.http.unmatched`.
-  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`.
+  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`. For `ctx.http.stream`,
+  `events:` (an Array of `{ data:, event: nil, id: nil }` or plain Strings for `data`, served as `text/event-stream`)
+  and `chunks:` (Strings, the body in those pieces) answer it; a `body:` / `json:` stub answers a stream as one chunk,
+  and an `events:` stub answers a plain request with the events' SSE text. A block may return them too.
 - **`ctx.cost`** is zero and known unless the test sets it: `bundle.set(cost: 2.5)` (reported USD), a Hash of the
   parts (`reported:`, `estimated:`, `side:`, `known:`; `total` is reported + estimated) or a callable giving either,
   called at each read (a counting lambda shows whether the bundle read it).
