@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
   fingertip, unless an arrow or its label is right under it. Tab, the arrow keys and Enter reach the nodes; Esc
   clears, then closes. A drag, a pinch and a double tap work as before. For bundle authors: `render` may return
   `{ svg, regions }` when `chi.features.regions` is set ([plugins.md](docs/plugins.md#block-renderers)).
+- For bundle authors: a card action can open an address, `{label:, url:}` (an http(s) one with a host): the web
+  draws a link to a new tab with the host named under the buttons, the terminal prints the address whole. It sends
+  nothing to the session and doesn't make a card ask. Set `requires_chi: ">= 0.183.0"` by hand.
 
 ### Changed
 

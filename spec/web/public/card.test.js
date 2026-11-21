@@ -225,3 +225,28 @@ test("drawCard: a failed action's line goes when the card is drawn again; a warn
   assert.ok(el.querySelector(".card-error").classList.contains("hidden"));
   assert.equal(el.dataset.inTurn, undefined);
 });
+
+test("cardTemplate: a url action is an anchor to a new tab (its host as tooltip), with a line naming the host", () => {
+  const url = "https://linear.app/oauth/authorize?client_id=c&state=s";
+  assert.equal(cardInnerHtml({ title: "Sign in", actions: [{ label: "Open sign-in page", url }, { label: "Go", command: "/go" }] }),
+    '<div class="card-head"><span class="card-title">Sign in</span></div>' +
+    '<div class="card-actions">' +
+    '<a class="card-link ghost" target="_blank" rel="noopener noreferrer" href="https://linear.app/oauth/authorize?client_id=c&amp;state=s" title="linear.app">Open sign-in page</a>' +
+    '<button type="button" class="card-action ghost" data-command="/go" title="/go">Go</button>' +
+    '</div><div class="card-opens">opens linear.app</div><div class="card-error hidden"></div>');
+});
+
+test("cardTemplate: a url action that isn't http(s), has userinfo, is too long or has no label is not drawn", () => {
+  for (const action of [{ label: "x", url: "javascript:alert(1)" }, { label: "x", url: "file:///etc/passwd" },
+    { label: "x", url: "https://linear.app@evil.example/" }, { label: "x", url: `https://a.example/${"x".repeat(4100)}` },
+    { label: " ", url: "https://a.example/" }]) {
+    assert.equal(cardInnerHtml({ title: "T", actions: [action] }),
+      '<div class="card-head"><span class="card-title">T</span></div><div class="card-error hidden"></div>', action.url);
+  }
+  assert.match(cardInnerHtml({ title: "T", actions: [{ label: "x", url: `https://a.example/${"x".repeat(3000)}` }] }), /card-link/);
+});
+
+test("isNoticeCard: a url action keeps a card a framed card, as a command one does", () => {
+  assert.equal(isNoticeCard({ title: "Sign in", body: "short", actions: [{ label: "Open", url: "https://a.example/" }] }), false);
+  assert.equal(isNoticeCard({ title: "Sign in", body: "short", actions: [{ label: "Open", url: "javascript:x" }] }), true);
+});

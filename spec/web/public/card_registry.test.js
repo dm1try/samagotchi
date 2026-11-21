@@ -87,6 +87,16 @@ test("plugin cards: one with actions in the turn asks, one without is shown, a w
   assert.equal(r.get("c:check-in").of_turn, "T1", "whose row it is stays");
 });
 
+test("plugin cards: a running turn's card whose only action opens an address is shown, not asking; the entry keeps the url", () => {
+  const r = lived([
+    { type: "turn_started", turn_id: "T1" },
+    { type: "card", id: "s", title: "Sign in", actions: [{ label: "Open sign-in page", url: "https://linear.app/oauth" }], in_turn: true },
+  ]);
+  assert.equal(r.get("c:s").kind, null);
+  assert.equal(r.get("c:s").status, "shown");
+  assert.deepEqual(r.get("c:s").actions, [{ label: "Open sign-in page", url: "https://linear.app/oauth" }]);
+});
+
 test("the turn's end cancels its question still pending (the page cancels the card, no event comes); another turn's stays", () => {
   const r = lived([
     { type: "turn_started", turn_id: "T1" },

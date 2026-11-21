@@ -12,14 +12,16 @@ module Samagotchi
       # ── Cards ───────────────────────────────────────────────────────────────
 
       # Show a card in every UI (docs/plugins.md, Cards): {type: :card, id:,
-      # source:, title:, body:, level:, actions: [{label:, command:}], in_turn:}.
+      # source:, title:, body:, level:, actions: [{label:, command:} |
+      # {label:, url:}], in_turn:}.
       # Where it goes (held while the plugins load, an anytime command's, an
       # init task's, a turn event, else announced) is EventRoutes#route's,
       # marked in_turn: (CARD_MARKS). A card with the id of an earlier one
       # replaces it (btw's "thinking…" → the answer).
       # @param source [String] who shows it (a bundle's name)
-      # @param actions [Array<Hash>] {label:, command:}; a command is a line
-      #   the session runs, as typed (D3)
+      # @param actions [Array<Hash>] {label:, command:}, a line the session
+      #   runs as typed (D3), or {label:, url:}, an http(s) address a UI opens
+      #   (it sends nothing; Plugin::Card.build checks it)
       # @return [String] the card's id
       # @raise [ArgumentError] a card without a title, or a bad action
       def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)

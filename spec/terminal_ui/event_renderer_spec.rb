@@ -134,6 +134,13 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
       ])
     end
 
+    it "prints a url action as its label, then the whole address on its own line (no rail, not wrapped)" do
+      url = "https://linear.app/oauth/authorize?client_id=#{"c" * 60}&state=abc"
+      renderer.call(card.merge(body: "", actions: [{ label: "Open sign-in page", url: url },
+                                                   { label: "Bad", url: "javascript:alert(1)" }]))
+      expect(view.lines.last.split("\n")).to eq(["┌ Hello · sample-plugin", "│ → Open sign-in page", url, "└"])
+    end
+
     it "prints a card shown again under its id, marked (updated)" do
       renderer.call(card)
       renderer.call(card.merge(title: "Hello 2", body: "", actions: []))

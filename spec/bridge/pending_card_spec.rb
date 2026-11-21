@@ -40,6 +40,11 @@ RSpec.describe Samagotchi::Bridge::PendingCard do
     expect(File.exist?(path)).to be(false)
   end
 
+  it "never writes a running turn's card whose only action opens an address (it doesn't ask)" do
+    pending.call(card("s", actions: [{ label: "Open sign-in page", url: "https://linear.app/oauth" }]))
+    expect(File.exist?(path)).to be(false)
+  end
+
   it "leaves the open card alone for another card's update" do
     pending.call(card("c1"))
     pending.call(card("other", actions: []))

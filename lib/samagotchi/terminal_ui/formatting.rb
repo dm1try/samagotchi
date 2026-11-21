@@ -14,6 +14,8 @@ require_relative "../session_config"
 require_relative "../message_time"
 require_relative "../tools/task_record"
 require_relative "model_segments_text"
+require_relative "../ref"
+require_relative "../plugin/card"
 
 module Samagotchi
   class TerminalUI
@@ -371,6 +373,8 @@ module Samagotchi
         lines = [head]
         wrap_plain(strip_markdown(card[:body].to_s), width - 2).each { |line| lines << (line.empty? ? rail : "#{rail} #{line}") }
         Array(card[:actions]).each do |action|
+          next lines.concat(card_url_lines(action, rail)) if action[:url] && !action[:command]
+
           command = action[:command].to_s
           label = action[:label].to_s
           line = "#{rail} #{paint("→ #{command}", 36)}"
@@ -379,6 +383,17 @@ module Samagotchi
         end
         lines << paint("└", 90)
         lines.join("\n")
+      end
+
+      # A url action: "→ <label>" on the rail, then the address on its own
+      # line with no rail, no paint and no wrapping by chi, so a terminal's
+      # own click or a copy gets the whole address. One that isn't http(s)
+      # (Plugin::Card checks it; a saved card isn't rebuilt) prints nothing.
+      def card_url_lines(action, rail)
+        url = action[:url].to_s.strip
+        return [] unless RefAction.http_url?(url, max: Plugin::Card::MAX_URL)
+
+        ["#{rail} #{paint("→ #{action[:label]}", 36)}", url]
       end
 
       # A card body's markdown made plain, cheaply (there is no terminal

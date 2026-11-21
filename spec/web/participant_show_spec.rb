@@ -189,6 +189,19 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     expect(read(issued.token, "?brief=1").last["session"].keys).to eq(%w[id title status participants])
   end
 
+  it "never shows a participant a card, one with a url action (a sign-in) included; the owner sees it" do
+    sign_in = { "type" => "card", "id" => "s1", "source" => "mcp", "title" => "Sign in to Linear", "body" => "paste line",
+                "level" => "info", "in_turn" => false, "turns_since" => 0,
+                "actions" => [{ "label" => "Open sign-in page", "url" => "https://linear.app/oauth?state=SIGN-IN-STATE" }] }
+    snapshot["snapshot"]["cards"] = [sign_in]
+    _status, owner = read(owner_token)
+    expect(owner["cards"].map { |c| c["id"] }).to eq(["s1"])
+    _status, body = read(issued.token)
+    expect(body["cards"]).to eq([])
+    expect(JSON.generate(body)).not_to include("SIGN-IN-STATE")
+    expect(read(issued.token, "?cards=1").last).to eq("cards" => [])
+  end
+
   it "makes a valid show from an older worker's snapshot (no generation, no event id) and without a worker" do
     snapshot["snapshot"].delete("event_id")
     snapshot["snapshot"]["current_turn"].delete("generation")

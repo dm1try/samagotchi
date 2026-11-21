@@ -973,6 +973,20 @@ ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces 
   `command_queued` and `command_ran` carry `card: true`, and no UI shows
   its line; the web shows a bubble only when the command answers with
   text or fails.
+- An action can open an address instead: `{label:, url:}` (exactly one of
+  `command:` / `url:`; both or neither raise). The `url` is an absolute
+  `http(s)` address with a host and no userinfo (`https://linear.app@evil.example`
+  is refused), at most 4096 characters, and `label:` is required. The web
+  draws a link that opens it in a new tab, its host as the tooltip, with a
+  muted line under the buttons naming each host the card's links open
+  (`opens linear.app`), so a label can't hide where it leads; the terminal
+  prints `→ <label>`, then the address whole on its own line (no frame, not
+  wrapped) for a click or a copy. Opening it sends nothing to the session,
+  and a url action doesn't make a card ask: a running turn's card with only
+  url actions doesn't hold the turn's stage or the "needs you" badge. It
+  needs chi 0.183.0: set `requires_chi: ">= 0.183.0"` in the bundle by hand
+  (`chi bundle check` can't see an action's keys); an older chi refuses the
+  card with `ArgumentError`.
 - `level:` is `:info` or `:warn` (the warning colour).
 - An `:info` card with no actions and a body of one short line (up to 160
   characters) is a notice: the web shows it as a one-line row,
@@ -1021,7 +1035,8 @@ then a new turn) starts from them. Load warnings and a question still
 waiting when the worker went are not saved.
 
 The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
-in_turn:}` (`source` is the bundle), plus `command:` when a session command
+in_turn:}` (`source` is the bundle; each action `{label:, command:}` or
+`{label:, url:}`), plus `command:` when a session command
 showed it (`"/short"`), logged as `card` with its source, id and title.
 
 ## Side answers: `ctx.ask_model`
