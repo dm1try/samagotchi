@@ -85,6 +85,23 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(fix(good)).to eq([200, { state: "failed", reason: "it failed again after a fix" }])
     end
 
+    it "tells a page that drew the answer before its fix (a second tab): fixed, so it reads the answer again" do
+      fix
+      settle
+      engine.apply_block_fixes
+      expect(answer[:content]).not_to include(bad)
+      expect(fix).to eq([200, { state: "fixed" }])
+    end
+
+    it "answers failed, not fixed, for a fixed block a copy of which is still shown (the page would ask again)" do
+      session.messages = [session.messages.first,
+                          Samagotchi::BlockFix.with_stamp(session.messages.last,
+                                                          Samagotchi::BlockFix.entry(key: Samagotchi::BlockFix.key("mermaid", bad),
+                                                                                     fixed_key: "f" * 32, state: "fixed"))]
+      expect(fix).to eq([200, { state: "failed", reason: "a copy of it is still in the answer" }])
+      expect(asks).to be_empty
+    end
+
     it "answers 429 past two in flight" do
       gate = Queue.new
       session.messages = [session.messages.first,
@@ -134,6 +151,33 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(fix_events).to contain_exactly(include(turn_id: "t1", state: "fixed", landed: "answer", lang: "mermaid",
                                                     was_digest: be_a(String), digest: be_a(String)))
       expect(fix_events.first[:was_digest]).not_to eq(fix_events.first[:digest])
+    end
+
+    it "patches every copy of a repeated block in one fix: text, display and saved blocks; neither is asked again" do
+      twice = "A:\n\n```mermaid\n#{bad}```\n\nB:\n\n```mermaid\n#{bad}```\n"
+      blocks = [{ "type" => "text", "text" => "A:\n\n```mermaid\n#{bad}```\n" }, { "type" => "text", "text" => "B:\n\n```mermaid\n#{bad}```\n" }]
+      session.messages = [session.messages.first, { role: "model", content: "Here #{twice}", display: "Shown #{twice}", anthropic_content: blocks }]
+      expect(fix.first).to eq(202)
+      expect(fix.first).to eq(202)
+      settle
+      expect(engine.apply_block_fixes).to eq(1)
+      expect(asks.size).to eq(1)
+      expect(answer[:content].scan(good).size).to eq(2)
+      expect(answer[:display].scan(good).size).to eq(2)
+      expect(answer[:anthropic_content].map { |b| b["text"] }).to all(include(good))
+      expect([answer[:content], answer[:display]]).to all(satisfy { |text| !text.include?("A--B") })
+      expect(fix).to eq([200, { state: "fixed" }])
+      expect(asks.size).to eq(1)
+    end
+
+    it "patches every copy in the display when a turn started since" do
+      session.messages = [session.messages.first, session.messages.last.merge(content: "#{answer_text}\n\n```mermaid\n#{bad}```\n")]
+      fix
+      settle
+      engine.send(:note_block_fix_turn)
+      engine.apply_block_fixes
+      expect(answer[:display].scan(good).size).to eq(2)
+      expect(answer[:display]).not_to include("A--B")
     end
 
     it "still patches the text when only a note came after the answer" do

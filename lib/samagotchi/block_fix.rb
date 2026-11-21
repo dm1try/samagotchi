@@ -72,20 +72,32 @@ module Samagotchi
     # commonmarker (the page's render's parser) reads it; nil when there is
     # none, or it sits in a blockquote (its lines carry "> ").
     # @return [Place, nil]
-    def locate(text, lang:, source:)
-      return nil unless available?
+    def locate(text, lang:, source:) = locate_all(text, lang: lang, source: source).first
+
+    # Every such block of +text+, in order (an answer may repeat one: a fix
+    # patches every copy, so none is asked for again).
+    # @return [Array<Place>]
+    def locate_all(text, lang:, source:)
+      return [] unless available?
 
       text = text.to_s
       want = normalize(source)
       lines = text.lines
+      places = []
       each_code_block(text) do |node|
         next unless language_of(node.fence_info) == lang.to_s && normalize(node.string_content) == want
         next if in_blockquote?(node)
 
         place = place_of(node, lines)
-        return place if place
+        places << place if place
       end
-      nil
+      places
+    end
+
+    # +text+ with every block at +places+ holding +fixed+ (#replace from
+    # the last, so the earlier places' lines stay where they were).
+    def replace_all(text, places, fixed)
+      places.sort_by(&:first).reverse.reduce(text.to_s) { |out, place| replace(out, place, fixed) }
     end
 
     # +text+ with the block at +place+ holding +fixed+: the fence lines kept,

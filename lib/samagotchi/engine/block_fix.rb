@@ -55,12 +55,18 @@ module Samagotchi
         messages = session.messages
         answer = AnswerTail.find(messages, turn_id: turn_id)
         index = answer && messages.index { |message| message.equal?(answer) }
-        return block_fix_refused(409, :block_not_found) unless index && BlockFix.locate(block_fix_shown(answer), lang: lang, source: source)
+        return block_fix_refused(409, :block_not_found) unless index
 
         key = BlockFix.key(lang, source)
+        shown = !BlockFix.locate(block_fix_shown(answer), lang: lang, source: source).nil?
+        # The stamp before the text: a page that drew the answer before its
+        # fix (a second tab) asks for a block no longer in it, and is told
+        # fixed (it reads the answer again).
+        known = BlockFix.stamp_for(answer, key)
+        return [200, block_fix_known(known, key, shown: shown)] if known
+        return block_fix_refused(409, :block_not_found) unless shown
+
         @block_fix_mutex.synchronize do
-          known = BlockFix.stamp_for(answer, key)
-          return [200, block_fix_known(known, key)] if known
           return [202, { state: "running" }] if @block_fix_running.include?(key) || @block_fix_ready.any? { |r| r.key == key }
           return block_fix_refused(429, :fix_busy) if @block_fix_running.size >= BlockFix::MAX_RUNNING
 
@@ -111,9 +117,13 @@ module Samagotchi
       end
 
       # A block the answer's stamp knows: asked before. A block that is the
-      # fix of an earlier one fails again: failed, whatever that fix was.
-      def block_fix_known(entry, key)
+      # fix of an earlier one fails again: failed, whatever that fix was. A
+      # fixed block still +shown+ (a copy the fix couldn't reach) is failed
+      # too: "fixed" would have the page read the answer again, draw the
+      # copy, fail it and ask again, with no end.
+      def block_fix_known(entry, key, shown:)
         return { state: "failed", reason: "it failed again after a fix" } if entry[:fixed_key] == key && entry[:key] != key
+        return { state: "failed", reason: "a copy of it is still in the answer" } if entry[:state].to_s == "fixed" && shown
 
         { state: entry[:state].to_s, reason: entry[:reason] }.compact
       end
@@ -199,53 +209,55 @@ module Samagotchi
       end
 
       # No turn since, the newest answer: its text (and its display, and
-      # on api: anthropic its saved blocks) holds the fix.
+      # on api: anthropic its saved blocks) holds the fix, in every copy of
+      # the block.
       def block_fix_in_answer(answer, result)
         content = answer[:content].to_s
-        place = BlockFix.locate(content, lang: result.lang, source: result.source)
-        return block_fix_in_display(answer, result) unless place
+        places = BlockFix.locate_all(content, lang: result.lang, source: result.source)
+        return block_fix_in_display(answer, result) if places.empty?
 
-        copy = answer.merge(content: BlockFix.replace(content, place, result.fixed))
+        copy = answer.merge(content: BlockFix.replace_all(content, places, result.fixed))
         if (display = answer[AnswerDisplay::KEY])
-          shown = BlockFix.locate(display, lang: result.lang, source: result.source)
-          copy[AnswerDisplay::KEY] = BlockFix.replace(display, shown, result.fixed) if shown
+          shown = BlockFix.locate_all(display, lang: result.lang, source: result.source)
+          copy[AnswerDisplay::KEY] = BlockFix.replace_all(display, shown, result.fixed) unless shown.empty?
         end
-        [block_fix_blocks(copy, result), "answer"]
+        [block_fix_blocks(copy, result, places.size), "answer"]
       end
 
       # A turn since: only what the page renders (`display`), never what a
       # model was sent.
       def block_fix_in_display(answer, result)
         shown = block_fix_shown(answer)
-        place = BlockFix.locate(shown, lang: result.lang, source: result.source)
-        return [nil, nil] unless place
+        places = BlockFix.locate_all(shown, lang: result.lang, source: result.source)
+        return [nil, nil] if places.empty?
 
-        text = BlockFix.replace(shown, place, result.fixed)
+        text = BlockFix.replace_all(shown, places, result.fixed)
         return [nil, nil] if text.length > AnswerDisplay::MAX_CHARS
 
         [answer.merge(AnswerDisplay::KEY => text), "display"]
       end
 
       # The saved Messages-API blocks (anthropic_content), which
-      # AnthropicWire sends as they are: the text block holding the fix
-      # patched, or the blocks dropped (the answer goes as its text) when
-      # no one text block holds it whole. A thinking block is never touched.
-      def block_fix_blocks(copy, result)
+      # AnthropicWire sends as they are: the text blocks holding the
+      # +copies+ the text had patched, or the blocks dropped (the answer goes
+      # as its text) when they don't hold every copy whole. A thinking block
+      # is never touched.
+      def block_fix_blocks(copy, result, copies)
         blocks = copy[:anthropic_content]
         return copy unless blocks.is_a?(Array) && !blocks.empty?
 
-        found = false
+        found = 0
         patched = blocks.map do |block|
-          next block if found || !block.is_a?(Hash) || (block["type"] || block[:type]).to_s != "text"
+          next block if !block.is_a?(Hash) || (block["type"] || block[:type]).to_s != "text"
 
           text_key = block.key?("text") ? "text" : :text
-          place = BlockFix.locate(block[text_key].to_s, lang: result.lang, source: result.source)
-          next block unless place
+          places = BlockFix.locate_all(block[text_key].to_s, lang: result.lang, source: result.source)
+          next block if places.empty?
 
-          found = true
-          block.merge(text_key => BlockFix.replace(block[text_key].to_s, place, result.fixed))
+          found += places.size
+          block.merge(text_key => BlockFix.replace_all(block[text_key].to_s, places, result.fixed))
         end
-        found ? copy.merge(anthropic_content: patched) : copy.except(:anthropic_content)
+        found == copies ? copy.merge(anthropic_content: patched) : copy.except(:anthropic_content)
       end
 
       def block_fix_dropped(result, why)

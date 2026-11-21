@@ -55,6 +55,16 @@ RSpec.describe Samagotchi::BlockFix do
       expect(described_class.replace(text, place, "graph LR")).to eq("```mermaid\ngraph LR\n```\n\nand\n\n```mermaid\ngraph TD\n```\n")
     end
 
+    it "finds every copy of a repeated block (.locate_all) and replaces them all, list item's indent kept" do
+      text = "```mermaid\ngraph TD\n```\n\n- again\n\n  ```mermaid\n  graph TD\n  ```\n"
+      places = described_class.locate_all(text, lang: "mermaid", source: "graph TD")
+      expect(places.map(&:first)).to eq([1, 7])
+      expect(described_class.replace_all(text, places, "graph LR\n  A")).to eq(
+        "```mermaid\ngraph LR\n  A\n```\n\n- again\n\n  ```mermaid\n  graph LR\n    A\n  ```\n"
+      )
+      expect(described_class.locate_all("no fence", lang: "mermaid", source: "x")).to eq([])
+    end
+
     it "finds nothing in a blockquote, in another language or for another source" do
       expect(described_class.locate("> ```mermaid\n> graph TD\n> ```\n", lang: "mermaid", source: "graph TD")).to be_nil
       expect(described_class.locate("```dot\ngraph TD\n```\n", lang: "mermaid", source: "graph TD")).to be_nil
