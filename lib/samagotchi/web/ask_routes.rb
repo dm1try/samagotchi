@@ -182,8 +182,8 @@ module Samagotchi
 
       # POST /api/sessions/:id/wait {token, timeout}: the wait a token holds
       # (an ask's, a create's, an answer's), for at most WAIT_MAX_SECONDS.
-      # 200 wait_result_json's fields + session_id (+ token, the same, while
-      # the status is timeout); 400 invalid_wait for a token that isn't one,
+      # The URL's id may be a prefix. 200 wait_result_json's fields +
+      # session_id (+ token, the same, while the status is timeout); 400 invalid_wait for a token that isn't one,
       # another session's, a token beside the wait's own fields, or a
       # participant's; 503 server_stopping.
       def handle_token_wait(req, id, body)
@@ -198,14 +198,16 @@ module Samagotchi
         end
 
         session_id, target = SessionAccess::Exchange::Token.load(body["token"])
-        return error_response(400, "invalid_wait", "the token is another session's wait") unless session_id == id
+        # The URL's id may be a prefix (as the ask's): resolved first (no
+        # such session, or several: session_route's 404).
+        full = session_access.resolve(id)
+        return error_response(400, "invalid_wait", "the token is another session's wait") unless session_id == full
 
-        session_access.show(id)
-        result = plain_exchange.wait(id, target, timeout: [timeout || WAIT_MAX_SECONDS, WAIT_MAX_SECONDS].min,
-                                                 **wait_extras)
+        result = plain_exchange.wait(full, target, timeout: [timeout || WAIT_MAX_SECONDS, WAIT_MAX_SECONDS].min,
+                                                   **wait_extras)
         return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-        json = wait_result_json(result, session_access.parent_strategy(id)).merge(session_id: id)
+        json = wait_result_json(result, session_access.parent_strategy(full)).merge(session_id: full)
         json[:token] = body["token"] if result.status == :timeout
         json_response(200, json)
       rescue SessionAccess::Exchange::Token::Invalid => e

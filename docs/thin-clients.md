@@ -55,7 +55,8 @@ curl -s -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
 ```
 
 That is the whole protocol: one string to carry and no order to get wrong. A
-token is for its own session only (400 `invalid_wait` for another's).
+token is for its own session only (400 `invalid_wait` for another's); the id
+in the URL can be a prefix of it.
 
 ## The answers
 

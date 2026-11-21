@@ -269,6 +269,14 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(wait(session.id, { token: token, queued: false, cursor: nil, timeout: 0.1 }).first).to eq(200)
     end
 
+    it "takes a prefix of the token's session in the URL (resolved first), as the ask does" do
+      token = token_module.dump(session.id, target)
+      Samagotchi::SessionInbox.write_output(dir_of(session), "the answer", enqueued_id: "t9")
+
+      expect(wait(session.id[0, 8], { token: token, timeout: 1 }))
+        .to match([200, include("status" => "done", "text" => "the answer", "session_id" => session.id)])
+    end
+
     it "answers without a token exactly as before (its keys pinned)" do
       Samagotchi::SessionInbox.write_output(dir_of(session), "the answer")
       status, body = wait(session.id, { cursor: nil, timeout: 1 })
