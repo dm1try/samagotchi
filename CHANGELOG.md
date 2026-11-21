@@ -35,6 +35,8 @@ and commands may change between minor versions. How releases are made:
 - On a phone, one tap on a drawn diagram opens it in the viewer (it took two); the rendered | source switch stays
   shown, faint.
 - The working set reader keeps its rendered/source pill and "go to the call" link on one line at phone widths.
+- The working-set reader keeps metadata and latest pills visible on phones; the rendered/source switch and call link stay
+  together.
 - A memory's working set peek starts at the rendered body, hiding front matter while the reader keeps it above the body.
 - The known-names guardrail no longer flags a project's class name in backticks
   (`CoffeeAssistant` for `coffee_assistant`) as a typo.

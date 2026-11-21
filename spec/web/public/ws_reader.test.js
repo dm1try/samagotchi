@@ -370,6 +370,9 @@ test("a memory renders once its HTML came, source while it is on its way; the sw
   assert.ok(card().querySelector(".wsr-text") === null);
   const group = card().querySelector('.wsr-card-h [role="group"]');
   assert.ok(group?.getAttribute("aria-label"));
+  const actions = card().querySelector(".wsr-card-actions");
+  assert.equal(actions?.querySelector('[role="group"]'), group, "the switch and call link stay together");
+  assert.ok(actions?.querySelector(".wsr-call"));
   assert.deepEqual(viewButtons(reader), ["rendered:true", "source:false"]);
 
   card().querySelector('[data-view="source"]').click();
