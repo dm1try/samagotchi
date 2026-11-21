@@ -139,6 +139,18 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
         .to eq("Error: linear needs sign-in: the user runs /mcp login linear")
     end
 
+    it "needs sign-in after the daily refresh of a cached server meets a 401, with no failure card" do
+      signed_in!
+      server = bundle.plugin.instance_variable_get(:@servers).first
+      server.state = :cached
+      valid.clear # its token, and the renewed one, refused
+      cards = bundle.cards.size
+
+      expect(bundle.plugin.send(:refresh, server, bundle.plugin.instance_variable_get(:@ctx))).to be_nil
+      expect(server.state).to eq(:needs_sign_in)
+      expect(bundle.cards.drop(cards).map { |c| c[:title] }).to eq(["linear needs sign-in"])
+    end
+
     it "shows no card on a one-shot" do
       bundle.set(frontend: :non_interactive)
       bundle.run_inits
@@ -180,6 +192,20 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(kept["expires_at"]).to be_within(5).of(Time.now.to_i + 3600)
       expect(listing).to start_with("**linear**: connected (https://mcp.example.com), 2 tools")
       expect(requests_to(url).last.headers["Authorization"]).to eq("Bearer ACCESS-TOKEN-1")
+    end
+
+    it "keeps a confidential registration's secret and sends it on the exchange, a renew and a revocation" do
+      bundle.http.stub(:post, "#{issuer}/register", status: 201, json: { client_id: "CLIENT-1", client_secret: "DCR-SECRET-1" })
+      signed_in!
+      registration = JSON.parse(bundle.secrets["client-#{Digest::SHA256.hexdigest(issuer)[0, 16]}"])
+      expect(registration).to include("client_id" => "CLIENT-1", "client_secret" => "DCR-SECRET-1")
+      expect(form(requests_to("#{issuer}/token").first)).to include("client_secret" => "DCR-SECRET-1")
+
+      valid.replace(["ACCESS-TOKEN-2"])
+      bundle.plugin.instance_variable_get(:@servers).first.client.request("tools/list", nil, timeout: 5)
+      expect(form(requests_to("#{issuer}/token").last)).to include("grant_type" => "refresh_token", "client_secret" => "DCR-SECRET-1")
+      bundle.command("/mcp logout linear")
+      expect(form(requests_to("#{issuer}/revoke").first)).to include("client_secret" => "DCR-SECRET-1")
     end
 
     it "keeps chi's registration per provider and reuses it at the next login" do
@@ -408,6 +434,8 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
         expect(flow.address).not_to include("CLIENT-SECRET-1")
         expect(requests_to("#{issuer}/register")).to be_empty
         expect(JSON.parse(bundle.secrets[secrets_name])).not_to have_key("client_secret")
+        shown = bundle.cards.map { |c| [c[:title], c[:body]].join(" ") } + bundle.notices.map(&:text) + logged
+        expect(shown.grep(/CLIENT-SECRET-1/)).to eq([])
       end
 
       it "refuses when the server now names another provider" do
@@ -558,6 +586,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
   end
 
   it "never puts a token, a code, a verifier, a client secret or the authorize address in a log line, card or notice" do
+    bundle.http.stub(:post, "#{issuer}/register", status: 201, json: { client_id: "CLIENT-1", client_secret: "DCR-SECRET-1" })
     flow = signed_in!
     exchange = form(requests_to("#{issuer}/token").first)
     valid.replace(["ACCESS-TOKEN-2"]) # a 401: one renew, the request again
@@ -566,7 +595,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
     expect(form(requests_to("#{issuer}/token").last)).to include("grant_type" => "refresh_token", "resource" => url)
     bundle.command("/mcp logout linear")
     secrets = ["ACCESS-TOKEN-1", "REFRESH-TOKEN-1", "ACCESS-TOKEN-2", "REFRESH-TOKEN-2", "AUTH-CODE-1", exchange["code_verifier"],
-               query(flow)["state"], query(flow)["code_challenge"]]
+               query(flow)["state"], query(flow)["code_challenge"], "DCR-SECRET-1"]
 
     shown = bundle.cards.map { |c| [c[:title], c[:body]].join(" ") } + bundle.notices.map(&:text) + logged
     secrets.each { |secret| expect(shown.grep(/#{Regexp.escape(secret)}/)).to eq([]), "#{secret} shown" }

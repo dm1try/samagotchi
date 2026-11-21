@@ -273,7 +273,8 @@ class Plugin
         issuer = Array(resource["authorization_servers"]).first
         raise Refusal, "#{@name}'s sign-in data names no sign-in provider" unless issuer.is_a?(String) && !issuer.empty?
         if bound && issuer != bound
-          raise Refusal, "#{@name} now points at another sign-in provider (#{issuer}); your client is registered with #{bound}"
+          raise Refusal, "#{@name} now points at another sign-in provider (#{OAuth.plain(issuer, 200)}); your client is " \
+                         "registered with #{bound}"
         end
 
         meta = provider_metadata(issuer)
@@ -698,6 +699,8 @@ class Plugin
         end
       rescue Samagotchi::Plugin::Secrets::Unavailable, Samagotchi::Plugin::Secrets::Busy => e
         raise Client::Unavailable, "the sign-in can't be renewed: #{e.message}"
+      rescue ArgumentError => e # a renewed sign-in the store refuses (over 16 KB): nothing kept, the old one stays
+        raise Client::Unavailable, "the sign-in can't be renewed: #{e.message[/\A[^(]{0,120}/].strip}"
       end
 
       # Forget what it holds: the next #call reads the store (a new sign-in,
