@@ -30,6 +30,8 @@ module Samagotchi
         Allowed.new(name: "Samagotchi::Plugin::Sessions::Error", file: "samagotchi/plugin/sessions"),
         Allowed.new(name: "Samagotchi::Plugin::AttachedContext::Error", file: "samagotchi/plugin/attached_context"),
         Allowed.new(name: "Samagotchi::Plugin::Peer", file: "samagotchi/plugin/peer"),
+        Allowed.new(name: "Samagotchi::Plugin::Secrets::Unavailable", file: "samagotchi/plugin/secrets"),
+        Allowed.new(name: "Samagotchi::Plugin::Secrets::Busy", file: "samagotchi/plugin/secrets"),
         Allowed.new(name: "Samagotchi::Tools::ToolIndex::Tool", file: "samagotchi/tools/tool_index"),
         Allowed.new(name: "Samagotchi::Tools::ToolIndex::Group", file: "samagotchi/tools/tool_index"),
         Allowed.new(name: "Samagotchi::Tools::ToolIndex.schema_note", file: "samagotchi/tools/tool_index"),

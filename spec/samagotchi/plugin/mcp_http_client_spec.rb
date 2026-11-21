@@ -17,7 +17,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
   let(:server) { FakeProviderServer.start }
   let(:url) { "#{server.root_url}/mcp?key=QUERY-SECRET" }
   let(:logged) { [] }
-  let(:token) { -> {} }
+  let(:token) { client_class::StaticToken.new { nil } }
   let(:headers) { { "X-Example" => "HEADER-SECRET" } }
   let(:http) { Samagotchi::Plugin::Http.new(bundle: "mcp") }
   let(:client) do
@@ -187,7 +187,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
       fake.stub(:delete, %r{/mcp}, status: 405)
       # ctx.http's default cancel is a stopped turn's: the DELETE goes out all the same.
       stopped = Samagotchi::CancellationController.new.tap(&:cancel!)
-      faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
                                     http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake, cancel_lookup: -> { stopped }))
       faked.handshake(timeout: 5, cancelled: nil)
 
@@ -200,16 +200,16 @@ RSpec.describe "The mcp bundle's HTTP client" do
   end
 
   describe "statuses" do
-    it "says a 401 needs a token, and doesn't try legacy" do
+    it "says a 401 needs a token or sign-in, its status on the error, and doesn't try legacy" do
       server.enqueue("/mcp", status: 401, body: "")
 
       expect { client.handshake(timeout: 5, cancelled: nil) }
-        .to raise_error(errors::Unavailable, "needs a token (401): set bearer_token_env (sign-in comes in a later chi)")
+        .to raise_error(client_class::Refused, "needs a token or sign-in (401)") { |e| expect(e.status).to eq(401) }
       expect(methods_sent).to eq(["server/discover"])
     end
 
     context "with a token" do
-      let(:token) { -> { "fake-token-value" } }
+      let(:token) { client_class::StaticToken.new { "fake-token-value" } }
 
       it "sends it as a bearer token, and says a 401 refused it" do
         server.enqueue("/mcp", status: 401, body: "bad request: token", headers: { "Content-Type" => "text/plain" })
@@ -220,7 +220,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
     end
 
     it "sends nothing when the token's variable is unset" do
-      unset = client_class.new(url, headers: {}, token: -> { raise client_class::Refused, "GITHUB_MCP_TOKEN is not set" },
+      unset = client_class.new(url, headers: {}, token: client_class::StaticToken.new { raise client_class::Refused, "GITHUB_MCP_TOKEN is not set" },
                                     http: http, log: ->(*) {})
 
       expect { unset.handshake(timeout: 5, cancelled: nil) }.to raise_error(errors::Unavailable, "GITHUB_MCP_TOKEN is not set")
@@ -249,7 +249,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
     it "words a redirect whose Location isn't a URL without it (it may be a signed URL)" do
       fake = Samagotchi::Testing::FakeHttp.new
       fake.stub(:post, %r{/mcp}, status: 302, headers: { "Location" => "http://[bad/x?k=QUERY-SECRET" })
-      faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
                                     http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
 
       # discover's 302 falls to legacy; initialize's is the error.
@@ -283,7 +283,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
 
     it "calls a server it can't reach Dead, naming host and port" do
       port = TCPServer.new("127.0.0.1", 0).then { |s| s.addr[1].tap { s.close } }
-      gone = client_class.new("http://127.0.0.1:#{port}/mcp", headers: {}, token: -> {}, http: http, log: ->(*) {})
+      gone = client_class.new("http://127.0.0.1:#{port}/mcp", headers: {}, token: client_class::StaticToken.new { nil }, http: http, log: ->(*) {})
 
       expect { gone.handshake(timeout: 5, cancelled: nil) }
         .to raise_error(errors::Dead, "POST 127.0.0.1:#{port}: connection refused")
@@ -349,7 +349,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
           __getobj__.stream(**args, &block)
         end
       end
-      faked = client_class.new(url, headers: {}, token: -> {}, log: ->(*) {},
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
                                     http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: recording.new(fake)))
       faked.handshake(timeout: 0.5, cancelled: nil)
 
@@ -403,7 +403,7 @@ RSpec.describe "The mcp bundle's HTTP client" do
   end
 
   context "with a token and header values" do
-    let(:token) { -> { "fake-token-value" } }
+    let(:token) { client_class::StaticToken.new { "fake-token-value" } }
 
     it "never puts them in an error, a log field or inspect" do
       server.enqueue("/mcp", status: 401, body: "fake-token-value HEADER-SECRET")

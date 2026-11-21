@@ -3,6 +3,7 @@
 # The mcp bundle's second plugin part (manifest.yml plugin: parts:, loaded
 # after client.rb, whose Client::Error and Client::Unavailable its error
 # classes subclass, and before plugin.rb): the HTTP JSON-RPC client.
+require "digest"
 require "json"
 require "uri"
 require "samagotchi/cancellation_controller"
@@ -38,8 +39,20 @@ class Plugin
     end
 
     # No token, or the server refused one (401, 403): the handshake never
-    # tries legacy for it.
-    class Refused < Client::Unavailable; end
+    # tries legacy for it. +status+ is the answer's (nil: refused before
+    # sending, an unset variable).
+    class Refused < Client::Unavailable
+      attr_reader :status
+      # 16 hex of the SHA-256 of the token a 401 refused (nil: none sent),
+      # never the token: whether the kept one is newer (Plugin#newer_sign_in?).
+      attr_accessor :sent_digest
+
+      def initialize(message = nil, status: nil)
+        @status = status
+        super(message)
+      end
+    end
+
     # A 404 for a legacy session id: the session expired.
     class Expired < Client::Unavailable; end
 
@@ -49,14 +62,36 @@ class Plugin
       def self.for(seconds) = new(seconds, Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
 
       def left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # The same budget, +seconds+ later: time it doesn't count (a sign-in
+      # renewing, OAuth::Token: its own deadline).
+      def later(seconds) = with(deadline: deadline + seconds)
+    end
+
+    # HttpClient's token: for a server with no token (nil) or a static one
+    # (bearer_token_env: the block looks it up at each request and raises
+    # Refused when its variable is unset): there is nothing to refresh.
+    class StaticToken
+      def initialize(&lookup)
+        @lookup = lookup
+      end
+
+      # @return [String, nil] the bearer token
+      def call = @lookup.call
+
+      # @return [Boolean] whether there is a new token to try (never)
+      def refresh_token!(_sent = nil) = false
+
+      def inspect = "#<#{self.class.name.split("::").last}>"
     end
 
     attr_reader :era
 
     # @param url [String] http(s)
     # @param headers [Hash{String=>String}] sent as given
-    # @param token [#call] → the bearer token, or nil for none; raises
-    #   Client::Unavailable when its variable is unset
+    # @param token [#call, #refresh_token!] #call → the bearer token, or nil
+    #   for none (raises Client::Unavailable when its variable is unset);
+    #   #refresh_token! → whether a new one is there to try (StaticToken)
     # @param http [#stream, #request] ctx.http
     # @param log [#call] (event, fields)
     def initialize(url, headers:, token:, http:, log:)
@@ -184,11 +219,16 @@ class Plugin
     end
 
     # One message on the wire, and its answer, in what is left of +budget+.
+    # A 401 to a token it sent renews the token once (#refresh_token!) and
+    # sends the message again; the time a renew takes, before the message or
+    # after its 401, isn't the budget's.
     # @return [Hash, nil] the result (nil for a notification)
-    def post(method, params, budget, cancelled, notification: false, session: false)
+    def post(method, params, budget, cancelled, notification: false, session: false, renewed: false)
       id = notification ? nil : @mutex.synchronize { @next_id += 1 }
       message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
+      asked = monotonic
       headers = headers_for(method, params)
+      budget = budget.later(monotonic - asked)
       raise Client::Timeout, timed_out(method, budget) if (left = budget.left) <= 0
 
       timer = Samagotchi::CancellationController.new
@@ -199,6 +239,16 @@ class Plugin
           answer(res, id)
         end
       end
+    rescue Refused => e
+      sent = headers&.fetch("Authorization", nil)&.delete_prefix("Bearer ")
+      e.sent_digest ||= Digest::SHA256.hexdigest(sent)[0, 16] if sent
+      raise unless e.status == 401 && sent && !renewed
+
+      asked = monotonic
+      raise unless @token.refresh_token!(sent)
+
+      @log.call("token_renewed")
+      post(method, params, budget.later(monotonic - asked), cancelled, notification: notification, session: session, renewed: true)
     rescue Samagotchi::Plugin::HttpCancelled
       raise Client::Timeout, timed_out(method, budget) if timer&.reason == :budget
 
@@ -285,8 +335,8 @@ class Plugin
     def refuse(res, token_sent)
       status = res.status
       raise Client::Unavailable, "redirected (#{status})#{redirect_to(res)}: set url: to the new address" if status.between?(300, 399)
-      raise Refused, token_sent ? "refused the token (401)" : "needs a token (401): set bearer_token_env (sign-in comes in a later chi)" if status == 401
-      raise Refused, "refused (403)" if status == 403
+      raise Refused.new(token_sent ? "refused the token (401)" : "needs a token or sign-in (401)", status: 401) if status == 401
+      raise Refused.new("refused (403)", status: 403) if status == 403
       raise Expired, "the session expired (404)" if status == 404 && @era == :legacy && @session_id
 
       message = error_body(res) if content_type(res) == "application/json"
@@ -349,6 +399,8 @@ class Plugin
     end
 
     def content_type(res) = res.headers["content-type"].to_s.split(";").first.to_s.strip.downcase
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     def timed_out(method, budget) = "#{method} timed out after #{format("%g", budget.seconds)}s"
   end

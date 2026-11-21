@@ -8,7 +8,8 @@ require "webrick"
 # is sent. Modern (server/discover, JSON answers) unless +legacy+, which
 # answers discover 404 and initialize and the rest as SSE, the way context7
 # answers its legacy requests. +token+, when set, is the only bearer token it
-# takes (a 401 with an empty body otherwise); +down+ answers 503 to every
+# takes, or a callable asked of each (a 401 with an empty body otherwise, its
+# WWW-Authenticate the +challenge+ when set); +down+ answers 503 to every
 # request while true; +hold+, while true, keeps each request waiting
 # (#holding counts them) before its answer. Wrap examples in
 # FakeProviderServer.without_webmock.
@@ -22,7 +23,7 @@ class FakeMcpHttpServer
 
   Seen = Data.define(:rpc_method, :headers, :json)
 
-  attr_accessor :token, :down, :legacy, :hold
+  attr_accessor :token, :down, :legacy, :hold, :challenge
 
   def self.start(**) = new(**).tap(&:start)
 
@@ -67,9 +68,20 @@ class FakeMcpHttpServer
     end
     held if hold
     return res.status = 503 if down
-    return res.status = 401 if token && req["authorization"] != "Bearer #{token}"
+    return refuse(res) if token && !taken?(req["authorization"].to_s)
 
     answer(message, res)
+  end
+
+  # +token+ is the one it takes, or a callable asked of each.
+  def taken?(header)
+    given = header.delete_prefix("Bearer ")
+    token.respond_to?(:call) ? token.call(given) : given == token
+  end
+
+  def refuse(res)
+    res["WWW-Authenticate"] = challenge if challenge
+    res.status = 401
   end
 
   def held

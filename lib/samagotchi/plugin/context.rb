@@ -414,10 +414,14 @@ module Samagotchi
       # @param actions [Array<Hash>] {label:, command:} ("/hello again")
       # @param level [Symbol] :info or :warn
       # @param id [String, nil] an earlier card's id to replace it
+      # @param between_turns [Boolean] never a running turn's: shown outside
+      #   the turn's block while one runs (from a thread of the plugin's own)
       # @return [String] the card's id
       # @raise [ArgumentError] no title, a bad level or action
-      def card(title:, body: "", actions: [], level: :info, id: nil)
-        @host.card.call(source: @bundle, title: title, body: body, actions: actions, level: level, id: id)
+      def card(title:, body: "", actions: [], level: :info, id: nil, between_turns: false)
+        shown = { source: @bundle, title: title, body: body, actions: actions, level: level, id: id }
+        shown[:between_turns] = true if between_turns
+        @host.card.call(**shown)
       end
 
       # The session's objectives (docs/internals/objectives.md), read now: the

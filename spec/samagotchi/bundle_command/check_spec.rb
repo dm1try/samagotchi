@@ -263,7 +263,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
       expect(api_findings).to eq([
         "warn api plugin.rb:7: ctx.settingz isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: did you mean ctx.settings? docs/plugins.md has the API)",
         "warn api plugin.rb:8: ctx.sessions.nope isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: docs/plugins.md has the API)",
-        "warn api plugin.rb:9: ctx.card takes no titel: in chi #{Samagotchi::VERSION} (fix: did you mean title:? it takes title:, body:, actions:, level:, id:)",
+        "warn api plugin.rb:9: ctx.card takes no titel: in chi #{Samagotchi::VERSION} (fix: did you mean title:? it takes title:, body:, actions:, level:, id:, between_turns:)",
         "warn api plugin.rb:10: ctx.secrets.fetch isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: docs/plugins.md has the API)"
       ])
       expect(@status).to eq(0)

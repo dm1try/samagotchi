@@ -28,6 +28,13 @@
 #           url: https://mcp.context7.com/mcp  # a remote server: url instead of command
 #           bearer_token_env: CONTEXT7_TOKEN   # optional: Authorization: Bearer <its value>
 #           headers: {X-Example: "1"}          # optional, sent as given (not for secrets)
+#         linear:
+#           url: https://mcp.linear.app/mcp    # no static token: a 401 offers sign-in
+#           oauth: {client_id: x, issuer: https://id.example}  # optional: a client of yours
+#       client_metadata_url: https://…/client.json  # optional: chi's client document (CIMD)
+#
+# A remote server with no static token that answers 401 needs sign-in:
+# /mcp login NAME signs in (OAuth, oauth.rb), /mcp logout NAME forgets it.
 #
 # Image blocks in a result go to the model as images (the text keeps
 # "[image 1: image/png]"); so does an image file named in a text block,
@@ -42,7 +49,10 @@
 # definitions take (only a search's answer carries them) and of what the
 # two tools take in every request.
 # Its parts (manifest.yml plugin: parts:, loaded first, in this order):
-# client.rb (Client, the stdio JSON-RPC client) and http_client.rb (HttpClient).
+# client.rb (Client, the stdio JSON-RPC client), http_client.rb (HttpClient),
+# oauth.rb (sign-in: OAuth::Login, OAuth::Token),
+# tools.rb (the tools/list cache and the tool index) and content.rb (a
+# tools/call answer's text and images).
 require "digest"
 require "json"
 require "samagotchi/token_usage"
@@ -66,7 +76,6 @@ class Plugin
   # The states whose server's tools call_tool can reach (a cached or exited
   # server starts on the call).
   OFFERED = %i[running cached exited].freeze
-  IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
 
   # One tool of a server in the index (the tools: filter applied): +name+
   # is the server's, +chi_name+ mcp_<server>_<tool> (what guardrail rules
@@ -82,10 +91,16 @@ class Plugin
   # their definitions' estimated size (#definition_tokens).
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
-  # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio).
+  # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio),
+  # +oauth+ its oauth: map as given (nil without one). +signs_in+: a remote
+  # server with no static token (bearer_token_env, an Authorization
+  # header), whose 401 offers sign-in; +token+ the token its HttpClient
+  # sends (OAuth::Token, else HttpClient::StaticToken); +card_shown+ its
+  # "needs sign-in" card was shown in this worker; +refused+ the digest of
+  # the kept token it last needed sign-in with (not tried again).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
                       :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, :url, :headers,
-                      :token_env, keyword_init: true) do
+                      :token_env, :oauth, :signs_in, :token, :card_shown, :refused, keyword_init: true) do
     # Its state and tools, never the env (values often a token), the
     # command's args (which may carry a token too), a URL's path or query
     # or a header's value: a failing spec or a debugger would print those.
@@ -113,6 +128,15 @@ class Plugin
     @left_out = []
     @left_out_lock = Mutex.new
     @publish = Mutex.new
+    # Sign-ins: each server's waiting /mcp login thread, the "needs sign-in"
+    # cards a participant's turn held back, the providers that refused
+    # chi's client document (this worker only), and the controller the
+    # sign-ins' threads stop on (the plugin's shutdown).
+    @sign_ins = {}
+    @sign_in_lock = Mutex.new
+    @held_cards = []
+    @cimd_refused = {}
+    @sign_in_cancel = Samagotchi::CancellationController.new
   end
 
   # The servers' names, never @settings (the raw servers config, env values
@@ -148,6 +172,7 @@ class Plugin
                           restarts: 0, tokens: 0)
       server.timeout = positive(server.config["timeout"]) || @timeout
       resolve(server, ctx)
+      server.token = token_of(server, ctx) if server.url
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
       server
     end
@@ -177,13 +202,291 @@ class Plugin
       end
     end
     publish
-    chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |_args, command_ctx|
-      command_ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
-      nil
+    # The sign-ins' stop seat: chi stops its services as it leaves.
+    chi.service("(sign-ins)", eager: true) { |svc| svc.on_stop { stop_sign_ins } }
+    chi.on(:after_turn) { |_event, hook_ctx| show_held_cards(hook_ctx) unless hook_ctx.turn_author }
+    chi.command "/mcp", "list the MCP servers (login NAME, logout NAME: sign in to or out of a remote one)",
+                anytime: true do |args, command_ctx|
+      mcp_command(args, command_ctx)
     end
   end
 
+  # chi's client metadata document (CIMD: its client_id at a provider that
+  # takes one), pages/oauth/client.json in chi's repository once GitHub
+  # Pages serves it there. Not the default yet: a provider fetches it during
+  # the sign-in, so an address that isn't live would fail in the browser.
+  # bundles: mcp: client_metadata_url: sets one (this one, or your own).
+  CLIENT_METADATA_DOCUMENT = "https://dm1try.github.io/samagotchi/oauth/client.json"
+  CLIENT_METADATA_URL = nil
+
+  # /mcp's one line for a word it doesn't know.
+  USAGE = "usage: /mcp (lists the servers), /mcp login NAME, /mcp logout NAME"
+
   private
+
+  # /mcp: no word lists the servers (a card); login / logout NAME sign in
+  # to or out of a remote server; another word answers USAGE.
+  def mcp_command(args, ctx)
+    show_held_cards(ctx)
+    word, name, extra = args.to_s.split(/\s+/, 3)
+    case word
+    when nil
+      ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
+      nil
+    when "login", "logout"
+      return "usage: /mcp #{word} NAME" if name.nil? || extra
+
+      word == "login" ? login(name, ctx) : logout(name, ctx)
+    else USAGE
+    end
+  end
+
+  # ── Sign-in (the OAuth in oauth.rb; here its wiring) ──────────────────
+
+  # Why /mcp login|logout can't act on server +name+, nil when it can.
+  def sign_in_refusal(name)
+    server = @servers.find { |s| s.name == name }
+    return "no MCP server #{name}#{" (#{@servers.map(&:name).join(", ")})" unless @servers.empty?}" unless server
+    return "#{name} is a local server: sign-in is for remote ones (url:)" unless server.url
+    return "#{name} has a static token (bearer_token_env: or an Authorization header): it doesn't sign in" unless server.signs_in
+    return "#{name}'s url: has a query: chi can't sign in to it (it would go out with the sign-in)" if URI.parse(server.url).query
+
+    config_error(server)
+  end
+
+  # /mcp login NAME: answers at once; discovery, the client, the flow and
+  # the exchange run on a thread of the plugin's (OAuth::Login), whose
+  # result or error replaces the flow's card.
+  def login(name, ctx)
+    refusal = sign_in_refusal(name)
+    return refusal if refusal
+    return "sign-in needs the web or a terminal: this run is one-shot" if ctx.frontend == :one_shot
+    if @settings.key?("client_metadata_url") && client_metadata_url.nil?
+      return "bundles: mcp: client_metadata_url: must be an https address with a path (chi's client document)"
+    end
+    return "this chi can't sign in (it has no ctx.sign_in)" unless ctx.respond_to?(:sign_in) && ctx.respond_to?(:secrets)
+
+    server = @servers.find { |s| s.name == name }
+    return "#{name} is signed in already (from another session): connected." if signed_in_elsewhere?(server, ctx)
+
+    started = @sign_in_lock.synchronize do
+      next false if @sign_ins[name]&.alive? || @sign_in_cancel.cancelled?
+
+      @sign_ins[name] = Thread.new { sign_in(server, ctx) }
+    end
+    return "a sign-in to #{name} is already waiting: finish it in the browser, or let it time out" unless started
+
+    "Opening sign-in for #{name}…"
+  end
+
+  # The login's thread: every error ends on a card, never raised into nothing.
+  def sign_in(server, ctx)
+    login = OAuth::Login.new(ctx: ctx, server: server, secret_lookup: ->(name) { env_value(server, name) },
+                             client_metadata_url: client_metadata_url, cimd_refused: @cimd_refused, cancel: @sign_in_cancel,
+                             log: ->(event, **fields) { ctx.log.info("mcp_#{event}", **fields) })
+    card_id = login.run
+    signed_in(server, card_id, ctx) if card_id
+  rescue OAuth::Refusal => e
+    ctx.log.warn("mcp_sign_in_failed", server: server.name, error: e.class.name)
+    ctx.card(id: e.card_id, title: "Sign-in to #{server.name} failed", body: e.message, level: :warn, between_turns: true)
+  rescue StandardError => e
+    ctx.log.warn("mcp_sign_in_failed", server: server.name, error: e.class.name)
+    ctx.card(title: "Sign-in to #{server.name} failed", body: "chi's sign-in broke (#{e.class.name}); the debug log has it",
+             level: :warn, between_turns: true)
+  end
+
+  # Kept: the server connects as a lazy start does (handshake, tools/list,
+  # the cache), with spawn directly when its service already runs (a 401
+  # met during a call, a sign-out), then the flow's card says so.
+  def signed_in(server, card_id, ctx)
+    server.token.forget
+    begin
+      reconnect(server, ctx)
+      count = offered(server).size
+      ctx.card(id: card_id, title: "Signed in to #{server.name}", body: "#{count} tool#{"s" unless count == 1}, ready to use.",
+               between_turns: true)
+    rescue StandardError => e
+      if needs_sign_in?(server, e)
+        signed_out(server, ctx, e)
+        return
+      end
+
+      ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, signed_in: true)
+      ctx.card(id: card_id, title: "Signed in, but #{server.name} didn't connect", body: e.message, level: :warn,
+               between_turns: true)
+    end
+  end
+
+  # Connect a server that has a sign-in now (spawn when its service
+  # already runs, else its first start), then it runs; its "needs sign-in"
+  # card loses its button (a later refusal shows it again).
+  def reconnect(server, ctx)
+    @restart.synchronize do
+      if server.service.state == :running
+        old = server.client
+        spawn(server, ctx, cancelled: @sign_in_cancel)
+        old.close unless old.equal?(server.client)
+      else
+        server.service.value
+      end
+      @sign_in_lock.synchronize do
+        server.state = :running
+        server.error = nil
+      end
+    end
+    publish
+    return unless @sign_in_lock.synchronize { server.card_shown.tap { server.card_shown = false } }
+
+    ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in", body: "Signed in since.", between_turns: true)
+  end
+
+  # A server that needs sign-in, signed in to meanwhile from another
+  # session (the kept token, read again): connected now. False when there
+  # is no kept token, or it doesn't connect.
+  def signed_in_elsewhere?(server, ctx)
+    return false unless server.state == :needs_sign_in && server.token.respond_to?(:kept)
+
+    server.token.forget
+    kept = kept_digest(server)
+    return false if kept.nil? || kept == server.refused
+
+    reconnect(server, ctx)
+    ctx.log.info("mcp_signed_in_elsewhere", server: server.name)
+    true
+  rescue StandardError => e
+    server.refused = kept_digest(server) # what it holds after a renew, too: not tried again
+    ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, signed_in_elsewhere: true)
+    false
+  end
+
+  # 16 hex of the SHA-256 of the kept access token, nil without one.
+  def kept_digest(server)
+    kept = server.token.respond_to?(:kept) && server.token.kept
+    kept ? Digest::SHA256.hexdigest(kept["access_token"])[0, 16] : nil
+  rescue StandardError
+    nil
+  end
+
+  # Whether the kept sign-in is newer than the token +error+ refused (or,
+  # none sent, whether there is one now): another session or a login
+  # signed in after the request went out.
+  def newer_sign_in?(server, error)
+    kept = server.token.respond_to?(:kept) && server.token.kept
+    return false unless kept
+
+    error.sent_digest.nil? || Digest::SHA256.hexdigest(kept["access_token"])[0, 16] != error.sent_digest
+  rescue StandardError
+    false
+  end
+
+  # /mcp logout NAME: the kept token goes (the provider's revocation asked,
+  # best effort), the client closes, the server needs sign-in. chi's
+  # registration with the provider stays.
+  def logout(name, ctx)
+    refusal = sign_in_refusal(name)
+    return refusal if refusal
+
+    server = @servers.find { |s| s.name == name }
+    kept = server.token.kept
+    ctx.secrets.delete(server.token.name)
+    server.token.forget
+    OAuth.revoke(ctx.http, kept, log: ->(event, **fields) { ctx.log.info("mcp_#{event}", server: name, **fields) }) if kept
+    server.client&.close
+    server.state = :needs_sign_in
+    publish
+    "Signed out of #{name}."
+  rescue Samagotchi::Plugin::Secrets::Unavailable, Samagotchi::Plugin::Secrets::Busy => e
+    "#{name}'s sign-in wasn't forgotten: #{e.message}"
+  end
+
+  # Whether +error+ means the server wants a sign-in: a 401 from one that signs in.
+  def needs_sign_in?(server, error) = server.signs_in && error.is_a?(HttpClient::Refused) && error.status == 401
+
+  # The server needs sign-in: its state (said once), its card, and the
+  # line its call answers.
+  # Nil when +error+ (the 401) was for an older token than the kept one: the
+  # state stays, the next request sends the new token.
+  def signed_out(server, ctx, error = nil)
+    if error && newer_sign_in?(server, error)
+      server.token.forget
+      return nil
+    end
+
+    first = @sign_in_lock.synchronize { server.state == :needs_sign_in ? false : (server.state = :needs_sign_in) }
+    if first
+      server.refused = kept_digest(server)
+      server.error = nil
+      publish
+      ctx.log.info("mcp_needs_sign_in", server: server.name)
+    end
+    offer_sign_in(server, ctx)
+    "Error: #{sign_in_line(server, ctx.turn_author)}"
+  end
+
+  # What a call of a server that needs sign-in answers: the owner's
+  # command, or (a participant's turn) who signs in, no command.
+  def sign_in_line(server, author = nil)
+    return "#{server.name} needs sign-in: the session's owner signs in" if author
+
+    "#{server.name} needs sign-in: the user runs /mcp login #{server.name}"
+  end
+
+  # The "needs sign-in" card, once per server per worker, never a turn's;
+  # none on a one-shot; on a participant's turn held for the owner's next
+  # turn end or command.
+  def offer_sign_in(server, ctx)
+    return if ctx.frontend == :one_shot
+
+    if ctx.turn_author
+      @sign_in_lock.synchronize { @held_cards << server.name unless @held_cards.include?(server.name) }
+      return
+    end
+    first = @sign_in_lock.synchronize { server.card_shown ? false : (server.card_shown = true) }
+    return unless first
+
+    ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in",
+             body: "The server asks chi to sign in. Sign in opens its provider's page in your browser.",
+             actions: [{ label: "Sign in", command: "/mcp login #{server.name}" }], between_turns: true)
+  end
+
+  def show_held_cards(ctx)
+    names = @sign_in_lock.synchronize { @held_cards.slice!(0..) }
+    names.each do |name|
+      server = @servers.find { |s| s.name == name }
+      offer_sign_in(server, ctx) if server&.state == :needs_sign_in
+    end
+  end
+
+  # chi's client document's address (bundles: mcp: client_metadata_url:,
+  # else CLIENT_METADATA_URL): an https address with a path, else nil.
+  def client_metadata_url
+    value = @settings.fetch("client_metadata_url", CLIENT_METADATA_URL)
+    uri = URI.parse(value.to_s)
+    uri.is_a?(URI::HTTPS) && !uri.host.to_s.empty? && uri.path.to_s.length > 1 && uri.userinfo.nil? ? value.to_s : nil
+  rescue URI::Error
+    nil
+  end
+
+  # The service's stop: the waiting sign-ins end (core stops their flows
+  # too), their threads get a moment to put their cards right.
+  def stop_sign_ins
+    @sign_in_cancel.cancel!
+    threads = @sign_in_lock.synchronize { @sign_ins.values }
+    threads.each { |thread| thread.join(2) }
+  end
+
+  # A remote server's token object: OAuth::Token for one that signs in
+  # (with this chi's ctx.secrets), else the static one.
+  def token_of(server, ctx)
+    return token_lookup(server) unless server.signs_in && ctx.respond_to?(:secrets)
+
+    oauth = server.oauth.is_a?(Hash) ? server.oauth : {}
+    variable = oauth["client_secret_env"]
+    client = oauth["client_id"] ? { id: oauth["client_id"], issuer: oauth["issuer"] } : nil
+    OAuth::Token.new(secrets: ctx.secrets, resource: URI.parse(server.url).query ? nil : OAuth.canonical(server.url),
+                     http: ctx.http, client: client, client_secret: -> { variable && env_value(server, variable) },
+                     log: ->(event, **fields) { ctx.log.info("mcp_#{event}", server: server.name, **fields) })
+  end
 
   # The command, env and cwd the server runs with, and their digest (the
   # cache's key: command, args, env names and values, and the cwd; the
@@ -200,16 +503,21 @@ class Plugin
     server.digest = Digest::SHA256.hexdigest(JSON.generate([server.command, server.env.sort, server.cwd]))
   end
 
-  # A remote server's url, headers and token variable, and their digest
-  # (never the token's value: a rotated token isn't a changed config).
+  # A remote server's url, headers, token variable and oauth: map, and
+  # their digest (never the token's value: a rotated token isn't a changed
+  # config). The oauth: map joins the digest only when it is set: a server
+  # without one keeps the digest it had before sign-in came (its cache).
   def resolve_url(server)
     server.command = []
     server.env = server.config["env"].is_a?(Hash) ? server.config["env"].to_h { |k, v| [k.to_s, v.to_s] } : {}
     server.url = server.config["url"].to_s
     server.headers = server.config["headers"].is_a?(Hash) ? server.config["headers"] : {}
     server.token_env = server.config["bearer_token_env"]&.to_s
-    server.digest = Digest::SHA256.hexdigest(JSON.generate([server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort,
-                                                            server.token_env]))
+    server.oauth = server.config["oauth"] if server.config.key?("oauth")
+    server.signs_in = server.token_env.nil? && server.headers.keys.none? { |name| name.to_s.casecmp?("authorization") }
+    digested = [server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort, server.token_env]
+    digested << (server.oauth.is_a?(Hash) ? server.oauth.map { |k, v| [k.to_s, v] }.sort_by(&:first) : server.oauth) if server.config.key?("oauth")
+    server.digest = Digest::SHA256.hexdigest(JSON.generate(digested))
   end
 
   # The headers chi sets itself on a remote server's requests.
@@ -247,24 +555,82 @@ class Plugin
         return "headers: #{name} is chi's to set (#{where})"
       end
     end
-    nil
+    oauth_error(server, where) if server.config.key?("oauth")
   end
 
-  # A remote server's bearer token, looked up at each request (never
-  # kept): the env a stdio server would get (its env:, then the project
-  # env: #server_env), then the worker's.
-  def token_lookup(server)
-    return -> {} unless server.token_env
+  # The oauth: map's keys (all optional).
+  OAUTH_KEYS = %w[client_id issuer client_secret_env scopes redirect_port].freeze
 
-    lambda do
-      value = server_env(server)[server.token_env].to_s
-      value = ENV[server.token_env].to_s if value.empty?
+  # Why a remote server's oauth: map can't be used, nil when it can: a
+  # client registered by hand is bound to its provider (issuer:), and a
+  # server signs in or has a static token, never both.
+  def oauth_error(server, where)
+    oauth = server.oauth
+    return "oauth: must be a map (#{where})" unless oauth.is_a?(Hash)
+    return "oauth: and bearer_token_env: are one or the other (#{where})" if server.token_env
+    if server.headers.keys.any? { |name| name.to_s.casecmp?("authorization") }
+      return "oauth: and an Authorization header are one or the other (#{where})"
+    end
+
+    unknown = oauth.keys.map(&:to_s) - OAUTH_KEYS
+    return "oauth: #{unknown.first[0, 40]} isn't one of #{OAUTH_KEYS.join(", ")} (#{where})" unless unknown.empty?
+
+    id = oauth["client_id"]
+    return "oauth: client_id: must be a text (#{where})" if oauth.key?("client_id") && !(id.is_a?(String) && !id.strip.empty?)
+    return "oauth: issuer: is required with client_id: (#{where})" if id && !oauth.key?("issuer")
+    return "oauth: issuer: goes with client_id: (#{where})" if oauth.key?("issuer") && !id
+    return "oauth: issuer: must be an https address (#{where})" if id && !issuer_address?(oauth["issuer"])
+
+    secret_env = oauth["client_secret_env"]
+    if oauth.key?("client_secret_env")
+      return "oauth: client_secret_env: must name an environment variable (#{where})" unless secret_env.is_a?(String) && !secret_env.strip.empty?
+      return "oauth: client_secret_env: goes with client_id: (#{where})" unless id
+    end
+    scopes = oauth["scopes"]
+    if oauth.key?("scopes") && !(scopes.is_a?(Array) && scopes.all? { |scope| scope.is_a?(String) && scope.match?(/\A[!#-\[\]-~]+\z/) })
+      return "oauth: scopes: must be a list of scope names (#{where})"
+    end
+
+    port = oauth["redirect_port"]
+    "oauth: redirect_port: must be a port, 1024 to 65535 (#{where})" if oauth.key?("redirect_port") && !(port.is_a?(Integer) && port.between?(1024, 65_535))
+  end
+
+  # An https address with a host (http only on a loopback host: local
+  # development), no query or fragment: what an issuer is.
+  def issuer_address?(value)
+    uri = URI.parse(value.to_s)
+    return false unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && uri.query.nil? && uri.fragment.nil? && uri.userinfo.nil?
+
+    uri.scheme == "https" || loopback_host?(uri.host)
+  rescue URI::Error
+    false
+  end
+
+  def loopback_host?(host) = %w[127.0.0.1 ::1 [::1] localhost].include?(host.to_s.downcase)
+
+  # A remote server's bearer token (HttpClient's token:), looked up at each
+  # request (never kept): the env a stdio server would get (its env:, then
+  # the project env: #server_env), then the worker's.
+  # @return [HttpClient::StaticToken]
+  def token_lookup(server)
+    return HttpClient::StaticToken.new { nil } unless server.token_env
+
+    HttpClient::StaticToken.new do
+      value = env_value(server, server.token_env).to_s
       raise HttpClient::Refused, "#{server.token_env} is not set" if value.empty?
       # An env file saved with CRLF line ends; a header can't carry it.
       raise HttpClient::Refused, "#{server.token_env} holds a line break: set it on one line" if value.match?(/[\r\n\0]/)
 
       value
     end
+  end
+
+  # +variable+'s value for the server: its env:, the project env, then the
+  # worker's; nil when unset or empty.
+  def env_value(server, variable)
+    value = server_env(server)[variable].to_s
+    value = ENV[variable].to_s if value.empty?
+    value.empty? ? nil : value
   end
 
   # A client's cancelled:, read on the thread that does the work (an init
@@ -279,7 +645,7 @@ class Plugin
   # is the caller's, never assigned here.
   def connect(server, ctx, **callbacks)
     if server.url
-      return HttpClient.new(server.url, headers: server.headers, token: token_lookup(server), http: ctx.http,
+      return HttpClient.new(server.url, headers: server.headers, token: server.token || token_lookup(server), http: ctx.http,
                                         log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
     end
 
@@ -303,8 +669,7 @@ class Plugin
   # it), then cache the list and its info when either changed, and index
   # the tools.
   # @return [Client]
-  def spawn(server, ctx)
-    cancelled = stop_of(server, ctx)
+  def spawn(server, ctx, cancelled: stop_of(server, ctx))
     client = server.client = connect(server, ctx,
                                      on_exit: ->(reason) { exited(server, reason, ctx) },
                                      on_notification: lambda { |method, _params|
@@ -358,6 +723,11 @@ class Plugin
     count = server.listed.size
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
+    if needs_sign_in?(server, e)
+      return "#{server.name} was signed in to meanwhile: its next call connects" unless signed_out(server, ctx, e)
+
+      return "#{server.name} needs sign-in (/mcp login #{server.name})"
+    end
     if cached && server.url
       ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
       server.error = e.message # its first call failing the same way says nothing new
@@ -397,6 +767,11 @@ class Plugin
       ctx.log.info("mcp_tools_refreshed", server: server.name, tools: listed.size, changed: changed)
       index(server, ctx) if changed
     end
+    nil
+  rescue HttpClient::Refused => e
+    raise unless needs_sign_in?(server, e)
+
+    signed_out(server, ctx, e) if server.state == :cached
     nil
   end
 
@@ -454,162 +829,6 @@ class Plugin
     tools
   end
 
-  # ── The tools/list cache ──────────────────────────────────────────────
-
-  # Where the server's cache is: tools-<server>.json, the name sanitized.
-  def cache_path(server, ctx)
-    File.join(ctx.data_dir, "tools-#{server.name.gsub(/[^A-Za-z0-9_.-]+/, "_")}.json")
-  end
-
-  # Take the server's tools from its cache: true when it holds this
-  # config's list (the server is then :cached, not started).
-  def load_cache(server, ctx)
-    data = JSON.parse(File.read(cache_path(server, ctx)))
-    return false unless data.is_a?(Hash) && data["digest"] == server.digest && data["tools"].is_a?(Array)
-
-    server.listed = data["tools"].select { |tool| tool.is_a?(Hash) && tool["name"] }
-    server.info = data["info"].is_a?(String) ? data["info"] : nil
-    server.cached_at = begin
-      Time.iso8601(data["saved_at"].to_s)
-    rescue ArgumentError
-      nil
-    end
-    server.state = :cached
-    true
-  rescue SystemCallError, JSON::ParserError
-    false
-  end
-
-  # Written aside and renamed: workers share the dir.
-  def save_cache(server, ctx)
-    Samagotchi::AtomicFile.write(cache_path(server, ctx),
-                                 JSON.generate({ digest: server.digest, saved_at: Time.now.utc.iso8601, info: server.info,
-                                                 tools: server.listed }.compact))
-  rescue SystemCallError => e
-    ctx.log.warn("mcp_cache_not_written", server: server.name, msg: e.message)
-  end
-
-  # ── Tools ─────────────────────────────────────────────────────────────
-
-  # Index the server's tools, the tools: filter applied: each named, its
-  # schema checked (a bad one is kept, marked, and said once). The whole
-  # list is built, then swapped in: a search on another thread never sees
-  # half a list. Their estimated tokens go to the log when they changed.
-  def index(server, ctx)
-    wanted = server.config["tools"] && Array(server.config["tools"]).map(&:to_s)
-    listed = server.listed || []
-    listed = listed.select { |tool| wanted.any? { |w| File.fnmatch(w, tool["name"], File::FNM_EXTGLOB) } } if wanted
-    tokens = 0
-    tools = listed.map do |listed_tool|
-      tool = McpTool.new(server: server.name, name: listed_tool["name"].to_s,
-                         chi_name: tool_name(server.name, listed_tool["name"]), description: description(listed_tool),
-                         schema: listed_tool["inputSchema"] || { "type" => "object", "properties" => {} }, error: nil)
-      tokens += definition_tokens(tool.chi_name, tool.description, tool.schema)
-      tool
-    rescue StandardError => e # a schema chat_schemas can't read raises more than ArgumentError
-      error = e.message.sub(/\Atool \S+: /, "")
-      left_out("MCP tool #{server.name}/#{tool.name} can't be called: #{error}", ctx)
-      tool.with(error: error)
-    end
-    server.tools = tools.freeze
-    say_clashes(ctx)
-    publish
-    return if tokens == server.tokens
-
-    server.tokens = tokens
-    ctx.log.info("mcp_tools_estimated", server: server.name, tools: offered(server).size, tokens: tokens)
-  end
-
-  # Said once (a notice and the log), not at each index.
-  def left_out(text, ctx)
-    first = @left_out_lock.synchronize { @left_out.include?(text) ? false : (@left_out << text) }
-    return unless first
-
-    ctx.log.warn("mcp_tool_left_out", msg: text)
-    ctx.notify(text, level: :warn)
-  end
-
-  # Tools of every server whose mcp_<server>_<tool> another tool has too
-  # (two servers, git-hub and git_hub; names alike up to NAME_CHARS):
-  # guardrail rules and approvals key on that name, so neither is called.
-  # Said once per clash; checked after each server's index, so whichever
-  # server comes second says it.
-  def say_clashes(ctx)
-    @servers.flat_map(&:tools).group_by(&:chi_name).each do |chi_name, same|
-      next if same.size < 2
-
-      left_out("MCP tools #{same.map { |t| "#{t.server}/#{t.name}" }.join(" and ")} can't be called: " \
-               "both are #{chi_name} to guardrail rules", ctx)
-    end
-  end
-
-  # The other indexed tools with +tool+'s mcp_<server>_<tool>.
-  def clashes(tool)
-    @servers.flat_map(&:tools).select { |t| t.chi_name == tool.chi_name && [t.server, t.name] != [tool.server, tool.name] }
-  end
-
-  # Why call_tool refuses +tool+, nil when it can call it.
-  def refusal(tool)
-    return tool.error if tool.error
-
-    others = clashes(tool)
-    "name clash with #{others.map { |t| "#{t.server}/#{t.name}" }.join(", ")} (#{tool.chi_name})" unless others.empty?
-  end
-
-  # The server's tools call_tool can call (no bad schema, no name clash).
-  def offered(server) = server.tools.reject { |tool| refusal(tool) }
-
-  # The marks a search and /mcp give a tool call_tool refuses.
-  def mark(tool)
-    return "(bad schema)" if tool.error
-
-    others = clashes(tool)
-    "(name clash with #{others.map { |t| "#{t.server}/#{t.name}" }.join(", ")})" unless others.empty?
-  end
-
-  # A tool's definition as the chat path sends it (LLM::ChatLoop#tool_definitions:
-  # the chat schema, wrapped as a function), in estimated tokens
-  # (TokenUsage::CHARS_PER_TOKEN). The native prompts (Gemma, Qwen) render a
-  # flatter schema, so it is an upper bound there.
-  # @raise [ArgumentError] a bad schema
-  def definition_tokens(name, description, schema)
-    Samagotchi::Tools::ToolIndex.spec_tokens(Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil })
-  end
-
-  # Every server's tools into chi's index, a group each: its state (what a
-  # search's notes say), its summary line, and its tools with the marks
-  # and refusals of now (a clash with another server's tool too, so all of
-  # them each time). After each index and each state change a note reads;
-  # one at a time, so the last one published is the newest.
-  def publish
-    return unless @source
-
-    @publish.synchronize do
-      groups = @servers.map do |server|
-        state = { starting: :starting, failed: :failed }.fetch(server.state, :ready)
-        tools = Array(server.tools).map do |tool|
-          Samagotchi::Tools::ToolIndex::Tool.new(group: tool.server, name: tool.name, description: tool.description,
-                                                 schema: tool.schema, acts_as: tool.chi_name, refusal: refusal(tool),
-                                                 mark: mark(tool))
-        end
-        Samagotchi::Tools::ToolIndex::Group.new(name: server.name, summary: server_summary(server), state: state,
-                                                error: state == :failed ? server.error : nil, tools: tools)
-      end
-      @source.publish(groups)
-    end
-  end
-
-  # The server's line in find_tools: its description: from config, else the first
-  # sentence of its instructions, else nothing (its line has the tool
-  # count). Never its tool names: a model that knows them calls them
-  # blind, without a search (a smoke run's Splash did).
-  def server_summary(server)
-    given = server.config["description"].to_s.strip
-    return given unless given.empty?
-
-    server.info
-  end
-
   # ── Calls ─────────────────────────────────────────────────────────────
 
   # A call the index looked up and checked (call_tool): +tool+ a
@@ -624,6 +843,8 @@ class Plugin
   # Wait for a first-run server's start (its init task's); a failure is
   # its init card's.
   def wait_started(server)
+    return signed_in_elsewhere?(server, @ctx) if server&.state == :needs_sign_in
+
     server&.service&.value
   rescue StandardError
     nil
@@ -645,6 +866,7 @@ class Plugin
   # JSON-RPC error answer the tool's inputSchema too (ToolIndex.schema_note).
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} #{server.failed_word}: #{server.error}" if server.state == :failed
+    return signed_out(server, ctx) if server.state == :needs_sign_in && !signed_in_elsewhere?(server, ctx)
 
     client = case server.state
              when :cached then lazy_start(server, ctx)
@@ -663,6 +885,13 @@ class Plugin
     images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
   rescue Client::Dead => e
     "Error: MCP server #{server.name} is #{server.url ? "not reachable" : "not running"} (#{e.message})"
+  rescue HttpClient::Refused => e
+    return "Error: #{e.message}" unless needs_sign_in?(server, e)
+
+    # A sign-in that came while it was on the wire: the call again, once.
+    line = signed_out(server, ctx, e)
+    retry if line.nil? && (resent = !resent)
+    line || "Error: MCP server #{server.name} refused the call (401)"
   rescue Client::Timeout, Client::Cancelled, Client::Unavailable, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   rescue Client::Error => e
@@ -687,6 +916,9 @@ class Plugin
     "Error: #{e.message}"
   rescue StandardError => e
     raise unless server.state == :cached
+    if needs_sign_in?(server, e)
+      return signed_out(server, ctx, e) || "Error: MCP server #{server.name} was signed in to meanwhile: call it again"
+    end
     return not_connected(server, e, ctx) if server.url
 
     server.state = :failed
@@ -738,98 +970,6 @@ class Plugin
     end
   end
 
-  # The answer's text, and the images to attach: its image blocks, and a
-  # text block that is only an image's path (#image_path).
-  # @return [Array(String, Array<Hash>)]
-  def content(result, server, tool)
-    blocks = Array(result["content"])
-    return [JSON.generate(result["structuredContent"]), []] if blocks.empty? && result["structuredContent"]
-
-    images = []
-    text = blocks.map do |block|
-      case block["type"]
-      when "text"
-        line = block["text"].to_s
-        paths = image_paths(line, server).reject { |path| images.any? { |image| image[:path] == path } }
-        next line if paths.empty?
-
-        notes = paths.map do |path|
-          images << { path: path, name: File.basename(path) }
-          "[image #{images.size}: #{File.basename(path)}]"
-        end
-        [line, *notes].join("\n")
-      when "image"
-        mime = block["mimeType"] || "unknown type"
-        bytes = block["data"].to_s.unpack1("m")
-        next "[image: #{mime}, empty]" if bytes.empty?
-
-        images << { bytes: bytes, name: "#{tool}-#{images.size + 1}.#{IMAGE_EXT.fetch(mime, "img")}" }
-        "[image #{images.size}: #{mime}]"
-      when "audio" then "[audio: #{block["mimeType"] || "unknown type"}]"
-      when "resource"
-        resource = block["resource"] || {}
-        mime = resource["mimeType"].to_s
-        blob = resource["blob"].to_s
-        if mime.start_with?("image/") && !blob.empty?
-          bytes = blob.unpack1("m")
-          next "[image: #{mime}, empty]" if bytes.empty?
-
-          images << { bytes: bytes, name: "#{tool}-#{images.size + 1}.#{IMAGE_EXT.fetch(mime, "img")}" }
-          "[image #{images.size}: #{mime}]"
-        else
-          resource["text"] || "[resource: #{resource["uri"]}]"
-        end
-      when "resource_link" then "[resource link: #{block["uri"]}]"
-      else "[#{block["type"] || "unknown"} content]"
-      end
-    end.join("\n")
-    [text, images]
-  end
-
-  # An absolute path ending in an image extension, inside a sentence
-  # ("Saved screenshot to /tmp/shot.png."): no spaces, quotes or brackets.
-  IMAGE_PATH_IN_TEXT = %r{(?<![\w/.~-])/[^\s"'`<>()\[\]{},;]+?\.(?:png|jpe?g|gif|webp)(?![\w/-])}i
-
-  # The images +text+ names, when the server's attach_image_paths isn't
-  # off: the whole text when it is one absolute path (any name), else each
-  # absolute path in it that ends in an image extension. Each must be an
-  # image file (by its bytes) under the system temp dir or the server's
-  # cwd: a server's text can't pull in any image on disk.
-  # @return [Array<String>] real paths, each once
-  def image_paths(text, server)
-    # A remote server can't name a local file usefully, and must not make
-    # chi read one.
-    return [] if server.config["attach_image_paths"] == false || server.url
-
-    whole = text.strip
-    candidates = if whole.start_with?("/") && !whole.include?("\n") && File.file?(whole)
-                   [whole]
-                 else
-                   text.scan(IMAGE_PATH_IN_TEXT)
-                 end
-    candidates.filter_map { |path| image_path(path, server) }.uniq
-  end
-
-  # +path+'s real path when it is an image file under a root, else nil.
-  def image_path(path, server)
-    return nil unless File.file?(path)
-
-    real = File.realpath(path)
-    roots = [Dir.tmpdir, server.cwd].compact.map { |dir| File.realpath(dir) rescue nil }.compact
-    return nil unless roots.any? { |root| real.start_with?(root.end_with?("/") ? root : "#{root}/") }
-
-    image_magic?(real) ? real : nil
-  rescue SystemCallError
-    nil
-  end
-
-  # png, jpeg, gif or webp by the file's first bytes.
-  def image_magic?(path)
-    head = File.binread(path, 12).to_s.b
-    head.start_with?("\x89PNG\r\n\x1a\n".b, "\xFF\xD8\xFF".b, "GIF87a", "GIF89a") ||
-      (head.start_with?("RIFF") && head[8, 4] == "WEBP")
-  end
-
   # The process ended while chi runs: one notice; its next call starts it
   # again (#restart) while restarts are left.
   def exited(server, reason, ctx)
@@ -846,54 +986,6 @@ class Plugin
             end
     ctx.notify("MCP server #{server.name} stopped: #{reason}; #{after}", level: :warn)
   end
-
-  def listing
-    return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/bundles.md, The mcp bundle)." if @servers.empty?
-
-    servers = @servers.map do |server|
-      marker = if @source && !@source.declared_groups.include?(server.name)
-                 " (not in toolkit #{@ctx.toolkit})"
-               end
-      head = "**#{server.name}**: #{state_text(server)}#{marker}"
-      # Sorted: a server lists its tools in its own (often grouped) order.
-      tools = server.tools.sort_by(&:name).map { |t| ["- `#{t.server}/#{t.name}`", mark(t)].compact.join(" ") }
-      tools.empty? ? head : "#{head}\n#{tools.join("\n")}"
-    end
-    [*servers, totals_text].join("\n\n")
-  end
-
-  # /mcp's last line: what every request carries, and the servers' tools'
-  # tokens. When another tool took both names (chi's tool index left its
-  # tools out: a load warning), that the model can't reach them.
-  def totals_text
-    if @source.declared_names.empty?
-      return "The search and call tools aren't declared in this session (other tools have their names; see the " \
-             "load warnings), so the model can't reach the tools above."
-    end
-
-    total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
-    "Every request carries #{@source.declared_names.join(" and ")}: ~#{thousands(@source.declared_tokens)} tokens. " \
-      "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
-      "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."
-  end
-
-  def state_text(server)
-    count = offered(server).size
-    tools = "#{count} tool#{"s" unless count == 1}"
-    case server.state
-    when :cached then "cached (not started), #{tools}, #{tokens_text(server)}"
-    when :running then "#{server.url ? "connected" : "running"} (#{server.client.label}), #{tools}, #{tokens_text(server)}"
-    when :starting then "starting"
-    when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
-    else "stopped: #{server.error}"
-    end
-  rescue Samagotchi::Plugin::Service::Stopped
-    "stopped"
-  end
-
-  def tokens_text(server) = "~#{thousands(server.tokens)} tokens"
-
-  def thousands(number) = number.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
 
   def positive(value)
     number = Float(value.to_s, exception: false)

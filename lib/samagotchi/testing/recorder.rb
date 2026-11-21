@@ -108,9 +108,12 @@ module Samagotchi
         nil
       end
 
-      # Checked as chi's cards are (Plugin::Card.build); the id it shows.
-      def card(**fields)
-        card = Plugin::Card.build(**fields).freeze
+      # Checked as chi's cards are (Plugin::Card.build); the id it shows. A
+      # card shown with between_turns: true is recorded with it.
+      def card(between_turns: false, **fields)
+        card = Plugin::Card.build(**fields)
+        card = card.merge(between_turns: true) if between_turns
+        card.freeze
         record(@cards, card)
         card[:id]
       end
