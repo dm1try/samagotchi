@@ -387,12 +387,18 @@ RSpec.describe "The mcp bundle's HTTP client" do
     it "stops the handshake on a Stop too, leaving no thread behind" do
       server.enqueue("/mcp", sse: [], hold: true)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      threads = Thread.list.size
+      before = Thread.list
       stop = stop_once_held
 
       expect { client.handshake(timeout: 30, cancelled: stop) }.to raise_error(errors::Cancelled, "server/discover was cancelled")
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
-      expect(Thread.list.count(&:alive?)).to be <= threads + 1 # the stopper, ending
+      # The threads the call left, by identity: not the fake server's (WEBrick's
+      # connection thread, held until the server stops, and its timeout watcher,
+      # started lazily on a process's first request) nor Ruby's Timeout thread
+      # (lazy too), and not the stopper, which ends on its own.
+      eventually(timeout: 2) do
+        expect((Thread.list - before).select(&:alive?).reject { |t| t.inspect.match?(%r{/webrick/|Timeout stdlib}) }).to be_empty
+      end
     end
   end
 
