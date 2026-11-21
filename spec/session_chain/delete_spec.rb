@@ -236,12 +236,112 @@ RSpec.describe Samagotchi::SessionChain::Delete do
     expect(exists?(b.id)).to be(true)
   end
 
-  it "leaves a session in no chain to the plain delete" do
-    plain = make
-    child = make(parent: plain)
+  # A session in no chain is a link with nothing to undo: its delegates
+  # follow SessionManager::DELEGATES as a link's do.
+  describe "a session in no chain" do
+    def all_ids = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).sort
+    def file_of(id) = Samagotchi::Session.session_file(id, state_dir: tmpdir)
 
-    expect(delete(plain.id)).to include(id: plain.id, unarchived: [], moved_back: [], left_running: [])
-    expect(exists?(child.id)).to be(true)
+    it "takes its stopped and archived delegates; a running one stays whole with its stopped child" do
+      plain = make
+      stopped = make(parent: plain)
+      archived = make(parent: plain).tap { |c| Samagotchi::ArchiveStore.archive(c.id, state_dir: tmpdir) }
+      running = make(parent: plain)
+      grandchild = make(parent: running)
+      own(running.id)
+      untouched = [running.id, grandchild.id].to_h { |id| [id, File.read(file_of(id))] }
+
+      result = delete(plain.id)
+
+      expect(result.keys).to include(:id, :removed, :stopped, :unarchived, :moved_back, :deleted, :left_running)
+      expect(result).to include(id: plain.id, unarchived: [], moved_back: [], stopped: false)
+      expect(result[:deleted]).to contain_exactly(stopped.id, archived.id, plain.id)
+      expect(result[:deleted].last).to eq(plain.id)
+      expect(result[:left_running]).to eq([running.id, grandchild.id])
+      expect([exists?(plain.id), exists?(stopped.id), exists?(archived.id)]).to eq([false, false, false])
+      expect(untouched.to_h { |id, _| [id, File.read(file_of(id))] }).to eq(untouched)
+      expect(parent_of(grandchild.id)).to eq(running.id)
+    end
+
+    it "takes a stopped delegate and leaves its running child without a parent" do
+      plain = make
+      stopped = make(parent: plain)
+      child = make(parent: stopped)
+      own(child.id)
+
+      result = delete(plain.id)
+
+      expect(result).to include(deleted: [stopped.id, plain.id], left_running: [child.id])
+      expect([exists?(stopped.id), exists?(child.id)]).to eq([false, true])
+    end
+
+    it "is refused, nothing gone, when a delegate that would go is a schedule's target" do
+      plain = make
+      d = make(parent: plain)
+      entry = Samagotchi::Schedules.new(state_dir: tmpdir).add(target: d.id, prompt: "Audit", recurrence: { "every" => "1h" })
+      before = all_ids
+
+      expect { delete(plain.id) }.to raise_error(manager::DeleteRefused) { |e|
+        expect([e.reason, e.session_id, e.schedule_id]).to eq([:scheduled, d.id, entry.id])
+      }
+      expect(all_ids).to eq(before)
+    end
+
+    it "is refused when it is a schedule's target, in a one-turn run, or has a worker it isn't asked to stop" do
+      scheduled = make
+      Samagotchi::Schedules.new(state_dir: tmpdir).add(target: scheduled.id, prompt: "Audit", recurrence: { "every" => "1h" })
+      one_turn = make
+      locks << Samagotchi::OwnerLock.acquire(dir_of(one_turn.id), kind: "tui")
+      busy = make
+      own(busy.id)
+
+      expect { delete(scheduled.id) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:scheduled) }
+      expect { delete(one_turn.id) }.to raise_error(manager::OwnedByTUI)
+      expect { delete(busy.id, stop: false) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }
+      expect([scheduled, one_turn, busy].map { |s| exists?(s.id) }).to eq([true, true, true])
+    end
+
+    it "deletes a folder whose session file is gone, with its stopped delegate" do
+      plain = make
+      d = make(parent: plain)
+      FileUtils.mkdir_p(dir_of(plain.id))
+      FileUtils.rm_f(file_of(plain.id))
+
+      result = delete(plain.id)
+
+      expect(result[:deleted]).to eq([d.id, plain.id])
+      expect([exists?(plain.id), exists?(d.id)]).to eq([false, false])
+    end
+
+    it "purges the logs of a delegate that went when the session itself is refused after it" do
+      plain = make
+      d = make(parent: plain)
+      allow(manager).to receive(:remove_files).and_wrap_original do |original, sid, *args, **kw|
+        raise manager::DeleteRefused.new(sid, :changed) if sid == plain.id
+
+        original.call(sid, *args, **kw)
+      end
+      allow(manager).to receive(:purge_removal_stores).and_call_original
+
+      expect { delete(plain.id) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:changed) }
+      expect([exists?(d.id), exists?(plain.id)]).to eq([false, true])
+      expect(manager).to have_received(:purge_removal_stores).with([d.id], state_dir: tmpdir)
+    end
+
+    it "checks the caller's expect as for a link: the shown plan deletes, a changed one is refused" do
+      plain = make
+      d = make(parent: plain)
+      links = Samagotchi::SessionChain::Links.new(state_dir: tmpdir)
+      shown = described_class.digest(described_class.link_plan(plain.id, state_dir: tmpdir, links: links))
+      make(parent: plain)
+
+      expect { delete(plain.id, expect: shown) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:plan_changed) }
+      expect(all_ids).to include(plain.id, d.id)
+
+      links = Samagotchi::SessionChain::Links.new(state_dir: tmpdir)
+      now = described_class.digest(described_class.link_plan(plain.id, state_dir: tmpdir, links: links))
+      expect(delete(plain.id, expect: now)[:deleted]).to include(d.id, plain.id)
+    end
   end
 
   it "never revives without the keywords (the scratch cleanup, the discard, the rollback and the prune's delete)" do

@@ -75,6 +75,18 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
       expect(out.string).to eq("bbbb2222  deleted; the previous link aaaa1111 is back in the lists; 1 delegate deleted with it  last\n")
     end
 
+    it "takes a plain session's stopped delegate with it and says so" do
+      plain = make(id: "aaaa1111-0000")
+      child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+                                              parent_id: plain.id).tap { |s| s.id = "cccc3333-0000" }
+      child.save(state_dir: state_dir)
+
+      expect(run(plain.id)).to eq(0)
+
+      expect(out.string).to eq("aaaa1111  deleted; 1 delegate deleted with it  fix the bug in the parser\n")
+      expect(gone?(plain) && gone?(child)).to be true
+    end
+
     it "deletes every link with --chain, one line each and a summary" do
       first, last = chain_of_two
 

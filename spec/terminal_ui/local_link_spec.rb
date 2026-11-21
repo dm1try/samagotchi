@@ -225,6 +225,21 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
     expect(calls).to eq([[:children, id], [:archive, id], [:delete, id]])
   end
 
+  # /exit --delete: a user's delete, so a plain session's stopped delegate
+  # goes with it (SessionManager::DELEGATES) and the result says so.
+  it "deletes a plain session with its stopped delegate on /exit --delete (DELETE)" do
+    allow(Samagotchi::Session).to receive(:default_state_dir).and_return(state_dir)
+    plain = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+                               .tap { |s| s.save(state_dir: state_dir) }
+    child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            parent_id: plain.id).tap { |s| s.save(state_dir: state_dir) }
+
+    result = described_class::DELETE.call(plain.id)
+
+    expect(result).to include(deleted: [child.id, plain.id], left_running: [])
+    expect(Samagotchi::Session.exist?(child.id, state_dir: state_dir)).to be(false)
+  end
+
   it "counts the session's delegates from its state dir by default" do
     expect(link.children_counts).to eq(Samagotchi::ChildrenStatus::Counts.none)
   end

@@ -298,6 +298,24 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(described_class.delete_session(session.id, state_dir: tmpdir)[:removed]).to eq([session_dir])
     end
+
+    # The automatic deletes (scratch, the empty-session discard, the
+    # failed-continue rollback, the prune) pass neither keyword: only a
+    # user's delete takes stopped delegates (SessionManager::DELEGATES).
+    it "leaves a stopped delegate without the user's keywords, and takes it with them" do
+      child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                              parent_id: session.id).tap { |s| s.save(state_dir: tmpdir) }
+      other = new_session_in(tmpdir)
+      other_child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                                    parent_id: other.id).tap { |s| s.save(state_dir: tmpdir) }
+
+      described_class.delete_session(session.id, state_dir: tmpdir)
+      user = described_class.delete_session(other.id, state_dir: tmpdir, revive_previous: true, refuse_continuing: true)
+
+      expect(Samagotchi::Session.exist?(child.id, state_dir: tmpdir)).to be(true)
+      expect(user[:deleted]).to eq([other_child.id, other.id])
+      expect(Samagotchi::Session.exist?(other_child.id, state_dir: tmpdir)).to be(false)
+    end
   end
 
   describe ".delete_ids and .delete_tree_ids" do

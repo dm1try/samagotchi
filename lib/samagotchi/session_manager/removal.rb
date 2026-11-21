@@ -230,10 +230,12 @@ module Samagotchi
       # @param allow_scheduled [Boolean] internal rollback of a failed continue
       # @param revive_previous [Boolean] a user's delete (CLI, web, TUI) of a
       #   chain's newest link brings the previous one back to the lists and
-      #   undoes the continue (SessionChain::Delete.link, D2/D5); any chained
-      #   link's own delegates follow SessionManager::DELEGATES. The
-      #   result then also has unarchived:, moved_back:, deleted: and
-      #   left_running: (ids)
+      #   undoes the continue (SessionChain::Delete.link, D2/D5). With either
+      #   keyword (a user's delete) the session's own delegates, chained or
+      #   not, follow SessionManager::DELEGATES: the stopped ones go with it,
+      #   the running ones stay; without them (the automatic deletes) they
+      #   are left. The result then also has unarchived:, moved_back:,
+      #   deleted: and left_running: (ids)
       # @param refuse_continuing [Boolean] a user's delete refuses
       #   (:continuing) while a continue of the session is in flight
       # @raise [DeleteRefused] also :scheduled for a schedule's anchor or
