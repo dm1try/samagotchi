@@ -273,6 +273,7 @@ if options[:web]
                                       working_set: Samagotchi::Config.get("web.working_set"),
                                       stage_collapsed: Samagotchi::Config.get("web.stage_collapsed"),
                                       reload_check: Samagotchi::Config.get("web.reload_check"),
+                                      block_fix: Samagotchi::Config.get("web.block_fix"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"),
                                       start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"),

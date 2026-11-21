@@ -2,6 +2,7 @@
 
 require "nokogiri"
 require "uri"
+require_relative "../block_fix"
 require_relative "../block_renderers"
 require_relative "../inline_widgets"
 require_relative "../markdown_parser"
@@ -58,7 +59,11 @@ module Samagotchi
         commonmarker_installed? ? TIP : TIP_GEM
       end
 
-      def render(markdown)
+      # @param block_fixes [Array<Hash>, nil] the answer's block fix stamp
+      #   (BlockFix.stamps): a block that is a fix gets data-block-fixed, one
+      #   whose fix failed data-block-fix-failed. Only an answer's own render
+      #   (MessageDisplay) passes it.
+      def render(markdown, block_fixes: nil)
         return nil unless available?
 
         html = Commonmarker.to_html(markdown.to_s, options: OPTIONS, plugins: {
@@ -69,7 +74,7 @@ module Samagotchi
         })
         return nil unless html
 
-        sanitize(html, fences(markdown.to_s))
+        sanitize(html, fences(markdown.to_s), Array(block_fixes))
       end
 
       private
@@ -107,7 +112,7 @@ module Samagotchi
       # After the walk, which drops every attribute it doesn't know. Blocks and
       # fences pair by position; a count that differs says the two parses
       # disagree, and then no block gets one (it shows as source).
-      def mark_languages(fragment, fences)
+      def mark_languages(fragment, fences, block_fixes = [])
         blocks = fragment.css("pre")
         return unless blocks.size == fences.size
 
@@ -116,6 +121,18 @@ module Samagotchi
 
           pre["data-lang"] = fence.language
           mark_widget(pre, fence.literal) if fence.language == InlineWidgets::LANG
+          mark_fix(pre, fence, block_fixes) unless block_fixes.empty?
+        end
+      end
+
+      # The stamp's word on this block: the fix of a failed one, or one
+      # whose fix didn't help. One SHA-256 per fenced block of a stamped answer.
+      def mark_fix(pre, fence, block_fixes)
+        key = BlockFix.key(fence.language, fence.literal)
+        if block_fixes.any? { |entry| entry[:fixed_key] == key }
+          pre["data-block-fixed"] = ""
+        elsif block_fixes.any? { |entry| entry[:key] == key && entry[:state] == "failed" }
+          pre["data-block-fix-failed"] = ""
         end
       end
 
@@ -132,7 +149,7 @@ module Samagotchi
         pre["data-widget-lenient"] = "" if widget.lenient?
       end
 
-      def sanitize(html, fences)
+      def sanitize(html, fences, block_fixes = [])
         fragment = Nokogiri::HTML5.fragment(html)
         fragment.traverse do |node|
           next unless node.element?
@@ -145,7 +162,7 @@ module Samagotchi
             sanitize_attributes(node)
           end
         end
-        mark_languages(fragment, fences)
+        mark_languages(fragment, fences, block_fixes)
         fragment.to_html
       end
 

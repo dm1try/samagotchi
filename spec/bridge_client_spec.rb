@@ -124,6 +124,18 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("POST /session/s1/question/dismiss HTTP/1.1\r\n").and include('{"id":"q1","deadline":')
   end
 
+  it "asks the worker again for a block the page couldn't draw" do
+    port, finish = serve_once(json_reply("202 Accepted", '{"state":"running"}'))
+
+    reply = described_class.new(session_id: "s1", port: port, secret: nil)
+                           .fix_block(turn_id: "t1", lang: "mermaid", source: "graph", reason: "bad")
+
+    expect(reply.status).to eq(202)
+    expect(reply.json).to eq("state" => "running")
+    expect(finish.call).to start_with("POST /session/s1/blocks/fix HTTP/1.1\r\n")
+      .and include('{"turn_id":"t1","lang":"mermaid","source":"graph","reason":"bad"}')
+  end
+
   it "asks the worker to stop a task by its id" do
     port, finish = serve_once(json_reply("200 OK", '{"status":"stopped","stop_reason":"stopped_by_user","task_id":"t1"}'))
 

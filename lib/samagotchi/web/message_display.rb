@@ -3,6 +3,7 @@
 require_relative "../session"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
+require_relative "../block_fix/stamp"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../message_parts"
@@ -223,7 +224,9 @@ module Samagotchi
             shown = display.is_a?(String) ? Samagotchi::OutputFormatter.strip_markup(display) : ""
             message[:display] = shown unless shown.strip.empty?
             rendered = message[:display] || stripped
-            message[:html] = @markdown_renderer.render(rendered) if markdown && !rendered.empty? && @markdown_renderer.available?
+            if markdown && !rendered.empty? && @markdown_renderer.available?
+              message[:html] = @markdown_renderer.render(rendered, block_fixes: Samagotchi::BlockFix.stamps(m))
+            end
             # The refs after_turn hooks attached (AnswerRefs), checked again:
             # a stored file is never trusted. Never raises.
             refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"], cwd: cwd)
