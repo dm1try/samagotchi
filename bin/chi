@@ -106,7 +106,9 @@ SUBCOMMANDS = {
   # this folder's project; init marks a folder in no git repository (.chi/project.yml)
   "project" => ["samagotchi/project_command", "ProjectCommand"],
   # durable schedules that outlive every worker (add, list, show, tick, run-now, …)
-  "schedule" => ["samagotchi/schedule_command", "ScheduleCommand"]
+  "schedule" => ["samagotchi/schedule_command", "ScheduleCommand"],
+  # chi as an MCP server on stdio, for an MCP host (serve)
+  "mcp" => ["samagotchi/mcp_command", "McpCommand"]
 }.freeze
 # chi --remote NAME <command> (or CHI_REMOTE=NAME): the session commands
 # against another machine's chi web; what runs here only is refused (exit 2).

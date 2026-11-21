@@ -11,6 +11,7 @@ require "samagotchi/sessions_command"
 require "samagotchi/session_delete_command"
 require "samagotchi/session_archive_command"
 require "samagotchi/share_command"
+require "samagotchi/mcp_command"
 require "samagotchi/run_options"
 
 # Every session command, subcommand and flag says whether it runs against a
@@ -34,11 +35,14 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
     "sessions delete" => Samagotchi::SessionDeleteCommand::FLAGS,
     "sessions archive" => Samagotchi::SessionArchiveCommand::FLAGS,
     "share" => Samagotchi::ShareCommand::FLAGS,
-    **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] }
+    **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] },
+    # chi mcp serve takes no flags.
+    "mcp serve" => nil
   }
   subcommands_of = { "context" => Samagotchi::ContextCommand::SUBCOMMANDS,
                      "sessions" => Samagotchi::SessionsCommand::SUBCOMMANDS,
-                     "share" => Samagotchi::ShareCommand::SUBCOMMANDS }
+                     "share" => Samagotchi::ShareCommand::SUBCOMMANDS,
+                     "mcp" => Samagotchi::McpCommand::SUBCOMMANDS }
 
   it "reads bin/chi's subcommands" do
     expect(chi_subcommands).to include("send", "sessions", "bundle")

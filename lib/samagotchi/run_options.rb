@@ -214,8 +214,9 @@ module Samagotchi
                  chi home [set [--ruby PATH] | doctor]   the Ruby every chi launch boots
                  chi project [init [DIR]]         this folder's project; init makes a folder in no git repository one
                  chi schedule <add|list|show|tick|run-now|enable|disable|cancel>   durable schedules that outlive every worker
+                 chi mcp serve                    chi as an MCP server on stdio (claude mcp add chi -- chi mcp serve)
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
-                 chi --remote NAME <send|answer|note|context|sessions|share> …   those commands on that machine (or CHI_REMOTE=NAME)
+                 chi --remote NAME <send|answer|note|context|sessions|share|mcp> …   those commands on that machine (or CHI_REMOTE=NAME)
                  chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
                  chi self                         version, paths, model and bundles
                  chi update [--dry-run]           update this chi, its bundles and the desktop helper
