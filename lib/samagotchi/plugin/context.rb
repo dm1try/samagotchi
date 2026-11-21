@@ -540,7 +540,7 @@ module Samagotchi
       # @yieldreturn [String] the address to send the user to (http(s))
       # @return [SignIn]
       # @raise [ArgumentError] no block, a timeout outside 60..900, a taken
-      #   port, a bad path or address, a cancel: that isn't a controller
+      #   port, a bad path or address (one without state), a cancel: that isn't a controller
       def sign_in(title:, button: "Open sign-in page", timeout: SignIn::DEFAULT_TIMEOUT, port: nil,
                   path: SignIn::DEFAULT_PATH, cancel: nil, &build)
         raise ArgumentError, "ctx.sign_in needs a block that builds the address" unless build

@@ -287,6 +287,18 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect(flow.wait).to eq("code" => "C1", "state" => "S1")
     end
 
+    it "refuses an address with no state query parameter, and leaves no port open" do
+      ports = []
+      expect do
+        ctx.sign_in(title: "T") do |redirect_uri|
+          ports << URI(redirect_uri).port
+          "https://provider.example/authorize?client_id=c"
+        end
+      end.to raise_error(ArgumentError, /needs a state query parameter/)
+      expect(refused?(ports.first)).to be(true)
+      expect([cards, engine.sign_in_waiting?]).to eq([[], false])
+    end
+
     it "replaces the card when it times out or is cancelled (same id, no button)" do
       flow = start
       flow.end_as(:timed_out)

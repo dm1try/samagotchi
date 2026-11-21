@@ -9,9 +9,10 @@ module Samagotchi
   module Plugin
     # ctx.sign_in's flow (docs/plugins.md, Sign-in): send the session's owner
     # to an address, get back the address the browser was sent to. Core
-    # knows nothing of OAuth beyond one check: when the address the bundle
-    # built has a `state` query parameter, a callback whose `state` differs
-    # is ignored and the wait goes on.
+    # knows nothing of OAuth beyond one check: the address the bundle builds
+    # must have a `state` query parameter (#started refuses one without: any
+    # local process or web page could finish it), and a callback whose
+    # `state` differs is ignored and the wait goes on.
     #
     # The browser comes back to a Listener on 127.0.0.1 (#redirect_uri), or
     # the user pastes the address it ended on with /callback (#offer). The
@@ -102,9 +103,15 @@ module Samagotchi
       # Set once, before the card shows (Engine#start_sign_in).
       # @param address [String] the address the bundle built
       # @param card_id [String]
+      # @raise [ArgumentError] the address has no state query parameter
       def started(address, card_id)
+        state = state_of(address)
+        if state.nil? || state.empty?
+          raise ArgumentError, "ctx.sign_in's address needs a state query parameter (a random one per sign-in)"
+        end
+
         @address = address
-        @state = state_of(address)
+        @state = state
         @card_id = card_id
       end
 
@@ -173,7 +180,7 @@ module Samagotchi
       def offer(query)
         params = parse(query)
         return false if params.nil?
-        return false if @state && params["state"] != @state
+        return false if @state.nil? || params["state"] != @state
 
         settle(:done, params)
       end

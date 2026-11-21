@@ -1342,8 +1342,8 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
 - `ctx.sign_in` returns at once; `flow.wait` blocks, so call it on a thread of your own (a session command must not
   sit for minutes). `timeout:` is 60..900 seconds (default 300); `port:` asks for a fixed port when the provider's
   registered redirect address is exact (a taken one raises `ArgumentError` naming it); `path:` defaults to
-  `/callback`. A block that raises, or an address that isn't an http(s) one a card takes, raises and leaves nothing
-  open.
+  `/callback`. A block that raises, an address that isn't an http(s) one a card takes, or one without `state`
+  (below), raises and leaves nothing open.
 - The browser comes back to a listener on `127.0.0.1` only, in the worker: it answers `GET <path>?…` and nothing
   else (a 404, and the wait goes on), reads at most 8 KB within 5 s per connection, reads several connections at
   once (a silent one, such as a browser's preconnect, never holds the callback up; one that breaks is dropped
@@ -1351,8 +1351,10 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
   the listener fail anyway, its port closes and the flow ends `:cancelled`. A browser on another device
   ends on that address, which doesn't load there: the user pastes it with `/callback` ([cli.md](cli.md)), which
   settles the flow the same way.
-- When your address has a `state` query parameter, a callback whose `state` differs is ignored, browser or pasted.
-  Check everything else (`iss`, `error`) yourself.
+- Your address must have a `state` query parameter, a fresh random one per sign-in: `ctx.sign_in` raises
+  `ArgumentError` (and leaves nothing open) when it hasn't, since without it any local process, or a page in the
+  owner's browser, could finish the flow with its own code. A callback whose `state` differs is ignored, browser or
+  pasted. Check everything else (`iss`, `error`) yourself.
 - On `:done` core leaves the card for you: replace `flow.card_id` with your result, as a command's card is
   replaced. On `:timed_out`, `:cancelled` and `:stopped` core replaces it ("Sign-in timed out" / "Sign-in
   cancelled", no button). The flow's cards are never a running turn's.

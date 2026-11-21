@@ -132,9 +132,11 @@ module Samagotchi
                                     card(source: bundle, level: :info, **ended) if ended
                                   })
         address = yield(redirect_uri).to_s.strip
-        id = card(source: bundle, title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }],
-                  level: :info, id: nil)
+        id = Plugin::Card.build(source: bundle, title: title, body: "", actions: [{ label: button, url: address }],
+                                level: :info, id: nil)[:id]
         flow.started(address, id)
+        card(source: bundle, title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }],
+             level: :info, id: id)
         record(@sign_ins, flow)
         flow
       end
