@@ -164,6 +164,9 @@ module Samagotchi
         method = message["method"]
         params = message.fetch("params", {})
         return error(id, INVALID_REQUEST, "Invalid Request", era) unless method.is_a?(String) && params.is_a?(Hash)
+        if params.key?("_meta") && !params["_meta"].is_a?(Hash)
+          return error(id, INVALID_REQUEST, "Invalid Request: params._meta is an object", era)
+        end
 
         # A modern connection's initialize is -32601 whatever it names.
         if era == :modern && method != "initialize" && (refused = version_refusal(id, params))

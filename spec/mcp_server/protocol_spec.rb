@@ -141,6 +141,14 @@ RSpec.describe Samagotchi::McpServer::Protocol do
     expect(body(two)["id"]).to be_nil
   end
 
+  it "answers a non-object params._meta with -32600 (400) in either era, on a modern-locked connection too" do
+    [[modern("tools/list").tap { |m| m["params"]["_meta"] = "x" }, :modern],
+     [legacy("tools/list", { "_meta" => [1] }), nil]].each do |message, era|
+      answer = protocol.handle(message, era: era)
+      expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, 1, -32_600]), message.inspect
+    end
+  end
+
   it "answers -32603 for an exception outside a tool's own rescue, never raising" do
     allow(tools).to receive(:call).and_raise(RuntimeError, "boom")
     answer = protocol.handle(legacy("tools/call", { "name" => "echo" }, id: 9))
