@@ -334,7 +334,13 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     end
 
     it "keeps every shipped plugin free of findings" do
-      Dir[File.join(Samagotchi::Testing::Bundle::SHIPPED_DIR, "*", "plugin.rb")].each do |file|
+      # Every file of each shipped plugin (its parts too: BundleManifest#plugin_files).
+      files = Dir[File.join(Samagotchi::Testing::Bundle::SHIPPED_DIR, "*", "manifest.yml")].flat_map do |path|
+        dir = File.dirname(path)
+        Samagotchi::BundleManifest.read(dir: dir).plugin_files.map { |file, _| File.join(dir, file) }
+      end
+      expect(files.map { |file| File.basename(File.dirname(file)) }).to include("mcp")
+      files.each do |file|
         expect(Samagotchi::BundleCommand::ApiCalls.new(File.read(file)).findings).to eq([]), file
       end
     end
