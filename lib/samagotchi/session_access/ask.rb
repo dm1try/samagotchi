@@ -2,6 +2,14 @@
 
 require_relative "exchange"
 require_relative "exchange/token"
+require_relative "../bridge_client"
+require_relative "../bridge_secret"
+require_relative "../client_id"
+require_relative "../parent_answers_command"
+require_relative "../reply_wait/target"
+require_relative "../session"
+require_relative "../turn_flow"
+require_relative "../send_command/parent_gate"
 
 module Samagotchi
   module SessionAccess
@@ -24,7 +32,12 @@ module Samagotchi
       # The answer of a delivered message: +session_id+ where it ran (the
       # chain's newest link), +asked+ the full id given, +result+ the
       # ReplyWait::Result, +token+ for a :timeout (the next wait's).
-      Reply = Data.define(:session_id, :asked, :result, :token)
+      # #answer's: +answered_here+ false when the question was no longer
+      # open (answered elsewhere first, or a newer one waits): what came
+      # next is still waited for, as chi answer does.
+      Reply = Data.define(:session_id, :asked, :result, :token, :answered_here) do
+        def initialize(session_id:, asked:, result:, token:, answered_here: true) = super
+      end
 
       # The line ran as a session command (/model x): no reply comes.
       Ran = Data.define(:session_id)
@@ -34,7 +47,13 @@ module Samagotchi
       # +message+ its refusal), :busy (+busy+ the SendCommand::Busy: a turn
       # runs and queue was false, or a question waits) or :undelivered
       # (+result+ the refused DeliverResult) or :canceled (+cancelled+ turned
-      # true before anything was sent: chi web stopping).
+      # true before anything was sent: chi web stopping). #agent_line's
+      # :parent_refused (+message+ why). #answer's (+message+ each):
+      # :no_question (none of that id waits and nothing runs), :not_live (no
+      # worker runs it), :bridge_secret, :not_dismissable, :invalid_answer
+      # (the Bridge refused the selection), :parent_refused (the worker's
+      # parent_answers), :late (the worker didn't take it in time),
+      # :stale_worker (an older worker without the answer route), :failed.
       Refused = Data.define(:kind, :session_id, :busy, :result, :error, :message) do
         def initialize(kind:, session_id: nil, busy: nil, result: nil, error: nil, message: nil) = super
       end
@@ -101,7 +120,105 @@ module Samagotchi
         end
       end
 
+      # What a parent agent's line (an MCP host's, chi send's over HTTP) is
+      # held to, with no read of this process (an ENV marker, a tty): a
+      # /continue yes always goes in as chi answer's (the worker holds it
+      # to guardrails.parent_answers only then), anything else as chi
+      # send's; refused first when the parent policy refuses that continue,
+      # or when it is a /parent-answers line loosening a target's own value
+      # (Web::SessionCreate#parent_gate's two checks, for those ids).
+      # @param session [Session, Array<Session>, nil] the targets (the
+      #   session asked and its chain's newest link); none: config.yml's
+      #   value alone (fail closed)
+      # @return [String, Refused] the client_id to send as, or why not
+      def agent_line(prompt, session:)
+        sessions = Array(session).compact
+        values = sessions.empty? ? [nil] : sessions.map(&:parent_answers)
+        continue = TurnFlow.continue_yes?(prompt)
+        refusal = SendCommand::ParentGate.continue_refusal_for(values) if continue
+        refusal ||= ParentAnswersCommand::REFUSED if SendCommand::ParentGate.loosens_any?(prompt, values)
+        return Refused.new(kind: :parent_refused, session_id: sessions.first&.id, message: refusal) if refusal
+
+        continue ? ClientId::CLI_ANSWER : ClientId::CLI_SEND
+      end
+
+      # The answer to the question session +id+ waits on, then one slice of
+      # the wait for what comes next (AnswerCommand's sequence, as values):
+      # a question no longer open is not answered but still waited past
+      # (Reply answered_here: false) while the session runs.
+      # @param id [String] the session's full id
+      # @param selected [Array<String>] the option labels
+      # @param freeform [String, nil]
+      # @param timeout [Numeric] the wait's slice
+      # @param cap [Numeric, nil] the most seconds for the whole call (an
+      #   MCP host's limit): the post gets what is left but MIN_SLICE, the
+      #   wait the rest (#slice); nil: the post's own limits, then +timeout+
+      # @return [Reply, Refused]
+      def answer(id, question_id:, selected:, freeform:, client_id:, timeout:, cap: nil, cancelled: nil)
+        deadline = @clock.call + cap if cap
+        qid = question_id.to_s
+        session = @access.show(id)
+        pending = session.pending_question
+        open = pending && pending.id.to_s == qid
+        if !open && session.status != Session::STATUS_RUNNING
+          return Refused.new(kind: :no_question, session_id: id, message: "no question #{qid} waits in #{id[0, 8]}; nothing to answer")
+        end
+
+        start = @access.prepare_wait(id, session: session, question_id: qid)
+        answered_here = false
+        if open
+          within = (deadline - MIN_SLICE - @clock.call).clamp(MIN_SLICE..) if deadline
+          posted = post_answer(id, qid, selected, freeform, client_id, within)
+          return posted if posted.is_a?(Refused)
+
+          answered_here = posted
+        end
+        target = ReplyWait::Target.answer(start)
+        more = cancelled ? { cancelled: cancelled } : {}
+        result = @exchange.wait(id, target, timeout: deadline ? slice(timeout, deadline) : timeout, **more)
+        token = Exchange::Token.dump(id, target) if result.status == :timeout
+        Reply.new(session_id: id, asked: id, result: result, token: token, answered_here: answered_here)
+      end
+
+      # The words for an answer the worker didn't take in time
+      # (AnswerCommand's own, copied).
+      LATE_WORDS = "the worker did not take the answer in time; the question is still open: try again"
+
       private
+
+      # The answer posted, its reply read as AnswerCommand#post reads it.
+      # @return [Boolean, Refused] true answered, false no longer open (409)
+      def post_answer(id, qid, selected, freeform, client_id, within)
+        more = within ? { within: within } : {}
+        reply = @access.answer(id, question_id: qid, selected: selected, freeform: freeform, client_id: client_id, **more)
+        return not_live(id) unless reply
+        return answer_refused(:bridge_secret, id, BridgeSecret.refused(id, via: @access.invocation)) if reply.secret_refused?
+
+        detail = reply.json&.dig("detail")
+        case reply.status
+        when 200 then true
+        when 409
+          return answer_refused(:not_dismissable, id, detail.to_s) if reply.json&.dig("error") == "not_dismissable"
+
+          false
+        when 400 then answer_refused(:invalid_answer, id, detail || "the worker refused the answer")
+        when 403 then answer_refused(:parent_refused, id, detail || "the worker refused that option: deny it, and tell your user")
+        when 408 then answer_refused(:late, id, LATE_WORDS)
+        when 404
+          return not_live(id) if reply.json&.dig("error") == "unknown_session"
+
+          answer_refused(:stale_worker, id, BridgeClient.stale_worker_message(id, cant: "take an answer", via: @access.invocation))
+        else answer_refused(:failed, id, "the worker answered #{reply.status}: #{detail || reply.body}")
+        end
+      rescue Errno::ETIMEDOUT
+        answer_refused(:late, id, LATE_WORDS)
+      rescue SystemCallError, IOError, SocketError => e
+        answer_refused(:failed, id, "#{e.class}: #{e.message}")
+      end
+
+      def not_live(id) = answer_refused(:not_live, id, "no worker runs session #{id[0, 8]}: the question went with it; send the task again")
+
+      def answer_refused(kind, id, message) = Refused.new(kind: kind, session_id: id, message: message)
 
       def wait(at, start, delivered, queue:, slice:, cancelled:)
         target = @exchange.bind(start, delivered, queue: queue)

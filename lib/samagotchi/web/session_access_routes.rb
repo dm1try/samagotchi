@@ -18,6 +18,7 @@ require_relative "../version"
 require_relative "request_body"
 require_relative "session_hub"
 require_relative "ask_routes"
+require_relative "mcp_route"
 
 module Samagotchi
   module Web
@@ -32,6 +33,7 @@ module Samagotchi
     # the session commands).
     module SessionAccessRoutes
       include AskRoutes
+      include McpRoute
 
       # WAIT_MAX_SECONDS (a wait route's slice) is AskRoutes', included above.
 

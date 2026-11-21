@@ -449,8 +449,11 @@ module Samagotchi
 
       # The answer, through chi web to the session's worker. chi web's
       # answers mapped back to the Bridge's own (AnswerCommand reads those).
+      # @param within [nil, Numeric] not cut here: chi web's route bounds its
+      #   own tries, and a request cut short might still have answered (Local's
+      #   cut is for an MCP host's 60 s limit on HTTP; this runs under stdio)
       # @return [BridgeClient::Response, nil] nil when no worker runs it
-      def answer(id, question_id:, selected:, freeform:, client_id:)
+      def answer(id, question_id:, selected:, freeform:, client_id:, within: nil)
         bridge_reply(request(:post, "#{session_path(id)}/answer",
                              body: { id: question_id, selected: selected, freeform: freeform, client_id: client_id }))
       end

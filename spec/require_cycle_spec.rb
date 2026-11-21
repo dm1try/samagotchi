@@ -66,6 +66,7 @@ RSpec.describe "loading session_manager and terminal_ui" do
       "the attached TUI" => %w[samagotchi/terminal_ui/attach_launcher samagotchi/terminal_ui/attached_loop],
       "chi web" => %w[samagotchi/web/app],
       "chi send" => %w[samagotchi/send_command],
+      "chi mcp serve" => %w[samagotchi/mcp_command samagotchi/mcp_server/tools],
       "the prompt history" => %w[samagotchi/prompt_history]
     }.each do |client, files|
       it "does not load the turn loop or bundle updater for #{client}" do

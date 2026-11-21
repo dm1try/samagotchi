@@ -37,6 +37,9 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 
 ## The mcp bundle
 
+(The other direction, chi as an MCP server that a host such as Claude Code drives, is in core: see [chi as an MCP
+server](mcp-server.md).)
+
 `chi bundle install mcp` (or the `dev` profile) installs the bundle shipped with chi. It is written
 only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and gives
 the model the tools of [MCP](https://modelcontextprotocol.io) servers. It

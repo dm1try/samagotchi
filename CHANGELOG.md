@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- chi as an MCP server: `claude mcp add chi -- chi mcp serve` lets Claude Code (or Codex, any MCP host) drive your
+  sessions with four tools: list them, ask one and wait for its answer, answer the question it waits on. `chi
+  --remote NAME mcp serve` reaches another machine's; chi web serves the same at `POST /api/mcp`. The host counts
+  as a parent agent (`guardrails.parent_answers`). See docs/mcp-server.md.
 - The mcp bundle takes remote MCP servers: `url: https://mcp.context7.com/mcp` in place of `command:` under
   `bundles: mcp: servers: <name>:`, with `bearer_token_env: VAR` for a token (sent as `Authorization: Bearer`) and
   optional `headers:`. They work like local ones (the cached tools, `find_tools`, `call_tool`, guardrail names);

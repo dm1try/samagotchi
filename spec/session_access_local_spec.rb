@@ -401,4 +401,26 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     expect(access.dismiss(session.id, question_id: "q").status).to eq(200)
     expect(client).to have_received(:dismiss_question).twice
   end
+
+  it "cuts an answer's tries to within: its read timeout, and no second try after a 408 that leaves too little" do
+    session = saved_session
+    client = instance_double(Samagotchi::BridgeClient)
+    late = Struct.new(:status).new(408)
+    allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
+    allow(client).to receive(:answer).and_return(late)
+    now = [0.0]
+    allow(access).to receive(:monotonic) { now[0] }
+    allow(client).to receive(:answer) do
+      now[0] += 25
+      late
+    end
+
+    reply = access.answer(session.id, question_id: "q", selected: [], freeform: nil, client_id: "cli", within: 34)
+    expect(reply.status).to eq(408)
+    expect(client).to have_received(:answer).once
+    expect(Samagotchi::WorkerLink).to have_received(:client).with(session.id, session_dir: anything, read_timeout: 30)
+
+    access.answer(session.id, question_id: "q", selected: [], freeform: nil, client_id: "cli", within: 10)
+    expect(Samagotchi::WorkerLink).to have_received(:client).with(session.id, session_dir: anything, read_timeout: 10.0)
+  end
 end

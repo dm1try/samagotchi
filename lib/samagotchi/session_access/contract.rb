@@ -143,6 +143,11 @@ module Samagotchi
         "share revoke" => SUPPORTED,
         "share revoke --all" => SUPPORTED,
 
+        # chi as an MCP server (docs/mcp-server.md): its tools over the
+        # remote's chi web, as chi send and chi answer.
+        "mcp" => SUPPORTED,
+        "mcp serve" => SUPPORTED,
+
         "broadcast" => LOCAL_ONLY
       }.freeze
 

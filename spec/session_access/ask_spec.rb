@@ -279,4 +279,167 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
 
     expect(call(session.id, timeout: 5, cancelled: -> { deliveries.any? }).result.status).to eq(:canceled)
   end
+
+  describe "#agent_line" do
+    def with_parent_answers(value)
+      make.tap do |s|
+        s.parent_answers = value
+        s.save(state_dir: tmpdir)
+      end
+    end
+
+    it "sends a plain line as chi send's and a /continue yes as chi answer's" do
+      session = make
+      expect(ask.agent_line("hello", session: session)).to eq(Samagotchi::ClientId::CLI_SEND)
+      expect(ask.agent_line("/continue yes", session: session)).to eq(Samagotchi::ClientId::CLI_ANSWER)
+    end
+
+    it "holds /continue yes to parent_answers with a tty stdin and no agent markers (no read of the process)" do
+      allow($stdin).to receive(:tty?).and_return(true)
+      allow(ENV).to receive(:fetch).and_call_original
+      Samagotchi::Guardrails::ParentApprovals::AGENT_MARKERS.each { |key| allow(ENV).to receive(:fetch).with(key, "").and_return("") }
+      expect(Samagotchi::Guardrails::ParentApprovals.parent_process?).to be(false)
+      hard = with_parent_answers("hard")
+
+      refused = ask.agent_line("/continue yes", session: hard)
+      expect(refused).to have_attributes(kind: :parent_refused, session_id: hard.id)
+      expect(refused.message).to eq(Samagotchi::SendCommand::ParentGate.continue_refusal_for(["hard"]))
+      # Any target refusing is enough (the asked session and its chain's newest link).
+      expect(ask.agent_line("/continue yes", session: [make, hard])).to have_attributes(kind: :parent_refused)
+    end
+
+    it "refuses a /parent-answers line that loosens a target's own value, and lets one that tightens through" do
+      hard = with_parent_answers("hard")
+      expect(ask.agent_line("/parent-answers soft", session: hard))
+        .to have_attributes(kind: :parent_refused, message: Samagotchi::ParentAnswersCommand::REFUSED)
+      expect(ask.agent_line("/parent-answers hard", session: with_parent_answers("soft"))).to eq(Samagotchi::ClientId::CLI_SEND)
+    end
+
+    it "fails closed on config.yml's value when no target was read" do
+      expect(ask.agent_line("hello", session: nil)).to eq(Samagotchi::ClientId::CLI_SEND)
+      values = []
+      allow(Samagotchi::SendCommand::ParentGate).to receive(:continue_refusal_for) { |v| values << v and nil }
+      ask.agent_line("/continue yes", session: [])
+      expect(values).to eq([[nil]])
+    end
+  end
+
+  describe "#answer" do
+    let(:question) { { id: "q1", question: "Go?", options: %w[Yes No] } }
+
+    def bridge(status, json = nil)
+      Samagotchi::BridgeClient::Response.new(status: status, body: json ? JSON.generate(json) : "")
+    end
+
+    def answer_with(reply = nil, raising: nil, session: nil, question_id: "q1", timeout: 0.2)
+      session ||= make(status: "running", pending_question: question).tap { |s| own(s) }
+      posted = []
+      allow(access).to receive(:answer) do |id, **options|
+        posted << [id, options]
+        raise raising if raising
+
+        reply
+      end
+      outcome = ask.answer(session.id, question_id: question_id, selected: ["Yes"], freeform: nil,
+                                       client_id: Samagotchi::ClientId::CLI_ANSWER, timeout: timeout)
+      [outcome, posted, session]
+    end
+
+    it "answers, then waits: done with the reply of the turn the question was about" do
+      session = make(status: "running", pending_question: question)
+      own(session)
+      allow(access).to receive(:wait_reply).and_return(Samagotchi::ReplyWait::Result.new(status: :done, text: "after"))
+
+      outcome, posted = answer_with(bridge(200, { "ok" => true }), session: session)
+      expect(posted).to eq([[session.id, { question_id: "q1", selected: ["Yes"], freeform: nil,
+                                           client_id: Samagotchi::ClientId::CLI_ANSWER }]])
+      expect(outcome).to have_attributes(session_id: session.id, answered_here: true, token: nil)
+      expect(outcome.result).to have_attributes(status: :done, text: "after")
+    end
+
+    it "answers, then hands a token when the turn still runs past the slice" do
+      outcome, = answer_with(bridge(200))
+      expect(outcome.result.status).to eq(:timeout)
+      token_session, = Samagotchi::SessionAccess::Exchange::Token.load(outcome.token)
+      expect(token_session).to eq(outcome.session_id)
+    end
+
+    it "still waits when the question is no longer open (409), answered_here false" do
+      outcome, = answer_with(bridge(409, { "error" => "question_not_pending" }))
+      expect(outcome).to have_attributes(answered_here: false)
+      expect(outcome.result.status).to eq(:timeout)
+    end
+
+    it "draws the post and the wait from one cap: the post gets what's left but MIN_SLICE, the wait the rest" do
+      session = make(status: "running", pending_question: question)
+      own(session)
+      slices = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        slices << options[:timeout]
+        Samagotchi::ReplyWait::Result.new(status: :timeout)
+      end
+      posted = []
+      allow(access).to receive(:answer) do |id, **options|
+        posted << [id, options]
+        clock[0] += 20
+        bridge(200)
+      end
+      ask.answer(session.id, question_id: "q1", selected: ["Yes"], freeform: nil,
+                             client_id: Samagotchi::ClientId::CLI_ANSWER, timeout: 25, cap: 35)
+      expect(posted.last.last[:within]).to eq(35 - described_class::MIN_SLICE)
+      expect(slices).to eq([15.0])
+
+      # A post that took it all still leaves the wait its MIN_SLICE.
+      allow(access).to receive(:answer) do
+        clock[0] += 40
+        bridge(200)
+      end
+      ask.answer(session.id, question_id: "q1", selected: ["Yes"], freeform: nil,
+                             client_id: Samagotchi::ClientId::CLI_ANSWER, timeout: 25, cap: 35)
+      expect(slices.last).to eq(described_class::MIN_SLICE)
+    end
+
+    it "posts nothing and still waits for a running session whose question is another" do
+      outcome, posted = answer_with(bridge(200), question_id: "q0")
+      expect(posted).to be_empty
+      expect(outcome).to have_attributes(answered_here: false)
+    end
+
+    it "refuses no_question for an idle session with no such question (no endless tokens)" do
+      outcome, posted = answer_with(bridge(200), session: make, question_id: "q9")
+      expect(outcome).to have_attributes(kind: :no_question)
+      expect(outcome.message).to include("no question q9 waits", "nothing to answer")
+      expect(posted).to be_empty
+    end
+
+    {
+      "no worker (nil)" => [nil, :not_live, "no worker runs session"],
+      "the Bridge's secret refusal" => [:secret, :bridge_secret, "didn't name its secret"],
+      "409 not_dismissable" => [[409, { "error" => "not_dismissable", "detail" => "answer it" }], :not_dismissable, "answer it"],
+      "400" => [[400, { "detail" => "no option Maybe" }], :invalid_answer, "no option Maybe"],
+      "403" => [[403, { "detail" => "parent may not allow" }], :parent_refused, "parent may not allow"],
+      "408" => [[408], :late, "the question is still open"],
+      "404 unknown_session" => [[404, { "error" => "unknown_session" }], :not_live, "no worker runs session"],
+      "404 otherwise" => [[404, { "error" => "not_found" }], :stale_worker, "runs an older chi"],
+      "500" => [[500, { "detail" => "boom" }], :failed, "the worker answered 500: boom"]
+    }.each do |name, (given, kind, words)|
+      it "refuses #{kind} for #{name}" do
+        reply = case given
+                when nil then nil
+                when :secret then bridge(403, { "error" => Samagotchi::BridgeSecret::ERROR })
+                else bridge(*given)
+                end
+        outcome, = answer_with(reply)
+        expect(outcome).to have_attributes(kind: kind)
+        expect(outcome.message).to include(words)
+      end
+    end
+
+    it "refuses late on a timeout and failed on a socket error" do
+      expect(answer_with(raising: Errno::ETIMEDOUT).first).to have_attributes(kind: :late)
+      failed = answer_with(raising: Errno::ECONNREFUSED).first
+      expect(failed).to have_attributes(kind: :failed)
+      expect(failed.message).to include("ECONNREFUSED")
+    end
+  end
 end
