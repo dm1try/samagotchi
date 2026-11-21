@@ -814,7 +814,7 @@ RSpec.describe Samagotchi::Worker do
         SpecWaiting.pop!(go, "the worker to stop the idle jobs", timeout: 30)
         events.synchronize_events { emitted << :recap }
       end
-      scheduler = Samagotchi::IdleScheduler.new(engine: engine, jobs: [job], interval: 60)
+      scheduler = Samagotchi::IdleScheduler.new(jobs: [job], interval: 60)
       engine.instance_variable_set(:@idle_scheduler, scheduler)
       allow(engine).to receive(:stop_idle).and_wrap_original do |original, **kwargs|
         go << true

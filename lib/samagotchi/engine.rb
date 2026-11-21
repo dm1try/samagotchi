@@ -633,7 +633,7 @@ module Samagotchi
 
     # The idle layer's shared scheduler (see #initialize for when).
     def build_idle_scheduler
-      IdleScheduler.new(engine: self, jobs: [@reminders, @recap].compact)
+      IdleScheduler.new(jobs: [@reminders, @recap].compact)
     end
     private :build_idle_scheduler
 

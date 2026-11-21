@@ -845,7 +845,7 @@ RSpec.describe Samagotchi::IdleRecap do
       reminders = double("reminders")
       ticks = 0
       allow(reminders).to receive(:tick) { ticks += 1 }
-      scheduler = Samagotchi::IdleScheduler.new(engine: engine, jobs: [idle, reminders])
+      scheduler = Samagotchi::IdleScheduler.new(jobs: [idle, reminders])
       Timeout.timeout(2) { 5.times { scheduler.tick } } # timeout-ok: a hang guard: a tick must not block on the busy client
       expect(ticks).to eq(5)
       expect(idle).to be_in_flight

@@ -9,7 +9,6 @@ require "samagotchi/tools/task_runtime"
 
 RSpec.describe Samagotchi::HoldStop do
   let(:reminders) { Samagotchi::ReminderStore.new }
-  let(:engine) { double("engine", reminder_store: reminders) }
   let(:child) do
     Samagotchi::ChildrenStatus::Child.new(id: "c1c1c1c1-1111", short_id: "c1c1c1c1", title: "Fix the composer",
                                           state: "running", waiting: nil, live: true, delegate: true, cwd: "/tmp/x",
@@ -18,7 +17,7 @@ RSpec.describe Samagotchi::HoldStop do
   end
   let(:watch) { double("watch", running: [Samagotchi::TaskWatch::Running.new(id: "t1", command: "rails s", age_seconds: 10)]) }
   let(:stopper) do
-    described_class.new(engine: engine, task_watch: watch, delegates: -> { [child] }, state_dir: "/tmp/state")
+    described_class.new(reminder_store: reminders, task_watch: watch, delegates: -> { [child] }, state_dir: "/tmp/state")
   end
 
   it "clears the reminders and reports their names" do
@@ -67,7 +66,7 @@ RSpec.describe Samagotchi::HoldStop do
   end
 
   it "says nothing was stopped when there was nothing to stop" do
-    stopper = described_class.new(engine: engine, task_watch: nil, delegates: -> { [] }, state_dir: "/tmp/state")
+    stopper = described_class.new(reminder_store: reminders, task_watch: nil, delegates: -> { [] }, state_dir: "/tmp/state")
 
     expect(stopper.stop_all).to eq(described_class::Stopped.new)
     expect(stopper.stop_all).not_to be_any
