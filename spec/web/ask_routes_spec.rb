@@ -28,9 +28,9 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
 
   let(:state_dir) { File.join(@tmp, "state").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:folder) { File.join(@tmp, "proj").tap { |dir| FileUtils.mkdir_p(File.join(dir, ".git")) } }
+  let(:manager) { Samagotchi::SessionManager }
   let(:app) do
-    described_class.new(manager: Samagotchi::SessionManager, state_dir: state_dir, bridge_wait_timeout: 0,
-                        wait_poll_interval: 0.01)
+    described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0, wait_poll_interval: 0.01)
   end
   let(:deliveries) { [] }
   let(:token_module) { Samagotchi::SessionAccess::Exchange::Token }
@@ -98,6 +98,18 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(id).to eq(session.id)
       expect(options).to include(prompt: "what changed?", client_id: "web:unnamed", delivery: "queue", follow: true,
                                  manager: Samagotchi::SessionManager, bridge: be_a(Proc), state_dir: state_dir)
+    end
+
+    context "with a manager of chi web's own (not SessionManager, the delivery's default)" do
+      let(:manager) { SimpleDelegator.new(Samagotchi::SessionManager) }
+
+      it "delivers through that manager, the very object chi web holds" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+
+        expect(ask(session, { prompt: "hi" }).first).to eq(200)
+        expect(deliveries.first.last[:manager]).to be(manager)
+      end
     end
 
     it "names the id asked when the chain's newest link ran it" do
@@ -290,7 +302,7 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
     let(:session) { make }
     let(:target) { Samagotchi::ReplyWait::Target.new(turn: "t9", report_turn_id: "t9", queued: true) }
 
-    it "refuses another session's token, a tampered one, and a token beside the wait's own fields" do
+    it "refuses another session's token, one that is not base64 or holds no session, and a token beside the wait's own fields" do
       other = token_module.dump(make.id, target)
       expect(wait(session.id, { token: other })).to match([400, include("error" => "invalid_wait", "detail" => include("another session"))])
       token = token_module.dump(session.id, target)
@@ -307,6 +319,27 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
 
       expect(wait(session.id[0, 8], { token: token, timeout: 1 }))
         .to match([200, include("status" => "done", "text" => "the answer", "session_id" => session.id)])
+    end
+
+    # The token is unsigned on purpose (Exchange::Token): a field edited and
+    # re-encoded still loads, and only s routes it.
+    def edited(token, **fields)
+      raw = JSON.parse(token.delete_prefix("w1.").tr("-_", "+/").then { |t| t + ("=" * ((4 - (t.length % 4)) % 4)) }.unpack1("m0"))
+      "w1.#{[JSON.generate(raw.merge(fields.transform_keys(&:to_s)))].pack("m0").tr("+/", "-_").delete("=")}"
+    end
+
+    it "refuses a re-encoded token whose s names another session; waits on an edited turn as a body could ask" do
+      token = token_module.dump(session.id, target)
+      other = make
+
+      expect(wait(session.id, { token: edited(token, s: other.id) }))
+        .to match([400, include("error" => "invalid_wait", "detail" => include("another session"))])
+      expect(wait(session.id, { token: edited(token, t: 7) }))
+        .to match([400, include("error" => "invalid_wait", "detail" => include("t is a string"))])
+
+      Samagotchi::SessionInbox.write_output(dir_of(session), "the other turn's", enqueued_id: "t10")
+      expect(wait(session.id, { token: edited(token, t: "t10", r: "t10"), timeout: 1 }))
+        .to match([200, include("status" => "done", "text" => "the other turn's", "turn_id" => "t10")])
     end
 
     it "answers without a token exactly as before (its keys pinned)" do
