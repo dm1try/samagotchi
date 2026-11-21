@@ -66,11 +66,14 @@ module Samagotchi
         return [200, block_fix_known(known, key, shown: shown)] if known
         return block_fix_refused(409, :block_not_found) unless shown
 
+        # In flight per answer and block: the same block in a newer answer
+        # is that answer's own ask (its result lands in it, its event names it).
+        asking = [index, key]
         @block_fix_mutex.synchronize do
-          return [202, { state: "running" }] if @block_fix_running.include?(key) || @block_fix_ready.any? { |r| r.key == key }
+          return [202, { state: "running" }] if block_fix_pending?(asking)
           return block_fix_refused(429, :fix_busy) if @block_fix_running.size >= BlockFix::MAX_RUNNING
 
-          @block_fix_running << key
+          @block_fix_running << asking
         end
         anchor = Anchor.new(index: index, digest: Bridge::TurnDrawings.digest(answer), turns: turns)
         conversation = AnswerDisplay.strip_all(messages[0..index])
@@ -93,7 +96,7 @@ module Samagotchi
         synchronize_events { ready.count { |result| apply_block_fix(@session, result) } }
       end
 
-      # The block fix's keys still asked for (specs).
+      # The block fix's [answer index, key] pairs still asked for (specs).
       def block_fixes_running = @block_fix_mutex.synchronize { @block_fix_running.dup }
 
       private
@@ -110,6 +113,12 @@ module Samagotchi
       # lands in the answer's display only.
       def note_block_fix_turn
         @block_fix_turns += 1
+      end
+
+      # Whether [answer index, key] is asked for or its result waits (under
+      # @block_fix_mutex).
+      def block_fix_pending?(asking)
+        @block_fix_running.include?(asking) || @block_fix_ready.any? { |r| [r.anchor.index, r.key] == asking }
       end
 
       def block_fix_refused(status, code)
@@ -144,7 +153,7 @@ module Samagotchi
                                               reason: e.message.to_s.lines.first.to_s.strip[0, 200])
           end
           @block_fix_mutex.synchronize do
-            @block_fix_running.delete(job[:key])
+            @block_fix_running.delete([job[:anchor].index, job[:key]])
             @block_fix_ready << result
           end
           @block_fix_wake&.call

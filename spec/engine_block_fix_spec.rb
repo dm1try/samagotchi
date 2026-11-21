@@ -102,6 +102,22 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(asks).to be_empty
     end
 
+    it "asks for the same block in a newer answer as that answer's own, while the older one's ask is in flight" do
+      gate = Queue.new
+      side_answers << -> { gate.pop }
+      expect(fix.first).to eq(202)
+      engine.send(:note_block_fix_turn)
+      newer = { role: "model", content: "Again:\n\n```mermaid\n#{bad}```\n", at: "2026-11-21T11:00:00Z" }
+      session.messages = session.messages + [{ role: "user", content: "again", turn_id: "t2" }, newer]
+      expect(fix(turn_id: "t2").first).to eq(202)
+      eventually { expect(asks.size).to eq(2) }
+      gate << Samagotchi::IdleClient::Summary.new(text: "```mermaid\n#{good}\n```", model: "m")
+      settle
+      expect(engine.apply_block_fixes).to eq(2)
+      expect(session.messages.last[:content]).to include(good)
+      expect(fix_events.map { |e| [e[:turn_id], e[:landed]] }).to contain_exactly(%w[t1 display], %w[t2 answer])
+    end
+
     it "answers 429 past two in flight" do
       gate = Queue.new
       session.messages = [session.messages.first,
