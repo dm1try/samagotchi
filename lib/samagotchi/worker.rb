@@ -276,8 +276,13 @@ module Samagotchi
       # runs from the leave) and restored into it after.
       carried = take_carried_reminders
       @engine = build_engine
-      # The Engine's event log, handed to the Bridge and the collaborators.
+      # The Engine's event log, turn state, question desk and steer cut,
+      # handed to the Bridge and the collaborators (read here, not in
+      # #start_bridge, whose rescue would hide a missing one).
       @event_log = @engine.event_log
+      @turn_state = @engine.turn_state
+      @question_desk = @engine.question_desk
+      @steer_cut = @engine.steer_cut
       restore_carried_reminders(carried)
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
         @event_log.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
@@ -306,7 +311,8 @@ module Samagotchi
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
       # Bridge exists by the time anyone answers).
-      @continue_offer = ContinueOffer.new(engine: @engine, event_log: @event_log, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
+      @continue_offer = ContinueOffer.new(engine: @engine, event_log: @event_log, turn_state: @turn_state,
+                                          question_desk: @question_desk, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
                                           participant_refused: @participant_gate.method(:refusal),
                                           save: -> { save_or_log(:command) { save_session } },
@@ -347,7 +353,7 @@ module Samagotchi
                                               peer_sources: @engine.peer_sources, peer_turns: -> { @wakes.peer_turns })
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
-                                   event_log: @event_log, context_absorber: @context_absorber, wakes: @wakes,
+                                   event_log: @event_log, turn_state: @turn_state, context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
                                    queue_command: lambda { |line, client_id, after_file, enqueued_id, author: nil|
@@ -371,7 +377,8 @@ module Samagotchi
     # The Bridge (UIs and clients reach the worker from here on), then the
     # idle-exit policy.
     def serve
-      @bridge = start_bridge(engine: @engine, event_log: @event_log, state_dir: @state_dir, session_id: @session_id,
+      @bridge = start_bridge(engine: @engine, event_log: @event_log, turn_state: @turn_state, question_desk: @question_desk,
+                             steer_cut: @steer_cut, state_dir: @state_dir, session_id: @session_id,
                              on_input: -> { @waker.wake },
                              on_command: method(:on_command),
                              on_exit_request: method(:exit_request),
@@ -390,7 +397,7 @@ module Samagotchi
       @engine.announce_load_events!
       announce_session_warnings
       @idle_exit = WorkerIdleExit.new(
-        engine: @engine, bridge: @bridge,
+        engine: @engine, turn_state: @turn_state, question_desk: @question_desk, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || config_idle_exit_minutes,
         input_pending: method(:input_pending?),
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
@@ -419,11 +426,13 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def start_bridge(engine:, event_log:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
-                     exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil)
+    def start_bridge(engine:, event_log:, turn_state:, question_desk:, steer_cut:, state_dir:, session_id:, on_input: nil,
+                     on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil, on_holds: nil,
+                     on_holds_stop: nil, on_activity: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, event_log: event_log, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
+        engine: engine, event_log: event_log, turn_state: turn_state, question_desk: question_desk, steer_cut: steer_cut,
+        state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
         exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       ).start
@@ -443,7 +452,7 @@ module Samagotchi
     # @return [Hash]
     def activity_snapshot
       {
-        turn_running: @engine.turn_running?,
+        turn_running: @turn_state.running?,
         input_pending: input_pending?,
         awaiting_continue: @turn_flow.awaiting_continue?,
         open_streams: @bridge&.open_streams.to_i,
@@ -520,7 +529,7 @@ module Samagotchi
       return if run_wake_turn
       return if run_task_wake
       return if run_due_reminders
-      return left(:scratch_left) if scratch_unattended? && !@engine.turn_running? && leave_scratch
+      return left(:scratch_left) if scratch_unattended? && !@turn_state.running? && leave_scratch
       return left(:idle_exit) if @idle_exit.due? && leave_idle
 
       leaving = @exit_claim.taken? && leave_on_request
@@ -843,7 +852,7 @@ module Samagotchi
           begin
             input = SessionInbox.read_input(claimed_file)
             enqueued_id = input.origin.enqueued_id
-            if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@engine.claim_enqueued_id(enqueued_id)
+            if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@turn_state.claim_enqueued_id(enqueued_id)
               Log.info(:worker, "duplicate_input_dropped", enqueued_id: enqueued_id)
               next
             end
@@ -861,7 +870,7 @@ module Samagotchi
               SessionInbox.mark_merged(@session_dir, enqueued_id, into: @turn_enqueued_id) unless prompt.empty?
               prompt.empty? ? nil : [prompt, input.origin]
             ensure
-              @engine.finish_enqueued_id(enqueued_id)
+              @turn_state.finish_enqueued_id(enqueued_id)
             end
           ensure
             FileUtils.rm_f(claimed_file)

@@ -29,7 +29,8 @@ RSpec.describe Samagotchi::Worker do
       Dir.mktmpdir("worker-activity-snapshot") do |dir|
         worker = described_class.new(session_id: "session", state_dir: dir, session_dir: dir)
         worker.instance_variable_get(:@command_queue) << :queued
-        worker.instance_variable_set(:@engine, double(turn_running?: true, reminder_store: double(any?: true)))
+        worker.instance_variable_set(:@engine, double(reminder_store: double(any?: true)))
+        worker.instance_variable_set(:@turn_state, instance_double(Samagotchi::TurnState, running?: true))
         worker.instance_variable_set(:@turn_flow, double(awaiting_continue?: true))
         worker.instance_variable_set(:@bridge, double(open_streams: 2))
         worker.instance_variable_set(:@task_wakes, double(watch: double(holding: %i[one two])))
@@ -584,8 +585,8 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "drops a fallback file whose next-step steer was already merged" do
-        allow(engine).to receive(:claim_enqueued_id).and_call_original
-        allow(engine).to receive(:claim_enqueued_id).with("m1").and_return(true)
+        allow(engine.turn_state).to receive(:claim_enqueued_id).and_call_original
+        allow(engine.turn_state).to receive(:claim_enqueued_id).with("m1").and_return(true)
         allow(Samagotchi::Log).to receive(:info).and_call_original
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
           if prompt == "task"
@@ -1374,10 +1375,12 @@ RSpec.describe Samagotchi::Worker do
         wait_for("the terminal's stream") { open_streams == 1 }
         # A turn waiting on a question from here on (the join saw none).
         running = true
-        allow(engine).to receive(:turn_running?) { running }
-        allow(engine).to receive(:pending_question) { running ? Object.new : nil }
-        allow(engine).to receive(:cancel_question) { |reason, **| calls << [:question, reason] }
-        allow(engine).to receive(:cancel_current_turn!) do |reason|
+        # On the objects themselves: the Bridge's snapshot and the Engine's
+        # read them too, so the question is one (#to_h).
+        allow(engine.turn_state).to receive(:running?) { running }
+        allow(engine.question_desk).to receive(:pending) { running ? Samagotchi::PendingQuestion.new(id: "q1") : nil }
+        allow(engine.question_desk).to receive(:cancel) { |reason, **| calls << [:question, reason] }
+        allow(engine.turn_state).to receive(:cancel!) do |reason, **|
           calls << [:turn, reason]
           running = false
         end
@@ -1396,8 +1399,8 @@ RSpec.describe Samagotchi::Worker do
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         follow
         wait_for("the terminal's stream") { open_streams == 1 }
-        allow(engine).to receive(:turn_running?).and_return(true)
-        allow(engine).to receive(:cancel_current_turn!) { |reason| calls << reason }
+        allow(engine.turn_state).to receive(:running?).and_return(true)
+        allow(engine.turn_state).to receive(:cancel!) { |reason, **| calls << reason }
         ticks = 0
         allow(@worker).to receive(:cancel_unattended_turn).and_wrap_original do |original|
           ticks += 1
@@ -1508,7 +1511,7 @@ RSpec.describe Samagotchi::Worker do
 
       it "stays up while a turn runs" do
         start_worker(poll_interval: 0.05)
-        allow(engine).to receive(:turn_running?).and_return(true)
+        allow(engine.turn_state).to receive(:running?).and_return(true)
 
         expect(post_exit).to eq([409, { "status" => "held", "reason" => "turn_running", "session_id" => session.id }])
         loop_rounds
@@ -1595,7 +1598,7 @@ RSpec.describe Samagotchi::Worker do
         it "refuses the stop-all when something the user can't stop appeared meanwhile" do
           engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
           start_worker(poll_interval: 0.05)
-          allow(engine).to receive(:turn_running?).and_return(true)
+          allow(engine.turn_state).to receive(:running?).and_return(true)
 
           status, body = post_exit(stop: true)
 
@@ -1790,12 +1793,12 @@ RSpec.describe Samagotchi::Worker do
 
         it "stays up while a question waits, and checks again as it leaves" do
           start_worker(poll_interval: 0.05)
-          allow(engine).to receive(:pending_question).and_return({ id: "q1" })
+          allow(engine.question_desk).to receive(:pending).and_return({ id: "q1" })
           expect(post_restart.last).to include("status" => "held", "reason" => "question_pending")
           loop_rounds
           expect(@thread).to be_alive
 
-          allow(engine).to receive(:pending_question).and_return(nil)
+          allow(engine.question_desk).to receive(:pending).and_return(nil)
           policy = @worker.instance_variable_get(:@idle_exit)
           allow(policy).to receive(:hold_for_restart).and_return(nil, :input_queued)
           expect(post_restart.first).to eq(200)

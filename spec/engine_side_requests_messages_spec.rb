@@ -104,6 +104,8 @@ RSpec.describe "Side requests on a Messages host" do
     server.enqueue("/v1/messages", json: message("foo.").merge(usage: { input_tokens: 300, output_tokens: 3 }))
 
     expect(engine.recap.write_now).to eq("We renamed foo and bar.")
+    # Announced through the job's emit_recap (Engine#emit_recap).
+    expect(events.find { |e| e[:type] == :recap_ready }).to include(recap: "We renamed foo and bar.")
     expect(ctx.ask_model(messages: [], prompt: "what?")).to eq("foo.")
 
     side = engine.metrics.snapshot[:side]

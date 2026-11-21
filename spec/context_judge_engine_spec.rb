@@ -292,7 +292,7 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine
       allow(engine).to receive(:show_card).and_call_original
       running = true
-      allow(engine.instance_variable_get(:@turn_state)).to receive(:running?) { running }
+      allow(engine.turn_state).to receive(:running?) { running }
       session = new_session
       propose(session, "pr-412")
       answers.push([0.7, 0.9])

@@ -6,12 +6,15 @@ require "tmpdir"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "support/test_kernel"
 require "support/worker_loop_rounds"
 
 # Images between a UI and the worker: refs only (never paths or bytes),
 # through the Bridge, the input files, the worker and the snapshot.
 RSpec.describe "Images in transport" do
+  include BridgeParts
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
@@ -71,7 +74,7 @@ RSpec.describe "Images in transport" do
 
     before do
       engine.subscribe(observer: ->(event) { events << event })
-      @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id,
+      @bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: tmpdir, session_id: session.id,
                                        input_format: Samagotchi::SessionInbox::INPUT_FORMAT).start
       @port, @secret = JSON.parse(File.read(File.join(session_dir, "bridge.json"))).values_at("port", "secret")
     end

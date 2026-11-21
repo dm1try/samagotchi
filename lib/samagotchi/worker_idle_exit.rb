@@ -66,7 +66,12 @@ module Samagotchi
     # "2m", "running a turn").
     HoldItem = Data.define(:id, :label, :detail)
 
-    # @param engine [Engine] #turn_running?, #last_activity_at, #reminder_store
+    # @param engine [Engine] #reminder_store, #sign_in_waiting?,
+    #   #anytime_running?, #relay_desk
+    # @param turn_state [TurnState] the Engine's (Engine#turn_state):
+    #   #running?, #last_activity_at
+    # @param question_desk [QuestionDesk] the Engine's
+    #   (Engine#question_desk): #pending
     # @param bridge [Bridge, nil] #open_streams, #last_client_activity_at; nil
     #   when the worker's Bridge failed to start
     # @param timeout_minutes [Numeric, nil] 0 or nil: never exit
@@ -83,10 +88,12 @@ module Samagotchi
     #   or with a live worker (ChildrenStatus::Child): they never hold the
     #   exit, but the exit ask lists them so "stop them" stops them too
     # @param clock [#call] monotonic seconds, the Engine's and Bridge's clock
-    def initialize(engine:, bridge:, timeout_minutes:, input_pending:, awaiting_continue: -> { false },
+    def initialize(engine:, turn_state:, question_desk:, bridge:, timeout_minutes:, input_pending:, awaiting_continue: -> { false },
                    running_tasks: -> { [] }, watched_tasks: -> { [] }, watched_running: -> { [] },
                    delegates: -> { [] }, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @engine = engine
+      @turn_state = turn_state
+      @question_desk = question_desk
       @bridge = bridge
       @timeout = timeout_minutes.to_f * 60
       @input_pending = input_pending
@@ -111,7 +118,7 @@ module Samagotchi
     #   :recent_activity
     def hold
       return :disabled unless @timeout.positive?
-      return :turn_running if @engine.turn_running?
+      return :turn_running if @turn_state.running?
       return :input_queued if @input_pending.call
       return :continue_offered if @awaiting_continue.call
       return :client_connected if @bridge && @bridge.open_streams.positive?
@@ -167,7 +174,7 @@ module Samagotchi
     # leaving) ignores them.
     # @return [Hold, nil]
     def request_hold(requester:, streams: true, hint: nil, ask: false)
-      reason = if @engine.turn_running? then :turn_running
+      reason = if @turn_state.running? then :turn_running
                elsif @input_pending.call then :input_queued
                elsif @awaiting_continue.call then :continue_offered
                elsif streams && @bridge && @bridge.open_streams_except(requester).positive? then :client_connected
@@ -195,10 +202,10 @@ module Samagotchi
     #   :question_pending, :command_running, :relays_open or
     #   :background_tasks
     def hold_for_restart
-      return :turn_running if @engine.turn_running?
+      return :turn_running if @turn_state.running?
       return :input_queued if @input_pending.call
       return :continue_offered if @awaiting_continue.call
-      return :question_pending if @engine.pending_question
+      return :question_pending if @question_desk.pending
       return :command_running if @engine.anytime_running?
       return :relays_open if @engine.relay_desk.active?
       return :background_tasks if @running_tasks.call.any?
@@ -208,7 +215,7 @@ module Samagotchi
 
     # @return [Float] seconds since the latest activity of any kind
     def idle_seconds
-      last = [@started_at, @engine.last_activity_at, @bridge&.last_client_activity_at].compact.max
+      last = [@started_at, @turn_state.last_activity_at, @bridge&.last_client_activity_at].compact.max
       @clock.call - last
     end
 

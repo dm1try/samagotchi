@@ -17,7 +17,6 @@ require "samagotchi/idle_client"
 #   - Integration tests below exercise the **full chain** with a real model:
 #     Engine.build_recap → IdleRecap → IdleClient HTTP → :recap_ready event.
 RSpec.describe "idle session-recap end-to-end", :integration do
-  let(:base_time) { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
   let(:messages) do
     [
       { "role" => "user", "content" => "Hi there, I'm working on a Ruby project." },
@@ -106,15 +105,12 @@ RSpec.describe "idle session-recap end-to-end", :integration do
     #
     # We manually set idle conditions and call `tick` — no real idle time needed.
     #
-    # Note: Engine#run_turn now sets @session, so messages_json_for_recap works
-    # without stubbing. We still stub turn_running?/last_activity_at/activity_seq
-    # to trigger the idle condition immediately.
+    # The job reads the Engine's real TurnState: no turn runs, inactivity is
+    # 0.0 and a first attempt needs no new activity seq, so it fires at once.
+    # The conversation is stubbed (the job reads it through its
+    # messages_json lambda, which calls Engine#messages_json_for_recap).
     engine.start_idle
 
-    # Set the engine to idle: last_activity_at is far in the past, no turn running
-    allow(engine).to receive(:turn_running?).and_return(false)
-    allow(engine).to receive(:last_activity_at).and_return(base_time - 60)
-    allow(engine).to receive(:activity_seq).and_return(2)
     allow(engine).to receive(:messages_json_for_recap).and_return(
       JSON.generate([
         { "role" => "user", "content" => "Hi there, working on a Ruby project." },

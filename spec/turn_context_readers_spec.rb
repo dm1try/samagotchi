@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Engine, "cross-thread readers of the running turn" do
   # Runs a turn whose reader thread reads (the block) the moment the turn is
   # published; returns what it read.
   def read_as_published(origin: Samagotchi::TurnOrigin::NONE, &reader)
-    state = engine.send(:turn_state)
+    state = engine.turn_state
     seen = []
     allow(state).to receive(:begin!).and_wrap_original do |original, **kwargs|
       original.call(**kwargs)

@@ -69,31 +69,18 @@ module Samagotchi
     include BlockFixRoute
 
     ENGINE_CALLS = {
-      active_cancel_controller: "turn-state monitor",
-      annotate_question: "question-desk control",
-      answer_question: "question-desk control",
-      cancel_current_turn!: "turn cancellation",
-      cancel_question: "question-desk control",
       command_registry: "startup-built registry",
-      cut_for_steer: "steer-cut coordination",
-      drop_enqueued_id: "turn-state monitor",
-      enqueued_id?: "turn-state monitor",
       fix_block: "block-fix mutex; replace-only session messages",
-      forget_enqueued_id: "turn-state monitor",
-      generation_snapshot: "generation-phase snapshot",
       guardrail_warning: "startup-set warning reader",
       init_tasks: "plugin-task monitor",
-      input_epoch: "waiting-steer monitor",
       last_answer_message: "message snapshot under event lock",
       messages_checkpoint: "replace-only message copy",
       objectives_view: "objectives snapshot under event lock",
-      pending_question: "question-desk monitor",
       plugin_warning: "warning-state reader",
       recap: "recap-job reference",
       recap_override: "session-setting reader",
       relay_desk: "relay-store reference; status is monitor-protected",
       request_recap: "idle-recap monitor",
-      reserve_enqueued_id: "turn-state monitor",
       working_set_snapshot: "idle working-set snapshot under event lock",
       working_set_item: "turn view under its mutex, else session messages under event lock",
       "running_turn_messages=": "callback writer; Bridge lifecycle",
@@ -101,8 +88,7 @@ module Samagotchi
       session: "session reference; messages are replace-only",
       session_state_snapshot: "snapshot; event lock for consistency",
       stats_snapshot: "stats snapshot; may probe model",
-      steer_cut_after: "per-read model setting",
-      turn_running?: "turn-state monitor"
+      steer_cut_after: "per-read model setting"
     }.freeze
 
     DEFAULT_BIND = "127.0.0.1"
@@ -132,6 +118,9 @@ module Samagotchi
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
     # @param event_log [SessionObserver] that engine's event log (Engine#event_log)
+    # @param turn_state [TurnState] that engine's turn state (Engine#turn_state)
+    # @param question_desk [QuestionDesk] that engine's question desk (Engine#question_desk)
+    # @param steer_cut [SteerCut] that engine's steer cut (Engine#steer_cut)
     # @param state_dir [String] the session state directory root
     # @param session_id [String] this bridge's session id
     # @param bind [String] bind address (127.0.0.1 only)
@@ -172,13 +161,16 @@ module Samagotchi
     # @param on_activity [#call, nil] what the worker is busy with right now
     #   (Worker#activity_snapshot: the same signals WorkerIdleExit#hold reads)
     #   for GET /activity; without one that route answers 501
-    def initialize(engine:, event_log:, state_dir:, session_id:, bind: DEFAULT_BIND,
+    def initialize(engine:, event_log:, turn_state:, question_desk:, steer_cut:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
                    on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil,
                    on_holds: nil, on_holds_stop: nil, on_activity: nil)
       @engine = engine
       @event_log = event_log
+      @turn_state = turn_state
+      @question_desk = question_desk
+      @steer_cut = steer_cut
       @on_input = on_input
       @on_command = on_command
       @on_exit_request = on_exit_request
@@ -402,7 +394,7 @@ module Samagotchi
         messages = @engine.messages_checkpoint
         drawing = last_turn_drawing(messages)
         idle_working_set_unavailable = Object.new
-        idle_working_set = if @engine.turn_running?
+        idle_working_set = if @turn_state.running?
                              idle_working_set_unavailable
                            else
                              Degrade.call(:bridge, "working_set_snapshot_failed", fallback: idle_working_set_unavailable) do
@@ -422,7 +414,7 @@ module Samagotchi
           recap: @accumulator.recap,
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
-          pending_question: @engine.pending_question&.to_h,
+          pending_question: @question_desk.pending&.to_h,
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
           init_tasks: @engine.init_tasks,
@@ -532,11 +524,11 @@ module Samagotchi
 
     # The turn in progress (TurnAccumulator#current_turn) with the running
     # generation's phase as generation: {thinking_only:, age:}
-    # (Engine#generation_snapshot), so a page joining mid-generation can
+    # (SteerCut#generation_snapshot), so a page joining mid-generation can
     # clock its delivery line and say whether a cut can land.
     def current_turn_with_generation
       turn = @accumulator.current_turn
-      gen = turn && @engine.generation_snapshot
+      gen = turn && @steer_cut.generation_snapshot
       gen ? turn.merge(generation: gen.to_h) : turn
     end
 
@@ -700,7 +692,7 @@ module Samagotchi
         frame_provider: -> { snapshot_frame },
         # A reconnect (with a cursor) replays; only a fresh join snapshots.
         join_with_snapshot: snapshot && last_event_id.nil?,
-        bridge: self,
+        stopped: method(:stopped?),
         heartbeat_interval: @heartbeat_interval,
         raw: raw
       )
@@ -901,10 +893,10 @@ module Samagotchi
         turn_id = nil if turn_id && turn_id.empty?
       end
 
-      if @engine.turn_running? && @engine.active_cancel_controller
-        # With a turn_id the engine compares it to the running turn's under
-        # its lock; clients that send none (older ones) cancel whichever runs.
-        ok = turn_id ? @engine.cancel_current_turn!(reason, turn_id: turn_id) : @engine.cancel_current_turn!(reason)
+      if @turn_state.running? && @turn_state.controller
+        # With a turn_id the turn state compares it to the running turn's under
+        # its lock; clients that send none (older ones, nil) cancel whichever runs.
+        ok = @turn_state.cancel!(reason, turn_id: turn_id)
         if ok == :turn_mismatch
           return [{}, 409, { error: "turn_mismatch", detail: "the running turn is not the one named", session_id: @session_id }]
         end
@@ -978,9 +970,9 @@ module Samagotchi
       return deadline_passed("answer") if expired?("answer_expired", deadline, sid: session_id, id: qid)
 
       begin
-        result = @engine.answer_question(id: qid, selected: selected, freeform: freeform, client_id: client_id)
+        result = @question_desk.answer(id: qid, selected: selected, freeform: freeform, client_id: client_id)
         [{}, 200, { status: "answered", session_id: session_id, answer: result.to_h }]
-      rescue Engine::QuestionNotPending => e
+      rescue QuestionDesk::NotPending => e
         # Another client answered first, or the question was cancelled.
         [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue QuestionDesk::Refused => e
@@ -1043,7 +1035,7 @@ module Samagotchi
         reason = fetched(parsed, "reason").to_s
         relay_closed(qid, relay_id, RELAY_CLOSE_REASONS.include?(reason) ? reason : "closed")
       else
-        RelayVerifier.new(engine: @engine, state_dir: @state_dir, session_id: session_id)
+        RelayVerifier.new(question_desk: @question_desk, state_dir: @state_dir, session_id: session_id)
                      .answer(relay_id: relay_id, question_id: qid)
       end
     end
@@ -1051,7 +1043,7 @@ module Samagotchi
     # Dismiss the pending question (an empty answer at a terminal): the
     # tool returns without an answer and every UI gets :question_cancelled.
     # Only the question the client saw, and only while nobody has answered
-    # it: Engine#cancel_question checks both under the question lock. A past
+    # it: QuestionDesk#cancel checks both under the question lock. A past
     # +deadline+ (dismissing an approval denies it): 408, as for an answer.
     # Returns [headers, status, body].
     def handle_dismiss_question(session_id, body)
@@ -1066,7 +1058,7 @@ module Samagotchi
       return deadline_passed("dismissal") if expired?("dismiss_expired", deadline, sid: session_id, id: qid)
 
       begin
-        dismissed = @engine.cancel_question("dismissed", id: qid)
+        dismissed = @question_desk.cancel("dismissed", id: qid)
       rescue QuestionDesk::NotDismissable => e
         # A step-limit question: its answer is Continue or Stop.
         return [{}, 409, { error: "not_dismissable", detail: e.message }]
@@ -1370,7 +1362,7 @@ module Samagotchi
                           pending_limit:, enqueued_id:)
       # Before it is queued: a drain after this may have taken it (#cut_for_steer).
       @post_turn_mutex.synchronize do
-        epoch = @engine.input_epoch
+        epoch = @steer_cut.input_epoch
         # Whether a queue waits for a running turn: read with the write under
         # the event log, so no :turn_started or :turn_completed falls between.
         # To an idle worker the queued file simply runs as the next turn.
@@ -1385,10 +1377,10 @@ module Samagotchi
           if existing
             next(existing[:prompt] == prompt.to_s ? :duplicate : :conflict)
           end
-          next :duplicate if @engine.enqueued_id?(enqueued_id)
+          next :duplicate if @turn_state.enqueued_id?(enqueued_id)
           next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
           next :too_many if pending_limit && pending_turns(author) >= pending_limit
-          next :duplicate unless @engine.reserve_enqueued_id(enqueued_id)
+          next :duplicate unless @turn_state.reserve_enqueued_id(enqueued_id)
 
           # Input goes into a running turn only of its own author: the
           # owner's never into a participant's turn (a steer, a cut), a
@@ -1398,7 +1390,7 @@ module Samagotchi
           queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
           unless enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                               no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, anchors: anchors)
-            @engine.forget_enqueued_id(enqueued_id)
+            @turn_state.forget_enqueued_id(enqueued_id)
             next false
           end
 
@@ -1430,7 +1422,7 @@ module Samagotchi
         # that says nothing (an older client, the web composer) goes in at
         # the running turn's next step.
         cut = nil
-        cut = @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
+        cut = @steer_cut.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
         # A queue to an idle worker is a turn now: the ack says next_step.
         ack_delivery = Delivery.queue?(delivery) && !queued_behind_turn ? Delivery::NEXT_STEP : delivery
         ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: ack_delivery }
@@ -1477,7 +1469,7 @@ module Samagotchi
 
         SessionInbox.take_queued_input(session_dir, id).tap do |status, _|
           if status == :removed
-            @engine.drop_enqueued_id(id)
+            @turn_state.drop_enqueued_id(id)
             @event_log.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id)
           end
         end
@@ -1800,10 +1792,10 @@ module Samagotchi
       return [{}, 422, { error: "relay_unverified", detail: "this session has no parent" }] unless parent_id
 
       marker = { parent_id: parent_id, parent_short: parent_id[0, 8], relay_id: relay_id }
-      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: marker)
+      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @question_desk.annotate(qid, relayed_to: marker)
 
       Log.info(:bridge, "relay_opened", sid: @session_id, id: qid, parent: parent_id[0, 8])
-      watch = RelayWatcher.start(engine: @engine, question_id: qid, relay_id: relay_id,
+      watch = RelayWatcher.start(question_desk: @question_desk, question_id: qid, relay_id: relay_id,
                                  parent_dir: Session.session_dir(parent_id, state_dir: @state_dir))
       @mutex.synchronize { @relay_watchers = (@relay_watchers || []).select(&:alive?) << watch }
       [{}, 200, { status: "opened", question_id: qid }]
@@ -1812,12 +1804,12 @@ module Samagotchi
     # The parent's relay card closed unanswered: the mark goes, if it is
     # still that relay's.
     def relay_closed(qid, relay_id, reason)
-      pending = @engine.pending_question
+      pending = @question_desk.pending
       relay = pending&.relayed_to
       unless pending && pending.id.to_s == qid && relay && (relay[:relay_id] || relay["relay_id"]).to_s == relay_id
         return [{}, 409, { error: "question_not_pending", detail: "no question #{qid} relayed by #{relay_id}" }]
       end
-      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: nil, reason: reason)
+      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @question_desk.annotate(qid, relayed_to: nil, reason: reason)
 
       Log.info(:bridge, "relay_closed", sid: @session_id, id: qid, reason: reason)
       [{}, 200, { status: "closed", question_id: qid }]

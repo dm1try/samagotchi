@@ -5,6 +5,7 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/owner_prompt"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
@@ -13,6 +14,8 @@ require "support/test_kernel"
 # ctx.messages (plan O1): no system prompt; mid-turn a worker's holds the
 # turn so far (from its Bridge), a one-shot's is the conversation before it.
 RSpec.describe "ctx.messages" do
+  include BridgeParts
+
   include_context "thinking off"
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
@@ -55,7 +58,7 @@ RSpec.describe "ctx.messages" do
 
   it "adds the running turn so far with a Bridge (a worker)" do
     engine.session = session
-    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: session.id)
+    bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: Dir.mktmpdir, session_id: session.id)
     bridge.start
     begin
       engine.run_turn(session, "now", on_event: ->(_e) {})

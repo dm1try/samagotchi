@@ -181,7 +181,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "returns a cancelled error payload when the turn is cancelled while pending" do
       engine = build_engine
       ctrl = Samagotchi::Client::CancellationController.new
-      engine.send(:turn_state).begin!(controller: ctrl, sink: nil)
+      engine.turn_state.begin!(controller: ctrl, sink: nil)
 
       events = []
       engine.subscribe(observer: ->(e) { events << e })
@@ -210,7 +210,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "doesn't deadlock when a cancelled question races a snapshot taken with the event log held" do
       engine = build_engine
       ctrl = Samagotchi::Client::CancellationController.new
-      engine.send(:turn_state).begin!(controller: ctrl, sink: nil)
+      engine.turn_state.begin!(controller: ctrl, sink: nil)
       result_box = {}
       turn_thread = Thread.new { result_box[:result] = engine.request_question(payload) }
       turn_thread.report_on_exception = false
@@ -534,7 +534,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       # Hold the question lock across both answers: this is exactly the window
       # between the first answer and the turn thread clearing @pending_question.
-      engine.instance_variable_get(:@question_desk).instance_variable_get(:@lock).synchronize do
+      engine.question_desk.instance_variable_get(:@lock).synchronize do
         engine.answer_question(id: qid, selected: ["Cats"])
         expect { engine.answer_question(id: qid, selected: ["Dogs"]) }
           .to raise_error(Samagotchi::Engine::QuestionNotPending, /already answered/)
@@ -549,7 +549,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread, _result_box, _events = request_in_background(engine, payload)
       qid = engine.pending_question.id
 
-      engine.instance_variable_get(:@question_desk).instance_variable_get(:@lock).synchronize do
+      engine.question_desk.instance_variable_get(:@lock).synchronize do
         engine.cancel_question("other client")
         expect { engine.answer_question(id: qid, selected: ["Cats"]) }
           .to raise_error(Samagotchi::Engine::QuestionNotPending, /cancelled/)
@@ -563,7 +563,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       qid = engine.pending_question.id
 
       cancelled = nil
-      engine.instance_variable_get(:@question_desk).instance_variable_get(:@lock).synchronize do
+      engine.question_desk.instance_variable_get(:@lock).synchronize do
         engine.answer_question(id: qid, selected: ["Cats"])
         cancelled = engine.cancel_question("dismissed", id: qid)
       end
@@ -612,7 +612,7 @@ RSpec.describe "Engine ↔ KernelLoop question link" do
   it "answers a bad call with the plain-text validation error, without asking" do
     kernel = Samagotchi::KernelLoop.new(client: double("client"))
     engine = Samagotchi::Engine.new(client: double("client"), kernel: kernel)
-    allow(engine.instance_variable_get(:@question_desk)).to receive(:open_question)
+    allow(engine.question_desk).to receive(:open_question)
 
     nine = (1..9).map { |n| "Option #{n}" }
     outputs = [
@@ -626,7 +626,7 @@ RSpec.describe "Engine ↔ KernelLoop question link" do
       "[ask_user_question]\n#{Samagotchi::Tools::AskUserQuestion.options_count_error(0)}",
       "[ask_user_question]\n#{Samagotchi::Tools::AskUserQuestion.options_count_error(9)}"
     ])
-    expect(engine.instance_variable_get(:@question_desk)).not_to have_received(:open_question)
+    expect(engine.question_desk).not_to have_received(:open_question)
     expect(engine.pending_question).to be_nil
   end
 end

@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/title_command"
 require "samagotchi/session"
 require "samagotchi/recap_store"
+require "samagotchi/turn_state"
 
 # /title: shows, sets or clears the session's own name, and without one says
 # what the lists show instead — the same read the cards use (RecapStore.card).
@@ -55,7 +56,9 @@ RSpec.describe Samagotchi::TitleCommand do
     end
 
     it "says it for a session whose live recap has never read the file" do
-      engine.recap = Samagotchi::IdleRecap.new(engine: engine, target: nil, store: nil)
+      # A job that never ticks: its turn state and lambdas go unread.
+      engine.recap = Samagotchi::IdleRecap.new(turn_state: Samagotchi::TurnState.new(clock: -> { 0.0 }), messages_json: -> { "[]" },
+                                               emit_recap: ->(**) {}, target: nil, store: nil)
       expect(command.run("").first).to eq("title: none (shows the auto title: Parser tab handling)")
     end
 

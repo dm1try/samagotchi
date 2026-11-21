@@ -8,6 +8,7 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
 require "samagotchi/tools/delegate_relay"
@@ -17,6 +18,8 @@ require "samagotchi/tools/delegate_relay"
 # relays that card one hop further, and the parent's user's answer goes back
 # down the same hops, each child verifying with its own parent's Bridge.
 RSpec.describe "approval relay, two hops" do
+  include BridgeParts
+
   let(:state_dir) { Dir.mktmpdir("relay-chain") }
   let(:top) { new_session(prompt: "ship it") }
   let(:middle) { new_session(parent_id: top.id, prompt: "release the gem") }
@@ -56,7 +59,7 @@ RSpec.describe "approval relay, two hops" do
     engine.interface = :worker
     engine.session_state_dir = state_dir
     engine.session = Samagotchi::Session.load(session.id, state_dir: state_dir)
-    @bridges << Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
+    @bridges << Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
     @locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
     engine
   end

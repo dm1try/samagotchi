@@ -26,7 +26,14 @@ module Samagotchi
     # own recap.enabled (chi --set recap.enabled=true) only as the kwarg.
     #
     # @param recap          [Hash, false, nil] the Engine's `recap:` kwarg
-    # @param engine         [Engine] the recap job's engine
+    # @param turn_state     [TurnState] the Engine's (Engine#turn_state); a
+    #   rebuilt job gets the same one
+    # @param messages_json  [#call] → the conversation the recap summarizes,
+    #   as a JSON string (Engine#messages_json_for_recap)
+    # @param emit_recap     [#call] (recap:, generation:, covered:, created_at:)
+    #   announces a written recap (Engine#emit_recap)
+    # @param on_usage       [#call] (usage) records a recap request's SideUsage
+    #   (Engine#note_side_usage)
     # @param host_registry  [HostRegistry]
     # @param session_target [#call] → the session's current model as a recap target
     # @param session_id     [#call] → String, nil
@@ -34,7 +41,7 @@ module Samagotchi
     # @param session_config [#call] → the session's own core settings
     #   (SessionConfig::Settings#core), read once here
     # @return [IdleRecap, nil]
-    def self.build(recap, engine:, host_registry:, session_target:, session_id:, state_dir:, session_config: -> { {} })
+    def self.build(recap, turn_state:, messages_json:, emit_recap:, on_usage:, host_registry:, session_target:, session_id:, state_dir:, session_config: -> { {} })
       return nil if recap == false
 
       session = session_config.call || {}
@@ -71,7 +78,9 @@ module Samagotchi
                end
 
       IdleRecap.new(
-        engine: engine,
+        turn_state: turn_state,
+        messages_json: messages_json,
+        emit_recap: emit_recap,
         target: target,
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
@@ -79,7 +88,7 @@ module Samagotchi
         sentences: recap_sentences(string_config(kwarg_config, :sentences) || registry_string("recap.sentences", session: session)),
         store: RecapStore.new(session_id_lookup: -> { session_id.call }, state_dir_lookup: -> { state_dir.call }),
         session_id: -> { session_id.call },
-        on_usage: ->(usage) { engine.note_side_usage(usage) }
+        on_usage: on_usage
       )
     end
 

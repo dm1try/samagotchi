@@ -14,6 +14,7 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/worker_idle_exit"
 require "samagotchi/hold_stop"
 require "samagotchi/bridge_client"
@@ -185,6 +186,8 @@ class ControllableIO
 end
 
 RSpec.describe Samagotchi::Bridge do
+  include BridgeParts
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:client) { test_client }
@@ -369,6 +372,20 @@ RSpec.describe Samagotchi::Bridge do
       expect(io.buffer.scan(/^id: (.*)\r$/).flatten).to eq(%w[5 6 7 8])
     end
 
+    it "writes heartbeats while its stop check answers false, and ends once it answers true" do
+      stop = [false]
+      writer = Samagotchi::Bridge::SSEWriter.new(event_log: Samagotchi::SessionObserver.new, ring: Samagotchi::Bridge::RingBuffer.new(capacity: 4),
+                                                 session_id: "s1", heartbeat_interval: 0.02, stopped: -> { stop[0] })
+      io = ControllableIO.new
+      writer_thread = Thread.new { writer.serve!(io) }
+      wait_for("two heartbeats") { io.buffer.scan(": ping").size >= 2 }
+      expect(writer_thread).to be_alive
+
+      stop[0] = true
+      join!(writer_thread, "the serve loop")
+      expect(writer_thread).not_to be_alive
+    end
+
     describe "with a worker epoch" do
       # The ring holds seqs 1..10 of the worker whose epoch is "e2".
       def serve_from(cursor)
@@ -438,7 +455,7 @@ RSpec.describe Samagotchi::Bridge do
 
   describe "POST tasks/stop" do
     let(:engine) { make_engine }
-    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, **bridge_parts(engine), state_dir: Dir.mktmpdir, session_id: "s1") }
 
     include TaskDirs
 
@@ -534,12 +551,14 @@ RSpec.describe Samagotchi::Bridge do
 
   describe "cancel reasons" do
     let(:engine) { make_engine }
-    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, **bridge_parts(engine), state_dir: Dir.mktmpdir, session_id: "s1") }
+
+    let(:turn_state) { engine.turn_state }
 
     before do
-      allow(engine).to receive(:turn_running?).and_return(true)
-      allow(engine).to receive(:active_cancel_controller).and_return(double)
-      allow(engine).to receive(:cancel_current_turn!).and_return(true)
+      allow(turn_state).to receive(:running?).and_return(true)
+      allow(turn_state).to receive(:controller).and_return(double)
+      allow(turn_state).to receive(:cancel!).and_return(true)
     end
 
     def cancel_with(reason)
@@ -550,25 +569,25 @@ RSpec.describe Samagotchi::Bridge do
       cancel_with("ctrl_c")
       cancel_with("user")
       cancel_with("session_stopped")
-      expect(engine).to have_received(:cancel_current_turn!).with(:ctrl_c)
-      expect(engine).to have_received(:cancel_current_turn!).with(:user)
-      expect(engine).to have_received(:cancel_current_turn!).with(:session_stopped)
+      expect(turn_state).to have_received(:cancel!).with(:ctrl_c, turn_id: nil)
+      expect(turn_state).to have_received(:cancel!).with(:user, turn_id: nil)
+      expect(turn_state).to have_received(:cancel!).with(:session_stopped, turn_id: nil)
     end
 
     it "turns any other reason into :manual instead of a new symbol" do
       _, status, body = cancel_with("made_up_#{SecureRandom.hex(4)}")
       expect(status).to eq(202)
       expect(body[:reason]).to eq("manual")
-      expect(engine).to have_received(:cancel_current_turn!).with(:manual)
+      expect(turn_state).to have_received(:cancel!).with(:manual, turn_id: nil)
     end
 
-    it "hands the turn id to the engine when the client names one" do
+    it "hands the turn id to the turn state when the client names one" do
       bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t1"))
-      expect(engine).to have_received(:cancel_current_turn!).with(:user, turn_id: "t1")
+      expect(turn_state).to have_received(:cancel!).with(:user, turn_id: "t1")
     end
 
     it "answers 409 turn_mismatch when the running turn is not the one named" do
-      allow(engine).to receive(:cancel_current_turn!).and_return(:turn_mismatch)
+      allow(turn_state).to receive(:cancel!).and_return(:turn_mismatch)
       _, status, body = bridge.send(:handle_cancel, "s1", JSON.generate(reason: "user", turn_id: "t0"))
       expect(status).to eq(409)
       expect(body[:error]).to eq("turn_mismatch")
@@ -604,7 +623,7 @@ RSpec.describe Samagotchi::Bridge do
       @session = make_session
       hold_worker(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir))
       @bridge = described_class.new(
-        engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id,
+        engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
         on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped,
         on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
@@ -650,7 +669,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
       @bridge.stop
 
-      @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id, input_format: 2).start
+      @bridge = described_class.new(engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id, input_format: 2).start
       expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
     end
 
@@ -683,7 +702,7 @@ RSpec.describe Samagotchi::Bridge do
       seen = []
       @engine.subscribe(observer: ->(event) { seen << event if event[:type] == :turn_enqueued })
       id = "123e4567-e89b-12d3-a456-426614174000"
-      allow(@engine).to receive(:cut_for_steer).and_return(:waits)
+      allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:waits)
       allow(@engine).to receive(:steer_cut_after).and_return(60)
       body = JSON.generate(session_id: @session.id, prompt: "first", enqueued_id: id, client_id: "web:tab-1", delivery: "cut")
       first_status, first = post_turn(body)
@@ -740,7 +759,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(queued.map { |q| [q["prompt"], q["no_interrupt"]] }).to eq([["long", true], ["short", nil]])
     end
 
-    describe "a message for a running turn (Engine#cut_for_steer)" do
+    describe "a message for a running turn (SteerCut#cut_for_steer)" do
       def post(prompt, client_id, delivery: nil)
         body = { session_id: @session.id, prompt: prompt, client_id: client_id }
         body[:delivery] = delivery
@@ -749,21 +768,21 @@ RSpec.describe Samagotchi::Bridge do
 
       it "asks the engine to cut only when the message asks for it (delivery cut), with the sender's source" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(:now)
+        allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now)
 
         post("from the web", "web:tab-1")
         post("from chi send", "cli:send", delivery: "cut")
         post("from the parent", "delegate:abcd1234")
         post("from a plugin", "plugin", delivery: "cut")
 
-        expect(@engine).to have_received(:cut_for_steer).with("chi_send", epoch: 0).ordered
-        expect(@engine).to have_received(:cut_for_steer).with("plugin_send", epoch: 0).ordered
-        expect(@engine).to have_received(:cut_for_steer).twice
+        expect(@engine.steer_cut).to have_received(:cut_for_steer).with("chi_send", epoch: 0).ordered
+        expect(@engine.steer_cut).to have_received(:cut_for_steer).with("plugin_send", epoch: 0).ordered
+        expect(@engine.steer_cut).to have_received(:cut_for_steer).twice
       end
 
       it "acks the delivery it applied, and the cut's outcome" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(:now, :waits, :off)
+        allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now, :waits, :off)
         allow(@engine).to receive(:steer_cut_after).and_return(60)
 
         _, plain = post("from the web", "web:tab-1")
@@ -783,17 +802,17 @@ RSpec.describe Samagotchi::Bridge do
 
       it "takes an unknown delivery as the default, which never cuts" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(:now)
+        allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now)
 
         _, resp = post("from the web", "web:tab-1", delivery: "whenever")
 
         expect(resp).to include("delivery" => "next_step")
-        expect(@engine).not_to have_received(:cut_for_steer)
+        expect(@engine.steer_cut).not_to have_received(:cut_for_steer)
       end
 
       it "does not for a command, an input with images, or an input it could not queue" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(:now)
+        allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now)
 
         post("/model x", "cli:send", delivery: "cut")
         allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([{ "id" => "a" * 32 }])
@@ -802,7 +821,7 @@ RSpec.describe Samagotchi::Bridge do
         allow(@bridge).to receive(:enqueue_turn).and_return(false)
         expect(post("lost", "web:tab-1", delivery: "cut").first).to eq(500)
 
-        expect(@engine).not_to have_received(:cut_for_steer)
+        expect(@engine.steer_cut).not_to have_received(:cut_for_steer)
       end
     end
 
@@ -1195,7 +1214,7 @@ RSpec.describe Samagotchi::Bridge do
         @engine.append_messages([Samagotchi::ContextNote.message(note_id: "n1", text: "later", source: "chi_note")])
 
         @bridge.stop
-        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("turn_id" => prompt_id)
       end
 
@@ -1226,13 +1245,13 @@ RSpec.describe Samagotchi::Bridge do
         answer_turns
         run_turn_sync(@engine, @session, "hi")
         @bridge.stop
-        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("prompt" => "hi")
 
         @bridge.stop
         line = JSON.parse(File.readlines(drawings_path).last).merge("v" => 99)
         File.write(drawings_path, "#{JSON.generate(line)}\n")
-        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
       end
     end
@@ -1825,14 +1844,14 @@ RSpec.describe Samagotchi::Bridge do
           running_turn!
           announced = []
           @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :turn_enqueued })
-          allow(@engine).to receive(:cut_for_steer)
+          allow(@engine.steer_cut).to receive(:cut_for_steer)
 
           status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue"))
 
           expect(status).to eq(202)
           expect(resp).to include("delivery" => "queue")
           expect(resp).not_to have_key("cut")
-          expect(@engine).not_to have_received(:cut_for_steer)
+          expect(@engine.steer_cut).not_to have_received(:cut_for_steer)
           expect(queued_inputs.map { |q| q["delivery"] }).to eq(["queue"])
           expect(announced.last).to include(delivery: "queue", prompt: "later")
           expect(snapshot["queued"]).to contain_exactly(include("prompt" => "later", "delivery" => "queue"))
@@ -1843,14 +1862,14 @@ RSpec.describe Samagotchi::Bridge do
           running_turn!
           announced = []
           @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :turn_enqueued })
-          allow(@engine).to receive(:cut_for_steer).and_return(:now)
+          allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now)
           revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }
 
           _, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "shorter", delivery: "cut", revises: revises))
 
           expect(resp).to include("delivery" => "queue")
           expect(resp).not_to have_key("cut")
-          expect(@engine).not_to have_received(:cut_for_steer)
+          expect(@engine.steer_cut).not_to have_received(:cut_for_steer)
           expect(announced.last).to include(delivery: "queue", prompt: "shorter")
         end
 
@@ -1878,12 +1897,12 @@ RSpec.describe Samagotchi::Bridge do
 
       it "accepts cut, which the file does not carry (the Bridge cuts itself)" do
         start_bridge
-        allow(@engine).to receive(:cut_for_steer).and_return(:now)
+        allow(@engine.steer_cut).to receive(:cut_for_steer).and_return(:now)
         expect(post_turn(JSON.generate(session_id: @session.id, prompt: "cut it", delivery: "cut")).first)
           .to be_between(200, 299)
 
         expect(queued_inputs.map { |q| q["delivery"] }).to eq([nil])
-        expect(@engine).to have_received(:cut_for_steer)
+        expect(@engine.steer_cut).to have_received(:cut_for_steer)
       end
     end
 
@@ -2294,12 +2313,12 @@ RSpec.describe Samagotchi::Bridge do
 
     it "reads only id, selected and freeform (no question_id, selection or nested answer alias)" do
       start_bridge
-      allow(@engine).to receive(:answer_question)
+      allow(@engine.question_desk).to receive(:answer)
       ['{"question_id":"q1","selection":["A"]}', '{"answer":{"id":"q1","selected":["A"]}}'].each do |payload|
         status, resp, = post_answer(payload)
         expect([status, resp["error"]]).to eq([400, "missing_fields"]), payload
       end
-      expect(@engine).not_to have_received(:answer_question)
+      expect(@engine.question_desk).not_to have_received(:answer)
     end
 
     describe "an answer's deadline" do
@@ -2307,26 +2326,26 @@ RSpec.describe Samagotchi::Bridge do
       # client has said it was not sent, and the question stays open.
       it "drops an answer whose deadline has passed and logs a warning" do
         start_bridge
-        allow(@engine).to receive(:answer_question)
+        allow(@engine.question_desk).to receive(:answer)
         allow(Samagotchi::Log).to receive(:warn).and_call_original
 
         status, resp, = post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: Time.now.to_f - 5))
 
         expect(status).to eq(408)
         expect(resp).to include("error" => "deadline_passed")
-        expect(@engine).not_to have_received(:answer_question)
+        expect(@engine.question_desk).not_to have_received(:answer)
         expect(Samagotchi::Log).to have_received(:warn)
           .with(:bridge, "answer_expired", hash_including(sid: @session.id, late: be > 4))
       end
 
       it "takes an answer before its deadline, or with none" do
         start_bridge
-        allow(@engine).to receive(:answer_question)
+        allow(@engine.question_desk).to receive(:answer)
           .and_return(Samagotchi::QuestionAnswer.new(id: "q1", selected: ["A"]))
 
         expect(post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: Time.now.to_f + 25)).first).to eq(200)
         expect(post_answer(JSON.generate(id: "q1", selected: ["A"])).first).to eq(200)
-        expect(@engine).to have_received(:answer_question).twice
+        expect(@engine.question_desk).to have_received(:answer).twice
       end
 
       it "answers 400 for a deadline that is not a number" do
@@ -2340,14 +2359,14 @@ RSpec.describe Samagotchi::Bridge do
 
       it "drops a dismissal whose deadline has passed: the question stays open" do
         start_bridge
-        allow(@engine).to receive(:cancel_question)
+        allow(@engine.question_desk).to receive(:cancel)
         allow(Samagotchi::Log).to receive(:warn).and_call_original
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/question/dismiss"),
                              JSON.generate(id: "q1", deadline: Time.now.to_f - 5), "Content-Type" => "application/json", **secret_header)
 
         expect(res.code).to eq("408")
         expect(JSON.parse(res.body)).to include("error" => "deadline_passed")
-        expect(@engine).not_to have_received(:cancel_question)
+        expect(@engine.question_desk).not_to have_received(:cancel)
         expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "dismiss_expired", hash_including(late: be > 4))
       end
     end

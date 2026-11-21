@@ -13,6 +13,7 @@ require "samagotchi/session"
 require "samagotchi/session_inbox"
 require "samagotchi/session_manager"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/bridge_client"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/web/app"
@@ -23,6 +24,8 @@ require "samagotchi/web/app"
 # owner's turn carries none anywhere, so its input file and its session
 # are byte for byte what they were (the prompt-caching invariants).
 RSpec.describe "a turn's author" do
+  include BridgeParts
+
   let(:state_dir) { Dir.mktmpdir("turn-author") }
 
   after { FileUtils.rm_rf(state_dir) }
@@ -114,7 +117,7 @@ RSpec.describe "a turn's author" do
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
       hold_worker(session_dir)
-      @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
+      @bridge = described_class.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
       @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     end
 

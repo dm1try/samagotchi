@@ -91,19 +91,22 @@ module Samagotchi
     end
 
     # @param event_log [SessionObserver] the Engine's event log (the context notice)
+    # @param turn_state [TurnState] the Engine's turn state (Engine#turn_state):
+    #   the enqueued-id ledger a taken input claims and finishes on
     # @param wakes [WorkerWakes] the wake budget a context wake asks
     # @param awaiting_continue [#call] whether a continue offer waits
     # @param stopped [#call] whether the session was stopped on disk
     # @param queue_command [#call] (line, client_id, after_file, enqueued_id)
     #   queues a session command for the loop's next pass; after_file is the
     #   input file it came in, or nil
-    def initialize(session:, state_dir:, session_dir:, engine:, event_log:, context_absorber:, wakes:, awaiting_continue:,
-                   stopped:, queue_command:)
+    def initialize(session:, state_dir:, session_dir:, engine:, event_log:, turn_state:, context_absorber:, wakes:,
+                   awaiting_continue:, stopped:, queue_command:)
       @session = session
       @state_dir = state_dir
       @session_dir = session_dir
       @engine = engine
       @event_log = event_log
+      @turn_state = turn_state
       @context_absorber = context_absorber
       @wakes = wakes
       @awaiting_continue = awaiting_continue
@@ -273,7 +276,7 @@ module Samagotchi
       begin
         input = SessionInbox.read_input(claimed_file)
         enqueued_id = input.origin.enqueued_id
-        if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@engine.claim_enqueued_id(enqueued_id)
+        if SessionInbox.input_taken?(@session_dir, @session, enqueued_id) || !@turn_state.claim_enqueued_id(enqueued_id)
           Log.info(:worker, "duplicate_input_dropped", enqueued_id: enqueued_id)
           return
         end
@@ -284,7 +287,7 @@ module Samagotchi
           yield Prompt.new(text: input.prompt, origin: input.origin, no_interrupt: input.no_interrupt, images: input.images,
                            delivery: input.delivery, anchors: input.anchors)
         ensure
-          @engine.finish_enqueued_id(enqueued_id)
+          @turn_state.finish_enqueued_id(enqueued_id)
         end
       ensure
         FileUtils.rm_f(claimed_file)

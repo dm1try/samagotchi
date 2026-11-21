@@ -20,7 +20,7 @@ module Samagotchi
     # #drop_queued_commands. The `empty?` peeks (those, #input_pending?,
     # #nothing_queued?, #start's next_turn_waiting lambda) are benign by
     # design. Writes @command_queue's contents (created in #initialize).
-    # Reads @engine, @event_log, @session_dir, @commands (built in #start),
+    # Reads @engine, @event_log, @turn_state, @session_dir, @commands (built in #start),
     # @continue_offer, @turn_end_seq, @turn_end_type (#start's observer),
     # @turn_flow and @waker.
     module CommandQueuePart
@@ -258,7 +258,7 @@ module Samagotchi
       #   :refuse while a turn runs, :loop idle
       def on_command(command, after_file: nil)
         registry = @engine.command_registry
-        policy = if @engine.turn_running? then registry.mid_turn(command.line)
+        policy = if @turn_state.running? then registry.mid_turn(command.line)
                  else registry.anytime?(command.line) ? :anytime : :loop
                  end
         if policy == :anytime

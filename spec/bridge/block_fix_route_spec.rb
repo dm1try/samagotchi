@@ -9,10 +9,13 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 
 # POST /session/:id/blocks/fix, the feature, and the turn's drawing written
 # again when a fix patched the answer's text.
 RSpec.describe Samagotchi::Bridge::BlockFixRoute do
+  include BridgeParts
+
   let(:state_dir) { Dir.mktmpdir("bridge-block-fix") }
   let(:engine) { Samagotchi::Engine.new(client: test_client, kernel: test_kernel) }
   let(:bad) { "graph TD\n  A--B\n" }
@@ -29,7 +32,7 @@ RSpec.describe Samagotchi::Bridge::BlockFixRoute do
     allow(side).to receive(:ask) { Samagotchi::IdleClient::Summary.new(text: "```mermaid\ngraph TD\n  A-->B\n```", model: "m") }
     allow(Samagotchi::IdleClient).to receive(:for).and_return(side)
     engine.session = session
-    @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2)
+    @bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2)
     @bridge.start
     sidecar = File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), "bridge.json")
     @port, @secret, @features = JSON.parse(File.read(sidecar)).values_at("port", "secret", "features")

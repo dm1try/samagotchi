@@ -11,7 +11,8 @@ module Samagotchi
     # (under @signal_mutex). Worker writes the rest it reads: @run_thread
     # (#run), @loop_started (#run_loop), @left_loop (#run's ensure),
     # @turn_ending (the turn observer) and the grace ivars and @signal_mutex
-    # (#initialize). Reads those, @signals, @engine, @waker, @session_id and
+    # (#initialize). Reads those, @signals, @turn_state (nil-guarded: a
+    # signal may come before #start set it), @waker, @session_id and
     # @state_dir.
     module SignalGracePart
       # How long a signalled worker's turn has to end (it is canceled at once,
@@ -48,7 +49,7 @@ module Samagotchi
       # for it (the loop's first look leaves). A signal after the loop left
       # (the teardown, the caller's last steps) only brings the hard exit.
       def signalled(name, count)
-        Log.info(:worker, "signal", signal: name, count: count, turn_running: @engine&.turn_running? || false)
+        Log.info(:worker, "signal", signal: name, count: count, turn_running: @turn_state&.running? || false)
         return signal_hard_exit if @left_loop
 
         @waker.wake
@@ -58,9 +59,9 @@ module Samagotchi
         hooks_deadline = deadline + @signal_hard_exit
         ended = false
         until @left_loop
-          running = @engine&.turn_running?
+          running = @turn_state&.running?
           ended ||= running && @turn_ending
-          @engine.cancel_current_turn!(:signal) if running && !ended
+          @turn_state.cancel!(:signal) if running && !ended
           break if @loop_started && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= (ended ? hooks_deadline : deadline)
 
           sleep(SIGNAL_RETRY)
@@ -85,7 +86,7 @@ module Samagotchi
         expired = @signal_mutex.synchronize { !@grace_expired && !@left_loop && (@grace_expired = true) }
         return unless expired
 
-        Log.warn(:worker, "signal_grace_expired", signal: name, turn_running: @engine&.turn_running? || false)
+        Log.warn(:worker, "signal_grace_expired", signal: name, turn_running: @turn_state&.running? || false)
         save_or_log(:signal) { save_session }
         # Not once the loop has left (it may have, during the save).
         @signal_mutex.synchronize { @run_thread&.raise(SignalException.new(name)) unless @left_loop }

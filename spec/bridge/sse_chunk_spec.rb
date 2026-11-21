@@ -9,10 +9,13 @@ require "support/test_kernel"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 
 # What projected events look like on a worker's SSE stream, live and replayed
 # (Bridge::ClientEvent), the ring keeping raw events; ?raw=1 writes them as emitted.
 RSpec.describe "Bridge SSE event projection" do
+  include BridgeParts
+
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:state_dir) { Dir.mktmpdir }
@@ -25,7 +28,7 @@ RSpec.describe "Bridge SSE event projection" do
     WebMock.allow_net_connect! if defined?(WebMock)
     @engine = Samagotchi::Engine.new(client: client, kernel: kernel)
     @session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
-    @bridge = Samagotchi::Bridge.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id, heartbeat_interval: 0.2)
+    @bridge = Samagotchi::Bridge.new(engine: @engine, **bridge_parts(@engine), state_dir: state_dir, session_id: @session.id, heartbeat_interval: 0.2)
     @bridge.start
     sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
     @port, @secret = JSON.parse(File.read(sidecar)).values_at("port", "secret")

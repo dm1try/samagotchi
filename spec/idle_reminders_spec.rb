@@ -2,11 +2,12 @@
 
 require "samagotchi/idle_reminders"
 require "samagotchi/reminder_store"
+require "samagotchi/turn_state"
 
 RSpec.describe Samagotchi::IdleReminders do
   subject(:idle_reminders) do
     described_class.new(
-      engine: engine,
+      turn_state: turn_state,
       queue: queue,
       inactivity: 60.0,
       clock: clock,
@@ -22,13 +23,13 @@ RSpec.describe Samagotchi::IdleReminders do
   let(:fired) { [] }
   let(:queue) { Samagotchi::ReminderQueue.new(store: reminder_store) }
 
-  let(:engine) { double("Engine") }
+  let(:turn_state) { instance_double(Samagotchi::TurnState) }
   let(:reminder_store) { Samagotchi::ReminderStore.new }
   let(:clock) { -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) } }
 
   before do
-    allow(engine).to receive(:turn_running?).and_return(false)
-    allow(engine).to receive(:last_activity_at).and_return(Process.clock_gettime(Process::CLOCK_MONOTONIC) - 70)
+    allow(turn_state).to receive(:running?).and_return(false)
+    allow(turn_state).to receive(:last_activity_at).and_return(Process.clock_gettime(Process::CLOCK_MONOTONIC) - 70)
   end
 
   describe "#tick" do
@@ -59,7 +60,7 @@ RSpec.describe Samagotchi::IdleReminders do
     end
 
     it "does not fire if turn is running" do
-      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(turn_state).to receive(:running?).and_return(true)
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
       allow(Process).to receive(:clock_gettime).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
@@ -70,14 +71,14 @@ RSpec.describe Samagotchi::IdleReminders do
 
     it "does not fire if not idle long enough" do
       clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
-      engine_mock = double("Engine")
-      allow(engine_mock).to receive(:turn_running?).and_return(false)
+      idle_turn = instance_double(Samagotchi::TurnState)
+      allow(idle_turn).to receive(:running?).and_return(false)
       # last_activity_at = now, so idle = clock.call - now = 0
-      allow(engine_mock).to receive(:last_activity_at).and_return(
+      allow(idle_turn).to receive(:last_activity_at).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
       )
       idle_reminders = described_class.new(
-        engine: engine_mock,
+        turn_state: idle_turn,
         queue: Samagotchi::ReminderQueue.new(store: reminder_store),
         inactivity: 60.0,
         clock: clock,
@@ -124,12 +125,12 @@ RSpec.describe Samagotchi::IdleReminders do
     end
 
     it "returns false when turn is running" do
-      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(turn_state).to receive(:running?).and_return(true)
       expect(idle_reminders.send(:should_check?)).to be false
     end
 
     it "returns false when not idle enough" do
-      allow(engine).to receive(:last_activity_at).and_return(
+      allow(turn_state).to receive(:last_activity_at).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC) - 10
       )
       expect(idle_reminders.send(:should_check?)).to be false

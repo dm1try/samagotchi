@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
-require "samagotchi/engine"
 require "samagotchi/idle_recap"
+require "samagotchi/turn_state"
 require "samagotchi/idle_scheduler"
 require "timeout"
 
 RSpec.describe Samagotchi::IdleRecap do
   subject(:idle_recap) do
     described_class.new(
-      engine: stub_engine,
+      **parts(recap_host),
       model: model,
       base_url: base_url,
       inactivity: 2.0,
@@ -25,18 +25,22 @@ RSpec.describe Samagotchi::IdleRecap do
   let(:client) { double("idle_client", summarize: "recap") }
   let(:clock) { -> { base_time } }
 
-  # Simple double factory for the engine — avoids instance_double's
-  # strict signature checking which silently fails on keyword-arg methods.
-  def stub_engine(**overrides)
-    stub = RSpec::Mocks::Example.new.instance_eval do
-      double("engine")
-    end rescue double("engine")
-    allow(stub).to receive(:turn_running?).and_return(overrides[:turn_running] || false)
-    allow(stub).to receive(:last_activity_at).and_return(overrides[:last_activity] || base_time.to_f)
-    allow(stub).to receive(:activity_seq).and_return(overrides[:activity_seq] || 1)
-    allow(stub).to receive(:messages_json_for_recap).and_return(overrides[:messages] || "[]")
-    allow(stub).to receive(:emit_recap)
-    stub
+  # The recap's host as the Engine hands it on (Engine#build_recap): its
+  # TurnState, and what the two lambdas call (messages_json:, emit_recap:).
+  # A plain double for those two: instance_double's signature check
+  # silently fails on keyword-arg methods.
+  def recap_host(**overrides)
+    turn_state = instance_double(Samagotchi::TurnState, running?: overrides[:turn_running] || false,
+                                                        last_activity_at: overrides[:last_activity] || base_time.to_f,
+                                                        activity_seq: overrides[:activity_seq] || 1)
+    double("recap host", turn_state: turn_state, messages_json: overrides[:messages] || "[]", emit_recap: nil)
+  end
+
+  # IdleRecap's keywords for a recap_host: its turn state, and lambdas over
+  # its messages_json and emit_recap, as Engine#build_recap passes them.
+  def parts(host)
+    { turn_state: host.turn_state, messages_json: -> { host.messages_json },
+      emit_recap: ->(**fields) { host.emit_recap(**fields) } }
   end
 
   # Tick until the attempt started by the first tick has been collected
@@ -320,16 +324,16 @@ RSpec.describe Samagotchi::IdleRecap do
   end
 
   describe "#initialize" do
-    it "requires an engine" do
+    it "requires a turn state" do
       expect do
-        described_class.new(model: model, base_url: base_url)
-      end.to raise_error(ArgumentError, /engine/)
+        described_class.new(turn_state: nil, messages_json: -> { "[]" }, emit_recap: ->(**) {}, model: model, base_url: base_url)
+      end.to raise_error(ArgumentError, "IdleRecap requires a turn state")
     end
 
     it "creates an IdleClient for the target with the recap's timeout when none is provided" do
-      engine = stub_engine
+      host = recap_host
       allow(Samagotchi::IdleClient).to receive(:new).and_return(double(summarize: "recap"))
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 7.0)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, timeout: 7.0)
       idle.send(:client_for, idle.target)
       expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url, api_key_env: nil, timeout: 7.0,
                                                                  api: :openai, auth: nil, dialect: nil, price: nil)
@@ -339,12 +343,12 @@ RSpec.describe Samagotchi::IdleRecap do
       two_turns = JSON.generate([{ "role" => "user", "content" => "a" }, { "role" => "model", "content" => "b" },
                                  { "role" => "user", "content" => "c" }])
       seq = [1]
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
-      allow(engine).to receive(:activity_seq) { seq[0] }
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
+      allow(host.turn_state).to receive(:activity_seq) { seq[0] }
       targets = [Samagotchi::IdleTarget.new(base_url: "http://a/v1", api_key_env: nil, model: "m1", label: "a:m1")]
       clients = []
       allow(Samagotchi::IdleClient).to receive(:new) { |**kw| clients << kw; double(summarize: nil) }
-      idle = described_class.new(engine: engine, target: -> { targets.last }, inactivity: 0.0, clock: -> { base_time })
+      idle = described_class.new(**parts(host), target: -> { targets.last }, inactivity: 0.0, clock: -> { base_time })
       drive(idle)
       seq[0] = 2
       drive(idle)
@@ -356,28 +360,28 @@ RSpec.describe Samagotchi::IdleRecap do
 
     it "makes no attempt when the target can't be resolved" do
       two_turns = JSON.generate([{ "role" => "user", "content" => "a" }, { "role" => "user", "content" => "c" }])
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
-      idle = described_class.new(engine: engine, target: -> { raise "no host" }, inactivity: 0.0, clock: -> { base_time })
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
+      idle = described_class.new(**parts(host), target: -> { raise "no host" }, inactivity: 0.0, clock: -> { base_time })
       expect { drive(idle) }.not_to raise_error
       expect(idle).not_to be_in_flight
     end
 
     it "uses a custom client when provided" do
       client_double = double
-      engine = stub_engine
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, client: client_double)
+      host = recap_host
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, client: client_double)
       expect(idle.send(:client_for, idle.target)).to eq(client_double)
     end
 
     it "defaults to DEFAULT_INACTIVITY_SECONDS" do
-      engine = stub_engine
-      idle = described_class.new(engine: engine, model: model, base_url: base_url)
+      host = recap_host
+      idle = described_class.new(**parts(host), model: model, base_url: base_url)
       expect(idle.instance_variable_get(:@inactivity)).to eq(described_class::DEFAULT_INACTIVITY_SECONDS)
     end
 
     it "defaults to DEFAULT_MIN_USER_TURNS" do
-      engine = stub_engine
-      idle = described_class.new(engine: engine, model: model, base_url: base_url)
+      host = recap_host
+      idle = described_class.new(**parts(host), model: model, base_url: base_url)
       expect(idle.instance_variable_get(:@min_user_turns)).to eq(described_class::DEFAULT_MIN_USER_TURNS)
     end
   end
@@ -414,53 +418,54 @@ RSpec.describe Samagotchi::IdleRecap do
 
   describe "#should_fire?" do
     it "returns false when a turn is running" do
-      engine = stub_engine(turn_running: true)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+      # Idle long enough: only the running turn holds it.
+      host = recap_host(turn_running: true, last_activity: base_time.to_f - 5)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       expect(idle.should_fire?).to be false
     end
 
     it "returns false when idle is below threshold" do
-      engine = stub_engine(last_activity: base_time.to_f - 1)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+      host = recap_host(last_activity: base_time.to_f - 1)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       expect(idle.should_fire?).to be false
     end
 
     it "returns false when idle equals threshold but seq hasn't advanced since last fire" do
-      engine = stub_engine(last_activity: base_time.to_f - 2, activity_seq: 1)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+      host = recap_host(last_activity: base_time.to_f - 2, activity_seq: 1)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       idle.instance_variable_set(:@last_fire_activity_seq, 1)
       expect(idle.should_fire?).to be false
     end
 
     it "returns true when idle exceeds threshold and seq has advanced since last fire" do
-      engine = stub_engine(last_activity: base_time.to_f - 3, activity_seq: 2)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+      host = recap_host(last_activity: base_time.to_f - 3, activity_seq: 2)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       idle.instance_variable_set(:@last_fire_activity_seq, 1)
       expect(idle.should_fire?).to be true
     end
 
     it "returns true on first idle window (no last_fire_activity_seq)" do
-      engine = stub_engine(last_activity: base_time.to_f - 3, activity_seq: 1)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+      host = recap_host(last_activity: base_time.to_f - 3, activity_seq: 1)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       idle.instance_variable_set(:@last_fire_activity_seq, nil)
       expect(idle.should_fire?).to be true
     end
   end
 
   describe "#tick" do
-    def stub_engine_with_two_user_turns(**overrides)
+    def recap_host_with_two_user_turns(**overrides)
       messages = JSON.generate([
         { "role" => "user", "content" => "Hello" },
         { "role" => "model", "content" => "Hi there" },
         { "role" => "user", "content" => "What about X?" }
       ])
-      stub_engine(messages: messages, **overrides)
+      recap_host(messages: messages, **overrides)
     end
 
     context "when should_fire? is false" do
       it "does nothing" do
-        engine = stub_engine
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
+        host = recap_host
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(false)
         idle.tick
         expect(client).not_to have_received(:summarize)
@@ -469,31 +474,31 @@ RSpec.describe Samagotchi::IdleRecap do
 
     context "when should_fire? is true" do
       it "calls the client and emits recap on success" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         recap_client = double("recap_client")
         allow(recap_client).to receive(:summarize).and_return("recap")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: recap_client, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: recap_client, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
         expect(recap_client).to have_received(:summarize).at_least(:once)
-        expect(engine).to have_received(:emit_recap)
+        expect(host).to have_received(:emit_recap)
       end
 
       it "asks the client for the configured number of sentences" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         recap_client = double("recap_client", summarize: "recap")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
-                                   sentences: [2, 3], client: recap_client, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
+                                                  sentences: [2, 3], client: recap_client, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
         expect(recap_client).to have_received(:summarize) { |prompt| expect(prompt.first[:content]).to include("2-3 plain sentences") }
       end
 
       it "sends the session's id with the request" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         recap_client = double("recap_client", summarize: "recap")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
-                                   client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
+                                                  client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
         expect(recap_client).to have_received(:summarize).with(anything, session_id: "sess-r", on_usage: nil)
@@ -502,12 +507,12 @@ RSpec.describe Samagotchi::IdleRecap do
       # The recap's usage is counted in the session's side line
       # (RecapSetup passes Engine#note_side_usage).
       it "passes its on_usage to the client's summarize" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         recap_client = double("recap_client", summarize: "recap")
         on_usage = ->(_usage) {}
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
-                                   client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time },
-                                   on_usage: on_usage)
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
+                                                  client: recap_client, session_id: -> { "sess-r" }, clock: -> { base_time },
+                                                  on_usage: on_usage)
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
         expect(recap_client).to have_received(:summarize).with(anything, session_id: "sess-r", on_usage: on_usage)
@@ -517,14 +522,14 @@ RSpec.describe Samagotchi::IdleRecap do
         dir = Dir.mktmpdir("samagotchi-log")
         path = File.join(dir, "chi.log")
         Samagotchi::Log.configure(path: path)
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         failing = double("client")
         allow(failing).to receive(:summarize).and_raise(Errno::ECONNREFUSED, "localhost:9")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
 
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
         record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "summarize_failed" } }
         expect(record.to_h).to include(level: "ERROR", tag: "recap")
         expect(record.fields).to include("error" => "Errno::ECONNREFUSED")
@@ -536,14 +541,14 @@ RSpec.describe Samagotchi::IdleRecap do
         dir = Dir.mktmpdir("samagotchi-log")
         path = File.join(dir, "chi.log")
         Samagotchi::Log.configure(path: path)
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         failing = double("client")
         allow(failing).to receive(:summarize).and_raise(LoadError, "cannot load such file -- nope")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
 
         expect { drive(idle) }.not_to output.to_stderr
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
         record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "summarize_failed" } }
         expect(record.fields).to include("error" => "LoadError")
       ensure
@@ -551,50 +556,50 @@ RSpec.describe Samagotchi::IdleRecap do
       end
 
       it "does not emit when recap is nil" do
-        engine = stub_engine_with_two_user_turns
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: nil), clock: -> { base_time })
+        host = recap_host_with_two_user_turns
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: nil), clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
 
       it "does not emit when recap is empty string" do
-        engine = stub_engine_with_two_user_turns
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: ""), clock: -> { base_time })
+        host = recap_host_with_two_user_turns
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: ""), clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
 
-      it "does not emit when engine messages are empty" do
-        engine = stub_engine(messages: "[]")
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+      it "does not emit when the messages are empty" do
+        host = recap_host(messages: "[]")
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
 
       it "does not emit when user turns are below min" do
         messages = JSON.generate([{ "role" => "user", "content" => "Hello" }])
-        engine = stub_engine(messages: messages)
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, min_user_turns: 2, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+        host = recap_host(messages: messages)
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, min_user_turns: 2, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         drive(idle)
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
 
       it "handles client SummarizeError gracefully (does not break session)" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         err_client = double("err_client")
         allow(err_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: err_client, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: err_client, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         expect { drive(idle) }.not_to raise_error
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
 
       it "does not emit when invalidated during generation" do
-        engine = stub_engine_with_two_user_turns
+        host = recap_host_with_two_user_turns
         started = Queue.new
         proceed = Queue.new
         finished = false
@@ -605,7 +610,7 @@ RSpec.describe Samagotchi::IdleRecap do
           finished = true
           "recap"
         end
-        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
+        idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
         allow(idle).to receive(:should_fire?).and_return(true)
         idle.tick
         started.pop
@@ -614,7 +619,7 @@ RSpec.describe Samagotchi::IdleRecap do
         proceed.push(:go)
         wait_for("the summarizer to finish") { finished }
         drive(idle)
-        expect(engine).not_to have_received(:emit_recap)
+        expect(host).not_to have_received(:emit_recap)
       end
     end
   end
@@ -627,10 +632,10 @@ RSpec.describe Samagotchi::IdleRecap do
         { "role" => "user", "content" => "Bye" }
       ])
     end
-    let(:engine) { stub_engine(messages: two_user_turns) }
+    let(:host) { recap_host(messages: two_user_turns) }
     let(:idle_recap) do
       described_class.new(
-        engine: engine,
+        **parts(host),
         model: model,
         base_url: base_url,
         inactivity: 0.0,
@@ -644,7 +649,7 @@ RSpec.describe Samagotchi::IdleRecap do
     it "requires at least min_user_turns user turns to fire" do
       allow(idle_recap).to receive(:should_fire?).and_return(true)
       drive(idle_recap)
-      expect(engine).not_to have_received(:emit_recap)
+      expect(host).not_to have_received(:emit_recap)
     end
 
     it "counts turns as the page does: Qwen's recovery line and merged input open none" do
@@ -655,9 +660,9 @@ RSpec.describe Samagotchi::IdleRecap do
         { "role" => "user", "kind" => "input", "content" => "also this" },
         { "role" => "model", "content" => "Done" }
       ])
-      engine = stub_engine(messages: messages)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, min_user_turns: 2,
-                                 timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+      host = recap_host(messages: messages)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, min_user_turns: 2,
+                                                timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
       expect(idle.request_now).to eq(:too_short)
     end
   end
@@ -674,11 +679,11 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "counts tool_response entries for the prompt" do
-      engine = stub_engine(messages: messages_with_one_tool)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+      host = recap_host(messages: messages_with_one_tool)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       drive(idle)
-      expect(engine).to have_received(:emit_recap)
+      expect(host).to have_received(:emit_recap)
     end
 
     it "states tool count only (no enumeration) when count exceeds threshold" do
@@ -686,11 +691,11 @@ RSpec.describe Samagotchi::IdleRecap do
       11.times { |i| messages << { "role" => "tool_response", "content" => "r#{i + 1}" } }
       messages.prepend({ "role" => "user", "content" => "Do it" })
       messages << { "role" => "user", "content" => "Done" }
-      engine = stub_engine(messages: JSON.generate(messages))
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+      host = recap_host(messages: JSON.generate(messages))
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       drive(idle)
-      expect(engine).to have_received(:emit_recap)
+      expect(host).to have_received(:emit_recap)
     end
   end
 
@@ -704,7 +709,7 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "invalidates a generation that was in-flight" do
-      engine = stub_engine(messages: messages_with_two_user_turns)
+      host = recap_host(messages: messages_with_two_user_turns)
       slow_client = double("slow_client")
       started = Queue.new
       proceed = Queue.new
@@ -715,7 +720,7 @@ RSpec.describe Samagotchi::IdleRecap do
         finished = true
         "recap"
       end
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 5.0, client: slow_client, clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       gen_before = idle.generation
       idle.tick
@@ -726,31 +731,31 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(idle)
       proceed.push(:go)
       wait_for("the summarizer to finish") { finished }
-      expect(engine).not_to have_received(:emit_recap)
+      expect(host).not_to have_received(:emit_recap)
     end
 
     it "starts a fresh generation with a new generation id after invalidation" do
-      engine = stub_engine(messages: messages_with_two_user_turns)
+      host = recap_host(messages: messages_with_two_user_turns)
       client_v1 = double("client_v1", summarize: "recap v1")
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: client_v1, clock: -> { base_time })
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: client_v1, clock: -> { base_time })
       allow(idle).to receive(:should_fire?).and_return(true)
       drive(idle)
       gen_v1 = idle.generation
-      expect(engine).to have_received(:emit_recap).with(recap: anything, generation: gen_v1, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
+      expect(host).to have_received(:emit_recap).with(recap: anything, generation: gen_v1, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
       # Invalidate (bumps generation)
       idle.invalidate!
       expect(idle.generation).to eq(gen_v1 + 1)
-      # Build a fresh engine for the second call, with something new said
+      # Something new said before the second call (the job reads the
+      # messages through its lambda at each attempt).
       more = JSON.generate(JSON.parse(messages_with_two_user_turns) + [{ "role" => "model", "content" => "Continuing" }])
-      engine2 = stub_engine(messages: more)
+      allow(host).to receive(:messages_json).and_return(more)
       allow(idle).to receive(:should_fire?).and_return(true)
-      idle.instance_variable_set(:@engine, engine2)
       idle.instance_variable_set(:@client_override, double("client_v2", summarize: "recap v2"))
       # NOTE: @generation is gen_v1+1; start bumps it to gen_v1+2
       expected_gen = gen_v1 + 2
       drive(idle)
       # The emit should use the new generation
-      expect(engine2).to have_received(:emit_recap).with(recap: anything, generation: expected_gen, covered: 4, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
+      expect(host).to have_received(:emit_recap).with(recap: anything, generation: expected_gen, covered: 4, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
   end
 
@@ -763,42 +768,42 @@ RSpec.describe Samagotchi::IdleRecap do
       ])
     end
 
-    def idle_for(engine, client)
-      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
-                          min_user_turns: 2, timeout: 1.0, client: client, clock: -> { base_time })
+    def idle_for(host, client)
+      described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0,
+                                         min_user_turns: 2, timeout: 1.0, client: client, clock: -> { base_time })
     end
 
     it "does not re-snapshot every tick while the history is too short" do
-      engine = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]), last_activity: base_time.to_f - 5)
-      idle = idle_for(engine, client)
+      host = recap_host(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]), last_activity: base_time.to_f - 5)
+      idle = idle_for(host, client)
       5.times { idle.tick }
-      expect(engine).to have_received(:messages_json_for_recap).once
+      expect(host).to have_received(:messages_json).once
     end
 
     it "does not re-call a failing summarizer every tick" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
       err_client = double("err_client")
       allow(err_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
-      idle = idle_for(engine, err_client)
+      idle = idle_for(host, err_client)
       5.times { drive(idle) }
       expect(err_client).to have_received(:summarize).once
     end
 
     it "never sends an empty transcript to the summarizer" do
       blank = JSON.generate([{ "role" => "user", "content" => " " }, { "role" => "user", "content" => "" }])
-      engine = stub_engine(messages: blank, last_activity: base_time.to_f - 5)
-      idle = idle_for(engine, client)
+      host = recap_host(messages: blank, last_activity: base_time.to_f - 5)
+      idle = idle_for(host, client)
       idle.tick
       expect(client).not_to have_received(:summarize)
     end
 
     it "re-arms once new activity advances the seq" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5, activity_seq: 1)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5, activity_seq: 1)
       err_client = double("err_client")
       allow(err_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
-      idle = idle_for(engine, err_client)
+      idle = idle_for(host, err_client)
       drive(idle)
-      allow(engine).to receive(:activity_seq).and_return(2)
+      allow(host.turn_state).to receive(:activity_seq).and_return(2)
       drive(idle)
       drive(idle)
       expect(err_client).to have_received(:summarize).twice
@@ -823,9 +828,9 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "returns from tick while the summarizer is still running" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
-                                 timeout: 30.0, client: blocked_client, clock: -> { base_time })
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0,
+                                                timeout: 30.0, client: blocked_client, clock: -> { base_time })
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       3.times { idle.tick }
       # not blocked on the summarizer, which holds on the gate until the example releases it
@@ -835,13 +840,13 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(blocked_client).to have_received(:summarize).once
       gate.push(:go)
       drive(idle)
-      expect(engine).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
+      expect(host).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "lets the other scheduler jobs keep ticking while a recap is in flight" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
-                                 timeout: 30.0, client: blocked_client, clock: -> { base_time })
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0,
+                                                timeout: 30.0, client: blocked_client, clock: -> { base_time })
       reminders = double("reminders")
       ticks = 0
       allow(reminders).to receive(:tick) { ticks += 1 }
@@ -855,9 +860,9 @@ RSpec.describe Samagotchi::IdleRecap do
 
     it "drops an attempt that runs past the timeout" do
       now = base_time
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
-                                 timeout: 1.0, client: blocked_client, clock: -> { now })
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 5)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0,
+                                                timeout: 1.0, client: blocked_client, clock: -> { now })
       idle.tick
       now += 1.5
       idle.tick
@@ -865,7 +870,7 @@ RSpec.describe Samagotchi::IdleRecap do
       gate.push(:go)
       wait_for("the summarizer thread to finish") { finished.any? }
       idle.tick
-      expect(engine).not_to have_received(:emit_recap)
+      expect(host).not_to have_received(:emit_recap)
     end
   end
 
@@ -881,23 +886,23 @@ RSpec.describe Samagotchi::IdleRecap do
     let(:seq) { [1] }
     let(:messages) { [first.dup] }
 
-    def engine_for
-      e = stub_engine(last_activity: base_time.to_f - 5)
-      allow(e).to receive(:activity_seq) { seq[0] }
-      allow(e).to receive(:messages_json_for_recap) { JSON.generate(messages[0]) }
+    def host_for
+      e = recap_host(last_activity: base_time.to_f - 5)
+      allow(e.turn_state).to receive(:activity_seq) { seq[0] }
+      allow(e).to receive(:messages_json) { JSON.generate(messages[0]) }
       e
     end
 
-    def recap_for(engine)
-      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
-                          timeout: 5.0, client: recording_client, clock: -> { base_time })
+    def recap_for(host)
+      described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 0.0,
+                                         timeout: 5.0, client: recording_client, clock: -> { base_time })
     end
 
     def user_text(prompt) = prompt.last[:content]
 
     it "summarizes only what is new since the last recap, with the previous recap in the prompt" do
-      engine = engine_for
-      idle = recap_for(engine)
+      host = host_for
+      idle = recap_for(host)
       drive(idle)
       expect(idle.state).to include(text: "recap 1", covered: 4)
       messages[0] += [msg("user", "Reply PONG"), msg("model", "PONG")]
@@ -907,11 +912,11 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(user_text(prompts[1])).to include("Earlier recap:\nrecap 1", "Reply PONG", "PONG")
       expect(user_text(prompts[1])).not_to include("Bluefin")
       expect(idle.state).to include(text: "recap 2", covered: 6)
-      expect(engine).to have_received(:emit_recap).with(recap: "recap 2", generation: idle.generation, covered: 6, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
+      expect(host).to have_received(:emit_recap).with(recap: "recap 2", generation: idle.generation, covered: 6, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "sends nothing when nothing new was said (a /recap or a context note re-arms the window)" do
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       messages[0] += [msg("system", "[note] a context note")]
       seq[0] = 2
@@ -922,7 +927,7 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "counts a !cmd output (a user message) as new" do
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       messages[0] += [msg("user", "$ ls\nREADME.md")]
       seq[0] = 2
@@ -931,7 +936,7 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "starts over when the covered messages were rewritten (a rollback plus a new turn)" do
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       messages[0] = first[0, 2] + [msg("user", "Actually, what is 3+3?"), msg("model", "6")]
       seq[0] = 2
@@ -943,7 +948,7 @@ RSpec.describe Samagotchi::IdleRecap do
 
     it "continues when an older model message lost its thinking (done when the next turn starts)" do
       messages[0] = first[0, 3] + [msg("model", "<think>\nsimple sum\n</think>\n\n4")]
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       messages[0] = first[0, 3] + [msg("model", "\n4"), msg("user", "Reply PONG"), msg("model", "PONG")]
       seq[0] = 2
@@ -953,7 +958,7 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "starts over when the history is shorter than the recap covered" do
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       messages[0] = [msg("user", "one"), msg("model", "a"), msg("user", "two")]
       seq[0] = 2
@@ -964,18 +969,18 @@ RSpec.describe Samagotchi::IdleRecap do
 
     it "saves the reply's title apart from the recap text, which every reader gets without it" do
       allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; "Title: Bluefin setup\n\nBluefin was set up." }
-      engine = engine_for
-      idle = recap_for(engine)
+      host = host_for
+      idle = recap_for(host)
       drive(idle)
       expect(idle.state).to include(text: "Bluefin was set up.", title: "Bluefin setup")
-      expect(engine).to have_received(:emit_recap).with(hash_including(recap: "Bluefin was set up."))
+      expect(host).to have_received(:emit_recap).with(hash_including(recap: "Bluefin was set up."))
     end
 
     it "sends the earlier title with the update, and keeps it when the reply has none that passes" do
       replies = ["Title: Bluefin setup\n\nBluefin was set up.", "PONG was replied. Bluefin is set up.",
                  "Title: The user pings\n\nA ping was answered.", "Title: Ping checks\n\nPings were checked."]
       allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; replies[prompts.size - 1] }
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       3.times do |i|
         messages[0] += [msg("user", "Reply PONG #{i}"), msg("model", "PONG")]
@@ -989,7 +994,7 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "saves no title for a reply without one when there was none before" do
-      idle = recap_for(engine_for)
+      idle = recap_for(host_for)
       drive(idle)
       expect(idle.state).to include(text: "recap 1")
       expect(idle.state).not_to have_key(:title)
@@ -997,16 +1002,16 @@ RSpec.describe Samagotchi::IdleRecap do
 
     it "saves nothing for a reply that is the title alone" do
       allow(recording_client).to receive(:summarize) { |prompt| prompts << prompt; "Title: Bluefin setup" }
-      engine = engine_for
-      idle = recap_for(engine)
+      host = host_for
+      idle = recap_for(host)
       drive(idle)
       expect(idle.state).to be_nil
-      expect(engine).not_to have_received(:emit_recap)
+      expect(host).not_to have_received(:emit_recap)
     end
 
     it "keeps the previous state when an attempt fails" do
-      engine = engine_for
-      idle = recap_for(engine)
+      host = host_for
+      idle = recap_for(host)
       drive(idle)
       allow(recording_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
       messages[0] += [msg("user", "more")]
@@ -1037,9 +1042,9 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     def idle_with(store, messages, model_name: model)
-      engine = stub_engine(messages: JSON.generate(messages), last_activity: base_time.to_f - 5)
-      described_class.new(engine: engine, model: model_name, base_url: base_url, inactivity: 0.0,
-                          timeout: 5.0, client: recording_client, clock: -> { base_time }, store: store)
+      host = recap_host(messages: JSON.generate(messages), last_activity: base_time.to_f - 5)
+      described_class.new(**parts(host), model: model_name, base_url: base_url, inactivity: 0.0,
+                                         timeout: 5.0, client: recording_client, clock: -> { base_time }, store: store)
     end
 
     it "saves each recap with what it covers, the model and when" do
@@ -1108,65 +1113,65 @@ RSpec.describe Samagotchi::IdleRecap do
       end.new
     end
 
-    def idle_for(engine, client, timeout: 5.0, clock: -> { base_time })
-      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 180.0,
-                          timeout: timeout, client: client, clock: clock, store: store)
+    def idle_for(host, client, timeout: 5.0, clock: -> { base_time })
+      described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 180.0,
+                                         timeout: timeout, client: client, clock: clock, store: store)
     end
 
     it "writes a recap now, without waiting for the inactivity window, and saves it" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
       started = []
-      idle = idle_for(engine, double(summarize: "Left recap."))
+      idle = idle_for(host, double(summarize: "Left recap."))
       expect(idle.write_now(on_start: -> { started << :yes })).to eq("Left recap.")
       expect(started).to eq([:yes])
       expect(store.saved).to include(text: "Left recap.", covered: 3)
     end
 
     it "says the last turn stopped when a continue offer is open (read at each attempt)" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
       prompts = []
       client = double("client")
       allow(client).to receive(:summarize) { |prompt| prompts << prompt.last[:content]; "Recap." }
-      idle = idle_for(engine, client)
+      idle = idle_for(host, client)
       offer = [true]
       idle.awaiting_continue = -> { offer.first }
       idle.write_now
       expect(prompts.last).to include("Where it stands now: the last turn stopped at its step limit")
 
       offer[0] = false
-      allow(engine).to receive(:messages_json_for_recap).and_return(JSON.generate(JSON.parse(two_turns) + [{ "role" => "model", "content" => "More." }]))
+      allow(host).to receive(:messages_json).and_return(JSON.generate(JSON.parse(two_turns) + [{ "role" => "model", "content" => "More." }]))
       idle.write_now
       expect(prompts.size).to eq(2)
       expect(prompts.last).not_to include("Where it stands now")
     end
 
     it "writes the recap without the offer line when asking about the offer fails" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
       client = double("client", summarize: "Recap.")
-      idle = idle_for(engine, client)
+      idle = idle_for(host, client)
       idle.awaiting_continue = -> { raise "gone" }
       expect(idle.write_now).to eq("Recap.")
       expect(client).to have_received(:summarize) { |prompt| expect(prompt.last[:content]).not_to include("Where it stands") }
     end
 
     it "saves the name of the model that answered, else the one it asked" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
       served = Samagotchi::IdleClient::Summary.new(text: "Served recap.", model: "ornith/served.gguf")
-      expect(idle_for(engine, double(summarize: served)).write_now).to eq("Served recap.")
+      expect(idle_for(host, double(summarize: served)).write_now).to eq("Served recap.")
       expect(store.saved).to include(text: "Served recap.", model: "ornith/served.gguf")
 
       unnamed = Samagotchi::IdleClient::Summary.new(text: "Recap.", model: nil)
-      idle_for(stub_engine(messages: two_turns), double(summarize: unnamed)).write_now
+      idle_for(recap_host(messages: two_turns), double(summarize: unnamed)).write_now
       expect(store.saved).to include(text: "Recap.", model: model)
 
-      idle_for(stub_engine(messages: two_turns), double(summarize: "Plain.")).write_now
+      idle_for(recap_host(messages: two_turns), double(summarize: "Plain.")).write_now
       expect(store.saved).to include(text: "Plain.", model: model)
     end
 
     it "sends nothing when nothing is new since the saved recap" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
       client = double(summarize: "Left recap.")
-      idle = idle_for(engine, client)
+      idle = idle_for(host, client)
       idle.write_now
       started = []
       expect(idle.write_now(on_start: -> { started << :yes })).to be_nil
@@ -1175,19 +1180,19 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "sends nothing below the minimum user turns" do
-      engine = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
+      host = recap_host(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
       client = double(summarize: "x")
-      expect(idle_for(engine, client).write_now).to be_nil
+      expect(idle_for(host, client).write_now).to be_nil
       expect(client).not_to have_received(:summarize)
     end
 
     it "gives up after the timeout" do
-      engine = stub_engine(messages: two_turns)
+      host = recap_host(messages: two_turns)
       gate = Queue.new
       finished = false
       client = double("slow")
       allow(client).to receive(:summarize) { gate.pop; finished = true; "late" }
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 0.2, client: client, store: store)
+      idle = described_class.new(**parts(host), model: model, base_url: base_url, timeout: 0.2, client: client, store: store)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(idle.write_now).to be_nil
       # the 0.2 s timeout, not the stuck summarizer, which holds on the gate until released
@@ -1199,12 +1204,12 @@ RSpec.describe Samagotchi::IdleRecap do
     end
 
     it "waits for the attempt already in flight instead of starting another" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 500)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f - 500)
       gate = Queue.new
       finished = false
       client = double("slow")
       allow(client).to receive(:summarize) { gate.pop; finished = true; "from the idle window" }
-      idle = idle_for(engine, client)
+      idle = idle_for(host, client)
       idle.tick
       expect(idle).to be_in_flight
       # Released once write_now waits on the attempt (the example's thread
@@ -1228,29 +1233,29 @@ RSpec.describe Samagotchi::IdleRecap do
                      { "role" => "user", "content" => "What about X?" }])
     end
 
-    def idle_for(engine, client = double(summarize: "Asked recap."))
-      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 180.0,
-                          timeout: 5.0, client: client, clock: -> { base_time })
+    def idle_for(host, client = double(summarize: "Asked recap."))
+      described_class.new(**parts(host), model: model, base_url: base_url, inactivity: 180.0,
+                                         timeout: 5.0, client: client, clock: -> { base_time })
     end
 
     it "starts an attempt at once, without the inactivity window; the scheduler collects it" do
-      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
-      idle = idle_for(engine)
+      host = recap_host(messages: two_turns, last_activity: base_time.to_f)
+      idle = idle_for(host)
       expect(idle.request_now).to eq(:started)
       drive(idle)
-      expect(engine).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
+      expect(host).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3, created_at: a_string_matching(/\A\d{4}-\d\d-\d\dT[\d:]{8}Z\z/))
     end
 
     it "says why there is nothing to ask" do
-      short = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
+      short = recap_host(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
       expect(idle_for(short).request_now).to eq(:too_short)
 
-      engine = stub_engine(messages: two_turns)
-      idle = idle_for(engine)
+      host = recap_host(messages: two_turns)
+      idle = idle_for(host)
       idle.write_now
       expect(idle.request_now).to eq(:nothing_new)
 
-      busy = stub_engine(messages: two_turns, turn_running: true)
+      busy = recap_host(messages: two_turns, turn_running: true)
       expect(idle_for(busy).request_now).to eq(:busy)
     end
 
@@ -1258,7 +1263,7 @@ RSpec.describe Samagotchi::IdleRecap do
       gate = Queue.new
       client = double("slow")
       allow(client).to receive(:summarize) { gate.pop; "x" }
-      idle = idle_for(stub_engine(messages: two_turns), client)
+      idle = idle_for(recap_host(messages: two_turns), client)
       expect(idle.request_now).to eq(:started)
       expect(idle.request_now).to eq(:in_flight)
       gate.push(:go)

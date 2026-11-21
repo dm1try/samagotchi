@@ -8,6 +8,7 @@ require "samagotchi/session_commands"
 require "samagotchi/turn_checkpoint"
 require "samagotchi/worker_inbound"
 require "samagotchi/session_observer"
+require "samagotchi/turn_state"
 require "samagotchi/worker_wakes"
 require "samagotchi/context_absorber"
 require "samagotchi/context_sources"
@@ -25,21 +26,12 @@ RSpec.describe Samagotchi::WorkerInbound do
       def initialize(session)
         @session = session
         @announced = []
-        @enqueued_ids = {}
         # The Engine's event log, as the worker hands it on; what the inbound
         # announces, as a subscriber gets it (without its seq).
         @event_log = Samagotchi::SessionObserver.new
         @event_log.subscribe(observer: ->(event) { @announced << event.except(:event_seq) })
       end
 
-      def claim_enqueued_id(id)
-        return true if id.to_s.empty?
-        return false if @enqueued_ids.key?(id)
-
-        @enqueued_ids[id] = true
-      end
-
-      def finish_enqueued_id(_id); end
       def command_registry = self
       def command?(text) = text.start_with?("/model", "!")
       def messages_checkpoint = @session.messages.map(&:dup)
@@ -60,6 +52,9 @@ RSpec.describe Samagotchi::WorkerInbound do
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
   let(:engine) { fake_engine.new(session) }
+  # The Engine's turn state, as the worker hands it on: the enqueued-id
+  # ledger a taken input claims and finishes on.
+  let(:turn_state) { Samagotchi::TurnState.new(clock: -> { 0.0 }) }
   let(:absorber) { instance_double(Samagotchi::ContextAbsorber, pending: nil, commit: nil) }
   let(:wakes) { Samagotchi::WorkerWakes.new(grace: 0, max: -> { 10 }) }
   let(:stopped) { [false] }
@@ -67,7 +62,7 @@ RSpec.describe Samagotchi::WorkerInbound do
   let(:awaiting) { [false] }
   let(:inbound) do
     described_class.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: engine, event_log: engine.event_log,
-                        context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] },
+                        turn_state: turn_state, context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] },
                         stopped: -> { stopped[0] },
                         queue_command: ->(line, client_id, _after_file, enqueued_id) { queued << [line, client_id, enqueued_id] })
   end
@@ -332,7 +327,8 @@ RSpec.describe Samagotchi::WorkerInbound do
       session.save(state_dir: tmpdir)
       restarted = described_class.new(
         session: Samagotchi::Session.load(session.id, state_dir: tmpdir), state_dir: tmpdir, session_dir: session_dir,
-        engine: fake_engine.new(session), event_log: Samagotchi::SessionObserver.new, context_absorber: absorber, wakes: wakes,
+        engine: fake_engine.new(session), event_log: Samagotchi::SessionObserver.new,
+        turn_state: Samagotchi::TurnState.new(clock: -> { 0.0 }), context_absorber: absorber, wakes: wakes,
         awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] }, queue_command: ->(*) {}
       )
       fallback = write("already ran", enqueued_id: id)
@@ -358,7 +354,7 @@ RSpec.describe Samagotchi::WorkerInbound do
       restarted_session.save(state_dir: tmpdir)
       restarted = described_class.new(
         session: restarted_session, state_dir: tmpdir, session_dir: session_dir, engine: fake_engine.new(restarted_session), event_log: Samagotchi::SessionObserver.new,
-        context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] },
+        turn_state: Samagotchi::TurnState.new(clock: -> { 0.0 }), context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] },
         queue_command: ->(*) {}
       )
       fallback = write("already interrupted", enqueued_id: id)
@@ -424,7 +420,7 @@ RSpec.describe Samagotchi::WorkerInbound do
       now = [0]
       grace_wakes = Samagotchi::WorkerWakes.new(grace: 2, clock: -> { now[0] }, max: -> { 10 })
       grace_inbound = described_class.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: engine, event_log: engine.event_log,
-                                          context_absorber: absorber, wakes: grace_wakes,
+                                          turn_state: turn_state, context_absorber: absorber, wakes: grace_wakes,
                                           awaiting_continue: -> { awaiting[0] }, stopped: -> { stopped[0] },
                                           queue_command: ->(*) {})
       allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(true)

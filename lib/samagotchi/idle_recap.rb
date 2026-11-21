@@ -19,7 +19,7 @@ module Samagotchi
   # IdleScheduler (one background thread for the whole idle layer).
   #
   # Owns the inactivity clock bookkeeping shared across UIs: it reads the
-  # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam (the
+  # Engine's TurnState (`last_activity_at` / `activity_seq` / `running?`, the
   # single source of truth) rather than tracking its own timeline, so the
   # clock behaves identically for any Engine-backed worker.
   #
@@ -308,7 +308,13 @@ module Samagotchi
     # @param base_url [String] the OpenAI API base the recap asks
     # @param api_key_env [String, nil] the variable holding its key
     # @param target [#call, nil] -> IdleTarget
-    def initialize(engine:, model: nil, base_url: nil, api_key_env: nil, target: nil,
+    # @param turn_state [TurnState] the Engine's (Engine#turn_state): whether a
+    #   turn runs, the activity seq and the latest activity's time
+    # @param messages_json [#call] → the conversation to recap, as a JSON
+    #   string (Engine#messages_json_for_recap)
+    # @param emit_recap [#call] (recap:, generation:, covered:, created_at:)
+    #   announces a written recap (Engine#emit_recap)
+    def initialize(turn_state:, messages_json:, emit_recap:, model: nil, base_url: nil, api_key_env: nil, target: nil,
                    inactivity: DEFAULT_INACTIVITY_SECONDS,
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
                    timeout: DEFAULT_TIMEOUT_SECONDS,
@@ -318,9 +324,11 @@ module Samagotchi
                    session_id: -> {},
                    on_usage: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
-      raise ArgumentError, "IdleRecap requires an engine" unless engine
+      raise ArgumentError, "IdleRecap requires a turn state" unless turn_state
 
-      @engine = engine
+      @turn_state = turn_state
+      @messages_json = messages_json
+      @emit_recap = emit_recap
       # The recapped session's id, sent with the request (IdleClient#summarize).
       @session_id = session_id
       # Called with each recap request's SideUsage (IdleClient#summarize),
@@ -381,7 +389,7 @@ module Samagotchi
     def request_now
       @run_mutex.synchronize do
         next :in_flight if in_flight?
-        next :busy if @engine.turn_running?
+        next :busy if @turn_state.running?
 
         start
       end
@@ -427,14 +435,14 @@ module Samagotchi
 
     # @return [Boolean] true when a recap is eligible to fire right now.
     def should_fire?
-      return false if @engine.turn_running?
+      return false if @turn_state.running?
       return false unless last_idle_seconds >= @inactivity
       # Fire at most once per idle window: require that activity advanced the
       # shared seq since the last fire. Pure monotonic time passing does NOT
       # bump the seq, so a long idle window only summarizes once.
       return true if @last_fire_activity_seq.nil?
 
-      @engine.activity_seq > @last_fire_activity_seq
+      @turn_state.activity_seq > @last_fire_activity_seq
     end
 
     # SHA1 of one message's role and text: detects a rewrite a count alone
@@ -458,7 +466,7 @@ module Samagotchi
     end
 
     def last_idle_seconds
-      @clock.call - @engine.last_activity_at
+      @clock.call - @turn_state.last_activity_at
     end
 
     # Start an attempt: snapshot, build the prompt, and spawn the summarize
@@ -469,8 +477,8 @@ module Samagotchi
       # Latch the attempt, not the success: a short history, a failed or
       # empty summary, or an invalidated run must not re-fire on every
       # scheduler tick. The next recorded activity re-arms the window.
-      @last_fire_activity_seq = @engine.activity_seq
-      parsed = safe_parse(@engine.messages_json_for_recap)
+      @last_fire_activity_seq = @turn_state.activity_seq
+      parsed = safe_parse(@messages_json.call)
       return :too_short if parsed.nil?
 
       # The turns as the page counts them (Steer.turn_opening?): not Qwen's
@@ -533,7 +541,7 @@ module Samagotchi
                 model: served || job[:model], created_at: Time.now.utc.iso8601 }.compact
       @mutex.synchronize { @state = saved }
       save(saved)
-      @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered], created_at: saved[:created_at])
+      @emit_recap.call(recap: text, generation: job[:generation], covered: job[:covered], created_at: saved[:created_at])
     rescue StandardError
       @in_flight = nil
     end

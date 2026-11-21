@@ -5,9 +5,13 @@ localhost HTTP server in the worker's process, next to the `Engine` it reads and
 terminal are its clients; no browser reaches it. [architecture.md](../architecture.md) places it among the layers;
 this page is the surface: what it keeps, how a client joins and catches up, and every route.
 
-Bridge Engine calls are listed with their reasons in `Bridge::ENGINE_CALLS`; add each new Engine call there. The event
-log is not among them: `Bridge.new` takes it as `event_log:` (the Engine's own `SessionObserver`, `Engine#event_log`,
-handed on by the Worker) and calls `subscribe`, `unsubscribe`, `event_count`, `announce` and `synchronize` on it.
+Bridge Engine calls are listed with their reasons in `Bridge::ENGINE_CALLS`; add each new Engine call there. Four of
+the Engine's parts are not among them: `Bridge.new` takes them as `event_log:`, `turn_state:`, `question_desk:` and
+`steer_cut:` (the Engine's own `SessionObserver`, `TurnState`, `QuestionDesk` and `SteerCut`: `Engine#event_log`,
+`#turn_state`, `#question_desk`, `#steer_cut`, handed on by the Worker) and calls them directly: `subscribe`,
+`unsubscribe`, `event_count`, `announce` and `synchronize` on the log; `running?`, `controller`, `cancel!` and the
+enqueued-id ledger on the turn state; `pending`, `answer`, `cancel` and `annotate` on the desk; `input_epoch`,
+`cut_for_steer` and `generation_snapshot` on the cut. `ENGINE_CALLS` lists what is left.
 
 ## What a Bridge keeps
 

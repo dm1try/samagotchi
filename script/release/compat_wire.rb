@@ -194,7 +194,9 @@ module CompatWire
     engine.session_state_dir = state_dir
     engine.session = session
     lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker", wait: 0) or raise Error, "the recording's owner lock is held"
-    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: SESSION_ID).start
+    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, turn_state: engine.turn_state,
+                                    question_desk: engine.question_desk, steer_cut: engine.steer_cut,
+                                    state_dir: state_dir, session_id: SESSION_ID).start
     begin
       link = Samagotchi::WorkerLink.client(SESSION_ID, session_dir: session_dir) or raise Error, "the recording's worker isn't live"
       replies = {}

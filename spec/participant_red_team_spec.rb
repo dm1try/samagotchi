@@ -13,6 +13,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/bridge"
+require "support/bridge_parts"
 require "samagotchi/bridge_client"
 require "samagotchi/participants"
 require "samagotchi/participant_uploads"
@@ -29,6 +30,8 @@ require "samagotchi/grants"
 # participant's turn calling tools (the review boundary); part two is the
 # participant at chi web with their token (routes, delivery, limits).
 RSpec.describe "a participant red-teaming a session" do
+  include BridgeParts
+
   include OutdatedGrants
 
   let(:root) { File.realpath(Dir.mktmpdir("red-team")) }
@@ -303,7 +306,7 @@ RSpec.describe "a participant red-teaming a session" do
       allow(Samagotchi::SessionManager).to receive(:resume_session)
       allow(Samagotchi::PromptHistory).to receive(:append)
       engine.subscribe(observer: ->(event) { announced << event })
-      @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2,
+      @bridge = Samagotchi::Bridge.new(engine: engine, **bridge_parts(engine), state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2,
                                        on_command: lambda { |command, **|
                                          commands << command
                                          :anytime

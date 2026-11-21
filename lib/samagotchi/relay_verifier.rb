@@ -14,9 +14,10 @@ module Samagotchi
   # answers its own question with that, only when it is about this session
   # and the question pending now, and is answered.
   class RelayVerifier
-    # @param engine [Engine] this (the child's) worker's Engine
-    def initialize(engine:, state_dir:, session_id:)
-      @engine = engine
+    # @param question_desk [QuestionDesk] this (the child's) worker's question
+    #   desk (Engine#question_desk)
+    def initialize(question_desk:, state_dir:, session_id:)
+      @question_desk = question_desk
       @state_dir = state_dir
       @session_id = session_id
     end
@@ -42,15 +43,15 @@ module Samagotchi
       parent_agent = relay["by"] != "user"
       client_id = "#{ClientId::RELAY_PREFIX}#{parent_id[0, 8]}"
       if answer["dismissed"]
-        return not_pending(question_id) unless @engine.cancel_question("dismissed", id: question_id)
+        return not_pending(question_id) unless @question_desk.cancel("dismissed", id: question_id)
 
         log("relay_answered", relay_id, id: question_id, dismissed: true, by: relay["by"])
         return [{}, 200, { status: "dismissed", question_id: question_id }]
       end
 
       selected = labels(answer["selected_indices"], question_id) or return unverified("the answer's option is out of range", relay_id)
-      result = @engine.answer_question(id: question_id, selected: selected, freeform: answer["freeform"],
-                                       client_id: client_id, parent_agent: parent_agent)
+      result = @question_desk.answer(id: question_id, selected: selected, freeform: answer["freeform"],
+                                     client_id: client_id, parent_agent: parent_agent)
       log("relay_answered", relay_id, id: question_id, by: relay["by"])
       [{}, 200, { status: "answered", question_id: question_id, answer: result.to_h }]
     rescue QuestionDesk::NotPending
@@ -67,7 +68,7 @@ module Samagotchi
     # parent's are relabelled; the order is the same). nil when one is out
     # of range; [] for a freeform-only deny.
     def labels(indices, question_id)
-      pending = @engine.pending_question
+      pending = @question_desk.pending
       return [] unless pending && pending.id.to_s == question_id
 
       options = Array(pending.options)
