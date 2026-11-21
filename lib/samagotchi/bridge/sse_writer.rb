@@ -58,13 +58,14 @@ module Samagotchi
       #   to just the event_seq.
       # @param join_with_snapshot [Boolean] start with a snapshot frame rather
       #   than a replay
-      # @param bridge [Samagotchi::Bridge, nil] for stop signalling
+      # @param stopped [#call, nil] whether the stream should end (the
+      #   Bridge's #stopped?): asked when an idle wait ends
       # @param max_queue [Integer] bounded-queue capacity
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
       # @param raw [Boolean] write events as the engine emitted them, not as
       #   clients get them (ClientEvent): `?raw=1`, for debugging
       def initialize(event_log:, ring:, session_id:, last_event_id: nil, epoch: nil,
-                     frame_provider: nil, join_with_snapshot: false, bridge: nil,
+                     frame_provider: nil, join_with_snapshot: false, stopped: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
                      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, raw: false)
         @event_log = event_log
@@ -74,7 +75,7 @@ module Samagotchi
         @epoch = epoch
         @frame_provider = frame_provider || -> { { snapshot: { event_seq: @event_log.event_count }, session_state_snapshot: {} } }
         @join_with_snapshot = join_with_snapshot
-        @bridge = bridge
+        @stopped = stopped
         @max_queue = max_queue
         @heartbeat_interval = heartbeat_interval
         @raw = raw
@@ -198,7 +199,7 @@ module Samagotchi
             # behind; nudge a reconnect rather than flooding more events.
             emit_reset(io) if @queue.overflow_dropped?
             @queue.clear_overflow!
-          elsif @bridge&.stopped?
+          elsif @stopped&.call
             break
           else
             write_heartbeat(io)

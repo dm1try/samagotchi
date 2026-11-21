@@ -692,7 +692,7 @@ module Samagotchi
         frame_provider: -> { snapshot_frame },
         # A reconnect (with a cursor) replays; only a fresh join snapshots.
         join_with_snapshot: snapshot && last_event_id.nil?,
-        bridge: self,
+        stopped: method(:stopped?),
         heartbeat_interval: @heartbeat_interval,
         raw: raw
       )

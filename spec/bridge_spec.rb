@@ -372,6 +372,20 @@ RSpec.describe Samagotchi::Bridge do
       expect(io.buffer.scan(/^id: (.*)\r$/).flatten).to eq(%w[5 6 7 8])
     end
 
+    it "writes heartbeats while its stop check answers false, and ends once it answers true" do
+      stop = [false]
+      writer = Samagotchi::Bridge::SSEWriter.new(event_log: Samagotchi::SessionObserver.new, ring: Samagotchi::Bridge::RingBuffer.new(capacity: 4),
+                                                 session_id: "s1", heartbeat_interval: 0.02, stopped: -> { stop[0] })
+      io = ControllableIO.new
+      writer_thread = Thread.new { writer.serve!(io) }
+      wait_for("two heartbeats") { io.buffer.scan(": ping").size >= 2 }
+      expect(writer_thread).to be_alive
+
+      stop[0] = true
+      join!(writer_thread, "the serve loop")
+      expect(writer_thread).not_to be_alive
+    end
+
     describe "with a worker epoch" do
       # The ring holds seqs 1..10 of the worker whose epoch is "e2".
       def serve_from(cursor)
