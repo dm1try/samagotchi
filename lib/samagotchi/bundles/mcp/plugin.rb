@@ -905,8 +905,10 @@ class Plugin
   # the index (or come for the first time: #spawn indexes them).
   # @return [String] the task's summary
   # @raise [Client::Error] it didn't start (the task's warn card says why;
-  #   the index keeps its tools, marked failed)
+  #   the index keeps its tools, marked failed; a remote server's from the
+  #   cache stay cached, as #not_connected leaves them)
   def boot(server, ctx)
+    cached = server.state == :cached
     client = server.service.value
     server.state = :running
     publish
@@ -914,6 +916,11 @@ class Plugin
     count = server.listed.size
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
+    if cached && server.url
+      ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
+      server.error = e.message # its first call failing the same way says nothing new
+      raise Client::Error, "MCP server #{server.name} didn't connect: #{e.message}; its next call tries again"
+    end
     server.state = :failed
     server.error = e.message
     publish

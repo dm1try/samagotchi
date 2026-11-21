@@ -82,6 +82,20 @@ RSpec.describe "The mcp bundle with a remote server" do
     expect(mcp("echo", { "text" => "back" })).to eq("echo: back")
   end
 
+  it "leaves an eager cached server cached when it doesn't connect at the session's start: its next call connects" do
+    engine
+    fake["start"] = "eager"
+    remote.down = true
+    next_engine
+
+    expect(@init_events.select { |e| e[:type] == :card }.map { |c| [c[:title], c[:body]] })
+      .to eq([["fake didn't connect", "MCP server fake didn't connect: HTTP 503; its next call tries again"]])
+    expect(mcp_card).to start_with("**fake**: cached (not started), 2 tools")
+    remote.down = false
+    expect(mcp("echo", { "text" => "back" })).to eq("echo: back")
+    expect(mcp_card).to start_with("**fake**: connected")
+  end
+
   it "says a failed first run didn't connect, in the init card" do
     remote.down = true
 

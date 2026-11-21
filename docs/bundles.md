@@ -91,7 +91,8 @@ bundles:
     (sign-in comes in a later chi)` (`refused the token (401)` when one was sent); an unset or empty variable is
     `… didn't connect: GITHUB_MCP_TOKEN is not set`, and nothing is sent. A cached server that doesn't connect
     (the network, a token you are about to fix) stays cached: the call answers the error, there is one notice per
-    distinct message, and the next call tries again in the same session. A redirect is never followed: the error
+    distinct message, and the next call tries again in the same session (a `start: eager` one too: its init card
+    says `its next call tries again`). A redirect is never followed: the error
     names the new origin.
   - chi speaks the current MCP revision (2026-07-28) first and falls back to the older handshake (`initialize`,
     with its session when the server gives one) for a server that doesn't answer it; answers may be JSON or an SSE
