@@ -554,7 +554,9 @@ module Samagotchi
       return reply("a parent agent doesn't finish this session's sign-in", status: :error) if as_parent
 
       address = text.delete_prefix(CALLBACK_COMMAND).strip
-      return reply("usage: /callback ADDRESS (the address the browser ended on)", status: :error) if address.empty?
+      if address.empty? || address.match?(/\s/)
+        return reply("usage: /callback ADDRESS, on one line (the address the browser ended on)", status: :error)
+      end
 
       settled, line = @engine.sign_in_callback(address)
       reply(line, status: settled ? :ok : :error)

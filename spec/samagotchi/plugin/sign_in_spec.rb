@@ -9,6 +9,7 @@ require "samagotchi/plugin/context"
 require "samagotchi/plugin/sign_in"
 require "samagotchi/plugin/tool_spec"
 require "samagotchi/session"
+require "samagotchi/queued_command"
 require "support/thinking_off"
 require "support/test_kernel"
 
@@ -267,6 +268,23 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect([parent.status, parent.output]).to eq([:error, "a parent agent doesn't finish this session's sign-in"])
       expect(commands.run("/callback").status).to eq(:error)
       expect(flow.outcome).to be_nil
+    end
+
+    it "takes a /callback with more lines as the command (masked), and refuses it: one line only" do
+      flow = start
+      line = "/callback #{flow.redirect_uri}?code=SECRET&state=S1\nthanks"
+      expect(engine.command_registry.private_args?(line)).to be(true)
+      expect(Samagotchi::QueuedCommand.mint(line, private_args: true).line).to eq("/callback …")
+      result = commands_for(engine).run(line)
+      expect([result.status, result.output]).to eq([:error, "usage: /callback ADDRESS, on one line (the address the browser ended on)"])
+      expect(flow.outcome).to be_nil
+    end
+
+    it "drops a pasted address's #fragment before the state check" do
+      flow = start
+      result = commands_for(engine).run("/callback #{flow.redirect_uri}?code=C1&state=S1#_=_")
+      expect([result.status, result.output]).to eq([:ok, "Got it."])
+      expect(flow.wait).to eq("code" => "C1", "state" => "S1")
     end
 
     it "replaces the card when it times out or is cancelled (same id, no button)" do

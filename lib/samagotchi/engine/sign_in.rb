@@ -60,10 +60,11 @@ module Samagotchi
       def sign_in_waiting? = waiting_sign_ins.any?
 
       # /callback <address>: the waiting flow whose redirect_uri +address+
-      # starts with takes its query.
+      # starts with takes its query, without a #fragment (a provider's
+      # "#_=_" isn't the query's).
       # @return [Array(Boolean, String)] settled, and the line to answer
       def sign_in_callback(address)
-        address = address.to_s.strip
+        address = address.to_s.strip.split("#", 2).first.to_s
         flows = waiting_sign_ins
         return [false, "no sign-in is waiting"] if flows.empty?
 
