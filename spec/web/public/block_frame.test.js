@@ -102,10 +102,27 @@ test("a string is the SVG, with no regions", async () => {
   assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
 });
 
-test("an object gives its svg and its regions", async () => {
-  const regions = [{ kind: "node", id: "A", label: "a", box: [0, 0, 0.5, 0.5] }];
+test("an object gives its svg and a copy of its regions' known keys", async () => {
+  const regions = [{ kind: "node", id: "A", label: "a", box: [0, 0, 0.5, 0.5], extra: "never posted" }];
   const { answer } = await bootRender(() => ({ svg: "<svg/>", regions }));
-  assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>", regions });
+  assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>", regions: [{ kind: "node", id: "A", label: "a", from: "", to: "", box: [0, 0, 0.5, 0.5] }] });
+});
+
+test("the frame's copy is bounded: strings cut to 200, a box of 4 only, at most 16 points, numbers only", async () => {
+  const big = "y".repeat(1024 * 1024);
+  const raw = [
+    { kind: "node", id: big, label: big, box: [0, 0, 1, 1, 9] },
+    { kind: "edge", from: 3, to: { toString: () => "x" }, points: Array.from({ length: 17 }, () => [0, 0]) },
+    { kind: "edge", points: [[0, "1"], [1, 1, 1], 5] },
+    "not a region",
+  ];
+  const { answer } = await bootRender(() => ({ svg: "<svg/>", regions: raw }));
+  assert.equal(answer.regions[0].id.length, 200);
+  assert.equal(answer.regions[0].label.length, 200);
+  assert.equal("box" in answer.regions[0], false);
+  assert.deepEqual(answer.regions[1], { kind: "edge", id: "", label: "", from: "", to: "" });
+  assert.deepEqual(answer.regions[2].points, [[0, NaN], null, null]);
+  assert.equal(answer.regions[3], null);
 });
 
 test("an object without a string svg is the bundle's bug: an error marked bundle; a throw stays the renderer's", async () => {
@@ -127,12 +144,12 @@ test("601 regions, or regions that aren't an array: done without them", async ()
   }
 });
 
-test("uncloneable regions (a function, a proxy that throws): done without them", async () => {
+test("regions that can't be read (a proxy that throws) go: done without them; a function in an entry is never posted", async () => {
   const trap = new Proxy([], { get(t, k) { if (k === "length") return 1; if (k === "0") throw new Error("trap"); return Reflect.get(t, k); } });
-  for (const regions of [[{ kind: "node", f: () => 1 }], trap]) {
-    const { answer } = await bootRender(() => ({ svg: "<svg/>", regions }));
-    assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
-  }
+  const { answer } = await bootRender(() => ({ svg: "<svg/>", regions: trap }));
+  assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
+  const withFn = await bootRender(() => ({ svg: "<svg/>", regions: [{ kind: "node", f: () => 1, id: () => 2 }] }));
+  assert.deepEqual(withFn.answer.regions, [{ kind: "node", id: "", label: "", from: "", to: "" }]);
 });
 
 test("frameMessage takes only the frame's own messages of known types", () => {

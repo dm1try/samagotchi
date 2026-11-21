@@ -90,8 +90,12 @@ page or stall it. Two gates:
 
 1. **In the frame** (`BOOTSTRAP`): `regions` is sent only when it is an array of at most 600 (`MAX_REGIONS`); otherwise
    the `done` carries none and nothing of it is cloned (a 2M-entry array took 0.4 s in Chromium and 1.4 s in WebKit to
-   post, on the page's thread). A post that throws (a function, a proxy: `DataCloneError` or its own) is sent again
-   without them.
+   post, on the page's thread). And what is posted is the frame's **bounded copy** of each entry: its known keys only,
+   strings cut to 200 characters (anything else `""`), a box only of 4, at most 16 points, numbers only (else `NaN`),
+   a non-object entry `null`; so nothing vast or uncloneable is ever cloned (600 regions with one-megabyte labels,
+   posted as they were, crashed a Chromium tab; copied, the render took 2.6 ms in Chromium and 1 ms in WebKit against
+   0.2 and 0 without regions). Regions that throw when read (a proxy) are dropped, and a post that throws anyway is
+   sent again without them.
 2. **In the page**, `block_regions.js cleanRegions` (pure), before the picture is cached: not an array, or over 600 →
    none; a running budget of 128 KB over the *cleaned* fields (kept strings' lengths, 12 per number), past it → none
    (`MAX_REGION_BYTES`); an entry that isn't a plain object or whose `kind` isn't one of the four → skipped; `box`
