@@ -84,11 +84,12 @@ module Samagotchi
 
         bridge = ->(sid) { live_bridge_client(sid, within: deadline - ask_clock) }
         access = AskAccess.new(session_access, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
+        stopping = -> { !@server_running.call }
         exchange = SessionAccess::Exchange.new(access, continuing_wait: [SessionAccess::Exchange::CONTINUING_WAIT,
-                                                                         ASK_MAX_SECONDS].min)
+                                                                         ASK_MAX_SECONDS].min, cancelled: stopping)
         outcome = SessionAccess::Ask.new(access, exchange: exchange)
                                     .call(id, prompt: prompt, client_id: client_id, cap: deadline - ask_clock,
-                                              cancelled: -> { !@server_running.call }, **options)
+                                              cancelled: stopping, **options)
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused)
         ask_response(id, outcome)
       rescue SessionManager::OwnedByTUI => e
@@ -172,6 +173,7 @@ module Samagotchi
 
       def ask_refused(id, refused)
         case refused.kind
+        when :canceled then error_response(503, "server_stopping", "chi web is stopping; ask again")
         when :unknown
           error = refused.error
           return refusal_response(400, "ambiguous_id", error, ids: error.ids) if error.is_a?(Session::AmbiguousId)

@@ -90,7 +90,9 @@ specs' stubs); `CLI::ParentWait` (chi send's and chi answer's wait) calls `wait`
 (`session_access/ask.rb`) is its own short loop over the same pieces for one message and one wait slice on one
 deadline (chi web's starts with the request: `locate`'s `deadline:` and `relocate`'s `bounded: true` end the continue
 waits `Ask::MIN_SLICE` before it, a continue that takes the link after it gets no second delivery, and the Bridge wait
-of a worker starting draws on it too), answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
+of a worker starting draws on it too; chi web stopping cuts the continue waits at the next look, `Refused :canceled`,
+503 `server_stopping`; a client that goes away is not seen (WEBrick), so its handler runs on to that deadline),
+answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and plan 2's MCP server reuses it without chi web. The routes: [thin-clients.md](../thin-clients.md).
 

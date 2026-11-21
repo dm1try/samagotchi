@@ -198,6 +198,20 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(ask(session, { prompt: "hi", timeout: 5 })).to match([503, include("error" => "server_stopping")])
     end
 
+    it "answers 503 server_stopping at once when chi web stops while a continue is waited for; nothing sent" do
+      session = make
+      allow(Samagotchi::SessionInbox::Head).to receive(:resolve)
+        .and_return(Samagotchi::SessionInbox::Resolved.new(id: "7b2d41aa-0000-4000-8000-000000000000", asked: session.id,
+                                                           via: :continuing))
+      worker(accepted("t1"))
+      app.server_running = -> { false }
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect(ask(session, { prompt: "hi" })).to match([503, include("error" => "server_stopping")])
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2, below: 9)
+      expect(deliveries).to be_empty
+    end
+
     it "answers within ASK_MAX_SECONDS whatever the timeout asked" do
       stub_const("Samagotchi::Web::AskRoutes::ASK_MAX_SECONDS", 1.2)
       session = make(status: "running")

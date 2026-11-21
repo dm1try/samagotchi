@@ -50,13 +50,17 @@ module Samagotchi
       # @param continuing_wait [Numeric] seconds #locate waits for one
       # @param continuing_poll [Numeric] seconds between two looks
       # @param clock [#call] monotonic seconds
+      # @param cancelled [#call] true ends a wait for a continue at the next
+      #   look (chi web stopping): #locate answers Unsent, #relocate nil
       def initialize(access, pause: ->(seconds) { sleep(seconds) }, continuing_wait: CONTINUING_WAIT,
-                     continuing_poll: CONTINUING_POLL, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                     continuing_poll: CONTINUING_POLL, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                     cancelled: -> { false })
         @access = access
         @pause = pause
         @continuing_wait = continuing_wait
         @continuing_poll = continuing_poll
         @clock = clock
+        @cancelled = cancelled
       end
 
       # +given+'s session (an id or a prefix), then where input for it goes
@@ -72,7 +76,7 @@ module Samagotchi
         head = @access.head(id)
         deadline = [@clock.call + @continuing_wait, deadline].compact.min
         waited = head.continuing?
-        while head.continuing? && @clock.call < deadline
+        while head.continuing? && @clock.call < deadline && !@cancelled.call
           pause_until(deadline)
           head = @access.head(id)
         end
@@ -93,7 +97,7 @@ module Samagotchi
       #   (#locate's waited), whichever link it named
       # @return [Located, Unsent, nil] nil: out of time
       def relocate(refused, deadline, bounded: false)
-        while @clock.call < deadline
+        while @clock.call < deadline && !@cancelled.call
           pause_until(deadline)
           again = locate(refused.asked, deadline: (deadline if bounded))
           return again unless again.is_a?(Located)

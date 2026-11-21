@@ -255,11 +255,28 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     expect { call(session.id) }.to raise_error(Samagotchi::SessionManager::OwnedByTUI)
   end
 
-  it "passes cancelled: to the wait" do
+  it "is canceled, nothing sent, when cancelled: turns true during a continue's wait (a server stop cuts the pauses)" do
+    session = make
+    continuing = Samagotchi::SessionInbox::Resolved.new(id: session.id, asked: session.id, via: :continuing)
+    allow(access).to receive(:head).and_return(continuing)
+    worker(accepted("t9"))
+    stopped = -> { clock[0] >= 100.5 }
+    exchange = Samagotchi::SessionAccess::Exchange.new(access, pause: ->(s) { clock[0] += s }, continuing_wait: 2.0,
+                                                               continuing_poll: 0.5, clock: -> { clock[0] }, cancelled: stopped)
+
+    outcome = described_class.new(access, exchange: exchange)
+                             .call(session.id, prompt: "hi", client_id: "web:unnamed", queue: true, timeout: 1, cap: 35,
+                                               cancelled: stopped)
+    expect(outcome).to have_attributes(kind: :canceled, session_id: session.id)
+    expect(clock[0]).to eq(100.5)
+    expect(deliveries).to be_empty
+  end
+
+  it "passes cancelled: to the wait (true once the message went in)" do
     session = make(status: "running")
     own(session)
     worker(accepted("t6"))
 
-    expect(call(session.id, timeout: 5, cancelled: -> { true }).result.status).to eq(:canceled)
+    expect(call(session.id, timeout: 5, cancelled: -> { deliveries.any? }).result.status).to eq(:canceled)
   end
 end

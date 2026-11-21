@@ -33,7 +33,8 @@ module Samagotchi
       # ArgumentError), :continuing (a continue in flight past the wait,
       # +message+ its refusal), :busy (+busy+ the SendCommand::Busy: a turn
       # runs and queue was false, or a question waits) or :undelivered
-      # (+result+ the refused DeliverResult).
+      # (+result+ the refused DeliverResult) or :canceled (+cancelled+ turned
+      # true before anything was sent: chi web stopping).
       Refused = Data.define(:kind, :session_id, :busy, :result, :error, :message) do
         def initialize(kind:, session_id: nil, busy: nil, result: nil, error: nil, message: nil) = super
       end
@@ -59,7 +60,9 @@ module Samagotchi
       # @param cap [Numeric] the most seconds for the whole call
       # @param continuing_wait [Numeric] the most seconds a continue that
       #   took the link is waited for (Exchange::CONTINUING_WAIT)
-      # @param cancelled [#call, nil] true stops the wait (status :canceled)
+      # @param cancelled [#call, nil] true stops the wait (status :canceled);
+      #   before the delivery, the call (Refused :canceled). The exchange's
+      #   own cancelled: (the same) cuts its waits for a continue
       # @return [Reply, Ran, Refused]
       def call(given, prompt:, client_id:, queue:, timeout:, cap:, continuing_wait: Exchange::CONTINUING_WAIT,
                cancelled: nil)
@@ -67,11 +70,14 @@ module Samagotchi
         # Everything before the wait ends by here, so its MIN_SLICE fits.
         ready_by = deadline - MIN_SLICE
         found = @exchange.locate(given, deadline: ready_by)
+        at = found.target if found.is_a?(Exchange::Located)
+        return Refused.new(kind: :canceled, session_id: at&.id || found.asked) if cancelled&.call
         return unsent(found, nil) if found.is_a?(Exchange::Unsent)
 
-        at = found.target
         follow_until = nil
         loop do
+          return Refused.new(kind: :canceled, session_id: at.id) if cancelled&.call
+
           session = @access.show(at.id)
           busy = @access.busy(at.id, queue: queue, session: session)
           return Refused.new(kind: :busy, session_id: at.id, busy: busy) if busy
@@ -81,6 +87,7 @@ module Samagotchi
           if result.continued?
             follow_until ||= [@clock.call + continuing_wait, ready_by].min
             again = @exchange.relocate(at, follow_until, bounded: true)
+            return Refused.new(kind: :canceled, session_id: at.id) if cancelled&.call
             return Refused.new(kind: :continuing, session_id: at.id, message: result.refusal_text) unless again
             return unsent(again, at.id) if again.is_a?(Exchange::Unsent)
 
