@@ -964,11 +964,11 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:start).and_return(true)
 
       expect(described_class.launch(port: 4567, markdown: true, annotate_presets: "Yes|No", editor: "zed", working_set: true,
-                                    stage_collapsed: true, reload_check: true, start_dir: "/")).to eq(0)
+                                    stage_collapsed: true, reload_check: true, block_fix: "off", start_dir: "/")).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true,
               annotate_presets: "Yes|No", editor: "zed", lan: nil, working_set: true, stage_collapsed: true, reload_check: true,
-              public_url: nil, start_dir: "/")
+              block_fix: "off", public_url: nil, start_dir: "/")
     end
 
     it "stops on Ctrl-C with one line and status 130, no backtrace" do
