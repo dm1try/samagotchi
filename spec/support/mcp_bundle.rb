@@ -10,6 +10,7 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
+require_relative "mcp_plugin_files"
 
 # The shipped mcp bundle and the fake MCP server its specs run
 # (mcp_client_spec, mcp_bundle_spec, mcp_bundle_cache_spec).

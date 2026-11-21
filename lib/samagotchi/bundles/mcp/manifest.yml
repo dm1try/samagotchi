@@ -7,10 +7,14 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:073acb5413cc0dff5f6fb56ef44ddd6e17a00e81ea9ae256abd206ecaa4d554e
+  sha256: sha256:e90bd4b7dc5f78fb33922e81269b47ebaef273597550dc1269dd1ac277c30710
+  # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's).
+  parts:
+    client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
+    http_client.rb: sha256:15346ebee374f25ba79716decd9487a8b4471f34da594e4712a05f89588d98f0
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
 requires_chi: ">= 0.143.0"
-# ctx.http.stream (the HTTP transport); release:bump raises requires_chi.
+# ctx.http.stream (the HTTP transport) and plugin: parts:; release:bump raises requires_chi.
 requires_chi_next: true
 # config.yml bundles: mcp: (another key warns; an older chi ignores this)
 settings: [servers, timeout, startup_timeout]
