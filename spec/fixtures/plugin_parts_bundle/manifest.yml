@@ -1,0 +1,11 @@
+name: plugin-parts
+version: 1.0.0
+description: "Spec fixture: a plugin in three files (plugin: parts:), helpers.rb then shout.rb then plugin.rb"
+files: {}
+plugin:
+  file: plugin.rb
+  sha256: sha256:2dc7e611983f120107384f6a43eecafc9b0064a541f71ad99486f4d69c18f275
+  parts:
+    helpers.rb: sha256:847718a1ab083ca6c591fc02e287d1b2b71ca132a760aecd58d4d167341f7cde
+    shout.rb: sha256:93a3248a730b162b80cbee18875927d932d65aaee6af28f9bb80fb9caabb294a
+requires_chi: ">= 0.1.28"

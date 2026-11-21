@@ -32,7 +32,10 @@ module Samagotchi
       # empty / nil on a dry run).
       #   guardrail_files, script_files  basename => installed path
       #   plugin_file the installed plugin file, nil without one
-      Installed = Data.define(:guardrail_files, :plugin_file, :script_files)
+      #   plugin_parts its parts' name => installed path, in load order
+      Installed = Data.define(:guardrail_files, :plugin_file, :script_files, :plugin_parts) do
+        def initialize(guardrail_files:, plugin_file:, script_files:, plugin_parts: {}) = super
+      end
 
       # The retire's summary words (Installer#summary): why the hooks went.
       RETIRED = "chi no longer loads class-file bundle hooks"
@@ -76,6 +79,7 @@ module Samagotchi
       # @raise [Installer::InstallError]
       def check_named_files
         plugin_source
+        part_sources
         scripts_sources
       end
 
@@ -90,11 +94,14 @@ module Samagotchi
 
         lines = []
         if @manifest.plugin
-          lines << Installer.mismatch_refusal("plugin #{@manifest.plugin[:file]}", plugin_source,
+          lines << Installer.mismatch_refusal(label(:plugin, @manifest.plugin[:file]), plugin_source,
                                               @manifest.checksum_for_plugin, upgrade: @upgrade)
         end
+        part_sources.each do |name, src|
+          lines << Installer.mismatch_refusal(label(:plugin, name), src, @manifest.checksum_for_part(name), upgrade: @upgrade)
+        end
         scripts_sources.each do |name, src|
-          lines << Installer.mismatch_refusal("script #{name}", src, declared_sha(:script, name), upgrade: @upgrade)
+          lines << Installer.mismatch_refusal(label(:script, name), src, declared_sha(:script, name), upgrade: @upgrade)
         end
         lines = lines.compact
         raise Installer::InstallError, lines.join("\n") unless lines.empty?
@@ -107,13 +114,15 @@ module Samagotchi
         incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
                             .reject { |src| linked_out?(src, "guardrails/#{File.basename(src)}") }
         guardrail_files = install_set(:rule, rules_incoming(incoming_rules))
-        plugin_file = install_set(:plugin, plugin_incoming).values.first
+        plugin_set = install_set(:plugin, plugin_incoming)
+        plugin_file = @manifest&.plugin && plugin_set[@manifest.plugin[:file]]
         script_files = install_set(:script, scripts_incoming)
         # After the plugin and scripts, which raise for a file the manifest
         # names and the bundle lacks: a refused install leaves hooks/ as it was.
         retire_hooks
         warn_rules_requires_chi(incoming_rules)
-        Installed.new(guardrail_files: guardrail_files, plugin_file: plugin_file, script_files: script_files)
+        Installed.new(guardrail_files: guardrail_files, plugin_file: plugin_file, script_files: script_files,
+                      plugin_parts: plugin_set.except(@manifest&.plugin&.dig(:file)))
       end
 
       # Whether the bundle file +src+ reads through a symlink: it is one, or
@@ -162,9 +171,10 @@ module Samagotchi
       # The bundle's guardrails/*.yml, by basename.
       def rules_incoming(incoming_rules) = incoming_rules.to_h { |src| [File.basename(src), src] }
 
-      # The manifest's plugin file, warning when this chi doesn't meet
-      # requires_chi (the Engine then won't load it). {} without one.
-      # @return [Hash{String => String}] its file => the source file
+      # The manifest's plugin parts, then its plugin file (the load order),
+      # warning when this chi doesn't meet requires_chi (the Engine then
+      # won't load it). {} without one.
+      # @return [Hash{String => String}] each file => the source file
       def plugin_incoming
         plugin = @manifest&.plugin
         return {} unless plugin
@@ -173,7 +183,7 @@ module Samagotchi
         if (failure = BundleManifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
-        { plugin[:file] => src }
+        part_sources.merge(plugin[:file] => src)
       end
 
       # The manifest's plugin file in the source, checked; nil without one.
@@ -186,6 +196,18 @@ module Samagotchi
         raise Installer::InstallError, "plugin #{plugin[:file]} is a symlink (not installed)" if linked?(src)
 
         src
+      end
+
+      # The manifest's plugin parts in the source, checked, in load order.
+      # @return [Hash{String => String}] part name => the source file
+      def part_sources
+        (@manifest&.plugin_parts || {}).keys.to_h do |part|
+          src = File.join(@bundle_dir, part)
+          raise Installer::InstallError, BundleManifest.missing_part(part) unless File.file?(src)
+          raise Installer::InstallError, "plugin part #{part} is a symlink (not installed)" if linked?(src)
+
+          [part, src]
+        end
       end
 
       # The manifest's scripts in the source, checked.
@@ -259,7 +281,7 @@ module Samagotchi
           @results[result_key(kind_of_file, name)] = results[name]
           FileUtils.chmod(0o755, dest) if kind_of_file == :script && !@dev
           if (declared = declared_sha(kind_of_file, name)) && results[name].action.do == :write_incoming && @strict && !@dev
-            warning = InstalledBundles::FileDigest.mismatch("#{kind_of_file} #{name}", dest, declared)
+            warning = InstalledBundles::FileDigest.mismatch(label(kind_of_file, name), dest, declared)
             @warnings << warning if warning
           end
           [name, dest]
@@ -281,10 +303,16 @@ module Samagotchi
       # guardrails/r.yml, the plugin's own file name, a script's scripts/s.sh.
       def result_key(kind_of_file, name) = kind_of_file == :plugin ? name : "#{AssetState::FOLDERS.fetch(kind_of_file)}/#{name}"
 
-      # The manifest's sha256 for a plugin or script (hex), nil for a rule.
+      # How a file is named in a Checksum mismatch, the refusal and the --force
+      # warning alike: plugin plugin.rb, plugin part client.rb, script s.sh, rule r.yml.
+      def label(kind_of_file, name)
+        kind_of_file == :plugin && name != @manifest&.plugin&.dig(:file) ? "plugin part #{name}" : "#{kind_of_file} #{name}"
+      end
+
+      # The manifest's sha256 for a plugin file, a part or a script (hex), nil for a rule.
       def declared_sha(kind_of_file, name)
         case kind_of_file
-        when :plugin then @manifest.checksum_for_plugin
+        when :plugin then name == @manifest.plugin[:file] ? @manifest.checksum_for_plugin : @manifest.checksum_for_part(name)
         when :script then @manifest.scripts[name].to_s.delete_prefix("sha256:")
         end
       end

@@ -66,8 +66,7 @@ module Samagotchi
           # No file list, just remove provenance (rules, a plugin and scripts
           # live there too)
           save_edits(provenance, bundle)
-          plugin_path = provenance.plugin_path(bundle)
-          @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
+          note_removed_plugin(provenance, bundle)
           FileUtils.rm_rf(provenance.bundle_dir)
           return true
         end
@@ -146,8 +145,7 @@ module Samagotchi
           FileUtils.rm_rf(provenance.hooks_dir)
         end
 
-        plugin_path = provenance.plugin_path(bundle)
-        @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
+        note_removed_plugin(provenance, bundle)
         FileUtils.rm_rf(provenance.bundle_dir)
         true
       rescue SystemCallError => e
@@ -155,6 +153,13 @@ module Samagotchi
       end
 
       private
+
+      # The plugin's files on disk (its parts, then the plugin file) as
+      # plugin/F in removed_files.
+      def note_removed_plugin(provenance, bundle)
+        paths = provenance.plugin_part_paths(bundle) + Array(provenance.plugin_path(bundle))
+        paths.each { |path| @removed_files << "plugin/#{File.basename(path)}" if File.exist?(path) }
+      end
 
       # Copies each edited file of the bundle's own folder to the trash: the
       # rm_rf below takes them, --force or not. Rules, the plugin and

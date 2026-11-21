@@ -548,6 +548,62 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.first.replaced).to eq(["plugin/plugin.rb"])
   end
 
+  describe "a plugin in parts (plugin: parts:)" do
+    let(:parts_fixture) { File.expand_path("../../fixtures/plugin_parts_bundle", __dir__) }
+    let(:parts_names) { Samagotchi::MemoryBundle::Provenance.new(name: "plugin-parts") }
+
+    # spec/fixtures/plugin_parts_bundle shipped under a temp gem dir as plugin-parts.
+    def ship_parts
+      root = File.join(tmp, "parts-gem", "lib", "samagotchi", "bundles")
+      FileUtils.mkdir_p(root)
+      FileUtils.cp_r(parts_fixture, File.join(root, "plugin-parts")) unless File.exist?(File.join(root, "plugin-parts"))
+      root
+    end
+
+    def parts_record = parts_names.record
+
+    it "copies an edited part to the trash before the update replaces it, and lists it as edited" do
+      root = ship_parts
+      install(old_copy("plugin-parts", from: root), "plugin-parts")
+      File.write(File.join(parts_names.plugin_dir, "shout.rb"), "# mine\n")
+      expect(described_class.edited_executables("plugin-parts", parts_record)).to eq(["plugin/shout.rb"])
+
+      rows = described_class.plan(shipped_dir: root)
+      expect(rows.first).to have_attributes(status: :would_update, replaced: ["plugin/shout.rb"])
+
+      row = described_class.apply(rows).first
+      expect(row).to have_attributes(status: :updated, replaced: ["plugin/shout.rb"])
+      expect(asset_copies(row.trash_copy)).to eq(["plugin/shout.rb"])
+      expect(File.read(File.join(row.trash_copy[/\((.*)\)/, 1], "plugin", "shout.rb"))).to eq("# mine\n")
+      expect(File.read(File.join(parts_names.plugin_dir, "shout.rb"))).to eq(File.read(File.join(parts_fixture, "shout.rb")))
+    end
+
+    it "lists edited parts before the plugin file, in the load order" do
+      root = ship_parts
+      install(old_copy("plugin-parts", from: root), "plugin-parts")
+      %w[shout.rb plugin.rb helpers.rb].each { |file| File.write(File.join(parts_names.plugin_dir, file), "# mine\n") }
+      expect(described_class.edited_executables("plugin-parts", parts_record))
+        .to eq(%w[plugin/helpers.rb plugin/shout.rb plugin/plugin.rb])
+    end
+
+    it "updates a single-file install to the parts: three files in plugin/, two recorded parts" do
+      root = ship_parts
+      old = old_copy("plugin-parts", from: root)
+      data = YAML.load_file(File.join(old, "manifest.yml"))
+      data["plugin"].delete("parts")
+      File.write(File.join(old, "manifest.yml"), YAML.dump(data))
+      %w[helpers.rb shout.rb].each { |part| FileUtils.rm_f(File.join(old, part)) }
+      install(old, "plugin-parts")
+      expect(Dir.children(parts_names.plugin_dir)).to eq(["plugin.rb"])
+
+      rows = described_class.plan(shipped_dir: root)
+      expect(rows.first).to have_attributes(status: :would_update, replaced: [])
+      expect(described_class.apply(rows).first).to have_attributes(status: :updated, trash_copy: nil)
+      expect(Dir.children(parts_names.plugin_dir).sort).to eq(%w[helpers.rb plugin.rb shout.rb])
+      expect(parts_record.plugin.parts.keys).to eq(%w[helpers.rb shout.rb])
+    end
+  end
+
   it "skips a same-named bundle that wasn't installed from chi" do
     zipped = File.join(tmp, "unpacked-btw")
     FileUtils.cp_r(old_copy("btw"), zipped)

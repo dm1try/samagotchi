@@ -30,8 +30,9 @@ module Samagotchi
       #               it doesn't read)
       #   rules       guardrails/*.yml paths
       #   plugin      the installed plugin file, nil without one
+      #   plugin_parts its parts' name => installed path, in load order
       #   scripts     file name => path; context_providers, block_renderers the parsed lists
-      InstalledParts = Data.define(:record, :rules, :plugin, :scripts, :context_providers, :block_renderers)
+      InstalledParts = Data.define(:record, :rules, :plugin, :plugin_parts, :scripts, :context_providers, :block_renderers)
 
       attr_reader :built_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
@@ -165,10 +166,25 @@ module Samagotchi
           record: record,
           rules: Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : [],
           plugin: plugin && File.file?(plugin) ? plugin : nil,
+          plugin_parts: installed_plugin_parts(name, prov, record, plugin),
           scripts: installed_scripts(prov, record),
           context_providers: manifest ? manifest.context_providers : [],
           block_renderers: manifest ? manifest.block_renderers : []
         )
+      end
+
+      # The record's plugin parts on disk, name => path, in load order ({}
+      # when the plugin file itself isn't there: nothing of it is built).
+      # @raise [BuildError] a recorded part is missing: the build couldn't load
+      def installed_plugin_parts(name, prov, record, plugin)
+        return {} unless plugin && File.file?(plugin)
+
+        record.plugin.parts.keys.to_h do |part|
+          path = File.join(prov.plugin_dir, part)
+          raise BuildError, "the installed #{name}'s plugin part #{part} is missing" unless File.file?(path)
+
+          [part, path]
+        end
       end
 
       # The memories, guardrails/, the plugin and scripts/ into the
@@ -180,6 +196,7 @@ module Samagotchi
           parts.rules.each { |src| FileUtils.cp(src, File.join(staging, "guardrails", File.basename(src))) }
         end
         FileUtils.cp(parts.plugin, File.join(staging, File.basename(parts.plugin))) if parts.plugin
+        parts.plugin_parts.each { |part, src| FileUtils.cp(src, File.join(staging, part)) }
         return if parts.scripts.empty?
 
         FileUtils.mkdir_p(File.join(staging, "scripts"))
@@ -204,7 +221,8 @@ module Samagotchi
           files: files_map,
           trust_level: trust_level,
           plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: InstalledBundles::FileDigest.sha256(parts.plugin),
-                                    required: manifest&.plugin_required },
+                                    required: manifest&.plugin_required,
+                                    parts: parts.plugin_parts.transform_values { |src| InstalledBundles::FileDigest.sha256(src) } },
           requires_chi: manifest&.requires_chi,
           needs: manifest&.needs,
           scripts: parts.scripts.transform_values { |src| InstalledBundles::FileDigest.sha256(src) },
