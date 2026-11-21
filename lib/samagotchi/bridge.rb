@@ -54,7 +54,7 @@ module Samagotchi
   # turn via HTTP POST.
   #
   # Design invariants (see multi_ui_architecture):
-  # * Reuses `Engine#subscribe` for SSE fan-out — never a second Engine, never
+  # * Reuses the Engine's event log (`event_log:`) for SSE fan-out — never a second Engine, never
   #   `run_turn` across the thread/process boundary. POST reuses the
   #   `SessionInbox` file-IPC input path.
   # * One capture observer fills a shared ring buffer; each connection gets a
@@ -71,7 +71,6 @@ module Samagotchi
     ENGINE_CALLS = {
       active_cancel_controller: "turn-state monitor",
       annotate_question: "question-desk control",
-      announce: "event-log monitor",
       answer_question: "question-desk control",
       cancel_current_turn!: "turn cancellation",
       cancel_question: "question-desk control",
@@ -80,7 +79,6 @@ module Samagotchi
       drop_enqueued_id: "turn-state monitor",
       enqueued_id?: "turn-state monitor",
       fix_block: "block-fix mutex; replace-only session messages",
-      event_count: "observer-registry monitor",
       forget_enqueued_id: "turn-state monitor",
       generation_snapshot: "generation-phase snapshot",
       guardrail_warning: "startup-set warning reader",
@@ -104,10 +102,7 @@ module Samagotchi
       session_state_snapshot: "snapshot; event lock for consistency",
       stats_snapshot: "stats snapshot; may probe model",
       steer_cut_after: "per-read model setting",
-      subscribe: "observer-registry monitor",
-      synchronize_events: "event-log monitor",
-      turn_running?: "turn-state monitor",
-      unsubscribe: "observer-registry monitor"
+      turn_running?: "turn-state monitor"
     }.freeze
 
     DEFAULT_BIND = "127.0.0.1"
@@ -136,6 +131,7 @@ module Samagotchi
     SECRET_BYTES = 32
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
+    # @param event_log [SessionObserver] that engine's event log (Engine#event_log)
     # @param state_dir [String] the session state directory root
     # @param session_id [String] this bridge's session id
     # @param bind [String] bind address (127.0.0.1 only)
@@ -176,12 +172,13 @@ module Samagotchi
     # @param on_activity [#call, nil] what the worker is busy with right now
     #   (Worker#activity_snapshot: the same signals WorkerIdleExit#hold reads)
     #   for GET /activity; without one that route answers 501
-    def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
+    def initialize(engine:, event_log:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
                    on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil,
                    on_holds: nil, on_holds_stop: nil, on_activity: nil)
       @engine = engine
+      @event_log = event_log
       @on_input = on_input
       @on_command = on_command
       @on_exit_request = on_exit_request
@@ -288,15 +285,15 @@ module Samagotchi
     def start
       @server = TCPServer.new(@bind, @port)
       @port = @server.local_address.ip_port
-      @capture_handle = @engine.subscribe(observer: capture_observer)
-      @accumulator_handle = @engine.subscribe(observer: @accumulator)
-      @drawings_handle = @engine.subscribe(observer: @drawings)
+      @capture_handle = @event_log.subscribe(observer: capture_observer)
+      @accumulator_handle = @event_log.subscribe(observer: @accumulator)
+      @drawings_handle = @event_log.subscribe(observer: @drawings)
       # A plugin's ctx.messages mid-turn holds the turn so far (plan O1).
       @engine.running_turn_messages = -> { @accumulator.current_messages }
-      @cards_handle = @engine.subscribe(observer: @cards)
+      @cards_handle = @event_log.subscribe(observer: @cards)
       # One a worker that died left is not open.
       @pending_card.clear
-      @pending_card_handle = @engine.subscribe(observer: @pending_card)
+      @pending_card_handle = @event_log.subscribe(observer: @pending_card)
       # #stop and #close_intake wake the acceptor through it: closing the
       # listen socket doesn't cut a select on it short on Linux.
       @wake_reader, @wake_writer = IO.pipe
@@ -400,8 +397,8 @@ module Samagotchi
     #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:,
     #   objectives:, idle_working_set:}
     def snapshot
-      @engine.synchronize_events do
-        seq = @engine.event_count
+      @event_log.synchronize do
+        seq = @event_log.event_count
         messages = @engine.messages_checkpoint
         drawing = last_turn_drawing(messages)
         idle_working_set_unavailable = Object.new
@@ -481,7 +478,7 @@ module Samagotchi
     # snapshot or reset frame (SSEWriter) and GET snapshot carry.
     # @return [Hash] {snapshot:, session_state_snapshot:}
     def snapshot_frame
-      @engine.synchronize_events do
+      @event_log.synchronize do
         snap = snapshot
         state = @engine.session_state_snapshot.merge(event_seq: snap[:event_seq], event_id: snap[:event_id])
         { snapshot: snap, session_state_snapshot: state }
@@ -498,8 +495,8 @@ module Samagotchi
     # @return [Hash] {session_id:, working_directory:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
     # +turn_id+: that turn's answer, not the newest (Engine#last_answer_message).
     def tail_frame(turn_id: nil)
-      @engine.synchronize_events do
-        seq = @engine.event_count
+      @event_log.synchronize do
+        seq = @event_log.event_count
         state = @engine.session_state_snapshot.merge(event_seq: seq, event_id: event_id(seq))
         { session_id: @session_id, working_directory: @engine.session&.working_directory,
           session_state_snapshot: state, answer: @engine.last_answer_message(turn_id: turn_id),
@@ -520,7 +517,7 @@ module Samagotchi
       line = line.to_s.strip
       command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author, private_args: command_registry.private_args?(line))
                              .with(enqueued_id: enqueued_id)
-      @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
+      @event_log.synchronize { queue_command_locked(command, after_file: after_file) }
       command.command_id
     end
 
@@ -695,7 +692,7 @@ module Samagotchi
       end
 
       writer = SSEWriter.new(
-        engine: @engine,
+        event_log: @event_log,
         ring: @ring,
         session_id: @session_id,
         last_event_id: last_event_id,
@@ -1126,7 +1123,7 @@ module Samagotchi
     def queue_command_request(session_id, line, client_id:, deadline: nil, card: false, author: nil)
       # A card's action: the UIs leave its line out (the card is the echo).
       command = QueuedCommand.mint(line, client_id: client_id, card: card, author: author, private_args: command_registry.private_args?(line))
-      queued = @engine.synchronize_events do
+      queued = @event_log.synchronize do
         raise IntakeClosed if stopped?
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command.client_id)
 
@@ -1150,7 +1147,7 @@ module Samagotchi
               when :queue then { waits: "turn_end" }
               else {}
               end
-      @engine.announce(type: :command_queued, **command.event_fields, **marks)
+      @event_log.announce(type: :command_queued, **command.event_fields, **marks)
     end
 
     # A client asks the worker to exit now (`/exit` in the attached TUI), or
@@ -1191,7 +1188,7 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       stopped = nil
-      hold = @engine.synchronize_events do
+      hold = @event_log.synchronize do
         raise IntakeClosed if stopped?
         next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
 
@@ -1381,7 +1378,7 @@ module Samagotchi
         # Write and announce with the event log held: the worker can't emit
         # this turn's :turn_started (or merge it mid-turn) before
         # :turn_enqueued, and a failed write announces nothing.
-        enqueued = @engine.synchronize_events do
+        enqueued = @event_log.synchronize do
           raise IntakeClosed if stopped?
 
           existing = @enqueued_requests[enqueued_id]
@@ -1409,7 +1406,7 @@ module Samagotchi
           enqueued_event[:images] = images unless images.empty?
           enqueued_event[:delivery] = Delivery::QUEUE if queued_behind_turn
           enqueued_event[:author] = author if author
-          @engine.announce(enqueued_event)
+          @event_log.announce(enqueued_event)
           @on_input&.call
           true
         end
@@ -1474,14 +1471,14 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       client_id = fetched(parsed, "client_id")
-      taken, input = @engine.synchronize_events do
+      taken, input = @event_log.synchronize do
         raise IntakeClosed if stopped?
         next [:expired, nil] if expired?("dequeue_expired", deadline, sid: session_id, enqueued_id: id)
 
         SessionInbox.take_queued_input(session_dir, id).tap do |status, _|
           if status == :removed
             @engine.drop_enqueued_id(id)
-            @engine.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id)
+            @event_log.announce(type: :turn_dequeued, enqueued_id: id, client_id: client_id)
           end
         end
       end
@@ -1534,7 +1531,7 @@ module Samagotchi
     # from here. Read under the event lock, as snapshot_frame and tail_frame:
     # the state and its event_seq/event_id are one step of the event log.
     def handle_state(_session_id, _body = nil)
-      state = @engine.synchronize_events do
+      state = @event_log.synchronize do
         snap = @engine.session_state_snapshot
         snap.merge(event_id: event_id(snap[:event_seq]))
       end

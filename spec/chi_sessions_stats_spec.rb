@@ -284,7 +284,7 @@ RSpec.describe "chi sessions stats" do
     def serve(session)
       locks << Samagotchi::OwnerLock.acquire(dir_of(session), kind: "worker")
       engine = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
-      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: session.id,
+      bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id,
                                       heartbeat_interval: 5, input_format: Samagotchi::SessionInbox::INPUT_FORMAT)
       bridge.start
       bridges << bridge

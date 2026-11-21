@@ -5,12 +5,14 @@ localhost HTTP server in the worker's process, next to the `Engine` it reads and
 terminal are its clients; no browser reaches it. [architecture.md](../architecture.md) places it among the layers;
 this page is the surface: what it keeps, how a client joins and catches up, and every route.
 
-Bridge Engine calls are listed with their reasons in `Bridge::ENGINE_CALLS`; add each new Engine call there.
+Bridge Engine calls are listed with their reasons in `Bridge::ENGINE_CALLS`; add each new Engine call there. The event
+log is not among them: `Bridge.new` takes it as `event_log:` (the Engine's own `SessionObserver`, `Engine#event_log`,
+handed on by the Worker) and calls `subscribe`, `unsubscribe`, `event_count`, `announce` and `synchronize` on it.
 
 ## What a Bridge keeps
 
-`Bridge#start` binds a port (OS-assigned, `127.0.0.1`), then subscribes four persistent observers to the Engine
-(`Engine#subscribe`, the thread-safe fan-out whose events all carry a monotonic `event_seq`). Each is cheap and
+`Bridge#start` binds a port (OS-assigned, `127.0.0.1`), then subscribes four persistent observers to the event log
+(`SessionObserver#subscribe`, the thread-safe fan-out whose events all carry a monotonic `event_seq`). Each is cheap and
 rescues its own errors: an observer must never break the running turn.
 
 | Piece | File (`bridge/`) | Holds |
@@ -265,7 +267,8 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
 
 ## SSEWriter
 
-One per `GET /session/:id/stream` connection, and itself that connection's observer: `Engine#emit_event` calls
+One per `GET /session/:id/stream` connection, and itself that connection's observer (it takes the event log, no
+Engine): `Engine#emit_event` calls
 `#call` on the turn's thread, so it only pushes onto a `BoundedQueue` (when full, the oldest entry goes and an
 overflow flag is set). The connection's own thread (`#serve!`) drains the queue onto the socket, so a slow client
 cannot stall a turn or another subscriber. An event holding bytes JSON can't take goes out scrubbed
@@ -278,7 +281,7 @@ ring holds the event. `serve!` orders a join so that nothing is missed or double
 4. drain the queue for `seq > snapshot`; a per-connection high-water mark drops what step 3 already wrote.
 
 `?snapshot=1` replaces 2-3: subscribe and `Bridge#snapshot_frame` happen as one step with the event log held
-(`Engine#synchronize_events`), the client gets one `snapshot` frame, and live events follow from the next seq.
+(`SessionObserver#synchronize`), the client gets one `snapshot` frame, and live events follow from the next seq.
 
 A **`reset`** frame (the same content, numbered with its own seq) is written when a cursor cannot be replayed: it is
 from another epoch, ahead of the engine (a restarted worker), behind the ring's window (a cursor at `oldest - 1` has

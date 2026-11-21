@@ -62,7 +62,7 @@ RSpec.describe "a remote attach's stream through chi web" do
   # A worker's Bridge for the session (a new one is a restart: a new epoch).
   def start_worker
     engine = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
-    Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
+    Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
                            input_format: Samagotchi::SessionInbox::INPUT_FORMAT).tap do |bridge|
       bridge.start
       bridges << bridge

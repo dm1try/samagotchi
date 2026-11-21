@@ -55,7 +55,7 @@ RSpec.describe "ctx.messages" do
 
   it "adds the running turn so far with a Bridge (a worker)" do
     engine.session = session
-    bridge = Samagotchi::Bridge.new(engine: engine, state_dir: Dir.mktmpdir, session_id: session.id)
+    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: session.id)
     bridge.start
     begin
       engine.run_turn(session, "now", on_event: ->(_e) {})

@@ -12,7 +12,7 @@ module Samagotchi
     # Per-connection SSE writer.
     #
     # This object doubles as the per-connection live observer wired into the
-    # Engine via `Engine#subscribe`: its `#call` is invoked synchronously from
+    # event log via `SessionObserver#subscribe`: its `#call` is invoked synchronously from
     # `Engine#emit_event` inside the turn thread, so it must be strictly
     # non-blocking — it only enqueues onto a bounded queue and returns. A
     # dedicated writer thread (the connection's own thread) drains the queue
@@ -45,7 +45,7 @@ module Samagotchi
       # Queued by the hang-up watcher (#watch_hangup) to wake #drain!.
       HANGUP = Object.new.freeze
 
-      # @param engine [Samagotchi::Engine] the owning engine (live fan-out)
+      # @param event_log [Samagotchi::SessionObserver] the Engine's event log (live fan-out)
       # @param ring [Samagotchi::Bridge::RingBuffer] shared capture buffer
       # @param session_id [String]
       # @param last_event_id [String, nil] reconnect cursor (or ?from_seq=):
@@ -63,16 +63,16 @@ module Samagotchi
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
       # @param raw [Boolean] write events as the engine emitted them, not as
       #   clients get them (ClientEvent): `?raw=1`, for debugging
-      def initialize(engine:, ring:, session_id:, last_event_id: nil, epoch: nil,
+      def initialize(event_log:, ring:, session_id:, last_event_id: nil, epoch: nil,
                      frame_provider: nil, join_with_snapshot: false, bridge: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
                      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, raw: false)
-        @engine = engine
+        @event_log = event_log
         @ring = ring
         @session_id = session_id
         @last_event_id = last_event_id
         @epoch = epoch
-        @frame_provider = frame_provider || -> { { snapshot: { event_seq: @engine.event_count }, session_state_snapshot: {} } }
+        @frame_provider = frame_provider || -> { { snapshot: { event_seq: @event_log.event_count }, session_state_snapshot: {} } }
         @join_with_snapshot = join_with_snapshot
         @bridge = bridge
         @max_queue = max_queue
@@ -110,16 +110,16 @@ module Samagotchi
         begin
           if @join_with_snapshot
             # Subscribe and snapshot as one step of the event log, then go live.
-            frame = @engine.synchronize_events do
-              @handle = @engine.subscribe(observer: self)
+            frame = @event_log.synchronize do
+              @handle = @event_log.subscribe(observer: self)
               take_snapshot
             end
             write_snapshot_frame(io, :snapshot, frame)
           else
             # (1) subscribe the live queue FIRST.
-            @handle = @engine.subscribe(observer: self)
+            @handle = @event_log.subscribe(observer: self)
             # (2) capture the snapshot sequence.
-            snapshot_seq = @engine.event_count
+            snapshot_seq = @event_log.event_count
             # (3) replay buffered (from_seq, snapshot].
             replay!(io, snapshot_seq)
           end
@@ -128,7 +128,7 @@ module Samagotchi
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           # Client hung up; nothing to do.
         ensure
-          @engine.unsubscribe(handle: @handle) if @handle
+          @event_log.unsubscribe(handle: @handle) if @handle
           watcher&.kill
         end
       end
@@ -258,7 +258,7 @@ module Samagotchi
       # Emit a control frame carrying the current snapshot so a client that
       # cannot replay can re-derive state, then continue live.
       def emit_reset(io)
-        write_snapshot_frame(io, :reset, @engine.synchronize_events { take_snapshot })
+        write_snapshot_frame(io, :reset, @event_log.synchronize { take_snapshot })
       end
 
       # With the event log held: the snapshot frame's content (the snapshot

@@ -65,7 +65,7 @@ RSpec.describe Samagotchi::SendCommand do
     allow(engine).to receive(:cut_for_steer).and_return(cut) if cut
     events = []
     engine.subscribe(observer: ->(e) { events << e })
-    bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
+    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
                                     input_format: Samagotchi::SessionInbox::INPUT_FORMAT, on_command: on_command)
     bridge.start
     bridges << bridge

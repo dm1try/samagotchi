@@ -619,7 +619,7 @@ RSpec.describe "a participant's author on delivery" do
       WebMock.allow_net_connect! if defined?(WebMock)
       hold_worker(session_dir)
       engine.subscribe(observer: ->(event) { announced << event })
-      @bridge = described_class.new(engine: engine, state_dir: tmpdir, session_id: "s1", heartbeat_interval: 0.2,
+      @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: "s1", heartbeat_interval: 0.2,
                                     on_command: lambda { |command, **|
                                       commands << command
                                       :anytime

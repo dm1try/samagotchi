@@ -260,10 +260,10 @@ RSpec.describe Samagotchi::Bridge do
 
   describe "SSEWriter" do
     it "drops events already served (seq <= reconnect cursor)" do
-      engine = make_engine
+      event_log = Samagotchi::SessionObserver.new
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
       writer = Samagotchi::Bridge::SSEWriter.new(
-        engine:, ring:, session_id: "s1", last_event_id: "5"
+        event_log:, ring:, session_id: "s1", last_event_id: "5"
       )
       # seq 3 is before the cursor → dropped; seq 7 after → enqueued.
       writer.call(type: :x, event_seq: 3)
@@ -274,14 +274,14 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     it "replays buffered events in (from_seq, snapshot] in order" do
-      engine = make_engine
-      allow(engine).to receive(:event_count).and_return(10)
+      event_log = Samagotchi::SessionObserver.new
+      allow(event_log).to receive(:event_count).and_return(10)
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
       10.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
 
       io = ControllableIO.new
       writer = Samagotchi::Bridge::SSEWriter.new(
-        engine:, ring:, session_id: "s1", last_event_id: "4",
+        event_log:, ring:, session_id: "s1", last_event_id: "4",
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
@@ -301,14 +301,14 @@ RSpec.describe Samagotchi::Bridge do
     # replays; cursor 3 missed seq 4, which is gone, so it resets.
     { "4" => false, "3" => true }.each do |cursor, resets|
       it "#{resets ? "resets" : "replays"} a cursor at #{cursor} when the ring's oldest seq is 5" do
-        engine = make_engine
-        allow(engine).to receive(:event_count).and_return(10)
+        event_log = Samagotchi::SessionObserver.new
+        allow(event_log).to receive(:event_count).and_return(10)
         ring = Samagotchi::Bridge::RingBuffer.new(capacity: 6)
         10.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
 
         io = ControllableIO.new
         writer = Samagotchi::Bridge::SSEWriter.new(
-          engine:, ring:, session_id: "s1", last_event_id: cursor,
+          event_log:, ring:, session_id: "s1", last_event_id: cursor,
           heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
@@ -331,13 +331,13 @@ RSpec.describe Samagotchi::Bridge do
     # the middle of a turn: it resets like a cursor behind the window.
     { 600 => true, 100 => false }.each do |last, resets|
       it "#{resets ? "resets" : "replays the whole window for"} a cold connect on a ring holding #{last - 255 > 1 ? "345..600" : "1..100"}" do
-        engine = make_engine
-        allow(engine).to receive(:event_count).and_return(last)
+        event_log = Samagotchi::SessionObserver.new
+        allow(event_log).to receive(:event_count).and_return(last)
         ring = Samagotchi::Bridge::RingBuffer.new(capacity: 256)
         last.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
         io = ControllableIO.new
         writer = Samagotchi::Bridge::SSEWriter.new(
-          engine:, ring:, session_id: "s1", heartbeat_interval: 0.05
+          event_log:, ring:, session_id: "s1", heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
         wait_for("the last frame or the reset") { io.buffer.include?("id: #{last}\r\n") }
@@ -355,12 +355,12 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     it "replays a cold connect whole when the ring starts at seq 5 but never evicted" do
-      engine = make_engine
-      allow(engine).to receive(:event_count).and_return(8)
+      event_log = Samagotchi::SessionObserver.new
+      allow(event_log).to receive(:event_count).and_return(8)
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 256)
       (5..8).each { |seq| ring.push(seq:, data: { type: :k, event_seq: seq }) }
       io = ControllableIO.new
-      writer = Samagotchi::Bridge::SSEWriter.new(engine:, ring:, session_id: "s1", heartbeat_interval: 0.05)
+      writer = Samagotchi::Bridge::SSEWriter.new(event_log:, ring:, session_id: "s1", heartbeat_interval: 0.05)
       writer_thread = Thread.new { writer.serve!(io) }
       wait_for("the last frame") { io.buffer.include?("id: 8\r\n") }
       writer_thread.kill
@@ -372,13 +372,13 @@ RSpec.describe Samagotchi::Bridge do
     describe "with a worker epoch" do
       # The ring holds seqs 1..10 of the worker whose epoch is "e2".
       def serve_from(cursor)
-        engine = make_engine
-        allow(engine).to receive(:event_count).and_return(10)
+        event_log = Samagotchi::SessionObserver.new
+        allow(event_log).to receive(:event_count).and_return(10)
         ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
         10.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
         io = ControllableIO.new
         writer = Samagotchi::Bridge::SSEWriter.new(
-          engine:, ring:, session_id: "s1", last_event_id: cursor, epoch: "e2",
+          event_log:, ring:, session_id: "s1", last_event_id: cursor, epoch: "e2",
           heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
@@ -410,13 +410,12 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     it "does not block the enqueuer while the writer thread is stuck writing" do
-      engine = make_engine
-      allow(engine).to receive(:run_turn)
+      event_log = Samagotchi::SessionObserver.new
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
       io = ControllableIO.new
       io.write_sleep = 0.02 # simulate a slow / hung client socket
       writer = Samagotchi::Bridge::SSEWriter.new(
-        engine:, ring:, session_id: "s1",
+        event_log:, ring:, session_id: "s1",
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
@@ -439,7 +438,7 @@ RSpec.describe Samagotchi::Bridge do
 
   describe "POST tasks/stop" do
     let(:engine) { make_engine }
-    let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: "s1") }
 
     include TaskDirs
 
@@ -535,7 +534,7 @@ RSpec.describe Samagotchi::Bridge do
 
   describe "cancel reasons" do
     let(:engine) { make_engine }
-    let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: Dir.mktmpdir, session_id: "s1") }
 
     before do
       allow(engine).to receive(:turn_running?).and_return(true)
@@ -605,7 +604,7 @@ RSpec.describe Samagotchi::Bridge do
       @session = make_session
       hold_worker(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir))
       @bridge = described_class.new(
-        engine: @engine, state_dir: state_dir, session_id: @session.id,
+        engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
         on_exit_request: on_exit_request, exit_discards: exit_discards, exit_stopped: exit_stopped,
         on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
@@ -651,7 +650,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
       @bridge.stop
 
-      @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id, input_format: 2).start
+      @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id, input_format: 2).start
       expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
     end
 
@@ -1196,7 +1195,7 @@ RSpec.describe Samagotchi::Bridge do
         @engine.append_messages([Samagotchi::ContextNote.message(note_id: "n1", text: "later", source: "chi_note")])
 
         @bridge.stop
-        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("turn_id" => prompt_id)
       end
 
@@ -1227,13 +1226,13 @@ RSpec.describe Samagotchi::Bridge do
         answer_turns
         run_turn_sync(@engine, @session, "hi")
         @bridge.stop
-        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("prompt" => "hi")
 
         @bridge.stop
         line = JSON.parse(File.readlines(drawings_path).last).merge("v" => 99)
         File.write(drawings_path, "#{JSON.generate(line)}\n")
-        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id)
+        @bridge = described_class.new(engine: @engine, event_log: @engine.event_log, state_dir: state_dir, session_id: @session.id)
         expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
       end
     end
@@ -2505,14 +2504,14 @@ RSpec.describe Samagotchi::Bridge do
         seen = []
         @engine.subscribe(observer: ->(e) { seen << e })
         allow(Samagotchi::Log).to receive(:warn).and_call_original
-        allow(@engine).to receive(:synchronize_events).and_call_original
+        allow(@engine.event_log).to receive(:synchronize).and_call_original
 
         status, resp = post_command(JSON.generate(line: "!echo STALE", client_id: "web:1", deadline: Time.now.to_f - 5))
 
         expect(status).to eq(408)
         expect(resp).to include("error" => "deadline_passed")
         expect(seen).to be_empty
-        expect(@engine).to have_received(:synchronize_events)
+        expect(@engine.event_log).to have_received(:synchronize)
         expect(Samagotchi::Log).to have_received(:warn)
           .with(:bridge, "command_expired", hash_including(sid: @session.id, client_id: "web:1", late: be > 4))
       end
@@ -2635,11 +2634,11 @@ RSpec.describe Samagotchi::Bridge do
       it "asks the worker with the event log held and answers exiting" do
         asked = []
         start_bridge(on_exit_request: ->(client_id, **) { (asked << client_id) && nil })
-        allow(@engine).to receive(:synchronize_events).and_call_original
+        allow(@engine.event_log).to receive(:synchronize).and_call_original
 
         expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([200, { "status" => "exiting", "session_id" => @session.id }])
         expect(asked).to eq(["tui:1"])
-        expect(@engine).to have_received(:synchronize_events)
+        expect(@engine.event_log).to have_received(:synchronize)
       end
 
       it "tells the worker when the exit is to delete the session" do
@@ -2670,13 +2669,13 @@ RSpec.describe Samagotchi::Bridge do
       it "drops an exit read after its deadline: the worker is not asked, and a warning logged" do
         start_bridge(on_exit_request: ->(_, **) { raise "must not be called" })
         allow(Samagotchi::Log).to receive(:warn).and_call_original
-        allow(@engine).to receive(:synchronize_events).and_call_original
+        allow(@engine.event_log).to receive(:synchronize).and_call_original
 
         status, resp = post_exit(JSON.generate(client_id: "tui:1", deadline: Time.now.to_f - 5))
 
         expect(status).to eq(408)
         expect(resp).to include("error" => "deadline_passed")
-        expect(@engine).to have_received(:synchronize_events)
+        expect(@engine.event_log).to have_received(:synchronize)
         expect(Samagotchi::Log).to have_received(:warn)
           .with(:bridge, "exit_expired", hash_including(sid: @session.id, client_id: "tui:1", late: be > 4))
         expect(post_exit(JSON.generate(client_id: "tui:1", deadline: "soon")).first).to eq(400)

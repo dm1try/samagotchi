@@ -369,7 +369,7 @@ module Samagotchi
     # The Bridge (UIs and clients reach the worker from here on), then the
     # idle-exit policy.
     def serve
-      @bridge = start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
+      @bridge = start_bridge(engine: @engine, event_log: @engine.event_log, state_dir: @state_dir, session_id: @session_id,
                              on_input: -> { @waker.wake },
                              on_command: method(:on_command),
                              on_exit_request: method(:exit_request),
@@ -417,11 +417,11 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
+    def start_bridge(engine:, event_log:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
                      exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
+        engine: engine, event_log: event_log, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
         exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       ).start

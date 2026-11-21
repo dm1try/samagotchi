@@ -303,7 +303,7 @@ RSpec.describe "a participant red-teaming a session" do
       allow(Samagotchi::SessionManager).to receive(:resume_session)
       allow(Samagotchi::PromptHistory).to receive(:append)
       engine.subscribe(observer: ->(event) { announced << event })
-      @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2,
+      @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2,
                                        on_command: lambda { |command, **|
                                          commands << command
                                          :anytime
