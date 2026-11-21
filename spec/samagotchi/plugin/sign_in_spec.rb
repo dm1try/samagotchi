@@ -19,6 +19,9 @@ RSpec.describe Samagotchi::Plugin::SignIn do
   def request(port, raw)
     socket = TCPSocket.new("127.0.0.1", port)
     socket.write(raw)
+    # A listener that died leaves the connection in its backlog: no answer.
+    raise "no answer from the listener" unless socket.wait_readable(5)
+
     answer = socket.read
     socket.close
     status, = answer.lines
@@ -88,12 +91,56 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect(get(listener.port, "/callback?code=C3&state=S1").first).to eq("HTTP/1.1 200 OK")
     end
 
+    it "survives a connection reset under it (RST): a real callback after it is still answered" do
+      rude = TCPSocket.new("127.0.0.1", listener.port)
+      rude.write("GET /cal")
+      rude.setsockopt(Socket::Option.linger(true, 0))
+      rude.close
+      expect(get(listener.port, "/callback?code=C4&state=S1").first).to eq("HTTP/1.1 200 OK")
+      expect(flow.wait).to include("code" => "C4")
+    end
+
+    it "closes the port and ends the flow when its loop fails anyway: refused, not a hang" do
+      allow(listener).to receive(:respond).and_raise(RuntimeError, "a bug")
+      allow(Samagotchi::Log).to receive(:warn)
+      TCPSocket.new("127.0.0.1", listener.port).tap { |s| s.write("GET /x HTTP/1.1\r\n\r\n") }.close
+      expect(flow.wait(5)).to be_nil
+      expect(flow.outcome).to eq(:cancelled)
+      expect(refused?(listener.port)).to be(true)
+      expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "sign_in_listener_failed", error: "RuntimeError")
+    end
+
+    it "answers a real callback while a silent connection waits (no read deadline per connection in line)" do
+      slow_listener = described_class::Listener.new(read_timeout: 3, tick: 0.02)
+      slow_flow = described_class.new(bundle: "b", title: "T", button: "Open", timeout: 60, listener: slow_listener)
+      slow_flow.started("https://provider.example/authorize?state=S2", "card2")
+      slow_flow.listen
+      silent = TCPSocket.new("127.0.0.1", slow_listener.port)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect(get(slow_listener.port, "/callback?code=C5&state=S2").first).to eq("HTTP/1.1 200 OK")
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
+    ensure
+      silent&.close
+      slow_listener&.close
+    end
+
     it "times out at its deadline: :timed_out, wait gives nil, the port closes" do
       now[0] = 160.0
       expect(flow.wait).to be_nil
       expect(flow.outcome).to eq(:timed_out)
       expect(settled.map(&:last)).to eq([:timed_out])
       expect(refused?(listener.port)).to be(true)
+    end
+
+    it "times out with nobody waiting: waiting? reads the deadline" do
+      bare = described_class.new(bundle: "b", title: "T", button: "Open", timeout: 60, listener: nil,
+                                 redirect_uri: "http://127.0.0.1:1/callback", clock: -> { now.first },
+                                 on_settle: ->(f, outcome) { settled << [f, outcome] })
+      bare.started("https://provider.example/authorize?state=S3", "card3")
+      now[0] = 161.0
+      expect(bare.waiting?).to be(false)
+      expect(bare.outcome).to eq(:timed_out)
+      expect(settled.map { |f, outcome| [f.card_id, outcome] }).to include(["card3", :timed_out])
     end
 
     it "ends once: a cancel after a callback changes nothing" do

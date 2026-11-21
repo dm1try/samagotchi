@@ -1345,8 +1345,10 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
   `/callback`. A block that raises, or an address that isn't an http(s) one a card takes, raises and leaves nothing
   open.
 - The browser comes back to a listener on `127.0.0.1` only, in the worker: it answers `GET <path>?…` and nothing
-  else (a 404, and the wait goes on), reads at most 8 KB within 5 s, takes one connection at a time, answers the
-  callback with a static "Signed in. You can close this tab." page and stops listening. A browser on another device
+  else (a 404, and the wait goes on), reads at most 8 KB within 5 s per connection, reads several connections at
+  once (a silent one, such as a browser's preconnect, never holds the callback up; one that breaks is dropped
+  alone), answers the callback with a static "Signed in. You can close this tab." page and stops listening. Should
+  the listener fail anyway, its port closes and the flow ends `:cancelled`. A browser on another device
   ends on that address, which doesn't load there: the user pastes it with `/callback` ([cli.md](cli.md)), which
   settles the flow the same way.
 - When your address has a `state` query parameter, a callback whose `state` differs is ignored, browser or pasted.

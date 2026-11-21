@@ -100,15 +100,22 @@ module Samagotchi
         @card_id = card_id
       end
 
-      # The listener's thread starts: callbacks are taken from now.
+      # The listener's thread starts: callbacks are taken from now. Should
+      # it fail, the flow ends :cancelled (its card says so).
       def listen
-        @listener&.start(on_request: ->(query) { offer(query) }, on_tick: -> { expire_if_due })
+        @listener&.start(on_request: ->(query) { offer(query) }, on_tick: -> { expire_if_due },
+                         on_failed: -> { settle(:cancelled) })
       end
 
       # @return [Symbol, nil] OUTCOMES, nil while it waits
       def outcome = @mutex.synchronize { @outcome }
 
-      def waiting? = outcome.nil?
+      # Whether it still waits: past its deadline it ends now, whoever asks
+      # (nobody may be in #wait, and the listener may be gone).
+      def waiting?
+        expire_if_due
+        outcome.nil?
+      end
 
       # Blocks until it settles (or +timeout+ seconds, when given, pass).
       # @return [Hash, nil] the callback's query ({"code"=>…, "state"=>…}),
@@ -164,8 +171,12 @@ module Samagotchi
       end
 
       # The deadline passed: :timed_out.
+      # @return [Boolean] whether this call ended it
       def expire_if_due
-        settle(:timed_out) if waiting? && @clock.call >= @deadline
+        return false unless outcome.nil?
+        return settle(:timed_out) if @clock.call >= @deadline
+
+        false
       end
 
       private
@@ -201,21 +212,31 @@ module Samagotchi
       end
 
       # The loopback end of the round trip: a TCPServer on 127.0.0.1 only
-      # (never 0.0.0.0 or ::), one connection at a time. It answers only
-      # `GET <path>?…`: anything else, or a callback the flow refuses (a
-      # wrong state), gets a short 404 and the wait goes on. A request's
-      # line and headers are capped (MAX_REQUEST) and read with a deadline
-      # (READ_TIMEOUT). The accepted callback gets a small static page (no
-      # script, nothing of the request echoed); then it stops listening.
+      # (never 0.0.0.0 or ::). It answers only `GET <path>?…`: anything
+      # else, or a callback the flow refuses (a wrong state), gets a short
+      # 404 and the wait goes on. It reads up to MAX_PENDING connections at
+      # once, each with its own deadline (READ_TIMEOUT), so a silent one (a
+      # browser's preconnect, a stray local process) never holds the real
+      # callback up; a request's line and headers are capped (MAX_REQUEST).
+      # A connection that breaks (a reset) is dropped alone. The accepted
+      # callback gets a small static page (no script, nothing of the
+      # request echoed); then it stops listening. Should its loop fail
+      # anyway, it closes the port (a browser gets "refused", never a hang)
+      # and tells the flow (on_failed).
       class Listener
         HOST = "127.0.0.1"
         MAX_REQUEST = 8 * 1024
         READ_TIMEOUT = 5.0
+        # Connections read at once; a newer one drops the oldest.
+        MAX_PENDING = 16
         PAGE = <<~HTML
           <!doctype html><html><head><meta charset="utf-8"><title>Signed in</title></head>
           <body style="font-family:system-ui,sans-serif;margin:3em">Signed in. You can close this tab.</body></html>
         HTML
         NOT_FOUND = "That isn't this sign-in's address.\n"
+
+        # A connection being read: its socket, what came so far, when it is dropped.
+        Pending = Struct.new(:socket, :head, :deadline)
 
         attr_reader :port
 
@@ -236,11 +257,12 @@ module Samagotchi
         def redirect_uri = "http://#{HOST}:#{@port}#{@path}"
 
         # @param on_request [#call] (query) → whether it settled the flow
-        # @param on_tick [#call] called each TICK with nothing to accept
-        def start(on_request:, on_tick:)
+        # @param on_tick [#call] called each TICK (and after each wake-up)
+        # @param on_failed [#call, nil] its loop failed: the port is closed
+        def start(on_request:, on_tick:, on_failed: nil)
           @thread = Thread.new do
             Thread.current.name = "chi-sign-in"
-            serve(on_request, on_tick)
+            serve(on_request, on_tick, on_failed)
           end
         end
 
@@ -255,37 +277,80 @@ module Samagotchi
 
         private
 
-        def serve(on_request, on_tick)
+        def serve(on_request, on_tick, on_failed)
+          pending = []
           until @closed
-            ready = IO.select([@server], nil, nil, @tick)
+            ready, = IO.select([@server, *pending.map(&:socket)], nil, nil, wait_seconds(pending))
             on_tick.call
-            next unless ready && !@closed
+            break if @closed
 
-            client = accept
-            next unless client
+            Array(ready).each do |io|
+              break if @closed
 
-            begin
-              answer(client, on_request)
-            ensure
-              client.close unless client.closed?
+              io.equal?(@server) ? admit(pending) : read_more(pending, pending.find { |p| p.socket.equal?(io) }, on_request)
             end
+            drop_late(pending)
           end
-        rescue IOError, SystemCallError
-          nil # closed under it
-        rescue StandardError => e
-          Log.warn(:plugins, "sign_in_listener_failed", error: e.class.name)
+        rescue StandardError => e # IOError, SystemCallError: closed under it, when @closed
+          failed(e, on_failed) unless @closed
+        ensure
+          pending&.each { |p| drop(pending, p) }
         end
 
-        def accept
-          @server.accept_nonblock
+        def failed(error, on_failed)
+          Log.warn(:plugins, "sign_in_listener_failed", error: error.class.name)
+          close
+          on_failed&.call
+        end
+
+        # Until the next tick or the soonest connection's deadline.
+        def wait_seconds(pending)
+          soonest = pending.map(&:deadline).min
+          return @tick unless soonest
+
+          (soonest - now).clamp(0.0, @tick)
+        end
+
+        def admit(pending)
+          client = @server.accept_nonblock
+          drop(pending, pending.first) if pending.size >= MAX_PENDING
+          pending << Pending.new(client, +"", now + @read_timeout)
         rescue IO::WaitReadable, Errno::EINTR, Errno::ECONNABORTED
           nil
         end
 
-        def answer(client, on_request)
-          head = read_head(client)
-          return unless head
+        # Its next chunk; a whole head is answered. A connection that broke
+        # (reset, closed), ran past MAX_REQUEST or was answered is dropped.
+        def read_more(pending, conn, on_request)
+          return unless conn
 
+          chunk = conn.socket.read_nonblock(4096, exception: false)
+          return if chunk == :wait_readable
+          return drop(pending, conn) if chunk.nil?
+
+          conn.head << chunk
+          return drop(pending, conn) if conn.head.bytesize > MAX_REQUEST
+          return unless conn.head.include?("\r\n\r\n") || conn.head.include?("\n\n")
+
+          answer(conn.socket, conn.head, on_request)
+          drop(pending, conn)
+        rescue IOError, SystemCallError
+          drop(pending, conn)
+        end
+
+        def drop_late(pending)
+          at = now
+          pending.select { |conn| conn.deadline <= at }.each { |conn| drop(pending, conn) }
+        end
+
+        def drop(pending, conn)
+          pending.delete(conn)
+          conn.socket.close unless conn.socket.closed?
+        rescue IOError, SystemCallError
+          nil
+        end
+
+        def answer(client, head, on_request)
           method, target = head.lines.first.to_s.split(" ", 3)
           path, query = target.to_s.split("?", 2)
           if method == "GET" && path == @path && on_request.call(query)
@@ -296,32 +361,14 @@ module Samagotchi
           end
         end
 
-        # The request's line and headers, or nil when they don't come in time
-        # or run past MAX_REQUEST (the connection is dropped).
-        def read_head(client)
-          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @read_timeout
-          head = +""
-          until head.include?("\r\n\r\n") || head.include?("\n\n")
-            return nil if head.bytesize > MAX_REQUEST
-
-            left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-            return nil unless left.positive? && client.wait_readable(left)
-
-            chunk = client.read_nonblock(4096, exception: false)
-            return nil if chunk.nil?
-            next if chunk == :wait_readable
-
-            head << chunk
-          end
-          head.bytesize > MAX_REQUEST ? nil : head
-        end
-
         def respond(client, status, type, body)
           client.write("HTTP/1.1 #{status}\r\nContent-Type: #{type}\r\nContent-Length: #{body.bytesize}\r\n" \
                        "Cache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n#{body}")
         rescue IOError, SystemCallError
           nil
         end
+
+        def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
     end
   end

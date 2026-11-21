@@ -61,8 +61,10 @@ module Samagotchi
 
       private
 
+      # Read off the lock: a flow past its deadline ends in #waiting?, and
+      # its #sign_in_settled takes the lock.
       def waiting_sign_ins
-        @lifecycle_mutex.synchronize { (@sign_in_flows || []).select(&:waiting?) }
+        @lifecycle_mutex.synchronize { (@sign_in_flows || []).dup }.select(&:waiting?)
       end
 
       # The worker leaves (#shutdown): each waiting flow stops, its card
