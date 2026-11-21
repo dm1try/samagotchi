@@ -394,6 +394,8 @@ class Plugin
 
     # The era, once: server/discover, then initialize on anything it
     # doesn't recognise (not a wire error, a timeout or a refusal).
+    # @param cancelled [Samagotchi::CancellationController, nil] ctx.http's
+    #   cancel: (Plugin#stop_of; not stdio's poll), for #request too
     # @return [Hash] what Plugin#info_of reads ("instructions")
     def handshake(timeout:, cancelled:)
       @era = :discover
@@ -488,12 +490,10 @@ class Plugin
       message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
       deadline = monotonic + timeout
       headers = headers_for(method, params)
-      watching(cancelled) do |cancel|
-        @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: timeout, cancel: cancel) do |res|
-          @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
-          refuse(res, headers.key?("Authorization")) unless res.ok?
-          answer(res, id, method, timeout, deadline)
-        end
+      @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: timeout, cancel: cancelled) do |res|
+        @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
+        refuse(res, headers.key?("Authorization")) unless res.ok?
+        answer(res, id, method, timeout, deadline)
       end
     rescue Samagotchi::Plugin::HttpCancelled
       raise Client::Cancelled, "#{method} was cancelled"
@@ -622,29 +622,6 @@ class Plugin
         headers["Mcp-Session-Id"] = @session_id if @session_id
       end
       headers
-    end
-
-    # ctx.http's own cancel follows the turn only inside a tool call (it is
-    # nil while a service starts): a controller of its own, cancelled by a
-    # watcher that polls +cancelled+.
-    def watching(cancelled)
-      return yield(nil) unless cancelled
-
-      controller = Samagotchi::CancellationController.new
-      controller.cancel! if cancelled.call
-      watcher = Thread.new do
-        until controller.cancelled?
-          if cancelled.call
-            controller.cancel!
-            break
-          end
-          sleep(Client::POLL_SECONDS)
-        end
-      end
-      yield controller
-    ensure
-      watcher&.kill
-      watcher&.join(1)
     end
 
     def content_type(res) = res.headers["content-type"].to_s.split(";").first.to_s.strip.downcase
@@ -848,6 +825,11 @@ class Plugin
     end
   end
 
+  # A client's cancelled:, read on the thread that does the work (an init
+  # task's own Stop, else the turn's; a thread of the client's own would
+  # read the turn's): a remote server's ctx.http cancel:, a poll for stdio.
+  def stop_of(server, ctx) = server.url ? ctx.cancel_controller : -> { ctx.cancelled? }
+
   # The log fields that say which client: its pid, or a remote one's origin.
   def where(client) = client.is_a?(HttpClient) ? { where: client.label } : { pid: client.pid }
 
@@ -880,7 +862,7 @@ class Plugin
   # the tools.
   # @return [Client]
   def spawn(server, ctx)
-    cancelled = -> { ctx.cancelled? }
+    cancelled = stop_of(server, ctx)
     client = server.client = connect(server, ctx,
                                      on_exit: ->(reason) { exited(server, reason, ctx) },
                                      on_notification: lambda { |method, _params|
@@ -948,7 +930,7 @@ class Plugin
     File.open("#{cache_path(server, ctx)}.lock", File::CREAT | File::RDWR) do |lock|
       return nil unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
-      cancelled = -> { ctx.cancelled? }
+      cancelled = stop_of(server, ctx)
       client = connect(server, ctx)
       begin
         initialized = client.handshake(timeout: @startup_timeout, cancelled: cancelled)
@@ -1225,7 +1207,7 @@ class Plugin
     return client if client.is_a?(String)
 
     result = client.request("tools/call", { name: tool.name, arguments: args }, timeout: server.timeout,
-                                                                                cancelled: -> { ctx.cancelled? })
+                                                                                cancelled: stop_of(server, ctx))
     text, images = content(result, server, tool.name)
     return "Error: #{text.empty? ? "the tool failed" : text}#{Samagotchi::Tools::ToolIndex.schema_note(tool)}" if result["isError"]
 

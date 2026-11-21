@@ -274,24 +274,34 @@ RSpec.describe "The mcp bundle's HTTP client" do
       expect { client.request("tools/list", nil, timeout: 0.3) }.to raise_error(errors::Timeout, "tools/list timed out after 0.3s")
     end
 
-    it "stops a call when its cancelled lambda turns true, long before the timeout" do
+    # A Stop on another thread once the server holds the request.
+    def stop_once_held
+      Samagotchi::CancellationController.new.tap do |stop|
+        Thread.new do
+          SpecWaiting.wait_for("the request to be held", timeout: 10) { server.holding.positive? }
+          stop.cancel!
+        end
+      end
+    end
+
+    it "stops a call on its controller's Stop, long before the timeout" do
       modern_discover
       client.handshake(timeout: 5, cancelled: nil)
       server.enqueue("/mcp", sse: [], hold: true)
-      held = -> { server.holding.positive? }
 
-      expect { client.request("tools/call", { name: "slow" }, timeout: 30, cancelled: held) }
+      expect { client.request("tools/call", { name: "slow" }, timeout: 30, cancelled: stop_once_held) }
         .to raise_error(errors::Cancelled, "tools/call was cancelled")
     end
 
-    it "stops the handshake on a Stop too (its own watcher: ctx.http has no cancel while a service starts)" do
+    it "stops the handshake on a Stop too, with no thread of its own" do
       server.enqueue("/mcp", sse: [], hold: true)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      threads = Thread.list.size
+      stop = stop_once_held
 
-      expect { client.handshake(timeout: 30, cancelled: -> { server.holding.positive? }) }
-        .to raise_error(errors::Cancelled, "server/discover was cancelled")
+      expect { client.handshake(timeout: 30, cancelled: stop) }.to raise_error(errors::Cancelled, "server/discover was cancelled")
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
-      expect(Thread.list.count { |t| t.alive? && t.backtrace.to_a.join.include?("watching") }).to eq(0)
+      expect(Thread.list.count(&:alive?)).to be <= threads + 1 # the stopper, ending
     end
   end
 

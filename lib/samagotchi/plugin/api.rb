@@ -56,7 +56,7 @@ module Samagotchi
         "ctx.objectives" => "0.149.0", "ctx.turn_running?" => "0.149.0",
         "ctx.last_answer" => "0.154.0",
         "chi.on(on_error:)" => "0.157.0"
-        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.http.stream".
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.http.stream", "ctx.cancel_controller".
       }.freeze
 
       # chi.on's on_error: values. :log (the default) logs a raise and goes

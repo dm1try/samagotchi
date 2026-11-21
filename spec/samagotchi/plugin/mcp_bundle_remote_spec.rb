@@ -91,6 +91,30 @@ RSpec.describe "The mcp bundle with a remote server" do
     expect(mcp("echo", { "text" => "x" })).to eq("Error: MCP server fake didn't start: HTTP 503")
   end
 
+  describe "a Stop during a first-run connect: the init task's own, never the turn's" do
+    let(:settings) { { "servers" => servers, "startup_timeout" => 5, "timeout" => 5 } }
+
+    it "leaves the connect alone when the turn is stopped: the server connects" do
+      stopped = Samagotchi::CancellationController.new.tap(&:cancel!)
+      allow_any_instance_of(Samagotchi::Engine).to receive(:active_cancel_controller).and_return(stopped)
+
+      expect(load_events.select { |e| e[:type] == :card }).to be_empty
+      expect(mcp_card).to start_with("**fake**: connected (http://127.0.0.1:")
+    end
+
+    it "ends the connect at once when chi shuts down" do
+      remote.hold = true
+      @engine = Samagotchi::Engine.new(client: client).tap(&:start_init_tasks!)
+      wait_for("the discover to be held") { remote.holding.positive? }
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @engine.shutdown
+      # Not the 5 s startup_timeout, nor Engine::SHUTDOWN_JOIN_SECONDS (3 s): the task saw its cancel.
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.5, below: 3)
+      expect(remote.rpc_methods).to eq(["server/discover"])
+    end
+  end
+
   context "with bearer_token_env" do
     let(:fake) { { "url" => remote.url, "bearer_token_env" => "FAKE_MCP_TOKEN" } }
 

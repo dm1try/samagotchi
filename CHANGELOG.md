@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: `ctx.http.stream(method, url, …) { |res| … }`, a streamed answer: the status and headers
   first, then the body as it arrives (`res.each_event` reads Server-Sent Events, `res.each_chunk` the raw pieces).
   Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.
+- For bundle authors: `ctx.cancel_controller`, the Stop `ctx.cancelled?` reads on this thread (an init task's own, else
+  the running turn's), to hand to `ctx.http`'s `cancel:` or a thread of your own.
 
 ### Changed
 

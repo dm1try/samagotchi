@@ -660,7 +660,9 @@ end
 - **`quiet: true`**: nothing is shown unless it fails (a background
   refresh).
 - **`ctx.cancelled?`** in the block says chi is shutting down: the block
-  should stop then. It is the task's own, not the running turn's.
+  should stop then. It is the task's own, not the running turn's, on the
+  task's thread: a thread the block starts reads the turn's, so hand it
+  `ctx.cancel_controller` (read in the block) instead.
 - `ctx.notify` and `ctx.card` from the block show between turns, even while
   a turn runs.
 - Each task runs once per session start. A `-p … --non-interactive` run
@@ -909,6 +911,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options or effects). `effects:` tags the options a parent agent's answer is held to (label => `:spend`, `:permit`, `:permit_wide` or `:deny`; untagged = `:answer`): tag every option that spends or permits, and never let text alone or a dismissal do either ([hooks.md](hooks.md#what-a-hook-can-do-the-runtime)). It needs a chi newer than 0.85.0 |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
+| `ctx.cancel_controller` | the `Samagotchi::CancellationController` `ctx.cancelled?` reads **on this thread**: inside an init task the task's own, else the running turn's; nil when neither. Read it on the thread that does the work, then hand it on: as `ctx.http`'s `cancel:` (it is the turn's inside a service's start block too, where `ctx.http`'s default is none) or to a thread of yours that polls it. A thread of yours that calls `ctx.cancelled?` itself gets its own thread's answer (the turn's), never the init task's. Experimental until 1.0; needs chi 0.183.0 or newer (`ctx.respond_to?(:cancel_controller)`) |
 | `ctx.turn_running?` | whether a turn runs now. An `:after_turn` hook runs inside its turn, so a card a thread shows before the turn is over belongs to that turn's block, which the web collapses: wait for this to go false. Needs chi newer than 0.148.0 |
 | `ctx.steer(text)` | put text into the running turn: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. The model reads it with a header naming your bundle (`[Steer from the my-bundle plugin, mid-task. …]`); the session keeps the raw text. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook (false from `:after_turn`), your own |
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
@@ -1621,7 +1624,7 @@ bundle.shutdown
   answered raises `Samagotchi::Testing::UnstubbedRequest` (not an `HttpError`, but a plugin may rescue it anyway) and
   **fails the test at teardown** (RSpec and Minitest adapters: after the cleanup, and only a test that passed), so a
   spec can't reach the network. With plain `Bundle.load` there is no teardown: check `bundle.http.unmatched`.
-  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`. For `ctx.http.stream`,
+  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled` (and `ctx.cancel_controller` a cancelled controller). For `ctx.http.stream`,
   `events:` (an Array of `{ data:, event: nil, id: nil }` or plain Strings for `data`, served as `text/event-stream`)
   and `chunks:` (Strings, the body in those pieces) answer it; a `body:` / `json:` stub answers a stream as one chunk,
   and an `events:` stub answers a plain request with the events' SSE text. A block may return them too.
