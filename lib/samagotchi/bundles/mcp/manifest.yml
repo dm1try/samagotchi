@@ -7,11 +7,12 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:1a964401747e15e6b34ddbd1290da990350bfd715d43921453d5676756bee4dd
+  sha256: sha256:0a8de606d9c77cc09d887a129998de940b38e19583252a636369032f7a294766
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
     http_client.rb: sha256:b2a4b903b8557312df019a99a5d3a38e621984e7b11bf6d9241d80a8b95ddf71
+    tools.rb: sha256:c8d0ea4b4542cdc7ab0f3015d6ddc06d2678cdbbe45a1b6451bc4e9004a649ad
     content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
 requires_chi: ">= 0.143.0"
