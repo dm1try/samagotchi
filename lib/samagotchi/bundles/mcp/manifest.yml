@@ -7,7 +7,7 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:0b688e03bcc8533c48d00bdc7571ea7891c24b2f04627dd79529efcd190f2f3d
+  sha256: sha256:d9a180c5c0807247bc12aa8849b000e97576955feea82d91a3aabd9ea86a3ad0
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's, OAuth's HttpClient's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf

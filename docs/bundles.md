@@ -74,6 +74,8 @@ bundles:
         start: lazy                            # the default; eager: start it with every session
       context7:
         url: https://mcp.context7.com/mcp      # a remote server: url instead of command
+      linear:
+        url: https://mcp.linear.app/mcp        # nothing else: chi offers sign-in when the server asks (below)
       github:
         url: https://api.githubcopilot.com/mcp/
         bearer_token_env: GITHUB_MCP_TOKEN     # sent as Authorization: Bearer <its value>
@@ -93,8 +95,8 @@ bundles:
     is sent. A worker has the environment of the chi that
     started it, so a new `export` needs a restarted worker (`chi sessions restart`). Keys belong there, not in the
     URL: the debug log's `http` line for each request keeps the URL's path (only the query is cut).
-  - **What it says:** a 401 is `MCP server github didn't connect: needs a token (401): set bearer_token_env
-    (sign-in comes in a later chi)` (`refused the token (401)` when one was sent); an unset or empty variable is
+  - **What it says:** with a static token, a 401 is `MCP server github didn't connect: refused the token (401)`
+    (a server without one signs in: below); an unset or empty variable is
     `… didn't connect: GITHUB_MCP_TOKEN is not set`, and nothing is sent. A cached server that doesn't connect
     (the network, a token you are about to fix) stays cached: the call answers the error, there is one notice per
     distinct message, and the next call tries again in the same session (a `start: eager` one too: its init card
@@ -103,9 +105,59 @@ bundles:
   - chi speaks the current MCP revision (2026-07-28) first and falls back to the older handshake (`initialize`,
     with its session when the server gives one) for a server that doesn't answer it; answers may be JSON or an SSE
     stream.
-  - Not there yet: sign-in (OAuth), and live tool-list changes from a remote server (its saved list is refreshed
-    daily, as for a local one). A remote server's text never attaches a local image (`attach_image_paths` is off
+  - Not there yet: live tool-list changes from a remote server (its saved list is refreshed
+    daily, as for a local one), and asking for more scope on a 403 `insufficient_scope` (the spec's step-up: chi
+    shows `refused (403)`). A remote server's text never attaches a local image (`attach_image_paths` is off
     for it); its image blocks attach as usual.
+
+- **Sign-in (OAuth)** for a remote server with no static token (no `bearer_token_env`, no `Authorization` in
+  `headers:`) that answers 401, as Linear's, Sentry's and other hosted servers do (the MCP spec's authorization).
+  Nothing happens by itself:
+  - `/mcp` shows `linear: needs sign-in (/mcp login linear)`, and one card per session worker says **linear needs
+    sign-in** with a **Sign in** button (it runs `/mcp login linear`). It shows outside a turn's block, never on a
+    one-shot (`-p --non-interactive`); a 401 on a participant's turn holds it for the owner's next turn end or
+    command. A tool call answers at once, `linear needs sign-in: the user runs /mcp login linear` (on a
+    participant's turn `… the session's owner signs in`), and never waits for a browser.
+  - `/mcp login linear` answers `Opening sign-in for linear…` and does the rest on a thread of its own: it asks the
+    server's sign-in data (the 401's `resource_metadata`, else the well-known addresses), its provider's metadata,
+    and registers chi there (dynamic registration, kept per provider and reused) unless you configured a client
+    (below). Then the sign-in card: **Open sign-in page**, or the address printed in the terminal; a browser on
+    another device ends on a page that doesn't load: paste its address with `/callback`. After you approve, the card
+    becomes **Signed in to linear** (the tool count) and the server connects. A sign-in waits 5 minutes.
+  - The token is kept per address for the whole machine (every session and project with that `url:`), in chi's
+    secrets (`$XDG_STATE_HOME/samagotchi/plugins/mcp/secrets/`, 0600 files kept from chi's own file tools), never in
+    a log, a card or the session. A kept token goes only to the address it was given for. It is renewed by itself:
+    shortly before it runs out (a minute, or half its life), and once when the server answers 401; two workers
+    spend one refresh token between them (the second takes the first one's new token). A refused renewal (the
+    provider says `invalid_grant`) forgets it: needs sign-in again, and its card again. Another failure keeps it and
+    the call says the server isn't reachable; the next call tries again. A renewal takes at most 30 s (12 s for the
+    request, 18 s waiting for another worker's), outside the call's `timeout`.
+  - `/mcp logout linear` forgets the token (and asks the provider to revoke it, best effort); chi's registration
+    with the provider stays.
+  - What it refuses, each on the card: sign-in data for another address, a provider whose metadata names another
+    one, one without PKCE (S256), an address that isn't https (http only when the server itself is on 127.0.0.1)
+    or is a private, loopback or link-local one, a redirect, a document over 256 KB, a callback naming another
+    provider (`iss`). A `url:` with a query (`?key=…`) can't sign in.
+  - **A client you registered yourself**, for a provider that has no dynamic registration (`oauth:`, all optional;
+    `oauth:` and a static token are one or the other):
+
+    ```yaml
+    github:
+      url: https://api.githubcopilot.com/mcp/
+      oauth:
+        client_id: Iv1.abc               # your client at the provider
+        issuer: https://github.com/login/oauth   # required with client_id: the provider it was made at
+        client_secret_env: GITHUB_MCP_CLIENT_SECRET   # sent to the token endpoint only
+        scopes: [repo, read:org]         # else the 401's scope, else the server's own list
+        redirect_port: 8765              # when the provider wants one exact redirect (http://127.0.0.1:8765/callback)
+    ```
+
+    A server that now names another provider than `issuer:` is refused, so it can't collect the secret. GitHub's
+    remote server: use a personal access token (`bearer_token_env`); `oauth:` there is untested.
+  - `client_metadata_url:` (under `bundles: mcp:`) is the address of chi's client document (`pages/oauth/client.json`
+    in chi's repository, a client id metadata document): a provider that says it takes one gets it as chi's client
+    id, with no registration; one that refuses it gets a registration (for that session worker). Unset by default
+    until chi's own address is live.
 
 - **Start: from a cache, on the first call.** A server's `tools/list` is
   saved in the bundle's data dir (`$XDG_STATE_HOME/samagotchi/plugins/mcp/

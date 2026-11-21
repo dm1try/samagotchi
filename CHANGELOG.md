@@ -17,7 +17,15 @@ and commands may change between minor versions. How releases are made:
 - The mcp bundle takes remote MCP servers: `url: https://mcp.context7.com/mcp` in place of `command:` under
   `bundles: mcp: servers: <name>:`, with `bearer_token_env: VAR` for a token (sent as `Authorization: Bearer`) and
   optional `headers:`. They work like local ones (the cached tools, `find_tools`, `call_tool`, guardrail names);
-  `/mcp` shows `connected (https://host)`. A 401 says it needs a token; sign-in comes later. Run `chi update`.
+  `/mcp` shows `connected (https://host)`. Run `chi update`.
+- The mcp bundle signs in to a remote server that asks (OAuth): a server with no token that answers 401 shows
+  `needs sign-in` in `/mcp` and a card with a **Sign in** button; `/mcp login NAME` registers chi with its provider
+  and opens the sign-in page (or `/callback` the address from another device). The token is kept per address for
+  every session, renewed by itself, and `/mcp logout NAME` forgets it. A client of your own: `oauth: client_id:`
+  with `issuer:`. Nothing signs in by itself. See docs/bundles.md (The mcp bundle, Sign-in).
+- For bundle authors: `ctx.card(…, between_turns: true)`, a card from a thread of your own that never lands in a
+  running turn's block; `chi.tool_source` groups take `state: :needs_user` (a search and a call say the source's
+  line); `Samagotchi::Plugin::Secrets::Busy` and `Unavailable` are stable to rescue.
 - For bundle authors: `ctx.http.stream(method, url, …) { |res| … }`, a streamed answer: the status and headers
   first, then the body as it arrives (`res.each_event` reads Server-Sent Events, `res.each_chunk` the raw pieces).
   Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.

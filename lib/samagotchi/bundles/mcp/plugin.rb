@@ -28,6 +28,13 @@
 #           url: https://mcp.context7.com/mcp  # a remote server: url instead of command
 #           bearer_token_env: CONTEXT7_TOKEN   # optional: Authorization: Bearer <its value>
 #           headers: {X-Example: "1"}          # optional, sent as given (not for secrets)
+#         linear:
+#           url: https://mcp.linear.app/mcp    # no static token: a 401 offers sign-in
+#           oauth: {client_id: x, issuer: https://id.example}  # optional: a client of yours
+#       client_metadata_url: https://…/client.json  # optional: chi's client document (CIMD)
+#
+# A remote server with no static token that answers 401 needs sign-in:
+# /mcp login NAME signs in (OAuth, oauth.rb), /mcp logout NAME forgets it.
 #
 # Image blocks in a result go to the model as images (the text keeps
 # "[image 1: image/png]"); so does an image file named in a text block,
