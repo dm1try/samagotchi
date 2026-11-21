@@ -150,8 +150,12 @@ module Samagotchi
       # @param selected [Array<String>] the option labels
       # @param freeform [String, nil]
       # @param timeout [Numeric] the wait's slice
+      # @param cap [Numeric, nil] the most seconds for the whole call (an
+      #   MCP host's limit): the post gets what is left but MIN_SLICE, the
+      #   wait the rest (#slice); nil: the post's own limits, then +timeout+
       # @return [Reply, Refused]
-      def answer(id, question_id:, selected:, freeform:, client_id:, timeout:, cancelled: nil)
+      def answer(id, question_id:, selected:, freeform:, client_id:, timeout:, cap: nil, cancelled: nil)
+        deadline = @clock.call + cap if cap
         qid = question_id.to_s
         session = @access.show(id)
         pending = session.pending_question
@@ -163,14 +167,15 @@ module Samagotchi
         start = @access.prepare_wait(id, session: session, question_id: qid)
         answered_here = false
         if open
-          posted = post_answer(id, qid, selected, freeform, client_id)
+          within = (deadline - MIN_SLICE - @clock.call).clamp(MIN_SLICE..) if deadline
+          posted = post_answer(id, qid, selected, freeform, client_id, within)
           return posted if posted.is_a?(Refused)
 
           answered_here = posted
         end
         target = ReplyWait::Target.answer(start)
         more = cancelled ? { cancelled: cancelled } : {}
-        result = @exchange.wait(id, target, timeout: timeout, **more)
+        result = @exchange.wait(id, target, timeout: deadline ? slice(timeout, deadline) : timeout, **more)
         token = Exchange::Token.dump(id, target) if result.status == :timeout
         Reply.new(session_id: id, asked: id, result: result, token: token, answered_here: answered_here)
       end
@@ -183,8 +188,9 @@ module Samagotchi
 
       # The answer posted, its reply read as AnswerCommand#post reads it.
       # @return [Boolean, Refused] true answered, false no longer open (409)
-      def post_answer(id, qid, selected, freeform, client_id)
-        reply = @access.answer(id, question_id: qid, selected: selected, freeform: freeform, client_id: client_id)
+      def post_answer(id, qid, selected, freeform, client_id, within)
+        more = within ? { within: within } : {}
+        reply = @access.answer(id, question_id: qid, selected: selected, freeform: freeform, client_id: client_id, **more)
         return not_live(id) unless reply
         return answer_refused(:bridge_secret, id, BridgeSecret.refused(id, via: @access.invocation)) if reply.secret_refused?
 

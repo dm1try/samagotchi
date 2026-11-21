@@ -22,7 +22,8 @@ module Samagotchi
       # Seconds one call waits before it answers "still running" (spike D2:
       # well inside Claude Code HTTP's 60 s and Codex's 300 s).
       SLICE = 25
-      # The most seconds a chi_ask takes in all (Web::AskRoutes::ASK_MAX_SECONDS).
+      # The most seconds a chi_ask or a chi_answer takes in all
+      # (Web::AskRoutes::ASK_MAX_SECONDS).
       CAP = 35
       LIST_LIMIT = 20
       LIST_MAX = 50
@@ -68,7 +69,7 @@ module Samagotchi
 
       # @param access [SessionAccess::Local, SessionAccess::Remote, #answer]
       # @param slice [Numeric] seconds a call waits (SLICE)
-      # @param cap [Numeric] seconds a chi_ask takes in all (CAP)
+      # @param cap [Numeric] seconds a chi_ask or chi_answer takes in all (CAP)
       # @param exchange [#call, nil] (access) -> the Exchange a call uses
       #   (chi web's carries its stop check); nil: a plain one
       def initialize(access, slice: SLICE, cap: CAP, exchange: nil, cancelled: nil)
@@ -145,7 +146,8 @@ module Samagotchi
         more = @cancelled ? { cancelled: @cancelled } : {}
         outcome(SessionAccess::Ask.new(@access, exchange: exchange)
                                   .answer(id, question_id: qid, selected: selected, freeform: text,
-                                              client_id: ClientId::CLI_ANSWER, timeout: @slice, **more), question_id: qid)
+                                              client_id: ClientId::CLI_ANSWER, timeout: @slice, cap: @cap, **more),
+                question_id: qid)
       end
 
       # @param question_id [String, nil] chi_answer's: an answer that

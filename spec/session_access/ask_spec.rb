@@ -370,6 +370,35 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
       expect(outcome.result.status).to eq(:timeout)
     end
 
+    it "draws the post and the wait from one cap: the post gets what's left but MIN_SLICE, the wait the rest" do
+      session = make(status: "running", pending_question: question)
+      own(session)
+      slices = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        slices << options[:timeout]
+        Samagotchi::ReplyWait::Result.new(status: :timeout)
+      end
+      posted = []
+      allow(access).to receive(:answer) do |id, **options|
+        posted << [id, options]
+        clock[0] += 20
+        bridge(200)
+      end
+      ask.answer(session.id, question_id: "q1", selected: ["Yes"], freeform: nil,
+                             client_id: Samagotchi::ClientId::CLI_ANSWER, timeout: 25, cap: 35)
+      expect(posted.last.last[:within]).to eq(35 - described_class::MIN_SLICE)
+      expect(slices).to eq([15.0])
+
+      # A post that took it all still leaves the wait its MIN_SLICE.
+      allow(access).to receive(:answer) do
+        clock[0] += 40
+        bridge(200)
+      end
+      ask.answer(session.id, question_id: "q1", selected: ["Yes"], freeform: nil,
+                             client_id: Samagotchi::ClientId::CLI_ANSWER, timeout: 25, cap: 35)
+      expect(slices.last).to eq(described_class::MIN_SLICE)
+    end
+
     it "posts nothing and still waits for a running session whose question is another" do
       outcome, posted = answer_with(bridge(200), question_id: "q0")
       expect(posted).to be_empty

@@ -272,11 +272,16 @@ module Samagotchi
 
       # The answer posted to the session's worker (its Bridge), once more
       # after a 408.
+      # @param within [Numeric, nil] the most seconds for it all (an MCP
+      #   call's, under its host's limit): each try's read timeout is cut
+      #   to it, and a 408 is tried again only when a whole try still fits
       # @return [BridgeClient::Response, nil] the Bridge's reply; nil when
       #   no worker runs it
       # @raise [SystemCallError, IOError, SocketError] the worker went away
-      def answer(id, question_id:, selected:, freeform:, client_id:)
-        on_worker(id) { |client| client.answer(id: question_id, selected: selected, freeform: freeform, client_id: client_id) }
+      def answer(id, question_id:, selected:, freeform:, client_id:, within: nil)
+        on_worker(id, within: within) do |client|
+          client.answer(id: question_id, selected: selected, freeform: freeform, client_id: client_id)
+        end
       end
 
       # The question dismissed on the session's worker; as #answer.
@@ -635,15 +640,23 @@ module Samagotchi
 
       # The block's post to the session's live worker, again on a 408 (the
       # worker didn't take it in time).
-      def on_worker(id)
-        client = WorkerLink.client(id, session_dir: session_dir(id)) or return nil
+      # The shortest read timeout a cut try gets (#on_worker's within:).
+      MIN_TRY = 1.0
+
+      def on_worker(id, within: nil)
+        limit = within ? within.to_f.clamp(MIN_TRY, BridgeClient::READ_TIMEOUT.to_f) : BridgeClient::READ_TIMEOUT
+        client = WorkerLink.client(id, session_dir: session_dir(id), read_timeout: limit) or return nil
+        ends = monotonic + within if within
         reply = nil
         2.times do
           reply = yield client
           break unless reply.status == 408
+          break if ends && monotonic + limit > ends
         end
         reply
       end
+
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
   end
 end

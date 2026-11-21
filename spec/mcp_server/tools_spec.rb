@@ -197,7 +197,8 @@ RSpec.describe Samagotchi::McpServer::Tools do
     it "answers by number or label, as chi answer's, then waits" do
       bridge(200)
       running = call("chi_answer", session: session.id, question_id: "q1", option: 2)
-      expect(answers.last).to eq([session.id, { question_id: "q1", selected: ["NOTES.md"], freeform: nil, client_id: "cli:answer" }])
+      expect(answers.last).to match([session.id, { question_id: "q1", selected: ["NOTES.md"], freeform: nil, client_id: "cli:answer",
+                                                   within: a_value_between(0.9, 1.0) }])
       expect(running["structuredContent"]).to include("status" => "running")
       call("chi_answer", session: session.id[0, 8], question_id: "q1", option: "README.md")
       expect(answers.last.last[:selected]).to eq(["README.md"])

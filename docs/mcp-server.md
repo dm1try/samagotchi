@@ -46,7 +46,7 @@ offered (a client naming it is answered 2025-11-25): it allows JSON-RPC batches,
 | `chi_wait` | `token` | keeps waiting for a turn that was still running |
 | `chi_answer` | `session`, `question_id`, `option?` / `options?` / `text?` | answers the question a session waits on, then waits |
 
-A call waits at most 25 seconds (a `chi_ask` 35 in all). Then:
+A call waits at most 25 seconds (a `chi_ask` or `chi_answer` 35 in all, under Claude Code HTTP's 60 s). Then:
 
 - the turn still runs: `Still running. Call chi_wait with this token to keep waiting.` with a `token`;
 - a question waits: the question, its numbered options and `Call chi_answer with session, question_id and option
