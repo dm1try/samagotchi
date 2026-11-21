@@ -1035,7 +1035,7 @@ module Samagotchi
         reason = fetched(parsed, "reason").to_s
         relay_closed(qid, relay_id, RELAY_CLOSE_REASONS.include?(reason) ? reason : "closed")
       else
-        RelayVerifier.new(engine: @engine, state_dir: @state_dir, session_id: session_id)
+        RelayVerifier.new(question_desk: @question_desk, state_dir: @state_dir, session_id: session_id)
                      .answer(relay_id: relay_id, question_id: qid)
       end
     end
@@ -1795,7 +1795,7 @@ module Samagotchi
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @question_desk.annotate(qid, relayed_to: marker)
 
       Log.info(:bridge, "relay_opened", sid: @session_id, id: qid, parent: parent_id[0, 8])
-      watch = RelayWatcher.start(engine: @engine, question_id: qid, relay_id: relay_id,
+      watch = RelayWatcher.start(question_desk: @question_desk, question_id: qid, relay_id: relay_id,
                                  parent_dir: Session.session_dir(parent_id, state_dir: @state_dir))
       @mutex.synchronize { @relay_watchers = (@relay_watchers || []).select(&:alive?) << watch }
       [{}, 200, { status: "opened", question_id: qid }]

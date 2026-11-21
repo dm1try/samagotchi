@@ -15,20 +15,20 @@ module Samagotchi
 
     module_function
 
-    # @param engine [Engine] the child's
+    # @param question_desk [QuestionDesk] the child's (Engine#question_desk)
     # @param parent_dir [String] the parent session's folder (its sidecar)
     # @param live [#call] whether the parent's worker is up
     # @return [Thread]
-    def start(engine:, question_id:, relay_id:, parent_dir:, interval: INTERVAL,
+    def start(question_desk:, question_id:, relay_id:, parent_dir:, interval: INTERVAL,
               live: -> { WorkerLink.resolve(parent_dir, unlink: false).live? })
       Thread.new do
         loop do
           sleep(interval)
-          break unless relayed?(engine.pending_question, question_id, relay_id)
+          break unless relayed?(question_desk.pending, question_id, relay_id)
           next if live.call
 
           Log.info(:bridge, "relay_parent_gone", id: question_id)
-          engine.annotate_question(question_id, relayed_to: nil, reason: "parent_gone")
+          question_desk.annotate(question_id, relayed_to: nil, reason: "parent_gone")
           break
         end
       rescue StandardError => e
