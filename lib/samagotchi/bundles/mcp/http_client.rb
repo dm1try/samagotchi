@@ -51,12 +51,30 @@ class Plugin
       def left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
+    # HttpClient's token: for a server with no token (nil) or a static one
+    # (bearer_token_env: the block looks it up at each request and raises
+    # Refused when its variable is unset): there is nothing to refresh.
+    class StaticToken
+      def initialize(&lookup)
+        @lookup = lookup
+      end
+
+      # @return [String, nil] the bearer token
+      def call = @lookup.call
+
+      # @return [Boolean] whether there is a new token to try (never)
+      def refresh_token!(_sent = nil) = false
+
+      def inspect = "#<#{self.class.name.split("::").last}>"
+    end
+
     attr_reader :era
 
     # @param url [String] http(s)
     # @param headers [Hash{String=>String}] sent as given
-    # @param token [#call] → the bearer token, or nil for none; raises
-    #   Client::Unavailable when its variable is unset
+    # @param token [#call, #refresh_token!] #call → the bearer token, or nil
+    #   for none (raises Client::Unavailable when its variable is unset);
+    #   #refresh_token! → whether a new one is there to try (StaticToken)
     # @param http [#stream, #request] ctx.http
     # @param log [#call] (event, fields)
     def initialize(url, headers:, token:, http:, log:)

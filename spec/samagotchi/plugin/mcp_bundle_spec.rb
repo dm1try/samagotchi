@@ -589,6 +589,16 @@ RSpec.describe "The mcp bundle" do
     expect(cards.last[:body]).to end_with("\n\n#{mcp_total(tokens)}")
   end
 
+  it "/mcp with a word it doesn't know answers its usage line and shows no card" do
+    commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                               default_model: "Gemma-4B-it", registry: engine.command_registry)
+    cards = []
+    engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+
+    expect(engine.running_anytime { commands.run("/mcp nope") }.output).to eq("usage: /mcp (lists the servers)")
+    expect(cards).to be_empty
+  end
+
   it "/mcp says the model can't reach the tools when chi's tool index declared neither (names taken)" do
     engine.instance_variable_get(:@tool_index).instance_variable_get(:@sources).first.declared!([], 0, [])
     commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),

@@ -82,10 +82,11 @@ class Plugin
   # their definitions' estimated size (#definition_tokens).
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
-  # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio).
+  # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio),
+  # +oauth+ its oauth: map as given (nil without one).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
                       :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, :url, :headers,
-                      :token_env, keyword_init: true) do
+                      :token_env, :oauth, keyword_init: true) do
     # Its state and tools, never the env (values often a token), the
     # command's args (which may carry a token too), a URL's path or query
     # or a header's value: a failing spec or a debugger would print those.
@@ -177,13 +178,24 @@ class Plugin
       end
     end
     publish
-    chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |_args, command_ctx|
-      command_ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
-      nil
+    chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |args, command_ctx|
+      mcp_command(args, command_ctx)
     end
   end
 
+  # /mcp's one line for a word it doesn't know.
+  USAGE = "usage: /mcp (lists the servers)"
+
   private
+
+  # /mcp: no word lists the servers (a card); another word answers USAGE.
+  def mcp_command(args, ctx)
+    word, = args.to_s.split(/\s+/, 2)
+    return USAGE if word
+
+    ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
+    nil
+  end
 
   # The command, env and cwd the server runs with, and their digest (the
   # cache's key: command, args, env names and values, and the cwd; the
@@ -200,16 +212,20 @@ class Plugin
     server.digest = Digest::SHA256.hexdigest(JSON.generate([server.command, server.env.sort, server.cwd]))
   end
 
-  # A remote server's url, headers and token variable, and their digest
-  # (never the token's value: a rotated token isn't a changed config).
+  # A remote server's url, headers, token variable and oauth: map, and
+  # their digest (never the token's value: a rotated token isn't a changed
+  # config). The oauth: map joins the digest only when it is set: a server
+  # without one keeps the digest it had before sign-in came (its cache).
   def resolve_url(server)
     server.command = []
     server.env = server.config["env"].is_a?(Hash) ? server.config["env"].to_h { |k, v| [k.to_s, v.to_s] } : {}
     server.url = server.config["url"].to_s
     server.headers = server.config["headers"].is_a?(Hash) ? server.config["headers"] : {}
     server.token_env = server.config["bearer_token_env"]&.to_s
-    server.digest = Digest::SHA256.hexdigest(JSON.generate([server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort,
-                                                            server.token_env]))
+    server.oauth = server.config["oauth"] if server.config.key?("oauth")
+    digested = [server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort, server.token_env]
+    digested << (server.oauth.is_a?(Hash) ? server.oauth.map { |k, v| [k.to_s, v] }.sort_by(&:first) : server.oauth) if server.config.key?("oauth")
+    server.digest = Digest::SHA256.hexdigest(JSON.generate(digested))
   end
 
   # The headers chi sets itself on a remote server's requests.
@@ -247,16 +263,67 @@ class Plugin
         return "headers: #{name} is chi's to set (#{where})"
       end
     end
-    nil
+    oauth_error(server, where) if server.config.key?("oauth")
   end
 
-  # A remote server's bearer token, looked up at each request (never
-  # kept): the env a stdio server would get (its env:, then the project
-  # env: #server_env), then the worker's.
-  def token_lookup(server)
-    return -> {} unless server.token_env
+  # The oauth: map's keys (all optional).
+  OAUTH_KEYS = %w[client_id issuer client_secret_env scopes redirect_port].freeze
 
-    lambda do
+  # Why a remote server's oauth: map can't be used, nil when it can: a
+  # client registered by hand is bound to its provider (issuer:), and a
+  # server signs in or has a static token, never both.
+  def oauth_error(server, where)
+    oauth = server.oauth
+    return "oauth: must be a map (#{where})" unless oauth.is_a?(Hash)
+    return "oauth: and bearer_token_env: are one or the other (#{where})" if server.token_env
+    if server.headers.keys.any? { |name| name.to_s.casecmp?("authorization") }
+      return "oauth: and an Authorization header are one or the other (#{where})"
+    end
+
+    unknown = oauth.keys.map(&:to_s) - OAUTH_KEYS
+    return "oauth: #{unknown.first[0, 40]} isn't one of #{OAUTH_KEYS.join(", ")} (#{where})" unless unknown.empty?
+
+    id = oauth["client_id"]
+    return "oauth: client_id: must be a text (#{where})" if oauth.key?("client_id") && !(id.is_a?(String) && !id.strip.empty?)
+    return "oauth: issuer: is required with client_id: (#{where})" if id && !oauth.key?("issuer")
+    return "oauth: issuer: goes with client_id: (#{where})" if oauth.key?("issuer") && !id
+    return "oauth: issuer: must be an https address (#{where})" if id && !issuer_address?(oauth["issuer"])
+
+    secret_env = oauth["client_secret_env"]
+    if oauth.key?("client_secret_env")
+      return "oauth: client_secret_env: must name an environment variable (#{where})" unless secret_env.is_a?(String) && !secret_env.strip.empty?
+      return "oauth: client_secret_env: goes with client_id: (#{where})" unless id
+    end
+    scopes = oauth["scopes"]
+    if oauth.key?("scopes") && !(scopes.is_a?(Array) && scopes.all? { |scope| scope.is_a?(String) && scope.match?(/\A[!#-\[\]-~]+\z/) })
+      return "oauth: scopes: must be a list of scope names (#{where})"
+    end
+
+    port = oauth["redirect_port"]
+    "oauth: redirect_port: must be a port, 1024 to 65535 (#{where})" if oauth.key?("redirect_port") && !(port.is_a?(Integer) && port.between?(1024, 65_535))
+  end
+
+  # An https address with a host (http only on a loopback host: local
+  # development), no query or fragment: what an issuer is.
+  def issuer_address?(value)
+    uri = URI.parse(value.to_s)
+    return false unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && uri.query.nil? && uri.fragment.nil? && uri.userinfo.nil?
+
+    uri.scheme == "https" || loopback_host?(uri.host)
+  rescue URI::Error
+    false
+  end
+
+  def loopback_host?(host) = %w[127.0.0.1 ::1 [::1] localhost].include?(host.to_s.downcase)
+
+  # A remote server's bearer token (HttpClient's token:), looked up at each
+  # request (never kept): the env a stdio server would get (its env:, then
+  # the project env: #server_env), then the worker's.
+  # @return [HttpClient::StaticToken]
+  def token_lookup(server)
+    return HttpClient::StaticToken.new { nil } unless server.token_env
+
+    HttpClient::StaticToken.new do
       value = server_env(server)[server.token_env].to_s
       value = ENV[server.token_env].to_s if value.empty?
       raise HttpClient::Refused, "#{server.token_env} is not set" if value.empty?

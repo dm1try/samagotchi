@@ -210,6 +210,30 @@ RSpec.describe "The mcp bundle with a remote server" do
         "headers: Transfer-Encoding is chi's to set (bundles: mcp: servers: fake)",
       { "url" => "http://x/mcp", "headers" => { "X-A" => 1 } } =>
         "headers: \"X-A\" must be a name and a one-line text value (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => "yes" } => "oauth: must be a map (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => {}, "bearer_token_env" => "T" } =>
+        "oauth: and bearer_token_env: are one or the other (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => {}, "headers" => { "authorization" => "Bearer x" } } =>
+        "oauth: and an Authorization header are one or the other (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_secret" => "x" } } =>
+        "oauth: client_secret isn't one of client_id, issuer, client_secret_env, scopes, redirect_port (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_id" => " " } } => "oauth: client_id: must be a text (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_id" => "c" } } =>
+        "oauth: issuer: is required with client_id: (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "issuer" => "https://id.example" } } =>
+        "oauth: issuer: goes with client_id: (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_id" => "c", "issuer" => "http://id.example" } } =>
+        "oauth: issuer: must be an https address (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_id" => "c", "issuer" => "https://id.example", "client_secret_env" => "" } } =>
+        "oauth: client_secret_env: must name an environment variable (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "client_secret_env" => "S" } } =>
+        "oauth: client_secret_env: goes with client_id: (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "scopes" => "repo" } } =>
+        "oauth: scopes: must be a list of scope names (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "scopes" => ["read org"] } } =>
+        "oauth: scopes: must be a list of scope names (bundles: mcp: servers: fake)",
+      { "url" => "http://x/mcp", "oauth" => { "redirect_port" => 80 } } =>
+        "oauth: redirect_port: must be a port, 1024 to 65535 (bundles: mcp: servers: fake)",
       {} => "no command (bundles: mcp: servers: fake: command: [...] or url: ...)"
     }.each do |config, text|
       it "refuses #{config.inspect}" do
