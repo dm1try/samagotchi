@@ -1148,10 +1148,9 @@ module Samagotchi
       # keeps it out. A failed write never fails the send. There's no scratch
       # check: a scratch session is refused before any delivery
       # (SessionManager::ScratchSession, an OwnedByTUI: 409).
-      # A command that hides its arguments (/callback: QueuedCommand's private_args) stays out too.
       def record_history(body, line)
         return if body["history"] == false
-        return if SessionCommandCatalog.builtin_registry.private_args?(line.to_s)
+        return if SessionCommandCatalog.builtin_registry.private_args?(line.to_s) # /callback's argument stays out
 
         PromptHistory.append(line.to_s)
       rescue StandardError => e
