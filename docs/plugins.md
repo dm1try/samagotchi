@@ -832,8 +832,8 @@ index = Samagotchi::Tools::ToolIndex
   `find_tools`' description), a `state` (`:ready`; `:starting`, its tools may
   still come: a call to it waits on `wait`, a search says "starting, try
   again"; `:failed` with its `error`; `:needs_user`, it can't be used until the user does something, its `error`
-  the source's own line, which a search notes and a call that misses its tools answers: the mcp bundle's
-  "needs sign-in") and its tools. A group exists before its
+  the source's own line, which a search notes and a call that misses its tools answers, after asking `wait` (the
+  user may have done it meanwhile): the mcp bundle's "needs sign-in") and its tools. A group exists before its
   tools do. A `Tool`'s `refusal` says why `call_tool` refuses it (nil: it can
   be called), its `mark` what a search shows beside its name: the plugin
   decides both (the mcp bundle: a bad schema, a name clash) and publishes

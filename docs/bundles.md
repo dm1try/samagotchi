@@ -117,7 +117,10 @@ bundles:
     sign-in** with a **Sign in** button (it runs `/mcp login linear`). It shows outside a turn's block, never on a
     one-shot (`-p --non-interactive`); a 401 on a participant's turn holds it for the owner's next turn end or
     command. A tool call answers at once, `linear needs sign-in: the user runs /mcp login linear` (on a
-    participant's turn `… the session's owner signs in`), and never waits for a browser.
+    participant's turn `… the session's owner signs in`), and never waits for a browser; a search's note, and a call
+    to a server whose tools aren't known yet, say `linear needs sign-in (the session's owner runs /mcp login
+    linear)`. A session that needs sign-in finds one made in another session: its next call connects (`/mcp` says
+    `signed in from another session`, and `/mcp login` there answers that it is signed in already).
   - `/mcp login linear` answers `Opening sign-in for linear…` and does the rest on a thread of its own: it asks the
     server's sign-in data (the 401's `resource_metadata`, else the well-known addresses), its provider's metadata,
     and registers chi there (dynamic registration, kept per provider and reused) unless you configured a client
@@ -133,11 +136,14 @@ bundles:
     the call says the server isn't reachable; the next call tries again. A renewal takes at most 30 s (12 s for the
     request, 18 s waiting for another worker's), outside the call's `timeout`.
   - `/mcp logout linear` forgets the token (and asks the provider to revoke it, best effort); chi's registration
-    with the provider stays.
+    with the provider stays. Other sessions keep the access token they hold until it runs out or is refused, then
+    need sign-in.
   - What it refuses, each on the card: sign-in data for another address, a provider whose metadata names another
-    one, one without PKCE (S256), an address that isn't https (http only when the server itself is on 127.0.0.1)
-    or is a private, loopback or link-local one, a redirect, a document over 256 KB, a callback naming another
-    provider (`iss`). A `url:` with a query (`?key=…`) can't sign in.
+    one, one without PKCE (S256), an address that isn't https (http only when the server itself is on a loopback
+    host: 127.0.0.1, ::1, localhost), an address discovery names that is a private, shared (100.64/10), loopback or
+    link-local one (the server's own `url:` host and a configured `issuer:` host may be: a server on your network
+    or tailnet signs in), a redirect, a document over 256 KB, a callback naming another provider (`iss`). A `url:`
+    with a query (`?key=…`) can't sign in.
   - **A client you registered yourself**, for a provider that has no dynamic registration (`oauth:`, all optional;
     `oauth:` and a static token are one or the other):
 
@@ -152,7 +158,8 @@ bundles:
         redirect_port: 8765              # when the provider wants one exact redirect (http://127.0.0.1:8765/callback)
     ```
 
-    A server that now names another provider than `issuer:` is refused, so it can't collect the secret. GitHub's
+    A server that now names another provider than `issuer:` is refused, so it can't collect the secret; a renew
+    sends the secret only for a sign-in made as that client at that provider. GitHub's
     remote server: use a personal access token (`bearer_token_env`); `oauth:` there is untested.
   - `client_metadata_url:` (under `bundles: mcp:`) is the address of chi's client document (`pages/oauth/client.json`
     in chi's repository, a client id metadata document): a provider that says it takes one gets it as chi's client
