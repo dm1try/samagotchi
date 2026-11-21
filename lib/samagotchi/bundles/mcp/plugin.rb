@@ -120,6 +120,19 @@ class Plugin
     # @return [String, nil] why the server is gone, or nil while it runs
     def dead = @mutex.synchronize { @dead }
 
+    # What /mcp's running line shows for it.
+    def label = "pid #{pid}"
+
+    # initialize, then notifications/initialized.
+    # @return [Hash] initialize's result
+    def handshake(timeout:, cancelled:)
+      result = request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
+                                       clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                       timeout: timeout, cancelled: cancelled)
+      notify("notifications/initialized")
+      result
+    end
+
     # Send a request and wait for its answer.
     # @param cancelled [#call, nil] polled while waiting; true sends
     #   notifications/cancelled and raises Cancelled
@@ -416,10 +429,24 @@ class Plugin
     server.digest = Digest::SHA256.hexdigest(JSON.generate([server.command, server.env.sort, server.cwd]))
   end
 
+  # Why the server's config can't start it, nil when it can.
+  def config_error(server)
+    "no command (bundles: mcp: servers: #{server.name}: command: [...])" if server.command.empty?
+  end
+
+  # The one place a server's client is built (spawn's and refresh's); it
+  # is the caller's, never assigned here.
+  def connect(server, ctx, **callbacks)
+    Client.new(server.command, env: server_env(server), cwd: server.cwd,
+                               log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
+                               **callbacks)
+  end
+
   # The service's start: spawn (#spawn). Its stop closes the server's
   # current process, a restarted one too.
   def start(server, svc, ctx)
-    raise Client::Error, "no command (bundles: mcp: servers: #{server.name}: command: [...])" if server.command.empty?
+    error = config_error(server)
+    raise Client::Error, error if error
 
     svc.on_stop { server.client&.close }
     spawn(server, ctx)
@@ -432,18 +459,12 @@ class Plugin
   # @return [Client]
   def spawn(server, ctx)
     cancelled = -> { ctx.cancelled? }
-    client = server.client = Client.new(
-      server.command, env: server_env(server), cwd: server.cwd,
-                      log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
-                      on_exit: ->(reason) { exited(server, reason, ctx) },
-                      on_notification: lambda { |method, _params|
-                        tools_changed(server, ctx) if method == "notifications/tools/list_changed"
-                      }
-    )
-    initialized = client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
-                                                 clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                                 timeout: @startup_timeout, cancelled: cancelled)
-    client.notify("notifications/initialized")
+    client = server.client = connect(server, ctx,
+                                     on_exit: ->(reason) { exited(server, reason, ctx) },
+                                     on_notification: lambda { |method, _params|
+                                       tools_changed(server, ctx) if method == "notifications/tools/list_changed"
+                                     })
+    initialized = client.handshake(timeout: @startup_timeout, cancelled: cancelled)
     listed = list_tools(client, cancelled)
     info = info_of(initialized)
     changed = listed != server.listed || info != server.info
@@ -506,13 +527,9 @@ class Plugin
       return nil unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
       cancelled = -> { ctx.cancelled? }
-      client = Client.new(server.command, env: server_env(server), cwd: server.cwd,
-                                          log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
+      client = connect(server, ctx)
       begin
-        initialized = client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
-                                                     clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                                     timeout: @startup_timeout, cancelled: cancelled)
-        client.notify("notifications/initialized")
+        initialized = client.handshake(timeout: @startup_timeout, cancelled: cancelled)
         listed = list_tools(client, cancelled)
       ensure
         client.close
@@ -996,7 +1013,7 @@ class Plugin
     tools = "#{count} tool#{"s" unless count == 1}"
     case server.state
     when :cached then "cached (not started), #{tools}, #{tokens_text(server)}"
-    when :running then "running (pid #{server.client.pid}), #{tools}, #{tokens_text(server)}"
+    when :running then "running (#{server.client.label}), #{tools}, #{tokens_text(server)}"
     when :starting then "starting"
     when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
     else "stopped: #{server.error}"

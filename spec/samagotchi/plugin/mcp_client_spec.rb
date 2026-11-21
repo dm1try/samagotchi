@@ -51,6 +51,16 @@ RSpec.describe "The mcp bundle's client" do
       false
     end
 
+    it "handshakes: initialize with chi's client info, then notifications/initialized; returns the result" do
+      expect(client.handshake(timeout: 5, cancelled: nil)).to include("serverInfo" => { "name" => "fake", "version" => "1" })
+      wait_for("the server to get notifications/initialized") { received?("notifications/initialized") }
+      initialize = received.find { |m| m["method"] == "initialize" }
+      expect(initialize["params"]).to eq("protocolVersion" => "2025-06-18", "capabilities" => {},
+                                         "clientInfo" => { "name" => "chi", "version" => Samagotchi::VERSION })
+      expect(received.map { |m| m["method"] }.compact).to eq(%w[initialize notifications/initialized])
+      expect(client.label).to eq("pid #{client.pid}")
+    end
+
     it "sends notifications/cancelled when the wait is cancelled" do
       initialize!
       # Cancelled once the server has the call, so the wait is under way.
