@@ -48,7 +48,8 @@ test("the srcdoc says the CSP before any script", () => {
 function runBootstrap() {
   const listeners = {};
   const sent = [];
-  const parent = { postMessage: (m) => sent.push(m) };
+  // As a real post: a structured clone, which throws on what can't be cloned.
+  const parent = { postMessage: (m) => sent.push(structuredClone(m)) };
   const appended = [];
   const window = { RTCPeerConnection: class {}, webkitRTCPeerConnection: class {} };
   const context = vm.createContext({
@@ -78,6 +79,60 @@ test("the bootstrap answers only its parent", async () => {
   listeners.message({ source: parent, data: { type: "code", files: ["ok()"] } });
   await new Promise((r) => setTimeout(r, 0));
   assert.deepEqual(appended, ["ok()"]);
+});
+
+// The bootstrap with +render+ as its renderer, loaded: the frame's answer to one render.
+async function bootRender(render) {
+  const boot = runBootstrap();
+  boot.window.chi.defineRenderer({ render });
+  boot.listeners.message({ source: boot.parent, data: { type: "code", files: [] } });
+  await new Promise((r) => setTimeout(r, 0));
+  boot.listeners.message({ source: boot.parent, data: { type: "render", id: 7, source: "s", theme: {} } });
+  await new Promise((r) => setTimeout(r, 0));
+  return { features: boot.window.chi.features, answer: boot.sent.at(-1) };
+}
+
+test("the bootstrap says it takes regions", async () => {
+  const { features } = await bootRender(() => "<svg/>");
+  assert.equal(features.regions, true);
+});
+
+test("a string is the SVG, with no regions", async () => {
+  const { answer } = await bootRender(() => "<svg/>");
+  assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
+});
+
+test("an object gives its svg and its regions", async () => {
+  const regions = [{ kind: "node", id: "A", label: "a", box: [0, 0, 0.5, 0.5] }];
+  const { answer } = await bootRender(() => ({ svg: "<svg/>", regions }));
+  assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>", regions });
+});
+
+test("an object without a string svg is the bundle's bug: an error marked bundle; a throw stays the renderer's", async () => {
+  for (const out of [{ regions: [] }, { svg: 5 }, { get svg() { throw new Error("x"); } }]) {
+    const { answer } = await bootRender(() => out);
+    assert.deepEqual(answer, { type: "error", id: 7, message: "the renderer returned no SVG", bundle: true });
+  }
+  const thrown = await bootRender(() => { throw new Error("Parse error on line 2"); });
+  assert.deepEqual(thrown.answer, { type: "error", id: 7, message: "Parse error on line 2" });
+  const none = await bootRender(() => undefined);
+  assert.deepEqual(none.answer, { type: "error", id: 7, message: "the renderer returned no SVG" }, "no object at all: as before");
+});
+
+test("601 regions, or regions that aren't an array: done without them", async () => {
+  const many = Array.from({ length: 601 }, () => ({ kind: "node" }));
+  for (const regions of [many, { length: 1 }, "x"]) {
+    const { answer } = await bootRender(() => ({ svg: "<svg/>", regions }));
+    assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
+  }
+});
+
+test("uncloneable regions (a function, a proxy that throws): done without them", async () => {
+  const trap = new Proxy([], { get(t, k) { if (k === "length") return 1; if (k === "0") throw new Error("trap"); return Reflect.get(t, k); } });
+  for (const regions of [[{ kind: "node", f: () => 1 }], trap]) {
+    const { answer } = await bootRender(() => ({ svg: "<svg/>", regions }));
+    assert.deepEqual(answer, { type: "done", id: 7, svg: "<svg/>" });
+  }
 });
 
 test("frameMessage takes only the frame's own messages of known types", () => {
@@ -121,6 +176,21 @@ test("draw resolves the SVG with its regions (none yet); render is its SVG alone
   await frame.ready;
   assert.deepEqual(await frame.draw("A", {}), { svg: "<svg>A</svg>", regions: null });
   assert.equal(await frame.render("B", {}), "<svg>B</svg>");
+  frame.drop();
+});
+
+test("draw resolves the frame's regions raw; a bundle error isn't the renderer's", async () => {
+  const env = fakeFrameEnv();
+  env.onPost((m) => {
+    if (m.type === "code") queueMicrotask(() => env.say({ type: "ready" }));
+    if (m.type === "render" && m.source === "R") queueMicrotask(() => env.say({ type: "done", id: m.id, svg: "<svg/>", regions: [1, 2] }));
+    if (m.type === "render" && m.source === "B") queueMicrotask(() => env.say({ type: "error", id: m.id, message: "the renderer returned no SVG", bundle: true }));
+  });
+  const frame = createBlockFrame({ files: [], fetchFile: async () => "", doc: env.doc, win: env.win, timeoutMs: 1000 });
+  env.say({ type: "loaded" });
+  await frame.ready;
+  assert.deepEqual(await frame.draw("R", {}), { svg: "<svg/>", regions: [1, 2] });
+  await assert.rejects(frame.draw("B", {}), (e) => /no SVG/.test(e.message) && e.renderer === false);
   frame.drop();
 });
 

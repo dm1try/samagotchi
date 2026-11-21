@@ -919,3 +919,61 @@ test("a renderer's own refusal fails its block as fixable; a timeout or a pictur
   assert.equal(huge.root.querySelector("pre").dataset.blockFailed, "1");
   assert.ok(huge.root.querySelector("pre").dataset.blockFixable === undefined);
 });
+
+// A frame whose draw reports regions: per theme, so a theme's picture is its own.
+function regionsFrame(regionsFor, svgFor = (theme) => SVG.replace("hi", theme.name)) {
+  const used = [];
+  return {
+    used,
+    makeFrame: () => ({
+      ready: Promise.resolve(), dead: () => false, drop() {},
+      async draw(source, theme, { onStart }) { onStart(); used.push(theme.name); return { svg: svgFor(theme), regions: regionsFor(theme) }; },
+    }),
+  };
+}
+const REGION = (label) => ({ kind: "node", id: "A", label, box: [0.1, 0.1, 0.2, 0.2] });
+
+test("a picture's cleaned regions reach the viewer; a cache hit and a Revise clone carry them", async () => {
+  const viewer = opened();
+  const frame = regionsFrame(() => [REGION("Alpha"), { kind: "bogus" }]);
+  const { root } = setup(answer(block()) + answer(block()), { openPicture: viewer.openPicture, makeFrame: frame.makeFrame });
+  await settle();
+  assert.deepEqual(frame.used, ["dark"], "the second block is a cache hit");
+  const [first, second] = root.querySelectorAll(".block-img");
+  first.click();
+  second.click();
+  const clone = root.querySelector(".bubble").cloneNode(true);
+  root.append(clone);
+  await settle();
+  clone.querySelector(".block-img").click();
+  for (const { picture } of viewer.calls) assert.deepEqual(picture.regions, [REGION("Alpha")]);
+  assert.equal(viewer.calls.length, 3);
+});
+
+test("a second theme's render has its own regions", async () => {
+  let name = "dark";
+  const viewer = opened();
+  const frame = regionsFrame((theme) => [REGION(theme.name)]);
+  const { root, host } = setup(answer(block()), { theme: () => ({ name }), openPicture: viewer.openPicture, makeFrame: frame.makeFrame });
+  await settle();
+  name = "light";
+  host.scan(root);
+  await settle();
+  root.querySelector(".block-img").click();
+  assert.deepEqual(viewer.calls[0].picture.regions, [REGION("light")]);
+});
+
+test("no regions, or a list cleaned away whole: the picture has no regions key; the drop is said once per language", async (t) => {
+  const warned = [];
+  t.mock.method(console, "warn", (line) => warned.push(line));
+  const viewer = opened();
+  const many = Array.from({ length: 601 }, () => REGION("x"));
+  const frame = regionsFrame((theme) => (theme.name === "dark" ? many : undefined), () => SVG);
+  const { root } = setup(answer(block()) + answer(block("graph LR\nB-->C\n")), { openPicture: viewer.openPicture, makeFrame: frame.makeFrame });
+  await settle();
+  for (const img of root.querySelectorAll(".block-img")) img.click();
+  for (const { picture } of viewer.calls) assert.equal("regions" in picture, false);
+  assert.equal(warned.length, 1);
+  assert.match(warned[0], /mermaid renderer's regions were dropped \(601 reported/);
+  assert.doesNotMatch(warned[0], /graph|x/);
+});
