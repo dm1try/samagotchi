@@ -34,6 +34,10 @@ answers wake chi in a short loop (fix or disagree, send again) until it says
 or after `context.peer_turns` turns: [Waking: peer
 sources](context.md#peer-sources-the-peer-loop).
 
+A client with no chi of its own (an iOS Shortcut, a script) can do the same
+over HTTP: one `POST …/ask` to chi web, then a wait token until the answer
+comes ([Thin clients](thin-clients.md)).
+
 ## The commands
 
 ```sh
