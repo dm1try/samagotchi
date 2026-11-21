@@ -31,7 +31,8 @@ module Samagotchi
     # whoever answered (chi answer) ends on it.
     NOT_CONTINUED = "not_continued"
 
-    # @param engine [Engine] announces, records activity, holds the question
+    # @param engine [Engine] records activity, holds the question
+    # @param event_log [SessionObserver] the Engine's event log: announces, under its lock
     # @param turn_flow [TurnFlow] owns the offer
     # @param run_turn [#call] (prompt, **turn_args, &block) the worker's
     #   run_engine_turn
@@ -41,9 +42,10 @@ module Samagotchi
     # +participant_refused+ (author → reason or nil): why a participant's
     # turn may no longer run ("revoked", "outdated", "cap_reached": Worker's check).
     # @param save [#call] saves the session (a refused Continue's Stop)
-    def initialize(engine:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
+    def initialize(engine:, event_log:, turn_flow:, run_turn:, max_iterations:, queue_command: nil, participant_refused: ->(_) {},
                    save: -> {})
       @engine = engine
+      @event_log = event_log
       @save = save
       @turn_flow = turn_flow
       @run_turn = run_turn
@@ -80,9 +82,9 @@ module Samagotchi
 
       @continue_steer = nil
       close("dropped")
-      @engine.synchronize_events do
+      @event_log.synchronize do
         @turn_flow.drop_offer!
-        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin.client_id)
+        @event_log.announce(type: :continue_resolved, decision: "dropped", client_id: origin.client_id)
       end
       @engine.record_activity
     end
@@ -106,7 +108,7 @@ module Samagotchi
         return refuse_continue(reason, command)
       end
 
-      @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command.client_id)
+      @event_log.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command.client_id)
       return if result.resume
 
       session = @engine.session
@@ -157,7 +159,7 @@ module Samagotchi
       close("answered")
       if author && (reason = @participant_refused.call(author))
         @continue_steer = nil
-        return @engine.synchronize_events { refuse_continue(reason, command) }
+        return @event_log.synchronize { refuse_continue(reason, command) }
       end
 
       steer = @continue_steer
@@ -210,9 +212,9 @@ module Samagotchi
     def refuse_continue(reason, command)
       author = @engine.session&.last_turn&.participant_author
       enqueued_id = offer_turn_id
-      @engine.announce(type: :continue_resolved, decision: "refused", reason: reason.to_s, client_id: command.client_id)
-      @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
-                       text: format(REFUSED_NOTICE, who: Steer.participant_id(author), reason: REFUSED_WHY.fetch(reason.to_s, reason.to_s)))
+      @event_log.announce(type: :continue_resolved, decision: "refused", reason: reason.to_s, client_id: command.client_id)
+      @event_log.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
+                          text: format(REFUSED_NOTICE, who: Steer.participant_id(author), reason: REFUSED_WHY.fetch(reason.to_s, reason.to_s)))
       @turn_flow.abort_continue!
       session = @engine.session
       session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3), enqueued_id: enqueued_id) if session
@@ -233,7 +235,7 @@ module Samagotchi
     def offer_turn_id = @engine.session&.last_turn&.enqueued_id
 
     def announce_offer(offer = @turn_flow.offer)
-      @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
+      @event_log.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
       ask
     end
 

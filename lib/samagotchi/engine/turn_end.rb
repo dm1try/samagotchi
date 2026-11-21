@@ -13,7 +13,7 @@ module Samagotchi
     # after-turn hooks, a stop before the model, the release, what an ending
     # keeps (TurnEndings, forwarded), last_turn, the answer's display.
     # Writes @last_context_status; reads @turn_endings, @turn_state,
-    # @steer_cut, @hooks, @session_observer, @client.
+    # @steer_cut, @hooks, @event_log, @client.
     module TurnEndPart
       # How the turn ended, on the session (Session#last_turn): the caller's
       # save puts it in the file the session hub watches. Public for the
@@ -69,9 +69,9 @@ module Samagotchi
             replace_session_messages(session, messages[0...-1] + [merged])
             event = { type: :answer_display, display: changed ? display.text : nil }
             event[:refs] = refs.count if added
-            @session_observer.notify(event)
+            @event_log.notify(event)
           elsif pending
-            @session_observer.notify({ type: :answer_display, display: nil })
+            @event_log.notify({ type: :answer_display, display: nil })
           end
         end
       end

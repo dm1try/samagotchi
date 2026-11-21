@@ -8,10 +8,10 @@ require_relative "../working_set"
 
 module Samagotchi
   class Engine
-    # The event log: persistent observers, #announce (ANNOUNCEABLE_EVENTS),
+    # The event log: persistent observers, #announce (the log's ANNOUNCEABLE_EVENTS),
     # the event lock, held announcements, the load events, and the stream
     # and emit helpers (EventFanout's, forwarded). Writes
-    # @guardrail_failures_announced; reads @session_observer, @event_fanout,
+    # @guardrail_failures_announced; reads @event_log, @event_fanout,
     # @extension_load, @guardrail_failures, @plugin_failures.
     module EventsPart
       # Subscribe a persistent observer to engine events.
@@ -23,38 +23,33 @@ module Samagotchi
       # @param observer [#call] receives event hashes (with `event_seq:` merged in)
       # @return [Samagotchi::SessionObserver::SubscribedObserver] handle to unsubscribe
       def subscribe(observer:)
-        @session_observer.subscribe(observer: observer)
+        @event_log.subscribe(observer: observer)
       end
 
       # Unsubscribe a previously-registered observer.
       # @param handle [Samagotchi::SessionObserver::SubscribedObserver]
       # @return [Boolean] whether the observer was removed (nil/unknown never raises)
       def unsubscribe(handle:)
-        @session_observer.unsubscribe(handle: handle)
+        @event_log.unsubscribe(handle: handle)
       end
 
       # @return [Integer] total engine events emitted so far (locally monotonic)
       def event_count
-        @session_observer.event_count
+        @event_log.event_count
       end
 
-      # Put a transport-level event into the ordered event log. Unlike turn
-      # events it reaches only persistent observers (no turn sink, no memory
-      # capture).
-      # @param event [Hash] with :type in ANNOUNCEABLE_EVENTS
+      # Put a transport-level event into the ordered event log
+      # (SessionObserver#announce, which checks the type).
+      # @param event [Hash] with :type in SessionObserver::ANNOUNCEABLE_EVENTS
       # @raise [ArgumentError] for any other type
       def announce(event)
-        unless ANNOUNCEABLE_EVENTS.include?(event[:type])
-          raise ArgumentError, "cannot announce #{event[:type].inspect} (allowed: #{ANNOUNCEABLE_EVENTS.join(", ")})"
-        end
-
-        @session_observer.notify(event)
+        @event_log.announce(event)
       end
 
       # Run the block with the event log held: no event is numbered or
       # delivered meanwhile, and events the block emits keep their order.
       def synchronize_events(&)
-        @session_observer.synchronize(&)
+        @event_log.synchronize(&)
       end
 
       def reserve_enqueued_id(id) = @turn_state.reserve_enqueued_id(id)

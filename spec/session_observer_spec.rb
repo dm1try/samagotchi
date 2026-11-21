@@ -153,4 +153,39 @@ RSpec.describe Samagotchi::SessionObserver do
       expect(Array.new(seen.size) { seen.pop }).to eq([1, 2])
     end
   end
+
+  describe "#announce" do
+    it "refuses a type outside ANNOUNCEABLE_EVENTS, naming it and the list, before numbering it" do
+      seen = []
+      observer.subscribe(observer: ->(event) { seen << event })
+      allowed = described_class::ANNOUNCEABLE_EVENTS.join(", ")
+
+      expect { observer.announce(type: :turn_completed, result: nil) }
+        .to raise_error(ArgumentError, "cannot announce :turn_completed (allowed: #{allowed})")
+      expect(seen).to eq([])
+      expect(observer.event_count).to eq(0)
+    end
+
+    it "delivers a listed type with its event_seq" do
+      seen = []
+      observer.subscribe(observer: ->(event) { seen << event })
+
+      observer.announce(type: :turn_enqueued, enqueued_id: "e1")
+
+      expect(seen).to eq([{ type: :turn_enqueued, enqueued_id: "e1", event_seq: 1 }])
+    end
+  end
+
+  describe "#held?" do
+    it "is true only on the thread inside #synchronize" do
+      inside = nil
+      other = nil
+      observer.synchronize do
+        inside = observer.held?
+        other = Thread.new { observer.held? }.value
+      end
+
+      expect([observer.held?, inside, other]).to eq([false, true, false])
+    end
+  end
 end

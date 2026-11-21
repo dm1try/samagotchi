@@ -100,9 +100,8 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "hello"
       session.save(state_dir: tmpdir)
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
                                               turn_running?: false, last_activity_at: 0.0)
-      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       expect(engine).not_to receive(:run_turn)
 
@@ -119,9 +118,8 @@ RSpec.describe Samagotchi::SessionManager do
     # session's running whose first prompt hasn't run.
     describe "the status a worker finds as it takes the session" do
       def fake_engine
-        instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
+        instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
                                                 turn_running?: false, last_activity_at: 0.0).tap do |engine|
-          allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
           allow(Samagotchi::Engine).to receive(:new).and_return(engine)
         end
       end
@@ -177,9 +175,8 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "records the worker as owner, with its own pid, while it runs, and writes no pid file" do
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
                                               turn_running?: false, last_activity_at: 0.0)
-      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       owner_seen = nil
       pid_seen = nil
       allow(Samagotchi::Engine).to receive(:new) do
@@ -568,7 +565,7 @@ RSpec.describe Samagotchi::SessionManager do
       # Stopped before this worker took it: it leaves at once.
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       expect(Samagotchi::Engine).to receive(:new)
         .with(hash_including(model_name: "gemma4"))
         .and_return(engine)
@@ -577,10 +574,6 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive_messages(reminder_store: nil, sign_in_waiting?: false)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
-      # The worker always starts its Bridge, which subscribes a capture observer.
-      sub_handle = double("subscribe_handle")
-      allow(sub_handle).to receive(:unsubscribe)
-      allow(engine).to receive(:subscribe).and_return(sub_handle)
 
       expect do
         Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
@@ -593,13 +586,12 @@ RSpec.describe Samagotchi::SessionManager do
       # Stopped before this worker took it: it leaves at once.
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
                                               turn_running?: false, last_activity_at: 0.0)
       expect(Samagotchi::Engine).to receive(:new) do |**kwargs|
         expect(kwargs).not_to have_key(:recap)
         engine
       end
-      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
 
       expect do
         Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
@@ -611,9 +603,8 @@ RSpec.describe Samagotchi::SessionManager do
       session.messages = [{ role: "user", content: "earlier" }, { role: "model", content: "reply" }]
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], start_idle: nil, stop_idle: nil, reminder_store: nil, sign_in_waiting?: false,
                                               turn_running?: false, last_activity_at: 0.0)
-      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       given = nil
       allow(engine).to receive(:session=) { |s| given = s }
@@ -643,7 +634,7 @@ RSpec.describe Samagotchi::SessionManager do
       # Stopped before this worker took it: it leaves at once.
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       reminder_callback = nil
       allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
         reminder_callback = kwargs.dig(:reminders, :callback)
@@ -653,9 +644,6 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive_messages(reminder_store: nil, sign_in_waiting?: false)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
-      sub_handle = double("subscribe_handle")
-      allow(sub_handle).to receive(:unsubscribe)
-      allow(engine).to receive(:subscribe).and_return(sub_handle)
 
       expect do
         Samagotchi::WorkerBoot.run_session_loop(session.id, state_dir: tmpdir)
@@ -692,17 +680,13 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "hello"
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, messages_checkpoint: [])
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, messages_checkpoint: [])
       result = instance_double(Samagotchi::LLM::ModelResult, output: "hi", canceled?: false, resumable?: false)
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive_messages(reminder_store: nil, sign_in_waiting?: false)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
-      # The worker always starts its Bridge, which subscribes a capture observer.
-      sub_handle = double("subscribe_handle")
-      allow(sub_handle).to receive(:unsubscribe)
-      allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
         .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), input_waiting: kind_of(Method), origin: Samagotchi::TurnOrigin.new(client_id: Samagotchi::ClientId::FIRST_PROMPT), id: kind_of(String), max_iterations: Samagotchi::IterationLimit::DEFAULT, images: []) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
@@ -720,14 +704,11 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "earlier"
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive_messages(reminder_store: nil, sign_in_waiting?: false)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
-      sub_handle = double("subscribe_handle")
-      allow(sub_handle).to receive(:unsubscribe)
-      allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).not_to receive(:run_turn)
       # Stop on the first poll so the loop exits.
       allow(Samagotchi::SessionInbox).to receive(:find_new_input_files) do

@@ -276,9 +276,11 @@ module Samagotchi
       # runs from the leave) and restored into it after.
       carried = take_carried_reminders
       @engine = build_engine
+      # The Engine's event log, handed to the Bridge and the collaborators.
+      @event_log = @engine.event_log
       restore_carried_reminders(carried)
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
-        @engine.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
+        @event_log.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
       end
       prune_tombstones
       settle_interrupted_turn
@@ -289,7 +291,7 @@ module Samagotchi
       @engine.session = @session
       # May this participant act (loop thread only): a turn as it starts,
       # the drain, the mid-turn stop, the Continue.
-      @participant_gate = WorkerParticipantGate.new(engine: @engine, session: @session, session_id: @session_id,
+      @participant_gate = WorkerParticipantGate.new(engine: @engine, event_log: @event_log, session: @session, session_id: @session_id,
                                                     state_dir: @state_dir, session_dir: @session_dir,
                                                     hook: Engine::PARTICIPANTS_HOOK)
       # Who is in the review as the worker starts: no notice for them
@@ -304,7 +306,7 @@ module Samagotchi
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
       # Bridge exists by the time anyone answers).
-      @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
+      @continue_offer = ContinueOffer.new(engine: @engine, event_log: @event_log, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
                                           max_iterations: method(:max_iterations),
                                           participant_refused: @participant_gate.method(:refusal),
                                           save: -> { save_or_log(:command) { save_session } },
@@ -319,11 +321,11 @@ module Samagotchi
       @turn_end_seq = 0
       # The background tasks this session started and hasn't seen finish:
       # one that finishes unseen wakes the idle session (#run_task_wake).
-      @task_wakes = WorkerTaskWakes.new(engine: @engine, session: @session, wakes: @wakes,
+      @task_wakes = WorkerTaskWakes.new(engine: @engine, event_log: @event_log, session: @session, wakes: @wakes,
                                         awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                         idle: -> { nothing_queued? && !@exit_claim.taken? },
                                         save: -> { save_or_log(:task_notes) { save_session } })
-      @engine.subscribe(observer: lambda { |event|
+      @event_log.subscribe(observer: lambda { |event|
         if Events::TURN_END.include?(event[:type])
           @turn_end_seq = event[:event_seq]
           @turn_end_type = event[:type]
@@ -345,7 +347,7 @@ module Samagotchi
                                               peer_sources: @engine.peer_sources, peer_turns: -> { @wakes.peer_turns })
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
-                                   context_absorber: @context_absorber, wakes: @wakes,
+                                   event_log: @event_log, context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
                                    queue_command: lambda { |line, client_id, after_file, enqueued_id, author: nil|
@@ -369,7 +371,7 @@ module Samagotchi
     # The Bridge (UIs and clients reach the worker from here on), then the
     # idle-exit policy.
     def serve
-      @bridge = start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
+      @bridge = start_bridge(engine: @engine, event_log: @event_log, state_dir: @state_dir, session_id: @session_id,
                              on_input: -> { @waker.wake },
                              on_command: method(:on_command),
                              on_exit_request: method(:exit_request),
@@ -417,11 +419,11 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
+    def start_bridge(engine:, event_log:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
                      exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
+        engine: engine, event_log: event_log, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
         exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       ).start
@@ -799,14 +801,14 @@ module Samagotchi
     #   conversation as a turn note
     # Not saved here: run_engine_turn saves after its block.
     def restore_failed_turn(prompts, error: nil)
-      @engine.synchronize_events do
+      @event_log.synchronize do
         next if @turn_flow.prompt_turn_failed(error: error) == :kept
 
         prompts.each do |prompt, origin, images, anchors|
           restored = { type: :prompt_restored, prompt: prompt, origin: origin.wire }
           restored[:images] = images unless Array(images).empty?
           restored.merge!(anchors.to_h) if anchors
-          @engine.announce(restored)
+          @event_log.announce(restored)
         end
       end
     end
@@ -870,8 +872,8 @@ module Samagotchi
         # (their rings stay for the next turn), so not in @merged_this_turn.
         reports, mark = take_child_reports
         unless merged.empty? && reports.empty?
-          @engine.announce(type: :input_merged, count: merged.size + reports.size,
-                           origins: (merged.map(&:last) + reports.map(&:origin)).filter_map(&:wire))
+          @event_log.announce(type: :input_merged, count: merged.size + reports.size,
+                              origins: (merged.map(&:last) + reports.map(&:origin)).filter_map(&:wire))
           @merged_this_turn.concat(merged)
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or

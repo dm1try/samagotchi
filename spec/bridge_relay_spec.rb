@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
 
   def serve(engine, session)
     hold_worker(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-    bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
+    bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
     @bridges << bridge
     bridge
   end

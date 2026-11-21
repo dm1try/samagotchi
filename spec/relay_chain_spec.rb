@@ -56,7 +56,7 @@ RSpec.describe "approval relay, two hops" do
     engine.interface = :worker
     engine.session_state_dir = state_dir
     engine.session = Samagotchi::Session.load(session.id, state_dir: state_dir)
-    @bridges << Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
+    @bridges << Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
     @locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
     engine
   end

@@ -114,7 +114,7 @@ RSpec.describe "a turn's author" do
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
       hold_worker(session_dir)
-      @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
+      @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
       @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     end
 

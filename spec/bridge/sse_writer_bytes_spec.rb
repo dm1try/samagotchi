@@ -2,10 +2,11 @@
 
 require "stringio"
 require "samagotchi/bridge"
+require "samagotchi/session_observer"
 
 # An event JSON can't take must not end the streams that reach it.
 RSpec.describe Samagotchi::Bridge::SSEWriter do
-  subject(:writer) { described_class.new(engine: double("engine"), ring: double("ring"), session_id: "s", raw: true) }
+  subject(:writer) { described_class.new(event_log: Samagotchi::SessionObserver.new, ring: double("ring"), session_id: "s", raw: true) }
 
   let(:io) { StringIO.new }
 

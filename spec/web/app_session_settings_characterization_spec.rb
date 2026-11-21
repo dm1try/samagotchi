@@ -91,7 +91,8 @@ RSpec.describe "Session settings chips (characterization)" do
     def command_ran(engine, changed)
       worker = Samagotchi::Worker.allocate
       worker.instance_variable_set(:@engine, engine)
-      allow(engine).to receive(:announce) { |event| events << event }
+      worker.instance_variable_set(:@event_log, engine.event_log)
+      allow(engine.event_log).to receive(:announce) { |event| events << event }
       command = Samagotchi::QueuedCommand.new(command_id: "c1", line: "/x")
       worker.send(:announce_command, command, status: "ok", output: "done", changed: changed)
       events.last.except(:type, :command_id, :client_id, :line, :status, :output)

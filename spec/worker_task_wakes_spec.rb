@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  def emit(event) = engine.instance_variable_get(:@session_observer).notify(event)
+  def emit(event) = engine.event_log.notify(event)
 
   def start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
     worker = described_class.new(session_id: session.id, state_dir: state_dir, session_dir: session_dir,

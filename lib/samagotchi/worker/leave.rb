@@ -13,7 +13,7 @@ module Samagotchi
     # carried reminders, the recap, the discard). Writes @marked_leaving
     # (#mark_leaving) and @discard (#left), and the exit claim through its own
     # methods; reads @exit_claim, @idle_exit, @hold_stop, @session, @session_id,
-    # @session_dir, @state_dir, @default_model, @engine, @bridge, @owner_lock,
+    # @session_dir, @state_dir, @default_model, @engine, @event_log, @bridge, @owner_lock,
     # @waker and @task_wakes.
     module LeavePart
       # /exit held by background tasks a finish wake waits for: how to end them.
@@ -109,7 +109,7 @@ module Samagotchi
       #   decided under the lock), false when something came in since the request
       def leave_on_request
         stop_bridge_after do
-          @engine.synchronize_events do
+          @event_log.synchronize do
             # One read: the kind and the asker of the same exit.
             taken = @exit_claim.taken
             restart = taken&.restart?
@@ -143,7 +143,7 @@ module Samagotchi
       # @return [Boolean] false when something came in since #due?
       def leave_idle
         stop_bridge_after do
-          @engine.synchronize_events do
+          @event_log.synchronize do
             next false unless @idle_exit.due?
 
             @bridge&.close_intake

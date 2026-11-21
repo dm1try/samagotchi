@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "on a real Bridge" do
     WebMock.allow_net_connect! if defined?(WebMock)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     hold_worker(session_dir)
-    @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 5).start
+    @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 5).start
   end
 
   after do

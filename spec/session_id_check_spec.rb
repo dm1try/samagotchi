@@ -81,7 +81,7 @@ RSpec.describe "session id check" do
     let(:engine) do
       Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
     end
-    let(:bridge) { described_class.new(engine: engine, state_dir: state_dir, session_id: "s1") }
+    let(:bridge) { described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1") }
 
     it "answers 404 unknown_session for a bad session_id and writes nothing" do
       bad_ids.reject { |id| id.strip.empty? }.each do |id|

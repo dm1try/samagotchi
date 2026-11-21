@@ -486,11 +486,15 @@ observers (`Engine#subscribe`), which get a copy with a monotonic `event_seq`: t
 thinking tails, and in a worker the Bridge ([bridge.md](bridge.md)). **Errors in the sink or an observer are
 caught; they never break the turn.**
 
-`Engine#announce` puts an event that belongs to no turn (`Engine::ANNOUNCEABLE_EVENTS`: `turn_enqueued`,
+`Engine#announce` puts an event that belongs to no turn (`SessionObserver::ANNOUNCEABLE_EVENTS`: `turn_enqueued`,
 `turn_dequeued` (`{enqueued_id, client_id}`: the remover's), `card`, `hook_notice`, `guardrail_warning`, `participants_changed`
 ([participants](participants.md#the-owners-terminal)), and more) to the observers only. `:side_usage` (a side
 request's usage and the session's side sums) goes to the observers the same way from `Engine#note_side_usage` (any
-thread), without being announceable.
+thread), without being announceable. The list and the check are the event log's (`SessionObserver#announce`, the
+same ArgumentError before anything is numbered); `Engine#announce` forwards to it. The Engine creates the log and
+shows it (`Engine#event_log`): a worker's hosts (the Bridge, the Worker and its collaborators) hold that one log and
+call it directly, so `Engine#subscribe`/`#unsubscribe`/`#event_count`/`#announce`/`#synchronize_events` stay for the
+Engine's own parts, the one-shot host and Engine-only specs.
 
 Turn events (the main ones; `events.rb` keeps the shared sets):
 

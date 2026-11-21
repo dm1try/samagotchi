@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   end
 
   def locked?
-    engine.instance_variable_get(:@session_observer).instance_variable_get(:@mutex).mon_owned?
+    engine.event_log.held?
   end
 
   def mark(name) = locked? ? "#{name}!" : name

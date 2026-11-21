@@ -14,7 +14,7 @@ module Samagotchi
     # #drop_dead_question. Called by #start and #serve only; no state of its
     # own. Writes @session (the interrupted turn's end, the stale status, a
     # dead question) and saves it. Reads @session, @session_dir, @session_id,
-    # @state_dir and @engine.
+    # @state_dir, @engine and @event_log.
     module StartupPart
       private
 
@@ -71,8 +71,8 @@ module Samagotchi
         value = @session.parent_answers
         return unless Guardrails::ParentPolicy.unknown_level?(value)
 
-        @engine.announce({ type: :guardrail_warning, label: "parent_answers",
-                           message: "parent_answers #{value.inspect} in session #{@session_id} isn't hard/standard/soft; hard applies" })
+        @event_log.announce({ type: :guardrail_warning, label: "parent_answers",
+                              message: "parent_answers #{value.inspect} in session #{@session_id} isn't hard/standard/soft; hard applies" })
       end
 
       # A question saved by a worker that died while it waited (an

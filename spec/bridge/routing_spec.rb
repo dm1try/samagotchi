@@ -26,7 +26,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
 
   before do
     WebMock.allow_net_connect! if defined?(WebMock)
-    @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2)
+    @bridge = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2)
     handlers.each do |name|
       allow(@bridge).to receive(name) { |sid, *| [{ "X-Route" => name.to_s }, 200, { handler: name.to_s, sid: sid }] }
     end
@@ -189,7 +189,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
       path = File.join(Samagotchi::Session.session_dir("s1", state_dir: state_dir), "bridge.json")
       expect(@secret).to match(/\A\h{64}\z/)
       expect(File.stat(path).mode & 0o777).to eq(0o600)
-      other = described_class.new(engine: engine, state_dir: state_dir, session_id: "s2")
+      other = described_class.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: "s2")
       expect(other.instance_variable_get(:@secret)).not_to eq(@secret)
     end
 

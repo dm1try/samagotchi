@@ -71,7 +71,7 @@ RSpec.describe "Images in transport" do
 
     before do
       engine.subscribe(observer: ->(event) { events << event })
-      @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id,
+      @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: tmpdir, session_id: session.id,
                                        input_format: Samagotchi::SessionInbox::INPUT_FORMAT).start
       @port, @secret = JSON.parse(File.read(File.join(session_dir, "bridge.json"))).values_at("port", "secret")
     end

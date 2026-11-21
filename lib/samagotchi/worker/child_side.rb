@@ -19,7 +19,8 @@ module Samagotchi
     # Verify fresh hand-off. Writes @owes_parent, @asked_parent and
     # @reporting_turn (also written by #run_engine_turn, with @initial_turn
     # from #run_initial_prompt; #initialize sets them). Reads @session,
-    # @state_dir, @session_dir, @engine, @child_reports and @initial_turn.
+    # @state_dir, @session_dir, @engine, @event_log, @child_reports and
+    # @initial_turn.
     module ChildSidePart
       private
 
@@ -44,7 +45,7 @@ module Samagotchi
         return unless save_or_log(:fresh_verdicts) { save_session }
 
         FileUtils.rm_f(files)
-        added.each { |record| @engine.announce(type: :verdict_recorded, verdict: record) }
+        added.each { |record| @event_log.announce(type: :verdict_recorded, verdict: record) }
       rescue StandardError => e
         Log.warn(:worker, "fresh_verdicts_failed", error: e.class.name, msg: e.message)
       end

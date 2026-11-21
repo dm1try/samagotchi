@@ -36,7 +36,7 @@ module Samagotchi
         usage = usage.with(author: side_author(usage.kind)) if usage.author.nil?
         synchronize_events do
           block = @metrics.add_side(usage)
-          @session_observer.notify(type: :side_usage, kind: usage.kind, side: block)
+          @event_log.notify(type: :side_usage, kind: usage.kind, side: block)
         end
         sid = @metrics.session_id
         return if sid.nil? || turn_running?

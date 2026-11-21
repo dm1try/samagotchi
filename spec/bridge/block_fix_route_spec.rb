@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Bridge::BlockFixRoute do
     allow(side).to receive(:ask) { Samagotchi::IdleClient::Summary.new(text: "```mermaid\ngraph TD\n  A-->B\n```", model: "m") }
     allow(Samagotchi::IdleClient).to receive(:for).and_return(side)
     engine.session = session
-    @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2)
+    @bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2)
     @bridge.start
     sidecar = File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), "bridge.json")
     @port, @secret, @features = JSON.parse(File.read(sidecar)).values_at("port", "secret", "features")
@@ -96,10 +96,10 @@ RSpec.describe Samagotchi::Bridge::BlockFixRoute do
     it "is left as it is when it doesn't end on the answer as it was, or the fix landed in the display" do
       write_line("other")
       engine.synchronize_events do
-        engine.instance_variable_get(:@session_observer).notify(type: :block_fix, turn_id: "t1", landed: "answer",
-                                                                was_digest: digest.call(answer), digest: "new")
-        engine.instance_variable_get(:@session_observer).notify(type: :block_fix, turn_id: "t1", landed: "display",
-                                                                was_digest: "other", digest: "other")
+        engine.event_log.notify(type: :block_fix, turn_id: "t1", landed: "answer",
+                                was_digest: digest.call(answer), digest: "new")
+        engine.event_log.notify(type: :block_fix, turn_id: "t1", landed: "display",
+                                was_digest: "other", digest: "other")
       end
       expect(lines.size).to eq(1)
     end

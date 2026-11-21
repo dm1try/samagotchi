@@ -182,7 +182,7 @@ RSpec.describe Samagotchi::Engine, "working set event" do
     end
 
     it "is announceable" do
-      expect(described_class::ANNOUNCEABLE_EVENTS).to include(:working_set_updated)
+      expect(Samagotchi::SessionObserver::ANNOUNCEABLE_EVENTS).to include(:working_set_updated)
     end
   end
 

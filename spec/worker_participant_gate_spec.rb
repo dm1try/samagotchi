@@ -5,6 +5,7 @@ require "tmpdir"
 require "yaml"
 require "support/outdated_grants"
 require "samagotchi/worker_participant_gate"
+require "samagotchi/session_observer"
 require "samagotchi/session"
 require "samagotchi/session_inbox"
 require "samagotchi/turn_origin"
@@ -30,12 +31,15 @@ RSpec.describe Samagotchi::WorkerParticipantGate do
     metrics = double("metrics")
     allow(metrics).to receive(:spend) { |author| spend[author] }
     double("engine", metrics: metrics).tap do |engine|
-      allow(engine).to receive(:announce) { |**event| announced << event }
       allow(engine).to receive(:announce_participants)
     end
   end
+  # What the gate announces, as a subscriber of the log gets it (without its seq).
+  let(:event_log) do
+    Samagotchi::SessionObserver.new.tap { |log| log.subscribe(observer: ->(event) { announced << event.except(:event_seq) }) }
+  end
   let(:gate) do
-    described_class.new(engine: engine, session: session, session_id: session.id, state_dir: tmpdir,
+    described_class.new(engine: engine, event_log: event_log, session: session, session_id: session.id, state_dir: tmpdir,
                         session_dir: session_dir, hook: "participants")
   end
 

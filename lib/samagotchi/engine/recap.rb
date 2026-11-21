@@ -29,7 +29,7 @@ module Samagotchi
       def emit_recap(recap:, generation:, covered: nil, created_at: nil)
         event = { type: :recap_ready, recap: recap, generation: generation, covered: covered }
         event[:created_at] = created_at if created_at
-        @session_observer.notify(event)
+        @event_log.notify(event)
       end
 
       # @return [IdleRecap, nil] the idle recap detector, or nil when disabled

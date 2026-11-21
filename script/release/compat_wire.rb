@@ -194,13 +194,13 @@ module CompatWire
     engine.session_state_dir = state_dir
     engine.session = session
     lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker", wait: 0) or raise Error, "the recording's owner lock is held"
-    bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: SESSION_ID).start
+    bridge = Samagotchi::Bridge.new(engine: engine, event_log: engine.event_log, state_dir: state_dir, session_id: SESSION_ID).start
     begin
       link = Samagotchi::WorkerLink.client(SESSION_ID, session_dir: session_dir) or raise Error, "the recording's worker isn't live"
       replies = {}
       engine.run_turn(session, PROMPT, origin: { client_id: CLIENT_ID }, id: TURN_ID)
       IDLE_ROUTES.each { |name, route| replies[name] = reply(link, route) }
-      replies[EVENTS_FILE] = record_events(link, engine.event_count)
+      replies[EVENTS_FILE] = record_events(link, engine.event_log.event_count)
       # Saved as its worker saves it after a turn.
       session.save(state_dir: state_dir)
       replies[SESSION_FILE] = JSON.parse(File.read(Samagotchi::Session.session_file(SESSION_ID, state_dir: state_dir)))
