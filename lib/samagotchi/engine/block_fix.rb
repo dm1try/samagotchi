@@ -188,15 +188,23 @@ module Samagotchi
 
       # One result, under the event lock.
       # @return [Boolean] whether the conversation changed
+      # A fix that can't land in an answer still there (its shown text lost
+      # the block, or the fix would pass the display's size) stamps it
+      # failed with the reason, so a reload doesn't ask again; only a gone
+      # or changed answer is dropped, with no stamp.
       def apply_block_fix(session, result)
         messages = session.messages
         answer = messages[result.anchor.index]
-        place = answer && block_fix_anchored?(messages, answer, result) &&
-                BlockFix.locate(block_fix_shown(answer), lang: result.lang, source: result.source)
-        return block_fix_dropped(result, "the answer changed") unless place
+        return block_fix_dropped(result, "the answer changed") unless answer && block_fix_anchored?(messages, answer, result)
 
+        unless BlockFix.locate(block_fix_shown(answer), lang: result.lang, source: result.source)
+          result = result.with(fixed: nil, reason: "the answer changed")
+        end
         copy, landed = block_fix_patched(messages, answer, result)
-        return block_fix_dropped(result, "the fix is too long") unless copy
+        unless copy
+          result = result.with(fixed: nil, reason: "the fix is too long")
+          copy, landed = block_fix_patched(messages, answer, result)
+        end
 
         list = messages.dup
         list[result.anchor.index] = copy

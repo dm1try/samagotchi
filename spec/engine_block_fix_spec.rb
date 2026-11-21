@@ -285,6 +285,29 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(fix_events).to contain_exactly(include(state: "dropped", reason: "the answer changed"))
     end
 
+    it "stamps failed, with the reason, a fix too long for the display of an answer still there, so it isn't asked again" do
+      stub_const("Samagotchi::AnswerDisplay::MAX_CHARS", answer_text.length)
+      fix
+      settle
+      engine.send(:note_block_fix_turn)
+      expect(engine.apply_block_fixes).to eq(1)
+      expect(answer[:content]).to eq(answer_text)
+      expect(answer).not_to have_key(:display)
+      expect(Samagotchi::BlockFix.stamps(answer)).to contain_exactly(include(state: "failed", reason: "the fix is too long"))
+      expect(fix_events).to contain_exactly(include(state: "failed", reason: "the fix is too long"))
+      expect(fix).to eq([200, { state: "failed", reason: "the fix is too long" }])
+      expect(asks.size).to eq(1)
+    end
+
+    it "stamps failed a fix whose block left the answer's display (a hook rewrote it), the answer still there" do
+      fix
+      settle
+      session.messages = [session.messages.first, session.messages.last.merge(display: "Rewritten, no block.")]
+      expect(engine.apply_block_fixes).to eq(1)
+      expect(answer[:content]).to eq(answer_text)
+      expect(Samagotchi::BlockFix.stamps(answer)).to contain_exactly(include(state: "failed", reason: "the answer changed"))
+    end
+
     it "stamps a failed ask and changes no text" do
       side_answers << "```mermaid\n#{bad}```"
       fix
