@@ -82,6 +82,14 @@ module Samagotchi
       end
     end
 
+    # Whether +id+'s continue lock is held now, without creating its
+    # session folder or lock file. Read-only callers use this for a preview.
+    def lock_held?(id, state_dir:)
+      return false unless Session.valid_id?(id)
+
+      locked?(File.join(Session.session_dir(id, state_dir: state_dir), LOCK))
+    end
+
     # Whether a continue holds the lock at +path+: a shared try that fails.
     # The try is let go at once (the file is closed).
     def locked?(path)

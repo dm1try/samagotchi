@@ -271,6 +271,15 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
         end
       end
 
+      it "leaves no session folder behind" do
+        plain = make(id: "aaaa1111-0000")
+
+        expect(Dir.exist?(dir_of(plain))).to be false
+        expect(run("--dry-run", plain.id)).to eq(0)
+
+        expect(Dir.exist?(dir_of(plain))).to be false
+      end
+
       it "prints what goes, what is stopped first and what stays, and the flags it needs, deleting nothing" do
         plain = make(owner: "worker", id: "aaaa1111-0000", prompt: "fix the flaky spec")
         stopped = [delegate_of(plain, "bbbb2222-0000"), delegate_of(plain, "cccc3333-0000")]

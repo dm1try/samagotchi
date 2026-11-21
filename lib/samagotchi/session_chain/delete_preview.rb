@@ -10,12 +10,11 @@ module Samagotchi
       # delete runs, and the refusals the delete's own checks raise now
       # (check_link!, check_chain!, the continue holds, a one-turn run), with
       # each choice's delegates, running tasks and workers. Made from one
-      # shared session listing each time the sheet opens. It takes and releases
-      # each link's continue lock (shared, as the delete does; a session in
-      # no chain too), creating its empty file where there was none; besides
-      # that, only the listing's own repair of an interrupted continue
-      # writes. A stale preview is fine: the delete builds its plan again and
-      # refuses as it does.
+      # shared session listing each time the sheet opens. It read-only checks
+      # each link's continue lock (a session in no chain too); besides that,
+      # only the listing's own repair of an interrupted continue writes. A
+      # stale preview is fine: the delete builds its plan again and refuses as
+      # it does.
       module Preview
         module_function
 
@@ -107,8 +106,7 @@ module Samagotchi
         end
 
         def refuse_continuing!(id, state_dir)
-          free = ContinueIntent.hold(id, state_dir: state_dir) { |held| held }
-          raise SessionManager::DeleteRefused.new(id, :continuing) unless free
+          raise SessionManager::DeleteRefused.new(id, :continuing) if ContinueIntent.lock_held?(id, state_dir: state_dir)
         end
 
         def tui!(id, state_dir)

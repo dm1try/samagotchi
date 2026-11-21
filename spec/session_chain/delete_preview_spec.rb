@@ -279,6 +279,16 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     end
   end
 
+  it "does not create a missing session folder when it previews a session" do
+    plain = make
+    FileUtils.rm_rf(dir_of(plain.id))
+
+    shown = preview(plain.id)
+
+    expect(Dir.exist?(dir_of(plain.id))).to be false
+    expect(shown[:link][:refusal]).to be_nil
+  end
+
   it "says a gap before the link cut earlier links off" do
     a = make
     b = continue(a.id)

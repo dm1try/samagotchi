@@ -577,9 +577,8 @@ module Samagotchi
       # older page asked only for a chained one). A folder whose session
       # file is gone answers too, as the delete still takes it. One shared
       # session-row snapshot serves the link and chain choices; Links lists
-      # on its own. Each call takes and releases the session's
-      # continue lock, creating its empty file (continue.lock) where there
-      # was none. No query or body read; no-store (json_response's).
+      # on its own. Each call read-only checks the session's continue lock.
+      # No query or body read; no-store (json_response's).
       def handle_delete_plan(_req, id)
         sd = @state_dir || Session.default_state_dir
         on_disk = File.exist?(Session.session_file(id, state_dir: sd)) || Dir.exist?(Session.session_dir(id, state_dir: sd))
