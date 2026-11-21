@@ -567,6 +567,26 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(renew.call("MY-CLIENT", issuer)).to include("client_id" => "MY-CLIENT", "client_secret" => "CLIENT-SECRET-1")
     end
 
+    it "renews only at a token endpoint the guard lets through: an internal one only on a configured host" do
+      oauth = bundle.namespace::Plugin::OAuth
+      ctx = bundle.plugin.instance_variable_get(:@ctx)
+      renew = lambda do |endpoint, resource: url, client: nil|
+        bundle.set(secrets: { "oauth-#{Digest::SHA256.hexdigest(resource)[0, 16]}" =>
+                              JSON.generate(access_token: "ACCESS-TOKEN-1", refresh_token: "REFRESH-TOKEN-1", resource: resource,
+                                            token_endpoint: endpoint, client_id: "CLIENT-1", issuer: issuer) })
+        oauth::Token.new(secrets: ctx.secrets, resource: resource, http: ctx.http, client: client).refresh_token!("ACCESS-TOKEN-1")
+      end
+      bundle.http.stub(:post, %r{\Ahttps://10\.0\.0\.7/token\z}) { { json: { access_token: "ACCESS-TOKEN-2", token_type: "Bearer" } } }
+
+      expect { renew.call("https://10.0.0.7/token") }
+        .to raise_error(bundle.namespace::Plugin::Client::Dead,
+                        "its sign-in couldn't be renewed (the token endpoint is an internal address (https://10.0.0.7))")
+      expect(requests_to("https://10.0.0.7/token")).to be_empty
+      expect(renew.call("https://10.0.0.7/token", client: { id: "MY-CLIENT", issuer: "https://10.0.0.7" })).to be(true)
+      expect(renew.call("https://10.0.0.7/token", resource: "https://10.0.0.7/mcp")).to be(true)
+      expect(requests_to("https://10.0.0.7/token").size).to eq(2)
+    end
+
     it "is used by a later session at once" do
       bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", resource: url) })
 

@@ -781,10 +781,11 @@ class Plugin
           sleep(RENEW_SECONDS)
           cancel.cancel!(:budget)
         end
-        # The kept endpoint was checked at the sign-in (its host may be a
-        # configured, internal one).
+        # The kept endpoint is checked again (an address can resolve elsewhere
+        # by now); the hosts the user configured are trusted, as at the sign-in.
         local = OAuth.loopback_host?(URI.parse(@resource).host)
-        Wire.new(http: @http, local: local, cancel: cancel, trusted: [URI.parse(stored["token_endpoint"].to_s).host])
+        trusted = [URI.parse(@resource).host, @client && URI.parse(@client[:issuer].to_s).host]
+        Wire.new(http: @http, local: local, cancel: cancel, trusted: trusted)
             .post(stored["token_endpoint"], URI.encode_www_form(form), "application/x-www-form-urlencoded",
                   "the token endpoint", timeout: RENEW_SECONDS)
       ensure

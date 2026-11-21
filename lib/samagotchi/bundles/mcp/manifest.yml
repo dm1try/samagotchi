@@ -12,7 +12,7 @@ plugin:
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
     http_client.rb: sha256:a9202b80439d0e72e2289a2dd435f64fdf13808424be3eb4194047c0893a90db
-    oauth.rb: sha256:7b7ddda5234c9d154eb33bdd2ea7b4be2f2ec4f35a8d0293e0bb4698b8222de6
+    oauth.rb: sha256:c779e8e7971715c15494b8e755f4a1cff1b4358b96a3ef8db6b330f066c0f152
     tools.rb: sha256:607743a06f191dc24b6aa032e67ed6c95a75cb27310361f6572ca15d5dc50635
     content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
