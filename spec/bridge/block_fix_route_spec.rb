@@ -96,10 +96,10 @@ RSpec.describe Samagotchi::Bridge::BlockFixRoute do
     it "is left as it is when it doesn't end on the answer as it was, or the fix landed in the display" do
       write_line("other")
       engine.synchronize_events do
-        engine.instance_variable_get(:@session_observer).notify(type: :block_fix, turn_id: "t1", landed: "answer",
-                                                                was_digest: digest.call(answer), digest: "new")
-        engine.instance_variable_get(:@session_observer).notify(type: :block_fix, turn_id: "t1", landed: "display",
-                                                                was_digest: "other", digest: "other")
+        engine.event_log.notify(type: :block_fix, turn_id: "t1", landed: "answer",
+                                was_digest: digest.call(answer), digest: "new")
+        engine.event_log.notify(type: :block_fix, turn_id: "t1", landed: "display",
+                                was_digest: "other", digest: "other")
       end
       expect(lines.size).to eq(1)
     end

@@ -88,7 +88,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
   def ring_whys = rings.map { |f| Samagotchi::SessionInbox.read_ring(f)[:why] }
 
   def question(kind, **more)
-    engine.instance_variable_get(:@session_observer)
+    engine.event_log
           .notify(type: :question_requested, pending_question: { id: "q-#{kind}", kind: kind, question: "?", **more }.compact)
   end
 

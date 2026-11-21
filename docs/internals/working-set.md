@@ -130,7 +130,7 @@ pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_worki
   turn-end apply has run by then);
 - between turns, from `Engine#announce_working_set` (the session's messages, under the event lock; after a
   `/working-set` op, after a `rollback_to`, and after an `/llm-context` change: the states are the next turn's strategy's): announced
-  (`working_set_updated` is in `ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
+  (`working_set_updated` is in `SessionObserver::ANNOUNCEABLE_EVENTS`; held after a command's `command_ran` inside
   `holding_announcements`), under the *next* turn's strategy (`SessionModelSettings#turn_llm_context`, as the
   turn-end warm-up reads it; `TurnSettings` keeps the last turn's, stale after `/llm-context` or `/model`). While a
   turn runs, the strategy is always the turn's.

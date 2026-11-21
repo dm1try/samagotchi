@@ -46,7 +46,7 @@ RSpec.describe "idle session-recap end-to-end", :integration do
 
   around do |example|
     # Subscribe to recap_ready events
-    engine.instance_variable_get(:@session_observer)&.subscribe(
+    engine.event_log&.subscribe(
       observer: ->(event) { recap_events << event if event[:type] == :recap_ready }
     )
     example.run
@@ -102,7 +102,7 @@ RSpec.describe "idle session-recap end-to-end", :integration do
   it "emits a :recap_ready event when the full chain fires with a real model" do
     # This test exercises the entire chain:
     # Engine.build_recap → IdleRecap.tick → IdleClient.summarize (real HTTP)
-    # → Engine.emit_recap → @session_observer → :recap_ready event
+    # → Engine.emit_recap → @event_log → :recap_ready event
     #
     # We manually set idle conditions and call `tick` — no real idle time needed.
     #

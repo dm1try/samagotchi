@@ -26,6 +26,15 @@ module Samagotchi
   #     counted (Engine#note_side_usage): `kind:` and `side:`, the session's
   #     whole side block (SessionMetrics#add_side), in fold order.
   class SessionObserver
+    # Event types #announce accepts: facts about the session's input queue,
+    # a failed turn's prompt handed back and the continue offer, which live
+    # UIs need in the event log, emitted outside any turn's stream; a
+    # Verify fresh child's verdict landing on its card (:verdict_recorded).
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
+                             command_queued command_ran context_added card hook_notice guardrail_warning
+                             plugin_init_started plugin_init_finished working_set_updated participants_changed
+                             verdict_recorded objectives_updated].freeze
+
     # Handle returned by #subscribe. Holds the observer reference and carries
     # #unsubscribe so a caller can deregister without keeping the registry.
     class SubscribedObserver
@@ -106,6 +115,19 @@ module Samagotchi
       end
     end
 
+    # Put a transport-level event into the ordered event log (#notify), after
+    # checking its type. Unlike turn events it reaches only persistent
+    # observers (no turn sink, no memory capture).
+    # @param event [Hash] with :type in ANNOUNCEABLE_EVENTS
+    # @raise [ArgumentError] for any other type (before #notify, outside the lock)
+    def announce(event)
+      unless ANNOUNCEABLE_EVENTS.include?(event[:type])
+        raise ArgumentError, "cannot announce #{event[:type].inspect} (allowed: #{ANNOUNCEABLE_EVENTS.join(", ")})"
+      end
+
+      notify(event)
+    end
+
     # @return [Integer] total events emitted so far (Engine-local sequence)
     def event_count
       @mutex.synchronize { @seq }
@@ -116,6 +138,11 @@ module Samagotchi
     # block may notify. Keep it short; every emitter waits for it.
     def synchronize(&)
       @mutex.synchronize(&)
+    end
+
+    # @return [Boolean] whether the calling thread holds the event lock
+    def held?
+      @mutex.mon_owned?
     end
   end
 end

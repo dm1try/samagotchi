@@ -228,7 +228,7 @@ module Samagotchi
                              window_source: window.source.to_s, source: "switch" }
         event = { type: :context_status, usage: usage, bucket: display&.dig(:bucket),
                   context_window_tokens: window&.tokens, context_window_source: window&.source&.to_s }
-        @session_observer.notify(event)
+        @event_log.notify(event)
         event
       rescue StandardError => e
         Log.warn(:model, "switched_context_failed", error: e.class.name, msg: e.message.to_s[0, 200])

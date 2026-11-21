@@ -303,7 +303,7 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
   it "returns from a late candidate while the plugins load, before anything the Engine has yet to build" do
     seen = []
     allow_any_instance_of(described_class).to receive(:load_plugins) do |loading|
-      seen << loading.instance_variable_get(:@session) << loading.instance_variable_get(:@session_observer)
+      seen << loading.instance_variable_get(:@session) << loading.instance_variable_get(:@event_log)
       seen << loading.send(:judge_late_candidates)
     end
 
@@ -314,10 +314,10 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
 
   it "announces the objectives from another thread while a turn runs, under the event lock" do
     session = new_session
-    observer = engine.instance_variable_get(:@session_observer)
+    observer = engine.event_log
     reads = []
     allow(engine).to receive(:live_conversation).and_wrap_original do |original|
-      reads << [Thread.current.equal?(@turn_thread), observer.instance_variable_get(:@mutex).mon_owned?]
+      reads << [Thread.current.equal?(@turn_thread), observer.held?]
       original.call
     end
     @in_generation = -> { Thread.new { engine.announce_objectives(session) }.join }

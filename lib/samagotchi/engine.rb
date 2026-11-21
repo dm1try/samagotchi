@@ -329,7 +329,7 @@ module Samagotchi
       # Who is in the review now, and who came or went (#announce_participants).
       @participants_watch = ParticipantsWatch.new(session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
       @session = nil
-      @session_observer = SessionObserver.new
+      @event_log = SessionObserver.new
       @metrics = SessionMetrics.new
       @used_memories = UsedMemories.new
       # Hydrate from resumed session if present
@@ -350,7 +350,7 @@ module Samagotchi
       # recap). Both jobs read the activity seam above; the scheduler owns
       # the single background thread and isolates per-job failures.
       @idle_scheduler = build_idle_scheduler
-      subscribe_session_observers
+      subscribe_log_observers
       # The UIs' read model (/state, /stats). Built last: nothing calls a
       # snapshot while the Engine is built.
       @engine_snapshots = build_engine_snapshots
@@ -431,19 +431,19 @@ module Samagotchi
     private :restrict_scratch_tools!
 
     # The persistent observers of every turn's events.
-    def subscribe_session_observers
+    def subscribe_log_observers
       # The metrics collector is a persistent observer so every run_turn event
       # (a -p --non-interactive one-shot and SessionManager workers)
       # feeds it automatically.
-      @session_observer.subscribe(observer: @metrics)
+      @event_log.subscribe(observer: @metrics)
       # And the event trail in the debug log (`turn` records).
-      @session_observer.subscribe(observer: LogSubscriber.new(session_id: -> { @session&.id }))
+      @event_log.subscribe(observer: LogSubscriber.new(session_id: -> { @session&.id }))
       # The thinking of cut and capped generations, kept in the session dir.
-      @session_observer.subscribe(observer: ThinkingTails.new(session_dir: lambda {
+      @event_log.subscribe(observer: ThinkingTails.new(session_dir: lambda {
         @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir)
       }))
     end
-    private :subscribe_session_observers
+    private :subscribe_log_observers
 
     # The kernel and what it holds of the Engine for its life, one
     # KernelLoop::Services (stores, hooks, tools, the mutes, the question
@@ -522,7 +522,7 @@ module Samagotchi
     # The event fan-out and the stream handler (see #initialize for when).
     def build_event_fanout
       EventFanout.new(
-        observer: -> { @session_observer },
+        observer: -> { @event_log },
         used_memories: -> { @used_memories },
         muted: -> { @muted_memory_names },
         steer_cut: -> { @steer_cut },
@@ -552,7 +552,7 @@ module Samagotchi
       EngineSnapshots.new(
         session: -> { @session },
         metrics: -> { @metrics },
-        observer: -> { @session_observer },
+        observer: -> { @event_log },
         question_desk: -> { @question_desk },
         used_memories: -> { @used_memories },
         muted: -> { @muted_memory_names },
@@ -648,6 +648,10 @@ module Samagotchi
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
 
+    # @return [SessionObserver] the session's event log: the Worker hands it
+    #   to the Bridge and its collaborators, which call it directly
+    attr_reader :event_log
+
     attr_reader :default_model_name, :host_registry, :client
 
     # @return [Commands::Registry] the commands this session runs: the
@@ -656,15 +660,6 @@ module Samagotchi
 
     # @return [PeerSources] the sources the peer bundles declared
     attr_reader :peer_sources
-
-    # Event types #announce accepts: facts about the session's input queue,
-    # a failed turn's prompt handed back and the continue offer, which live
-    # UIs need in the event log, emitted outside any turn's stream; a
-    # Verify fresh child's verdict landing on its card (:verdict_recorded).
-    ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran context_added card hook_notice guardrail_warning
-                             plugin_init_started plugin_init_finished working_set_updated participants_changed
-                             verdict_recorded objectives_updated].freeze
 
     # ── Plugin init tasks (chi.init) ──────────────────────────────────────
 

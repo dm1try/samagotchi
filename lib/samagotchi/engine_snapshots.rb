@@ -118,7 +118,7 @@ module Samagotchi
     #   :status        [String, nil] current session status
     #   :message_count [Integer]   number of messages in the session
     #   :last_prompt   [String, nil] the last user prompt (empty string if none)
-    #   :event_seq     [Integer]   @session_observer.event_count
+    #   :event_seq     [Integer]   @event_log.event_count
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     #   :pending_question [Hash, nil] the pending question (PendingQuestion#to_h)
     #   :used_memory_names [Array<String>] deduped memory names active this session

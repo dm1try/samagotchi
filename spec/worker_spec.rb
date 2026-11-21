@@ -789,7 +789,7 @@ RSpec.describe Samagotchi::Worker do
     it "stops its Bridge outside the event log as it idle-exits" do
       held = []
       allow_any_instance_of(Samagotchi::Bridge).to receive(:stop).and_wrap_original do |original, *args|
-        held << engine.instance_variable_get(:@session_observer).instance_variable_get(:@mutex).mon_owned?
+        held << engine.event_log.held?
         original.call(*args)
       end
       start_worker(poll_interval: 0.05, idle_exit_minutes: 0.002)
@@ -1989,7 +1989,7 @@ RSpec.describe Samagotchi::Worker do
       it "rolls back with the event log held, so a snapshot sees the failed turn or its restore, not half of it" do
         held = []
         allow(engine).to receive(:rollback_to).and_wrap_original do |original, checkpoint|
-          held << engine.instance_variable_get(:@session_observer).instance_variable_get(:@mutex).mon_owned?
+          held << engine.event_log.held?
           original.call(checkpoint)
         end
         start_worker(poll_interval: 5)

@@ -17,7 +17,7 @@ module Samagotchi
     # else its display only, or nothing when the answer is gone.
     # Writes @block_fix_running, @block_fix_ready, @block_fix_turns (under
     # @block_fix_mutex; the counter on the turn thread), reads @session,
-    # @side_judgments, @session_observer.
+    # @side_judgments, @event_log.
     module BlockFixPart
       # What a pending result knows of its answer: its place in the
       # conversation, its digest then (Bridge::TurnDrawings.digest), and the
@@ -323,9 +323,9 @@ module Samagotchi
         ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - result.started) * 1000).round
         Log.info(:model, "block_fix_#{state}", lang: result.lang, key: result.key, bytes: result.fixed.to_s.bytesize,
                                                ms: ms, landed: landed, reason: reason)
-        @session_observer.notify({ type: :block_fix, turn_id: result.turn_id, key: result.key, lang: result.lang,
-                                   state: state, landed: landed, reason: reason, was_digest: was_digest,
-                                   digest: digest }.compact)
+        @event_log.notify({ type: :block_fix, turn_id: result.turn_id, key: result.key, lang: result.lang,
+                            state: state, landed: landed, reason: reason, was_digest: was_digest,
+                            digest: digest }.compact)
       end
     end
   end
