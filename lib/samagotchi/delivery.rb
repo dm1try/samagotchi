@@ -62,11 +62,7 @@ module Samagotchi
     # Workers advertise REVIEW_FEATURE too: an older chi web refuses
     # participants' turns to a worker without it.
     PAIR_FEATURE = "pair_turns"
-    # A worker that reads a participant's client id as participant:<id>
-    # (ClientId::PARTICIPANT_PREFIX). One without it reads only review:<id>
-    # (an unknown id to it: never the owner's, but its lines' source would
-    # be automatic:… and a participant's Verify fresh child would ring its
-    # parent), so chi web sends it the old id (SessionManager's delivery).
+    # The previous release's chi web checks this before sending participant:<id>.
     PARTICIPANT_ID_FEATURE = "participant_client_id"
     # A worker (Bridge::FEATURES) or a chi web (Web::App::INFO_FEATURES)
     # that reads an agent's client id (ClientId::AGENT_PREFIX). One without

@@ -24,7 +24,6 @@ RSpec.describe Samagotchi::ClientId do
       "plugin" => false,
       "relay:1234abcd" => false,
       "participant:p_0123abcd" => true,
-      "review:p_0123abcd" => true,
       "agent:claude" => false,
       "session:ab12cd34" => false
     }
@@ -115,12 +114,10 @@ RSpec.describe Samagotchi::ClientId do
       expect(described_class.interactive?("participant:p_0123abcd")).to be(false)
     end
 
-    # compat shim review_client_id
-    it "reads an older chi's review:<id> as a participant's, never the owner's, and makes it for an older worker" do
-      expect(described_class.sender("review:p_0123abcd")).to eq(described_class.sender("participant:p_0123abcd").with(match: "review:"))
-      expect([described_class.participant?("review:p_1"), described_class.owner?("review:p_1")]).to eq([true, false])
-      expect(described_class.legacy_participant("participant:p_1")).to eq("review:p_1")
-      expect(["web:x", "cli:send", nil].map { |id| described_class.legacy_participant(id) }).to eq(["web:x", "cli:send", nil])
+    it "reads an unknown review:<id> as automatic input, not a participant's or the owner's" do
+      expect([described_class.sender("review:p_0123abcd"), described_class.participant?("review:p_1"),
+              described_class.owner?("review:p_1"), described_class.human?("review:p_1")])
+        .to eq([described_class::UNKNOWN, false, false, false])
     end
   end
 
@@ -128,7 +125,7 @@ RSpec.describe Samagotchi::ClientId do
     it "names the turns chi runs on its own by their sender, and every other sender client" do
       origins = { "delegate:ab12cd34" => "delegate", "child:ab12cd34" => "delegate_report", "context:gh" => "context",
                   "task:t1" => "task", "system:reminder" => "reminder", "system:other" => "client", "web:x" => "client",
-                  "cli:send" => "client", "plugin" => "client", nil => "client", "participant:p_0123abcd" => "participant", "review:p_0123abcd" => "participant" }
+                  "cli:send" => "client", "plugin" => "client", nil => "client", "participant:p_0123abcd" => "participant" }
       expect(origins.keys.to_h { |id| [id, described_class.origin(id)] }).to eq(origins)
     end
   end
@@ -137,7 +134,7 @@ RSpec.describe Samagotchi::ClientId do
     it "gives a person's ids the send row by allowlist, the unattended senders theirs, anything else the safe one" do
       kinds = { "cli:send" => :send, "web:x" => :send, described_class::WEB_UNNAMED => :send, "tui:1" => :send,
                 described_class.schedule("s1") => :schedule, described_class::PLUGIN => :plugin,
-                described_class.delegate("0123abcd") => :delegate, described_class.participant("p_1") => :participant, "review:p_1" => :participant,
+                described_class.delegate("0123abcd") => :delegate, described_class.participant("p_1") => :participant,
                 nil => :automatic, "" => :automatic, "webby" => :automatic, "system:reminder" => :automatic,
                 "relay:ab12cd34" => :automatic }
       expect(kinds.keys.to_h { |id| [id, described_class.wake_kind(id)] }).to eq(kinds)

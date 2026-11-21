@@ -62,12 +62,6 @@ module Samagotchi
     # their author (Steer::PARTICIPANT_PREFIX, "p:<id>"), which says who
     # wrote a turn: this says which sender delivered it.
     PARTICIPANT_PREFIX = "participant:"
-    # compat shim review_client_id: the legacy review:<id> participant id
-    # used before 0.172 (still in turn_drawings.jsonl, input files and an
-    # older chi web still running): read it as a participant's, never the
-    # owner's, and send it to a worker without Delivery::PARTICIPANT_ID_FEATURE.
-    LEGACY_REVIEW_PREFIX = "review:"
-
     # A worker's own first prompt (spawn_session's) when no sender was
     # saved for it (WorkerInbound#initial_origin: a person's session saves
     # no first_turn_client_id, nor did an older chi): the owner's, as chi
@@ -144,10 +138,7 @@ module Samagotchi
       Sender.new(match: RELAY_PREFIX, **unattended),
       agent,
       session_question,
-      participant,
-      # compat shim review_client_id: the legacy review:<id> id uses the
-      # participant sender row too.
-      participant.with(match: LEGACY_REVIEW_PREFIX)
+      participant
     ].freeze
 
     # No client id: reaches only a worker's own seams (an input file from
@@ -256,16 +247,8 @@ module Samagotchi
     # grant): participant:<participant id>.
     def participant(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"
 
-    # Whether +client_id+ is a participant's (participant:, or legacy
-    # review:).
+    # Whether +client_id+ is a participant's.
     def participant?(client_id) = sender(client_id).wake == :participant
-
-    # compat shim review_client_id: translate participant:<id> for a worker
-    # that still expects review:<id>.
-    def legacy_participant(client_id)
-      id = client_id.to_s
-      id.start_with?(PARTICIPANT_PREFIX) ? "#{LEGACY_REVIEW_PREFIX}#{id.delete_prefix(PARTICIPANT_PREFIX)}" : client_id
-    end
 
     # The client id a delegating parent's task and follow-ups carry:
     # delegate:<parent8>.

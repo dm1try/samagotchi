@@ -366,21 +366,6 @@ RSpec.describe "the recorded compatibility corpus" do
     expect(Samagotchi::SessionInbox.waits_for_turn_end?(path)).to be(true)
   end
 
-  # compat shim review_client_id: chi 0.171 and before gave a participant's
-  # turns review:<id>, in input files and drawn turns alike (no corpus
-  # recorded one: hand-made in spec/fixtures/compat_review_client_id).
-  it "reads an older chi's review:<id> input file and drawn turn as a participant's" do
-    fixture = File.expand_path("../fixtures/compat_review_client_id", __dir__)
-    Dir.mktmpdir("chi-compat-review-") do |tmp|
-      FileUtils.cp_r(File.join(fixture, "."), tmp)
-      expect_participant_input(Samagotchi::SessionInbox.find_new_input_files(tmp).fetch(0), "review:compat")
-      line = Samagotchi::Bridge::TurnDrawings.read(tmp).fetch(0)
-      origin = Samagotchi::TurnOrigin.from(line.drawing["origin"])
-      expect([origin.participant_author, origin.source, origin.human?, Samagotchi::ClientId.owner?(origin.client_id)])
-        .to eq(["p:compat", "participant", true, false])
-    end
-  end
-
   it "reads the newest previous-release samples with today's state readers" do
     version = corpus_version
     expect(version).not_to be_nil, "record a compatibility corpus with release:bump"
