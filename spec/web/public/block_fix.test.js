@@ -148,6 +148,41 @@ test("the worker's event: fixed redraws the answer from a tail read; failed and 
   }
 });
 
+test("an answer is read again at most once per block: a copy still failing after the redraw says a fix didn't help, no loop", async () => {
+  const fixed = { status: 200, body: { state: "fixed" } };
+  const reads = [];
+  // The read still holds both copies, failing (a worker that patched only one).
+  reads.answer = { messages: [{ role: "assistant", content: "src t1", html: pre("a") + pre("a") }] };
+  const { root, posts } = setup(bubble("t1", pre("a") + pre("a")), { answers: [fixed, fixed, fixed, fixed], reads });
+  fail(root.querySelector("pre"));
+  await settle();
+  await settle();
+  assert.equal(reads.length, 1);
+  for (const el of root.querySelectorAll("pre")) fail(el);
+  await settle();
+  await settle();
+  assert.equal(reads.length, 1, "no second read");
+  assert.equal(posts.length, 3);
+  for (const el of root.querySelectorAll("pre")) assert.equal(el.nextElementSibling.dataset.fix, "nohelp");
+
+  document.body.innerHTML = "";
+  const again = [];
+  again.answer = reads.answer;
+  const s = setup(bubble("t2", pre("b")), { answers: [{ status: 202, body: { state: "running" } }, { status: 200, body: { state: "fixed" } }], reads: again });
+  again.answer = { messages: [{ role: "assistant", content: "src t2", html: pre("b") }] };
+  fail(s.root.querySelector("pre"));
+  await settle();
+  s.fix.onEvent({ turn_id: "t2", state: "fixed" });
+  await settle();
+  await settle();
+  assert.equal(again.length, 1);
+  fail(s.root.querySelector("pre"));
+  await settle();
+  await settle();
+  assert.equal(again.length, 1, "the event's redraw counts too");
+  assert.equal(s.root.querySelector("pre").nextElementSibling.dataset.fix, "nohelp");
+});
+
 test("a fixed event for an answer the read doesn't hold (a reminder turn's, read as the newest) leaves it for the next full read", async () => {
   const reads = [];
   reads.answer = { messages: [{ role: "assistant", content: "src t2", html: "<p>the newest</p>" }] };
