@@ -1266,12 +1266,12 @@ the code.
 
 A fenced block a bundle draws (```` ```mermaid ```` with chi-mermaid installed) shows as a picture; a click on it
 opens the picture viewer. When the bundle reports the diagram's parts (its regions), its nodes can be pointed at in
-the viewer: the mouse over a node outlines it, a tap or click selects it and a card above the zoom bar names it
-(its label, and its name in the source), a tap on an arrow or its label selects the arrow ("Bridge → Engine ·
-events"), a tap on empty space clears. On a phone a tap takes the nearest node within a fingertip. Tab reaches the
-nodes as one stop, the arrow keys go to the nearest node that way, Enter selects, Esc clears the selection and a
-second Esc closes. A drag, a pinch and a double tap work as before. A photo, a diagram from a bundle that reports no
-regions, or one with over 600 parts: the viewer as before, nothing tappable.
+the viewer: the mouse over a node outlines it, a tap or click selects it and a card above the zoom bar names it (its
+label, and its name in the source), a tap on an arrow or its label selects the arrow ("Bridge → Engine · events"), a
+tap on empty space clears. On a phone a tap takes the nearest node within a fingertip, unless an arrow or its label is
+right under it. Tab reaches the nodes as one stop, the arrow keys go to the nearest node that way, Enter selects, Esc
+clears the selection and a second Esc closes. A drag, a pinch and a double tap work as before. A photo, a diagram from
+a bundle that reports no regions, or one with over 600 parts: the viewer as before, nothing tappable.
 
 A long answer (over 25 lines or 2,000 characters of its text) can be folded
 by hand: a "▾ N lines" row is its top edge once its turn has ended. Click

@@ -23,11 +23,11 @@ and commands may change between minor versions. How releases are made:
   iOS Shortcut or a script: the answer comes back within 35 s, or a wait token to send to `…/wait` until it does.
   `…/answer` takes `wait`, and a new session's 201 has a token too. See docs/thin-clients.md.
 - In the web's picture viewer, a diagram's nodes can be pointed at, when its bundle reports them (chi-mermaid 0.2.0
-  and later): the mouse over a node outlines it, a tap or click selects it and a card above the zoom bar names it,
-  an arrow or its label selects the arrow, a tap on empty space clears. On a phone a tap takes the nearest node
-  within a fingertip. Tab, the arrow keys and Enter reach the nodes; Esc clears, then closes. A drag, a pinch and a
-  double tap work as before. For bundle authors: `render` may return `{ svg, regions }` when `chi.features.regions`
-  is set ([plugins.md](docs/plugins.md#block-renderers)).
+  and later): the mouse over a node outlines it, a tap or click selects it and a card above the zoom bar names it, an
+  arrow or its label selects the arrow, a tap on empty space clears. On a phone a tap takes the nearest node within a
+  fingertip, unless an arrow or its label is right under it. Tab, the arrow keys and Enter reach the nodes; Esc
+  clears, then closes. A drag, a pinch and a double tap work as before. For bundle authors: `render` may return
+  `{ svg, regions }` when `chi.features.regions` is set ([plugins.md](docs/plugins.md#block-renderers)).
 
 ### Changed
 

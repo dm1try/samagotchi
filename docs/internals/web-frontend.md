@@ -506,8 +506,10 @@ kept: every open starts fitted.
   (`.pv-sel`, `role="region"` "Selected") and visually hidden `aria-live` line join `#lightbox` after the bar.
   **The pointer path is maths** (`region_hit.js`): the surface keeps its pointer capture, so a drag, a pinch and a
   double tap are as before. A tap that isn't a move (4 px for a mouse, 10 for a finger) goes to `layer.tap` before
-  the double-tap bookkeeping: the nearest node or note within 3 px (a finger 18), else an arrow's line (7 px at
-  least) or its label's box, else the innermost group; nothing → it clears. One region at a time; two with one kind
+  the double-tap bookkeeping: the nearest node or note within 3 px, else an arrow's line (7 px at least) or its
+  label's box, else the innermost group; nothing → it clears. A finger (18 px) takes a node first only on its box:
+  an arrow's line or label within 7 px beats a node only within the finger's margin (two nodes 30 px apart at a
+  phone's fit leave the label between them tappable), then the nearest node within 18 px, then an arrow. One region at a time; two with one kind
   and id select together. The mouse with no button down is `layer.hover` at most once per frame (`#lightbox.over`:
   the hand). **The card's room** (`CARD_ROOM` 64 px, 80 on a coarse pointer, beside the bar's 56) is kept in the fit
   of a picture with regions, selected or not, so selecting never moves a fitted picture and no fitted node is under
