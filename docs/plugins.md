@@ -30,6 +30,8 @@ plugin:
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
   # required: true           # optional: a guardrail plugin; if it fails to load, every tool call is
                              # denied (see chi.on's on_error: :fail_closed; chi 0.157.0 or newer)
+  # parts:                   # optional: more .rb files of the plugin, loaded in this order before file:
+  #   client.rb: sha256:…    # (see "A plugin in several files" below; needs the chi after 0.182.0)
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's rules check it too
                              # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
@@ -88,6 +90,38 @@ command that uses it (see [Per-session settings](#per-session-settings)).
 A config.yml `bundles:` name that no installed bundle has shows a warning when a session starts, in every UI (`config>`…);
 so does a key or a value's type the manifest's `settings:` rules out. It warns only: the session goes on, and a
 bundle with no `settings:` has its keys left alone. `chi bundle check --set` warns the same way (`settings`).
+
+### A plugin in several files
+
+A plugin too big for one file lists its other files under `plugin: parts:`, each with its sha256 (`chi bundle check
+--fix` fills them in):
+
+```yaml
+plugin:
+  file: plugin.rb
+  sha256: sha256:…
+  parts:
+    client.rb: sha256:…
+    http_client.rb: sha256:…
+```
+
+- A part is a `.rb` name in the bundle's top directory, not the plugin file's own nor another part's, in any case
+  (`Plugin.rb` beside `plugin.rb` is one file on a case-insensitive disk), listed once; at most 16. It is installed
+  beside the plugin file in `plugin/`, checked like it at every load, and listed by `chi bundle status`, `diff`,
+  `build` and `uninstall`.
+- chi evaluates the parts **in the listed order**, then the plugin file, all into the same fresh module, so they
+  share one namespace. Only the plugin file names the class chi builds; a part usually reopens it
+  (`class Plugin; class HttpClient …`).
+- Order matters only for what a class or module body uses as it is read: a superclass, an `include`d module, a
+  constant set from another file's. A method body resolves constants when it runs, after every file is loaded.
+- A part that reopens `class Plugin` before a plugin file that declares `class Plugin < Base` raises "superclass
+  mismatch": the part must name the same superclass (and so must load after the file that defines `Base`).
+- Not `require_relative`: a file pulled in that way skips the sha256 check, is cached by Ruby across reloads (a
+  reload would keep the old classes) and defines its constants outside the bundle's namespace.
+- A bundle that uses `parts:` should require a chi that reads them (`requires_chi`): an older chi would install the
+  plugin file alone. `chi bundle check` warns of a lower `requires_chi` from the chi release that brings parts on
+  (until then the key has no release to name). A record written that way is refused at load with `bundle NAME's
+  plugin parts aren't installed (reinstall the bundle)`.
 
 ## The API: `register(chi)`
 
@@ -1895,12 +1929,14 @@ When a session's worker exits (an idle exit, `/exit`, a crash, TERM), or a
 Plugins load when a session starts (`Engine.new`, in a worker or a
 `--non-interactive` one-shot), after the config hooks. The steps are:
 
-1. The file must match the sha256 recorded at install (not checked for a bundle installed with `--dev`).
+1. Every file of the plugin (its parts, then the plugin file) must match the sha256 recorded at install (not
+   checked for a bundle installed with `--dev`); the first that doesn't fails the whole plugin.
 2. chi must meet `requires_chi`. A bundle whose `requires_chi` this chi doesn't
    meet is refused at install, so this step is reached only by one installed
    with `--force` or by a chi that has since been downgraded.
-3. The file is `module_eval`'d into a new module in the bundle's namespace
-   (`Samagotchi::Bundles::<bundle>`, `Plugin::Loader.namespace_for`).
+3. The parts, in the manifest's order, then the file are `module_eval`'d into one new module in the bundle's
+   namespace (`Samagotchi::Bundles::<bundle>`, `Plugin::Loader.namespace_for`); a failure names the file and line
+   it happened in.
 4. The class is built, and `register(chi)` runs.
 
 What `register` adds takes effect only when it returns. A plugin that raises
@@ -1927,11 +1963,11 @@ A plugin is Ruby code that runs inside chi with your permissions.
 gem.
 
 - The sha256 is an integrity check, not proof of who wrote the file. A file
-  edited after install is not loaded until you reinstall the bundle: the plugin,
+  edited after install is not loaded until you reinstall the bundle: the plugin (any of its parts),
   a rule or a script that isn't recorded, is missing or changed is refused in one
   wording, checked in that order (`bundle NAME's plugin/plugin.rb differs from
   the installed one (reinstall the bundle)`), and `chi bundle status NAME` shows
-  the plugin `[unrecorded]`, `[missing]` or `[modified]`. A
+  the plugin `[unrecorded]`, `[missing]` or `[modified]` (a part on its own line under it). A
   `--dev` install skips that check for its own bundle: its files are the
   source directory's, and an edit loads at the next start.
 - Install only copies the file (`--dev` links it). The code first runs at the
@@ -1946,8 +1982,8 @@ gem.
 
 ## The bundle commands
 
-- `chi bundle install <dir>`: copies the plugin to
-  `<memories>/.bundles/<name>/plugin/`. It records the plugin's sha256 and
+- `chi bundle install <dir>`: copies the plugin (and its parts) to
+  `<memories>/.bundles/<name>/plugin/`. It records each file's sha256 and
   `requires_chi`, and refuses a plugin or script whose bytes disagree with its
   declared sha256 (`--force` installs it anyway, with the `Checksum mismatch`
   warning; an automatic `chi update` of a shipped bundle only warns). A bundle whose
@@ -1965,9 +2001,9 @@ gem.
   new one and says `Source changes: old → new`. A dev install is refused: it
   already follows its source.
 - `chi bundle status [<name>]`: shows `plugin=plugin.rb` in the list. For
-  one bundle it shows `Plugin: plugin.rb [ok|modified|missing]` and a
-  `requires_chi` failure.
-- `chi bundle diff <name> [plugin.rb]`: shows the installed base and the
+  one bundle it shows `Plugin: plugin.rb [ok|modified|missing]`, a line per part that isn't ok
+  (`part client.rb [modified]`) and a `requires_chi` failure.
+- `chi bundle diff <name> [plugin.rb | <part>]`: shows the installed base and the
   file on disk; for a memory file that stays behind, also the bundle's new text.
 - `chi bundle build --name <name>`: puts the installed plugin (and
   `requires_chi`, its `scripts/` and `context_providers:`) into the built
