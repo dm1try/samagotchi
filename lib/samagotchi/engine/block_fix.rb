@@ -47,9 +47,11 @@ module Samagotchi
 
         # The counter before the running flag: a turn sets the flag, then
         # counts (#note_block_fix_turn), so one starting between the reads
-        # still shows as a change.
+        # still shows as a change. The running turn ending with this answer
+        # (the page asks on its end event, before its hooks are done) is no
+        # turn since; any other running turn is.
         turns = @block_fix_turns
-        turns = nil if turn_running?
+        turns = nil if turn_running? && turn_context&.id.to_s != turn_id.to_s
         messages = session.messages
         answer = AnswerTail.find(messages, turn_id: turn_id)
         index = answer && messages.index { |message| message.equal?(answer) }

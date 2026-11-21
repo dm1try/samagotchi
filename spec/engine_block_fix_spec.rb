@@ -165,6 +165,16 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(answer[:display]).to include(good)
     end
 
+    it "patches the text when the fix was asked as the answer's own turn ended (its hooks still running)" do
+      allow(engine).to receive_messages(turn_running?: true, turn_context: instance_double(Samagotchi::TurnContext, id: "t1"))
+      fix
+      settle
+      allow(engine).to receive(:turn_running?).and_call_original
+      engine.apply_block_fixes
+      expect(answer[:content]).to include(good)
+      expect(answer).not_to have_key(:display)
+    end
+
     it "patches a display a hook set, with the text, when the block is in both" do
       session.messages = [session.messages.first, session.messages.last.merge(display: "Shown.\n\n```mermaid\n#{bad}```\n")]
       fix
