@@ -725,6 +725,24 @@
   "owner_verify.js": [
     "createOwnerVerify"
   ],
+  "pan_zoom.js": [
+    "BAR_ROOM",
+    "FIT_PAD",
+    "KEEP",
+    "MAX_FIT",
+    "MAX_SHOWN_PIXELS",
+    "MAX_SHOWN_SIDE",
+    "MAX_ZOOM",
+    "clampScale",
+    "clampView",
+    "fitScale",
+    "fitView",
+    "freeBox",
+    "maxScale",
+    "pinch",
+    "wheelStep",
+    "zoomAt"
+  ],
   "participant_bar.js": [
     "CLOSING_CODES",
     "RULES_TEXT",
@@ -827,6 +845,10 @@
     "peerNoteTemplate",
     "peerSummaryText",
     "verdictTemplate"
+  ],
+  "picture_viewer.js": [
+    "createPictureViewer",
+    "thumbPicture"
   ],
   "plain_line.js": [
     "plainLine"
@@ -1589,6 +1611,21 @@
     "serverIndex",
     "serverItem",
     "serverSig"
+  ],
+  "ws_markdown.js": [
+    "RENDER_MAX_BYTES",
+    "createRenderCache",
+    "markdownTemplate",
+    "peekMarkdownTemplate",
+    "peekText",
+    "renderable",
+    "renderableEvent",
+    "sourceText",
+    "splitFrontMatter"
+  ],
+  "ws_order.js": [
+    "heldOrder",
+    "recencyOrder"
   ],
   "ws_peek.js": [
     "PEEK_WIDTH",

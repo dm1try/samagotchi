@@ -8,36 +8,34 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.181.0] - 2026-11-21
+
 ### Added
 
+- In the web, an attached image opens in a full-screen viewer, fitted: pinch, Ctrl/Cmd + scroll or the bar's − and +
+  zoom (sharp at every size), a drag or scroll moves, a double tap goes close and back, ✕ or Esc closes. A tap on
+  the picture no longer closes it.
+- In the web, one tap on a drawn diagram (a mermaid block) opens it in that viewer, fitted to the screen, to zoom in
+  and move around; in the answer it stays fitted to the column (the tap no longer switches it to its natural size).
+  On a phone the diagram's rendered | source switch stays shown, faint.
+- In the web, the working set's reader and peek show a memory and a whole read of a `.md` file as rendered
+  markdown, with a `rendered | source` switch on the reader's cards (the same small pill on a phone); a memory's
+  peek starts at its body, without the front matter. A slice of a file stays numbered source.
 - chi reminds you once on stderr when no core safety bundles are installed, including in a one-shot.
 
 ### Changed
 
 - A background task's folder (`tmp/tasks/`) is added to the repository's `.git/info/exclude`, so `git status`
   doesn't list it.
-- In the web, the working set's reader and peek show a memory and a whole read of a `.md` file as rendered
-  markdown, with a `rendered | source` switch on the reader's cards; a slice of a file stays numbered source.
 - In the web, the working set's peek and reader say an item read in the step still running shows once that step's
   tools finish, rather than "Nothing of it in the conversation yet".
 - `chi bundle status NAME` reports a rule or script with no recorded sha256 as `[unrecorded]`, not `[modified]`.
 - The web's working-set list opens on what chi touched last: "Read in this session" first, newest first (a row's
   step tag is its last touch), the conversation's row, then "From the start", folded to one line with its
   `held twice` count. Rows don't move while the list is open; new ones come in on top.
-- In the web, an attached image opens in a full-screen viewer, fitted: pinch, Ctrl/Cmd + scroll or the bar's − and +
-  zoom (sharp at every size), a drag or scroll moves, a double tap goes close and back, ✕ or Esc closes. A tap on
-  the picture no longer closes it.
-- In the web, a tap on a drawn diagram (a mermaid block) opens it in that viewer, fitted to the screen, to zoom in
-  and move around; in the answer it stays fitted to the column (the tap no longer switches it to its natural size).
 
 ### Fixed
 
-- On a phone, one tap on a drawn diagram opens it in the viewer (it took two); the rendered | source switch stays
-  shown, faint.
-- On a phone, the working set reader's rendered | source switch is the same small pill as on desktop, beside "go to
-  the call", and a card keeps its details and its latest / "chi no longer has this" label.
-- A memory's peek in the working set starts at its rendered body, without the front matter (the reader still
-  shows it above the body).
 - The known-names guardrail no longer flags a project's class name in backticks
   (`CoffeeAssistant` for `coffee_assistant`) as a typo.
 - A streamed answer that stops mid-way (no text, reasoning or tool call for `stream_idle_timeout` seconds; default
@@ -50,6 +48,9 @@ and commands may change between minor versions. How releases are made:
 - The peer chip says when no inbox is attached, rather than blaming a remote.
 - Sending a peer the same part twice no longer marks the first, answered send "not sent" in the web: each send has
   its own id.
+
+Update with `chi update` (known-names 0.2.1 carries the backtick fix).
+
 
 ## [0.180.0] - 2026-11-20
 
@@ -6619,7 +6620,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.180.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.181.0...HEAD
+[0.181.0]: https://github.com/dm1try/samagotchi/compare/v0.180.0...v0.181.0
 [0.180.0]: https://github.com/dm1try/samagotchi/compare/v0.179.0...v0.180.0
 [0.179.0]: https://github.com/dm1try/samagotchi/compare/v0.178.0...v0.179.0
 [0.178.0]: https://github.com/dm1try/samagotchi/compare/v0.177.1...v0.178.0
