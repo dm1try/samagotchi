@@ -2522,8 +2522,14 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     // image drag), Esc closes it and gives the focus back.
     await expect(img).toHaveAccessibleName("e2e-draw diagram, its source under the Show the source button");
     const figure = output.locator("figure.block-drawn");
+    const toggle = figure.locator(".block-toggle");
+    await page.mouse.move(0, 0);
+    await expect(toggle).toHaveCSS("opacity", "0");
+    await figure.hover();
+    await expect(toggle).toHaveCSS("opacity", "1");
+    await page.mouse.move(0, 0);
     const zoom = figure.locator(".block-zoom");
-    await figure.locator(".block-toggle").focus();
+    await toggle.focus();
     await page.keyboard.press("Shift+Tab");
     await expect(zoom).toBeFocused();
     await expect(zoom).toHaveCSS("opacity", "1");
@@ -2556,6 +2562,32 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
   await page.reload();
   await turnEnded(page, 1);
   await check();
+});
+
+test("on a phone a diagram opens in the viewer on one tap and the source switch stays faint", async ({ page, script, browser }) => {
+  script("block_renderer");
+  await send(page, "Draw it");
+  await turnEnded(page, 1);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  try {
+    const phone = await context.newPage();
+    await phone.goto(page.url());
+    const figure = phone.locator("#history .bubble.output").last().locator("figure.block-drawn");
+    const img = figure.locator(".block-img");
+    const toggle = figure.locator(".block-toggle");
+    await expect(img).toHaveCount(1);
+    await expect(img).toBeVisible();
+    expect(await phone.evaluate(() => matchMedia("(hover:none)").matches)).toBe(true);
+    await expect(toggle).toHaveCSS("opacity", "0.5");
+    await img.scrollIntoViewIfNeeded();
+    const screenshot = path.resolve("tmp/shots/diagram-touch-390.png");
+    fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+    await phone.screenshot({ path: screenshot });
+    await img.tap();
+    await expect(phone.getByRole("dialog", { name: "Picture viewer" })).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
 
 // A long streamed answer: its block lands in the stage first and the hand-off

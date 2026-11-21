@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- On a phone, one tap on a drawn diagram opens it in the viewer (it took two); the rendered | source switch stays
+  shown, faint.
 - The known-names guardrail no longer flags a project's class name in backticks
   (`CoffeeAssistant` for `coffee_assistant`) as a typo.
 - A streamed answer that stops mid-way (no text, reasoning or tool call for `stream_idle_timeout` seconds; default

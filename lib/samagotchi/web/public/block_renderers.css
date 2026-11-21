@@ -16,8 +16,9 @@
 .block-drawn.source>.block-zoom{display:none}
 .block-zoom:not(:focus-visible){pointer-events:none}
 .block-toggle svg,.block-zoom svg{display:block}
-.block-drawn:hover>.block-toggle,.code-wrap:hover>.block-drawn>.block-toggle,.block-toggle:focus-visible,.block-zoom:focus-visible,.block-drawn.source>.block-toggle{opacity:1}
-.block-toggle:hover:not(:disabled),.block-zoom:hover:not(:disabled){filter:none}@media(hover:hover){.block-toggle:hover:not(:disabled),.block-zoom:hover:not(:disabled){color:var(--text-bright)}}
+.block-toggle:focus-visible,.block-zoom:focus-visible,.block-drawn.source>.block-toggle{opacity:1}
+@media(hover:hover){.block-drawn:hover>.block-toggle,.code-wrap:hover>.block-drawn>.block-toggle{opacity:1}.block-toggle:hover:not(:disabled),.block-zoom:hover:not(:disabled){filter:none;color:var(--text-bright)}}
+@media(hover:none){.block-drawn>.block-toggle{opacity:.5}.block-drawn>.block-toggle:active,.block-drawn>.block-toggle:focus-visible{opacity:1}}
 .block-drawn.source:not(:last-child){margin:0}
 /* Its words are the attribute's, so a bubble's text stays the answer's (block_host.js fail). */
 .block-note{margin:4px 0 12px;font-size:12px;color:var(--text-3);white-space:normal}
