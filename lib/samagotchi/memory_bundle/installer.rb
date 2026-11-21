@@ -157,7 +157,17 @@ module Samagotchi
         end
       end
 
-      def summary
+      # Every file the run read was already the bundle's, and nothing else
+      # was written or said: the bundle is current (`chi bundle upgrade`
+      # says so on its version line).
+      def current?
+        !@results.empty? && @results.values.all? { |result| result.word == :up_to_date } &&
+          @conflicts.empty? && !@source_change && !@reinstall
+      end
+
+      # @param current [Boolean] leave out the "Up to date" line and the
+      #   "No files to install." fallback (the caller said it is current)
+      def summary(current: false)
         lines = []
         lines << "Source changes: #{@source_change.join(" → ")}" if @source_change
         installed = with_word(:installed)
@@ -190,14 +200,16 @@ module Samagotchi
         lines << "Removed (#{AssetInstaller::RETIRED}): #{retired.join(", ")}" unless retired.empty?
         lines << "Would remove (#{AssetInstaller::RETIRED}): #{would_retire.join(", ")}" unless would_retire.empty?
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
-        lines << "Up to date: #{up_to_date.join(", ")}" unless up_to_date.empty?
+        lines << "Up to date: #{up_to_date.join(", ")}" unless up_to_date.empty? || current
         lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
         lines << trash_copy_line if trash_copy_line
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
         lines << reinstall_line if @reinstall
 
-        lines.any? ? lines.join("\n") : "No files to install."
+        return lines.join("\n") if lines.any? || current
+
+        "No files to install."
       end
 
       # The one words for a record whose source can't be read again (relative,

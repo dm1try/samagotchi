@@ -229,6 +229,7 @@ RSpec.describe "chi bundle (CLI)" do
 
   context "with a fresh sandbox per example" do
     # The core profile's version: a release raises it (release:bump).
+    def btw_version = YAML.safe_load_file(File.expand_path("../lib/samagotchi/bundles/btw/manifest.yml", __dir__))["version"]
     def core_version = YAML.safe_load_file(File.expand_path("../lib/samagotchi/bundles/core/manifest.yml", __dir__))["version"]
 
     before { @root = self.class.sandbox }
@@ -267,9 +268,9 @@ RSpec.describe "chi bundle (CLI)" do
 
     it "installs a memory bundle and a plugin bundle" do
       expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle")))
-        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
+        .to eq(["sample-memory-bundle 1.0.0\nInstalled: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
       expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_plugin_bundle")))
-        .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
+        .to eq(["sample-plugin 1.0.0\nInstalled: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
     end
 
     it "names the plugin removed by an uninstall with no memories or hooks" do
@@ -301,15 +302,15 @@ RSpec.describe "chi bundle (CLI)" do
       hint = restart_hint("aaaa1111", "bbbb2222")
       plugin_line = "Plugin: plugin.rb (loads at the next chi start)\n"
 
-      expect(chi("install", v1)).to eq(["Installed: plugin.rb\n#{plugin_line}#{provenance_line("live")}", "", 0])
+      expect(chi("install", v1)).to eq(["live 1.0.0\nInstalled: plugin.rb\n#{plugin_line}#{provenance_line("live")}", "", 0])
       # Nothing changed: no line.
       expect(chi("upgrade", "live"))
-        .to eq(["Upgrading live from #{v1}\nUp to date: plugin.rb\n#{plugin_line}#{provenance_line("live")}", "", 0])
+        .to eq(["Upgrading live from #{v1}\nlive 1.0.0 (already current)\n#{plugin_line}#{provenance_line("live")}", "", 0])
       # A dry run writes nothing: no line either.
       expect(chi("upgrade", v2, "--dry-run"))
-        .to eq(["Source changes: #{v1} → #{v2}\nWould update: plugin.rb\n(dry-run: no changes written)\n", "", 0])
+        .to eq(["live 1.0.0 → 2.0.0\nSource changes: #{v1} → #{v2}\nWould update: plugin.rb\n(dry-run: no changes written)\n", "", 0])
       expect(chi("upgrade", v2))
-        .to eq(["Source changes: #{v1} → #{v2}\nUpdated: plugin.rb\n#{plugin_line}#{provenance_line("live")}#{hint}", "", 0])
+        .to eq(["live 1.0.0 → 2.0.0\nSource changes: #{v1} → #{v2}\nUpdated: plugin.rb\n#{plugin_line}#{provenance_line("live")}#{hint}", "", 0])
       expect(chi("uninstall", "live"))
         .to eq(["Uninstalled bundle 'live'\nRemoved: plugin/plugin.rb\n#{hint}", "", 0])
     end
@@ -387,14 +388,14 @@ RSpec.describe "chi bundle (CLI)" do
       live_workers
       src = self.class.make_plugin_bundle(File.join(@root, "q"), name: "qplug", version: "1.0.0")
       expect(chi("install", src))
-        .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
+        .to eq(["qplug 1.0.0\nInstalled: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
       expect(chi("upgrade", src))
-        .to eq(["Up to date: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
+        .to eq(["qplug 1.0.0 (already current)\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("qplug")}", "", 0])
       expect(chi("uninstall", "qplug")).to eq(["Uninstalled bundle 'qplug'\nRemoved: plugin/plugin.rb\n", "", 0])
 
       live_workers("cccc3333")
       mem = self.class.make_bundle(File.join(@root, "mem"), name: "memonly", version: "1.0.0", content: "one\n")
-      expect(chi("install", mem)).to eq(["Installed: a.md\n#{provenance_line("memonly")}", "", 0])
+      expect(chi("install", mem)).to eq(["memonly 1.0.0\nInstalled: a.md\n#{provenance_line("memonly")}", "", 0])
       out, err, code = chi("uninstall", "memonly")
       expect([err, code]).to eq(["", 0])
       expect(out).to start_with("Uninstalled bundle 'memonly'\n")
@@ -427,15 +428,15 @@ RSpec.describe "chi bundle (CLI)" do
                   "now match it and its record was rewritten"
 
       expect(chi("install", src))
-        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
+        .to eq(["sample-memory-bundle 1.0.0\nInstalled: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
 
       expect(chi("install", src))
-        .to eq(["Up to date: identity.md\n#{rewritten}\n#{provenance_line("sample-memory-bundle")}", "", 0])
+        .to eq(["sample-memory-bundle 1.0.0\nUp to date: identity.md\n#{rewritten}\n#{provenance_line("sample-memory-bundle")}", "", 0])
 
       File.write(File.join(memories, "identity.md"), "# Mine\n")
       out, err, code = chi("install", src)
       expect([err, code]).to eq(["", 0])
-      expect(out).to eq(["Skipped: identity.md\n" \
+      expect(out).to eq(["sample-memory-bundle 1.0.0\nSkipped: identity.md\n" \
                          "Skipped identity.md (already exists; #{Samagotchi::InstalledBundles::FileStanding::FORCE_TAKES})\n" \
                          "#{rewritten}; your own copies of its memories were kept " \
                          "(chi bundle upgrade sample-memory-bundle merges the bundle's changes into them)\n" \
@@ -448,12 +449,12 @@ RSpec.describe "chi bundle (CLI)" do
       v2 = self.class.make_bundle(File.join(@root, "b2"), name: "demo", version: "2.0.0", content: "two\n")
 
       expect(chi("upgrade", v1))
-        .to eq(["Installed: a.md\n#{provenance_line("demo")}", "Bundle 'demo' not installed — falling back to install\n", 0])
+        .to eq(["demo 1.0.0\nInstalled: a.md\n#{provenance_line("demo")}", "Bundle 'demo' not installed — falling back to install\n", 0])
       # v2 is another dir: the upgrade switches the bundle's source, and says so.
-      change = "Source changes: #{v1} → #{v2}\n"
+      change = "demo 1.0.0 → 2.0.0\nSource changes: #{v1} → #{v2}\n"
       expect(chi("upgrade", v2, "--dry-run")).to eq(["#{change}Fast-forward: a.md\n(dry-run: no changes written)\n", "", 0])
       expect(chi("upgrade", v2)).to eq(["#{change}Updated: a.md\n#{provenance_line("demo")}", "", 0])
-      expect(chi("upgrade", v2)).to eq(["Up to date: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(chi("upgrade", v2)).to eq(["demo 2.0.0 (already current)\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
@@ -462,16 +463,28 @@ RSpec.describe "chi bundle (CLI)" do
     # first line says where it comes from, and nothing "Source changes".
     it "upgrades an installed bundle by its name, from the source its record keeps" do
       src = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
-      expect(chi("install", src)).to eq(["Installed: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(chi("install", src)).to eq(["demo 1.0.0\nInstalled: a.md\n#{provenance_line("demo")}", "", 0])
       # The author's next version, in the same folder.
       self.class.make_bundle(src, name: "demo", version: "2.0.0", content: "two\n")
 
       expect(chi("upgrade", "demo"))
-        .to eq(["Upgrading demo from #{src}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
+        .to eq(["Upgrading demo from #{src}\ndemo 1.0.0 → 2.0.0\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
       expect(chi("upgrade", "demo", "--dry-run"))
-        .to eq(["Upgrading demo from #{src}\nUp to date: a.md\n(dry-run: no changes written)\n", "", 0])
+        .to eq(["Upgrading demo from #{src}\ndemo 2.0.0 (already current)\n(dry-run: no changes written)\n", "", 0])
       expect(JSON.parse(File.read(File.join(memories, ".bundles", "demo", "manifest.json")))["version"]).to eq("2.0.0")
+    end
+
+    # The version line: unchanged but files rewritten names the version alone;
+    # "(already current)" only when nothing was written either.
+    it "names the version alone when an upgrade rewrote files under the same version" do
+      src = self.class.make_bundle(File.join(@root, "same"), name: "demo", version: "1.0.0", content: "one\n")
+      chi("install", src)
+      self.class.make_bundle(src, name: "demo", version: "1.0.0", content: "two\n")
+
+      expect(chi("upgrade", src, "--dry-run")).to eq(["demo 1.0.0\nFast-forward: a.md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", src)).to eq(["demo 1.0.0\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(chi("upgrade", src)).to eq(["demo 1.0.0 (already current)\n#{provenance_line("demo")}", "", 0])
     end
 
     it "upgrades a bundle installed from a git URL by its name, cloning again with the #ref it recorded" do
@@ -481,13 +494,13 @@ RSpec.describe "chi bundle (CLI)" do
              git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v1")).to be(true)
       branch = `git -C #{repo} rev-parse --abbrev-ref HEAD`.strip
       url = "file://#{repo}##{branch}"
-      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("git-demo")}", "", 0])
+      expect(chi("install", url)).to eq(["git-demo 1.0.0\nInstalled: a.md\n#{provenance_line("git-demo")}", "", 0])
 
       self.class.make_bundle(repo, name: "git-demo", version: "2.0.0", content: "two\n")
       expect(git.call("add", ".") && git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v2")).to be(true)
 
       expect(chi("upgrade", "git-demo"))
-        .to eq(["Upgrading git-demo from #{url}\nUpdated: a.md\n#{provenance_line("git-demo")}", "", 0])
+        .to eq(["Upgrading git-demo from #{url}\ngit-demo 1.0.0 → 2.0.0\nUpdated: a.md\n#{provenance_line("git-demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
@@ -495,13 +508,13 @@ RSpec.describe "chi bundle (CLI)" do
       dir = self.class.make_bundle(File.join(@root, "zipped"), name: "zipped", version: "1.0.0", content: "one\n")
       zip = File.join(@root, "zipped.zip")
       expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
-      expect(chi("install", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "", 0])
+      expect(chi("install", zip)).to eq(["zipped 1.0.0\nInstalled: a.md\n#{provenance_line("zipped")}", "", 0])
 
       self.class.make_bundle(dir, name: "zipped", version: "2.0.0", content: "two\n")
       expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
 
       expect(chi("upgrade", "zipped"))
-        .to eq(["Upgrading zipped from #{zip}\nUpdated: a.md\n#{provenance_line("zipped")}", "", 0])
+        .to eq(["Upgrading zipped from #{zip}\nzipped 1.0.0 → 2.0.0\nUpdated: a.md\n#{provenance_line("zipped")}", "", 0])
     end
 
     # The name is taken from the record only when it isn't a source: a
@@ -513,16 +526,16 @@ RSpec.describe "chi bundle (CLI)" do
 
       # /var is a symlink, so the cwd's own path comes back realpathed.
       expect(chi("upgrade", "demo"))
-        .to eq(["Source changes: #{mine} → #{File.realpath(File.join(@root, "cwd", "demo"))}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
+        .to eq(["demo 1.0.0 → 3.0.0\nSource changes: #{mine} → #{File.realpath(File.join(@root, "cwd", "demo"))}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("here\n")
     end
 
     it "upgrades a shipped bundle by name from chi's own copy, not from its record" do
-      expect(chi("install", "btw")).to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}", "", 0])
+      expect(chi("install", "btw")).to eq(["btw #{btw_version}\nInstalled: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}", "", 0])
 
       out, err, code = chi("upgrade", "btw")
       expect([err, code]).to eq(["", 0])
-      expect(out).to eq("Up to date: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}")
+      expect(out).to eq("btw #{btw_version} (already current)\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}")
       record = JSON.parse(File.read(File.join(memories, ".bundles", "btw", "manifest.json")))
       expect(record["source"]).to eq(File.expand_path("../lib/samagotchi/bundles/btw", __dir__))
     end
@@ -614,11 +627,11 @@ RSpec.describe "chi bundle (CLI)" do
       url = "file://#{repo}"
       copy = self.class.make_bundle(File.join(@root, "copy"), name: "other-name", version: "2.0.0", content: "two\n")
 
-      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("other-name")}", "", 0])
+      expect(chi("install", url)).to eq(["other-name 1.0.0\nInstalled: a.md\n#{provenance_line("other-name")}", "", 0])
       record = JSON.parse(File.read(File.join(memories, ".bundles", "other-name", "manifest.json")))
       expect(record.values_at("source", "source_commit")).to eq([url, `git -C #{repo} rev-parse HEAD`.strip])
-      expect(chi("upgrade", url, "--dry-run")).to eq(["Up to date: a.md\n(dry-run: no changes written)\n", "", 0])
-      expect(chi("upgrade", copy)).to eq(["Source changes: #{url} → #{copy}\nUpdated: a.md\n#{provenance_line("other-name")}", "", 0])
+      expect(chi("upgrade", url, "--dry-run")).to eq(["other-name 1.0.0 (already current)\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", copy)).to eq(["other-name 1.0.0 → 2.0.0\nSource changes: #{url} → #{copy}\nUpdated: a.md\n#{provenance_line("other-name")}", "", 0])
       expect(Dir.children(File.join(memories, ".bundles"))).to eq(["other-name"])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
@@ -646,7 +659,7 @@ RSpec.describe "chi bundle (CLI)" do
       expect(Dir.children(bundles)).to eq(["chi-foo"])
 
       chi("uninstall", "chi-foo")
-      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("foo")}", "", 0])
+      expect(chi("install", url)).to eq(["foo 1.0.0\nInstalled: a.md\n#{provenance_line("foo")}", "", 0])
     end
 
     # BundleCommand reads the name from the extract the Installer then
@@ -657,9 +670,9 @@ RSpec.describe "chi bundle (CLI)" do
       expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
       allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_call_original
 
-      expect(chi("upgrade", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "Bundle 'zipped' not installed — falling back to install\n", 0])
+      expect(chi("upgrade", zip)).to eq(["zipped 1.0.0\nInstalled: a.md\n#{provenance_line("zipped")}", "Bundle 'zipped' not installed — falling back to install\n", 0])
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).once
-      expect(chi("upgrade", zip)).to eq(["Up to date: a.md\n#{provenance_line("zipped")}", "", 0])
+      expect(chi("upgrade", zip)).to eq(["zipped 1.0.0 (already current)\n#{provenance_line("zipped")}", "", 0])
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).twice
       expect(chi("install", zip)[2]).to eq(0)
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).thrice
@@ -689,7 +702,7 @@ RSpec.describe "chi bundle (CLI)" do
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
 
       expect(chi("upgrade", v1, "--dry-run"))
-        .to eq(["Would install: a.md\n(dry-run: no changes written)\n", "Bundle 'demo' not installed — falling back to install\n", 0])
+        .to eq(["demo 1.0.0\nWould install: a.md\n(dry-run: no changes written)\n", "Bundle 'demo' not installed — falling back to install\n", 0])
       expect(Dir.glob(File.join(memories, "**", "*"), File::FNM_DOTMATCH).select { |f| File.file?(f) }).to eq([])
     end
 
@@ -1143,7 +1156,7 @@ Removed: hooks/guardrails.rb\n\z})
     after { FileUtils.rm_rf(@root) }
 
     let(:conflict_head) do
-      "a.md stays behind 3.0.0: missed 1 place (--force takes the bundle's version, your file copied to the trash first)\n" \
+      "demo 1.0.0 → 3.0.0\na.md stays behind 3.0.0: missed 1 place (--force takes the bundle's version, your file copied to the trash first)\n" \
         "\n1 file stays behind: a.md\n"
     end
 
@@ -1276,7 +1289,7 @@ Removed: hooks/guardrails.rb\n\z})
 
       trash = Regexp.escape(File.join(memories, ".bundles", ".trash"))
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(%r{\AInstalled: a\.md\nCopied to the trash first: a\.md \(#{trash}/demo-\d{8}-\d{6}\)\n#{Regexp.escape(provenance_line("demo"))}\z})
+      expect(out).to match(%r{\Ademo 1\.0\.0 → 3\.0\.0\nInstalled: a\.md\nCopied to the trash first: a\.md \(#{trash}/demo-\d{8}-\d{6}\)\n#{Regexp.escape(provenance_line("demo"))}\z})
       expect(File.read(File.join(memories, "a.md"))).to eq("three\n")
       expect(chi("trash")[0]).to include("demo-")
       expect(File.read(Dir.glob(File.join(memories, ".bundles", ".trash", "demo-*", "a.md")).first)).to eq("edited\n")
@@ -1660,7 +1673,7 @@ Removed: hooks/guardrails.rb\n\z})
 
     it "installs into XDG_CONFIG_HOME, status reads it back, and a failure exits 1" do
       expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle")))
-        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
+        .to eq(["sample-memory-bundle 1.0.0\nInstalled: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
       expect(spawn("status")).to eq(["  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n", "", 0])
       expect(spawn("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end

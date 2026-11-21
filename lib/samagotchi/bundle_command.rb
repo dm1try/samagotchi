@@ -214,7 +214,7 @@ module Samagotchi
       return 1 if installed_under_another_name?(expanded_source, bundle_name, prepared, "Install")
 
       installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dev: dev)
-      run_installer(installer, failed: "Install") do |manifest|
+      run_installer(installer, bundle_name, failed: "Install") do |manifest|
         print_plugin(manifest)
         print_provenance(bundle_name, manifest)
       end
@@ -253,7 +253,7 @@ module Samagotchi
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
         # (no Plugin line here)
         installer = installer_for(expanded_source, bundle_name, prepared: prepared, scope: scope, force: force, dry_run: dry_run)
-        return run_installer(installer, failed: "Install") do |manifest|
+        return run_installer(installer, bundle_name, failed: "Install") do |manifest|
           next dry_run_done if dry_run
 
           print_provenance(bundle_name, manifest)
@@ -264,7 +264,7 @@ module Samagotchi
       # reads which plugin the run touched.
       before = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).record
       manifest = nil
-      status = run_installer(installer, failed: "Upgrade") do |run_manifest|
+      status = run_installer(installer, bundle_name, failed: "Upgrade") do |run_manifest|
         manifest = run_manifest
         print_plugin(manifest, plugin: !dry_run)
         next dry_run_done if dry_run
@@ -327,21 +327,43 @@ module Samagotchi
                                               refuse_mismatch: true, **)
     end
 
-    # Runs +installer+, prints its summary, then yields the manifest.
-    # Ensures the extracted source dir is cleaned up even if an exception
-    # occurs between installer.run and the block (e.g. summary,
+    # Runs +installer+, prints the version line and its summary, then yields
+    # the manifest. Ensures the extracted source dir is cleaned up even if an
+    # exception occurs between installer.run and the block (e.g. summary,
     # print_plugin). The block (upgrade_conflicts) still sees
     # the files because cleanup happens after the block returns or raises.
     # @return [Integer] the block's exit status, or 1 after "<failed> failed: …"
-    def run_installer(installer, failed:)
+    def run_installer(installer, bundle_name, failed:)
+      # The version installed before, read before the run rewrites the record.
+      old = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).record&.version.to_s
       _nd, manifest = installer.run
-      @stdout.puts installer.summary
+      version = manifest&.version.to_s
+      # Current: the same version, and the run wrote nothing.
+      current = !version.empty? && old == version && installer.current?
+      line = version_line(bundle_name, old, version, current: current)
+      @stdout.puts line if line
+      summary = installer.summary(current: current)
+      @stdout.puts summary unless summary.empty?
       yield manifest
     rescue Samagotchi::MemoryBundle::Installer::InstallError => e
       @stderr.puts "#{failed} failed: #{e.message}"
       1
     ensure
       installer.cleanup_source!
+    end
+
+    # The bundle and its version, first in an install's or upgrade's output
+    # (a dry run's too: what would be): "mcp 0.8.0 → 0.9.0" when it changes,
+    # "mcp 0.9.0" when it doesn't (or for a new install), "mcp 0.9.0 (already
+    # current)" when the run wrote nothing either (the summary leaves out its
+    # "Up to date" line then). Nil without a manifest version.
+    # @param old [String] the installed record's version, "" for none
+    # @return [String, nil]
+    def version_line(bundle_name, old, version, current:)
+      return if version.empty?
+      return "#{bundle_name} #{old} → #{version}" unless old.empty? || old == version
+
+      "#{bundle_name} #{version}#{" (already current)" if current}"
     end
 
     def print_plugin(manifest, plugin: true)
