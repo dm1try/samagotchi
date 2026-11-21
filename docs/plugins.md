@@ -660,7 +660,9 @@ end
 - **`quiet: true`**: nothing is shown unless it fails (a background
   refresh).
 - **`ctx.cancelled?`** in the block says chi is shutting down: the block
-  should stop then. It is the task's own, not the running turn's.
+  should stop then. It is the task's own, not the running turn's, on the
+  task's thread: a thread the block starts reads the turn's, so hand it
+  `ctx.cancel_controller` (read in the block) instead.
 - `ctx.notify` and `ctx.card` from the block show between turns, even while
   a turn runs.
 - Each task runs once per session start. A `-p … --non-interactive` run
@@ -909,6 +911,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options or effects). `effects:` tags the options a parent agent's answer is held to (label => `:spend`, `:permit`, `:permit_wide` or `:deny`; untagged = `:answer`): tag every option that spends or permits, and never let text alone or a dismissal do either ([hooks.md](hooks.md#what-a-hook-can-do-the-runtime)). It needs a chi newer than 0.85.0 |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
+| `ctx.cancel_controller` | the `Samagotchi::CancellationController` `ctx.cancelled?` reads **on this thread**: inside an init task the task's own, else the running turn's; nil when neither. Read it on the thread that does the work, then hand it on: as `ctx.http`'s `cancel:` (it is the turn's inside a service's start block too, where `ctx.http`'s default is none) or to a thread of yours that polls it. A thread of yours that calls `ctx.cancelled?` itself gets its own thread's answer (the turn's), never the init task's. Experimental until 1.0; needs chi 0.183.0 or newer (`ctx.respond_to?(:cancel_controller)`) |
 | `ctx.turn_running?` | whether a turn runs now. An `:after_turn` hook runs inside its turn, so a card a thread shows before the turn is over belongs to that turn's block, which the web collapses: wait for this to go false. Needs chi newer than 0.148.0 |
 | `ctx.steer(text)` | put text into the running turn: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. The model reads it with a header naming your bundle (`[Steer from the my-bundle plugin, mid-task. …]`); the session keeps the raw text. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook (false from `:after_turn`), your own |
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
@@ -1187,13 +1190,14 @@ shape to copy for a plugin that calls a service, tested on `bundle.http` as in
 `spec/samagotchi/plugin/http_echo_bundle_spec.rb`.
 
 One way to call an HTTP service, with timeouts, errors, logging and Stop handled the same for every bundle.
-`Net::HTTP` stays available for what this doesn't do (streaming, multipart, redirects, connection reuse).
+`Net::HTTP` stays available for what this doesn't do (multipart, redirects, connection reuse).
 
 | | |
 |---|---|
 | `ctx.http.get(url, headers: {}, timeout: 10)` | GET |
 | `ctx.http.post_json(url, body, headers: {}, timeout: 10)` | POST `body` encoded as JSON, with `Content-Type` and `Accept: application/json` (unless `headers` names them) |
 | `ctx.http.request(method, url, body: nil, headers: {}, timeout: 10)` | GET, POST, PUT, PATCH, DELETE or HEAD; `body` is a String sent as is (set your own `Content-Type`) |
+| `ctx.http.stream(method, url, body: nil, headers: {}, timeout: 10) { \|res\| … }` | as `request`, the answer streamed to the block (below); returns the block's value |
 
 Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which replaces the default (below).
 
@@ -1224,6 +1228,32 @@ Every call also takes `cancel:`, a `Samagotchi::CancellationController`, which r
 - **The log.** Each call writes one `http` line to the debug log: INFO (ERROR when it fails) with `bundle=`,
   `purpose=plugin`, the method, the URL **without its query**, the status and the time. Never headers or bodies.
   A plugin that polls a dead service therefore logs an ERROR per poll.
+
+**Streaming: `ctx.http.stream`** (chi 0.183.0 or newer: guard it with `ctx.http.respond_to?(:stream)`). The block
+gets a `Samagotchi::Plugin::Http::Stream` as soon as the headers are in:
+
+```ruby
+ctx.http.stream("POST", url, body: JSON.generate(question), headers: { "Accept" => "text/event-stream" }) do |res|
+  next "the service answered #{res.status}" unless res.ok?   # status and headers before any body
+
+  res.each_event do |event|                  # event.type ("message" by default), event.data, event.id
+    break event.data if event.type == "done" # leaving the block closes the connection
+  end
+end
+```
+
+- `res.status`, `res.headers` (as `Response`'s), `res.ok?`; then the body, read **once**, by one of
+  `res.each_event { |event| … }` (Server-Sent Events), `res.each_chunk { |bytes| … }` (the raw pieces as they arrive),
+  `res.body` (the rest, read to the end) or `res.json` (`res.body` parsed). After one has read it, another read gives
+  nothing (`body` is `""`).
+- **Leaving the block closes the connection**, however it is left: its end, `break`, `return`, a raise (which goes on
+  to you as it is). That is how you stop early or keep a total deadline of your own: `timeout` is per read here too,
+  so a stream that sends something every few seconds runs as long as the server likes.
+- Errors as for `request`: before the block, and **from inside** a read once it started (`HttpError`, `HttpCancelled`
+  on a Stop); a 4xx or 5xx is handed to the block. No retries. The log line is one `http` `stream` line, whatever way
+  the block was left.
+- The SSE reader: fields `event`, `data`, `id`; several `data:` lines join with `"\n"`; lines starting with `:` are
+  comments; an event is yielded at its blank line (one cut off by the end of the body is dropped, one without `data` too).
 
 `ctx.http` is experimental until 1.0, like the test kit.
 
@@ -1456,7 +1486,9 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::Plugin::Service::Stopped`, `Samagotchi::Plugin::Sessions::Error`
    and `Samagotchi::Plugin::AttachedContext::Error`. `ctx.http` and its
    `Samagotchi::Plugin::HttpError` (with the subclass `HttpCancelled`) and
-   `Samagotchi::Plugin::Http::Response` are **experimental until 1.0**, like the test kit.
+   `Samagotchi::Plugin::Http::Response`, `Http::Stream` (what `ctx.http.stream` yields) and
+   `Http::SseReader` (its SSE reader, `SseReader.new.feed(bytes) { |event| … }`, for an `each_chunk` loop that checks
+   a deadline of its own) are **experimental until 1.0**, like the test kit.
 2. `Samagotchi::Plugin::Peer` as a base class. A subclass defines `post`,
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
    `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
@@ -1592,7 +1624,10 @@ bundle.shutdown
   answered raises `Samagotchi::Testing::UnstubbedRequest` (not an `HttpError`, but a plugin may rescue it anyway) and
   **fails the test at teardown** (RSpec and Minitest adapters: after the cleanup, and only a test that passed), so a
   spec can't reach the network. With plain `Bundle.load` there is no teardown: check `bundle.http.unmatched`.
-  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled`.
+  `bundle.set(cancelled: true)` makes a call without `cancel:` raise `HttpCancelled` (and `ctx.cancel_controller` a cancelled controller). For `ctx.http.stream`,
+  `events:` (an Array of `{ data:, event: nil, id: nil }` or plain Strings for `data`, served as `text/event-stream`)
+  and `chunks:` (Strings, the body in those pieces) answer it; a `body:` / `json:` stub answers a stream as one chunk,
+  and an `events:` stub answers a plain request with the events' SSE text. A block may return them too.
 - **`ctx.cost`** is zero and known unless the test sets it: `bundle.set(cost: 2.5)` (reported USD), a Hash of the
   parts (`reported:`, `estimated:`, `side:`, `known:`; `total` is reported + estimated) or a callable giving either,
   called at each read (a counting lambda shows whether the bundle read it).

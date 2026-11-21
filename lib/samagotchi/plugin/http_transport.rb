@@ -51,30 +51,72 @@ module Samagotchi
           response = client.fetch(uri, request, retries: false, check_status: false, write_timeout: timeout, cancel_controller: cancel,
                                                 log_fields: { purpose: "plugin", bundle: @bundle })
           build_response(response)
-        rescue LLM::RequestCancelled
-          raise HttpCancelled, "#{method} #{where(uri)}: cancelled"
-        rescue HttpError
-          raise
-        rescue *WIRE_ERRORS => e
-          raise HttpError, "#{method} #{where(uri)}: #{reason(e)}"
         rescue StandardError => e
-          Log.exception(:plugins, "http_transport_failed", e, bundle: @bundle)
-          raise
+          raise mapped(e, method, uri)
+        end
+
+        # One streamed attempt (Plugin::Http#stream): the block gets a Stream
+        # whose reads map a wire error (or a cancel's closed socket) as
+        # #call does. Only chi's own code between the request and the block
+        # is under the catch-all: what the block raises goes on as it is.
+        # @return [Object] the block's value
+        # @raise [HttpError, HttpCancelled]
+        def stream(method:, uri:, headers:, body:, timeout:, cancel:)
+          request = Net::HTTP.const_get(method.capitalize).new(uri, headers)
+          request.body = body if body
+          client = LLM::HTTP.new(label: "plugin:#{@bundle}", open_timeout: timeout, read_timeout: timeout,
+                                 retry_policy: LLM::HTTP::RetryPolicy.none)
+          raised = nil
+          client.open_stream(uri, request, write_timeout: timeout, cancel_controller: cancel,
+                                           log_fields: { purpose: "plugin", bundle: @bundle }) do |response, marks|
+            stream = Stream.new(status: response.code.to_i, headers: headers_of(response),
+                                reader: ->(&on_chunk) { response.read_body(&on_chunk) },
+                                failure: ->(error) { read_failure(error, marks, cancel, method, uri) })
+            yield stream
+          rescue StandardError => e
+            raised = e
+            raise
+          end
+        rescue StandardError => e
+          raise if e.equal?(raised)
+
+          raise mapped(e, method, uri)
         end
 
         private
 
-        def build_response(response)
-          headers = {}
-          response.each_header { |name, value| headers[name.downcase] = text(value) }
-          Response.new(status: response.code.to_i, headers: headers.freeze, body: text(response.body))
+        # A request's error as the plugin sees it: a cancel, a wire error
+        # (HttpError), or chi's own bug, logged and raised as it is.
+        def mapped(error, method, uri)
+          case error
+          when LLM::RequestCancelled then HttpCancelled.new("#{method} #{where(uri)}: cancelled")
+          when HttpError then error
+          when *WIRE_ERRORS then HttpError.new("#{method} #{where(uri)}: #{reason(error)}")
+          else
+            Log.exception(:plugins, "http_transport_failed", error, bundle: @bundle)
+            error
+          end
         end
 
-        # The bytes as UTF-8 when they are, else as they came.
-        def text(body)
-          text = body.to_s.dup
-          utf8 = text.dup.force_encoding(Encoding::UTF_8)
-          utf8.valid_encoding? ? utf8 : text.force_encoding(Encoding::BINARY)
+        # A Stream read that failed: the cancel's closed socket, else a wire
+        # error, marked for the log line (LLM::HTTP::StreamMarks).
+        def read_failure(error, marks, cancel, method, uri)
+          if cancel&.cancelled?
+            marks.cancelled(cancel.reason)
+            return HttpCancelled.new("#{method} #{where(uri)}: cancelled")
+          end
+          marks.failed(error)
+          mapped(error, method, uri)
+        end
+
+        def build_response(response)
+          Response.new(status: response.code.to_i, headers: headers_of(response), body: Http.text(response.body))
+        end
+
+        def headers_of(response)
+          headers = {}
+          response.each_header { |name, value| headers[name.downcase] = Http.text(value) }
+          headers.freeze
         end
 
         def where(uri) = "#{uri.host}:#{uri.port}"

@@ -151,6 +151,7 @@ module Samagotchi
           cancelled: lambda {
             (task = current_init_task) ? task.cancelled? : active_cancel_controller&.cancelled?
           },
+          current_cancel: -> { (task = current_init_task) ? task.cancel : active_cancel_controller },
           card: ->(**card) { show_card(**card) },
           steer: ->(text, label) { steer(text, source: hook_source(label)) },
           stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },

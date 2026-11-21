@@ -228,6 +228,22 @@ RSpec.describe "Plugin init tasks" do
     expect(cancelled).to eq([false])
   end
 
+  it "hands its ctx.cancel_controller to a thread: the task's own, where that thread's ctx.cancelled? is the turn's" do
+    turn = Samagotchi::CancellationController.new.tap(&:cancel!)
+    allow(engine).to receive(:active_cancel_controller).and_return(turn)
+    seen_by = Queue.new
+    engine.add_init_task(bundle: "slowb", label: "Busy", plugin_label: "x", provides_tools: false, quiet: true, timeout: 5) do
+      own = ctx.cancel_controller
+      Thread.new { seen_by << [own.equal?(tasks.first.cancel), own.cancelled?, ctx.cancel_controller, ctx.cancelled?] }.join
+      nil
+    end
+    engine.start_init_tasks!
+    join_tasks
+
+    expect(pop!(seen_by, "the thread's view")).to eq([true, false, turn, true])
+    expect(ctx.cancel_controller).to be(turn)
+  end
+
   it "is cancelled and joined on shutdown, and announces nothing after it" do
     stopped = Queue.new
     engine.add_init_task(bundle: "slowb", label: "Downloading", plugin_label: "x", provides_tools: true, quiet: false,

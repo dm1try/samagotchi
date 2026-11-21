@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # The mcp bundle (docs/bundles.md, The mcp bundle): tools from MCP servers.
-# Each server in config.yml runs as a child process (stdio only in v1) for
-# the session's life. Its tools aren't declared one by one: the bundle
+# Each server in config.yml runs as a child process (stdio) for the
+# session's life, or is a remote one reached over HTTP (url:, HttpClient).
+# Its tools aren't declared one by one: the bundle
 # publishes them into chi's tool index (chi.tool_source, a group per
 # server), and the model has the index's two fixed tools, find_tools (a
 # keyword search that answers each match's inputSchema) and call_tool (calls
@@ -23,6 +24,10 @@
 #           timeout: 120        # optional: this server's per-call timeout
 #           attach_image_paths: true  # default: an image path in the text, in the
 #                                     # temp dir or cwd, attaches it
+#         context7:
+#           url: https://mcp.context7.com/mcp  # a remote server: url instead of command
+#           bearer_token_env: CONTEXT7_TOKEN   # optional: Authorization: Bearer <its value>
+#           headers: {X-Example: "1"}          # optional, sent as given (not for secrets)
 #
 # Image blocks in a result go to the model as images (the text keeps
 # "[image 1: image/png]"); so does an image file named in a text block,
@@ -46,6 +51,8 @@ require "samagotchi/tool_declarations"
 require "time"
 require "shellwords"
 require "tmpdir"
+require "uri"
+require "samagotchi/cancellation_controller"
 
 class Plugin
   PROTOCOL_VERSION = "2025-06-18"
@@ -69,8 +76,11 @@ class Plugin
     class Error < StandardError; end
     class Timeout < Error; end
     class Cancelled < Error; end
-    # The server's process ended (or never started).
+    # The server's process ended (or never started); an HTTP server that
+    # can't be reached.
     class Dead < Error; end
+    # An HTTP server's answer isn't MCP's (a status, a content type).
+    class Unavailable < Error; end
 
     POLL_SECONDS = 0.1
     # How long close waits for the server after closing its stdin, after
@@ -119,6 +129,19 @@ class Plugin
 
     # @return [String, nil] why the server is gone, or nil while it runs
     def dead = @mutex.synchronize { @dead }
+
+    # What /mcp's running line shows for it.
+    def label = "pid #{pid}"
+
+    # initialize, then notifications/initialized.
+    # @return [Hash] initialize's result
+    def handshake(timeout:, cancelled:)
+      result = request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
+                                       clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                       timeout: timeout, cancelled: cancelled)
+      notify("notifications/initialized")
+      result
+    end
 
     # Send a request and wait for its answer.
     # @param cancelled [#call, nil] polled while waiting; true sends
@@ -295,6 +318,351 @@ class Plugin
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
+  # A JSON-RPC client for one remote MCP server over HTTP (the Streamable
+  # HTTP transport), the same surface as Client: each message is one
+  # ctx.http.stream POST, answered in JSON or as an SSE stream. The
+  # handshake speaks the current revision (2026-07-28, "modern":
+  # server/discover, _meta on every request, no session) first, and the
+  # older one ("legacy": initialize, an Mcp-Session-Id when the server
+  # gives one) on any answer it doesn't recognise. Its messages are bare:
+  # the callers name the server. Never a header value or the token in a
+  # message, a log field or #inspect.
+  class HttpClient
+    MODERN = "2026-07-28"
+    LEGACY = "2025-11-25"
+    ACCEPT = "application/json, text/event-stream"
+    # How long #close's DELETE of a legacy session may take.
+    CLOSE_TIMEOUT = 2
+    # The most of a JSON error answer read for its JSON-RPC error.
+    ERROR_BODY_BYTES = 64 * 1024
+
+    # A JSON-RPC error answer: +code+ and +data+ for the handshake.
+    class RpcError < Client::Error
+      attr_reader :code, :data
+
+      def initialize(error)
+        @code = error["code"]
+        @data = error["data"]
+        super("#{error["message"] || "error"} (#{error["code"]})")
+      end
+    end
+
+    # No token, or the server refused one (401, 403): the handshake never
+    # tries legacy for it.
+    class Refused < Client::Unavailable; end
+    # A 404 for a legacy session id: the session expired.
+    class Expired < Client::Unavailable; end
+
+    # One call's time, +seconds+ from its start, for every message it sends
+    # (connect, headers, body; a re-handshake's too).
+    Budget = Data.define(:seconds, :deadline) do
+      def self.for(seconds) = new(seconds, Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
+
+      def left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
+
+    attr_reader :era
+
+    # @param url [String] http(s)
+    # @param headers [Hash{String=>String}] sent as given
+    # @param token [#call] → the bearer token, or nil for none; raises
+    #   Client::Unavailable when its variable is unset
+    # @param http [#stream, #request] ctx.http
+    # @param log [#call] (event, fields)
+    def initialize(url, headers:, token:, http:, log:)
+      @url = url
+      @headers = headers
+      @token = token
+      @http = http
+      @log = log
+      @next_id = 0
+      @mutex = Mutex.new
+      @era = nil
+      @session_id = nil
+      @protocol = nil
+    end
+
+    # scheme://host, and the port when it isn't the scheme's: never the
+    # path or query (a URL may carry a key).
+    def label = self.class.origin(@url)
+
+    def self.origin(url)
+      uri = URI(url.to_s)
+      port = uri.port == uri.default_port ? "" : ":#{uri.port}"
+      "#{uri.scheme}://#{uri.host}#{port}"
+    rescue URI::Error
+      "(not a URL)"
+    end
+
+    def inspect = "#<HttpClient #{label} era=#{@era || "none"}>"
+
+    def pretty_print(printer) = printer.text(inspect)
+
+    def dead = nil
+
+    def pid = nil
+
+    # The era, once: server/discover, then initialize on anything it
+    # doesn't recognise (not a wire error, a timeout or a refusal).
+    # @param cancelled [Samagotchi::CancellationController, nil] ctx.http's
+    #   cancel: (Plugin#stop_of; not stdio's poll), for #request too
+    # @return [Hash] what Plugin#info_of reads ("instructions")
+    def handshake(timeout:, cancelled:)
+      @era = :discover
+      @session_id = nil
+      begin
+        result = post("server/discover", {}, Budget.for(timeout), cancelled)
+        offered = Array(result["supportedVersions"])
+        return result.tap { @era = :modern } if offered.include?(MODERN)
+      rescue Refused, Client::Timeout, Client::Cancelled, Client::Dead
+        raise
+      rescue RpcError => e
+        offered = Array(e.data.is_a?(Hash) ? e.data["supported"] : nil) if e.code == -32_022
+      rescue Client::Error
+        offered = nil
+      end
+      legacy(Budget.for(timeout), cancelled, offered)
+    end
+
+    # @param timeout [Numeric] the whole call's, a re-handshake included
+    # @return [Hash] the result
+    def request(method, params = nil, timeout:, cancelled: nil)
+      budget = Budget.for(timeout)
+      renew(budget, cancelled) if @era == :expired
+      raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(@era)
+
+      post(method, params, budget, cancelled)
+    rescue Expired
+      raise if @era != :legacy || @renewing
+
+      @renewing = true
+      begin
+        renew(budget, cancelled)
+        post(method, params, budget, cancelled)
+      ensure
+        @renewing = false
+      end
+    end
+
+    # A legacy session's best-effort DELETE; nothing for the modern era.
+    def close
+      return nil unless @era == :legacy && @session_id
+
+      # A controller of its own: a cancelled turn's (ctx.http's default) would skip it.
+      @http.request("DELETE", @url, headers: headers_for("DELETE", nil), timeout: CLOSE_TIMEOUT,
+                                    cancel: Samagotchi::CancellationController.new)
+      nil
+    rescue Samagotchi::Plugin::HttpError, Client::Error => e
+      @log.call("close_failed", error: e.class.name)
+      nil
+    ensure
+      @session_id = nil
+    end
+
+    private
+
+    # A legacy session's handshake again (its 404). One that fails leaves
+    # the era :expired, so the next request tries again; its error is the
+    # server's state, never the tool's (Unavailable, no schema note).
+    def renew(budget, cancelled)
+      legacy(budget, cancelled, nil)
+    rescue Client::Timeout, Client::Cancelled, Client::Dead, Client::Unavailable
+      raise
+    rescue Client::Error => e
+      raise Client::Unavailable, e.message
+    ensure
+      @era = :expired unless @era == :legacy
+    end
+
+    # initialize, then notifications/initialized, in one +budget+.
+    def legacy(budget, cancelled, offered)
+      @era = :initialize
+      @session_id = nil
+      result = post("initialize", { protocolVersion: LEGACY, capabilities: {},
+                                    clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                    budget, cancelled, session: true)
+      @protocol = result["protocolVersion"].is_a?(String) ? result["protocolVersion"] : LEGACY
+      @era = :legacy
+      post("notifications/initialized", nil, budget, cancelled, notification: true)
+      result
+    rescue Client::Timeout, Client::Cancelled, Client::Dead, Refused
+      raise
+    rescue Client::Error => e
+      raise if offered.nil? || offered.empty?
+
+      raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
+    end
+
+    # One message on the wire, and its answer, in what is left of +budget+.
+    # @return [Hash, nil] the result (nil for a notification)
+    def post(method, params, budget, cancelled, notification: false, session: false)
+      id = notification ? nil : @mutex.synchronize { @next_id += 1 }
+      message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
+      headers = headers_for(method, params)
+      raise Client::Timeout, timed_out(method, budget) if (left = budget.left) <= 0
+
+      timer = Samagotchi::CancellationController.new
+      budgeted(cancelled, timer, left) do
+        @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: [left, 0.05].max, cancel: timer) do |res|
+          @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
+          refuse(res, headers.keys.any? { |name| name.casecmp?("authorization") }) unless res.ok?
+          answer(res, id)
+        end
+      end
+    rescue Samagotchi::Plugin::HttpCancelled
+      raise Client::Timeout, timed_out(method, budget) if timer&.reason == :budget
+
+      raise Client::Cancelled, "#{method} was cancelled"
+    rescue Samagotchi::Plugin::HttpError => e
+      raise Client::Timeout, timed_out(method, budget) if e.message.end_with?("timed out")
+
+      raise Client::Dead, e.message
+    end
+
+    # +timer+, cancelled with +cancelled+ or once +left+ seconds have
+    # passed, whichever comes first: the budget holds by the clock, whatever
+    # the server sends (a keep-alive just before the end).
+    def budgeted(cancelled, timer, left)
+      listener = cancelled&.on_cancel { |reason| timer.cancel!(reason) }
+      clock = Thread.new do
+        sleep(left)
+        timer.cancel!(:budget)
+      end
+      yield
+    ensure
+      clock&.kill&.join
+      cancelled&.remove_listener(listener)
+    end
+
+    # The answer to message +id+ (nil: a notification's) in +res+.
+    def answer(res, id)
+      type = content_type(res)
+      return nil if id.nil?
+
+      case type
+      when "application/json"
+        result_of(parse(res.body, type))
+      when "text/event-stream"
+        reader = Samagotchi::Plugin::Http::SseReader.new
+        res.each_chunk do |bytes|
+          reader.feed(bytes) do |event|
+            message = parse_event(event)
+            return result_of(message) if message && !message.key?("method") && message["id"] == id
+          end
+        end
+        raise Client::Error, "the server closed the stream without an answer"
+      else
+        raise Client::Unavailable, "unexpected answer (#{type.empty? ? "no content type" : type})"
+      end
+    end
+
+    # An SSE event's JSON-RPC message; a notification or a server's
+    # request is logged and skipped (nil), as is data that isn't JSON.
+    def parse_event(event)
+      message = JSON.parse(event.data)
+      return nil unless message.is_a?(Hash)
+
+      if message.key?("method")
+        @log.call("server_notification", method: message["method"])
+        return nil
+      end
+      message
+    rescue JSON::ParserError
+      @log.call("bad_line", line: event.data[0, 200])
+      nil
+    end
+
+    def parse(body, type)
+      message = JSON.parse(body)
+      raise JSON::ParserError, "not an object" unless message.is_a?(Hash)
+
+      message
+    rescue JSON::ParserError, EncodingError
+      raise Client::Unavailable, "unexpected answer (#{type}, not JSON-RPC)"
+    end
+
+    def result_of(message)
+      raise RpcError, message["error"] if message["error"].is_a?(Hash)
+
+      result = message["result"].is_a?(Hash) ? message["result"] : {}
+      raise Client::Error, "the server asked for input chi can't give yet" if result["resultType"] == "input_required"
+
+      result
+    end
+
+    # A status that isn't 2xx, in words; never its body unless it is a
+    # JSON-RPC error.
+    def refuse(res, token_sent)
+      status = res.status
+      raise Client::Unavailable, "redirected (#{status})#{redirect_to(res)}: set url: to the new address" if status.between?(300, 399)
+      raise Refused, token_sent ? "refused the token (401)" : "needs a token (401): set bearer_token_env (sign-in comes in a later chi)" if status == 401
+      raise Refused, "refused (403)" if status == 403
+      raise Expired, "the session expired (404)" if status == 404 && @era == :legacy && @session_id
+
+      message = error_body(res) if content_type(res) == "application/json"
+      raise RpcError, message["error"] if message.is_a?(Hash) && message["error"].is_a?(Hash) && message["error"].key?("code")
+
+      raise Client::Unavailable, "HTTP #{status}"
+    end
+
+    # " to <origin>" of a redirect's Location; "" when it has none or it
+    # isn't a URL (never the Location itself: it may be a signed URL).
+    def redirect_to(res)
+      location = res.headers["location"].to_s
+      location.empty? ? "" : " to #{self.class.origin(URI.join(@url, location))}"
+    rescue URI::Error
+      ""
+    end
+
+    # A JSON error body, read up to ERROR_BODY_BYTES (nil past them, or
+    # when it isn't JSON).
+    def error_body(res)
+      body = +"".b
+      res.each_chunk do |bytes|
+        body << bytes
+        break if body.bytesize > ERROR_BODY_BYTES
+      end
+      body.bytesize > ERROR_BODY_BYTES ? nil : JSON.parse(body.force_encoding(Encoding::UTF_8))
+    rescue JSON::ParserError, EncodingError
+      nil
+    end
+
+    def params_for(params)
+      return params unless %i[discover modern].include?(@era)
+
+      given = (params || {}).transform_keys(&:to_s)
+      given.merge("_meta" => meta.merge(given["_meta"].is_a?(Hash) ? given["_meta"] : {}))
+    end
+
+    def meta
+      { "io.modelcontextprotocol/protocolVersion" => MODERN,
+        "io.modelcontextprotocol/clientInfo" => { name: "chi", version: Samagotchi::VERSION },
+        "io.modelcontextprotocol/clientCapabilities" => {} }
+    end
+
+    # The config's headers, then chi's own (the config can't name them).
+    def headers_for(method, params)
+      headers = @headers.merge("Accept" => ACCEPT, "Content-Type" => "application/json")
+      token = @token.call
+      headers["Authorization"] = "Bearer #{token}" if token
+      case @era
+      when :discover, :modern
+        headers["MCP-Protocol-Version"] = MODERN
+        headers["Mcp-Method"] = method
+        name = params.is_a?(Hash) ? (params[:name] || params["name"]) : nil
+        headers["Mcp-Name"] = name.to_s if method == "tools/call" && name
+      when :legacy
+        headers["MCP-Protocol-Version"] = @protocol
+        headers["Mcp-Session-Id"] = @session_id if @session_id
+      end
+      headers
+    end
+
+    def content_type(res) = res.headers["content-type"].to_s.split(";").first.to_s.strip.downcase
+
+    def timed_out(method, budget) = "#{method} timed out after #{format("%g", budget.seconds)}s"
+  end
+
   # One tool of a server in the index (the tools: filter applied): +name+
   # is the server's, +chi_name+ mcp_<server>_<tool> (what guardrail rules
   # match, and a name call_tool takes too), +schema+ its inputSchema (an
@@ -309,13 +677,21 @@ class Plugin
   # their definitions' estimated size (#definition_tokens).
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
+  # +url+, +headers+ and +token_env+ are a remote server's (nil for stdio).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, keyword_init: true) do
-    # Its state and tools, never the env (values often a token) or the
-    # command's args (which may carry a token too): a failing spec or a
-    # debugger would print those. `command` and `env` are nil before the
-    # server is resolved.
-    def inspect = "#<Server #{name} state=#{state} command=#{Array(command).first} env=#{(env || {}).keys.join(",")} tools=#{Array(tools).size}>"
+                      :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, :url, :headers,
+                      :token_env, keyword_init: true) do
+    # Its state and tools, never the env (values often a token), the
+    # command's args (which may carry a token too), a URL's path or query
+    # or a header's value: a failing spec or a debugger would print those.
+    # `command` and `env` are nil before the server is resolved.
+    def inspect
+      where = url ? "url=#{HttpClient.origin(url)} headers=#{(headers || {}).keys.join(",")}" : "command=#{Array(command).first}"
+      "#<Server #{name} state=#{state} #{where} env=#{(env || {}).keys.join(",")} tools=#{Array(tools).size}>"
+    end
+
+    # How a start that failed is said: a remote server didn't connect.
+    def failed_word = url ? "didn't connect" : "didn't start"
 
     def pretty_print(printer) = printer.text(inspect)
   end
@@ -370,12 +746,13 @@ class Plugin
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
       server
     end
-    # Two startup_timeouts: initialize, then tools/list.
-    wait = @startup_timeout * 2
     @servers.each do |server|
+      # Two startup_timeouts: initialize, then tools/list; four for a remote
+      # server (discover, initialize, initialized, tools/list).
+      wait = @startup_timeout * (server.url ? 4 : 2)
       # A failure's card title, short: the card shows "mcp" beside it and
       # the error in its body.
-      failed = "#{server.name} didn't start"
+      failed = "#{server.name} #{server.failed_word}"
       if load_cache(server, ctx)
         index(server, ctx)
         if server.config["start"].to_s == "eager"
@@ -407,6 +784,8 @@ class Plugin
   # cache's key: command, args, env names and values, and the cwd; the
   # env itself is never stored).
   def resolve(server, ctx)
+    return resolve_url(server) if server.config.key?("url")
+
     command = server.config["command"]
     command = Shellwords.split(command) if command.is_a?(String)
     server.command = Array(command).map(&:to_s)
@@ -416,10 +795,99 @@ class Plugin
     server.digest = Digest::SHA256.hexdigest(JSON.generate([server.command, server.env.sort, server.cwd]))
   end
 
+  # A remote server's url, headers and token variable, and their digest
+  # (never the token's value: a rotated token isn't a changed config).
+  def resolve_url(server)
+    server.command = []
+    server.env = server.config["env"].is_a?(Hash) ? server.config["env"].to_h { |k, v| [k.to_s, v.to_s] } : {}
+    server.url = server.config["url"].to_s
+    server.headers = server.config["headers"].is_a?(Hash) ? server.config["headers"] : {}
+    server.token_env = server.config["bearer_token_env"]&.to_s
+    server.digest = Digest::SHA256.hexdigest(JSON.generate([server.url, server.headers.map { |k, v| [k.to_s, v.to_s] }.sort,
+                                                            server.token_env]))
+  end
+
+  # The headers chi sets itself on a remote server's requests.
+  # The wire's own (host, content-length…) too: one set in config.yml would break every request.
+  OWN_HEADERS = %w[accept content-type mcp-protocol-version mcp-method mcp-name mcp-session-id
+                   host content-length connection transfer-encoding].freeze
+
+  # Why the server's config can't start it, nil when it can.
+  def config_error(server)
+    where = "bundles: mcp: servers: #{server.name}"
+    if server.url && server.config.key?("command")
+      return "set command: (a local server) or url: (a remote one), not both (#{where})"
+    end
+    return url_error(server, where) if server.url
+
+    "no command (#{where}: command: [...] or url: ...)" if server.command.empty?
+  end
+
+  def url_error(server, where)
+    uri = begin
+      URI.parse(server.url)
+    rescue URI::Error
+      nil
+    end
+    return "url: must be an http(s) URL (#{where})" unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+    return "bearer_token_env: must name an environment variable (#{where})" if server.token_env&.strip&.empty?
+    return "headers: must be a map of names to values (#{where})" unless server.config["headers"].nil? || server.config["headers"].is_a?(Hash)
+
+    server.headers.each do |name, value|
+      unless name.is_a?(String) && value.is_a?(String) && name.match?(/\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/) &&
+             !value.match?(/[\r\n\0]/)
+        return "headers: #{name.to_s[0, 40].inspect} must be a name and a one-line text value (#{where})"
+      end
+      if OWN_HEADERS.include?(name.downcase) || (server.token_env && name.casecmp?("authorization"))
+        return "headers: #{name} is chi's to set (#{where})"
+      end
+    end
+    nil
+  end
+
+  # A remote server's bearer token, looked up at each request (never
+  # kept): the env a stdio server would get (its env:, then the project
+  # env: #server_env), then the worker's.
+  def token_lookup(server)
+    return -> {} unless server.token_env
+
+    lambda do
+      value = server_env(server)[server.token_env].to_s
+      value = ENV[server.token_env].to_s if value.empty?
+      raise HttpClient::Refused, "#{server.token_env} is not set" if value.empty?
+      # An env file saved with CRLF line ends; a header can't carry it.
+      raise HttpClient::Refused, "#{server.token_env} holds a line break: set it on one line" if value.match?(/[\r\n\0]/)
+
+      value
+    end
+  end
+
+  # A client's cancelled:, read on the thread that does the work (an init
+  # task's own Stop, else the turn's; a thread of the client's own would
+  # read the turn's): a remote server's ctx.http cancel:, a poll for stdio.
+  def stop_of(server, ctx) = server.url ? ctx.cancel_controller : -> { ctx.cancelled? }
+
+  # The log fields that say which client: its pid, or a remote one's origin.
+  def where(client) = client.is_a?(HttpClient) ? { where: client.label } : { pid: client.pid }
+
+  # The one place a server's client is built (spawn's and refresh's); it
+  # is the caller's, never assigned here.
+  def connect(server, ctx, **callbacks)
+    if server.url
+      return HttpClient.new(server.url, headers: server.headers, token: token_lookup(server), http: ctx.http,
+                                        log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
+    end
+
+    Client.new(server.command, env: server_env(server), cwd: server.cwd,
+                               log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
+                               **callbacks)
+  end
+
   # The service's start: spawn (#spawn). Its stop closes the server's
   # current process, a restarted one too.
   def start(server, svc, ctx)
-    raise Client::Error, "no command (bundles: mcp: servers: #{server.name}: command: [...])" if server.command.empty?
+    error = config_error(server)
+    raise Client::Error, error if error
 
     svc.on_stop { server.client&.close }
     spawn(server, ctx)
@@ -431,19 +899,13 @@ class Plugin
   # the tools.
   # @return [Client]
   def spawn(server, ctx)
-    cancelled = -> { ctx.cancelled? }
-    client = server.client = Client.new(
-      server.command, env: server_env(server), cwd: server.cwd,
-                      log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
-                      on_exit: ->(reason) { exited(server, reason, ctx) },
-                      on_notification: lambda { |method, _params|
-                        tools_changed(server, ctx) if method == "notifications/tools/list_changed"
-                      }
-    )
-    initialized = client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
-                                                 clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                                 timeout: @startup_timeout, cancelled: cancelled)
-    client.notify("notifications/initialized")
+    cancelled = stop_of(server, ctx)
+    client = server.client = connect(server, ctx,
+                                     on_exit: ->(reason) { exited(server, reason, ctx) },
+                                     on_notification: lambda { |method, _params|
+                                       tools_changed(server, ctx) if method == "notifications/tools/list_changed"
+                                     })
+    initialized = client.handshake(timeout: @startup_timeout, cancelled: cancelled)
     listed = list_tools(client, cancelled)
     info = info_of(initialized)
     changed = listed != server.listed || info != server.info
@@ -480,20 +942,27 @@ class Plugin
   # the index (or come for the first time: #spawn indexes them).
   # @return [String] the task's summary
   # @raise [Client::Error] it didn't start (the task's warn card says why;
-  #   the index keeps its tools, marked failed)
+  #   the index keeps its tools, marked failed; a remote server's from the
+  #   cache stay cached, as #not_connected leaves them)
   def boot(server, ctx)
+    cached = server.state == :cached
     client = server.service.value
     server.state = :running
     publish
-    ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.listed.size)
+    ctx.log.info("mcp_server_started", server: server.name, **where(client), tools: server.listed.size)
     count = server.listed.size
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
+    if cached && server.url
+      ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
+      server.error = e.message # its first call failing the same way says nothing new
+      raise Client::Error, "MCP server #{server.name} didn't connect: #{e.message}; its next call tries again"
+    end
     server.state = :failed
     server.error = e.message
     publish
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
-    raise Client::Error, "MCP server #{server.name} didn't start: #{e.message}; its calls fail until chi restarts"
+    raise Client::Error, "MCP server #{server.name} #{server.failed_word}: #{e.message}; its calls fail until chi restarts"
   end
 
   # The quiet daily refresh of a cached server's list: a server of its own
@@ -505,14 +974,10 @@ class Plugin
     File.open("#{cache_path(server, ctx)}.lock", File::CREAT | File::RDWR) do |lock|
       return nil unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
-      cancelled = -> { ctx.cancelled? }
-      client = Client.new(server.command, env: server_env(server), cwd: server.cwd,
-                                          log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
+      cancelled = stop_of(server, ctx)
+      client = connect(server, ctx)
       begin
-        initialized = client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
-                                                     clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                                     timeout: @startup_timeout, cancelled: cancelled)
-        client.notify("notifications/initialized")
+        initialized = client.handshake(timeout: @startup_timeout, cancelled: cancelled)
         listed = list_tools(client, cancelled)
       ensure
         client.close
@@ -774,7 +1239,7 @@ class Plugin
   # server starts here, on its first call. The server's isError and a
   # JSON-RPC error answer the tool's inputSchema too (ToolIndex.schema_note).
   def call(server, tool, args, ctx)
-    return "Error: MCP server #{server.name} didn't start: #{server.error}" if server.state == :failed
+    return "Error: MCP server #{server.name} #{server.failed_word}: #{server.error}" if server.state == :failed
 
     client = case server.state
              when :cached then lazy_start(server, ctx)
@@ -786,14 +1251,14 @@ class Plugin
     return client if client.is_a?(String)
 
     result = client.request("tools/call", { name: tool.name, arguments: args }, timeout: server.timeout,
-                                                                                cancelled: -> { ctx.cancelled? })
+                                                                                cancelled: stop_of(server, ctx))
     text, images = content(result, server, tool.name)
     return "Error: #{text.empty? ? "the tool failed" : text}#{Samagotchi::Tools::ToolIndex.schema_note(tool)}" if result["isError"]
 
     images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
   rescue Client::Dead => e
-    "Error: MCP server #{server.name} is not running (#{e.message})"
-  rescue Client::Timeout, Client::Cancelled, Samagotchi::Plugin::Service::Stopped => e
+    "Error: MCP server #{server.name} is #{server.url ? "not reachable" : "not running"} (#{e.message})"
+  rescue Client::Timeout, Client::Cancelled, Client::Unavailable, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   rescue Client::Error => e
     "Error: #{e.message}#{Samagotchi::Tools::ToolIndex.schema_note(tool)}"
@@ -807,8 +1272,9 @@ class Plugin
     client = server.service.value
     started = server.state == :cached
     server.state = :running
+    server.error = nil if server.url # the next failure is said again
     publish
-    ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.listed.size, lazy: true) if started
+    ctx.log.info("mcp_server_started", server: server.name, **where(client), tools: server.listed.size, lazy: true) if started
     client
   rescue Client::Cancelled => e
     "Error: #{e.message}"
@@ -816,6 +1282,7 @@ class Plugin
     "Error: #{e.message}"
   rescue StandardError => e
     raise unless server.state == :cached
+    return not_connected(server, e, ctx) if server.url
 
     server.state = :failed
     server.error = e.message
@@ -823,6 +1290,18 @@ class Plugin
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, lazy: true)
     ctx.notify("MCP server #{server.name} didn't start: #{e.message}; its calls fail until chi restarts", level: :warn)
     "Error: MCP server #{server.name} didn't start: #{e.message}"
+  end
+
+  # A remote server that didn't connect stays cached: a network blip or a
+  # token the user is about to fix. One notice per distinct message; the
+  # next call tries again (the service's start raised, so its next value
+  # starts it again).
+  def not_connected(server, error, ctx)
+    ctx.log.warn("mcp_server_failed", server: server.name, error: error.class.name, msg: error.message, lazy: true)
+    text = "MCP server #{server.name} didn't connect: #{error.message}"
+    first = @left_out_lock.synchronize { server.error == error.message ? false : (server.error = error.message) }
+    ctx.notify("#{text}; its next call tries again", level: :warn) if first
+    "Error: #{text}"
   end
 
   # Start a server that exited again, for a call: at most MAX_RESTARTS
@@ -913,7 +1392,9 @@ class Plugin
   # cwd: a server's text can't pull in any image on disk.
   # @return [Array<String>] real paths, each once
   def image_paths(text, server)
-    return [] if server.config["attach_image_paths"] == false
+    # A remote server can't name a local file usefully, and must not make
+    # chi read one.
+    return [] if server.config["attach_image_paths"] == false || server.url
 
     whole = text.strip
     candidates = if whole.start_with?("/") && !whole.include?("\n") && File.file?(whole)
@@ -996,7 +1477,7 @@ class Plugin
     tools = "#{count} tool#{"s" unless count == 1}"
     case server.state
     when :cached then "cached (not started), #{tools}, #{tokens_text(server)}"
-    when :running then "running (pid #{server.client.pid}), #{tools}, #{tokens_text(server)}"
+    when :running then "#{server.url ? "connected" : "running"} (#{server.client.label}), #{tools}, #{tokens_text(server)}"
     when :starting then "starting"
     when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
     else "stopped: #{server.error}"

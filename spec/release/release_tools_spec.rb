@@ -656,10 +656,14 @@ RSpec.describe ReleaseTools do
           .to raise_error(ReleaseTools::Error, /doesn't parse/)
       end
 
-      it "leaves the repository's own tables as they are (no comment in them now)" do
+      it "moves the repository's own tables' Unreleased entries, if any, and leaves the rest as it is" do
         [ReleaseTools::PLUGIN_API, ReleaseTools::MANIFEST_KEYS].each do |rel|
           text = File.read(File.join(repo_root, rel))
-          expect(described_class.release_since(text, "9.9.9")).to eq([text, []])
+          released, names = described_class.release_since(text, "9.9.9")
+          next expect(released).to eq(text) if names.empty?
+
+          expect(released).not_to match(/^\s*#\s*Unreleased\b/)
+          names.each { |name| expect(released).to include(%("#{name}" => "9.9.9")) }
         end
       end
     end

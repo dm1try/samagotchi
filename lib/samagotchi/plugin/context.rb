@@ -33,8 +33,8 @@ module Samagotchi
     # ctx.http's file needs only json and uri (net/http loads with the first
     # real request); autoloaded so a bundle can name HttpError at load time.
     autoload :Http, File.expand_path("http", __dir__)
-    autoload :HttpError, File.expand_path("http", __dir__)
-    autoload :HttpCancelled, File.expand_path("http", __dir__)
+    autoload :HttpError, File.expand_path("http_errors", __dir__)
+    autoload :HttpCancelled, File.expand_path("http_errors", __dir__)
     autoload :Judgments, File.expand_path("judgments", __dir__)
 
     # The Engine's side of a Context: callables, so the Engine itself is
@@ -64,7 +64,9 @@ module Samagotchi
     # +cancel_controller+ takes (handler:) and returns the controller a
     # ctx.http call without cancel: uses, nil for none: an init task's own,
     # else the running turn's for work done for it (the turn's thread, or a
-    # plugin handler: +handler+) until the turn has ended.
+    # plugin handler: +handler+) until the turn has ended. +current_cancel+
+    # returns the controller +cancelled+ reads on the calling thread (an init
+    # task's own, else the running turn's; nil for none): ctx.cancel_controller.
     # +cost+ returns the session's spend now (SessionMetrics::Cost),
     # +usage+ its work now (SessionMetrics::Usage).
     # +cache_confirm+ takes (line, changed) and returns a
@@ -79,7 +81,7 @@ module Samagotchi
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
-                      :candidate_proposed, :judgments, :turn_running, keyword_init: true)
+                      :candidate_proposed, :judgments, :turn_running, :current_cancel, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -548,6 +550,15 @@ module Samagotchi
 
       # Whether the running turn was cancelled (a long tool should stop).
       def cancelled? = !!@host.cancelled.call
+
+      # The CancellationController ctx.cancelled? reads on this thread: inside
+      # an init task the task's own (chi shutting down), else the running
+      # turn's; nil when neither. Read it on the thread that does the work and
+      # hand it on (ctx.http's cancel:, a thread of yours that polls it): on
+      # another thread the answer is that thread's. Unlike ctx.http's default
+      # it is the turn's inside a service's start block too.
+      # @return [CancellationController, nil]
+      def cancel_controller = @host.current_cancel&.call
 
       # Put +text+ into the running turn, as a user's steering does: at the
       # loop's next boundary (after the tool calls in flight) it joins the

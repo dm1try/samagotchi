@@ -24,6 +24,8 @@ module Samagotchi
         Allowed.new(name: "Samagotchi::Plugin::HttpError", file: "samagotchi/plugin/http"),
         Allowed.new(name: "Samagotchi::Plugin::HttpCancelled", file: "samagotchi/plugin/http"),
         Allowed.new(name: "Samagotchi::Plugin::Http::Response", file: "samagotchi/plugin/http"),
+        Allowed.new(name: "Samagotchi::Plugin::Http::Stream", file: "samagotchi/plugin/http"),
+        Allowed.new(name: "Samagotchi::Plugin::Http::SseReader", file: "samagotchi/plugin/http"),
         Allowed.new(name: "Samagotchi::Plugin::Service::Stopped", file: "samagotchi/plugin/service"),
         Allowed.new(name: "Samagotchi::Plugin::Sessions::Error", file: "samagotchi/plugin/sessions"),
         Allowed.new(name: "Samagotchi::Plugin::AttachedContext::Error", file: "samagotchi/plugin/attached_context"),

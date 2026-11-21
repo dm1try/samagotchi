@@ -61,6 +61,7 @@ module Samagotchi
           use_toolkit: ->(name) { recorder.use_toolkit(name, toolkits.call) },
           load_tools: ->(names, bundle) { recorder.load_tools(names, bundle) },
           cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
+          current_cancel: -> { recorder[:cancelled] ? stopped : nil },
           cost: -> { cost(recorder[:cost]) },
           usage: -> { usage(recorder[:usage]) },
           turn_author: -> { recorder[:turn_author] },

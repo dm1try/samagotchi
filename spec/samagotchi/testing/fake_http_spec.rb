@@ -151,6 +151,61 @@ RSpec.describe Samagotchi::Testing::FakeHttp do
     end
   end
 
+  describe "streams (ctx.http.stream)" do
+    let(:fake) { described_class.new }
+    let(:http) { Samagotchi::Plugin::Http.new(bundle: "b", transport: fake) }
+
+    it "serves events: as text/event-stream to a stream, each a Hash or a String of data" do
+      fake.stub(:post, "http://svc/mcp", events: [{ data: "{\"a\":1}", event: "message", id: "1" }, "two\nlines"])
+
+      got = http.stream("POST", "http://svc/mcp", body: "{}") do |res|
+        expect([res.status, res.headers["content-type"]]).to eq([200, "text/event-stream"])
+        found = []
+        res.each_event { |event| found << event.to_h }
+        found
+      end
+
+      expect(got).to eq([{ type: "message", data: "{\"a\":1}", id: "1" }, { type: "message", data: "two\nlines", id: "1" }])
+      expect(fake.requests.map { |r| [r.method, r.url, r.body] }).to eq([["POST", "http://svc/mcp", "{}"]])
+    end
+
+    it "serves chunks: in those pieces, and a body: or json: stub as one chunk" do
+      fake.stub(:get, "http://svc/big", chunks: %w[hel lo])
+      fake.stub(:get, "http://svc/j", json: { ok: true })
+
+      pieces = http.stream("GET", "http://svc/big") do |res|
+        got = []
+        res.each_chunk { |bytes| got << bytes }
+        got
+      end
+      expect(pieces).to eq(%w[hel lo])
+      expect(http.stream("GET", "http://svc/j") { |res| [res.headers["content-type"], res.json] })
+        .to eq(["application/json", { "ok" => true }])
+    end
+
+    it "answers a plain request to an events: stub with the SSE text, and to chunks: with them joined" do
+      fake.stub(:get, "http://svc/e", events: [{ data: "x", event: "ping" }])
+      fake.stub(:get, "http://svc/c", chunks: %w[a b])
+
+      expect(http.get("http://svc/e")).to have_attributes(body: "event: ping\ndata: x\n\n",
+                                                          headers: { "content-type" => "text/event-stream" })
+      expect(http.get("http://svc/c").body).to eq("ab")
+    end
+
+    it "takes events: from a stub's block, and raises a stub's error: before the block" do
+      fake.stub(:post, "http://svc/b") { |request| { events: [request.json["q"]] } }
+      fake.stub(:post, "http://svc/down", error: :refused)
+
+      expect(http.stream("POST", "http://svc/b", body: '{"q":"hi"}') { |res| res.body }).to eq("data: hi\n\n")
+      expect { http.stream("POST", "http://svc/down") { :never } }.to raise_error(Samagotchi::Plugin::HttpError, /refused/)
+    end
+
+    it "records a streamed request no stub answered as unmatched" do
+      expect { http.stream("GET", "http://svc/none") { :never } }.to raise_error(Samagotchi::Testing::UnstubbedRequest)
+      expect(fake.unmatched.map(&:url)).to eq(["http://svc/none"])
+    end
+  end
+
   describe "an unstubbed request" do
     it "raises UnstubbedRequest (not an HttpError), naming what is stubbed, and lands in requests and unmatched" do
       bundle.http.stub(:get, "http://127.0.0.1:9000/other")
