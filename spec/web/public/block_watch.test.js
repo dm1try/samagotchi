@@ -199,4 +199,10 @@ test("failBlock keeps the reason, marks a fixable block and tells the root; a cl
   assert.deepEqual(copied, []);
   fixable.nextElementSibling.click();
   assert.deepEqual(copied, ["Couldn't draw this x block: Parse error on line 2:"]);
+  const drawn = document.createElement("div");
+  drawn.className = "block-note fixed";
+  drawn.dataset.text = "Drawn after a fix";
+  plain.after(drawn);
+  drawn.click();
+  assert.deepEqual(copied, ["Couldn't draw this x block: Parse error on line 2:"], "Drawn after a fix isn't copied");
 });
