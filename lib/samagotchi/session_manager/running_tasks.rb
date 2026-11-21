@@ -141,9 +141,16 @@ module Samagotchi
       end
 
       # "; its worker was stopped" (+stopped_worker+ is +session_id+),
-      # "; 9d0e1f2a's worker was stopped" (another), "" (none).
-      def worker_words(session_id, stopped_worker)
+      # "; 9d0e1f2a's worker was stopped" (another), "" (none); with +all+
+      # of more than one (an archive's tree), "; 2 workers were stopped: its
+      # own, 9d0e1f2a".
+      def worker_words(session_id, stopped_worker, all: [])
         return "" unless stopped_worker
+
+        if all.size > 1
+          names = all.map { |sid| sid.to_s == session_id.to_s ? "its own" : sid.to_s[0, 8] }
+          return "; #{all.size} workers were stopped: #{cut(names)}"
+        end
         return "; its worker was stopped" if stopped_worker == session_id.to_s
 
         "; #{stopped_worker[0, 8]}'s worker was stopped"

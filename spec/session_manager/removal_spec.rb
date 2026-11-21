@@ -590,6 +590,19 @@ RSpec.describe Samagotchi::SessionManager do
       expect(status_of(named)).to eq("running")
     end
 
+    it "names every worker an archive stopped before its last check refused" do
+      listing = described_class::RunningTasks::Listing.new(
+        running: [described_class::RunningTasks::RunningTask.new(session_id: "dddd1111-0", id: "t-1", command: "rspec")]
+      )
+      refusal = described_class::ArchiveRefused.new("dddd1111-0", :tasks_running, tasks: listing, worker_stopped: true,
+                                                                                 stopped_workers: %w[dddd1111-0 eeee2222-0])
+
+      expect(refusal.message).to end_with("rspec; 2 workers were stopped: its own, eeee2222")
+      one = described_class::ArchiveRefused.new("dddd1111-0", :tasks_running, tasks: listing, worker_stopped: true,
+                                                                             stopped_workers: %w[dddd1111-0])
+      expect(one.message).to end_with("rspec; its worker was stopped")
+    end
+
     it "names whose worker was stopped: the refused session's own, or the one the op stopped" do
       listing = described_class::RunningTasks::Listing.new(
         running: [described_class::RunningTasks::RunningTask.new(session_id: "dddd1111-0", id: "t-1", command: "rspec")]

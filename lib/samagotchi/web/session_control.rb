@@ -500,12 +500,16 @@ module Samagotchi
       # lists, keep it for good. A live idle worker is stopped first; a turn
       # running in it or a delegate, a one-turn chi run's session and a scratch one
       # are refused (409). Background tasks it or a delegate started that
-      # still run: 409 tasks_running, unless the body says {stop_tasks: true}
-      # (then stopped first; the 200 names them, #task_fields).
+      # still run: 409 tasks_running (with +sessions+, how many the archive
+      # hides), unless the body says {stop_tasks: true} (then stopped first;
+      # the 200 names them, #task_fields). With {tasks: [ids]} too only
+      # those are stopped, and a running one not named refuses (the sheet's
+      # tap: #running_tasks_policy).
       def handle_archive(req, id)
         body = parse_json(request_body(req, 4096))
+        body = {} unless body.is_a?(Hash)
         result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS,
-                                              running_tasks: running_tasks_policy(body.is_a?(Hash) && body["stop_tasks"]))
+                                              running_tasks: running_tasks_policy(body["stop_tasks"], body_tasks(body)))
         (result.archived + result.discarded).each { |sid| @hub&.touch(sid) }
         json_response(200, { status: "archived", session_id: result.id, archived: result.archived,
                              stopped: result.stopped, discarded: result.discarded,
@@ -529,12 +533,14 @@ module Samagotchi
       # worker_running, as chi sessions delete without --force. A one-turn chi run's
       # session is always refused. Background tasks the delete's sessions
       # started that still run: 409 tasks_running, unless ?stop_tasks=true
-      # (then stopped first; the 200 names them, #task_fields).
+      # (then stopped first; the 200 names them, #task_fields); with
+      # &tasks=<id,id> only those (#running_tasks_policy). Every session's
+      # stopped delegates go with it (SessionManager::DELEGATES).
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
                                              wait: STOP_WAIT_SECONDS, revive_previous: true, refuse_continuing: true,
                                              expect: req.GET["expect"],
-                                             running_tasks: running_tasks_policy(req.GET["stop_tasks"]))
+                                             running_tasks: running_tasks_policy(req.GET["stop_tasks"], query_tasks(req)))
         touch_deleted(result[:id], result)
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped],
                              unarchived: Array(result[:unarchived]), moved_back: Array(result[:moved_back]),
@@ -546,12 +552,13 @@ module Samagotchi
         delete_refused(e)
       end
 
-      # DELETE /api/sessions/:id/chain?force=&stop_tasks=: every link of the
-      # chain with their delegates (SessionManager.delete_chain). Query-only.
+      # DELETE /api/sessions/:id/chain?force=&stop_tasks=&tasks=: every link
+      # of the chain with their delegates (SessionManager.delete_chain).
+      # Query-only.
       def handle_delete_chain(req, id)
         result = @manager.delete_chain(id, state_dir: @state_dir, stop: truthy_param?(req.GET["force"]),
                                            wait: STOP_WAIT_SECONDS, expect: req.GET["expect"],
-                                           running_tasks: running_tasks_policy(req.GET["stop_tasks"]))
+                                           running_tasks: running_tasks_policy(req.GET["stop_tasks"], query_tasks(req)))
         touch_deleted(id, result)
         json_response(200, { status: "deleted", session_id: id, deleted: result[:deleted], left: result[:left],
                              left_running: result[:left_running], unarchived: result[:unarchived],
@@ -563,14 +570,19 @@ module Samagotchi
         delete_refused(e)
       end
 
-      # GET /api/sessions/:id/delete_plan: what the delete sheet shows for a
-      # chained session (SessionChain::Delete::Preview: the plan and the
-      # refusals the delete itself runs), {chained: false} for one in no
-      # chain. One session listing walk per call; the page asks only for a
-      # chained session, as the sheet opens. No query or body read; no-store
-      # (json_response's).
+      # GET /api/sessions/:id/delete_plan: what the delete sheet shows for
+      # any session (SessionChain::Delete::Preview: the plan and the
+      # refusals the delete itself runs, each choice's delegates, running
+      # tasks and workers); {chained: false, link} for one in no chain (an
+      # older page asked only for a chained one). A folder whose session
+      # file is gone answers too, as the delete still takes it. One session
+      # listing per plan; each call takes and releases the session's
+      # continue lock, creating its empty file (continue.lock) where there
+      # was none. No query or body read; no-store (json_response's).
       def handle_delete_plan(_req, id)
-        return unknown_session(id) unless Session.exist?(id, state_dir: @state_dir || Session.default_state_dir)
+        sd = @state_dir || Session.default_state_dir
+        on_disk = File.exist?(Session.session_file(id, state_dir: sd)) || Dir.exist?(Session.session_dir(id, state_dir: sd))
+        return unknown_session(id) unless on_disk
 
         require_relative "../session_chain/delete_preview"
         json_response(200, SessionChain::Delete::Preview.call(id, state_dir: @state_dir))
@@ -586,11 +598,28 @@ module Samagotchi
       end
 
       # A user's delete or archive: refused on running tasks (REFUSE), or,
-      # asked to (+stop_tasks+: the page's second confirm, --stop-tasks),
-      # stopped by "user".
-      def running_tasks_policy(stop_tasks)
+      # asked to (+stop_tasks+: the page's sheet, --stop-tasks), stopped by
+      # "user". +named+ (task ids, the ones the sheet showed) makes the stop
+      # take only those and refuse on another that runs (Policy.stop's
+      # only); nil stops whatever runs. Without +stop_tasks+ it is ignored.
+      def running_tasks_policy(stop_tasks, named = nil)
         policies = SessionManager::RunningTasks::Policy
-        truthy_param?(stop_tasks) ? policies.stop(by: "user") : policies::REFUSE
+        truthy_param?(stop_tasks) ? policies.stop(by: "user", only: named) : policies::REFUSE
+      end
+
+      # The body's tasks as ids, nil when not given; anything but a list of
+      # strings names none (so the stop refuses on any task that runs).
+      def body_tasks(body)
+        return nil unless body.key?("tasks")
+
+        body["tasks"].is_a?(Array) ? body["tasks"].grep(String) : []
+      end
+
+      # ?tasks=<id,id> as ids ([] for an empty one), nil when not given.
+      def query_tasks(req)
+        return nil unless req.GET.key?("tasks")
+
+        req.GET["tasks"].to_s.split(",").map(&:strip).reject(&:empty?)
       end
 
       # The 200's tasks_stopped, tasks_not_stopped and tasks_ended (each
@@ -654,6 +683,7 @@ module Samagotchi
       def archive_refused(error)
         if error.reason == :tasks_running
           return refusal_response(409, "tasks_running", error, session_id: error.session_id, reason: "tasks_running",
+                                                               sessions: error.sessions,
                                                                **tasks_running_fields(error, "archive"))
         end
 

@@ -70,15 +70,20 @@ module Samagotchi
     # An archive that can't happen now: a turn runs in the session or in one
     # of its children (+busy_id+ names which), it is a scratch session, or
     # (:tasks_running) background tasks it or a delegate started still run
-    # (+tasks+, a RunningTasks::Listing).
+    # (+tasks+, a RunningTasks::Listing; +sessions+, how many sessions the
+    # archive would hide: it and its delegates, across every project;
+    # +stopped_workers+, every worker it stopped first, for the words).
     class ArchiveRefused < StandardError
-      attr_reader :session_id, :reason, :busy_id, :tasks, :stopped_worker
+      attr_reader :session_id, :reason, :busy_id, :tasks, :stopped_worker, :sessions, :stopped_workers
 
-      def initialize(session_id, reason, busy_id: nil, tasks: RunningTasks::EMPTY, worker_stopped: false)
+      def initialize(session_id, reason, busy_id: nil, tasks: RunningTasks::EMPTY, worker_stopped: false, sessions: nil,
+                     stopped_workers: [])
         @session_id = session_id
         @reason = reason
         @busy_id = busy_id
         @tasks = tasks
+        @sessions = sessions
+        @stopped_workers = stopped_workers
         @stopped_worker = RunningTasks.stopped_worker(session_id, worker_stopped)
         super(archive_refused_message)
       end
@@ -97,7 +102,9 @@ module Samagotchi
         when :offer_child then "its delegate #{@busy_id[0, 8]} waits for an answer to its step-limit question; answer it first"
         when :starting then "its worker is starting; try again in a moment"
         when :starting_child then "its delegate #{@busy_id[0, 8]}'s worker is starting; try again in a moment"
-        when :tasks_running then "#{RunningTasks.words(@session_id, @tasks)}#{RunningTasks.worker_words(@session_id, @stopped_worker)}"
+        when :tasks_running
+          "#{RunningTasks.words(@session_id, @tasks)}" \
+            "#{RunningTasks.worker_words(@session_id, @stopped_worker, all: @stopped_workers)}"
         else "a turn is running; wait for it or cancel it first"
         end
       end
@@ -145,7 +152,7 @@ module Samagotchi
         id = archive_target(id_or_prefix, sd)
         tree, owners = archivable!(id, sd, except: except)
         RunningTasks.check!(tree, state_dir: sd, policy: running_tasks) do |listing|
-          ArchiveRefused.new(id, :tasks_running, tasks: listing)
+          ArchiveRefused.new(id, :tasks_running, tasks: listing, sessions: tree.size)
         end
         stopped = tree.select { |sid| owners[sid] }
         # With +wait+, stop_session waits for the owner to let go.
@@ -167,7 +174,8 @@ module Samagotchi
         listing = RunningTasks.of(tree, state_dir: state_dir)
         unless running_tasks.unnamed(listing).empty?
           worker = stopped.include?(id) || stopped.first || false
-          raise ArchiveRefused.new(id, :tasks_running, tasks: listing, worker_stopped: worker)
+          raise ArchiveRefused.new(id, :tasks_running, tasks: listing, worker_stopped: worker, sessions: tree.size,
+                                                       stopped_workers: stopped)
         end
 
         RunningTasks.stop!(listing, policy: running_tasks)

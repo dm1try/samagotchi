@@ -4174,6 +4174,43 @@ RSpec.describe Samagotchi::Web::App do
         expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(true)
       end
 
+      it "stops only the tasks named in ?tasks= (the sheet's), refusing on another; tasks alone is ignored" do
+        named = start_task("sleep 30.54")
+        other = start_task("sleep 30.55")
+
+        status, json = call("/api/sessions/#{session.id}?force=true&tasks=#{named.id},#{other.id}", method: "DELETE")
+        expect([status, json["error"]]).to eq([409, "tasks_running"])
+
+        status, json = call("/api/sessions/#{session.id}?force=true&stop_tasks=true&tasks=#{named.id}", method: "DELETE")
+        expect([status, json["error"], json["op"]]).to eq([409, "tasks_running", "delete"])
+        expect(json.dig("tasks", "running").map { |t| t["id"] }).to contain_exactly(named.id, other.id)
+        expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: state_dir))).to be(true)
+        expect([runtime.load_record(named.id).status, runtime.load_record(other.id).status]).to eq(%w[running running])
+
+        status, json = call("/api/sessions/#{session.id}?force=true&stop_tasks=true&tasks=#{named.id},#{other.id}",
+                            method: "DELETE")
+        expect(status).to eq(200)
+        expect(json["tasks_stopped"].map { |t| t["id"] }).to contain_exactly(named.id, other.id)
+      end
+
+      it "says in an archive's 409 how many sessions it hides, and stops only the body's tasks" do
+        record = start_task("sleep 30.56")
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                        parent_id: session.id).save(state_dir: state_dir)
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST")
+        expect([status, json["sessions"]]).to eq([409, 2])
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST", body: JSON.generate(stop_tasks: true, tasks: []))
+        expect([status, json["error"], json["sessions"]]).to eq([409, "tasks_running", 2])
+        expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(false)
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST",
+                                                                   body: JSON.generate(stop_tasks: true, tasks: [record.id]))
+        expect(status).to eq(200)
+        expect(json["tasks_stopped"].map { |t| t["id"] }).to eq([record.id])
+      end
+
       it "takes stop_tasks on the chain delete's query too" do
         record = start_task("sleep 30.53")
 
@@ -4283,6 +4320,50 @@ RSpec.describe Samagotchi::Web::App do
         expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be false
         expect(hub).to have_received(:touch).with(link.id)
         expect(hub).to have_received(:touch).with(session.id)
+      end
+
+      it "takes a plain session's stopped delegate with it, and the hub hears both" do
+        child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                                parent_id: session.id).tap { |s| s.save(state_dir: state_dir) }
+        allow(hub).to receive(:touch)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}?force=true", method: "DELETE"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include("deleted" => [child.id, session.id], "left_running" => [])
+        expect(Samagotchi::Session.exist?(child.id, state_dir: state_dir)).to be false
+        expect(hub).to have_received(:touch).with(child.id)
+      end
+
+      it "previews a session in no chain for the sheet: chained false with its link, and lists the feature" do
+        child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                                parent_id: session.id).tap { |s| s.save(state_dir: state_dir) }
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/delete_plan"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include(
+          "chained" => false, "session_id" => session.id,
+          "link" => include("previous_id" => nil, "earlier" => 0, "later" => 0, "worker" => nil, "refusal" => nil,
+                            "delegates" => { "delete" => [child.id], "leave" => [] },
+                            "tasks" => { "running" => [], "unverified" => [], "unreadable" => [] })
+        )
+        _status, _headers, info = app.call(env_for("/api/info"))
+        expect(JSON.parse(info.first)["features"]).to include(Samagotchi::Web::App::DELETE_PLAN_FEATURE)
+        expect(Samagotchi::Web::App::DELETE_PLAN_FEATURE).to eq("delete_plan_all")
+      end
+
+      it "previews a folder whose session file is gone, which the delete still takes" do
+        FileUtils.mkdir_p(File.join(session_dir, "notes"))
+        FileUtils.rm_f(session_file)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/delete_plan"))
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include("chained" => false, "link" => include("refusal" => nil))
+
+        status, = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+        expect(status).to eq(200)
+        expect(Dir.exist?(session_dir)).to be false
       end
 
       describe "…/chain" do
