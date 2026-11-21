@@ -106,7 +106,9 @@ would be 409): ask or wait on the session instead.
 An agent (Claude Code, Codex, a script acting on its own) should drive chi
 with `chi send --wait` and `chi answer` first, and `chi --remote NAME` for
 another machine's chi web ([chi as a sub-agent](sub-agent.md)): they name
-the sender for it. An agent that calls these routes itself must name itself
+the sender for it. An MCP host can add chi as an MCP server instead
+([chi as an MCP server](mcp-server.md): `chi mcp serve`, or `POST /api/mcp`
+on chi web), which names it too. An agent that calls these routes itself must name itself
 the same way:
 
 - `"client_id": "cli:send"` on every ask (and on `POST /api/sessions`);

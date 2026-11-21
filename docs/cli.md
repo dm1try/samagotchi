@@ -28,7 +28,8 @@
 - `chi schedule <add|list|show|tick|run-now|enable|disable|cancel>` — durable schedules on this machine: a prompt with a clock that fires out of no worker (cron, systemd, or chi web's hub with `schedule.auto_tick`), as the next link of a session's chain or as a turn in the session itself (see [Scheduling](scheduling.md) and [Durable schedules](#durable-schedules-chi-schedule)). A usage error exits 2, an unknown session or schedule 1; `chi --remote X schedule list` exits 2
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
 - `chi share ID --name NAME [--identity EMAIL] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant into a session through chi web on the LAN, whose turns act under your guardrails (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
-- `chi --remote NAME send|answer|note|context|sessions|share …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
+- `chi mcp serve` — chi as an MCP server on stdio: an MCP host (Claude Code, Codex) drives the sessions with four tools (`chi_sessions`, `chi_ask`, `chi_wait`, `chi_answer`); `claude mcp add chi -- chi mcp serve`. chi web serves the same at `POST /api/mcp` (see [chi as an MCP server](mcp-server.md))
+- `chi --remote NAME send|answer|note|context|sessions|share|mcp …` (or `CHI_REMOTE=NAME`) — those commands on that machine's sessions, through its chi web (see [Remote sessions](#remote-sessions))
 - `chi --remote NAME --attach ID` (`--resume ID`, `--dir DIR [-p TEXT]`) — the attached TUI on a session of that machine (see [Remote sessions](#remote-sessions))
 - `chi memory ls [--scope project|system] [--format text|json]` — the memories of both scopes (this folder's project first), one row each: scope, name, size, date, `from <bundle>`, the index description and its model overlays; `chi memory rm NAME [--scope project|system]` removes one as `memory_write` with `remove: true` does: its file and model overlays go to the bundle trash (the line names the dir; `chi bundle trash` lists and empties it) and its index line is dropped. NAME in both scopes without `--scope` exits 2 naming both; a missing NAME or a bundle's memory (`chi bundle uninstall` removes it) exits 1. `chi memory usage [--scope project|system] [--top N] [--format text|json]` reports what the memories cost over the saved sessions: each scope's index tokens and how many of its lines name a memory nobody read, the memories read most by tokens, and the user's own memories no saved session read (`--top` caps the rows per section, 10; no sessions says so and exits 0) — see [Memory: What the memories cost](memory.md#what-the-memories-cost)
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
@@ -1689,8 +1690,9 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   An unknown name exits 2.
 - What runs there: `send` (every form: `--new`, `--wait`, `--queue`,
   `--cut`, `--image`, a session command), `answer`, `note`, a session's
-  `context add|push|ls|show|rm` and `sessions
-  list|stop|restart|archive|unarchive|delete`. The rest runs on this machine
+  `context add|push|ls|show|rm`, `sessions
+  list|stop|restart|archive|unarchive|delete` and `mcp serve` (an MCP host
+  on this machine driving that one's sessions). The rest runs on this machine
   only and exits 2 with `chi <command> runs on this machine only: run it on
   <remote>`: `context refresh|mute|unmute` and `--project`, `sessions
   stats|prune|clean`, `broadcast` and the machine's own commands (`bundle`,

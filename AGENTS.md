@@ -40,7 +40,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
   `--thinking` and `--llm-context*` are the session's own, saved. Saved means a respawn, a fork and a continue keep
   them (a toolkit is never re-resolved from config).
 - `--remote NAME` / `CHI_REMOTE` (the flag wins) runs the session commands (`send`, `answer`, `note`, a session's
-  `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`) and, with `--attach`,
+  `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`, `mcp serve`) and, with `--attach`,
   `--resume` or `-p`, the TUI against another machine's chi web (`SessionAccess::Remote`/`Dispatch`,
   `RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse`); what `SessionAccess::Contract` lists as
   local-only (`Contract::RUN` for the run flags) exits 2; `--dir` is remote-only. See docs/cli.md (Remote sessions),
@@ -111,6 +111,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Web Push (`Web::Push`, the Notifier, the service worker, the Home Screen app's bell) → `docs/internals/web-push.md`; the user side → `docs/configuration.md` (Phone notifications)
 - Participants (`chi share`, `Grants`, the participant gate and routes, their turns, `participants.json`) → `docs/internals/participants.md`; their boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
+- chi as an MCP server (`chi mcp serve`, `POST /api/mcp`, `McpServer::Protocol`/`Tools`/`Stdio`/`Http`) → `docs/mcp-server.md`
 - Thin clients (`POST …/ask`, wait tokens, `SessionAccess::Exchange`, `SessionAccess::Ask`) → `docs/thin-clients.md`; the pieces → `docs/internals/remote-sessions.md` (Exchange)
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`
