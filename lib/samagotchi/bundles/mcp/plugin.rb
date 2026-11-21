@@ -31,7 +31,7 @@
 #         linear:
 #           url: https://mcp.linear.app/mcp    # no static token: a 401 offers sign-in
 #           oauth: {client_id: x, issuer: https://id.example}  # optional: a client of yours
-#       client_metadata_url: https://…/client.json  # optional: chi's client document (CIMD)
+#       client_metadata_url: https://…/client.json  # default: chi's own client document (CIMD); false: none
 #
 # A remote server with no static token that answers 401 needs sign-in:
 # /mcp login NAME signs in (OAuth, oauth.rb), /mcp logout NAME forgets it.
@@ -214,12 +214,11 @@ class Plugin
   # chi's client metadata document (CIMD: its client_id at a provider that
   # takes one), pages/oauth/client.json in chi's repository as GitHub Pages
   # serves it, at the owner's custom domain (github.io redirects there, and
-  # a client_id must equal the fetched address exactly). Not the default
-  # yet: a provider fetches it during the sign-in, so an address that isn't
-  # live would fail in the browser.
-  # bundles: mcp: client_metadata_url: sets one (this one, or your own).
+  # a client_id must equal the fetched address exactly). The default:
+  # bundles: mcp: client_metadata_url: sets another (your own), false none
+  # (a provider that takes one gets a registration instead).
   CLIENT_METADATA_DOCUMENT = "https://dmitry.it/samagotchi/oauth/client.json"
-  CLIENT_METADATA_URL = nil
+  CLIENT_METADATA_URL = CLIENT_METADATA_DOCUMENT
 
   # /mcp's one line for a word it doesn't know.
   USAGE = "usage: /mcp (lists the servers), /mcp login NAME, /mcp logout NAME"
@@ -263,7 +262,7 @@ class Plugin
     refusal = sign_in_refusal(name)
     return refusal if refusal
     return "sign-in needs the web or a terminal: this run is one-shot" if ctx.frontend == :one_shot
-    if @settings.key?("client_metadata_url") && client_metadata_url.nil?
+    if @settings.key?("client_metadata_url") && @settings["client_metadata_url"] != false && client_metadata_url.nil?
       return "bundles: mcp: client_metadata_url: must be an https address with a path (chi's client document)"
     end
     return "this chi can't sign in (it has no ctx.sign_in)" unless ctx.respond_to?(:sign_in) && ctx.respond_to?(:secrets)
@@ -460,9 +459,12 @@ class Plugin
   end
 
   # chi's client document's address (bundles: mcp: client_metadata_url:,
-  # else CLIENT_METADATA_URL): an https address with a path, else nil.
+  # else CLIENT_METADATA_URL): an https address with a path, else nil
+  # (false: none, never a CIMD client_id).
   def client_metadata_url
     value = @settings.fetch("client_metadata_url", CLIENT_METADATA_URL)
+    return nil if value == false
+
     uri = URI.parse(value.to_s)
     uri.is_a?(URI::HTTPS) && !uri.host.to_s.empty? && uri.path.to_s.length > 1 && uri.userinfo.nil? ? value.to_s : nil
   rescue URI::Error

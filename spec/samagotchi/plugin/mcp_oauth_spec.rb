@@ -461,15 +461,28 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(document).to include("client_name" => "chi", "redirect_uris" => ["http://127.0.0.1/callback"],
                                   "grant_types" => %w[authorization_code refresh_token], "response_types" => ["code"],
                                   "token_endpoint_auth_method" => "none")
-      expect(bundle.namespace::Plugin::CLIENT_METADATA_URL).to be_nil # set once Pages serves it
+      expect(bundle.namespace::Plugin::CLIENT_METADATA_URL).to eq(document["client_id"]) # the default
     end
 
-    it "isn't used while no address is set: a provider that takes it gets a registration" do
+    it "is chi's own by default: a provider that takes one gets its address, with no registration" do
       provider[:client_id_metadata_document_supported] = true
       bundle.run_inits
       _, params = login
 
-      expect(params["client_id"]).to eq("CLIENT-1")
+      expect(params["client_id"]).to eq("https://dmitry.it/samagotchi/oauth/client.json")
+      expect(requests_to("#{issuer}/register")).to be_empty
+    end
+
+    context "with client_metadata_url: false" do
+      let(:settings) { { "servers" => { "linear" => config }, "startup_timeout" => 2, "client_metadata_url" => false } }
+
+      it "isn't used: a provider that takes one gets a registration" do
+        provider[:client_id_metadata_document_supported] = true
+        bundle.run_inits
+        _, params = login
+
+        expect(params["client_id"]).to eq("CLIENT-1")
+      end
     end
 
     context "with bundles: mcp: client_metadata_url:" do
