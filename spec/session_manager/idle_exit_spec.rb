@@ -23,15 +23,14 @@ RSpec.describe Samagotchi::SessionManager do
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
     let(:sidecar) { File.join(session_dir, "bridge.json") }
     let(:reminders) { Samagotchi::ReminderStore.new }
+    let(:event_log) { Samagotchi::SessionObserver.new }
     let(:engine) do
-      instance_double(Samagotchi::Engine, event_log: Samagotchi::SessionObserver.new, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
+      instance_double(Samagotchi::Engine, event_log: event_log, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, turn_running?: false, last_activity_at: 0.0, sign_in_waiting?: false,
                                           messages_checkpoint: [], used_memory_names: [], write_recap_now: nil, recap_timeout: nil)
     end
 
     before do
-      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
-      allow(engine).to receive(:synchronize_events).and_yield
       allow(engine).to receive(:claim_enqueued_id).and_return(true)
       allow(engine).to receive(:finish_enqueued_id)
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
@@ -88,7 +87,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "stays up for input that came in while it checked with the event log held" do
       calls = 0
-      allow(engine).to receive(:synchronize_events) do |&block|
+      allow(event_log).to receive(:synchronize) do |&block|
         calls += 1
         described_class.write_turn_input(session.id, client_id: nil, prompt: "late", state_dir: tmpdir) if calls == 1
         block.call

@@ -17,7 +17,7 @@ module Samagotchi
     # the idle loop's sleep (#idle_wait). Glue over WorkerWakes, WorkerTaskWakes
     # and WorkerInbound: it writes no ivar of its own. Reads @child_reports,
     # @wakes, @turn_flow, @inbound, @continue_offer, @task_wakes, @engine,
-    # @session_dir and @poll_interval.
+    # @event_log, @session_dir and @poll_interval.
     module WakeTurnsPart
       # A reminder turn's origin: chi's own (system:reminder). Its run gets
       # an id of its own (#wake_origin); this constant has none.
@@ -79,9 +79,9 @@ module Samagotchi
         return unless @wakes.notice_budget!
 
         count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
-        @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
-                         text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
-                               "your next message (#{@wakes.max} turn#{"s" if @wakes.max != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
+        @event_log.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
+                            text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
+                                  "your next message (#{@wakes.max} turn#{"s" if @wakes.max != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
       end
 
       # A wake turn (a delegate report's, an attached context change's, a

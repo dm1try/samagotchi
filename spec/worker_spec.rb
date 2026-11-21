@@ -2869,6 +2869,7 @@ RSpec.describe Samagotchi::Worker do
           File.write(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting.after_file), "{}")
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
+          worker.instance_variable_set(:@event_log, engine.event_log)
 
           expect(worker.send(:next_ready_command)).to be_nil
           expect(queue.size).to eq(2)
@@ -2884,6 +2885,7 @@ RSpec.describe Samagotchi::Worker do
           queue << cmd(command_id: "b", client_id: "web:1", line: "/model X", mid_turn: :loop, after_seq: 0)
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
+          worker.instance_variable_set(:@event_log, engine.event_log)
           worker.instance_variable_set(:@turn_end_seq, 0)
 
           worker.send(:refuse_queued_commands, mid_turn: true)
@@ -2910,12 +2912,13 @@ RSpec.describe Samagotchi::Worker do
           queue << cmd(command_id: "k2", client_id: "web:1", line: "/model Y", mid_turn: :queue, after_seq: 0)
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
+          worker.instance_variable_set(:@event_log, engine.event_log)
           worker.instance_variable_set(:@turn_end_seq, 0)
           arrival = nil
-          allow(engine).to receive(:announce).and_wrap_original do |original, event, *rest|
+          allow(engine.event_log).to receive(:announce).and_wrap_original do |original, event, *rest|
             if event[:command_id] == "r" && arrival.nil?
               # The Bridge queues a command as the busy one is answered.
-              arrival = Thread.new { engine.synchronize_events { queue << cmd(command_id: "n", line: "/model Z", mid_turn: :queue) } }
+              arrival = Thread.new { engine.event_log.synchronize { queue << cmd(command_id: "n", line: "/model Z", mid_turn: :queue) } }
               wait_for("the arrival to wait for the event log") { arrival.status == "sleep" }
             end
             original.call(event, *rest)

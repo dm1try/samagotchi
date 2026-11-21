@@ -15,12 +15,12 @@ module Samagotchi
     # any queued prompt, and refuses or drops what arrives mid-turn. Includes
     # the "what waits" predicates #input_pending?, #held_for_offer? and
     # #nothing_queued?. LOCK RULE: the queue is touched with the event log held
-    # (@engine.synchronize_events): #on_command on a Bridge thread, the pops
+    # (@event_log.synchronize): #on_command on a Bridge thread, the pops
     # and re-pushes in #next_ready_command, #refuse_queued_commands and
     # #drop_queued_commands. The `empty?` peeks (those, #input_pending?,
     # #nothing_queued?, #start's next_turn_waiting lambda) are benign by
     # design. Writes @command_queue's contents (created in #initialize).
-    # Reads @engine, @session_dir, @commands (built in #start),
+    # Reads @engine, @event_log, @session_dir, @commands (built in #start),
     # @continue_offer, @turn_end_seq, @turn_end_type (#start's observer),
     # @turn_flow and @waker.
     module CommandQueuePart
@@ -72,7 +72,7 @@ module Samagotchi
       def next_ready_command
         return nil if @command_queue.empty?
 
-        @engine.synchronize_events do
+        @event_log.synchronize do
           commands = drain_commands
           first = commands.first
           ready = first && ready_command?(first) ? commands.shift : nil
@@ -111,7 +111,7 @@ module Samagotchi
       def refuse_queued_commands(mid_turn: false)
         return if @command_queue.empty?
 
-        @engine.synchronize_events do
+        @event_log.synchronize do
           drain_commands.each do |command|
             during = mid_turn || command.after_seq.to_i < @turn_end_seq
             case (during ? turn_answer(command, ended: !mid_turn) : :keep)
@@ -144,7 +144,7 @@ module Samagotchi
       def waiting_for_turn_end(command)
         return command unless command.mid_turn == :loop && @engine.command_registry.mid_turn(command.line) == :queue
 
-        @engine.announce(type: :command_queued, **command.event_fields, waits: "turn_end")
+        @event_log.announce(type: :command_queued, **command.event_fields, waits: "turn_end")
         command.with(mid_turn: :queue)
       end
 
@@ -164,7 +164,7 @@ module Samagotchi
       def drop_queued_commands
         return if @command_queue.nil? || @command_queue.empty? || @engine.nil?
 
-        @engine.synchronize_events do
+        @event_log.synchronize do
           drain_commands.each { |command| drop_command(command, "dropped: the session's worker stopped before it ran") }
         end
       rescue StandardError => e
@@ -181,11 +181,11 @@ module Samagotchi
         awaiting = @continue_offer.awaiting?
         result, shown = run_command_line(command)
         resolved = @continue_offer.resolved?(awaiting, result)
-        @engine.synchronize_events do
+        @event_log.synchronize do
           @continue_offer.announce_resolved(result, command) if resolved
           announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
                                     confirm: result.confirm)
-          shown.each { |event| @engine.announce(event) }
+          shown.each { |event| @event_log.announce(event) }
         end
         save_or_log(:command) { save_session } unless Array(result.changed).empty?
         user_input(command.client_id) if resolved
@@ -268,7 +268,7 @@ module Samagotchi
 
         after_file ||= newest_input_file if policy == :queue
         # The count says which turn ends came before it.
-        @command_queue << command.with(after_seq: @engine.event_count, mid_turn: policy, after_file: after_file)
+        @command_queue << command.with(after_seq: @event_log.event_count, mid_turn: policy, after_file: after_file)
         @waker.wake
         policy
       end
@@ -331,7 +331,7 @@ module Samagotchi
         SessionSetting::ALL.each { |setting| event[setting.key] = setting.summary(@engine) if setting.changed_by?(changed) }
         event[:confirm] = confirm.to_h if confirm
         event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
-        @engine.announce(event)
+        @event_log.announce(event)
       end
 
       # +text+ as its :command_ran carries it: over the limit, its head to a

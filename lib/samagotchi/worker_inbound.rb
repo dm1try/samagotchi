@@ -90,18 +90,20 @@ module Samagotchi
       false
     end
 
+    # @param event_log [SessionObserver] the Engine's event log (the context notice)
     # @param wakes [WorkerWakes] the wake budget a context wake asks
     # @param awaiting_continue [#call] whether a continue offer waits
     # @param stopped [#call] whether the session was stopped on disk
     # @param queue_command [#call] (line, client_id, after_file, enqueued_id)
     #   queues a session command for the loop's next pass; after_file is the
     #   input file it came in, or nil
-    def initialize(session:, state_dir:, session_dir:, engine:, context_absorber:, wakes:, awaiting_continue:,
+    def initialize(session:, state_dir:, session_dir:, engine:, event_log:, context_absorber:, wakes:, awaiting_continue:,
                    stopped:, queue_command:)
       @session = session
       @state_dir = state_dir
       @session_dir = session_dir
       @engine = engine
+      @event_log = event_log
       @context_absorber = context_absorber
       @wakes = wakes
       @awaiting_continue = awaiting_continue
@@ -383,9 +385,9 @@ module Samagotchi
       return unless delivery && @wakes.notice_peer_budget!
 
       turns = key == ChildRing::MAX_WAKES_KEY ? @wakes.max : @wakes.peer_turns
-      @engine.announce(type: :hook_notice, hook: "context", level: :info, between_turns: true,
-                       text: "#{delivery.peer} answered again; it waits as a note for your next message " \
-                             "(#{turns} wake turn#{"s" if turns != 1} in a row, #{key})")
+      @event_log.announce(type: :hook_notice, hook: "context", level: :info, between_turns: true,
+                          text: "#{delivery.peer} answered again; it waits as a note for your next message " \
+                                "(#{turns} wake turn#{"s" if turns != 1} in a row, #{key})")
     end
 
     def context_wakes_on? = Config.get("context.wake") != false

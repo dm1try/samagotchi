@@ -14,7 +14,7 @@ module Samagotchi
     # SCRATCH_JOIN_GRACE and SCRATCH_GONE_AFTER. Writes @unattended_since
     # (the scratch thread and the loop, no lock: a monotonic stamp, benign).
     # Reads @poll_interval, @session, @bridge, @started_at (#start), @engine,
-    # @session_id and @waker. #scratch? and @scratch_watch (#start_background,
+    # @event_log, @session_id and @waker. #scratch? and @scratch_watch (#start_background,
     # #teardown) stay in Worker.
     module ScratchPart
       # How long a scratch worker waits for its terminal's first stream
@@ -83,7 +83,7 @@ module Samagotchi
       # @return [Boolean] false when a client came back since
       def leave_scratch
         stop_bridge_after do
-          @engine.synchronize_events do
+          @event_log.synchronize do
             # A turn still running is the scratch watch's to cancel first.
             next false unless scratch_unattended? && !@engine.turn_running?
 

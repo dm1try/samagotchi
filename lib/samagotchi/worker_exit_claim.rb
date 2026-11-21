@@ -12,7 +12,7 @@ module Samagotchi
   # Threads: safe from any thread. Its fields change only under its own
   # mutex, and the taken exit is one value replaced whole (#taken), so a
   # reader never sees a kind with another request's flags. Today every
-  # writer also holds the event lock (Engine#synchronize_events: the Bridge's
+  # writer also holds the event lock (SessionObserver#synchronize: the Bridge's
   # /exit, the loop's leave); nothing here depends on it. Lock order: the
   # event lock, then this one.
   class WorkerExitClaim

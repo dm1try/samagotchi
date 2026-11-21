@@ -34,13 +34,15 @@ module Samagotchi
     # (revoked, expired, or the session archived).
     REVOKED_STOP = "%<name>s's link was revoked or expired"
 
-    # @param engine [Engine] announces (the cap notice, :turn_dequeued,
-    #   #watch's :participants_changed) and its metrics' spend
+    # @param engine [Engine] #watch's :participants_changed and its metrics' spend
+    # @param event_log [SessionObserver] the Engine's event log: announces the
+    #   cap notice and :turn_dequeued
     # @param session [Session] the worker's (its participants source, its
     #   Verify fresh)
     # @param hook [String] the cap notice's hook name (Engine::PARTICIPANTS_HOOK)
-    def initialize(engine:, session:, session_id:, state_dir:, session_dir:, hook:)
+    def initialize(engine:, event_log:, session:, session_id:, state_dir:, session_dir:, hook:)
       @engine = engine
+      @event_log = event_log
       @session = session
       @session_id = session_id
       @state_dir = state_dir
@@ -99,7 +101,7 @@ module Samagotchi
       TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
       Participants.log(source_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
                                          enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
-      @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
+      @event_log.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
       nil
     end
 
@@ -148,9 +150,9 @@ module Samagotchi
 
       @cap_noticed << key
       id = Steer.participant_id(author)
-      @engine.announce(type: :hook_notice, hook: @hook, level: :warn, between_turns: true,
-                       text: format(CAP_NOTICE, name: label(author, entry.name), cap: cap,
-                                                session: source_id[0, 8], id: id))
+      @event_log.announce(type: :hook_notice, hook: @hook, level: :warn, between_turns: true,
+                          text: format(CAP_NOTICE, name: label(author, entry.name), cap: cap,
+                                                   session: source_id[0, 8], id: id))
     end
   end
 end

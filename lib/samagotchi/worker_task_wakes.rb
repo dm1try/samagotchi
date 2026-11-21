@@ -22,13 +22,15 @@ module Samagotchi
     # @return [TaskWatch]
     attr_reader :watch
 
+    # @param event_log [SessionObserver] the Engine's event log (the task notice)
     # @param wakes [WorkerWakes] the wake budget a task's wake asks
     # @param awaiting_continue [#call] whether a continue offer waits
     # @param idle [#call] nothing queued and no exit asked for: a finish
     #   may start a turn
     # @param save [#call] saves the session (a failure is the callee's to log)
-    def initialize(engine:, session:, wakes:, awaiting_continue:, idle:, save:)
+    def initialize(engine:, event_log:, session:, wakes:, awaiting_continue:, idle:, save:)
       @engine = engine
+      @event_log = event_log
       @session = session
       @wakes = wakes
       @awaiting_continue = awaiting_continue
@@ -151,10 +153,10 @@ module Samagotchi
     def budget_notice(count)
       return unless count.positive? && @wakes.notice_budget!
 
-      @engine.announce(type: :hook_notice, hook: "task", level: :info, between_turns: true,
-                       text: "#{count} finished background task#{"s" if count != 1} noted; the model reads " \
-                             "#{count == 1 ? "it" : "them"} with your next message " \
-                             "(#{@wakes.max} wake turn#{"s" if @wakes.max != 1} in a row, #{ChildRing::MAX_WAKES_KEY})")
+      @event_log.announce(type: :hook_notice, hook: "task", level: :info, between_turns: true,
+                          text: "#{count} finished background task#{"s" if count != 1} noted; the model reads " \
+                                "#{count == 1 ? "it" : "them"} with your next message " \
+                                "(#{@wakes.max} wake turn#{"s" if @wakes.max != 1} in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
   end
 end

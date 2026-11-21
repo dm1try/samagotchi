@@ -5,6 +5,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/objectives_command"
 require "samagotchi/worker_inbound"
+require "samagotchi/session_observer"
 require "samagotchi/owner_lock"
 require "samagotchi/archive_store"
 
@@ -45,6 +46,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
       target.messages += [Samagotchi::ContextNote.message(**note)]
     end
     Samagotchi::WorkerInbound.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: fake,
+                                  event_log: Samagotchi::SessionObserver.new,
                                   context_absorber: nil, wakes: nil, awaiting_continue: -> { false },
                                   stopped: -> { false }, queue_command: ->(*) {}).absorb_notes
   end
