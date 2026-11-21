@@ -3,6 +3,8 @@
 require "spec_helper"
 require "prism"
 require "samagotchi/turn_state"
+require "samagotchi/steer_cut"
+require "samagotchi/question_desk"
 
 # The hosts hold the Engine's whole TurnState (Engine#turn_state), writers
 # included; only the turn thread may call those (begin!, replace_context,
@@ -31,9 +33,20 @@ module HostTurnStateCalls
   WRITERS = %i[begin! replace_context ended! finish! restart_clock! take_steers steer steer_next_turn
                drop_carried_steers own_controller input_waiting_failed!].freeze
 
+  # The Engine's other turn parts the hosts hold whole: what any host file
+  # may call on each. Not SteerCut's observe/delivered!/finished! (the turn
+  # thread's) nor QuestionDesk's request/open_question (they block a request
+  # thread until an answer); post/withdraw are ContinueOffer's, non-blocking.
+  PARTS = {
+    steer_cut: [Samagotchi::SteerCut, %i[cut_for_steer input_epoch generation_snapshot]],
+    question_desk: [Samagotchi::QuestionDesk, %i[pending answer cancel annotate post withdraw]]
+  }.freeze
+
   # Calls on @turn_state, a local turn_state, or a turn_state reader
-  # (engine.turn_state.running?).
+  # (engine.turn_state.running?); the same for each of PARTS. Each found
+  # call is [receiver, method, line].
   class Calls < Prism::Visitor
+    RECEIVERS = [:turn_state, *PARTS.keys].freeze
     attr_reader :found
 
     def initialize
@@ -43,23 +56,37 @@ module HostTurnStateCalls
 
     def visit_call_node(node)
       receiver = node.receiver
-      if (receiver.is_a?(Prism::InstanceVariableReadNode) && receiver.name == :@turn_state) ||
-         (receiver.is_a?(Prism::LocalVariableReadNode) && receiver.name == :turn_state) ||
-         (receiver.is_a?(Prism::CallNode) && receiver.name == :turn_state)
-        @found << node.name
-      end
+      name = case receiver
+             when Prism::InstanceVariableReadNode then receiver.name.to_s.delete_prefix("@").to_sym
+             when Prism::LocalVariableReadNode, Prism::CallNode then receiver.name
+             end
+      @found << [name, node.name, node.location.start_line] if RECEIVERS.include?(name)
       super
     end
   end
 
+  # @return [Array<String>] each host call on PARTS not in its allowed list
+  def self.part_violations
+    host_paths.flat_map do |path|
+      Prism.parse_file(path).value.accept(visitor = Calls.new)
+      visitor.found.filter_map do |receiver, method, line|
+        next unless (allowed = PARTS.dig(receiver, 1)) && !allowed.include?(method)
+
+        "@#{receiver}.#{method} at #{path.delete_prefix("#{ROOT}/")}:#{line}"
+      end
+    end
+  end
+
+  def self.host_paths = HOST_GLOBS.flat_map { |glob| Dir.glob(File.join(ROOT, "lib/samagotchi", glob)) }.sort
+
   # @return [Hash{String => Array<Symbol>}] each host file that calls the
   #   TurnState, and what it calls
   def self.calls_by_file
-    paths = HOST_GLOBS.flat_map { |glob| Dir.glob(File.join(ROOT, "lib/samagotchi", glob)) }.sort
-    paths.filter_map do |path|
+    host_paths.filter_map do |path|
       visitor = Calls.new
       Prism.parse_file(path).value.accept(visitor)
-      [path.delete_prefix("#{ROOT}/"), visitor.found.uniq] unless visitor.found.empty?
+      found = visitor.found.filter_map { |receiver, method, _| method if receiver == :turn_state }.uniq
+      [path.delete_prefix("#{ROOT}/"), found] unless found.empty?
     end.to_h
   end
 end
@@ -89,5 +116,19 @@ RSpec.describe "Host calls on the TurnState" do
     expect(allowed & HostTurnStateCalls::WRITERS).to be_empty
     expect(allowed - Samagotchi::TurnState.public_instance_methods(false)).to be_empty
     expect(HostTurnStateCalls::WRITERS - Samagotchi::TurnState.public_instance_methods(false)).to be_empty
+  end
+end
+
+RSpec.describe "Host calls on the SteerCut and the QuestionDesk" do
+  it "calls only each part's allowed methods" do
+    extra = HostTurnStateCalls.part_violations
+
+    expect(extra).to be_empty, "Calls not in HostTurnStateCalls::PARTS:\n#{extra.join("\n")}"
+  end
+
+  it "allows only each part's own public methods" do
+    HostTurnStateCalls::PARTS.each_value do |klass, allowed|
+      expect(allowed - klass.public_instance_methods(false)).to be_empty
+    end
   end
 end
