@@ -461,7 +461,7 @@ Samagotchi/FileSize:
     - vendor/**/*
     - node_modules/**/*
   Caps:
-    lib/samagotchi/bridge.rb: 1871
+    lib/samagotchi/bridge.rb: 1860
     lib/samagotchi/bundle_command.rb: 1189
     lib/samagotchi/config.rb: 1496
     lib/samagotchi/engine.rb: 1355
