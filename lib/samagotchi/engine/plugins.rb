@@ -174,6 +174,7 @@ module Samagotchi
             []
           end,
           state_dir: -> { session_state_dir },
+          secrets_store: ->(bundle) { Plugin::Secrets::FileStore.for_bundle(bundle) },
           scratch: -> { @scratch },
           setup: -> { SessionSetup.of(@session, forked: true) },
           # The files whose text the built system prompt holds; [] until a

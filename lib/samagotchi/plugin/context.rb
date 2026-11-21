@@ -36,6 +36,7 @@ module Samagotchi
     autoload :HttpError, File.expand_path("http_errors", __dir__)
     autoload :HttpCancelled, File.expand_path("http_errors", __dir__)
     autoload :Judgments, File.expand_path("judgments", __dir__)
+    autoload :Secrets, File.expand_path("secrets", __dir__)
 
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
@@ -77,11 +78,14 @@ module Samagotchi
     # prompt mentions, for the candidate judge (Engine#judge_late_candidates).
     # +judgments+ returns the SystemOne::Judgments ctx.judge, ctx.judge_later
     # and ctx.judgments ask and label through.
+    # +secrets_store+ takes (bundle) and returns the store ctx.secrets keeps
+    # that bundle's secrets in (Secrets::FileStore; the test kit's in memory).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
-                      :candidate_proposed, :judgments, :turn_running, :current_cancel, keyword_init: true)
+                      :candidate_proposed, :judgments, :turn_running, :current_cancel, :secrets_store,
+                      keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -510,6 +514,13 @@ module Samagotchi
       # @return [Sessions]
       def sessions
         @sessions ||= Sessions.new(@host)
+      end
+
+      # The bundle's secrets: tokens kept apart from its data files
+      # (Secrets, docs/plugins.md).
+      # @return [Secrets]
+      def secrets
+        @secrets ||= Secrets.new(@host.secrets_store.call(@bundle))
       end
 
       # An HTTP client for calling services (Http, docs/plugins.md). A call

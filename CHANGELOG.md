@@ -31,6 +31,9 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: a card action can open an address, `{label:, url:}` (an http(s) one with a host): the web
   draws a link to a new tab with the host named under the buttons, the terminal prints the address whole. It sends
   nothing to the session and doesn't make a card ask. Set `requires_chi: ">= 0.183.0"` by hand.
+- For bundle authors: `ctx.secrets` (`get`, `set`, `delete`, `update`), the bundle's tokens in 0600 files under the
+  state dir, apart per bundle; `update` reads, changes and writes under a lock that holds across workers. The test
+  kit keeps them in memory (`bundle.secrets`, `bundle.set(secrets: …)`).
 
 ### Changed
 

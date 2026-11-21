@@ -72,7 +72,8 @@ module Samagotchi
           # The candidate judge isn't the bundle's to test: a late proposal
           # goes nowhere.
           candidate_proposed: ->(_candidate) {},
-          judgments: -> { recorder.judgments.layer }
+          judgments: -> { recorder.judgments.layer },
+          secrets_store: ->(_bundle) { recorder.secrets }
         )
       end
 

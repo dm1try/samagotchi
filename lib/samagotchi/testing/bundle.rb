@@ -358,6 +358,9 @@ module Samagotchi
 
       def notices = @recorder.notices
       def cards = @recorder.cards
+      # What ctx.secrets holds now ({"name" => "value"}); seed it with
+      # bundle.set(secrets: {...}).
+      def secrets = @recorder.secrets.to_h
       def steers = @recorder.steers
       # Every stop_turn and stop_generation, in order (Stop#kind).
       def stops = @recorder.stops

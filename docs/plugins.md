@@ -896,7 +896,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.model_names` | the names chi's own per-model config looks that model up under (a `models:` map in config.yml): as typed (an alias), the alias's target, the resolved ref, without the host, the bare id; deduped, most specific first, frozen (`[]` when it doesn't resolve). Match a map of yours over them downcased, first hit, as chi does. Needs chi 0.132.0 |
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
 | `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
-| `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)). Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
+| `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)): `ctx.secrets` works there, so don't start a sign-in on such a turn. Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
 | `ctx.tool_id` | inside a tool's block, the run's own id (chi's tool id, `"t41"`), the one a two-arg `refs:` lambda got for its row ([Refs on a tool's row](#refs-on-a-tools-row)); nil anywhere else (a hook, a command, a thread the block started) and for a run with none. Needs chi 0.181.0 (guard it with `ctx.respond_to?(:tool_id)`) |
 | `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use: what the bundle keeps across sessions |
@@ -918,6 +918,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
+| `ctx.secrets` | the bundle's tokens, kept apart from its data files (`get`, `set`, `delete`, `update`): see [Secrets](#secrets-ctxsecrets) |
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
@@ -1271,6 +1272,44 @@ end
   comments; an event is yielded at its blank line (one cut off by the end of the body is dropped, one without `data` too).
 
 `ctx.http` is experimental until 1.0, like the test kit.
+
+## Secrets: `ctx.secrets`
+
+What a bundle keeps that must not sit in a plain data file: tokens.
+
+```ruby
+ctx.secrets.get("linear")                 # => String or nil
+ctx.secrets.set("linear", json_string)    # => true
+ctx.secrets.delete("linear")              # => true if there was one
+ctx.secrets.update("linear") { |old| new_or_nil }   # read-change-write under a lock; nil deletes
+ctx.secrets.backend                       # => :file (:memory in the test kit), for a status line
+```
+
+- Per bundle: bundle `mcp`'s `linear` and another bundle's `linear` are different secrets. A name matches
+  `/\A[a-z0-9][a-z0-9._-]{0,63}\z/`; a value is a String of at most 16 KB (encode JSON yourself). Anything else
+  raises `ArgumentError`, whose message never holds the value. chi never logs a value, nor shows it in `inspect`.
+- Where it is: one file per secret, `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/secrets/<name>`, mode 0600 in a
+  0700 folder, written whole. On macOS too: the login Keychain can't take a value through `/usr/bin/security`
+  without it showing in a process list (its stdin mode cuts a line at about 4 KB and its prompt at 128
+  characters), so chi doesn't use it for these.
+- `update` holds an exclusive lock on the secret for the whole block, across processes: two workers refreshing the
+  same token don't each spend the refresh token, the second one's block gets the first one's new value as `old`.
+  `set` and `delete` take the same lock. The wait has a deadline (`timeout:`, default 30 s), after which it raises
+  `Samagotchi::Plugin::Secrets::Busy`. A store failure (the disk, permissions) raises
+  `Samagotchi::Plugin::Secrets::Unavailable`, naming the store and the secret's name only.
+- No caching: `get` reads the file each time. Keep the token in memory and read it again on a 401.
+- What protects the file: a participant's turn never reads chi's state dir, and System 1 never answers for it. The
+  owner's own model can still read it under the ordinary outside-the-repo rules (as it can run `security` for a
+  Keychain item); the guardrails' core write checks don't cover it.
+- On a participant's turn (`ctx.turn_author` set) a plugin runs with the owner's power, so `ctx.secrets` works
+  there. Using a token you already have is the same as a stdio server's env secret today; don't start a sign-in on
+  a participant's turn.
+- `chi bundle uninstall` leaves `plugins/<bundle>/` in place, secrets included. Offer a command that forgets them
+  (`ctx.secrets.delete`).
+- In the test kit `ctx.secrets` is in memory: `bundle.set(secrets: { "linear" => "..." })` (or `host:` on load)
+  seeds it, `bundle.secrets` reads what the plugin kept. A bundle's specs never touch the disk for it.
+
+Needs chi 0.183.0 (`ctx.respond_to?(:secrets)`).
 
 ## Other sessions: `ctx.sessions`
 

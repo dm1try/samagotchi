@@ -49,7 +49,10 @@ module Samagotchi
         # to restart), and the context size its confirm names (nil: none).
         history: false, context_tokens: nil,
         # ctx.model_names: nil gives model_name and its id without the host.
-        model_names: nil
+        model_names: nil,
+        # ctx.secrets: seeds its in-memory store ({"name" => "value"}); a
+        # set replaces what it holds. bundle.secrets reads it.
+        secrets: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,
@@ -60,6 +63,8 @@ module Samagotchi
         raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
 
         @values = DEFAULTS.merge(values)
+        @secrets = Plugin::Secrets::MemoryStore.new
+        @secrets.replace(@values[:secrets] || {})
         @notices = []
         @cards = []
         @steers = []
@@ -79,8 +84,13 @@ module Samagotchi
         raise ArgumentError, "unknown host values: #{unknown.join(", ")}" unless unknown.empty?
 
         @mutex.synchronize { @values.merge!(values) }
+        @secrets.replace(values[:secrets] || {}) if values.key?(:secrets)
         self
       end
+
+      # ctx.secrets' store: in memory, the one for the bundle under test.
+      # @return [Plugin::Secrets::MemoryStore]
+      attr_reader :secrets
 
       def [](key) = @mutex.synchronize { @values.fetch(key) }
 
