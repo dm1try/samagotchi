@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  RENDER_MAX_BYTES, createRenderCache, renderable, renderableEvent, sourceText, splitFrontMatter,
+  RENDER_MAX_BYTES, createRenderCache, peekText, renderable, renderableEvent, sourceText, splitFrontMatter,
 } from "../../../lib/samagotchi/web/public/ws_markdown.js";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -54,6 +54,12 @@ test("splitFrontMatter: a leading --- block closed by --- is the front; anything
   assert.deepEqual(splitFrontMatter("---\nnever closed\n"), { front: "", body: "---\nnever closed\n" });
   assert.deepEqual(splitFrontMatter("a\n\n---\n\nb"), { front: "", body: "a\n\n---\n\nb" }, "a rule mid-text (several memories) stays");
   assert.deepEqual(splitFrontMatter(null), { front: "", body: "" });
+});
+
+test("peekText: front matter is removed, but text without front matter is unchanged", () => {
+  assert.equal(peekText("---\nname: style\n---\n# Style\nbe brief\n"), "# Style\nbe brief\n");
+  assert.equal(peekText("# Style\nbe brief\n"), "# Style\nbe brief\n");
+  assert.equal(peekText("a\n\n---\n\nb"), "a\n\n---\n\nb");
 });
 
 test("the cache: one request per text, undefined while it is on its way, then the HTML and onReady", async () => {

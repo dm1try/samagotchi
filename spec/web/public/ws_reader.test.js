@@ -370,6 +370,9 @@ test("a memory renders once its HTML came, source while it is on its way; the sw
   assert.ok(card().querySelector(".wsr-text") === null);
   const group = card().querySelector('.wsr-card-h [role="group"]');
   assert.ok(group?.getAttribute("aria-label"));
+  const actions = card().querySelector(".wsr-card-actions");
+  assert.equal(actions?.querySelector('[role="group"]'), group, "the switch and call link stay together");
+  assert.ok(actions?.querySelector(".wsr-call"));
   assert.deepEqual(viewButtons(reader), ["rendered:true", "source:false"]);
 
   card().querySelector('[data-view="source"]').click();
@@ -465,16 +468,34 @@ test("an .md file: a whole read renders (its band still jumps to it); a slice st
 
 test("the peek of a memory: today's lines while pending, then the whole text rendered once the HTML comes", async () => {
   const md = renderer();
-  const p = page({ answers: { "memory:style": memoryAnswer("# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
+  const p = page({ answers: { "memory:style": memoryAnswer("---\nname: style\n---\n# Style\nbe brief\n") }, renderMarkdown: md.renderMarkdown });
   p.ws.popover.open(document.querySelector(".ws-chip"));
   const pop = p.ws.popover.pop;
   pop.querySelector(".ws-row.memory .ws-peek-toggle").click();
   await tick();
   assert.match(pop.querySelector(".ws-peek-b .wsr-text").textContent, /# Style/, "pending: the text's first lines");
+  assert.doesNotMatch(pop.querySelector(".ws-peek-b .wsr-text").textContent, /name: style/, "pending: no front matter");
   await md.release();
   assert.equal(pop.querySelector(".ws-peek-b .wsr-md h1").textContent, "Style", "redrawn when the HTML came");
   assert.ok(pop.querySelector(".ws-peek-b .wsr-text") === null);
+  assert.ok(pop.querySelector(".ws-peek-b .wsr-front") === null, "rendered: no front matter");
   assert.ok(pop.querySelector('[data-wsr="view"]') === null, "no switch in the peek");
+  p.ws.popover.close();
+  p.cleanup();
+});
+
+test("the peek of a fetched YAML file keeps its leading document separator block", async () => {
+  const url = "https://example.test/data.yaml";
+  const text = "---\nkind: first\n---\n---\nkind: second\n";
+  const p = page({
+    answers: { [`url:${url}`]: { kind: "url", key: url, events: [{ tool_id: "t9", op: "fetch", step: 3, sent: true, text }] } },
+    extra: [{ tool: "web_fetch", title: url, params: `url="${url}"`, status: "ok", tool_id: "t9" }],
+  });
+  p.ws.popover.open(document.querySelector(".ws-chip"));
+  const pop = p.ws.popover.pop;
+  pop.querySelector(".ws-row.url .ws-peek-toggle").click();
+  await tick();
+  assert.equal(pop.querySelector(".ws-peek-b .wsr-text").textContent, text);
   p.ws.popover.close();
   p.cleanup();
 });

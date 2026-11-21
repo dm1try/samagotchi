@@ -69,7 +69,8 @@
 .wsr-card-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--bg-raised);font-size:12px}
 .wsr-card-t{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}
 .wsr-card-m{color:var(--ws-faint)}
-.wsr-card-h .wsr-call{margin-left:auto;font-size:12px}
+.wsr-card-actions{display:inline-flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap}
+.wsr-card-h .wsr-call{margin-left:0;font-size:12px}
 .wsr-pill{padding:0 6px;border-radius:4px;font-size:11px}
 .wsr-pill.latest{background:var(--accent-bg);color:var(--accent)}
 .wsr-pill.gone{background:var(--badge-bg);color:var(--text-muted)}
@@ -106,8 +107,7 @@
 .wsr-md th{background:var(--bg-inset);font-weight:600}
 .wsr-front{margin:0;padding:6px 14px;border-bottom:1px solid var(--border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:16px;white-space:pre-wrap;word-break:break-word;color:var(--text-faint)}
 /* The card's "rendered | source" switch, as the list's lens. */
-.wsr-view{display:inline-flex;gap:2px;margin-left:auto}
-.wsr-view+.wsr-call{margin-left:0}
+.wsr-view{display:inline-flex;gap:2px}
 .wsr-view button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px;cursor:pointer}
 .wsr-view button.on{color:var(--text-2);border-color:var(--border-strong);background:var(--bg-inset)}
 .wsr-view button:hover:not(:disabled){filter:none}@media(hover:hover){.wsr-view button:hover{color:var(--text)}}
@@ -148,9 +148,15 @@
   .wsr-bar{height:8px}
   .wsr-body{padding:10px 0;gap:10px}
   .wsr-card{border-left:0;border-right:0;border-radius:0}
+  .wsr-card-h{flex-wrap:wrap;gap:6px;padding:6px 8px}
+  .wsr-card-t{flex:1 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wsr-card-actions{flex:none;margin-left:auto}
+  .wsr-card-h .wsr-call{white-space:nowrap}
   .wsr-lines{font-size:11.5px;line-height:18px}
   .wsr-card .read-lines code{min-width:max-content}
-  .wsr-view button{min-width:44px;min-height:44px;padding:1px 6px;font-size:12.5px}
+  .wsr-view{flex:none}
+  .wsr-view button{position:relative;min-height:20px;padding:1px 8px}
+  .wsr-view button::after{content:"";position:absolute;inset:-12px 0}
   .wsr-md{padding:10px 14px}
   .wsr-banner,.wsr-tabs{margin:10px 12px 0}
   .wsr-tabs{max-width:none}
