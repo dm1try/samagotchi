@@ -3,7 +3,7 @@
 # The mcp bundle's fourth plugin part (manifest.yml plugin: parts:, loaded
 # before plugin.rb): a server's tools, from its tools/list cache to chi's
 # tool index (Plugin#index, #publish), with what makes a tool uncallable (a
-# bad schema, a name clash).
+# bad schema, a name clash), and /mcp's listing of them.
 require "json"
 require "time"
 require "samagotchi/tools/tool_index"
@@ -175,4 +175,55 @@ class Plugin
 
     server.info
   end
+
+  # ── /mcp's listing ────────────────────────────────────────────────────
+
+  def listing
+    return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/bundles.md, The mcp bundle)." if @servers.empty?
+
+    servers = @servers.map do |server|
+      marker = if @source && !@source.declared_groups.include?(server.name)
+                 " (not in toolkit #{@ctx.toolkit})"
+               end
+      head = "**#{server.name}**: #{state_text(server)}#{marker}"
+      # Sorted: a server lists its tools in its own (often grouped) order.
+      tools = server.tools.sort_by(&:name).map { |t| ["- `#{t.server}/#{t.name}`", mark(t)].compact.join(" ") }
+      tools.empty? ? head : "#{head}\n#{tools.join("\n")}"
+    end
+    [*servers, totals_text].join("\n\n")
+  end
+
+  # /mcp's last line: what every request carries, and the servers' tools'
+  # tokens. When another tool took both names (chi's tool index left its
+  # tools out: a load warning), that the model can't reach them.
+  def totals_text
+    if @source.declared_names.empty?
+      return "The search and call tools aren't declared in this session (other tools have their names; see the " \
+             "load warnings), so the model can't reach the tools above."
+    end
+
+    total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
+    "Every request carries #{@source.declared_names.join(" and ")}: ~#{thousands(@source.declared_tokens)} tokens. " \
+      "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
+      "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."
+  end
+
+  def state_text(server)
+    count = offered(server).size
+    tools = "#{count} tool#{"s" unless count == 1}"
+    case server.state
+    when :cached then "cached (not started), #{tools}, #{tokens_text(server)}"
+    when :running then "#{server.url ? "connected" : "running"} (#{server.client.label}), #{tools}, #{tokens_text(server)}"
+    when :starting then "starting"
+    when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
+    when :needs_sign_in then "needs sign-in (/mcp login #{server.name})"
+    else "stopped: #{server.error}"
+    end
+  rescue Samagotchi::Plugin::Service::Stopped
+    "stopped"
+  end
+
+  def tokens_text(server) = "~#{thousands(server.tokens)} tokens"
+
+  def thousands(number) = number.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
 end
