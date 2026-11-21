@@ -105,6 +105,21 @@ RSpec.describe "Cards" do
       expect(cards.first).to include(card)
     end
 
+    it "keeps a between_turns card out of a running turn: announced as an anytime command's, marked so; else as any" do
+      engine.register_hook(:before_turn) do |_e|
+        Thread.new { engine.show_card(source: "b", title: "aside", id: "c2", between_turns: true) }.join
+      end
+      sink = []
+      engine.run_turn(session, "hi", on_event: ->(e) { sink << e })
+
+      expect(sink.select { |e| e[:type] == :card }).to be_empty
+      expect(cards.first).to include(id: "c2", title: "aside", in_turn: false, anytime: true)
+      seen.clear
+      engine.show_card(source: "b", title: "between", id: "c3", between_turns: true)
+      expect(cards.first).to include(id: "c3", in_turn: false)
+      expect(cards.first).not_to have_key(:anytime)
+    end
+
     describe "a card a session command shows" do
       let(:commands) do
         Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine), default_model: "m",
@@ -184,6 +199,17 @@ RSpec.describe "Cards" do
 
       expect(cards.first).to include(id: id, source: "sample", title: "Hello")
       expect(ctx.card(title: "Hello 2", id: id)).to eq(id)
+    end
+
+    it "hands between_turns: on only when it is set" do
+      host = engine.send(:plugin_host)
+      given = []
+      allow(host.card).to(receive(:call).and_wrap_original { |original, **card| (given << card.keys.sort) && original.call(**card) })
+      ctx = Samagotchi::Plugin::Context.new(bundle: "sample", label: "plugin.rb (bundle sample)", settings: {}, host: host)
+      ctx.card(title: "plain")
+      ctx.card(title: "aside", between_turns: true)
+
+      expect(given.map { |keys| keys.include?(:between_turns) }).to eq([false, true])
     end
   end
 

@@ -125,12 +125,9 @@ module Samagotchi
       end
 
       # A flow's card is never a running turn's (a timeout fires whenever):
-      # shown as an anytime command's is while a turn runs, else as a
-      # between-turns card (a command's, held for its command_ran).
+      # Engine#show_card's between_turns.
       def sign_in_card(bundle, **card)
-        return running_anytime { show_card(source: bundle, **card) } if turn_running?
-
-        show_card(source: bundle, **card)
+        show_card(source: bundle, **card, between_turns: true)
       end
 
       # Its host and path: an authorize address can carry a login hint.

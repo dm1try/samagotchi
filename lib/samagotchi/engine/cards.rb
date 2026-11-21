@@ -17,14 +17,21 @@ module Samagotchi
       # Where it goes (held while the plugins load, an anytime command's, an
       # init task's, a turn event, else announced) is EventRoutes#route's,
       # marked in_turn: (CARD_MARKS). A card with the id of an earlier one
-      # replaces it (btw's "thinking…" → the answer).
+      # replaces it (btw's "thinking…" → the answer). +between_turns+: never a
+      # running turn's: while one runs it is shown as an anytime command's
+      # card is (a sign-in flow's, a plugin thread's that must not land in a
+      # turn's block, which the web collapses).
       # @param source [String] who shows it (a bundle's name)
       # @param actions [Array<Hash>] {label:, command:}, a line the session
       #   runs as typed (D3), or {label:, url:}, an http(s) address a UI opens
       #   (it sends nothing; Plugin::Card.build checks it)
       # @return [String] the card's id
       # @raise [ArgumentError] a card without a title, or a bad action
-      def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
+      def show_card(source:, title:, body: "", actions: [], level: :info, id: nil, between_turns: false)
+        if between_turns && turn_running?
+          return running_anytime { show_card(source: source, title: title, body: body, actions: actions, level: level, id: id) }
+        end
+
         card = Plugin::Card.build(source: source, title: title, body: body, actions: actions, level: level, id: id)
         command = Thread.current[running_command_key]
         card[:command] = command if command

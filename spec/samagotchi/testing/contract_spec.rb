@@ -49,6 +49,8 @@ RSpec.describe "The bundle test kit's contract" do
     expect(id).to eq("c1")
     expect(recorder.cards).to eq([{ type: :card, id: "c1", source: "b", title: "t", body: "b", level: :info,
                                     actions: [{ label: "Go", command: "/go" }] }])
+    ctx.card(title: "aside", id: "c2", between_turns: true)
+    expect(recorder.cards.last).to include(id: "c2", between_turns: true)
     expect(recorder.steers.map(&:to_h)).to eq([{ text: "more", hook: label }])
     expect(recorder.stops.map(&:to_h)).to eq([{ kind: :turn, reason: "enough", hook: label },
                                               { kind: :generation, reason: "cut", hook: label }])

@@ -942,7 +942,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.prompt_files` | the files whose text is in the session's system prompt now: the AGENTS.md chain (the work tree top down to the cwd) and the appended files (`append_system_prompt:`, `--append-system-prompt`); absolute paths, in prompt order, `[]` before the first build |
 | `ctx.objectives` | the session's [objectives](internals/objectives.md), read now, as a frozen value: `empty?`, `items` (each `id`, `text`, `status` `"active"`, `"done"` or `"dropped"`, `done_when`), `find(id)`, `text` (the lines the model is shown) and `moves` (the latest move per id; mid-turn, a worker's leaves the running turn's out). An edit not yet absorbed counts. Empty when the session has none. Use its methods, not its class. Needs chi newer than 0.148.0 |
 | `ctx.notify(text, level: :info, fallback_for: nil)` | one line to the user, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command). `fallback_for: :display` marks a line that repeats the answer's display (`event[:present]`), which a UI that renders the display leaves out (`fallback_for: :editor`: a file the viewer could open from a ref in its editor): see [Hooks](hooks.md#what-a-hook-can-do-the-runtime). The keyword needs chi 0.35.0 (it raises on an older chi) |
-| `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
+| `ctx.card(title:, body: "", actions: [], level: :info, id: nil, between_turns: false)` | a card in every UI, returning its id: see [Cards](#cards) (`between_turns:`: never a running turn's) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options or effects). `effects:` tags the options a parent agent's answer is held to (label => `:spend`, `:permit`, `:permit_wide` or `:deny`; untagged = `:answer`): tag every option that spends or permits, and never let text alone or a dismissal do either ([hooks.md](hooks.md#what-a-hook-can-do-the-runtime)). It needs a chi newer than 0.85.0 |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
 | `ctx.cancel_controller` | the `Samagotchi::CancellationController` `ctx.cancelled?` reads **on this thread**: inside an init task the task's own, else the running turn's; nil when neither. Read it on the thread that does the work, then hand it on: as `ctx.http`'s `cancel:` (it is the turn's inside a service's start block too, where `ctx.http`'s default is none) or to a thread of yours that polls it. A thread of yours that calls `ctx.cancelled?` itself gets its own thread's answer (the turn's), never the init task's. Experimental until 1.0; needs chi 0.183.0 or newer (`ctx.respond_to?(:cancel_controller)`) |
@@ -1058,6 +1058,12 @@ its line being gone.
 
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
+
+A card from a thread of your own (a sign-in's result, a server's state) that a turn happens to be running beside
+lands in that turn's block, which the web collapses when the turn ends. `between_turns: true` keeps it out: while a
+turn runs it is shown as an anytime command's card is (outside the turn's block, marked `anytime: true`), else as
+any card between turns. It is the rule chi's own sign-in cards follow. The test kit records it on the card
+(`between_turns: true`). The keyword needs a chi newer than 0.182.0 (an older one raises `ArgumentError`).
 
 A worker keeps its last 20 cards (questions included) and, apart, its
 last 20 hook notices, for a UI that joins later; a question still waiting
