@@ -366,8 +366,9 @@ module Samagotchi
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      private_class_method :stop_thread, :named_tasks, :command_name, :short_task, :cut, :readable_session,
-                           :classify, :liveness, :monotonic
+      # command_name, short_task and cut stay public: chi sessions delete
+      # --dry-run names a plan's tasks with them.
+      private_class_method :stop_thread, :named_tasks, :readable_session, :classify, :liveness, :monotonic
     end
   end
 end

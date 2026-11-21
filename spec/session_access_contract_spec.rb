@@ -103,6 +103,7 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
 
   it "answers for a whole command line" do
     expect(contract.supported?("send", "--wait")).to be(true)
+    expect(contract.supported?("sessions", "delete", "--dry-run")).to be(true)
     expect(contract.supported?("context", "add", "--cmd")).to be(true)
     expect(contract.supported?("context", "add", "--project")).to be(false)
     expect(contract.supported?("context", "refresh")).to be(false)

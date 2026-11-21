@@ -121,6 +121,9 @@ module Samagotchi
         "sessions delete --force" => SUPPORTED,
         "sessions delete --chain" => SUPPORTED,
         "sessions delete --stop-tasks" => SUPPORTED,
+        # A chi web without delete_plan_all (Remote#delete_plan checks its
+        # feature) refuses with RemoteTooOld, nothing deleted.
+        "sessions delete --dry-run" => SUPPORTED,
         "sessions prune" => LOCAL_ONLY,
         "sessions clean" => LOCAL_ONLY,
         "sessions stats" => LOCAL_ONLY,
