@@ -304,6 +304,7 @@ module Samagotchi
         ["POST", %r{\A/api/update/restart_workers\z}, :handle_restart_workers, :owner],
         ["POST", %r{\A/api/update/restart_web\z}, :handle_restart_web, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
+        *McpRoute::ROUTES,
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel, :participant, :session],
@@ -834,7 +835,7 @@ module Samagotchi
       def unauthorized(req)
         reason = req.env[REFUSED_ENV]
         log_refused(refused_peer(req), req.path_info, reason)
-        return error_response(401, "unauthorized", unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
+        return api_unauthorized(req, unauthorized_detail(req, reason)) if req.path_info.start_with?("/api/")
 
         body = unauthorized_page(req)
         [401, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" },
@@ -1127,7 +1128,7 @@ module Samagotchi
       # delegates: chi --remote sessions delete --dry-run asks for this first.
       DELETE_PLAN_FEATURE = "delete_plan_all"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, McpRoute::FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and
