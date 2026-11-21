@@ -48,6 +48,16 @@ test("draws a button per region, named for a screen reader, in a group that coun
   assert.ok(buttons().every((b) => b.type === "button"));
 });
 
+test("each button carries its own inline reset: placed, see-through, no pointer, whatever the stylesheet", () => {
+  const edge = { ...EDGE };
+  delete edge.box;
+  const { buttons } = setup({ ...PICTURE, regions: [BR, edge] });
+  for (const b of buttons()) {
+    const style = b.getAttribute("style");
+    for (const rule of ["position:absolute", "pointer-events:none", "background:none", "border:0", "padding:0", "margin:0"]) assert.ok(style.includes(rule), `${rule} in ${style}`);
+  }
+});
+
 test("an edge's button without a label box is a 24 px square at its middle point", () => {
   const edge = { ...EDGE, box: undefined };
   delete edge.box;

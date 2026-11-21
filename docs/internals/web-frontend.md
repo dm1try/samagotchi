@@ -515,13 +515,14 @@ kept: every open starts fitted.
   of a picture with regions, selected or not, so selecting never moves a fitted picture and no fitted node is under
   the card; zoomed in, a selected node under the card slides up (`revealOffset`), `TAP_MS` after its tap and only if
   no second tap came (a double tap zooms at the point it hit), a keyboard's selection at once. **Keys**: the nodes'
-  buttons (`.pv-node`, a full reset of the page's `button` style, `pointer-events: none`) are one Tab stop (roving
-  `tabindex`, following the selection); the arrows move the focus to the nearest button that way (along + 2 ×
-  across; a group only when nothing else is that way), Enter or Space is the button's click, which selects; Esc
-  clears a selection first and closes second; the card's ✕ clears. When the card goes with the focus in it, the
-  focus goes to the cleared region's button, else to the viewer (never `<body>`, where the next Esc wouldn't reach
-  the viewer). A focused button never scrolls the surface (its `scroll` is reset). The card's actions row is the
-  layer's `actions(region)` (empty for now: the card is the name alone).
+  buttons (`.pv-node`, a full reset of the page's `button` style, `pointer-events: none`; the reset is in each
+  button's inline `style` too, so with a stale index.html they are still see-through and take no pointer) are one Tab
+  stop (roving `tabindex`, following the selection); the arrows move the focus to the nearest button that way (along +
+  2 × across; a group only when nothing else is that way), Enter or Space is the button's click, which selects; Esc
+  clears a selection first and closes second; the card's ✕ clears. When the card goes with the focus in it, the focus
+  goes to the cleared region's button, else to the viewer (never `<body>`, where the next Esc wouldn't reach the
+  viewer). A focused button never scrolls the surface (its `scroll` is reset). The card's actions row is the layer's
+  `actions(region)` (empty for now: the card is the name alone).
 
 ## A failed block asked for again
 
