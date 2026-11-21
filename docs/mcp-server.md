@@ -35,7 +35,8 @@ args = ["mcp", "serve"]
 Both revisions of the protocol are served: the current one (2026-07-28, stateless: Claude Code) and the earlier
 `initialize` one (2025-11-25, 2025-06-18: Codex). The answers are plain JSON, never a stream. 2025-03-26 is not
 offered (a client naming it is answered 2025-11-25): it allows JSON-RPC batches, and chi answers a batch with one
-`-32600` error.
+`-32600` error. A message that isn't JSON in UTF-8 is a `-32700` with its request's id when chi can read one, so the
+host isn't left waiting on that call.
 
 ## The tools
 
