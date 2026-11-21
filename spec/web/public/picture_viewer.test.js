@@ -319,6 +319,16 @@ test("a layer mounts once on .pv-pic, is cleared and shown the open's picture on
   assert.deepEqual(layer.calls.map((c) => c[0]), ["mount", "clear", "show", "clear", "clear", "show"]);
 });
 
+test("a layer is shown a picture of unknown size with its decoded size", async () => {
+  const { pictures, img } = setup();
+  const layer = fakeLayer();
+  pictures.useLayer(layer);
+  Object.defineProperty(img(), "naturalWidth", { value: 800, configurable: true });
+  Object.defineProperty(img(), "naturalHeight", { value: 200, configurable: true });
+  await pictures.open({ url: URL_A, regions: [] });
+  assert.deepEqual(layer.calls.at(-1), ["show", { url: URL_A, regions: [], width: 800, height: 200 }]);
+});
+
 test("a layer given after the first open mounts at once; its room is kept at the bottom of the fit", async () => {
   const { pictures, width, place } = setup();
   await pictures.open(PIC);
