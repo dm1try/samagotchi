@@ -40,9 +40,11 @@ module Samagotchi
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).
     #
-    # For each bundle, by name: the file must match the sha256 recorded at
-    # install and chi must meet the bundle's requires_chi. The file is
-    # module_eval'd into the bundle's namespace (#namespace_for), the
+    # For each bundle, by name: every file of the plugin (its parts, then
+    # the plugin file) must match the sha256 recorded at install
+    # (InstalledBundles::Dir#plugin_refusal) and chi must meet the bundle's
+    # requires_chi. The parts, in their manifest order, then the file are
+    # module_eval'd into one fresh module in the bundle's namespace (#namespace_for), the
     # class named like the file (plugin.rb → Plugin) is built with the
     # bundle's settings, and its #register gets a Plugin::Api. What it
     # registered takes effect only when #register returns: a plugin that
@@ -85,7 +87,7 @@ module Samagotchi
       end
 
       # Whether it may load is the verdict's (InstalledBundles::Standing, then
-      # Dir#file_refusal(:plugin)); what a refusal does is the loader's: a
+      # Dir#plugin_refusal); what a refusal does is the loader's: a
       # failure, required for a guardrail plugin.
       # @param standing [InstalledBundles::Standing] the bundle's (built from
       #   +bundle+ when not given)
@@ -100,10 +102,10 @@ module Samagotchi
         # (its sha, requires_chi, a raise) denies every tool call.
         required = standing.unreadable? ? unreadable_required?(bundle_name) : bundle.manifest.plugin_required
         into = required ? guardrail_failures || failures : failures
-        refusal = standing.refusal || installed.file_refusal(:plugin, bundle.plugin&.file, bundle.plugin&.sha256)
+        refusal = standing.refusal || installed.plugin_refusal(bundle)
         return failed(bundle_name, basename, refusal.text, into, required: required) if refusal
 
-        api = register_file(bundle_name, file, registries, settings: settings)
+        api = register_file(bundle_name, file, registries, settings: settings, parts: installed.plugin_part_paths(bundle))
         warn_unrequired(bundle_name, basename) if api.fail_closed? && !required
         Log.info(TAG, "plugin_loaded", bundle: bundle_name, file: basename, **api.counts)
         true
@@ -127,15 +129,17 @@ module Samagotchi
       # makes them; the test kit loads a bundle's source this way).
       # @param namespace [Module, nil] the module the file is evaluated in
       #   (default: a fresh one, #fresh_namespace)
+      # @param parts [Array<String>] the plugin's parts' paths, evaluated in
+      #   this order before +file+, into the same module
       # @param api_class [Class] what #register gets (Api; the test kit's
       #   recording subclass)
       # @yieldparam plugin [Object] the built plugin, before #register
       # @return [Api] the committed Api (#counts)
       # @raise [Exception] whatever the file, #register or #commit! raised,
       #   after stopping the services it started; nothing is registered
-      def register_file(bundle_name, file, registries, settings: {}, namespace: nil, api_class: Api)
+      def register_file(bundle_name, file, registries, settings: {}, namespace: nil, api_class: Api, parts: [])
         api = nil
-        plugin = instantiate(bundle_name, file, settings, namespace: namespace)
+        plugin = instantiate(bundle_name, file, settings, namespace: namespace, parts: parts)
         yield plugin if block_given?
         plugin_label = label(bundle_name, File.basename(file))
         api = api_class.new(bundle: bundle_name, label: plugin_label, registries: registries,
@@ -181,14 +185,17 @@ module Samagotchi
         end
       end
 
-      # module_eval the file into a fresh module in the bundle's namespace
+      # module_eval each of +parts+, in order, then the file into a fresh
+      # module in the bundle's namespace
       # (Samagotchi::Bundles::<bundle>::PluginLoad<n>: each load gets new
-      # classes, not the last load's reopened) and build its class
+      # classes, not the last load's reopened; each eval names its own file,
+      # so a backtrace or a SyntaxError names the part) and build its class
       # (plugin.rb → Plugin; my_plugin.rb → MyPlugin) as config hooks are
       # built (Hooks.build_plugin): an initialize that takes an argument
       # gets the settings.
-      def instantiate(bundle_name, file, settings, namespace: nil)
+      def instantiate(bundle_name, file, settings, namespace: nil, parts: [])
         namespace ||= fresh_namespace(bundle_name)
+        parts.each { |part| namespace.module_eval(File.read(part), part, 1) }
         namespace.module_eval(File.read(file), file, 1)
         klass = Hooks.class_for(file, namespace)
         plugin = Hooks.build_plugin(klass, settings)
