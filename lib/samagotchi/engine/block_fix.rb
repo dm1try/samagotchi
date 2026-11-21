@@ -23,6 +23,7 @@ module Samagotchi
       # conversation, its digest then (Bridge::TurnDrawings.digest), and the
       # turn counter then (nil: a turn was running as it was asked).
       Anchor = Data.define(:index, :digest, :turns)
+      MOVED_DIGEST_LIMIT = 64
       # A finished ask: +fixed+ (the new source) or +reason+ (why not).
       Result = Data.define(:turn_id, :lang, :key, :source, :fixed, :reason, :anchor, :started) do
         def fixed? = !fixed.nil?
@@ -211,7 +212,11 @@ module Samagotchi
         replace_session_messages(session, list)
         was = Bridge::TurnDrawings.digest(answer)
         now = Bridge::TurnDrawings.digest(copy)
-        @block_fix_moved[was] = now unless was == now
+        if was != now
+          @block_fix_moved.delete(was)
+          @block_fix_moved[was] = now
+          @block_fix_moved.shift while @block_fix_moved.size > MOVED_DIGEST_LIMIT
+        end
         block_fix_announce(result, state: result.fixed? ? "fixed" : "failed", landed: landed, was_digest: was, digest: now)
         true
       end

@@ -13,8 +13,8 @@ module Samagotchi
     # running node between it and the session) is deleted.
     #
     # One listing per plan: the rows are read once (.session_rows, archived
-    # and test runs too, as .children_of reads them) and the tree is walked
-    # in memory.
+    # and test runs too) and the tree is walked in memory. A caller with a
+    # shared snapshot can pass +rows+ to reuse it across plans.
     class DelegateRule
       # What the rule does with a session's delegates: +delete+ (deepest
       # first, before the session) and +leave+ (running, with their whole
@@ -24,8 +24,8 @@ module Samagotchi
       # @param except [Array<String>] the session's children left out with
       #   their subtrees (the ones a chain link's undo gives back)
       # @return [Plan]
-      def plan(id, state_dir:, except: [])
-        children = children_by_parent(state_dir)
+      def plan(id, state_dir:, except: [], rows: nil)
+        children = children_by_parent(state_dir, rows)
         delete = []
         leave = []
         queue = [id]
@@ -57,9 +57,9 @@ module Samagotchi
       # Every session's children ids, newest first (.children_of's order),
       # from one .session_rows.
       # @return [Hash{String => Array<String>}]
-      def children_by_parent(state_dir)
-        SessionManager.session_rows(state_dir: state_dir, include_tests: true, include_archived: true)
-                      .each_with_object({}) do |row, by_parent|
+      def children_by_parent(state_dir, rows)
+        (rows || SessionManager.session_rows(state_dir: state_dir, include_tests: true, include_archived: true))
+          .each_with_object({}) do |row, by_parent|
           (by_parent[row.parent_id] ||= []) << row.id unless row.parent_id.to_s.empty?
         end
       end

@@ -10,7 +10,7 @@ module Samagotchi
       # delete runs, and the refusals the delete's own checks raise now
       # (check_link!, check_chain!, the continue holds, a one-turn run), with
       # each choice's delegates, running tasks and workers. Made from one
-      # listing per plan each time the sheet opens. It takes and releases
+      # shared session listing each time the sheet opens. It takes and releases
       # each link's continue lock (shared, as the delete does; a session in
       # no chain too), creating its empty file where there was none; besides
       # that, only the listing's own repair of an interrupted continue
@@ -34,18 +34,19 @@ module Samagotchi
         def call(id, state_dir:)
           state_dir ||= Session.default_state_dir
           links = Links.new(state_dir: state_dir)
-          this = Delete.link_plan(id, state_dir: state_dir, links: links)
-          return { chained: false, session_id: id, link: link_json(this, links, nil, 0, state_dir) } unless Delete.chained?(id, links)
+          rows = SessionManager.session_rows(state_dir: state_dir, include_tests: true, include_archived: true)
+          this = Delete.link_plan(id, state_dir: state_dir, links: links, rows: rows)
+          return { chained: false, session_id: id, link: link_json(this, links, nil, 0, state_dir, rows: rows) } unless Delete.chained?(id, links)
 
-          whole = Delete.chain_plan(id, state_dir: state_dir, links: links)
+          whole = Delete.chain_plan(id, state_dir: state_dir, links: links, rows: rows)
           at = whole.links.index(id) || 0
           { chained: true, session_id: id, position: at + 1, size: whole.links.size, cut_off: whole.cut_off,
-            link: link_json(this, links, whole, at, state_dir), chain: chain_json(whole, state_dir) }
+            link: link_json(this, links, whole, at, state_dir, rows: rows), chain: chain_json(whole, state_dir) }
         end
 
         # +whole+ nil: a session in no chain (no link before or after it).
-        def link_json(plan, links, whole, at, state_dir)
-          { digest: Delete.digest(plan), previous_id: plan.previous, moved: moved_count(plan, state_dir), notes: plan.notes, unarchived: plan.revive.size,
+        def link_json(plan, links, whole, at, state_dir, rows:)
+          { digest: Delete.digest(plan), previous_id: plan.previous, moved: moved_count(plan, state_dir, rows: rows), notes: plan.notes, unarchived: plan.revive.size,
             deletes: plan.delegates.delete.size, left_running: plan.delegates.leave.size,
             earlier: at, next_id: whole && links.next_of(plan.id), later: whole ? whole.links.size - at - 1 : 0,
             delegates: delegates_json(plan.delegates.delete, plan.delegates.leave, state_dir),
@@ -75,8 +76,8 @@ module Samagotchi
 
         # The sessions that go back with the undo: each moved delegate and
         # its own subtree (they come back with it).
-        def moved_count(plan, state_dir)
-          plan.moved.sum { |child| 1 + SessionManager.descendant_ids(child, state_dir).size }
+        def moved_count(plan, state_dir, rows:)
+          plan.moved.sum { |child| 1 + SessionManager.descendant_ids(child, state_dir, rows: rows).size }
         end
 
         def chain_json(plan, state_dir)

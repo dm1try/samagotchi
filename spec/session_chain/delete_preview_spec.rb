@@ -192,6 +192,21 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     expect(parent_of(moved.id)).to eq(a.id)
   end
 
+  it "reads the delegate session listing once for both plans of a chained preview" do
+    first = make
+    middle = continue(first.id)
+    newest = continue(middle.id)
+    listings = 0
+    allow(manager).to receive(:session_rows).and_wrap_original do |original, **options|
+      listings += 1
+      original.call(**options)
+    end
+
+    preview(newest.id)
+
+    expect(listings).to eq(1)
+  end
+
   it "counts each moved delegate with its subtree: the sessions that actually come back" do
     a = make
     moved = unreported(a)
