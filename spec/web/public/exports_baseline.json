@@ -127,6 +127,13 @@
   "block_open.js": [
     "openAfterEnd"
   ],
+  "block_regions.js": [
+    "MAX_REGIONS",
+    "MAX_REGION_BYTES",
+    "REGION_KINDS",
+    "cleanRegions",
+    "cleanText"
+  ],
   "block_source.js": [
     "DRAWN",
     "figureOf",
@@ -172,6 +179,11 @@
     "shownElsewhere",
     "splitSnapshotCards",
     "turnNoticePlace"
+  ],
+  "card_actions.js": [
+    "CARD_MAX_URL",
+    "cardActionUrl",
+    "cardActions"
   ],
   "card_kinds.js": [
     "cardWait",
@@ -435,6 +447,9 @@
     "animateHeight",
     "canAnimate",
     "installDetailsMotion"
+  ],
+  "diagram_wiring.js": [
+    "wireDiagrams"
   ],
   "diff_view.js": [
     "DIFF_FOLD_LINES",
@@ -863,6 +878,15 @@
     "peerSummaryText",
     "verdictTemplate"
   ],
+  "picture_regions.js": [
+    "CARD_ROOM",
+    "COARSE_CARD_ROOM",
+    "MOUSE_TOLERANCE",
+    "TOUCH_TOLERANCE",
+    "createRegionLayer",
+    "regionName",
+    "regionTitle"
+  ],
   "picture_viewer.js": [
     "createPictureViewer",
     "thumbPicture"
@@ -965,8 +989,33 @@
     "syncRefTabs",
     "turnRowFor"
   ],
+  "region_hit.js": [
+    "EDGE_TOLERANCE",
+    "REVEAL_MARGIN",
+    "hitRegion",
+    "nearestInDirection",
+    "regionCentre",
+    "revealOffset",
+    "sameRegion"
+  ],
   "reload_check.js": [
     "createReloadCheck"
+  ],
+  "removal_sheet_model.js": [
+    "UNDONE",
+    "archiveSheetModel",
+    "buttonWords",
+    "cantModel",
+    "choiceTail",
+    "deleteToast",
+    "namesLine",
+    "runningTaskIds",
+    "sessionName",
+    "sessionSheetModel",
+    "sheetGroups",
+    "sheetTitle",
+    "stopTasksOptions",
+    "stopsFirst"
   ],
   "restore.js": [
     "composerAfterAck",

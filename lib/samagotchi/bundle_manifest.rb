@@ -131,8 +131,8 @@ module Samagotchi
       "settings.types" => "0.92.0",
       "settings" => "0.143.0",
       "block_renderers" => "0.151.0",
-      "plugin.required" => "0.157.0"
-      # Unreleased: "plugin.parts".
+      "plugin.required" => "0.157.0",
+      "plugin.parts" => "0.183.0"
     }.freeze
 
     # files: name → "sha256:<hex>" (both forms); file_descriptions: name →

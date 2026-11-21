@@ -16,8 +16,7 @@ plugin:
     tools.rb: sha256:607743a06f191dc24b6aa032e67ed6c95a75cb27310361f6572ca15d5dc50635
     content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
-requires_chi: ">= 0.143.0"
+requires_chi: ">= 0.183.0"
 # ctx.http.stream (the HTTP transport) and plugin: parts:; release:bump raises requires_chi.
-requires_chi_next: true
 # config.yml bundles: mcp: (another key warns; an older chi ignores this)
 settings: [servers, timeout, startup_timeout, client_metadata_url]

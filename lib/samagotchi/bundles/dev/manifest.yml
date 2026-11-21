@@ -1,10 +1,10 @@
 ---
 name: dev
-version: 0.7.8
+version: 0.7.9
 scope: system
 description: "Developer tools"
 trust_level: reviewed
-requires_chi: ">= 0.155.0"
+requires_chi: ">= 0.183.0"
 includes:
 - known-names
 - mcp

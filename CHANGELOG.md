@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.183.0] - 2026-11-22
+
 ### Added
 
 - chi as an MCP server: `claude mcp add chi -- chi mcp serve` lets Claude Code (or Codex, any MCP host) drive your
@@ -67,6 +69,10 @@ and commands may change between minor versions. How releases are made:
 - In the picture viewer, a double tap whose finger moved a little (up to 10 px) now counts as one.
 - `chi bundle install` and `chi bundle upgrade` (`--dry-run` too) start with the bundle's version: `mcp 0.8.0 → 0.9.0`
   when it changes, `mcp 0.9.0` when it doesn't, and `mcp 0.9.0 (already current)` when the upgrade has nothing to write.
+
+After updating, reload any open chi web page: one still on 0.182.0 shows the mcp sign-in card without its button.
+
+Update with `chi update` (bundles: mcp 0.9.0, the dev profile 0.7.9).
 
 ## [0.182.0] - 2026-11-21
 
@@ -6704,7 +6710,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.182.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.183.0...HEAD
+[0.183.0]: https://github.com/dm1try/samagotchi/compare/v0.182.0...v0.183.0
 [0.182.0]: https://github.com/dm1try/samagotchi/compare/v0.181.0...v0.182.0
 [0.181.0]: https://github.com/dm1try/samagotchi/compare/v0.180.0...v0.181.0
 [0.180.0]: https://github.com/dm1try/samagotchi/compare/v0.179.0...v0.180.0
