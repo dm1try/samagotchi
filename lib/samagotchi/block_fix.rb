@@ -2,6 +2,7 @@
 
 require "digest"
 require "time"
+require_relative "block_fix/stamp"
 require_relative "block_renderers"
 require_relative "inline_widgets"
 require_relative "markdown_parser"
@@ -14,9 +15,6 @@ module Samagotchi
   # that asks for it again, and the checks on what came back. Pure Ruby: the
   # Engine's BlockFixPart runs the request and writes the conversation.
   module BlockFix
-    # The answer message's display-only key (AnswerDisplay::DISPLAY_ONLY):
-    # a list of {key:, fixed_key:, state:, reason:, at:}, one per block asked.
-    STAMP = :block_fixes
     # The side line's kind (SideUsage) and the asking source.
     SOURCE = "block-fix"
     # The Bridge feature (Bridge::FEATURES) a page checks before it asks.
@@ -30,8 +28,6 @@ module Samagotchi
     MAX_REASON_CHARS = 300
     # Asks in flight per Engine at once.
     MAX_RUNNING = 2
-
-    STATES = %w[fixed failed].freeze
 
     # The route's refusals (one message per condition), by reason code.
     REFUSALS = {
@@ -147,38 +143,6 @@ module Samagotchi
       return nil unless lang.to_s == InlineWidgets::LANG
 
       InlineWidgets.parse(source).error
-    end
-
-    # The answer message's stamp entries, with symbol keys (they come back
-    # from disk with string keys).
-    # @return [Array<Hash>]
-    def stamps(message)
-      return [] unless message.is_a?(Hash)
-
-      list = message[STAMP] || message[STAMP.to_s]
-      Array(list).filter_map do |entry|
-        next unless entry.is_a?(Hash)
-
-        entry.to_h { |k, v| [k.to_sym, v] }
-      end
-    end
-
-    # The stamp entry that knows the block +key+ (by its key or its fixed
-    # key), nil when none does.
-    def stamp_for(message, key)
-      stamps(message).find { |entry| entry[:key] == key || entry[:fixed_key] == key }
-    end
-
-    # A copy of +message+ with +entry+ added to a fresh stamp list.
-    def with_stamp(message, entry)
-      list = stamps(message).reject { |old| old[:key] == entry[:key] } + [entry]
-      copy = message.reject { |k, _| k.to_s == STAMP.to_s }
-      copy.merge(STAMP => list)
-    end
-
-    # One stamp entry.
-    def entry(key:, state:, fixed_key: nil, reason: nil, at: Time.now)
-      { key: key, fixed_key: fixed_key, state: state, reason: reason, at: at.utc.iso8601 }.compact
     end
 
     def each_code_block(text, &)

@@ -15,6 +15,7 @@ require_relative "stray_tool_call"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
 require_relative "../answer_refs"
+require_relative "../block_fix/stamp"
 require_relative "../cut"
 require_relative "../cut_policy"
 require_relative "../context_status"
@@ -497,6 +498,7 @@ module Samagotchi
           message[TurnNote::EMPTY_ANSWER] = marker if marker
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           message[AnswerRefs::KEY] = entry[AnswerRefs::KEY] if entry[AnswerRefs::KEY]
+          message[BlockFix::STAMP] = entry[BlockFix::STAMP] if entry[BlockFix::STAMP]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           Steer::AUTHOR_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[ToolResponse::LOADED] = entry[ToolResponse::LOADED] if entry[ToolResponse::LOADED].is_a?(Array)

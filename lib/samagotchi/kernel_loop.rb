@@ -38,6 +38,7 @@ require_relative "llm_context_forget"
 require_relative "working_set"
 require_relative "llm_context_notice"
 require_relative "answer_display"
+require_relative "block_fix/stamp"
 require_relative "message_time"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -1090,17 +1091,18 @@ module Samagotchi
     # +keep_thought_from+: model messages from this index on keep their
     # thought blocks (a resumed run's); nil strips every one.
     # A model message is rebuilt from an allow-list: `display`,
-    # `display_refs` and its wall time (MessageTime::KEY) ride along so the
-    # stored conversation keeps them; the prompt formatter never reads them
-    # (AnswerDisplay, AnswerRefs, MessageTime).
+    # `display_refs`, a block fix's stamp and its wall time (MessageTime::KEY)
+    # ride along so the stored conversation keeps them; the prompt formatter
+    # never reads them (AnswerDisplay, AnswerRefs, BlockFix::STAMP, MessageTime).
     def sanitize_history(messages, keep_thought_from: nil)
       messages.each_with_index.map do |m, index|
         if m[:role] == "model" && keep_thought_from && index >= keep_thought_from
           { role: m[:role], content: m[:content].to_s, display: m[:display], display_refs: m[:display_refs],
-            MessageTime::KEY => m[MessageTime::KEY] }.compact
+            BlockFix::STAMP => m[BlockFix::STAMP], MessageTime::KEY => m[MessageTime::KEY] }.compact
         elsif m[:role] == "model"
           { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display],
-            display_refs: m[:display_refs], MessageTime::KEY => m[MessageTime::KEY] }.compact
+            display_refs: m[:display_refs], BlockFix::STAMP => m[BlockFix::STAMP],
+            MessageTime::KEY => m[MessageTime::KEY] }.compact
         else
           m.dup
         end
