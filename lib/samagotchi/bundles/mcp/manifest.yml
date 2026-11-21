@@ -1,17 +1,18 @@
 ---
 name: mcp
-version: 0.8.0
+version: 0.9.0
 scope: system
 description: "Tools from MCP servers (stdio or HTTP): each server in config.yml bundles: mcp: servers: runs for the session; their tools go into chi's tool index: the model searches them with find_tools and calls one with call_tool (<server>/<tool>); /mcp lists them"
 trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:e90bd4b7dc5f78fb33922e81269b47ebaef273597550dc1269dd1ac277c30710
+  sha256: sha256:a835571a4310be1cabb1b84e86f622153befe1e7626a4d184d082d2a2d4f3d16
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
     http_client.rb: sha256:15346ebee374f25ba79716decd9487a8b4471f34da594e4712a05f89588d98f0
+    content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
 requires_chi: ">= 0.143.0"
 # ctx.http.stream (the HTTP transport) and plugin: parts:; release:bump raises requires_chi.
