@@ -1417,11 +1417,11 @@ module Samagotchi
         error_response(504, "worker_timeout", "the session's worker did not answer, so #{what}")
       end
 
-      # The session's Bridge, waiting briefly for one a resume just spawned.
+      # The session's Bridge, waiting briefly (5 s, or +within+ an ask's left) for one a resume just spawned.
       # @return [BridgeClient, nil]
-      def live_bridge_client(id)
+      def live_bridge_client(id, within: 5.0)
         link = worker_link(id)
-        link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min) unless link.live?
+        link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, within].min.clamp(0.0..)) unless link.live?
         link_client(id, link)
       end
 

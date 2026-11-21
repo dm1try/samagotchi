@@ -84,6 +84,13 @@ RSpec.describe Samagotchi::SessionAccess::Exchange do
       expect(pauses.sum).to be >= 1.0
     end
 
+    it "ends the wait for a continue by deadline: when it comes before continuing_wait, its last pause cut to it" do
+      access.heads = [resolved(new_id, via: :continuing)]
+      expect(exchange.locate(old_id, deadline: 0.6)).to have_attributes(reason: :continuing)
+      expect(pauses).to match([0.25, 0.25, 0.1].map { |s| be_within(1e-9).of(s) })
+      expect(clock[0]).to be_within(1e-9).of(0.6)
+    end
+
     it "is unknown for no such session, the error kept" do
       found = exchange.locate("none")
       expect(found).to have_attributes(reason: :unknown, message: "no session none")
@@ -115,6 +122,16 @@ RSpec.describe Samagotchi::SessionAccess::Exchange do
     it "answers nil once out of time" do
       access.heads = [resolved(old_id)]
       expect(exchange.relocate(refused, 1.0)).to be_nil
+    end
+
+    it "bounds each look's own continue wait by the deadline when bounded (an ask's), not otherwise (chi send's)" do
+      access.heads = [resolved(old_id, via: :continuing)]
+      expect(exchange.relocate(refused, 0.5, bounded: true)).to have_attributes(reason: :continuing)
+      expect(clock[0]).to be_within(1e-9).of(0.5)
+
+      clock[0] = 0.0
+      expect(exchange.relocate(refused, 0.5)).to have_attributes(reason: :continuing)
+      expect(clock[0]).to be > 1.0
     end
 
     it "yields each look that waited on a continue" do

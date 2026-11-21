@@ -210,6 +210,24 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(described_class::ASK_MAX_SECONDS).to eq(1.2)
     end
 
+    it "draws the Bridge wait of its delivery from the same deadline as the rest" do
+      stub_const("Samagotchi::Web::AskRoutes::ASK_MAX_SECONDS", 1.2)
+      session = make
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, bridge:, **|
+        bridge.call
+        accepted("t1")
+      end
+      lefts = []
+      allow(app).to receive(:live_bridge_client) do |_id, within: 5.0|
+        lefts << within
+        nil
+      end
+
+      ask(session, { prompt: "hi", timeout: 0.1 })
+      expect(lefts.size).to eq(1)
+      expect(lefts.first).to be_between(0, 1.2)
+    end
+
     it "refuses a bad body: no prompt, an empty or too long one, a UI-only command, a bad timeout, queue or client_id" do
       session = make
       worker(accepted("t1"))

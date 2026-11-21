@@ -22,9 +22,11 @@ module Samagotchi
     # helpers (json_response, body_hash, wait_result_json, busy_json,
     # parent_gate, owned_by_tui, refused_delivery, record_history, …) answer.
     module AskRoutes
-      # One ask answers within this many seconds, whatever it waits for (a
-      # continue in flight, the delivery, the wait's slice): a proxy or a
-      # Shortcut with a 60 s limit is safe.
+      # One ask answers within this many seconds from its request's start,
+      # whatever it waits for (a continue in flight, the Bridge of a worker
+      # starting, the wait's slice): a proxy or a Shortcut with a 60 s limit
+      # is safe. Only the post to a live worker isn't drawn from it: it is
+      # instant unless the worker hangs (BridgeClient's 25 s deadline).
       ASK_MAX_SECONDS = 35.0
       # A wait route answers within this many seconds (status timeout); the
       # client asks again until its own --timeout. SessionAccessRoutes'
@@ -70,6 +72,9 @@ module Samagotchi
       # 400 ambiguous_id, 409 busy / waiting / continuing / owned_by_tui,
       # the turn route's delivery refusals, 503 server_stopping.
       def handle_ask(req, id)
+        # One deadline from the request's start: the gate, the continue
+        # waits, the Bridge wait and the slice all draw on it.
+        deadline = ask_clock + ASK_MAX_SECONDS
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         prompt, client_id, options, error = ask_request(id, body)
         return error if error
@@ -77,12 +82,12 @@ module Samagotchi
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
 
-        access = AskAccess.new(session_access, manager: @manager, bridge: ->(sid) { live_bridge_client(sid) },
-                                               poll_interval: @wait_poll_interval)
+        bridge = ->(sid) { live_bridge_client(sid, within: deadline - ask_clock) }
+        access = AskAccess.new(session_access, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
         exchange = SessionAccess::Exchange.new(access, continuing_wait: [SessionAccess::Exchange::CONTINUING_WAIT,
                                                                          ASK_MAX_SECONDS].min)
         outcome = SessionAccess::Ask.new(access, exchange: exchange)
-                                    .call(id, prompt: prompt, client_id: client_id, cap: ASK_MAX_SECONDS,
+                                    .call(id, prompt: prompt, client_id: client_id, cap: deadline - ask_clock,
                                               cancelled: -> { !@server_running.call }, **options)
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused)
         ask_response(id, outcome)
@@ -275,6 +280,9 @@ module Samagotchi
       end
 
       def plain_exchange = SessionAccess::Exchange.new(session_access)
+
+      # The ask's deadline clock (the Exchange's: monotonic seconds).
+      def ask_clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       def wait_extras = { poll_interval: @wait_poll_interval, cancelled: -> { !@server_running.call } }.compact
     end

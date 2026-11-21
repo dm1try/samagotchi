@@ -49,10 +49,12 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
   end
 
   # The worker double: each delivery answers the next of +results+ (the
-  # last one again after), and writes its turn's reply when +reply+ is set.
-  def worker(*results, reply: nil)
+  # last one again after), and writes its turn's reply when +reply+ is set;
+  # each takes +takes+ seconds of the clock.
+  def worker(*results, reply: nil, takes: 0)
     allow(access).to receive(:deliver_turn) do |id, **options|
       deliveries << [id, options]
+      clock[0] += takes
       result = results.size > 1 ? results.shift : results.first
       if reply && result.accepted? && result.enqueued_id
         Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(id, state_dir: tmpdir), reply,
@@ -211,9 +213,39 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     call(session.id, timeout: 30, cap: 5)
     expect(slices).to eq([5 - 1.5])
 
+    # The continue's wait ends MIN_SLICE before the cap: refused in time.
     looks.replace([continuing, continuing, continuing, done])
-    call(session.id, timeout: 30, cap: 1.8)
-    expect(slices.last).to eq(described_class::MIN_SLICE)
+    started = clock[0]
+    expect(call(session.id, timeout: 30, cap: 1.8)).to have_attributes(kind: :continuing)
+    expect(clock[0] - started).to be <= 1.8 - described_class::MIN_SLICE
+    expect(slices.size).to eq(1)
+  end
+
+  it "draws the delivery's own time from the cap: a slow one leaves a shorter slice (never under a second)" do
+    session = make
+    worker(accepted("t7"), takes: 3.0)
+    slices = []
+    allow(access).to receive(:wait_reply) do |_id, **options|
+      slices << options[:timeout]
+      Samagotchi::ReplyWait::Result.new(status: :timeout)
+    end
+
+    call(session.id, timeout: 30, cap: 5)
+    expect(slices).to eq([2.0])
+  end
+
+  it "sends no second delivery when a continue takes the link after the first used up the cap" do
+    old = make
+    newer = make
+    heads = [old.id, newer.id].map { |id| Samagotchi::SessionInbox::Resolved.new(id: id, asked: old.id, via: :same) }
+    allow(access).to receive(:head) { heads.size > 1 ? heads.shift : heads.first }
+    continued = Samagotchi::SessionManager::DeliverResult.new(
+      status: :refused, code: 409, ack: { "error" => Samagotchi::SessionManager::DeliverResult::CONTINUED, "detail" => "continued" }
+    )
+    worker(continued, accepted("t8"), takes: 4.5)
+
+    expect(call(old.id, cap: 5)).to have_attributes(kind: :continuing, session_id: old.id)
+    expect(deliveries.size).to eq(1)
   end
 
   it "lets the backend's refusal raise (a one-turn chi run owns it)" do

@@ -88,7 +88,9 @@ nothing, keeps no state between calls, never retries and lets the backend's erro
 retry loop, rescues and lines and calls these pieces (its Exchange reads `CONTINUING_WAIT` and `pause` when built, the
 specs' stubs); `CLI::ParentWait` (chi send's and chi answer's wait) calls `wait`. `SessionAccess::Ask`
 (`session_access/ask.rb`) is its own short loop over the same pieces for one message and one wait slice on one
-deadline, answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
+deadline (chi web's starts with the request: `locate`'s `deadline:` and `relocate`'s `bounded: true` end the continue
+waits `Ask::MIN_SLICE` before it, a continue that takes the link after it gets no second delivery, and the Bridge wait
+of a worker starting draws on it too), answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and plan 2's MCP server reuses it without chi web. The routes: [thin-clients.md](../thin-clients.md).
 

@@ -13,7 +13,10 @@ module Samagotchi
     # then one slice of the wait. Everything draws on one deadline (+cap+),
     # so the call answers in time for a proxy or a Shortcut; a turn still
     # running then is a Reply with status :timeout and a wait token
-    # (Exchange::Token). One per call, no state kept after it. It answers
+    # (Exchange::Token). The waits for a continue end MIN_SLICE before the
+    # deadline, so the slice fits; a delivery's own time counts (a slow one
+    # leaves a shorter slice, and one past the deadline gets no second
+    # delivery). One per call, no state kept after it. It answers
     # values, never an HTTP shape; the backend's errors raise
     # (SessionManager::OwnedByTUI, ArgumentError for a session deleted
     # meanwhile).
@@ -61,7 +64,9 @@ module Samagotchi
       def call(given, prompt:, client_id:, queue:, timeout:, cap:, continuing_wait: Exchange::CONTINUING_WAIT,
                cancelled: nil)
         deadline = @clock.call + cap
-        found = @exchange.locate(given)
+        # Everything before the wait ends by here, so its MIN_SLICE fits.
+        ready_by = deadline - MIN_SLICE
+        found = @exchange.locate(given, deadline: ready_by)
         return unsent(found, nil) if found.is_a?(Exchange::Unsent)
 
         at = found.target
@@ -74,8 +79,8 @@ module Samagotchi
           start = @access.prepare_wait(at.id, session: session)
           result = @exchange.attempt(at, prompt, client_id: client_id, queue: queue).result
           if result.continued?
-            follow_until ||= [@clock.call + continuing_wait, deadline].min
-            again = @exchange.relocate(at, follow_until)
+            follow_until ||= [@clock.call + continuing_wait, ready_by].min
+            again = @exchange.relocate(at, follow_until, bounded: true)
             return Refused.new(kind: :continuing, session_id: at.id, message: result.refusal_text) unless again
             return unsent(again, at.id) if again.is_a?(Exchange::Unsent)
 

@@ -64,14 +64,16 @@ module Samagotchi
       # continue of it in flight (the new link not saved yet) is asked again
       # for up to continuing_wait, then refused; the old link is never
       # named (a send would un-archive it beside the new one).
+      # @param deadline [Numeric, nil] this clock's seconds the wait for a
+      #   continue ends by, if before continuing_wait (an ask's one deadline)
       # @return [Located, Unsent]
-      def locate(given)
+      def locate(given, deadline: nil)
         id = @access.resolve(given)
         head = @access.head(id)
-        deadline = @clock.call + @continuing_wait
+        deadline = [@clock.call + @continuing_wait, deadline].compact.min
         waited = head.continuing?
         while head.continuing? && @clock.call < deadline
-          @pause.call(@continuing_poll)
+          pause_until(deadline)
           head = @access.head(id)
         end
         return Unsent.new(reason: :continuing, message: head.continuing_refusal, asked: id) if head.continuing?
@@ -84,13 +86,16 @@ module Samagotchi
       # +refused+'s id (its +asked+) located again after a continue took
       # its link (a DeliverResult#continued?), pausing between looks while
       # it still names that link, until +deadline+ (this clock's seconds).
+      # @param bounded [Boolean] each look's own wait for a continue ends by
+      #   +deadline+ too (an ask's one deadline); false, it may wait its
+      #   continuing_wait past it (chi send's)
       # @yieldparam located [Located] each look that waited on a continue
       #   (#locate's waited), whichever link it named
       # @return [Located, Unsent, nil] nil: out of time
-      def relocate(refused, deadline)
+      def relocate(refused, deadline, bounded: false)
         while @clock.call < deadline
-          @pause.call(@continuing_poll)
-          again = locate(refused.asked)
+          pause_until(deadline)
+          again = locate(refused.asked, deadline: (deadline if bounded))
           return again unless again.is_a?(Located)
 
           yield again if block_given? && again.waited
@@ -153,6 +158,12 @@ module Samagotchi
 
       # This exchange's clock, for a caller's deadline (#relocate's).
       def now = @clock.call
+
+      private
+
+      # One pause between two looks: continuing_poll, or less when
+      # +deadline+ comes first.
+      def pause_until(deadline) = @pause.call([@continuing_poll, deadline - @clock.call].min)
     end
   end
 end
