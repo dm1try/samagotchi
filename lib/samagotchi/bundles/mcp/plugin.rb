@@ -357,7 +357,7 @@ class Plugin
     # @param headers [Hash{String=>String}] sent as given
     # @param token [#call] → the bearer token, or nil for none; raises
     #   Client::Unavailable when its variable is unset
-    # @param http [Samagotchi::Plugin::Http] ctx.http
+    # @param http [#stream, #request] ctx.http
     # @param log [#call] (event, fields)
     def initialize(url, headers:, token:, http:, log:)
       @url = url
