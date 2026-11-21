@@ -199,12 +199,13 @@ RSpec.describe "chi subcommand argument parsing" do
     def command(*argv) = Samagotchi::SessionDeleteCommand.new(argv, stdout: out, stderr: err, state_dir: tmpdir)
     def parse(*argv) = command(*argv).send(:parse)
 
-    it "takes -f and --force, --chain and --stop-tasks" do
-      expect(parse("-f", "a")).to eq(ids: ["a"], force: true, chain: false, stop_tasks: false)
-      expect(parse("a", "--force", "b")).to eq(ids: %w[a b], force: true, chain: false, stop_tasks: false)
-      expect(parse("a")).to eq(ids: ["a"], force: false, chain: false, stop_tasks: false)
-      expect(parse("--chain", "a")).to eq(ids: ["a"], force: false, chain: true, stop_tasks: false)
-      expect(parse("--stop-tasks", "a")).to eq(ids: ["a"], force: false, chain: false, stop_tasks: true)
+    it "takes -f and --force, --chain, --stop-tasks and --dry-run" do
+      expect(parse("-f", "a")).to eq(ids: ["a"], force: true, chain: false, stop_tasks: false, dry_run: false)
+      expect(parse("a", "--force", "b")).to eq(ids: %w[a b], force: true, chain: false, stop_tasks: false, dry_run: false)
+      expect(parse("a")).to eq(ids: ["a"], force: false, chain: false, stop_tasks: false, dry_run: false)
+      expect(parse("--chain", "a")).to eq(ids: ["a"], force: false, chain: true, stop_tasks: false, dry_run: false)
+      expect(parse("--stop-tasks", "a")).to eq(ids: ["a"], force: false, chain: false, stop_tasks: true, dry_run: false)
+      expect(parse("--dry-run", "a")).to eq(ids: ["a"], force: false, chain: false, stop_tasks: false, dry_run: true)
     end
 
     it "prints its usage for -h, --help and help, wherever they come" do

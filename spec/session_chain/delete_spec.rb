@@ -236,12 +236,112 @@ RSpec.describe Samagotchi::SessionChain::Delete do
     expect(exists?(b.id)).to be(true)
   end
 
-  it "leaves a session in no chain to the plain delete" do
-    plain = make
-    child = make(parent: plain)
+  # A session in no chain is a link with nothing to undo: its delegates
+  # follow SessionManager::DELEGATES as a link's do.
+  describe "a session in no chain" do
+    def all_ids = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).sort
+    def file_of(id) = Samagotchi::Session.session_file(id, state_dir: tmpdir)
 
-    expect(delete(plain.id)).to include(id: plain.id, unarchived: [], moved_back: [], left_running: [])
-    expect(exists?(child.id)).to be(true)
+    it "takes its stopped and archived delegates; a running one stays whole with its stopped child" do
+      plain = make
+      stopped = make(parent: plain)
+      archived = make(parent: plain).tap { |c| Samagotchi::ArchiveStore.archive(c.id, state_dir: tmpdir) }
+      running = make(parent: plain)
+      grandchild = make(parent: running)
+      own(running.id)
+      untouched = [running.id, grandchild.id].to_h { |id| [id, File.read(file_of(id))] }
+
+      result = delete(plain.id)
+
+      expect(result.keys).to include(:id, :removed, :stopped, :unarchived, :moved_back, :deleted, :left_running)
+      expect(result).to include(id: plain.id, unarchived: [], moved_back: [], stopped: false)
+      expect(result[:deleted]).to contain_exactly(stopped.id, archived.id, plain.id)
+      expect(result[:deleted].last).to eq(plain.id)
+      expect(result[:left_running]).to eq([running.id, grandchild.id])
+      expect([exists?(plain.id), exists?(stopped.id), exists?(archived.id)]).to eq([false, false, false])
+      expect(untouched.to_h { |id, _| [id, File.read(file_of(id))] }).to eq(untouched)
+      expect(parent_of(grandchild.id)).to eq(running.id)
+    end
+
+    it "takes a stopped delegate and leaves its running child without a parent" do
+      plain = make
+      stopped = make(parent: plain)
+      child = make(parent: stopped)
+      own(child.id)
+
+      result = delete(plain.id)
+
+      expect(result).to include(deleted: [stopped.id, plain.id], left_running: [child.id])
+      expect([exists?(stopped.id), exists?(child.id)]).to eq([false, true])
+    end
+
+    it "is refused, nothing gone, when a delegate that would go is a schedule's target" do
+      plain = make
+      d = make(parent: plain)
+      entry = Samagotchi::Schedules.new(state_dir: tmpdir).add(target: d.id, prompt: "Audit", recurrence: { "every" => "1h" })
+      before = all_ids
+
+      expect { delete(plain.id) }.to raise_error(manager::DeleteRefused) { |e|
+        expect([e.reason, e.session_id, e.schedule_id]).to eq([:scheduled, d.id, entry.id])
+      }
+      expect(all_ids).to eq(before)
+    end
+
+    it "is refused when it is a schedule's target, in a one-turn run, or has a worker it isn't asked to stop" do
+      scheduled = make
+      Samagotchi::Schedules.new(state_dir: tmpdir).add(target: scheduled.id, prompt: "Audit", recurrence: { "every" => "1h" })
+      one_turn = make
+      locks << Samagotchi::OwnerLock.acquire(dir_of(one_turn.id), kind: "tui")
+      busy = make
+      own(busy.id)
+
+      expect { delete(scheduled.id) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:scheduled) }
+      expect { delete(one_turn.id) }.to raise_error(manager::OwnedByTUI)
+      expect { delete(busy.id, stop: false) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }
+      expect([scheduled, one_turn, busy].map { |s| exists?(s.id) }).to eq([true, true, true])
+    end
+
+    it "deletes a folder whose session file is gone, with its stopped delegate" do
+      plain = make
+      d = make(parent: plain)
+      FileUtils.mkdir_p(dir_of(plain.id))
+      FileUtils.rm_f(file_of(plain.id))
+
+      result = delete(plain.id)
+
+      expect(result[:deleted]).to eq([d.id, plain.id])
+      expect([exists?(plain.id), exists?(d.id)]).to eq([false, false])
+    end
+
+    it "purges the logs of a delegate that went when the session itself is refused after it" do
+      plain = make
+      d = make(parent: plain)
+      allow(manager).to receive(:remove_files).and_wrap_original do |original, sid, *args, **kw|
+        raise manager::DeleteRefused.new(sid, :changed) if sid == plain.id
+
+        original.call(sid, *args, **kw)
+      end
+      allow(manager).to receive(:purge_removal_stores).and_call_original
+
+      expect { delete(plain.id) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:changed) }
+      expect([exists?(d.id), exists?(plain.id)]).to eq([false, true])
+      expect(manager).to have_received(:purge_removal_stores).with([d.id], state_dir: tmpdir)
+    end
+
+    it "checks the caller's expect as for a link: the shown plan deletes, a changed one is refused" do
+      plain = make
+      d = make(parent: plain)
+      links = Samagotchi::SessionChain::Links.new(state_dir: tmpdir)
+      shown = described_class.digest(described_class.link_plan(plain.id, state_dir: tmpdir, links: links))
+      make(parent: plain)
+
+      expect { delete(plain.id, expect: shown) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:plan_changed) }
+      expect(all_ids).to include(plain.id, d.id)
+
+      links = Samagotchi::SessionChain::Links.new(state_dir: tmpdir)
+      now = described_class.digest(described_class.link_plan(plain.id, state_dir: tmpdir, links: links))
+      expect(delete(plain.id, expect: now)[:deleted]).to include(d.id, plain.id)
+    end
   end
 
   it "never revives without the keywords (the scratch cleanup, the discard, the rollback and the prune's delete)" do
@@ -494,6 +594,141 @@ RSpec.describe Samagotchi::SessionChain::Delete do
       expect(result[:tasks_stopped].map(&:id)).to contain_exactly(in_a.id, in_b.id)
       expect([status_of(in_a), status_of(in_b)]).to eq(%w[stopped stopped])
       expect([exists?(a.id), exists?(b.id)]).to eq([false, false])
+    end
+
+    # The delete sheet's tap: a stop given the task ids the sheet named.
+    describe "a stop given the named tasks (only:)" do
+      it "stops the named tasks of a session in no chain and its delegate, then deletes both" do
+        plain = make
+        d = make(parent: plain)
+        in_plain = start_task(plain, "sleep 30.31")
+        in_d = start_task(d, "sleep 30.32")
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: [in_plain.id, in_d.id]))
+
+        expect(result[:deleted]).to eq([d.id, plain.id])
+        expect(result[:tasks_stopped].map(&:id)).to contain_exactly(in_plain.id, in_d.id)
+        expect([status_of(in_plain), status_of(in_d)]).to eq(%w[stopped stopped])
+      end
+
+      it "refuses up front on a task it wasn't given: no worker stopped, nothing gone or stopped" do
+        plain = make
+        d = make(parent: plain)
+        named = start_task(plain, "sleep 30.33")
+        unnamed = start_task(d, "sleep 30.34")
+        allow(manager).to receive(:release_for_delete!).and_call_original
+        before = all_ids
+
+        expect { delete(plain.id, running_tasks: policies.stop(by: "user", only: [named.id])) }
+          .to raise_error(manager::DeleteRefused) { |e|
+            expect(e).to have_attributes(reason: :tasks_running, session_id: plain.id, worker_stopped: false)
+            expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+          }
+        expect(manager).not_to have_received(:release_for_delete!)
+        expect(all_ids).to eq(before)
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+      end
+
+      it "refuses under the lock on one that started after the check, nothing gone, the worker's stop said" do
+        plain = make
+        d = make(parent: plain)
+        named = start_task(plain, "sleep 30.37")
+        allow(manager).to receive(:release_for_delete!).and_return(true)
+        allow(described_class).to receive(:check_link!).and_wrap_original do |original, *args, **kw|
+          original.call(*args, **kw).tap { start_task(d, "sleep 30.38") }
+        end
+        before = all_ids
+
+        expect { delete(plain.id, running_tasks: policies.stop(by: "user", only: [named.id])) }
+          .to raise_error(manager::DeleteRefused) { |e|
+            expect(e).to have_attributes(reason: :tasks_running, session_id: plain.id, worker_stopped: true,
+                                         stopped_worker: plain.id)
+          }
+        expect(all_ids).to eq(before)
+        expect(status_of(named)).to eq("running")
+      end
+
+      # The batch's check under the locks is the last word: a record read
+      # again per id (one unreadable a moment before) refuses nothing there,
+      # so no delegate goes before a refusal.
+      it "doesn't refuse an id after its delegate went once the batch was checked" do
+        plain = make
+        d = make(parent: plain)
+        late = manager::RunningTasks::RunningTask.new(session_id: plain.id, id: "20261121000000-0badf00d", command: "x",
+                                                      root: folder)
+        allow(manager::RunningTasks).to receive(:of).and_wrap_original do |original, ids, **kw|
+          ids == [plain.id] ? manager::RunningTasks::Listing.new(running: [late]) : original.call(ids, **kw)
+        end
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: []))
+
+        expect([exists?(d.id), exists?(plain.id)]).to eq([false, false])
+        expect(result[:deleted]).to eq([d.id, plain.id])
+      end
+
+      it "deletes a session whose only task is unverified, never signalling it" do
+        plain = make
+        allow(Process).to receive(:spawn).and_call_original
+        pid = Process.spawn("sleep", "31.93", pgroup: true)
+        allow(Process).to receive(:spawn).and_return(12_345)
+        record = Samagotchi::Tools::TaskRecord.from_file(
+          "id" => runtime.generate_task_id, "command" => "sleep 40", "status" => "running", "pid" => pid,
+          "created_at" => "2026-10-01T00:00:00Z", "exit_code_path" => File.join(folder, "no-exit-code")
+        )
+        runtime.write_record(record)
+        session = Samagotchi::Session.load(plain.id, state_dir: tmpdir)
+        session.messages << { role: "tool_response", content: "[task_create]\ntask_id: #{record.id}" }
+        session.save(state_dir: tmpdir)
+
+        result = delete(plain.id, running_tasks: policies.stop(by: "user", only: []))
+
+        expect(exists?(plain.id)).to be(false)
+        expect(result[:tasks_not_stopped].map(&:id)).to eq([record.id])
+        expect(Process.wait2(pid, Process::WNOHANG)).to be_nil
+      ensure
+        if pid
+          Process.kill("KILL", -pid)
+          Process.wait(pid)
+        end
+      end
+
+      # The review's probe: the sheet named the newest link's task; one the
+      # sheet didn't name runs in the older link. Refused up front, not part-way.
+      it "refuses a chain whole, up front, on a task it wasn't given in an older link" do
+        a = make
+        b = continue(a.id)
+        named = start_task(b, "sleep 30.35")
+        unnamed = start_task(a, "sleep 30.36")
+        allow(manager).to receive(:release_for_delete!).and_call_original
+
+        expect do
+          manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user", only: [named.id]))
+        end.to raise_error(manager::DeleteRefused) { |e|
+          expect(e).to have_attributes(reason: :tasks_running, worker_stopped: false)
+          expect(e.tasks.running.map(&:id)).to contain_exactly(named.id, unnamed.id)
+        }
+        expect(manager).not_to have_received(:release_for_delete!)
+        expect([exists?(a.id), exists?(b.id)]).to eq([true, true])
+        expect([status_of(named), status_of(unnamed)]).to eq(%w[running running])
+      end
+
+      it "keeps a chain whole on a task started on its newest link after the check, saying whose worker was stopped" do
+        a = make
+        b = continue(a.id)
+        named = start_task(a, "sleep 30.39")
+        allow(manager).to receive(:release_for_delete!).and_return(true)
+        allow(described_class).to receive(:check_chain!).and_wrap_original do |original, *args, **kw|
+          original.call(*args, **kw).tap { start_task(b, "sleep 30.40") }
+        end
+
+        expect do
+          manager.delete_chain(b.id, state_dir: tmpdir, stop: true, running_tasks: policies.stop(by: "user", only: [named.id]))
+        end.to raise_error(manager::DeleteRefused) { |e|
+          expect(e).to have_attributes(reason: :tasks_running, session_id: b.id, stopped_worker: b.id)
+        }
+        expect([exists?(a.id), exists?(b.id)]).to eq([true, true])
+        expect(status_of(named)).to eq("running")
+      end
     end
 
     it "keeps a link refused part-way whole with its task running; the later link's task is stopped" do

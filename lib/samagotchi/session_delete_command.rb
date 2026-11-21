@@ -14,7 +14,7 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi sessions delete [--force] [--chain] [--stop-tasks] (ID|PREFIX)...
+      Usage: chi sessions delete [--force] [--chain] [--stop-tasks] [--dry-run] (ID|PREFIX)...
         Deletes each session: its history, notes, images and queued input.
         This can't be undone. Deleting a chain's newest link undoes its
         continue: the previous link comes back to the lists (not started),
@@ -28,13 +28,20 @@ module Samagotchi
                       (TERM, then KILL), then delete; without it a session
                       whose tasks still run is refused. Not --force: a live
                       worker is still refused without it
+        --dry-run     print what the delete would do (what goes, what is
+                      stopped first, what stays, and which of --force and
+                      --stop-tasks it needs) and delete nothing; exits 1
+                      when it would be refused
     TEXT
     PREVIEW_LIMIT = 60
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
       f.switch "-f", "--force"
       f.switch "--chain"
       f.switch "--stop-tasks"
+      f.switch "--dry-run"
     end
+    # The width of a --dry-run row's key ("stopped first: ").
+    ROW_KEY = 15
 
     # @param argv [Array<String>] the arguments after "sessions delete"
     # @param access [SessionAccess::Local, nil] where the sessions are;
@@ -48,10 +55,12 @@ module Samagotchi
     end
 
     # @return [Integer] exit status: 0 all deleted, 1 any refused or
-    #   unknown, 2 usage
+    #   unknown, 2 usage; with --dry-run 0 when each would go, 1 when any
+    #   would be refused or is unknown
     def run
       options = parse
       return options if options.is_a?(Integer)
+      return options[:ids].uniq.map { |given| dry_run(given, chain: options[:chain]) }.all? ? 0 : 1 if options[:dry_run]
 
       gone = options[:ids].uniq.map do |given|
         how = { force: options[:force], stop_tasks: options[:stop_tasks] }
@@ -67,7 +76,7 @@ module Samagotchi
     # @return [Hash, Integer] the options, or the exit status after the
     #   help or a usage error
     def parse
-      parsed = parse_flags(FLAGS, @argv, force: false, chain: false, stop_tasks: false)
+      parsed = parse_flags(FLAGS, @argv, force: false, chain: false, stop_tasks: false, dry_run: false)
       return parsed if parsed.is_a?(Integer)
       return usage_error("give session ids") if parsed.args.empty?
 
@@ -171,6 +180,123 @@ module Samagotchi
              end
       @stdout.puts("#{short}  refused: #{line}")
       false
+    end
+
+    # --dry-run: the plan the delete (+chain+: of the whole chain) would
+    # follow now, as the web's sheet says it; nothing is deleted.
+    # @return [Boolean] whether it would go (no refusal)
+    def dry_run(given, chain:)
+      id = @access.resolve_id(given)
+      plan = @access.delete_plan(id)
+      choice = chain && plan.chain ? plan.chain : plan.link
+      short = id[0, 8]
+      title = preview_of(id)
+      if choice.refusal
+        @stdout.puts(["#{short}  would be refused: #{refusal_words(choice.refusal, short)}", title && "\"#{title}\""].compact.join("  "))
+        return false
+      end
+
+      head = "would delete#{plan_scope(plan, choice)}"
+      @stdout.puts(["#{short}  #{head}", title && "\"#{title}\""].compact.join("  "))
+      plan_rows(choice, id).each { |key, words| @stdout.puts("#{" " * 10}#{"#{key}:".ljust(ROW_KEY)}#{words}") }
+      true
+    rescue ArgumentError => e
+      error_line("chi sessions delete: #{e.message}")
+      false
+    end
+
+    # " its chain (3 links)", " link 2 of 3", or "" for a session in no chain.
+    def plan_scope(plan, choice)
+      return "" unless plan.chained
+      return " its chain (#{choice.links} links)" if choice.equal?(plan.chain)
+
+      " link #{plan.position} of #{plan.size}"
+    end
+
+    # The rows that apply, in the sheet's order: back (the undo), goes,
+    # stopped first, stays; the flags the delete needs end the stopped
+    # first row (or the stays row: a task chi can't verify still needs
+    # --stop-tasks, which never signals it).
+    # @return [Array(String, String)] key, words
+    def plan_rows(choice, id)
+      rows = [["back", back_words(choice)], ["goes", goes_words(choice)], ["stopped first", stopped_words(choice, id)],
+              ["stays", stays_words(choice, id)]].reject { |_, words| words.empty? }
+      needs = []
+      needs << "--force" if choice.workers.positive?
+      needs << "--stop-tasks" unless choice.tasks.empty?
+      return rows if needs.empty?
+
+      at = rows.index { |key, _| key == "stopped first" } || rows.index { |key, _| key == "stays" }
+      rows[at][1] = "#{rows[at][1]} — needs #{needs.join(", ")}"
+      rows
+    end
+
+    def back_words(choice)
+      return "" unless choice.previous_id
+
+      "the previous link #{choice.previous_id[0, 8]} comes back to the lists (not started)" \
+        "#{", with #{counted(choice.moved, "delegate")}" if choice.moved.positive?}"
+    end
+
+    def goes_words(choice)
+      parts = []
+      parts << "all #{choice.links} links" if choice.links > 1
+      parts << "#{counted(choice.delete.size, "stopped delegate")} (#{short_ids(choice.delete)})" unless choice.delete.empty?
+      parts.join("; ")
+    end
+
+    def stopped_words(choice, id)
+      parts = []
+      parts << worker_words(choice) if choice.workers.positive?
+      running = choice.tasks.running
+      parts << "#{counted(running.size, "background task")} (#{task_names(running, id)})" unless running.empty?
+      parts.join("; ")
+    end
+
+    def worker_words(choice)
+      if choice.links == 1 then choice.turns.positive? ? "its running turn" : "its worker"
+      else
+        "#{counted(choice.workers, "worker")}#{" (#{choice.turns} running a turn)" if choice.turns.positive?}"
+      end
+    end
+
+    def stays_words(choice, id)
+      parts = []
+      running, under = choice.leave.partition(&:running)
+      unless running.empty?
+        with = " with #{running.size == 1 ? "its" : "their"} #{counted(under.size, "delegate")}" unless under.empty?
+        parts << "#{counted(running.size, "running delegate")} (#{short_ids(running.map(&:id))})#{with}, without a parent"
+      end
+      doubtful = choice.tasks.unverified + choice.tasks.unreadable
+      unless doubtful.empty?
+        parts << "#{counted(doubtful.size, "task")} chi can't verify (#{task_names(doubtful, id, short: true)}), left as it is"
+      end
+      parts.join("; ")
+    end
+
+    # Each task by its command (+short+: by its id), "9d0e1f2a: rspec" for
+    # another session's, cut to three, then "+N more".
+    def task_names(tasks, id, short: false)
+      tasks_module = SessionManager::RunningTasks
+      names = tasks.map do |task|
+        name = short ? "task #{tasks_module.short_task(task.id)}" : tasks_module.command_name(task)
+        task.session_id == id ? name : "#{task.session_id[0, 8]}: #{name}"
+      end
+      tasks_module.cut(names)
+    end
+
+    def short_ids(ids) = SessionManager::RunningTasks.cut(ids.map { |sid| sid[0, 8] })
+
+    def counted(count, noun) = "#{count} #{noun}#{"s" unless count == 1}"
+
+    # The refusal the plan carries, in the words the delete's own
+    # refusal line uses.
+    def refusal_words(refusal, short)
+      case refusal.reason
+      when "owned_by_tui" then "it is #{OwnerLock::TUI_BUSY}; let it finish first"
+      when "tasks_running" then "#{refusal.message} (#{SessionManager::RunningTasks.hint(nil, "delete", short)})"
+      else refusal.message
+      end
     end
 
     def preview_of(id)

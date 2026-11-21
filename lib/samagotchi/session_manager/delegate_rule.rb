@@ -44,6 +44,14 @@ module Samagotchi
         Plan.new(delete: delete.reverse, leave: leave)
       end
 
+      # Whether the rule counts +id+ as running: a worker owns it or is being
+      # started for it. The delete sheet's preview reads it per left node.
+      def running?(id, state_dir)
+        presence = WorkerPresence.read(id, state_dir: state_dir,
+                                           owner: SessionManager.session_owner(id, state_dir: state_dir))
+        presence.owned? || presence.starting?
+      end
+
       private
 
       # Every session's children ids, newest first (.children_of's order),
@@ -69,12 +77,6 @@ module Samagotchi
           end
         end
         seen.drop(1)
-      end
-
-      def running?(id, state_dir)
-        presence = WorkerPresence.read(id, state_dir: state_dir,
-                                           owner: SessionManager.session_owner(id, state_dir: state_dir))
-        presence.owned? || presence.starting?
       end
     end
 

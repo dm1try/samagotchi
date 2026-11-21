@@ -310,6 +310,19 @@ module Samagotchi
         SessionManager.delete_chain(id, stop: force, running_tasks: tasks_policy(stop_tasks), **dir)
       end
 
+      # What #delete (+chain+: #delete_chain) would do now, deleting
+      # nothing (chi sessions delete --dry-run): the web sheet's plan.
+      # A folder whose session file is gone has a plan too (chi web's
+      # route answers for it); neither on disk is no session.
+      # @return [DeletePlan::Plan]
+      # @raise [Session::NotFound]
+      def delete_plan(id)
+        raise Session::NotFound, id unless File.exist?(Session.session_file(id, state_dir: state_dir!)) || Dir.exist?(session_dir(id))
+
+        require_relative "../session_chain/delete_preview"
+        DeletePlan.read(SessionChain::Delete::Preview.call(id, state_dir: state_dir!))
+      end
+
       # A user's delete or archive: REFUSE, or a stop by "user".
       private def tasks_policy(stop_tasks)
         policies = SessionManager::RunningTasks::Policy

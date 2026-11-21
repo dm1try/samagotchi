@@ -64,9 +64,105 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     expect(described_class.call(b.id, state_dir: nil)).to include(chained: true, position: 2)
   end
 
-  it "says a session in no chain is not chained" do
+  it "says a session in no chain is not chained, with the link a chained one gets (nothing to undo)" do
     plain = make
-    expect(preview(plain.id)).to eq(chained: false, session_id: plain.id)
+
+    shown = preview(plain.id)
+
+    # An older page reads only these two.
+    expect(shown).to include(chained: false, session_id: plain.id)
+    expect(shown.keys).to eq(%i[chained session_id link])
+    expect(shown[:link]).to include(previous_id: nil, moved: 0, notes: 0, unarchived: 0, deletes: 0, left_running: 0,
+                                    earlier: 0, next_id: nil, later: 0, refusal: nil, worker: nil,
+                                    delegates: { delete: [], leave: [] },
+                                    tasks: { "running" => [], "unverified" => [], "unreadable" => [] })
+    expect(shown[:link][:digest]).to match(/\A[0-9a-f]{16}\z/)
+  end
+
+  describe "each choice's delegates, tasks and workers" do
+    it "names a session in no chain's delegates: the stopped ones go, a running one stays with its stopped child" do
+      plain = make
+      stopped = make(parent: plain)
+      archived = make(parent: plain).tap { |c| Samagotchi::ArchiveStore.archive(c.id, state_dir: tmpdir) }
+      running = make(parent: plain)
+      grandchild = make(parent: running)
+      own(running.id)
+
+      link = preview(plain.id)[:link]
+
+      expect(link[:delegates][:delete]).to contain_exactly(stopped.id, archived.id)
+      expect(link[:delegates][:leave]).to eq([{ id: running.id, running: true }, { id: grandchild.id, running: false }])
+      expect(link).to include(deletes: 2, left_running: 2)
+      expect(delete(plain.id)[:deleted]).to eq([*link[:delegates][:delete], plain.id])
+    end
+
+    it "lists the running tasks of the ids each choice deletes, in the wire form" do
+      a = make
+      b = continue(a.id)
+      d = make(parent: b)
+      task = manager::RunningTasks::RunningTask.new(session_id: d.id, id: "20261121000000-3f9a2c1d", command: "rspec")
+      asked = []
+      allow(manager::RunningTasks).to receive(:of).and_wrap_original do |original, ids, **kw|
+        asked << ids.sort
+        ids.include?(d.id) ? manager::RunningTasks::Listing.new(running: [task]) : original.call(ids, **kw)
+      end
+
+      shown = preview(b.id)
+
+      expect(asked).to include([d.id, b.id].sort, [a.id, b.id, d.id].sort)
+      wire = [{ "session_id" => d.id, "id" => task.id, "command" => "rspec" }]
+      expect(shown[:link][:tasks]).to eq("running" => wire, "unverified" => [], "unreadable" => [])
+      expect(shown[:chain][:tasks]["running"]).to eq(wire)
+    end
+
+    it "says whether a worker owns the link, and whether a turn runs in it; a chain counts its links" do
+      a = make
+      b = continue(a.id)
+      expect([preview(b.id)[:link][:worker], preview(b.id)[:chain][:worker]]).to eq([nil, { idle: 0, turn: 0 }])
+
+      own(b.id)
+      expect(preview(b.id)[:link][:worker]).to eq("idle")
+
+      Samagotchi::Session.load(b.id, state_dir: tmpdir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: tmpdir)
+      own(a.id)
+      expect(preview(b.id)[:link][:worker]).to eq("turn")
+      expect(preview(b.id)[:chain][:worker]).to eq(idle: 1, turn: 1)
+    end
+
+    it "counts a worker being started as idle" do
+      plain = make
+      FileUtils.mkdir_p(dir_of(plain.id))
+      File.write(File.join(dir_of(plain.id), Samagotchi::StartingMarker::FILE), "")
+      allow(Samagotchi::StartingMarker).to receive(:fresh?).and_return(true)
+
+      expect(preview(plain.id)[:link][:worker]).to eq("idle")
+    end
+
+    it "flattens a chain's delegates over its links" do
+      a = make
+      a_child = make(parent: a)
+      b = continue(a.id)
+      b_child = make(parent: b)
+      running = make(parent: b)
+      own(running.id)
+
+      chain = preview(b.id)[:chain]
+
+      expect(chain[:delegates][:delete]).to contain_exactly(a_child.id, b_child.id)
+      expect(chain[:delegates][:leave]).to eq([{ id: running.id, running: true }])
+    end
+
+    it "answers for a folder whose session file is gone" do
+      plain = make
+      d = make(parent: plain)
+      FileUtils.mkdir_p(dir_of(plain.id))
+      FileUtils.rm_f(Samagotchi::Session.session_file(plain.id, state_dir: tmpdir))
+
+      shown = preview(plain.id)
+
+      expect(shown).to include(chained: false, session_id: plain.id)
+      expect(shown[:link]).to include(refusal: nil, worker: nil, delegates: { delete: [d.id], leave: [] })
+    end
   end
 
   it "counts what deleting the newest link of 3 gives back and deletes, and the delete then does exactly that" do
@@ -177,7 +273,8 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
     d = continue(c.id)
 
     expect(preview(d.id)).to include(cut_off: true, position: 2, size: 2)
-    # A link alone past the gap is no chain: today's confirm.
-    expect(preview(a.id)).to eq(chained: false, session_id: a.id)
+    # A link alone past the gap is no chain: the sheet's one choice.
+    expect(preview(a.id)).to include(chained: false, session_id: a.id)
+    expect(preview(a.id)[:link]).to include(previous_id: nil, earlier: 0, later: 0, next_id: nil)
   end
 end

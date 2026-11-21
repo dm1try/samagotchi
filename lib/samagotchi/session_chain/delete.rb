@@ -21,13 +21,14 @@ module Samagotchi
   autoload :Schedules, File.expand_path("../schedules", __dir__)
 
   module SessionChain
-    # A user's delete of a link of a session chain (the CLI, the web, the
-    # TUI's /exit --delete: SessionManager.delete_session's revive_previous:
-    # and refuse_continuing:), and of the whole chain (.chain:
-    # SessionManager.delete_chain). A session in no chain is deleted as
-    # before (SessionManager.delete_resolved). The scratch cleanup, the
-    # empty-session discard, the failed-continue rollback and the prune
-    # never come here.
+    # A user's delete of a session (the CLI, the web, the TUI's /exit
+    # --delete: SessionManager.delete_session's revive_previous: and
+    # refuse_continuing:), a link of a chain or a session in no chain alike
+    # (a link with nothing before it to undo), and of the whole chain
+    # (.chain: SessionManager.delete_chain). The scratch cleanup, the
+    # empty-session discard, the failed-continue rollback, the prune and
+    # retention never come here (SessionManager.delete_resolved and
+    # remove_files): they take no delegates.
     #
     # - The chain's newest link (not archived itself, its previous link
     #   archived, nobody continuing it) is undone (D2/D5): the delegates its
@@ -90,11 +91,12 @@ module Samagotchi
       end
 
       # Whether +id+ is in a chain of 2 or more links that still exist (D1):
-      # a link alone past a gap (its predecessor deleted) is deleted as a
-      # session in no chain is.
+      # a link alone past a gap (its predecessor deleted) is no chain (the
+      # preview's chained: false, the sheet's one choice).
       def chained?(id, links) = links.live_links(id).size > 1
 
-      # Delete the link +id+ (a full id that exists), inside a shared hold
+      # Delete the link +id+ (a full id with a file or a folder; a session
+      # in no chain is a link with no previous one), inside a shared hold
       # of its continue lock (and the previous link's when it would come
       # back), so no continue of either starts meanwhile.
       # @return [Hash] {id:, removed:, stopped:, unarchived:, moved_back:,
@@ -110,15 +112,7 @@ module Samagotchi
         ContinueIntent.hold(id, state_dir: state_dir) do |held|
           raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
 
-          links = Links.new(state_dir: state_dir)
-          unless chained?(id, links)
-            raise SessionManager::DeleteRefused.new(id, :plan_changed) unless expect.nil?
-
-            return plain(SessionManager.delete_resolved(id, state_dir: state_dir, stop: stop, wait: wait,
-                                                        running_tasks: running_tasks))
-          end
-
-          plan = link_plan(id, state_dir: state_dir, links: links, undo: revive_previous)
+          plan = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: revive_previous)
           unless plan.previous
             return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect,
                                      running_tasks: running_tasks)
@@ -142,8 +136,6 @@ module Samagotchi
       def revivable?(id, previous, links)
         !links.gone?(previous) && links.next_of(id).nil? && !links.archived?(id) && links.archived?(previous)
       end
-
-      def plain(result) = result.merge(unarchived: [], moved_back: [], deleted: [result[:id]], left_running: [])
 
       # The refusals a link's delete makes before anything changes (the
       # sheet's too): a schedule's target, anchor or head, on the link or a
@@ -201,8 +193,10 @@ module Samagotchi
 
           # The worker stopped was the link's, whichever id refused.
           raise e.with_worker_stopped(id)
+        ensure
+          # What went, also before a refusal part-way (as delete_links does).
+          SessionManager.purge_removal_stores(doomed.reject { |sid| on_disk?(sid, state_dir) }, state_dir: state_dir)
         end
-        SessionManager.purge_removal_stores(doomed, state_dir: state_dir)
         unarchived = plan.revive.select { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
         { id: id, removed: removed, stopped: stopped, unarchived: unarchived, moved_back: plan.moved,
           deleted: doomed, left_running: plan.delegates.leave, **running_tasks.result_fields }
@@ -341,8 +335,16 @@ module Samagotchi
           stopped = plan.links.select do |link|
             SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
           end
-          delete_links(plan, links, state_dir, running_tasks: running_tasks)
-            .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
+          begin
+            delete_links(plan, links, state_dir, running_tasks: running_tasks)
+              .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
+          rescue SessionManager::DeleteRefused => e
+            raise e unless e.reason == :tasks_running && !stopped.empty?
+
+            # Nothing went (a part-way refusal is in the result): say whose
+            # worker was stopped, the refused link's own when it was.
+            raise e.with_worker_stopped(stopped.include?(e.session_id) ? e.session_id : stopped.first)
+          end
         end
       end
 

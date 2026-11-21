@@ -320,6 +320,9 @@ module Samagotchi
       CHAIN_DELETE_FEATURE = "chain_delete"
       # Web::App::STOP_TASKS_FEATURE: delete and archive take stop_tasks.
       STOP_TASKS_FEATURE = "stop_tasks"
+      # Web::App::DELETE_PLAN_FEATURE: GET …/delete_plan answers for every
+      # session, with each choice's delegates, tasks and workers.
+      DELETE_PLAN_FEATURE = "delete_plan_all"
 
       # The header that chi web names the signed-in user in (GET
       # /api/info's proxy), nil when it has no such proxy, or is a chi
@@ -536,6 +539,19 @@ module Samagotchi
           left_running: ids_of(json["left_running"]), unarchived: ids_of(json["unarchived"]),
           stopped: ids_of(json["stopped"]), cut_off: json["cut_off"] == true, refusal: json["refusal"],
           **task_fields(json) }
+      end
+
+      # GET …/delete_plan there: what a delete would do now (chi sessions
+      # delete --dry-run), nothing deleted.
+      # @return [DeletePlan::Plan]
+      # @raise [RemoteTooOld] a chi web without DELETE_PLAN_FEATURE (an
+      #   older one answers a session in no chain without the plan)
+      def delete_plan(id)
+        require_feature!(DELETE_PLAN_FEATURE)
+        reply = request(:get, "#{session_path(id)}/delete_plan")
+        raise_refusal(reply) unless reply.status == 200
+
+        DeletePlan.read(reply.json)
       end
 
       private def ids_of(value) = Array(value).select { |id| Session.valid_id?(id) }

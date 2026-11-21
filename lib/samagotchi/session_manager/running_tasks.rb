@@ -87,13 +87,27 @@ module Samagotchi
       # How an op treats running tasks: :ignore (today's: they keep
       # running), :refuse (DeleteRefused/ArchiveRefused :tasks_running) or
       # :stop (stopped by +by+, "user", "retention" or "scratch", their
-      # outcomes in +tally+).
-      Policy = Data.define(:mode, :by, :tally) do
-        def self.stop(by:) = new(mode: :stop, by: by.to_s, tally: Tally.new)
+      # outcomes in +tally+). A stop with +only+ (task ids: the ones the
+      # delete sheet named) refuses, :tasks_running, where it would stop a
+      # verified task not in it, before anything of the op's batch goes;
+      # without it (--stop-tasks, an older page) it stops whatever runs.
+      Policy = Data.define(:mode, :by, :tally, :only) do
+        def initialize(mode:, by:, tally:, only: nil) = super
+
+        def self.stop(by:, only: nil) = new(mode: :stop, by: by.to_s, tally: Tally.new, only: only&.map(&:to_s)&.freeze)
 
         def ignore? = mode == :ignore
         def refuse? = mode == :refuse
         def stop? = mode == :stop
+
+        # +listing+'s verified tasks this stop was not given (none without
+        # +only+): the ones it refuses on. Unverified and unreadable ones are
+        # never signalled, so never refused on.
+        def unnamed(listing)
+          return [] unless stop? && only
+
+          listing.running.reject { |task| only.include?(task.id) }
+        end
 
         # The result keys a delete adds for a stop: the tasks the op
         # stopped, did not stop and found ended ({} unless +stop?+, so a
@@ -127,28 +141,35 @@ module Samagotchi
       end
 
       # "; its worker was stopped" (+stopped_worker+ is +session_id+),
-      # "; 9d0e1f2a's worker was stopped" (another), "" (none).
-      def worker_words(session_id, stopped_worker)
+      # "; 9d0e1f2a's worker was stopped" (another), "" (none); with +all+
+      # of more than one (an archive's tree), "; 2 workers were stopped: its
+      # own, 9d0e1f2a".
+      def worker_words(session_id, stopped_worker, all: [])
         return "" unless stopped_worker
+
+        if all.size > 1
+          names = all.map { |sid| sid.to_s == session_id.to_s ? "its own" : sid.to_s[0, 8] }
+          return "; #{all.size} workers were stopped: #{cut(names)}"
+        end
         return "; its worker was stopped" if stopped_worker == session_id.to_s
 
         "; #{stopped_worker[0, 8]}'s worker was stopped"
       end
 
       # The policy a batch's removals get once the batch was listed under its
-      # locks (SessionChain::Delete): a REFUSE already checked does no
-      # per-id re-check; IGNORE and a stop are unchanged.
-      def after_check(policy) = policy.refuse? ? Policy::IGNORE : policy
+      # locks (SessionChain::Delete): the batch's check was the last word, so
+      # no id is refused after another of the batch went. A REFUSE does no
+      # per-id re-check, a stop with +only+ stops what each id runs (the same
+      # tally); IGNORE and a plain stop are unchanged.
+      def after_check(policy)
+        return Policy::IGNORE if policy.refuse?
 
-      # REFUSE's one listing of a whole batch under its locks: the batch's
-      # DeleteRefused :tasks_running (+refusal+ builds it) before anything of
-      # it goes. Nothing for another policy.
-      def refuse_batch!(ids, state_dir:, policy:, &refusal)
-        return unless policy.refuse?
-
-        listing = of(ids, state_dir: state_dir)
-        raise yield(listing) unless listing.empty?
+        policy.stop? && policy.only ? policy.with(only: nil) : policy
       end
+
+      # The last word on a whole batch under its locks (SessionChain::Delete):
+      # #check! again, before anything of it goes.
+      def refuse_batch!(ids, state_dir:, policy:, &) = check!(ids, state_dir: state_dir, policy: policy, &)
 
       # The tasks the sessions +ids+ started that may still run; never
       # writes, never loads TaskRuntime. A session with no file (a folder
@@ -172,14 +193,19 @@ module Samagotchi
       end
 
       # +listing+ of +ids+ when +policy+ refuses on it, raised as the op's
-      # refusal (+refusal+ builds it from the listing); else the listing
-      # (EMPTY unless the policy refuses: a stop lists again where it stops).
+      # refusal (+refusal+ builds it from the listing): REFUSE on any task, a
+      # stop with +only+ on a running one it wasn't given (Policy#unnamed),
+      # so an op refuses up front, before a worker is stopped or anything
+      # goes; the op's check under its lock stays the last word. Else the
+      # listing (EMPTY for IGNORE and a plain stop, which lists again where
+      # it stops).
       # @return [Listing]
       def check!(ids, state_dir:, policy:, &refusal)
-        return EMPTY unless policy.refuse?
+        return EMPTY unless policy.refuse? || (policy.stop? && policy.only)
 
         listing = of(ids, state_dir: state_dir)
-        raise yield(listing) unless listing.empty?
+        refused = policy.refuse? ? !listing.empty? : !policy.unnamed(listing).empty?
+        raise yield(listing) if refused
 
         listing
       end
@@ -340,8 +366,9 @@ module Samagotchi
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      private_class_method :stop_thread, :named_tasks, :command_name, :short_task, :cut, :readable_session,
-                           :classify, :liveness, :monotonic
+      # command_name, short_task and cut stay public: chi sessions delete
+      # --dry-run names a plan's tasks with them.
+      private_class_method :stop_thread, :named_tasks, :readable_session, :classify, :liveness, :monotonic
     end
   end
 end

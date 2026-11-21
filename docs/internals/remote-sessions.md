@@ -191,6 +191,15 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   `unarchived`/`moved_back` (read as `[]`). The delete refusals reach the CLI with their own reason and message
   (`continuing`, `delegate_unmovable`, `scheduled`, `chain_scheduled`, `worker_running`, `still_stopping`:
   `Remote#raise_refusal` raises `DeleteRefused` with `ids` and `schedule_id`).
+- **A route that answers more.** `GET /api/sessions/:id/delete_plan` answering for every session (`{chained: false,
+  session_id, link}` for one in no chain, and a file-less folder), together with a plain delete that takes the
+  session's stopped delegates, is `delete_plan_all` (`App::DELETE_PLAN_FEATURE`). Its first caller is the CLI's
+  remote `sessions delete --dry-run` (`Remote#delete_plan`; `SessionAccess::DeletePlan.read` reads its JSON and
+  `Local#delete_plan`'s symbol-keyed preview into the same value objects), which requires it first: an older chi web answers a session in no chain with
+  `{chained: false}` alone and still leaves a plain session's delegates, so its plan would be wrong. A plain remote
+  delete needs no feature: against an older chi web it leaves the delegates, and the CLI prints what the result
+  says. The deletes' `tasks=` and archive's `tasks` (the sheet's named tasks) need none either: an older chi web
+  ignores them and stops what runs, which is what a CLI without them asks for.
 
 ## Which checks run where
 
