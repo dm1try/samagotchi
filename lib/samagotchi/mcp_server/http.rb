@@ -14,7 +14,10 @@ module Samagotchi
     # 400 -32020 otherwise. A legacy initialize is handed a fresh
     # Mcp-Session-Id, which every later legacy POST must carry (400
     # "Missing session ID" without one, as the reference server answers);
-    # any well-formed one is served. Nothing is stored for it: the tools
+    # any well-formed one is served. A later legacy POST's
+    # MCP-Protocol-Version, when it has one, is a legacy version chi
+    # serves (2025-06-18 on: 400 -32600 otherwise; none is served, as the
+    # spec says for a client before the header). Nothing is stored for it: the tools
     # hold no per-connection state, so an id only marks a legacy client
     # that did initialize. The transport's gates (Host, Origin, the token)
     # are the caller's.
@@ -76,14 +79,21 @@ module Samagotchi
 
       def mismatch(id, words) = Protocol.error_body(id, Protocol::HEADER_MISMATCH, "Header mismatch: #{words}")
 
-      # A legacy request past initialize carries its session id.
+      # A legacy request past initialize carries its session id, and a
+      # version chi serves if it names one.
       def session_refusal(env, message)
         return nil if !message.is_a?(Hash) || message["method"] == "initialize"
 
         session = env["HTTP_MCP_SESSION_ID"]
-        return nil if session.is_a?(String) && SESSION_ID.match?(session)
+        unless session.is_a?(String) && SESSION_ID.match?(session)
+          return Protocol.error_body(message["id"], Protocol::INVALID_REQUEST, "Bad Request: Missing session ID")
+        end
 
-        Protocol.error_body(message["id"], Protocol::INVALID_REQUEST, "Bad Request: Missing session ID")
+        version = env["HTTP_MCP_PROTOCOL_VERSION"]
+        return nil if version.nil? || LEGACY_VERSIONS.include?(version)
+
+        Protocol.error_body(message["id"], Protocol::INVALID_REQUEST,
+                            "Bad Request: Unsupported protocol version #{version} (supported: #{LEGACY_VERSIONS.join(", ")})")
       end
 
       # A header in the =?base64?…?= form decoded (a name that isn't ASCII).

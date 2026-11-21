@@ -37,6 +37,20 @@ RSpec.describe Samagotchi::McpServer::Http do
     expect(body["error"]["message"]).to include("\uFFFD")
   end
 
+  it "serves a legacy POST with a legacy MCP-Protocol-Version or none, and refuses another with 400 -32600" do
+    ping = { jsonrpc: "2.0", id: 5, method: "ping" }
+    [nil, "2025-06-18", "2025-11-25"].each do |version|
+      expect(post(ping, legacy_session.merge("HTTP_MCP_PROTOCOL_VERSION" => version).compact)[0]).to eq(200), version.inspect
+    end
+    %w[2099-01-01 2026-07-28 2025-03-26].each do |version|
+      status, _headers, body = post(ping, legacy_session.merge("HTTP_MCP_PROTOCOL_VERSION" => version))
+      expect([status, body["id"], body["error"]["code"]]).to eq([400, 5, -32_600]), version
+      expect(body["error"]["message"]).to include("Unsupported protocol version #{version}")
+    end
+    # initialize negotiates in its body.
+    expect(post({ jsonrpc: "2.0", id: 6, method: "initialize", params: {} }, "HTTP_MCP_PROTOCOL_VERSION" => "2099-01-01")[0]).to eq(200)
+  end
+
   it "answers a body that isn't an object (a batch, null, a number) with -32600, never raising" do
     ['[{"jsonrpc":"2.0","id":1,"method":"ping"}]', "null", "3", '"x"'].each do |text|
       [{}, legacy_session].each do |env|
